@@ -1,19 +1,10 @@
 # syntax=docker/dockerfile:1.7
 #
-# Maidan-flavored Postgres image: pgvector + a curated init step that
-# applies Maidan's first migration on container creation.
+# Maidan-flavored Postgres image: pgvector base only.
 #
-# Used by `compose.yaml` and the k8s Postgres StatefulSet for local +
-# development clusters. Production clusters typically point at a managed
-# Postgres instead and run migrations from `maidan-server` itself.
+# The migration runner inside maidan-server is the single source of
+# truth for schema; this image deliberately does not bundle the schema
+# into docker-entrypoint-initdb.d so that fresh volumes go through the
+# same code path as upgrades.
 
 FROM pgvector/pgvector:pg16
-
-# Copy migrations into the standard init dir; Postgres applies *.sql files
-# from /docker-entrypoint-initdb.d on first boot of an empty data
-# directory. Renumbered with the `maidan-` prefix to avoid colliding with
-# anyone else's init scripts.
-COPY migrations/postgres/0001_core_up.sql /docker-entrypoint-initdb.d/01-maidan-core.sql
-
-# Drop privileges; the pgvector image already has the postgres user.
-USER postgres

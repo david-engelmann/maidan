@@ -117,12 +117,13 @@ values.
 |------------------|---------------------------------------------|------------------------|
 | `maidan-server`  | `crates/maidan-server/Dockerfile`           | Production binary.     |
 | `maidan-server`  | `crates/maidan-server/Dockerfile.dev`       | Dev hot-reload.        |
-| `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector + schema 0001. |
+| `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector.   |
 
 ## Migrations
 
-`maidan-server` applies pending migrations on boot via
-`run_postgres_migrations`. The custom `maidan-postgres` image **also**
-applies schema 0001 the first time its data volume initializes — this is
-a redundancy for fresh deployments. Subsequent migrations always come
-from the server.
+`maidan-server` is the **single source of truth** for schema; it applies
+all pending migrations on boot via `run_postgres_migrations` (or
+`run_sqlite_migrations`, depending on the dialect). The
+`maidan-postgres` image is a thin pgvector layer that does **not**
+bundle schema into `docker-entrypoint-initdb.d` — fresh volumes and
+upgrades go through the same code path.
