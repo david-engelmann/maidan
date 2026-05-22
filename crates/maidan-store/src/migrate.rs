@@ -1,0 +1,44 @@
+use sqlx::PgPool;
+
+use crate::error::StoreError;
+
+const POSTGRES_UP_V1: &str = include_str!("../../../migrations/postgres/0001_core_up.sql");
+
+/// Apply all Postgres migrations to the pool, in order, idempotently.
+///
+/// Tracks applied migrations in a `maidan_migrations` table. Calling this
+/// repeatedly is safe; a migration only runs the first time it is seen.
+pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS maidan_migrations (
+            version BIGINT PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    apply_postgres(pool, 1, POSTGRES_UP_V1).await?;
+    Ok(())
+}
+
+async fn apply_postgres(pool: &PgPool, version: i64, sql: &str) -> Result<(), StoreError> {
+    let already: Option<(i64,)> =
+        sqlx::query_as("SELECT version FROM maidan_migrations WHERE version = $1")
+            .bind(version)
+            .fetch_optional(pool)
+            .await?;
+    if already.is_some() {
+        return Ok(());
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::raw_sql(sql).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO maidan_migrations (version) VALUES ($1)")
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    tracing::info!(version, "applied postgres migration");
+    Ok(())
+}

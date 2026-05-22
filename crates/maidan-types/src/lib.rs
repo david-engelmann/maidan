@@ -1,9 +1,11 @@
 //! Core domain types for Maidan.
 //!
-//! Member, Channel, Thread, Message, and typed IDs. Other crates depend on
-//! this one for shared schema; nothing in this crate depends on other Maidan
-//! crates.
+//! Workspace, Member, Channel, Thread, Message, Mention, Vote, Reference,
+//! Artifact, AuditEvent, plus typed IDs. Other crates depend on this one
+//! for shared schema; nothing here depends on other Maidan crates.
 
 pub mod ids;
+pub mod models;
 
 pub use ids::*;
+pub use models::*;

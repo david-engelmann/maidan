@@ -11,5 +11,16 @@ description = "Storage abstraction + Postgres/SQLite implementations for Maidan.
 [dependencies]
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+anyhow.workspace = true
