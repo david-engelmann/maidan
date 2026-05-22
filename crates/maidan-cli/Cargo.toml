@@ -1,0 +1,20 @@
+[package]
+name = "maidan-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Operator CLI for Maidan."
+
+[[bin]]
+name = "maidan"
+path = "src/main.rs"
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

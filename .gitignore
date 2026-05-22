@@ -1,0 +1,78 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# sqlx offline cache (committed selectively; ignore drafts)
+.sqlx/.tmp/
+
+# Build + dist
+/dist/
+/build/
+
+# Coverage
+*.profraw
+*.profdata
+/coverage/
+lcov.info
+tarpaulin-report.html
+
+# Test artifacts
+**/proptest-regressions/
+**/snapshots/*.snap.new
+/tests/load/results/
+/tests/red-team/results/
+
+# Local env + secrets (committed example only)
+.env
+.env.*
+!.env.example
+maidan.toml
+!maidan.toml.example
+*.pem
+*.key
+*.crt
+
+# Local DBs
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# Local object storage
+/.local/
+/data/
+
+# Logs
+*.log
+/logs/
+
+# Docker
+docker-compose.override.yml
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+.nvim.lua
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Direnv
+.envrc.local

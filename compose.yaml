@@ -1,0 +1,63 @@
+name: maidan
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: maidan-postgres
+    environment:
+      POSTGRES_USER: maidan
+      POSTGRES_PASSWORD: maidan
+      POSTGRES_DB: maidan
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maidan -d maidan"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: maidan-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: maidan
+      MINIO_ROOT_PASSWORD: maidanmaidan
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  maidan-server:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    container_name: maidan-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "8080:8080"
+    volumes:
+      - maidan_data:/data
+    profiles:
+      - full
+
+volumes:
+  postgres_data:
+  minio_data:
+  maidan_data:

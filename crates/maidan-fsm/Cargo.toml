@@ -1,0 +1,15 @@
+[package]
+name = "maidan-fsm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Finite-state-machine engine for Maidan agent threads."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

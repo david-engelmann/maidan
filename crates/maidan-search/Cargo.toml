@@ -1,0 +1,15 @@
+[package]
+name = "maidan-search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Full-text + vector search over Maidan messages and artifacts."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
