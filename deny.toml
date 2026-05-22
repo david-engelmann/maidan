@@ -6,7 +6,16 @@ no-default-features = false
 db-path = "~/.cargo/advisory-dbs"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = []
+ignore = [
+    # rustls-pemfile is unmaintained; transitive via testcontainers/bollard
+    # (dev-deps only). No code path runs in production builds. Revisit when
+    # testcontainers updates.
+    "RUSTSEC-2025-0134",
+    # tokio-tar PAX-header parsing bug; reachable only via testcontainers
+    # uploading build contexts to the local docker daemon, which is
+    # trusted in the dev/CI environment. Not a production code path.
+    "RUSTSEC-2025-0111",
+]
 
 [licenses]
 allow = [
@@ -28,6 +37,7 @@ exceptions = []
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
 highlight = "all"
 deny = []
 skip = []
