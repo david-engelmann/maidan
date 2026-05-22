@@ -53,7 +53,7 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: .
-          extra_args: --no-update --only-verified
+          extra_args: --only-verified
 
   test:
     name: unit tests
