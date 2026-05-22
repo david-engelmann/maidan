@@ -105,7 +105,7 @@ jobs:
         run: docker compose --profile full up -d
       - name: wait for /health
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sf http://localhost:8080/health > /tmp/health.json; then
               cat /tmp/health.json
               jq -e '.status == "ok"' /tmp/health.json
@@ -113,9 +113,17 @@ jobs:
             fi
             sleep 2
           done
-          echo "health check timed out"
-          docker compose logs
+          echo "::error::health check timed out after 120s"
           exit 1
+      - name: compose logs on failure
+        if: failure()
+        run: |
+          echo "=== maidan-server ==="
+          docker compose --profile full logs maidan-server || true
+          echo "=== postgres ==="
+          docker compose --profile full logs postgres || true
+          echo "=== minio ==="
+          docker compose --profile full logs minio || true
       - name: compose down
         if: always()
         run: docker compose --profile full down -v

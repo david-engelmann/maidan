@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+publish.workspace = true
 description = "Content-addressed artifact store for Maidan (LocalFs, S3)."
 
 [dependencies]

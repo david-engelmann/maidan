@@ -23,6 +23,7 @@ rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/david-engelmann/maidan"
 authors = ["David Engelmann"]
+publish = false
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
