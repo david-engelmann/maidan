@@ -1,13 +1,15 @@
-use sqlx::PgPool;
+use sqlx::{PgPool, SqlitePool};
 
 use crate::error::StoreError;
 
 const POSTGRES_UP_V1: &str = include_str!("../../../migrations/postgres/0001_core_up.sql");
+const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
-/// Tracks applied migrations in a `maidan_migrations` table. Calling this
-/// repeatedly is safe; a migration only runs the first time it is seen.
+/// Tracks applied migrations in a `maidan_migrations` table. Calling
+/// this repeatedly is safe; a migration only runs the first time it is
+/// seen.
 pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS maidan_migrations (
@@ -19,6 +21,21 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     .await?;
 
     apply_postgres(pool, 1, POSTGRES_UP_V1).await?;
+    Ok(())
+}
+
+/// Apply all SQLite migrations to the pool, idempotently.
+pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS maidan_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    apply_sqlite(pool, 1, SQLITE_UP_V1).await?;
     Ok(())
 }
 
@@ -40,5 +57,26 @@ async fn apply_postgres(pool: &PgPool, version: i64, sql: &str) -> Result<(), St
         .await?;
     tx.commit().await?;
     tracing::info!(version, "applied postgres migration");
+    Ok(())
+}
+
+async fn apply_sqlite(pool: &SqlitePool, version: i64, sql: &str) -> Result<(), StoreError> {
+    let already: Option<(i64,)> =
+        sqlx::query_as("SELECT version FROM maidan_migrations WHERE version = ?")
+            .bind(version)
+            .fetch_optional(pool)
+            .await?;
+    if already.is_some() {
+        return Ok(());
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::raw_sql(sql).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO maidan_migrations (version) VALUES (?)")
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    tracing::info!(version, "applied sqlite migration");
     Ok(())
 }
