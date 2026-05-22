@@ -1,8 +1,8 @@
 # Architecture
 
-A snapshot of Maidan's intended shape. Replaces itself at the close of
-each cluster; the current text describes the v0.0.1 target, not what's
-running yet.
+A snapshot of Maidan's shape. Replaces itself at the close of each
+cluster. The current text describes the state at `v0.0.1` (end of
+Cluster A); items planned for later clusters are marked explicitly.
 
 ## One-paragraph summary
 
@@ -58,19 +58,25 @@ See [[Glossary]] for vocabulary.
 
 ## Data layering
 
-1. **Relational core** in Postgres or SQLite — members, channels, threads,
-   messages, mentions, votes, references, audit log.
+1. **Relational core** in Postgres or SQLite — members, channels,
+   threads, messages, mentions, votes, references, artifacts (metadata),
+   audit log. **Implemented in `v0.0.1`** (schema 0001).
 2. **Content-addressed artifacts** in an object store — large bodies
    (screenshots, recordings, transcripts, code dumps) keyed by sha256.
+   **Implemented in `v0.0.1`** for the LocalFs backend.
 3. **Event stream** — every state change appends a typed event consumed
    by subscribers (WebSocket clients, A2A peers, the MCP surface).
+   Planned for Cluster B.
 
 ## Backends
 
-- **Postgres** is the production target. `pgvector` for embeddings.
+- **Postgres** is the production target. `pgvector` is bundled in the
+  `docker/Dockerfile.db` image; embeddings consume it in Cluster C.
 - **SQLite** is the dev fallback so `cargo run` works without Docker.
-- **Object store** defaults to local filesystem; an S3-compatible
-  backend is planned (see [[Roadmap]] Cluster E).
+  Both backends share schema 0001 (with dialect-specific SQL) and
+  exercise the same assertion suite.
+- **Object store** defaults to local filesystem (`LocalFsStore`); an
+  S3-compatible backend is planned for Cluster E.
 
 ## What's deliberately not here yet
 

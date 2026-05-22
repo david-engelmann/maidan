@@ -52,5 +52,4 @@ PR review credit; external contributors.
 
 ## Index
 
-No retros yet. The first will be **Cluster A**, written as PR #7 of
-that cluster.
+- [[Cluster A]] — Foundation. Closed at `v0.0.1`.
