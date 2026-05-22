@@ -32,13 +32,23 @@ docker compose -f compose.dev.yaml up postgres minio
 DATABASE_URL=postgres://maidan:maidan@localhost:5432/maidan cargo run --bin maidan-server
 ```
 
-### Without Docker
+### Without Docker (SQLite)
 
-For pure host development against SQLite (lands in Cluster A PR #6):
+For pure host development against SQLite — no `docker compose` needed:
 
 ```sh
 DATABASE_URL=sqlite://./dev.db cargo run --bin maidan-server
 ```
+
+Or against an in-memory SQLite (lost on shutdown):
+
+```sh
+DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
+```
+
+The server detects the dialect from the `DATABASE_URL` prefix
+(`postgres://`, `postgresql://`, or `sqlite:`) and selects the
+appropriate migration runner and backend automatically.
 
 ## Kubernetes
 
