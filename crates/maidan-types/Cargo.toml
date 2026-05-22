@@ -10,6 +10,7 @@ description = "Core domain types for Maidan."
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
