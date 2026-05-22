@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+#
+# Dev image for maidan-server with hot-reload via cargo-watch.
+# Used by `compose.dev.yaml`; mounts source from the host as a volume so
+# edits trigger a rebuild without rebuilding the image.
+
+ARG RUST_VERSION=1.88
+FROM rust:${RUST_VERSION}-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        pkg-config libssl-dev ca-certificates \
+        postgresql-client curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && cargo install cargo-watch --locked
+
+ENV CARGO_TARGET_DIR=/var/cache/maidan/target \
+    RUST_BACKTRACE=1 \
+    MAIDAN_BIND=0.0.0.0:8080
+
+EXPOSE 8080
+
+# Source is volume-mounted into /app by compose.dev.yaml.
+# cargo-watch keeps a long-running process and restarts maidan-server on
+# every change.
+CMD ["cargo", "watch", "-x", "run --bin maidan-server"]

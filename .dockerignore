@@ -1,0 +1,40 @@
+target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+.git/
+.github/
+
+# Local dev artifacts
+.local/
+data/
+logs/
+*.log
+
+# Test artifacts
+**/proptest-regressions/
+tests/load/results/
+tests/red-team/results/
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docs (not needed inside images)
+docs/
+
+# Env + secrets
+.env
+.env.*
+maidan.toml
+!maidan.toml.example
+*.pem
+*.key
+
+# Local DBs
+*.db
+*.db-journal
+*.sqlite

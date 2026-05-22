@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maidan-config
+  namespace: maidan
+  labels:
+    app.kubernetes.io/name: maidan
+    app.kubernetes.io/component: server
+data:
+  MAIDAN_BIND: "0.0.0.0:8080"
+  MAIDAN_LOG: "info,sqlx=warn"
+  ARTIFACT_BACKEND: "localfs"
+  ARTIFACT_LOCALFS_ROOT: "/data/artifacts"

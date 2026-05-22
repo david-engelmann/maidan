@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: maidan-server
+  namespace: maidan
+  labels:
+    app.kubernetes.io/name: maidan
+    app.kubernetes.io/component: server
+  annotations:
+    # Override per-overlay; left blank in the base.
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  rules:
+    - host: maidan.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: maidan-server
+                port:
+                  name: http
