@@ -1,0 +1,28 @@
+[package]
+name = "maidan-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Maidan HTTP + WebSocket + MCP server."
+
+[[bin]]
+name = "maidan-server"
+path = "src/main.rs"
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+maidan-store = { path = "../maidan-store" }
+maidan-artifacts = { path = "../maidan-artifacts" }
+maidan-observability = { path = "../maidan-observability" }
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

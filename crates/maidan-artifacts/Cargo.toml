@@ -1,0 +1,17 @@
+[package]
+name = "maidan-artifacts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Content-addressed artifact store for Maidan (LocalFs, S3)."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+async-trait.workspace = true
+bytes.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

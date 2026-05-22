@@ -1,0 +1,15 @@
+[package]
+name = "maidan-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Model Context Protocol server surface for Maidan."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

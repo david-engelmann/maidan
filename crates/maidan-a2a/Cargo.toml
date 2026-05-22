@@ -1,0 +1,15 @@
+[package]
+name = "maidan-a2a"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Agent-to-Agent transport for Maidan."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
