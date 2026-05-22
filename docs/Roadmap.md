@@ -33,7 +33,8 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-See [[Clusters/Cluster A]].
+See [[Clusters/Cluster B]] (in progress). Cluster A complete; see
+[[Retros/Cluster A]].
 
 ## Closing a cluster
 

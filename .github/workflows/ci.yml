@@ -1,0 +1,121 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    name: lint (fmt + clippy + deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --all-targets --workspace -- -D warnings
+      - name: install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: deny check
+        run: cargo deny check
+
+  secrets:
+    name: secrets scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: trufflehog scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: .
+          extra_args: --no-update --only-verified
+
+  test:
+    name: unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: build
+        run: cargo build --workspace --all-targets
+      - name: test (unit only)
+        run: cargo test --workspace --lib --bins
+
+  integration:
+    name: integration (testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: integration tests
+        run: cargo nextest run --workspace --tests --no-fail-fast
+
+  e2e:
+    name: docker compose smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: build images
+        run: |
+          docker build -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+      - name: compose up
+        run: docker compose --profile full up -d
+      - name: wait for /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /tmp/health.json; then
+              cat /tmp/health.json
+              jq -e '.status == "ok"' /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "health check timed out"
+          docker compose logs
+          exit 1
+      - name: compose down
+        if: always()
+        run: docker compose --profile full down -v

@@ -1,0 +1,139 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: build release binaries
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+            cross: true
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: build
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --bin maidan-server --bin maidan --target ${{ matrix.target }}
+          else
+            cargo build --release --bin maidan-server --bin maidan --target ${{ matrix.target }}
+          fi
+      - name: package
+        run: |
+          mkdir -p dist
+          tar -czf dist/maidan-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release maidan-server maidan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maidan-${{ matrix.target }}
+          path: dist/
+
+  docker:
+    name: build + push docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: set up qemu
+        uses: docker/setup-qemu-action@v3
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v3
+      - name: login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: build + push maidan-server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/maidan-server:latest
+      - name: build + push maidan-postgres
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.db
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/maidan-postgres:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/maidan-postgres:latest
+
+  release:
+    name: github release
+    needs: [build, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: list artifacts
+        run: ls -la dist
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
