@@ -36,6 +36,7 @@ maidan.toml
 # Local DBs
 *.db
 *.db-journal
+!docker/Dockerfile.db
 *.sqlite
 *.sqlite-journal
 

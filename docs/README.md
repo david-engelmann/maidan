@@ -9,6 +9,7 @@ wikilink navigation, graph view, and backlinks.
 - [[Architecture]] — high-level design.
 - [[Roadmap]] — clusters from foundation to v1.0.
 - [[Conventions]] — branch, commit, and PR conventions.
+- [[Deploy]] — Docker + Kubernetes deployment.
 - [[Glossary]] — domain vocabulary.
 - [[Capabilities]] — running list of what Maidan can do, by release.
 - [[Clusters/Cluster A]] — current cluster: foundation.

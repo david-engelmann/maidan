@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: maidan
+
+resources:
+  - ../../base
+
+namePrefix: dev-
+
+commonAnnotations:
+  maidan.dev/environment: "dev"
+
+# Override images for the dev overlay. Build them via:
+#   docker build -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+#   docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+# then load into the local cluster (kind/minikube) before applying.
+images:
+  - name: maidan-server
+    newTag: dev
+  - name: maidan-postgres
+    newTag: dev
+
+# Smaller resource asks for dev clusters.
+patches:
+  - target:
+      kind: Deployment
+      name: maidan-server
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: StatefulSet
+      name: maidan-postgres
+    patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
+        value: 2Gi

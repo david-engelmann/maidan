@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: maidan-minio
+  namespace: maidan
+  labels:
+    app.kubernetes.io/name: maidan
+    app.kubernetes.io/component: minio
+spec:
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    app.kubernetes.io/name: maidan
+    app.kubernetes.io/component: minio

@@ -1,14 +1,14 @@
-name: maidan
+name: maidan-dev
 
-# Default compose stack — builds the production image from
-# `crates/maidan-server/Dockerfile` and a custom Postgres image with the
-# pgvector extension + schema 0001 baked in.
+# Dev compose stack — same Postgres + MinIO + maidan-server stack as
+# `compose.yaml`, but maidan-server is built from `Dockerfile.dev` and
+# mounts the workspace as a volume for cargo-watch hot reload.
 #
 # Usage:
-#   docker compose up               # postgres + minio
-#   docker compose --profile full up # + maidan-server
+#   docker compose -f compose.dev.yaml up
 #
-# For hot-reload dev, see `compose.dev.yaml`.
+# To run only Postgres + MinIO (so cargo run drives the server locally):
+#   docker compose -f compose.dev.yaml up postgres minio
 
 services:
   postgres:
@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.db
     image: maidan-postgres:dev
-    container_name: maidan-postgres
+    container_name: maidan-dev-postgres
     environment:
       POSTGRES_USER: maidan
       POSTGRES_PASSWORD: maidan
@@ -24,7 +24,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - dev_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U maidan -d maidan"]
       interval: 2s
@@ -33,7 +33,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: maidan-minio
+    container_name: maidan-dev-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: maidan
@@ -42,7 +42,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
+      - dev_minio_data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -52,9 +52,8 @@ services:
   maidan-server:
     build:
       context: .
-      dockerfile: crates/maidan-server/Dockerfile
-    image: maidan-server:dev
-    container_name: maidan-server
+      dockerfile: crates/maidan-server/Dockerfile.dev
+    container_name: maidan-dev-server
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,15 +62,19 @@ services:
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       MAIDAN_BIND: 0.0.0.0:8080
-      MAIDAN_LOG: info,sqlx=warn
+      MAIDAN_LOG: debug,sqlx=info,hyper=info
+      CARGO_TARGET_DIR: /var/cache/maidan/target
     ports:
       - "8080:8080"
     volumes:
-      - maidan_data:/data
-    profiles:
-      - full
+      - ./:/app
+      - dev_cargo_target:/var/cache/maidan/target
+      - dev_cargo_registry:/usr/local/cargo/registry
+      - dev_maidan_data:/data
 
 volumes:
-  postgres_data:
-  minio_data:
-  maidan_data:
+  dev_postgres_data:
+  dev_minio_data:
+  dev_cargo_target:
+  dev_cargo_registry:
+  dev_maidan_data:
