@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Artifact, ArtifactId, MemberId, NewArtifact};
+use maidan_types::{Artifact, ArtifactId, ArtifactKind, MemberId, NewArtifact};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -19,11 +19,11 @@ pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreEr
     .bind(&new.sha256)
     .bind(new.size_bytes)
     .bind(new.mime_type.as_deref())
-    .bind(&new.kind)
+    .bind(new.kind.as_str())
     .bind(new.uploaded_by.map(|m| m.0))
     .fetch_one(pool)
     .await?;
-    Ok(row_to_artifact(&row))
+    row_to_artifact(&row)
 }
 
 pub async fn get_by_sha(pool: &PgPool, sha256: &str) -> Result<Artifact, StoreError> {
@@ -35,18 +35,22 @@ pub async fn get_by_sha(pool: &PgPool, sha256: &str) -> Result<Artifact, StoreEr
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
-    Ok(row_to_artifact(&row))
+    row_to_artifact(&row)
 }
 
-fn row_to_artifact(row: &sqlx::postgres::PgRow) -> Artifact {
-    Artifact {
+fn row_to_artifact(row: &sqlx::postgres::PgRow) -> Result<Artifact, StoreError> {
+    let kind: String = row.get("kind");
+    let kind = ArtifactKind::parse(&kind).ok_or_else(|| {
+        StoreError::InvalidInput(format!("unknown artifact kind in database: {kind}"))
+    })?;
+    Ok(Artifact {
         id: ArtifactId(row.get::<Uuid, _>("id")),
         sha256: row.get("sha256"),
         size_bytes: row.get("size_bytes"),
         mime_type: row.get("mime_type"),
-        kind: row.get("kind"),
+        kind,
         uploaded_by: row.get::<Option<Uuid>, _>("uploaded_by").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
-    }
+    })
 }
