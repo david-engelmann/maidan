@@ -65,6 +65,19 @@ pub async fn get_workspace(
     Ok(Json(state.store.get_workspace(WorkspaceId(id)).await?))
 }
 
+pub async fn list_events(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Query(q): Query<ListEventsQuery>,
+) -> ApiResult<Json<Vec<StoredEvent>>> {
+    Ok(Json(
+        state
+            .store
+            .list_events_after(WorkspaceId(workspace_id), q.after_id, q.limit)
+            .await?,
+    ))
+}
+
 // --- members ---
 
 pub async fn create_member(
@@ -444,6 +457,9 @@ pub async fn search_messages(
 /// being temporarily unavailable should not turn a successful mutation
 /// into a 5xx.
 async fn publish(state: &AppState, event: Event) {
+    if let Err(err) = state.store.append_event(&event).await {
+        tracing::warn!(error = %err, "event log append failed");
+    }
     if let Err(err) = state.bus.publish(event).await {
         tracing::warn!(error = %err, "bus publish failed");
     }

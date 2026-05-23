@@ -18,6 +18,7 @@ pub fn router(state: AppState) -> Router {
         // workspaces
         .route("/workspaces", post(routes::create_workspace))
         .route("/workspaces/:id", get(routes::get_workspace))
+        .route("/workspaces/:wid/events", get(routes::list_events))
         // members
         .route(
             "/workspaces/:wid/members",

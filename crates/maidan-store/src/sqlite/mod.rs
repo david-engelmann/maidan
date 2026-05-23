@@ -6,6 +6,7 @@
 mod artifacts;
 mod audit;
 mod channels;
+mod events;
 mod members;
 mod mentions;
 mod messages;
@@ -152,5 +153,18 @@ impl Store for SqliteStore {
     }
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {
         audit::list(&self.pool, limit).await
+    }
+
+    async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError> {
+        events::append(&self.pool, event).await
+    }
+
+    async fn list_events_after(
+        &self,
+        workspace_id: WorkspaceId,
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        events::list_after(&self.pool, workspace_id, after_id, limit).await
     }
 }
