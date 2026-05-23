@@ -11,6 +11,10 @@ description = "Model Context Protocol server surface for Maidan."
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
+maidan-store = { path = "../maidan-store" }
 async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+uuid.workspace = true

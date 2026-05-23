@@ -1335,9 +1335,13 @@ name = "maidan-mcp"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "maidan-store",
  "maidan-types",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1379,6 +1383,7 @@ dependencies = [
  "futures",
  "maidan-artifacts",
  "maidan-bus",
+ "maidan-mcp",
  "maidan-observability",
  "maidan-store",
  "maidan-types",

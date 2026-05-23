@@ -9,6 +9,7 @@ pub mod config;
 pub mod dto;
 pub mod error;
 pub mod health;
+pub mod mcp;
 pub mod routes;
 pub mod state;
 pub mod ws;
