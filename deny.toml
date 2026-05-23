@@ -6,23 +6,19 @@ no-default-features = false
 db-path = "~/.cargo/advisory-dbs"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = [
-    # rustls-pemfile is unmaintained; transitive via testcontainers/bollard
-    # (dev-deps only). No code path runs in production builds. Revisit when
-    # testcontainers updates.
-    "RUSTSEC-2025-0134",
-    # tokio-tar PAX-header parsing bug; reachable only via testcontainers
-    # uploading build contexts to the local docker daemon, which is
-    # trusted in the dev/CI environment. Not a production code path.
-    "RUSTSEC-2025-0111",
-]
 
-# aws-sdk-s3 pulls rustls 0.21 → rustls-webpki 0.101. We talk to MinIO over
-# plain HTTP in compose; TLS name-constraint/CRL bugs are not reachable.
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0134"
+reason = "rustls-pemfile unmaintained; dev-only via testcontainers/bollard"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0111"
+reason = "tokio-tar via testcontainers build context upload; trusted CI path only"
+
 [[advisories.ignore]]
 crate = "rustls-webpki"
 version = "=0.101.7"
-reason = "transitive via aws-smithy-http-client; upgrade when AWS SDK moves off rustls 0.21"
+reason = "aws-sdk transitive rustls 0.21; MinIO compose uses HTTP not affected TLS paths"
 
 [licenses]
 allow = [
