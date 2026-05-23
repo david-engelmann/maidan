@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
-use maidan_search::{PostgresSearch, Search, SqliteSearch};
+use maidan_search::{Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch};
 use maidan_server::{config::ArtifactBackend, router, version, AppState, Config};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
@@ -78,14 +78,23 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = AppState::new(store, artifacts, bus, search);
+    let state = AppState::new(store, artifacts, bus.clone(), search);
     let app = router(state);
+
+    // Background indexer subscribes to MessagePosted / MessageTombstoned.
+    // The default handler logs; future clusters swap in real embedding
+    // generators without touching the server wiring.
+    let indexer_handler = Arc::new(LoggingHandler::default());
+    let indexer = Indexer::new(bus, indexer_handler).spawn();
+    tracing::info!("background indexer running");
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("bind {}", config.bind))?;
     tracing::info!(addr = %listener.local_addr()?, "listening");
-    axum::serve(listener, app).await.context("axum serve")?;
+    let serve_result = axum::serve(listener, app).await.context("axum serve");
 
+    indexer.shutdown().await;
+    serve_result?;
     Ok(())
 }

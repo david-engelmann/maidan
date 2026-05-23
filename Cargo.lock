@@ -1370,6 +1370,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "maidan-bus",
  "maidan-store",
  "maidan-types",
  "pgvector",
@@ -1380,6 +1381,7 @@ dependencies = [
  "testcontainers-modules",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-stream",
  "tracing",
  "uuid",
 ]

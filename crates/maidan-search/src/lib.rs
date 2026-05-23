@@ -9,12 +9,14 @@
 
 pub mod error;
 pub mod hit;
+pub mod indexer;
 pub mod postgres;
 pub mod sqlite;
 pub mod traits;
 
 pub use error::SearchError;
 pub use hit::SearchHit;
+pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
 pub use postgres::PostgresSearch;
 pub use sqlite::SqliteSearch;
 pub use traits::Search;

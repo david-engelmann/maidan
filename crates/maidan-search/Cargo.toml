@@ -11,12 +11,15 @@ description = "Full-text + vector search over Maidan messages and artifacts."
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
+maidan-bus = { path = "../maidan-bus" }
 async-trait.workspace = true
 chrono.workspace = true
 pgvector = { version = "0.4", features = ["sqlx"] }
 serde.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+tokio-stream = "0.1"
 tracing.workspace = true
 uuid.workspace = true
 
