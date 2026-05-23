@@ -209,8 +209,33 @@ async fn full_mcp_flow() {
     assert_eq!(payload["thread"]["id"], thread_id);
     assert_eq!(payload["messages"].as_array().unwrap().len(), 1);
 
+    let prompts = rpc(&client, &base, 8, "prompts/list", json!({})).await;
+    let names: Vec<&str> = prompts["result"]["prompts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"thread_workflow"));
+
+    let prompt = rpc(
+        &client,
+        &base,
+        9,
+        "prompts/get",
+        json!({
+            "name": "thread_workflow",
+            "arguments": {"thread_id": thread_id}
+        }),
+    )
+    .await;
+    let text = prompt["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .unwrap();
+    assert!(text.contains("open"));
+
     // unknown method
-    let resp = rpc(&client, &base, 8, "non/existent", json!({})).await;
+    let resp = rpc(&client, &base, 10, "non/existent", json!({})).await;
     assert!(resp["error"].is_object());
     assert_eq!(resp["error"]["code"], -32601);
 
@@ -218,7 +243,7 @@ async fn full_mcp_flow() {
     let resp = rpc(
         &client,
         &base,
-        9,
+        11,
         "resources/read",
         json!({"uri": "http://nope/1"}),
     )

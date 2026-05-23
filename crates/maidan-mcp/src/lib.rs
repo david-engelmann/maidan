@@ -4,6 +4,7 @@
 //! - `initialize` handshake
 //! - `tools/list` + `tools/call`
 //! - `resources/list` + `resources/read`
+//! - `prompts/list` + `prompts/get`
 //!
 //! Transport-agnostic: the [`McpServer`] takes JSON-RPC requests and
 //! returns responses. `maidan-server` wraps it behind an HTTP POST
@@ -11,6 +12,7 @@
 //! in a later cluster.
 
 pub mod error;
+pub mod prompts;
 pub mod protocol;
 pub mod resources;
 pub mod server;

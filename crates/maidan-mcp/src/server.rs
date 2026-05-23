@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::error::McpError;
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
-use crate::{resources, tools};
+use crate::{prompts, resources, tools};
 
 const MCP_VERSION: &str = "2024-11-05";
 
@@ -49,6 +49,8 @@ impl McpServer {
             "tools/call" => self.tools_call(&request.params).await,
             "resources/list" => Ok(json!({ "resources": resources::catalog() })),
             "resources/read" => self.resources_read(&request.params).await,
+            "prompts/list" => Ok(json!({ "prompts": prompts::catalog() })),
+            "prompts/get" => self.prompts_get(&request.params).await,
             other => Err(McpError::MethodNotFound(other.into())),
         }
     }
@@ -58,7 +60,8 @@ impl McpServer {
             "protocolVersion": MCP_VERSION,
             "capabilities": {
                 "tools": {},
-                "resources": {}
+                "resources": {},
+                "prompts": {}
             },
             "serverInfo": {
                 "name": self.server_name,
@@ -74,6 +77,15 @@ impl McpServer {
             .ok_or_else(|| McpError::InvalidParams("missing tool name".into()))?;
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         tools::dispatch(&self.store, &self.search, name, &args).await
+    }
+
+    async fn prompts_get(&self, params: &Value) -> Result<Value, McpError> {
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| McpError::InvalidParams("missing prompt name".into()))?;
+        let args = params.get("arguments").cloned().unwrap_or(json!({}));
+        prompts::get(&self.store, name, &args).await
     }
 
     async fn resources_read(&self, params: &Value) -> Result<Value, McpError> {
