@@ -7,7 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster E (artifact substrate).
+Nothing yet. Next: Cluster F (auth + capabilities).
+
+## [0.4.0] — 2026-05-23
+
+End of Cluster E. Artifacts are first-class: S3-backed object storage,
+typed kinds, HTTP upload/download, and MCP tools.
+
+### Added
+
+- `ArtifactKind` (`screenshot`, `recording`, `transcript`, `code_dump`, `attachment`).
+- Migration 0007 kind CHECK on both dialects.
+- `S3Store` with MinIO testcontainers integration test.
+- `POST /artifacts`, `GET /artifacts/:sha`, `GET /artifacts/:sha/meta`.
+- `put_reader` streaming helper and kind-aware `put_*` helpers.
+- MCP `upload_artifact`, `get_artifact_metadata`, `maidan://artifacts/{sha}`.
+
+### Changed
+
+- Compose `full` profile uses `ARTIFACT_BACKEND=s3` + `minio-init` bucket job.
+- Rust toolchain pinned to **1.91** (AWS SDK MSRV).
 
 ## [0.3.0] — 2026-05-23
 

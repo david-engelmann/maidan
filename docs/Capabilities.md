@@ -7,6 +7,17 @@ PR prepends a new section so the latest is always at the top.
 
 Populated when Cluster H lands.
 
+## v0.4.0 — Cluster E complete
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| `ArtifactKind` taxonomy + migration 0007                  | `maidan-types`, `maidan-store` |
+| `S3Store` + `ARTIFACT_BACKEND=s3`                         | `maidan-artifacts`, compose   |
+| `POST /artifacts` + `GET /artifacts/:sha`                 | `maidan-server::routes`       |
+| `put_reader` + kind-aware put helpers                     | `maidan-artifacts`            |
+| MCP `upload_artifact` + `get_artifact_metadata`           | `maidan-mcp::tools`           |
+| MCP `maidan://artifacts/{sha256}` resource                | `maidan-mcp::resources`       |
+
 ## v0.3.0 — Cluster D complete
 
 | Capability                                              | Surface                       |

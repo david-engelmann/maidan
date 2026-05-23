@@ -1,6 +1,6 @@
 # Open work
 
-Aggregate of everything deferred across the four completed retros
+Aggregate of everything deferred across the five completed retros
 plus standing risks. The "if I had two hours, what could I work on"
 backlog.
 
@@ -30,10 +30,9 @@ Updated at the close of each cluster. Items move from "open" to
   returns `Unsupported`. → Cluster F+ candidate via `sqlite-vec` if
   the extension's sqlx integration matures.
 
-## Cluster E backlog (artifact substrate)
+## Cluster F backlog (auth + capabilities)
 
-In progress. Plan: [`docs/Clusters/Cluster E.md`](Clusters/Cluster%20E.md).
-Issues #56–#63. Next PR: **E.1** (`ArtifactKind` taxonomy).
+Plan doc not yet filed. Next delivery cluster after `v0.4.0` tag.
 
 ## Specific items deferred to a later cluster
 
@@ -73,14 +72,19 @@ Issues #56–#63. Next PR: **E.1** (`ArtifactKind` taxonomy).
 | Faceted search (author / channel / kind filters)      | Cluster T        |
 | Automatic subscriber replay on NOTIFY miss            | Cluster T        |
 
-### To Cluster E (artifacts)
+### Shipped in Cluster E (v0.4.0)
 
-| What                                                   | Source           |
+| What                                                   | PRs    |
+|--------------------------------------------------------|--------|
+| `ArtifactKind` + migration 0007                        | #65    |
+| S3Store + HTTP + MCP + streaming helpers               | #66    |
+
+### Still deferred from Cluster E scope
+
+| What                                                   | Target           |
 |--------------------------------------------------------|------------------|
-| S3-compatible artifact backend                         | Cluster A retro  |
-| Rich artifact taxonomy (full kind list per scope §46)  | Cluster A retro  |
-| Streaming put/get for large payloads                   | Cluster A retro  |
-| Artifact-kind-aware put helpers                        | Cluster A retro  |
+| S3 multipart for multi-GB blobs                          | Cluster T        |
+| Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
 
 ### To Cluster F (auth)
 
@@ -167,7 +171,9 @@ Issues #56–#63. Next PR: **E.1** (`ArtifactKind` taxonomy).
   [`docs/Clusters/Cluster D.md`](Clusters/Cluster%20D.md). Retro:
   [`docs/Retros/Cluster D.md`](Retros/Cluster%20D.md). Tag `v0.3.0`
   after retro PR merges.
-- **Cluster E** in progress — E.1 (`ArtifactKind`) is the active PR.
+- **Cluster E** complete (`v0.4.0`). Retro:
+  [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md). Tag after retro merges.
+- **Cluster F** plan + issues not yet filed.
 
 ## How to read this file
 

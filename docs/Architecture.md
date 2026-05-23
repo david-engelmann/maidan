@@ -1,8 +1,8 @@
 # Architecture
 
 A snapshot of Maidan's shape. Replaces itself at the close of each
-cluster. The current text describes the state at `v0.3.0` (end of
-Cluster D); items planned for later clusters are marked explicitly.
+cluster. The current text describes the state at `v0.4.0` (end of
+Cluster E); items planned for later clusters are marked explicitly.
 
 ## One-paragraph summary
 
@@ -47,7 +47,7 @@ flowchart LR
 | `maidan-fsm`           | Thread lifecycle FSM + HSM for nested threads.        |
 | `maidan-router`        | Channel/thread/mention routing.                       |
 | `maidan-auth`          | Tokens, capabilities, ACLs.                           |
-| `maidan-artifacts`     | Content-addressed object store.                       |
+| `maidan-artifacts`     | Content-addressed store (LocalFs + S3).               |
 | `maidan-mcp`           | Model Context Protocol server surface.                |
 | `maidan-a2a`           | Agent-to-Agent transport.                             |
 | `maidan-observability` | Tracing + OpenTelemetry setup.                        |
@@ -63,7 +63,8 @@ See [[Glossary]] for vocabulary.
    audit log. **Implemented in `v0.0.1`** (schema 0001).
 2. **Content-addressed artifacts** in an object store — large bodies
    (screenshots, recordings, transcripts, code dumps) keyed by sha256.
-   **Implemented in `v0.0.1`** for the LocalFs backend.
+   Metadata in the relational core; bodies in LocalFs or S3.
+   **LocalFs in `v0.0.1`; S3 + typed kinds in `v0.4.0`.**
 3. **Event stream** — every state-changing HTTP mutation publishes a
    typed `Event` to the bus (`InMemoryBus` for single-process / SQLite,
    `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Each publish
@@ -80,10 +81,11 @@ See [[Glossary]] for vocabulary.
 - **SQLite** is the dev fallback so `cargo run` works without Docker.
   Both backends share schema 0001 (with dialect-specific SQL) and
   exercise the same assertion suite.
-- **Object store** defaults to local filesystem (`LocalFsStore`); an
-  S3-compatible backend is planned for Cluster E.
+- **Object store** — `LocalFsStore` for dev / single-node;
+  `S3Store` for compose `full` profile and production (MinIO or AWS).
+  Select via `ARTIFACT_BACKEND=localfs|s3`.
 
-## API surface at v0.3.0
+## API surface at v0.4.0
 
 | Surface           | Path / scheme              | Purpose                                       |
 |-------------------|----------------------------|-----------------------------------------------|
@@ -93,9 +95,20 @@ See [[Glossary]] for vocabulary.
 | Health            | `GET /health`              | Liveness + dependency status.                 |
 | Search            | `GET /workspaces/:wid/search` | Lexical + semantic search over messages.   |
 | WebSocket         | `GET /ws/subscribe`        | Real-time event stream with per-subscriber filter. |
-| MCP               | `POST /mcp`                | JSON-RPC 2.0 — tools, resources, `prompts/list`, `prompts/get`. |
+| Artifacts         | `POST /artifacts`, `GET /artifacts/:sha` | Upload body + metadata; download by sha256. |
+| MCP               | `POST /mcp`                | JSON-RPC 2.0 — tools (incl. artifacts), resources, prompts. |
 
-## Thread lifecycle at v0.3.0
+## Artifacts at v0.4.0
+
+- **Kinds** — `screenshot`, `recording`, `transcript`, `code_dump`,
+  `attachment` (`ArtifactKind` + DB CHECK).
+- **Storage** — content-addressed fanout keys in LocalFs and S3.
+- **HTTP** — `POST /artifacts?kind=…` stores body then upserts metadata;
+  publishes `ArtifactUpserted`.
+- **MCP** — `upload_artifact` (base64), `get_artifact_metadata`,
+  `maidan://artifacts/{sha256}` resource (metadata + byte length).
+
+## Thread lifecycle at v0.4.0
 
 - **States** — `open` → `in_review` → `closed` → `archived` on
   `maidan_threads.state`.
@@ -109,7 +122,7 @@ See [[Glossary]] for vocabulary.
 - **Events** — `ThreadStateChanged` on the bus when a transition
   commits.
 
-## Search at v0.3.0
+## Search at v0.4.0
 
 - **Lexical** — Postgres `tsvector` + GIN with `ts_headline`
   snippets; SQLite FTS5 + `snippet()`. Index maintenance via DB
@@ -123,7 +136,6 @@ See [[Glossary]] for vocabulary.
 
 ## What's deliberately not here yet
 
-- S3 artifact backend + rich artifact taxonomy (Cluster E).
 - Authentication, capabilities, multi-tenancy (Cluster F).
 - A2A federation (Cluster G).
 - Web UI (Cluster H).
