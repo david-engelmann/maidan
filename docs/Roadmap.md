@@ -8,8 +8,8 @@ PRs tracked by the GitHub issues labelled with that cluster.
 
 | Cluster | Theme                                | Target tag |
 |---------|--------------------------------------|------------|
-| **A**   | Foundation: workspace, schema, /health | `v0.0.1`   |
-| B       | Routing + event bus + MCP surface    | `v0.1.0`   |
+| **A**   | Foundation: workspace, schema, /health | `v0.0.1` ✓ |
+| **B**   | Routing + event bus + MCP surface    | `v0.1.0` ✓ |
 | C       | Search + indexing                    | `v0.2.0`   |
 | D       | FSM-driven thread lifecycle          | `v0.3.0`   |
 | E       | Artifact substrate (S3, types, refs) | `v0.4.0`   |
@@ -33,8 +33,8 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-See [[Clusters/Cluster B]] (in progress). Cluster A complete; see
-[[Retros/Cluster A]].
+Clusters A and B complete. See [[Retros/Cluster A]] and
+[[Retros/Cluster B]]. Cluster C (search + indexing) is next.
 
 ## Closing a cluster
 

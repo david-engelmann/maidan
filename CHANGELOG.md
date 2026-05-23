@@ -7,7 +7,75 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster B kickoff (routing + event bus + MCP).
+Nothing yet. Next: Cluster C kickoff (search + indexing).
+
+## [0.1.0] — 2026-05-23
+
+End of Cluster B. The substrate from `v0.0.1` is now reachable: HTTP
+CRUD covers the core entity set, every mutation publishes to the bus,
+clients can subscribe over WebSocket, and an MCP surface exposes the
+workspace as tools and resources to agents.
+
+### Added
+
+- GitHub Actions CI workflows: `lint` (fmt + clippy + cargo-deny),
+  `secrets` (trufflehog), `test` (unit), `integration`
+  (testcontainers Postgres + in-memory SQLite), `e2e` (docker compose
+  + `/health` smoke). All five required-status-checks on `main`.
+- Nightly mutation + benchmark workflow skeleton (informational).
+- Release workflow that builds cross-arch binaries (Linux x64/arm64
+  + macOS x64/arm64) and multi-arch ghcr.io images on `v*.*.*` tag
+  push.
+- HTTP CRUD routes for workspaces, members, channels, threads,
+  messages (incl. tombstone via `DELETE`), mentions, votes,
+  references. RFC 7807 `application/problem+json` errors via a
+  custom `ApiJson` extractor.
+- Event taxonomy in `maidan-types`: `Event` enum
+  (`WorkspaceCreated`, `MemberJoined`, `ChannelCreated`,
+  `ThreadCreated`, `MessagePosted`, `MessageTombstoned`,
+  `MentionRecorded`, `VoteCast`, `ReferenceAdded`,
+  `ArtifactUpserted`), `EventKind`, `EventFilter`.
+- `maidan-bus::EventBus` async trait, `InMemoryBus` (tokio
+  broadcast), `PostgresBus` (`LISTEN`/`NOTIFY` with a 7990-byte
+  payload cap and `BusError::PayloadTooLarge`).
+- Every HTTP mutation publishes the corresponding event after the
+  store commit succeeds; publish errors are logged but do not turn
+  successful mutations into 5xx.
+- `GET /ws/subscribe` WebSocket endpoint with filter handshake,
+  30 s ping / 60 s pong-timeout, bounded 256-cap mpsc backpressure,
+  documented close codes (1000, 1002, 1008, 1011).
+- `maidan-mcp` crate: transport-agnostic JSON-RPC 2.0 dispatcher
+  supporting `initialize`, `tools/list`, `tools/call`,
+  `resources/list`, `resources/read`.
+- 7 MCP tools (`list_channels`, `list_threads`, `list_messages`,
+  `post_message`, `record_mention`, `cast_vote`, `add_reference`)
+  with typed input schemas.
+- 3 MCP resource URI patterns (`maidan://workspaces/{id}`,
+  `maidan://channels/{id}`, `maidan://threads/{id}`).
+- `POST /mcp` HTTP endpoint wraps the MCP dispatcher.
+- Integration tests: HTTP CRUD on both backends, event emission
+  end-to-end, WS subscription with filters + bad-handshake close,
+  MCP full flow + parse error.
+
+### Changed
+
+- `AppState::new` signature gained an `Arc<dyn EventBus>` parameter.
+- `axum` now uses the `ws` feature.
+- `docker/Dockerfile.db` no longer bundles schema into
+  `docker-entrypoint-initdb.d` — the server's migration runner is
+  the single source of truth.
+- `deny.toml`: `allow-wildcard-paths = true` to permit workspace
+  path deps; transitive testcontainers advisories
+  (`RUSTSEC-2025-0134`, `RUSTSEC-2025-0111`) explicitly ignored
+  with rationale.
+- Every workspace crate now sets `publish.workspace = true` and
+  the workspace inherits `publish = false`.
+
+### Security
+
+- `trufflehog --only-verified` runs on every PR in CI.
+- `cargo-deny` runs on every PR in CI.
+- Branch protection on `main` now requires the 5 CI jobs to pass.
 
 ## [0.0.1] — 2026-05-22
 
@@ -66,5 +134,6 @@ exposes a `/health` endpoint backed by Postgres or SQLite.
 - `k8s/base/secret.example.yaml` documents the required Secret shape
   without storing values.
 
-[Unreleased]: https://github.com/david-engelmann/maidan/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/david-engelmann/maidan/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.1.0
 [0.0.1]: https://github.com/david-engelmann/maidan/releases/tag/v0.0.1

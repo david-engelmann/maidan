@@ -6,24 +6,26 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Cluster A (foundation) is **complete** — see
-[`docs/Retros/Cluster A.md`](docs/Retros/Cluster%20A.md). Current
-release: [`v0.0.1`](https://github.com/david-engelmann/maidan/releases/tag/v0.0.1).
-Cluster B (routing + event bus + MCP) is next — see
-[`docs/Roadmap.md`](docs/Roadmap.md).
+Pre-alpha. Clusters A + B complete. Current release:
+[`v0.1.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.1.0).
+See [`docs/Retros/Cluster B.md`](docs/Retros/Cluster%20B.md) for what
+just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
+(Cluster C — search + indexing).
 
-## What's in `v0.0.1`
+## What's in `v0.1.0`
 
-- Cargo workspace with 13 crates covering every planned subsystem.
-- Core schema 0001 (members, channels, threads, messages, mentions,
-  votes, references, artifacts, audit) in **Postgres + SQLite**.
-- Content-addressed artifact store (`LocalFsStore`) with dedup and
-  atomic writes.
-- `/health` endpoint reporting DB + storage status.
-- Production Dockerfile (distroless), hot-reload dev Dockerfile, custom
-  Postgres image with bundled schema.
-- Kustomize manifests with `dev` + `prod` overlays.
-- Obsidian docs vault.
+- Everything in `v0.0.1` (workspace, schema, artifact store, `/health`,
+  Docker + k8s).
+- HTTP CRUD for workspaces, members, channels, threads, messages,
+  mentions, votes, references — with RFC 7807 problem+json errors.
+- Event bus: tokio broadcast for SQLite / single-node, Postgres
+  `LISTEN`/`NOTIFY` for multi-process. Every mutation publishes.
+- `GET /ws/subscribe` WebSocket — filter handshake, JSON event
+  stream, ping/pong keepalive, bounded backpressure.
+- `POST /mcp` Model Context Protocol surface — 7 tools, 3 resource
+  URI patterns, JSON-RPC 2.0.
+- GitHub Actions CI: lint + secrets + test + integration + e2e all
+  required on `main`; multi-arch ghcr.io images published on tag.
 
 Full capability list: [`docs/Capabilities.md`](docs/Capabilities.md).
 
