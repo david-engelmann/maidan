@@ -6,9 +6,11 @@ const POSTGRES_UP_V1: &str = include_str!("../../../migrations/postgres/0001_cor
 const POSTGRES_UP_V2: &str = include_str!("../../../migrations/postgres/0002_search.sql");
 const POSTGRES_UP_V3: &str = include_str!("../../../migrations/postgres/0003_embeddings.sql");
 const POSTGRES_UP_V4: &str = include_str!("../../../migrations/postgres/0004_thread_fsm.sql");
+const POSTGRES_UP_V5: &str = include_str!("../../../migrations/postgres/0005_parent_threads.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V4: &str = include_str!("../../../migrations/sqlite/0004_thread_fsm.sql");
+const SQLITE_UP_V5: &str = include_str!("../../../migrations/sqlite/0005_parent_threads.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -29,6 +31,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 2, POSTGRES_UP_V2).await?;
     apply_postgres(pool, 3, POSTGRES_UP_V3).await?;
     apply_postgres(pool, 4, POSTGRES_UP_V4).await?;
+    apply_postgres(pool, 5, POSTGRES_UP_V5).await?;
     Ok(())
 }
 
@@ -46,6 +49,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 1, SQLITE_UP_V1).await?;
     apply_sqlite(pool, 2, SQLITE_UP_V2).await?;
     apply_sqlite(pool, 4, SQLITE_UP_V4).await?;
+    apply_sqlite(pool, 5, SQLITE_UP_V5).await?;
     Ok(())
 }
 

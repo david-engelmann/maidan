@@ -137,6 +137,7 @@ async fn upsert_replaces_existing_embedding() {
     let thread = store
         .create_thread(maidan_types::NewThread {
             channel_id: channel.id,
+            parent_thread_id: None,
             title: None,
         })
         .await

@@ -71,6 +71,7 @@ pub async fn seed(store: &dyn Store) -> Fixture {
                 let t = store
                     .create_thread(NewThread {
                         channel_id,
+                        parent_thread_id: None,
                         title: None,
                     })
                     .await

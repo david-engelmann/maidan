@@ -85,6 +85,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
     let thread = store
         .create_thread(NewThread {
             channel_id: channel.id,
+            parent_thread_id: None,
             title: Some("first thread".to_string()),
         })
         .await
@@ -267,6 +268,7 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
     let t = store
         .create_thread(NewThread {
             channel_id: c.id,
+            parent_thread_id: None,
             title: Some("t".to_string()),
         })
         .await

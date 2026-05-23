@@ -30,6 +30,7 @@ pub struct CreateChannel {
 #[derive(Debug, Deserialize)]
 pub struct CreateThread {
     pub title: Option<String>,
+    pub parent_thread_id: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
