@@ -32,7 +32,8 @@ Updated at the close of each cluster. Items move from "open" to
 
 ## Cluster F backlog (auth + capabilities)
 
-Plan doc not yet filed. Next delivery cluster after `v0.4.0` tag.
+In progress. Plan: [`docs/Clusters/Cluster F.md`](Clusters/Cluster%20F.md).
+Issues #68–#75. Next PR: **F.1** (api token schema).
 
 ## Specific items deferred to a later cluster
 
@@ -173,7 +174,7 @@ Plan doc not yet filed. Next delivery cluster after `v0.4.0` tag.
   after retro PR merges.
 - **Cluster E** complete (`v0.4.0`). Retro:
   [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md). Tag after retro merges.
-- **Cluster F** plan + issues not yet filed.
+- **Cluster F** in progress — F.1 (api token schema) is the active PR.
 
 ## How to read this file
 
