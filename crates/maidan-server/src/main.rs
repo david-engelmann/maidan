@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use maidan_artifacts::LocalFsStore;
+use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
 use maidan_server::{config::ArtifactBackend, router, version, AppState, Config};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
@@ -29,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let dialect = Dialect::from_url(&config.database_url).context("detect dialect")?;
     tracing::info!(?dialect, "database dialect");
 
-    let store: Arc<dyn Store> = match dialect {
+    let (store, bus): (Arc<dyn Store>, Arc<dyn EventBus>) = match dialect {
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
                 .max_connections(16)
@@ -39,7 +40,11 @@ async fn main() -> anyhow::Result<()> {
             run_postgres_migrations(&pool)
                 .await
                 .context("apply postgres migrations")?;
-            Arc::new(PostgresStore::new(pool))
+            let bus = PostgresBus::connect(pool.clone())
+                .await
+                .context("connect postgres bus")?;
+            tracing::info!("event bus: postgres LISTEN/NOTIFY");
+            (Arc::new(PostgresStore::new(pool)), Arc::new(bus))
         }
         Dialect::Sqlite => {
             let pool = SqlitePoolOptions::new()
@@ -50,7 +55,11 @@ async fn main() -> anyhow::Result<()> {
             run_sqlite_migrations(&pool)
                 .await
                 .context("apply sqlite migrations")?;
-            Arc::new(SqliteStore::new(pool))
+            tracing::info!("event bus: in-memory");
+            (
+                Arc::new(SqliteStore::new(pool)),
+                Arc::new(InMemoryBus::new()),
+            )
         }
     };
 
@@ -61,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = AppState::new(store, artifacts);
+    let state = AppState::new(store, artifacts, bus);
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(config.bind)

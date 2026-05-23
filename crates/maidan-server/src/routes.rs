@@ -1,12 +1,15 @@
 //! HTTP CRUD handlers. Every handler returns `Result<Json<_>, ApiError>`
 //! and lets the [`crate::error::ApiError`] type render the failure as
-//! `application/problem+json`.
+//! `application/problem+json`. Mutations publish an [`Event`] to the
+//! bus after the store call succeeds.
 
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use chrono::Utc;
+use maidan_store::Store;
 use maidan_types::*;
 
 use crate::dto::*;
@@ -14,6 +17,24 @@ use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
+
+async fn workspace_for_thread(
+    store: &dyn Store,
+    thread_id: ThreadId,
+) -> Result<(WorkspaceId, ChannelId), ApiError> {
+    let thread = store.get_thread(thread_id).await?;
+    let channel = store.get_channel(thread.channel_id).await?;
+    Ok((channel.workspace_id, channel.id))
+}
+
+async fn chain_for_message(
+    store: &dyn Store,
+    message_id: MessageId,
+) -> Result<(WorkspaceId, ChannelId, ThreadId), ApiError> {
+    let message = store.get_message(message_id).await?;
+    let (workspace_id, channel_id) = workspace_for_thread(store, message.thread_id).await?;
+    Ok((workspace_id, channel_id, message.thread_id))
+}
 
 // --- workspaces ---
 
@@ -25,6 +46,14 @@ pub async fn create_workspace(
         .store
         .create_workspace(NewWorkspace { name: body.name })
         .await?;
+    publish(
+        &state,
+        Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: ws.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(ws)))
 }
 
@@ -51,6 +80,15 @@ pub async fn create_member(
             kind: body.kind,
         })
         .await?;
+    publish(
+        &state,
+        Event::MemberJoined {
+            occurred_at: Utc::now(),
+            workspace_id: WorkspaceId(workspace_id),
+            member: m.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -99,6 +137,15 @@ pub async fn create_channel(
             private: body.private,
         })
         .await?;
+    publish(
+        &state,
+        Event::ChannelCreated {
+            occurred_at: Utc::now(),
+            workspace_id: WorkspaceId(workspace_id),
+            channel: c.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(c)))
 }
 
@@ -125,6 +172,7 @@ pub async fn create_thread(
     Path(channel_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
+    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
     let t = state
         .store
         .create_thread(NewThread {
@@ -132,6 +180,16 @@ pub async fn create_thread(
             title: body.title,
         })
         .await?;
+    publish(
+        &state,
+        Event::ThreadCreated {
+            occurred_at: Utc::now(),
+            workspace_id: channel.workspace_id,
+            channel_id: ChannelId(channel_id),
+            thread: t.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(t)))
 }
 
@@ -156,6 +214,8 @@ pub async fn post_message(
     Path(thread_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
+    let (workspace_id, channel_id) =
+        workspace_for_thread(state.store.as_ref(), ThreadId(thread_id)).await?;
     let m = state
         .store
         .post_message(NewMessage {
@@ -165,6 +225,17 @@ pub async fn post_message(
             metadata: body.metadata,
         })
         .await?;
+    publish(
+        &state,
+        Event::MessagePosted {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id: ThreadId(thread_id),
+            message: m.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -192,7 +263,20 @@ pub async fn tombstone_message(
     State(state): State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
+    let (workspace_id, channel_id, thread_id) =
+        chain_for_message(state.store.as_ref(), MessageId(id)).await?;
     state.store.tombstone_message(MessageId(id)).await?;
+    publish(
+        &state,
+        Event::MessageTombstoned {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id,
+            message_id: MessageId(id),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -201,10 +285,23 @@ pub async fn create_mention(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
+    let (workspace_id, _channel_id, thread_id) =
+        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
     state
         .store
         .record_mention(MessageId(message_id), MemberId(body.member_id))
         .await?;
+    publish(
+        &state,
+        Event::MentionRecorded {
+            occurred_at: Utc::now(),
+            workspace_id,
+            thread_id,
+            message_id: MessageId(message_id),
+            member_id: MemberId(body.member_id),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -215,14 +312,28 @@ pub async fn cast_vote(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
+    let (workspace_id, _channel_id, thread_id) =
+        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
     state
         .store
         .cast_vote(NewVote {
             message_id: MessageId(message_id),
             member_id: MemberId(body.member_id),
-            kind: body.kind,
+            kind: body.kind.clone(),
         })
         .await?;
+    publish(
+        &state,
+        Event::VoteCast {
+            occurred_at: Utc::now(),
+            workspace_id,
+            thread_id,
+            message_id: MessageId(message_id),
+            member_id: MemberId(body.member_id),
+            vote_kind: body.kind,
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -254,6 +365,14 @@ pub async fn create_reference(
             relation: body.relation,
         })
         .await?;
+    publish(
+        &state,
+        Event::ReferenceAdded {
+            occurred_at: Utc::now(),
+            reference: r.clone(),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(r)))
 }
 
@@ -267,4 +386,14 @@ pub async fn list_references(
             .list_references_from(q.src_kind, q.src_id)
             .await?,
     ))
+}
+
+/// Fire-and-forget event publish. Errors are logged but never surfaced
+/// to the HTTP caller — the store has already committed, and the bus
+/// being temporarily unavailable should not turn a successful mutation
+/// into a 5xx.
+async fn publish(state: &AppState, event: Event) {
+    if let Err(err) = state.bus.publish(event).await {
+        tracing::warn!(error = %err, "bus publish failed");
+    }
 }

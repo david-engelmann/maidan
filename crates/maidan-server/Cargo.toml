@@ -20,8 +20,10 @@ path = "src/main.rs"
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }
+maidan-bus = { path = "../maidan-bus" }
 maidan-observability = { path = "../maidan-observability" }
 async-trait.workspace = true
+chrono.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 axum.workspace = true
@@ -36,6 +38,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }

@@ -7,11 +7,24 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 publish.workspace = true
-description = "Event bus for Maidan: LISTEN/NOTIFY + websocket fan-out."
+description = "Event bus for Maidan: in-memory + Postgres LISTEN/NOTIFY backends."
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
-tokio.workspace = true
 async-trait.workspace = true
+futures = "0.3"
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 tracing.workspace = true
+
+[dev-dependencies]
+maidan-store = { path = "../maidan-store" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+chrono.workspace = true
+uuid.workspace = true
