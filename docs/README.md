@@ -1,40 +1,76 @@
 # Maidan documentation
 
 An [Obsidian](https://obsidian.md/) vault holding the design, roadmap,
-and conventions for Maidan. Open this folder as a vault in Obsidian for
-wikilink navigation, graph view, and backlinks.
+and operating conventions for Maidan. Open this folder as a vault in
+Obsidian for wikilink navigation, graph view, and backlinks.
+
+> **Agents:** start at [`../CLAUDE.md`](../CLAUDE.md). It's the
+> operating manual; this vault is the reference.
 
 ## Index
 
-- [[Architecture]] — high-level design.
+- [[Architecture]] — what the system is and how the pieces connect.
 - [[Roadmap]] — clusters from foundation to v1.0.
+- [[Capabilities]] — running list of what Maidan can do, by release.
 - [[Conventions]] — branch, commit, and PR conventions.
+- [[Operations]] — daily commands, PR flow, cluster kickoff + close,
+  CI debugging, release workflow troubleshooting.
+- [[Decisions]] — every load-bearing architectural decision with
+  rationale and the alternative that was rejected.
+- [[Open Work]] — every deferred item across retros + standing
+  risks. The "what could I work on" backlog.
 - [[Deploy]] — Docker + Kubernetes deployment.
 - [[Glossary]] — domain vocabulary.
-- [[Capabilities]] — running list of what Maidan can do, by release.
-- [[Clusters/Cluster A]] — current cluster: foundation.
+- [[Clusters/Cluster A]], [[Clusters/Cluster B]], [[Clusters/Cluster C]]
+  — per-cluster plan docs with PR ladder + risks.
 - [[Retros/README]] — closing-wave retrospectives, one per cluster.
+  Index lists all completed retros.
 
 ## Layout
 
 ```
 docs/
-├── README.md           this file
-├── Architecture.md
-├── Roadmap.md
-├── Conventions.md
-├── Glossary.md
-├── Capabilities.md
+├── README.md              this file (vault index)
+├── Architecture.md        what the system does
+├── Roadmap.md             cluster ladder
+├── Capabilities.md        what ships in which release
+├── Conventions.md         branch + commit + PR conventions
+├── Operations.md          daily ops + PR flow + release runbook
+├── Decisions.md           load-bearing ADRs
+├── Open Work.md           backlog + open risks
+├── Deploy.md              Docker + k8s
+├── Glossary.md            domain vocabulary
 ├── Clusters/
-│   └── Cluster A.md
+│   ├── Cluster A.md
+│   ├── Cluster B.md
+│   └── Cluster C.md
 └── Retros/
-    └── README.md
+    ├── README.md          retro template + index
+    ├── Cluster A.md
+    ├── Cluster B.md
+    └── Cluster C.md
 ```
+
+## Read order for a new agent
+
+1. [`../CLAUDE.md`](../CLAUDE.md) — operating manual.
+2. This file.
+3. [[Architecture]] — what's connected to what.
+4. [[Roadmap]] — where we are in the cluster ladder.
+5. [[Capabilities]] — what already ships.
+6. [[Decisions]] — why things are the way they are.
+7. [[Operations]] — how to do the next thing.
+8. [[Open Work]] — what to do next.
+9. Most recent [[Retros/README|cluster retro]] — freshest tensions
+   and surprises.
 
 ## Conventions inside the vault
 
 - Wikilinks (`[[Note Name]]`) for internal references.
 - Filenames use Title Case with spaces; Obsidian resolves them.
-- Diagrams use [Mermaid](https://mermaid.js.org/) inside fenced code blocks.
-- Each note begins with a one-paragraph summary so the graph hover
-  surfaces the right context.
+- Diagrams use [Mermaid](https://mermaid.js.org/) inside fenced code
+  blocks.
+- Each note begins with a one-paragraph summary so the Obsidian graph
+  hover surfaces the right context.
+- Append-only-ish: when a decision reverses, the original entry
+  stays + a new entry records the reversal. See [[Decisions]].
