@@ -10,6 +10,7 @@ publish.workspace = true
 description = "Storage abstraction + Postgres/SQLite implementations for Maidan."
 
 [dependencies]
+maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
 chrono.workspace = true

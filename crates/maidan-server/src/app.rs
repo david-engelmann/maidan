@@ -39,7 +39,10 @@ pub fn router(state: AppState) -> Router {
             "/channels/:cid/threads",
             post(routes::create_thread).get(routes::list_threads),
         )
-        .route("/threads/:id", get(routes::get_thread))
+        .route(
+            "/threads/:id",
+            get(routes::get_thread).post(routes::transition_thread),
+        )
         // messages
         .route(
             "/threads/:tid/messages",

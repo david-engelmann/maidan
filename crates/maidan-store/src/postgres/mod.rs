@@ -7,6 +7,7 @@ mod members;
 mod mentions;
 mod messages;
 mod refs;
+mod thread_transitions;
 mod threads;
 mod votes;
 mod workspaces;
@@ -75,6 +76,15 @@ impl Store for PostgresStore {
     }
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
         threads::list(&self.pool, channel_id).await
+    }
+
+    async fn transition_thread(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        action: maidan_fsm::ThreadAction,
+    ) -> Result<ThreadTransitionResult, StoreError> {
+        thread_transitions::transition(&self.pool, thread_id, actor_id, action).await
     }
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {

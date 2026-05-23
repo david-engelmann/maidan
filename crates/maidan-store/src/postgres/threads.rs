@@ -43,7 +43,7 @@ pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, S
     rows.iter().map(row_to_thread).collect()
 }
 
-fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
+pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
     let state_str: String = row.get("state");
     let state = match state_str.as_str() {
         "open" => ThreadState::Open,

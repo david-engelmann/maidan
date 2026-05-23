@@ -33,6 +33,12 @@ pub struct CreateThread {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct TransitionThread {
+    pub actor_id: uuid::Uuid,
+    pub action: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateMessage {
     pub author_id: uuid::Uuid,
     pub body: String,

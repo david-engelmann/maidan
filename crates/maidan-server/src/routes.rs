@@ -9,6 +9,7 @@ use axum::{
     Json,
 };
 use chrono::Utc;
+use maidan_fsm::ThreadAction;
 use maidan_store::Store;
 use maidan_types::*;
 
@@ -205,6 +206,40 @@ pub async fn get_thread(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     Ok(Json(state.store.get_thread(ThreadId(id)).await?))
+}
+
+pub async fn transition_thread(
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<TransitionThread>,
+) -> ApiResult<Json<Thread>> {
+    let action = ThreadAction::parse(&body.action).ok_or_else(|| {
+        ApiError::BadRequest(format!(
+            "unknown action {:?}; expected start_review, close, or archive",
+            body.action
+        ))
+    })?;
+    let thread_id = ThreadId(id);
+    let (workspace_id, channel_id) = workspace_for_thread(state.store.as_ref(), thread_id).await?;
+    let result = state
+        .store
+        .transition_thread(thread_id, MemberId(body.actor_id), action)
+        .await?;
+    publish(
+        &state,
+        Event::ThreadStateChanged {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id,
+            actor_id: MemberId(body.actor_id),
+            from_state: result.from_state,
+            to_state: result.to_state,
+            thread: result.thread.clone(),
+        },
+    )
+    .await;
+    Ok(Json(result.thread))
 }
 
 // --- messages ---
