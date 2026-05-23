@@ -34,8 +34,8 @@ tags; they raise the bar each time they ship.
 ## Current cluster
 
 Clusters A–F complete. See [[Retros/Cluster A]] through [[Retros/Cluster F]].
-**Cluster G** (agent-to-agent transport) is next — see [[Roadmap]] cluster
-ladder above; plan doc TBD at kickoff.
+**Cluster G** (agent-to-agent / federation transport) is in progress — see
+[[Clusters/Cluster G]].
 
 ## Closing a cluster
 

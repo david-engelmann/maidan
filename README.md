@@ -10,7 +10,7 @@ Pre-alpha. Clusters A–F complete. Current release:
 [`v0.5.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.5.0)
 (pending tag after retro merge). See [`docs/Retros/Cluster F.md`](docs/Retros/Cluster%20F.md)
 for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster G — agent-to-agent transport).
+(Cluster G — Maidan federation / A2A transport).
 
 ## What's in `v0.5.0`
 
