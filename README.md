@@ -6,11 +6,19 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A–D complete. Current release:
-[`v0.3.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.3.0)
-(pending tag after retro merge). See [`docs/Retros/Cluster D.md`](docs/Retros/Cluster%20D.md)
+Pre-alpha. Clusters A–E complete. Current release:
+[`v0.4.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.4.0)
+(pending tag after retro merge). See [`docs/Retros/Cluster E.md`](docs/Retros/Cluster%20E.md)
 for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster E — artifact substrate).
+(Cluster F — auth + capabilities).
+
+## What's in `v0.4.0`
+
+- Everything in `v0.3.0`.
+- S3-compatible artifact storage (`S3Store`, MinIO in compose).
+- Typed `ArtifactKind` taxonomy.
+- HTTP artifact upload/download.
+- MCP artifact tools + `maidan://artifacts/{sha256}` resource.
 
 ## What's in `v0.3.0`
 

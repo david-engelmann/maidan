@@ -19,7 +19,7 @@ single source of truth for *how* to operate in this codebase. The
   admin-merge is the standard workflow (see
   [`docs/Operations.md`](docs/Operations.md)).
 - **Release cadence:** clusters A–H, each closing with a retro PR and
-  a tag (`v0.X.Y`). Current state: A, B, C, D complete (`v0.3.0`
+  a tag (`v0.X.Y`). Current state: A–E complete (`v0.4.0`
   tag pending retro merge — see Open Work).
 - **CI:** GitHub Actions, 5 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
@@ -193,7 +193,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Project state at this handoff
 
-- Latest tag: `v0.3.0` (cut after Cluster D retro merges).
-- Latest cluster retro merged: Cluster D (FSM thread lifecycle).
+- Latest tag: `v0.4.0` (cut after Cluster E retro merges).
+- Latest cluster retro merged: Cluster E (artifact substrate).
 - Open backlog: see [`docs/Open Work.md`](docs/Open%20Work.md).
-- Next cluster: E (artifact substrate). Plan doc not yet filed.
+- Next cluster: F (auth + capabilities).
