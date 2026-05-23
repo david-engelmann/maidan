@@ -2151,6 +2151,9 @@ name = "maidan-mcp"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "base64",
+ "bytes",
+ "maidan-artifacts",
  "maidan-search",
  "maidan-store",
  "maidan-types",
@@ -2210,6 +2213,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64",
+ "bytes",
  "chrono",
  "futures",
  "maidan-artifacts",

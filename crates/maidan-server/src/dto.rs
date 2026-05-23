@@ -4,7 +4,7 @@
 //! independently of the storage layer (e.g., omitting `workspace_id` in
 //! a nested route in favor of the path parameter).
 
-use maidan_types::{MemberKind, RefSide};
+use maidan_types::{ArtifactKind, MemberKind, RefSide};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -106,4 +106,11 @@ fn default_search_limit() -> i64 {
 pub struct ListMentionsQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadArtifactQuery {
+    pub kind: ArtifactKind,
+    pub mime_type: Option<String>,
+    pub uploaded_by: Option<uuid::Uuid>,
 }

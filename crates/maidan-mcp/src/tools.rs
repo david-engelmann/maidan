@@ -4,6 +4,9 @@
 
 use std::sync::Arc;
 
+use base64::{engine::general_purpose::STANDARD, Engine};
+use bytes::Bytes;
+use maidan_artifacts::ArtifactStore;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -104,6 +107,34 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "upload_artifact",
+            "description": "Store bytes in the artifact substrate and register metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
+                    },
+                    "content_base64": {"type": "string"},
+                    "mime_type": {"type": "string"},
+                    "uploaded_by": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "content_base64"]
+            }
+        }),
+        json!({
+            "name": "get_artifact_metadata",
+            "description": "Fetch artifact metadata by sha256 hex digest.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sha256": {"type": "string", "minLength": 64, "maxLength": 64}
+                },
+                "required": ["sha256"]
+            }
+        }),
+        json!({
             "name": "search_messages",
             "description": "Lexical full-text search over a workspace's messages. Returns ranked hits with highlighted snippets.",
             "inputSchema": {
@@ -121,6 +152,7 @@ pub fn catalog() -> Vec<Value> {
 
 pub async fn dispatch(
     store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
     search: &Arc<dyn maidan_search::Search>,
     name: &str,
     args: &Value,
@@ -133,6 +165,8 @@ pub async fn dispatch(
         "record_mention" => record_mention(store, args).await,
         "cast_vote" => cast_vote(store, args).await,
         "add_reference" => add_reference(store, args).await,
+        "upload_artifact" => upload_artifact(store, artifacts, args).await,
+        "get_artifact_metadata" => get_artifact_metadata(store, args).await,
         "search_messages" => search_messages(search, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -148,6 +182,51 @@ struct SearchMessagesArgs {
 
 fn default_search_limit() -> i64 {
     25
+}
+
+#[derive(Deserialize)]
+struct UploadArtifactArgs {
+    kind: ArtifactKind,
+    content_base64: String,
+    mime_type: Option<String>,
+    uploaded_by: Option<uuid::Uuid>,
+}
+
+async fn upload_artifact(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: UploadArtifactArgs = serde_json::from_value(args.clone())?;
+    let raw = STANDARD
+        .decode(&a.content_base64)
+        .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
+    let bytes = Bytes::from(raw);
+    let sha = artifacts
+        .put(bytes.clone())
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    let artifact = store
+        .upsert_artifact(NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: bytes.len() as i64,
+            mime_type: a.mime_type,
+            kind: a.kind,
+            uploaded_by: a.uploaded_by.map(MemberId),
+        })
+        .await?;
+    Ok(content_json(&artifact))
+}
+
+#[derive(Deserialize)]
+struct GetArtifactMetadataArgs {
+    sha256: String,
+}
+
+async fn get_artifact_metadata(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
+    let artifact = store.get_artifact_by_sha(&a.sha256).await?;
+    Ok(content_json(&artifact))
 }
 
 async fn search_messages(

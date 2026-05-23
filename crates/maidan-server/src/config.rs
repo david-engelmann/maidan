@@ -19,7 +19,16 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone)]
 pub enum ArtifactBackend {
-    LocalFs { root: PathBuf },
+    LocalFs {
+        root: PathBuf,
+    },
+    S3 {
+        endpoint: String,
+        bucket: String,
+        region: String,
+        access_key: String,
+        secret_key: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +60,18 @@ impl Config {
                     .unwrap_or_else(|_| "./.local/artifacts".to_string())
                     .into();
                 ArtifactBackend::LocalFs { root }
+            }
+            "s3" => {
+                fn require(name: &'static str) -> Result<String, ConfigError> {
+                    std::env::var(name).map_err(|_| ConfigError::Missing(name))
+                }
+                ArtifactBackend::S3 {
+                    endpoint: require("S3_ENDPOINT")?,
+                    bucket: require("S3_BUCKET")?,
+                    region: std::env::var("S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+                    access_key: require("S3_ACCESS_KEY_ID")?,
+                    secret_key: require("S3_SECRET_ACCESS_KEY")?,
+                }
             }
             other => return Err(ConfigError::Invalid("ARTIFACT_BACKEND", other.to_string())),
         };

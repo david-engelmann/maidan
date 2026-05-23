@@ -3,6 +3,7 @@
 
 use std::{sync::Arc, time::Duration};
 
+use base64::Engine;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
@@ -234,8 +235,40 @@ async fn full_mcp_flow() {
         .unwrap();
     assert!(text.contains("open"));
 
+    let artifact_b64 =
+        base64::engine::general_purpose::STANDARD.encode(b"artifact body via mcp tool");
+    let resp = rpc(
+        &client,
+        &base,
+        10,
+        "tools/call",
+        json!({
+            "name": "upload_artifact",
+            "arguments": {
+                "kind": "transcript",
+                "content_base64": artifact_b64
+            }
+        }),
+    )
+    .await;
+    let artifact = unwrap_tool_text(&resp["result"]);
+    let sha = artifact["sha256"].as_str().unwrap();
+    assert_eq!(artifact["kind"], "transcript");
+
+    let resp = rpc(
+        &client,
+        &base,
+        11,
+        "resources/read",
+        json!({"uri": format!("maidan://artifacts/{sha}")}),
+    )
+    .await;
+    let contents = &resp["result"]["contents"][0];
+    let payload: Value = serde_json::from_str(contents["text"].as_str().unwrap()).unwrap();
+    assert_eq!(payload["byte_length"], 26);
+
     // unknown method
-    let resp = rpc(&client, &base, 10, "non/existent", json!({})).await;
+    let resp = rpc(&client, &base, 12, "non/existent", json!({})).await;
     assert!(resp["error"].is_object());
     assert_eq!(resp["error"]["code"], -32601);
 
@@ -243,7 +276,7 @@ async fn full_mcp_flow() {
     let resp = rpc(
         &client,
         &base,
-        11,
+        13,
         "resources/read",
         json!({"uri": "http://nope/1"}),
     )

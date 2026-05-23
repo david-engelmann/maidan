@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use maidan_artifacts::LocalFsStore;
+use maidan_artifacts::{LocalFsStore, S3Config, S3Store};
 use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
 use maidan_search::{
     EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
@@ -80,6 +80,25 @@ async fn main() -> anyhow::Result<()> {
         ArtifactBackend::LocalFs { root } => {
             tracing::info!(root = %root.display(), "artifact backend: localfs");
             Arc::new(LocalFsStore::new(root.clone()))
+        }
+        ArtifactBackend::S3 {
+            endpoint,
+            bucket,
+            region,
+            access_key,
+            secret_key,
+        } => {
+            tracing::info!(endpoint, bucket, "artifact backend: s3");
+            let store = S3Store::new(S3Config {
+                endpoint: endpoint.clone(),
+                bucket: bucket.clone(),
+                region: region.clone(),
+                access_key: access_key.clone(),
+                secret_key: secret_key.clone(),
+            })
+            .await
+            .context("connect s3 artifact backend")?;
+            Arc::new(store)
         }
     };
 
