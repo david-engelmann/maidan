@@ -134,9 +134,20 @@ See [[Glossary]] for vocabulary.
   `EmbeddingHandler` with deterministic `hash-v1` vectors (SHA-256
   expanded to 1024-d); SQLite keeps `LoggingHandler`.
 
+## Auth at v0.5.0
+
+- **API tokens** — SHA-256 hashed secrets in `maidan_api_tokens`; capabilities
+  stored as JSON text; optional expiry and revocation.
+- **HTTP** — Bearer middleware on protected routes; `/health` and bootstrap
+  (`POST /workspaces`, `POST …/members`) exempt. Set `AUTH_DISABLED=1` to
+  disable checks (tests and initial seeding).
+- **WebSocket** — `SubscribeFrame` includes `token`; requires
+  `event:subscribe` when auth is enabled.
+- **MCP** — `tools/call`, `resources/read`, and `prompts/get` require a valid
+  bearer; per-tool capability map in `maidan-mcp`.
+
 ## What's deliberately not here yet
 
-- Authentication, capabilities, multi-tenancy (Cluster F).
 - A2A federation (Cluster G).
 - Web UI (Cluster H).
 - Long-term archival / GDPR right-of-erasure (Cluster V).

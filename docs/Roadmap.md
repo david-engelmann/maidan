@@ -13,7 +13,7 @@ PRs tracked by the GitHub issues labelled with that cluster.
 | **C**   | Search + indexing                    | `v0.2.0` ✓ |
 | **D**   | FSM-driven thread lifecycle          | `v0.3.0` ✓ |
 | **E**   | Artifact substrate (S3, types, refs) | `v0.4.0` ✓ |
-| **F**   | Auth, workspaces, capabilities       | `v0.5.0`   |
+| **F**   | Auth, workspaces, capabilities       | `v0.5.0` ✓ |
 | G       | Agent-to-Agent transport             | `v0.6.0`   |
 | H       | Web UI                               | `v0.7.0`   |
 | **1.0** | Production gates met                 | `v1.0.0`   |
@@ -33,9 +33,9 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–E complete. See [[Retros/Cluster A]] through [[Retros/Cluster E]].
-**Cluster F** (auth + capabilities) is in progress — see
-[[Clusters/Cluster F]].
+Clusters A–F complete. See [[Retros/Cluster A]] through [[Retros/Cluster F]].
+**Cluster G** (agent-to-agent transport) is next — see [[Roadmap]] cluster
+ladder above; plan doc TBD at kickoff.
 
 ## Closing a cluster
 

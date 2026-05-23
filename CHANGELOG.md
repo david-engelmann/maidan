@@ -7,7 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster F (auth + capabilities).
+Nothing yet. Next: Cluster G (agent-to-agent transport).
+
+## [0.5.0] — 2026-05-23
+
+End of Cluster F. API tokens, capabilities, and auth on HTTP, WebSocket, and MCP.
+
+### Added
+
+- Migration 0008 `maidan_api_tokens` + store CRUD (create, lookup, revoke).
+- `maidan-auth` — token hashing, capability vocabulary, `AuthContext`.
+- HTTP Bearer middleware; `AUTH_DISABLED=1` for tests and bootstrap.
+- Per-route capability checks with RFC 7807 401/403 responses.
+- WebSocket `SubscribeFrame.token` with `event:subscribe` enforcement.
+- MCP auth on `tools/call`, `resources/read`, `prompts/get`.
+- `POST /workspaces/:wid/members/:mid/tokens` and `DELETE /tokens/:id`.
 
 ## [0.4.0] — 2026-05-23
 

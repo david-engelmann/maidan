@@ -7,6 +7,19 @@ PR prepends a new section so the latest is always at the top.
 
 Populated when Cluster H lands.
 
+## v0.5.0 — Cluster F complete
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Migration 0008 `maidan_api_tokens`                      | `maidan-store`                |
+| `maidan-auth` bearer resolution + capability vocabulary | `maidan-auth`                 |
+| HTTP Bearer middleware (`AUTH_DISABLED` for tests)      | `maidan-server::auth`         |
+| Per-route capability checks (401/403 problem+json)      | `maidan-server::routes`       |
+| WS `SubscribeFrame.token` + `event:subscribe`           | `maidan-server::ws`           |
+| MCP `tools/call` / `resources/read` authz               | `maidan-mcp`                  |
+| `POST …/members/:mid/tokens` mint (secret once)         | `maidan-server::routes`       |
+| `DELETE /tokens/:id` revoke                               | `maidan-server::routes`       |
+
 ## v0.4.0 — Cluster E complete
 
 | Capability                                              | Surface                       |
