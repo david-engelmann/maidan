@@ -274,6 +274,29 @@ pub struct AuditEvent {
     pub metadata: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiToken {
+    pub id: ApiTokenId,
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub token_hash: String,
+    pub label: Option<String>,
+    pub capabilities: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewApiToken {
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub token_hash: String,
+    pub label: Option<String>,
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAuditEvent {
     pub actor_id: Option<MemberId>,
