@@ -15,12 +15,14 @@ ignore = [
     # uploading build contexts to the local docker daemon, which is
     # trusted in the dev/CI environment. Not a production code path.
     "RUSTSEC-2025-0111",
-    # rustls-webpki 0.101 via aws-sdk → hyper-rustls 0.24; CRL panic only
-    # affects CRL parsing paths we do not use against MinIO HTTP. Revisit when
-    # aws-smithy-http-client drops rustls 0.21.
-    "RUSTSEC-2026-0104",
-    "RUSTSEC-2026-0099",
 ]
+
+# aws-sdk-s3 pulls rustls 0.21 → rustls-webpki 0.101. We talk to MinIO over
+# plain HTTP in compose; TLS name-constraint/CRL bugs are not reachable.
+[[advisories.ignore]]
+crate = "rustls-webpki"
+version = "=0.101.7"
+reason = "transitive via aws-smithy-http-client; upgrade when AWS SDK moves off rustls 0.21"
 
 [licenses]
 allow = [
