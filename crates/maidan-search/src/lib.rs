@@ -7,6 +7,8 @@
 //! - [`SqliteSearch`] — FTS5 lexical search with the `snippet()`
 //!   function. Semantic search returns [`SearchError::Unsupported`].
 
+pub mod embedding_handler;
+pub mod embeddings;
 pub mod error;
 pub mod hit;
 pub mod indexer;
@@ -14,6 +16,8 @@ pub mod postgres;
 pub mod sqlite;
 pub mod traits;
 
+pub use embedding_handler::EmbeddingHandler;
+pub use embeddings::{hash_embedding, model_name};
 pub use error::SearchError;
 pub use hit::SearchHit;
 pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
