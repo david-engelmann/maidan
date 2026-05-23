@@ -7,12 +7,12 @@ use futures::StreamExt;
 use maidan_bus::{EventBus, PostgresBus};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use testcontainers::runners::AsyncRunner;
+use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
 #[tokio::test]
 async fn round_trip_through_listen_notify() {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping postgres_bus: docker unavailable ({err})");
@@ -68,7 +68,7 @@ async fn round_trip_through_listen_notify() {
 
 #[tokio::test]
 async fn publish_rejects_payload_too_large() {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping postgres_bus: docker unavailable ({err})");

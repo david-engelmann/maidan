@@ -15,7 +15,7 @@ use maidan_store::{
 use reqwest::StatusCode;
 use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
-use testcontainers::runners::AsyncRunner;
+use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
 struct Harness {
@@ -37,7 +37,7 @@ impl Harness {
 }
 
 async fn spawn_postgres() -> Option<Harness> {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping http_crud_e2e[postgres]: docker unavailable ({err})");

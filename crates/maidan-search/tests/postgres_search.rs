@@ -7,12 +7,12 @@ use std::{sync::Arc, time::Duration};
 use maidan_search::PostgresSearch;
 use maidan_store::{run_postgres_migrations, PostgresStore, Store};
 use sqlx::postgres::PgPoolOptions;
-use testcontainers::runners::AsyncRunner;
+use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
 #[tokio::test]
 async fn full_text_search_against_postgres() {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping postgres_search: docker unavailable ({err})");

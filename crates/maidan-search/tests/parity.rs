@@ -10,12 +10,12 @@ use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, PostgresStore, SqliteStore, Store,
 };
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
-use testcontainers::runners::AsyncRunner;
+use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
 #[tokio::test]
 async fn rust_query_returns_same_ids() {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping parity: docker unavailable ({err})");
