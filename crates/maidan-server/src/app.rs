@@ -4,7 +4,7 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{health, routes, state::AppState};
+use crate::{health, routes, state::AppState, ws};
 
 /// Build the axum [`Router`] with all routes wired up.
 ///
@@ -13,6 +13,7 @@ use crate::{health, routes, state::AppState};
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::handler))
+        .route("/ws/subscribe", get(ws::subscribe))
         // workspaces
         .route("/workspaces", post(routes::create_workspace))
         .route("/workspaces/:id", get(routes::get_workspace))
