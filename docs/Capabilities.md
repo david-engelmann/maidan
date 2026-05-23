@@ -7,6 +7,18 @@ PR prepends a new section so the latest is always at the top.
 
 Populated when Cluster H lands.
 
+## v0.3.0 — Cluster D complete
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Thread FSM + `maidan_thread_transitions` log              | `maidan-fsm`, `maidan-store`  |
+| `POST /threads/:id` transitions + 409 on illegal edges    | `maidan-server::routes`       |
+| `ThreadStateChanged` event                                | `maidan-types::events`        |
+| Nested threads + HSM parent/child rules                   | `maidan-fsm::hsm`             |
+| `hash-v1` embedding indexer (Postgres)                    | `maidan-search::EmbeddingHandler` |
+| `GET /workspaces/:wid/events` replay API                  | `maidan-server::routes`       |
+| MCP `prompts/list` + `prompts/get` (`thread_workflow`)    | `maidan-mcp::prompts`         |
+
 ## v0.2.0 — Cluster C complete
 
 | Capability                                                    | Surface                  |

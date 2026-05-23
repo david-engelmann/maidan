@@ -6,11 +6,20 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A + B + C complete. Current release:
-[`v0.2.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.2.0).
-See [`docs/Retros/Cluster C.md`](docs/Retros/Cluster%20C.md) for what
-just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster D — FSM thread lifecycle).
+Pre-alpha. Clusters A–D complete. Current release:
+[`v0.3.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.3.0)
+(pending tag after retro merge). See [`docs/Retros/Cluster D.md`](docs/Retros/Cluster%20D.md)
+for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
+(Cluster E — artifact substrate).
+
+## What's in `v0.3.0`
+
+- Everything in `v0.2.0`.
+- FSM-driven thread lifecycle with transition log and `POST /threads/:id`.
+- Nested threads with hierarchical state rules.
+- Postgres indexer generates `hash-v1` embeddings on `MessagePosted`.
+- Persistent event log + `GET /workspaces/:wid/events` replay.
+- MCP `thread_workflow` prompt.
 
 ## What's in `v0.2.0`
 

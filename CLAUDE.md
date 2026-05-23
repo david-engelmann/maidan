@@ -19,8 +19,8 @@ single source of truth for *how* to operate in this codebase. The
   admin-merge is the standard workflow (see
   [`docs/Operations.md`](docs/Operations.md)).
 - **Release cadence:** clusters A–H, each closing with a retro PR and
-  a tag (`v0.X.Y`). Current state: A, B, C complete (`v0.2.0`
-  tag pending the cleanup PR — see Open Work).
+  a tag (`v0.X.Y`). Current state: A, B, C, D complete (`v0.3.0`
+  tag pending retro merge — see Open Work).
 - **CI:** GitHub Actions, 5 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
   (testcontainers)`, `docker compose smoke`). Every PR runs all 5.
@@ -193,11 +193,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Project state at this handoff
 
-- Latest tag: `v0.1.0`. **`v0.2.0` not yet tagged** — pending PR #36
-  ([`ci: build x86_64-apple-darwin on macos-13`](https://github.com/david-engelmann/maidan/pull/36))
-  merging so the release workflow actually produces binaries.
-- Latest cluster retro merged: Cluster C (`6f7b0b6`... onward;
-  search + indexing).
+- Latest tag: `v0.3.0` (cut after Cluster D retro merges).
+- Latest cluster retro merged: Cluster D (FSM thread lifecycle).
 - Open backlog: see [`docs/Open Work.md`](docs/Open%20Work.md).
-- Next cluster: D (FSM-driven thread lifecycle). Issues not yet
-  filed.
+- Next cluster: E (artifact substrate). Plan doc not yet filed.

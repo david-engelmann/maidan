@@ -1,8 +1,8 @@
 # Architecture
 
 A snapshot of Maidan's shape. Replaces itself at the close of each
-cluster. The current text describes the state at `v0.2.0` (end of
-Cluster C); items planned for later clusters are marked explicitly.
+cluster. The current text describes the state at `v0.3.0` (end of
+Cluster D); items planned for later clusters are marked explicitly.
 
 ## One-paragraph summary
 
@@ -44,7 +44,7 @@ flowchart LR
 | `maidan-store`         | `Store` trait + Postgres/SQLite impls.                |
 | `maidan-bus`           | Pub/sub event bus (LISTEN/NOTIFY + WebSocket fanout). |
 | `maidan-search`        | Full-text + vector search.                            |
-| `maidan-fsm`           | Thread lifecycle state machine.                       |
+| `maidan-fsm`           | Thread lifecycle FSM + HSM for nested threads.        |
 | `maidan-router`        | Channel/thread/mention routing.                       |
 | `maidan-auth`          | Tokens, capabilities, ACLs.                           |
 | `maidan-artifacts`     | Content-addressed object store.                       |
@@ -66,10 +66,12 @@ See [[Glossary]] for vocabulary.
    **Implemented in `v0.0.1`** for the LocalFs backend.
 3. **Event stream** — every state-changing HTTP mutation publishes a
    typed `Event` to the bus (`InMemoryBus` for single-process / SQLite,
-   `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Subscribers
-   filter by workspace, channel, thread, member, and kind. WebSocket
-   clients reach the stream via `GET /ws/subscribe`. A2A peers will
-   consume the same stream in Cluster G. **Implemented in `v0.1.0`.**
+   `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Each publish
+   also appends to `maidan_events` for replay. Subscribers filter by
+   workspace, channel, thread, member, and kind. WebSocket clients reach
+   the stream via `GET /ws/subscribe`; gaps can be recovered via
+   `GET /workspaces/:wid/events?after_id=`. A2A peers will consume the
+   same stream in Cluster G. **Bus in `v0.1.0`; persistent log in `v0.3.0`.**
 
 ## Backends
 
@@ -81,32 +83,46 @@ See [[Glossary]] for vocabulary.
 - **Object store** defaults to local filesystem (`LocalFsStore`); an
   S3-compatible backend is planned for Cluster E.
 
-## API surface at v0.1.0
+## API surface at v0.3.0
 
 | Surface           | Path / scheme              | Purpose                                       |
 |-------------------|----------------------------|-----------------------------------------------|
 | HTTP CRUD         | `/{workspaces,members,channels,threads,messages,...}` | Authoritative entity API. RFC 7807 errors.    |
+| Thread transitions | `POST /threads/:id`       | FSM actions: `start_review`, `close`, `archive`. |
+| Event replay      | `GET /workspaces/:wid/events` | Cursor-based replay from `maidan_events`.  |
 | Health            | `GET /health`              | Liveness + dependency status.                 |
-| Search            | `GET /workspaces/:wid/search` | Lexical search over messages.              |
+| Search            | `GET /workspaces/:wid/search` | Lexical + semantic search over messages.   |
 | WebSocket         | `GET /ws/subscribe`        | Real-time event stream with per-subscriber filter. |
-| MCP               | `POST /mcp`                | JSON-RPC 2.0 — `initialize`, `tools/list`, `tools/call` (incl. `search_messages`), `resources/list`, `resources/read`. |
+| MCP               | `POST /mcp`                | JSON-RPC 2.0 — tools, resources, `prompts/list`, `prompts/get`. |
 
-## Search at v0.2.0
+## Thread lifecycle at v0.3.0
+
+- **States** — `open` → `in_review` → `closed` → `archived` on
+  `maidan_threads.state`.
+- **FSM** — `maidan-fsm::apply` validates edges; illegal transitions
+  return 409 from HTTP.
+- **Transition log** — `maidan_thread_transitions` records every
+  `(from_state, to_state, actor_id, occurred_at)`.
+- **Nested threads** — `parent_thread_id` on threads; HSM ensures child
+  lifecycle rank does not outrun parent (e.g. child cannot be
+  `in_review` while parent is `open`).
+- **Events** — `ThreadStateChanged` on the bus when a transition
+  commits.
+
+## Search at v0.3.0
 
 - **Lexical** — Postgres `tsvector` + GIN with `ts_headline`
   snippets; SQLite FTS5 + `snippet()`. Index maintenance via DB
   triggers (synchronous on write).
 - **Semantic** — Postgres `pgvector` `vector(1024)` + HNSW cosine.
-  Callers bring their own embeddings via
-  `Search::upsert_embedding`. SQLite returns `Unsupported`.
-- **Indexer** — `maidan-search::Indexer` task subscribes to the
-  bus's `MessagePosted` / `MessageTombstoned` kinds; the default
-  `LoggingHandler` observes, Cluster D wires a real embedding
-  generator behind the same `EventHandler` trait.
+  SQLite returns `Unsupported`.
+- **Indexer** — `maidan-search::Indexer` subscribes to
+  `MessagePosted` / `MessageTombstoned`. Postgres deployments use
+  `EmbeddingHandler` with deterministic `hash-v1` vectors (SHA-256
+  expanded to 1024-d); SQLite keeps `LoggingHandler`.
 
 ## What's deliberately not here yet
 
-- FSM-driven thread lifecycle + replay (Cluster D).
 - S3 artifact backend + rich artifact taxonomy (Cluster E).
 - Authentication, capabilities, multi-tenancy (Cluster F).
 - A2A federation (Cluster G).
