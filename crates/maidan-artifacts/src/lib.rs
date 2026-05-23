@@ -8,10 +8,13 @@
 
 pub mod error;
 pub mod localfs;
+pub mod path;
+pub mod s3;
 pub mod sha;
 pub mod store;
 
 pub use error::ArtifactError;
 pub use localfs::LocalFsStore;
+pub use s3::{S3Config, S3Store};
 pub use sha::Sha256;
 pub use store::ArtifactStore;

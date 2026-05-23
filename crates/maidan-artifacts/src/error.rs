@@ -10,4 +10,7 @@ pub enum ArtifactError {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("storage backend error: {0}")]
+    Storage(String),
 }

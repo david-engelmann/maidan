@@ -9,7 +9,7 @@
 #   3. `builder` compiles maidan-server in release mode.
 #   4. `runtime` is a distroless image holding only the binary.
 
-ARG RUST_VERSION=1.88
+ARG RUST_VERSION=1.91
 ARG DEBIAN_CODENAME=bookworm
 
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODENAME} AS chef

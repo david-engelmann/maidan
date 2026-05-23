@@ -13,6 +13,7 @@ use bytes::Bytes;
 use tokio::fs;
 
 use crate::error::ArtifactError;
+use crate::path::object_key;
 use crate::sha::Sha256;
 use crate::store::ArtifactStore;
 
@@ -33,8 +34,7 @@ impl LocalFsStore {
     }
 
     fn body_path(&self, sha: &Sha256) -> PathBuf {
-        let hex = sha.to_hex();
-        self.root.join(&hex[0..2]).join(&hex[2..4]).join(&hex[4..])
+        self.root.join(object_key(sha))
     }
 
     fn tmp_path(&self) -> PathBuf {

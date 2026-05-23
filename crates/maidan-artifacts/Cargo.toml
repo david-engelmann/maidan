@@ -12,6 +12,9 @@ description = "Content-addressed artifact store for Maidan (LocalFs, S3)."
 [dependencies]
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+aws-config = "1"
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
 bytes.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
@@ -24,3 +27,5 @@ proptest = "1"
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 anyhow.workspace = true
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["minio"] }
