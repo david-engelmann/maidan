@@ -17,6 +17,7 @@ name = "maidan-server"
 path = "src/main.rs"
 
 [dependencies]
+maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }

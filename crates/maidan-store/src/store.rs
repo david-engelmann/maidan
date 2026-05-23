@@ -28,6 +28,13 @@ pub trait Store: Send + Sync {
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
+    async fn transition_thread(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        action: maidan_fsm::ThreadAction,
+    ) -> Result<ThreadTransitionResult, StoreError>;
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError>;
     async fn list_messages(

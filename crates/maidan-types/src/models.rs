@@ -130,6 +130,13 @@ pub struct NewThread {
     pub title: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ThreadTransitionResult {
+    pub thread: Thread,
+    pub from_state: ThreadState,
+    pub to_state: ThreadState,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: MessageId,
