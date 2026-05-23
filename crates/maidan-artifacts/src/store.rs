@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use tokio::io::AsyncReadExt;
 
 use crate::error::ArtifactError;
 use crate::sha::Sha256;
@@ -16,4 +17,17 @@ pub trait ArtifactStore: Send + Sync {
     async fn get(&self, sha: &Sha256) -> Result<Bytes, ArtifactError>;
     async fn exists(&self, sha: &Sha256) -> Result<bool, ArtifactError>;
     async fn delete(&self, sha: &Sha256) -> Result<(), ArtifactError>;
+}
+
+/// Stream bytes from `reader` into the store (buffers internally).
+pub async fn put_reader(
+    store: &dyn ArtifactStore,
+    mut reader: impl tokio::io::AsyncRead + Unpin,
+) -> Result<Sha256, ArtifactError> {
+    let mut buf = Vec::new();
+    reader
+        .read_to_end(&mut buf)
+        .await
+        .map_err(ArtifactError::Io)?;
+    store.put(Bytes::from(buf)).await
 }

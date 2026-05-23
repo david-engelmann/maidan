@@ -4,7 +4,7 @@
 # Used by `compose.dev.yaml`; mounts source from the host as a volume so
 # edits trigger a rebuild without rebuilding the image.
 
-ARG RUST_VERSION=1.88
+ARG RUST_VERSION=1.91
 FROM rust:${RUST_VERSION}-slim-bookworm
 
 WORKDIR /app

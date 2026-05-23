@@ -125,6 +125,24 @@ impl From<StoreError> for ApiError {
     }
 }
 
+impl From<maidan_artifacts::ArtifactError> for ApiError {
+    fn from(err: maidan_artifacts::ArtifactError) -> Self {
+        use maidan_artifacts::ArtifactError;
+        match err {
+            ArtifactError::NotFound => Self::NotFound,
+            ArtifactError::InvalidSha(msg) => Self::BadRequest(msg),
+            ArtifactError::Io(e) => {
+                tracing::error!(error = %e, "artifact io error");
+                Self::Internal("artifact storage error".into())
+            }
+            ArtifactError::Storage(msg) => {
+                tracing::error!(error = %msg, "artifact backend error");
+                Self::Internal("artifact storage error".into())
+            }
+        }
+    }
+}
+
 impl From<maidan_search::SearchError> for ApiError {
     fn from(err: maidan_search::SearchError) -> Self {
         use maidan_search::SearchError;

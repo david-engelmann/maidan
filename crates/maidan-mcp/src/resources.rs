@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use maidan_artifacts::{ArtifactStore, Sha256};
 use maidan_store::Store;
 use maidan_types::*;
 use serde_json::{json, Value};
@@ -31,10 +32,19 @@ pub fn catalog() -> Vec<Value> {
             "name": "thread",
             "description": "Full thread transcript (up to 100 messages)."
         }),
+        json!({
+            "uri": "maidan://artifacts/{sha256}",
+            "name": "artifact",
+            "description": "Artifact metadata and byte length (body omitted)."
+        }),
     ]
 }
 
-pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> {
+pub async fn read(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    uri: &str,
+) -> Result<Value, McpError> {
     let path = uri
         .strip_prefix(URI_PREFIX)
         .ok_or_else(|| McpError::InvalidParams(format!("uri must start with maidan://: {uri}")))?;
@@ -43,25 +53,48 @@ pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> 
     let id_str = parts
         .next()
         .ok_or_else(|| McpError::InvalidParams("missing id segment".into()))?;
-    let id = uuid::Uuid::parse_str(id_str)
-        .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
 
     let payload = match kind {
-        "workspaces" => {
-            let ws = store.get_workspace(WorkspaceId(id)).await?;
-            serde_json::to_value(&ws)?
-        }
-        "channels" => {
-            let ch = store.get_channel(ChannelId(id)).await?;
-            serde_json::to_value(&ch)?
-        }
-        "threads" => {
-            let thread = store.get_thread(ThreadId(id)).await?;
-            let messages = store.list_messages(ThreadId(id), 100).await?;
+        "artifacts" => {
+            if id_str.len() != 64 {
+                return Err(McpError::InvalidParams(
+                    "artifact sha256 must be 64 hex chars".into(),
+                ));
+            }
+            let meta = store.get_artifact_by_sha(id_str).await?;
+            let sha =
+                Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+            let body = artifacts
+                .get(&sha)
+                .await
+                .map_err(|e| McpError::Internal(e.to_string()))?;
             json!({
-                "thread": thread,
-                "messages": messages,
+                "artifact": meta,
+                "byte_length": body.len(),
             })
+        }
+        "workspaces" | "channels" | "threads" => {
+            let id = uuid::Uuid::parse_str(id_str)
+                .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
+            match kind {
+                "workspaces" => {
+                    let ws = store.get_workspace(WorkspaceId(id)).await?;
+                    serde_json::to_value(&ws)?
+                }
+                "channels" => {
+                    let ch = store.get_channel(ChannelId(id)).await?;
+                    serde_json::to_value(&ch)?
+                }
+                "threads" => {
+                    let thread = store.get_thread(ThreadId(id)).await?;
+                    let messages = store.list_messages(ThreadId(id), 100).await?;
+                    json!({
+                        "thread": thread,
+                        "messages": messages,
+                    })
+                }
+                _ => unreachable!(),
+            }
         }
         other => {
             return Err(McpError::InvalidParams(format!(

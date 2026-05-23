@@ -58,6 +58,10 @@ pub fn router(state: AppState) -> Router {
             "/messages/:id/votes",
             post(routes::cast_vote).get(routes::list_votes),
         )
+        // artifacts
+        .route("/artifacts", post(routes::upload_artifact))
+        .route("/artifacts/:sha", get(routes::get_artifact))
+        .route("/artifacts/:sha/meta", get(routes::get_artifact_metadata))
         // references
         .route(
             "/references",

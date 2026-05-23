@@ -6,16 +6,26 @@ no-default-features = false
 db-path = "~/.cargo/advisory-dbs"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = [
-    # rustls-pemfile is unmaintained; transitive via testcontainers/bollard
-    # (dev-deps only). No code path runs in production builds. Revisit when
-    # testcontainers updates.
-    "RUSTSEC-2025-0134",
-    # tokio-tar PAX-header parsing bug; reachable only via testcontainers
-    # uploading build contexts to the local docker daemon, which is
-    # trusted in the dev/CI environment. Not a production code path.
-    "RUSTSEC-2025-0111",
-]
+
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0134"
+reason = "rustls-pemfile unmaintained; dev-only via testcontainers/bollard"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0111"
+reason = "tokio-tar via testcontainers build context upload; trusted CI path only"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0104"
+reason = "rustls-webpki 0.101 via aws-sdk; CRL path unused for MinIO HTTP"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0099"
+reason = "rustls-webpki 0.101 via aws-sdk; name constraints unused for MinIO HTTP"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0098"
+reason = "rustls-webpki 0.101 via aws-sdk; URI name constraints unused for MinIO HTTP"
 
 [licenses]
 allow = [
@@ -29,6 +39,7 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "CC0-1.0",
+    "CDLA-Permissive-2.0",
     "MPL-2.0",
 ]
 confidence-threshold = 0.93

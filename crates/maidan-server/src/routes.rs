@@ -4,11 +4,14 @@
 //! bus after the store call succeeds.
 
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use chrono::Utc;
+use maidan_artifacts::Sha256;
 use maidan_fsm::ThreadAction;
 use maidan_store::Store;
 use maidan_types::*;
@@ -396,6 +399,66 @@ pub async fn list_votes(
             .list_votes_for_message(MessageId(message_id))
             .await?,
     ))
+}
+
+// --- artifacts ---
+
+pub async fn upload_artifact(
+    State(state): State<AppState>,
+    Query(q): Query<UploadArtifactQuery>,
+    body: Bytes,
+) -> ApiResult<(StatusCode, Json<Artifact>)> {
+    if body.is_empty() {
+        return Err(ApiError::BadRequest("empty artifact body".into()));
+    }
+    let sha = state.artifacts.put(body.clone()).await?;
+    let artifact = state
+        .store
+        .upsert_artifact(NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: body.len() as i64,
+            mime_type: q.mime_type,
+            kind: q.kind,
+            uploaded_by: q.uploaded_by.map(MemberId),
+        })
+        .await?;
+    publish(
+        &state,
+        Event::ArtifactUpserted {
+            occurred_at: Utc::now(),
+            artifact: artifact.clone(),
+        },
+    )
+    .await;
+    Ok((StatusCode::CREATED, Json(artifact)))
+}
+
+pub async fn get_artifact(
+    State(state): State<AppState>,
+    Path(sha_hex): Path<String>,
+) -> ApiResult<Response> {
+    let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let meta = state.store.get_artifact_by_sha(&sha_hex).await?;
+    let bytes = state.artifacts.get(&sha).await?;
+    let mut headers = HeaderMap::new();
+    if let Some(mime) = meta.mime_type {
+        if let Ok(value) = mime.parse() {
+            headers.insert(header::CONTENT_TYPE, value);
+        }
+    }
+    headers.insert(
+        header::HeaderName::from_static("x-artifact-kind"),
+        meta.kind.as_str().parse().unwrap(),
+    );
+    Ok((headers, bytes).into_response())
+}
+
+pub async fn get_artifact_metadata(
+    State(state): State<AppState>,
+    Path(sha_hex): Path<String>,
+) -> ApiResult<Json<Artifact>> {
+    Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    Ok(Json(state.store.get_artifact_by_sha(&sha_hex).await?))
 }
 
 // --- references ---

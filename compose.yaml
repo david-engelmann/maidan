@@ -49,6 +49,20 @@ services:
       timeout: 3s
       retries: 10
 
+  minio-init:
+    image: minio/mc:latest
+    container_name: maidan-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 maidan maidanmaidan &&
+      mc mb --ignore-existing local/maidan
+      "
+    profiles:
+      - full
+
   maidan-server:
     build:
       context: .
@@ -58,10 +72,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
-      ARTIFACT_BACKEND: localfs
-      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      ARTIFACT_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: maidan
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: maidan
+      S3_SECRET_ACCESS_KEY: maidanmaidan
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
