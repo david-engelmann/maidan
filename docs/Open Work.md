@@ -13,8 +13,9 @@ Updated at the close of each cluster. Items move from "open" to
   `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
   API shipped in Cluster D, but subscribers must poll replay on gap —
   no automatic WS backfill yet. → Cluster T / future subscriber work.
-- **WS + MCP are anonymous.** Anyone with network access can
-  subscribe / call tools. → Cluster F auth.
+- **Bootstrap routes are unauthenticated.** `POST /workspaces` and
+  `POST …/members` have no Bearer gate; production must seed with
+  `AUTH_DISABLED` then mint tokens before enabling auth.
 - **No indexer lag metric on `/health`.** A stuck indexer is
   invisible to operators. → Cluster T.
 - **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
@@ -29,11 +30,6 @@ Updated at the close of each cluster. Items move from "open" to
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → Cluster F+ candidate via `sqlite-vec` if
   the extension's sqlx integration matures.
-
-## Cluster F backlog (auth + capabilities)
-
-In progress. Plan: [`docs/Clusters/Cluster F.md`](Clusters/Cluster%20F.md).
-Issues #68–#75. Next PR: **F.1** (api token schema).
 
 ## Specific items deferred to a later cluster
 
@@ -86,15 +82,6 @@ Issues #68–#75. Next PR: **F.1** (api token schema).
 |--------------------------------------------------------|------------------|
 | S3 multipart for multi-GB blobs                          | Cluster T        |
 | Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
-
-### To Cluster F (auth)
-
-| What                                              | Source           |
-|---------------------------------------------------|------------------|
-| HTTP / WS / MCP authentication                    | Cluster B retro  |
-| Tokens, capabilities, ACLs                        | Roadmap          |
-| Multi-tenant workspaces beyond a single org       | Architecture     |
-| SQLite vector support via `sqlite-vec`            | Cluster C retro  |
 
 ### To Cluster G (A2A)
 
@@ -173,8 +160,10 @@ Issues #68–#75. Next PR: **F.1** (api token schema).
   [`docs/Retros/Cluster D.md`](Retros/Cluster%20D.md). Tag `v0.3.0`
   after retro PR merges.
 - **Cluster E** complete (`v0.4.0`). Retro:
-  [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md). Tag after retro merges.
-- **Cluster F** in progress — F.1 (api token schema) is the active PR.
+  [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md).
+- **Cluster F** complete (`v0.5.0`). Retro:
+  [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md). Tag `v0.5.0` after
+  retro PR merges.
 
 ## How to read this file
 

@@ -6,11 +6,18 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A–E complete. Current release:
-[`v0.4.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.4.0)
-(pending tag after retro merge). See [`docs/Retros/Cluster E.md`](docs/Retros/Cluster%20E.md)
+Pre-alpha. Clusters A–F complete. Current release:
+[`v0.5.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.5.0)
+(pending tag after retro merge). See [`docs/Retros/Cluster F.md`](docs/Retros/Cluster%20F.md)
 for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster F — auth + capabilities).
+(Cluster G — agent-to-agent transport).
+
+## What's in `v0.5.0`
+
+- Everything in `v0.4.0`.
+- API tokens with capability lists (migration 0008).
+- Bearer auth on HTTP, WebSocket subscribe frames, and MCP tool calls.
+- Token mint/revoke admin API.
 
 ## What's in `v0.4.0`
 
