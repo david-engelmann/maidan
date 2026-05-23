@@ -27,6 +27,7 @@ impl MemberKind {
 #[serde(rename_all = "snake_case")]
 pub enum ThreadState {
     Open,
+    InReview,
     Closed,
     Archived,
 }
@@ -35,6 +36,7 @@ impl ThreadState {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Open => "open",
+            Self::InReview => "in_review",
             Self::Closed => "closed",
             Self::Archived => "archived",
         }
