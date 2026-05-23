@@ -11,7 +11,7 @@ PRs tracked by the GitHub issues labelled with that cluster.
 | **A**   | Foundation: workspace, schema, /health | `v0.0.1` ✓ |
 | **B**   | Routing + event bus + MCP surface    | `v0.1.0` ✓ |
 | **C**   | Search + indexing                    | `v0.2.0` ✓ |
-| D       | FSM-driven thread lifecycle          | `v0.3.0`   |
+| **D**   | FSM-driven thread lifecycle          | `v0.3.0` ✓ |
 | E       | Artifact substrate (S3, types, refs) | `v0.4.0`   |
 | F       | Auth, workspaces, capabilities       | `v0.5.0`   |
 | G       | Agent-to-Agent transport             | `v0.6.0`   |
@@ -33,9 +33,9 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A, B, C complete. See [[Retros/Cluster A]],
-[[Retros/Cluster B]], [[Retros/Cluster C]]. Cluster D (FSM thread
-lifecycle) is next.
+Clusters A, B, C, D complete. See [[Retros/Cluster A]],
+[[Retros/Cluster B]], [[Retros/Cluster C]], [[Retros/Cluster D]].
+Cluster E (artifact substrate) is next.
 
 ## Closing a cluster
 

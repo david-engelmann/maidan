@@ -1,6 +1,6 @@
 # Open work
 
-Aggregate of everything deferred across the three completed retros
+Aggregate of everything deferred across the four completed retros
 plus standing risks. The "if I had two hours, what could I work on"
 backlog.
 
@@ -10,14 +10,15 @@ Updated at the close of each cluster. Items move from "open" to
 ## Standing risks (still open)
 
 - **At-most-once delivery on the event bus.** Postgres
-  `LISTEN`/`NOTIFY` is fire-and-forget. A subscriber that misses a
-  notification has no recovery. → Cluster D persistent event log.
+  `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
+  API shipped in Cluster D, but subscribers must poll replay on gap —
+  no automatic WS backfill yet. → Cluster T / future subscriber work.
 - **WS + MCP are anonymous.** Anyone with network access can
   subscribe / call tools. → Cluster F auth.
 - **No indexer lag metric on `/health`.** A stuck indexer is
   invisible to operators. → Cluster T.
 - **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
-  (#36 → `macos-13` for x86_64 darwin). Verify `v0.2.0` tag triggers
+  (#36 → `macos-13` for x86_64 darwin). Verify `v0.3.0` tag triggers
   a successful release before considering this resolved.
 - **PostgresBus background listener task lacks supervision.** If the
   listener errors permanently, it sleeps 1s and retries forever —
@@ -29,23 +30,10 @@ Updated at the close of each cluster. Items move from "open" to
   returns `Unsupported`. → Cluster F+ candidate via `sqlite-vec` if
   the extension's sqlx integration matures.
 
-## Cluster D backlog (FSM-driven thread lifecycle)
+## Cluster E backlog (artifact substrate)
 
-Cluster D's plan doc has not been written yet. Likely PRs:
-
-- **D.1** Schema 0004: thread state transitions table (`thread_id`,
-  `from_state`, `to_state`, `actor_id`, `occurred_at`).
-- **D.2** `maidan-fsm` crate: typed state machine for threads
-  (`Open` → `InReview` → `Closed` → `Archived`), with the transition
-  table from above as the persistent log.
-- **D.3** Hierarchical state machine for nested sub-threads (per
-  the original scope doc).
-- **D.4** Real embedding generation in the indexer (load model at
-  boot, generate vectors for `MessagePosted` events).
-- **D.5** Persistent event log + replay (resolves the at-most-once
-  risk).
-- **D.6** MCP `prompts/list` + `prompts/get` (per-thread prompts).
-- **D.retro** + tag `v0.3.0`.
+See [`docs/Clusters/Cluster E.md`](Clusters/Cluster%20E.md) when filed.
+Next delivery cluster after D retro + `v0.3.0` tag.
 
 ## Specific items deferred to a later cluster
 
@@ -65,16 +53,25 @@ Cluster D's plan doc has not been written yet. Likely PRs:
 | 1000-event WS soak / slow-subscriber stress                       | Cluster B retro       |
 | Mutation tests against bus + routes                               | Cluster B retro       |
 
-### To Cluster D (FSM)
+### Shipped in Cluster D (v0.3.0)
 
-| What                                                  | Source           |
+| What                                                  | PRs    |
+|-------------------------------------------------------|--------|
+| Thread FSM + transition log                           | #48–50 |
+| Nested threads + HSM                                  | #51    |
+| `hash-v1` embedding indexer (Postgres)                | #52    |
+| Persistent event log + replay API                     | #53    |
+| MCP `prompts/list` + `prompts/get`                      | #54    |
+
+### Still deferred from Cluster D scope
+
+| What                                                  | Target           |
 |-------------------------------------------------------|------------------|
-| Real embedding generation pipeline                    | Cluster C retro  |
-| Persistent event log + replay                         | Cluster C retro  |
-| Resumable WS subscriptions / reconnection tokens      | Cluster B retro  |
-| MCP `prompts/list` + `prompts/get`                    | Cluster B retro  |
-| Per-model embedding tables / dimension variations     | Cluster C retro  |
-| Faceted search (author / channel / kind filters)      | Cluster C retro  |
+| Real ML embedding model (replace `hash-v1`)           | Post-1.0         |
+| Resumable WS subscriptions / reconnection tokens      | Cluster T / F    |
+| Per-model embedding tables / dimension variations     | Post-1.0         |
+| Faceted search (author / channel / kind filters)      | Cluster T        |
+| Automatic subscriber replay on NOTIFY miss            | Cluster T        |
 
 ### To Cluster E (artifacts)
 
@@ -166,10 +163,11 @@ Cluster D's plan doc has not been written yet. Likely PRs:
 - **The handoff doc PR itself** (this PR) is in flight; if you are
   reading this, it has merged.
 
-- **Cluster D issues and plan doc** have not been written. The
-  Cluster C retro names the priorities; "Cluster D backlog" above
-  is the closest thing to a plan. The next agent should write
-  `docs/Clusters/Cluster D.md` and the issues before opening D.1.
+- **Cluster D** complete (`v0.3.0`). Plan:
+  [`docs/Clusters/Cluster D.md`](Clusters/Cluster%20D.md). Retro:
+  [`docs/Retros/Cluster D.md`](Retros/Cluster%20D.md). Tag `v0.3.0`
+  after retro PR merges.
+- **Cluster E** plan doc and issues not yet filed — next kickoff task.
 
 ## How to read this file
 

@@ -7,7 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster D kickoff (FSM thread lifecycle).
+Nothing yet. Next: Cluster E (artifact substrate).
+
+## [0.3.0] — 2026-05-23
+
+End of Cluster D. Thread lifecycle is FSM-driven with a persistent
+transition log, hierarchical nested threads, Postgres embedding
+indexing, event replay, and MCP workflow prompts.
+
+### Added
+
+- `maidan-fsm` thread lifecycle (`open` → `in_review` → `closed` → `archived`).
+- Schema 0004 `maidan_thread_transitions`; schema 0005 `parent_thread_id`.
+- `POST /threads/:id` with `start_review`, `close`, `archive` actions.
+- `ThreadStateChanged` on the event bus.
+- `maidan_fsm::hsm` parent/child state ordering for nested threads.
+- `EmbeddingHandler` with `hash-v1` deterministic 1024-d vectors (Postgres).
+- Schema 0006 `maidan_events` persistent log + `GET /workspaces/:wid/events`.
+- MCP `prompts/list` and `prompts/get` (`thread_workflow`).
+
+### Changed
+
+- `ThreadState` includes `in_review`.
+- Server publishes append to `maidan_events` before bus notify.
 
 ## [0.2.0] — 2026-05-23
 
