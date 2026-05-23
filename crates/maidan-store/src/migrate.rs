@@ -3,7 +3,9 @@ use sqlx::{PgPool, SqlitePool};
 use crate::error::StoreError;
 
 const POSTGRES_UP_V1: &str = include_str!("../../../migrations/postgres/0001_core_up.sql");
+const POSTGRES_UP_V2: &str = include_str!("../../../migrations/postgres/0002_search.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
+const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -21,6 +23,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     .await?;
 
     apply_postgres(pool, 1, POSTGRES_UP_V1).await?;
+    apply_postgres(pool, 2, POSTGRES_UP_V2).await?;
     Ok(())
 }
 
@@ -36,6 +39,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     .await?;
 
     apply_sqlite(pool, 1, SQLITE_UP_V1).await?;
+    apply_sqlite(pool, 2, SQLITE_UP_V2).await?;
     Ok(())
 }
 

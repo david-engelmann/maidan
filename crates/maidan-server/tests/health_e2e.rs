@@ -11,7 +11,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
 use maidan_store::{run_postgres_migrations, PostgresStore};
 use sqlx::postgres::PgPoolOptions;
-use testcontainers::runners::AsyncRunner;
+use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
 async fn spawn_server() -> Option<(
@@ -20,7 +20,7 @@ async fn spawn_server() -> Option<(
     tempfile::TempDir,
     testcontainers::ContainerAsync<Postgres>,
 )> {
-    let container = match Postgres::default().start().await {
+    let container = match Postgres::default().with_tag("17-alpine").start().await {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping health_e2e: docker unavailable ({err})");
