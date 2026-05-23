@@ -1,8 +1,10 @@
 //! FSM engine for Maidan agent threads.
 //!
 //! Pure transition logic: maps `(ThreadState, ThreadAction)` to the next
-//! state or [`FsmError::InvalidTransition`]. Persistence and HTTP wiring
-//! live in `maidan-store` and `maidan-server` (Cluster D.3).
+//! state or [`InvalidTransition`]. Persistence and HTTP wiring live in
+//! `maidan-store` and `maidan-server` (Cluster D.3).
+
+pub mod hsm;
 
 use maidan_types::ThreadState;
 use thiserror::Error;

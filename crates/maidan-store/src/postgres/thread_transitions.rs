@@ -16,7 +16,7 @@ pub async fn transition(
     let mut tx = pool.begin().await?;
 
     let row = sqlx::query(
-        "SELECT id, channel_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
          FROM maidan_threads WHERE id = $1",
     )
     .bind(thread_id.0)
@@ -38,6 +38,20 @@ pub async fn transition(
         ))
     })?;
 
+    if let Some(parent_id) = thread.parent_thread_id {
+        let parent_row = sqlx::query(
+            "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
+             FROM maidan_threads WHERE id = $1",
+        )
+        .bind(parent_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+        let parent = row_to_thread(&parent_row)?;
+        maidan_fsm::hsm::parent_allows_transition(parent.state, to_state)
+            .map_err(|e| StoreError::Conflict(e.as_str().into()))?;
+    }
+
     let transition_id = Uuid::new_v4();
     let now = Utc::now();
 
@@ -58,7 +72,7 @@ pub async fn transition(
     let row = sqlx::query(
         "UPDATE maidan_threads SET state = $1, updated_at = $2
          WHERE id = $3
-         RETURNING id, channel_id, title, state, created_at, updated_at, tombstoned_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at",
     )
     .bind(to_state.as_str())
     .bind(now)

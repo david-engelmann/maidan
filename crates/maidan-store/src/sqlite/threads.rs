@@ -6,18 +6,20 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreError> {
+    validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::new_v4();
     let now = Utc::now();
     let row = sqlx::query(
-        "INSERT INTO maidan_threads (id, channel_id, title, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         RETURNING id, channel_id, title, state, created_at, updated_at, tombstoned_at",
+        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at",
     )
     .bind(id)
     .bind(new.channel_id.0)
+    .bind(new.parent_thread_id.map(|p| p.0))
     .bind(new.title.as_deref())
-    .bind(now)
-    .bind(now)
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
     .fetch_one(pool)
     .await?;
     row_to_thread(&row)
@@ -25,7 +27,7 @@ pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreEr
 
 pub async fn get(pool: &SqlitePool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
          FROM maidan_threads WHERE id = ?",
     )
     .bind(id.0)
@@ -37,13 +39,38 @@ pub async fn get(pool: &SqlitePool, id: ThreadId) -> Result<Thread, StoreError> 
 
 pub async fn list(pool: &SqlitePool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, channel_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
          FROM maidan_threads WHERE channel_id = ? ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_thread).collect()
+}
+
+async fn validate_parent(
+    pool: &SqlitePool,
+    channel_id: ChannelId,
+    parent_thread_id: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    let Some(parent_id) = parent_thread_id else {
+        return Ok(());
+    };
+    let parent = get(pool, parent_id).await?;
+    if parent.channel_id != channel_id {
+        return Err(StoreError::InvalidInput(
+            "parent thread must be in the same channel".into(),
+        ));
+    }
+    if parent.tombstoned_at.is_some() {
+        return Err(StoreError::NotFound);
+    }
+    if parent.state == ThreadState::Archived {
+        return Err(StoreError::Conflict(
+            "cannot create child under an archived parent".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, StoreError> {
@@ -59,9 +86,11 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
             )));
         }
     };
+    let parent: Option<Uuid> = row.get("parent_thread_id");
     Ok(Thread {
         id: ThreadId(row.get::<Uuid, _>("id")),
         channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
+        parent_thread_id: parent.map(ThreadId),
         title: row.get("title"),
         state,
         created_at: row.get::<DateTime<Utc>, _>("created_at"),

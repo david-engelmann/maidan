@@ -6,14 +6,16 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
+    validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::new_v4();
     let row = sqlx::query(
-        "INSERT INTO maidan_threads (id, channel_id, title)
-         VALUES ($1, $2, $3)
-         RETURNING id, channel_id, title, state, created_at, updated_at, tombstoned_at",
+        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at",
     )
     .bind(id)
     .bind(new.channel_id.0)
+    .bind(new.parent_thread_id.map(|p| p.0))
     .bind(new.title.as_deref())
     .fetch_one(pool)
     .await?;
@@ -22,7 +24,7 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
          FROM maidan_threads WHERE id = $1",
     )
     .bind(id.0)
@@ -34,7 +36,7 @@ pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
 
 pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, channel_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
          FROM maidan_threads WHERE channel_id = $1 ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
@@ -43,26 +45,55 @@ pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, S
     rows.iter().map(row_to_thread).collect()
 }
 
+async fn validate_parent(
+    pool: &PgPool,
+    channel_id: ChannelId,
+    parent_thread_id: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    let Some(parent_id) = parent_thread_id else {
+        return Ok(());
+    };
+    let parent = get(pool, parent_id).await?;
+    if parent.channel_id != channel_id {
+        return Err(StoreError::InvalidInput(
+            "parent thread must be in the same channel".into(),
+        ));
+    }
+    if parent.tombstoned_at.is_some() {
+        return Err(StoreError::NotFound);
+    }
+    if parent.state == ThreadState::Archived {
+        return Err(StoreError::Conflict(
+            "cannot create child under an archived parent".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
     let state_str: String = row.get("state");
-    let state = match state_str.as_str() {
-        "open" => ThreadState::Open,
-        "in_review" => ThreadState::InReview,
-        "closed" => ThreadState::Closed,
-        "archived" => ThreadState::Archived,
-        other => {
-            return Err(StoreError::InvalidInput(format!(
-                "unknown thread state: {other}"
-            )))
-        }
-    };
+    let state = parse_state(&state_str)?;
+    let parent: Option<Uuid> = row.get("parent_thread_id");
     Ok(Thread {
         id: ThreadId(row.get::<Uuid, _>("id")),
         channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
+        parent_thread_id: parent.map(ThreadId),
         title: row.get("title"),
         state,
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
     })
+}
+
+fn parse_state(state_str: &str) -> Result<ThreadState, StoreError> {
+    match state_str {
+        "open" => Ok(ThreadState::Open),
+        "in_review" => Ok(ThreadState::InReview),
+        "closed" => Ok(ThreadState::Closed),
+        "archived" => Ok(ThreadState::Archived),
+        other => Err(StoreError::InvalidInput(format!(
+            "unknown thread state: {other}"
+        ))),
+    }
 }

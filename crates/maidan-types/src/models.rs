@@ -117,6 +117,7 @@ pub struct NewChannel {
 pub struct Thread {
     pub id: ThreadId,
     pub channel_id: ChannelId,
+    pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
     pub state: ThreadState,
     pub created_at: DateTime<Utc>,
@@ -127,6 +128,7 @@ pub struct Thread {
 #[derive(Debug, Clone)]
 pub struct NewThread {
     pub channel_id: ChannelId,
+    pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
 }
 

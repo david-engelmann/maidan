@@ -34,6 +34,7 @@ fn thread(channel_id: ChannelId) -> Thread {
     Thread {
         id: ThreadId(uuid::Uuid::new_v4()),
         channel_id,
+        parent_thread_id: None,
         title: None,
         state: ThreadState::Open,
         created_at: Utc::now(),

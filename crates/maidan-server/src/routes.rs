@@ -178,6 +178,7 @@ pub async fn create_thread(
         .store
         .create_thread(NewThread {
             channel_id: ChannelId(channel_id),
+            parent_thread_id: body.parent_thread_id.map(ThreadId),
             title: body.title,
         })
         .await?;
