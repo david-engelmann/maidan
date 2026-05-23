@@ -29,9 +29,7 @@ async fn transition_thread_publishes_thread_state_changed() {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
     let mut subscriber = bus
-        .subscribe(
-            EventFilter::all().with_kinds([EventKind::ThreadStateChanged]),
-        )
+        .subscribe(EventFilter::all().with_kinds([EventKind::ThreadStateChanged]))
         .await
         .unwrap();
 
@@ -102,14 +100,10 @@ async fn transition_thread_publishes_thread_state_changed() {
         .unwrap();
     assert_eq!(updated["state"], "in_review");
 
-    let event = tokio::time::timeout(Duration::from_secs(2), async {
-        while let Some(event) = subscriber.next().await {
-            return event;
-        }
-        panic!("subscriber ended without event");
-    })
-    .await
-    .expect("timeout waiting for ThreadStateChanged");
+    let event = tokio::time::timeout(Duration::from_secs(2), subscriber.next())
+        .await
+        .expect("timeout waiting for ThreadStateChanged")
+        .expect("subscriber ended without event");
     match event {
         Event::ThreadStateChanged {
             from_state,
