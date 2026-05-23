@@ -41,10 +41,11 @@ async fn spawn_server() -> Option<(
     run_postgres_migrations(&pool).await.expect("migrate");
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let store = Arc::new(PostgresStore::new(pool));
+    let store = Arc::new(PostgresStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(store, artifacts, bus));
+    let app = router(AppState::new(store, artifacts, bus, search));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

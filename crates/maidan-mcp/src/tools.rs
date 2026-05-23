@@ -103,10 +103,28 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["src_kind", "src_id", "dst_kind", "dst_id", "relation"]
             }
         }),
+        json!({
+            "name": "search_messages",
+            "description": "Lexical full-text search over a workspace's messages. Returns ranked hits with highlighted snippets.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "query": {"type": "string", "minLength": 1},
+                    "limit": {"type": "integer", "default": 25}
+                },
+                "required": ["workspace_id", "query"]
+            }
+        }),
     ]
 }
 
-pub async fn dispatch(store: &Arc<dyn Store>, name: &str, args: &Value) -> Result<Value, McpError> {
+pub async fn dispatch(
+    store: &Arc<dyn Store>,
+    search: &Arc<dyn maidan_search::Search>,
+    name: &str,
+    args: &Value,
+) -> Result<Value, McpError> {
     match name {
         "list_channels" => list_channels(store, args).await,
         "list_threads" => list_threads(store, args).await,
@@ -115,8 +133,32 @@ pub async fn dispatch(store: &Arc<dyn Store>, name: &str, args: &Value) -> Resul
         "record_mention" => record_mention(store, args).await,
         "cast_vote" => cast_vote(store, args).await,
         "add_reference" => add_reference(store, args).await,
+        "search_messages" => search_messages(search, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
+}
+
+#[derive(Deserialize)]
+struct SearchMessagesArgs {
+    workspace_id: uuid::Uuid,
+    query: String,
+    #[serde(default = "default_search_limit")]
+    limit: i64,
+}
+
+fn default_search_limit() -> i64 {
+    25
+}
+
+async fn search_messages(
+    search: &Arc<dyn maidan_search::Search>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
+    let hits = search
+        .search_messages(WorkspaceId(a.workspace_id), &a.query, a.limit)
+        .await?;
+    Ok(content_json(&hits))
 }
 
 #[derive(Deserialize)]

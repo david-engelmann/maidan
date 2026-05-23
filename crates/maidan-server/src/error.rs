@@ -125,6 +125,22 @@ impl From<StoreError> for ApiError {
     }
 }
 
+impl From<maidan_search::SearchError> for ApiError {
+    fn from(err: maidan_search::SearchError) -> Self {
+        use maidan_search::SearchError;
+        match err {
+            SearchError::InvalidQuery(msg) => Self::BadRequest(msg),
+            SearchError::Unsupported(feature) => {
+                Self::BadRequest(format!("not supported by backend: {feature}"))
+            }
+            SearchError::Database(e) => {
+                tracing::error!(error = %e, "search database error");
+                Self::Internal("search database error".into())
+            }
+        }
+    }
+}
+
 impl From<axum::extract::rejection::JsonRejection> for ApiError {
     fn from(rej: axum::extract::rejection::JsonRejection) -> Self {
         Self::BadRequest(rej.body_text())
