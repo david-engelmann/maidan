@@ -1366,10 +1366,20 @@ dependencies = [
 name = "maidan-search"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "chrono",
+ "maidan-store",
  "maidan-types",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "testcontainers",
+ "testcontainers-modules",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

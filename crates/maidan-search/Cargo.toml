@@ -12,5 +12,17 @@ description = "Full-text + vector search over Maidan messages and artifacts."
 [dependencies]
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+maidan-store = { path = "../maidan-store" }
+anyhow.workspace = true
+serde_json.workspace = true
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
