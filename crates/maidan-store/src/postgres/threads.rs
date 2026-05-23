@@ -47,6 +47,7 @@ fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
     let state_str: String = row.get("state");
     let state = match state_str.as_str() {
         "open" => ThreadState::Open,
+        "in_review" => ThreadState::InReview,
         "closed" => ThreadState::Closed,
         "archived" => ThreadState::Archived,
         other => {
