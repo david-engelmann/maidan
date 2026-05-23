@@ -83,11 +83,10 @@ Updated at the close of each cluster. Items move from "open" to
 | S3 multipart for multi-GB blobs                          | Cluster T        |
 | Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
 
-### To Cluster G (A2A)
+## Cluster G backlog (A2A / federation)
 
-| What                                          | Source       |
-|-----------------------------------------------|--------------|
-| Agent-to-Agent transport over the event bus   | Roadmap      |
+In progress. Plan: [`docs/Clusters/Cluster G.md`](Clusters/Cluster%20G.md).
+Issues #80–#87. Next PR: **G.1** (federation types in `maidan-a2a`).
 
 ### To Cluster H (web UI / production polish)
 
@@ -162,8 +161,8 @@ Updated at the close of each cluster. Items move from "open" to
 - **Cluster E** complete (`v0.4.0`). Retro:
   [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md).
 - **Cluster F** complete (`v0.5.0`). Retro:
-  [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md). Tag `v0.5.0` after
-  retro PR merges.
+  [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md).
+- **Cluster G** in progress — federation transport; see Cluster G plan.
 
 ## How to read this file
 

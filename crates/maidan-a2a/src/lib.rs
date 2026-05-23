@@ -1,1 +1,2 @@
-//! Agent-to-Agent transport for Maidan. Real impl lands in Cluster B.
+//! Agent-to-Agent federation for Maidan. Maidan-native event replication
+//! between deployments; see Cluster G plan in `docs/Clusters/Cluster G.md`.
