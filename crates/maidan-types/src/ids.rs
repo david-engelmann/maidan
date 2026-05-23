@@ -37,3 +37,4 @@ id_newtype!(MessageId);
 id_newtype!(ArtifactId);
 id_newtype!(WorkspaceId);
 id_newtype!(ApiTokenId);
+id_newtype!(PeerId);

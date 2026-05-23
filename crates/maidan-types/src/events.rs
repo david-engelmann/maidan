@@ -13,7 +13,7 @@ use crate::ids::*;
 use crate::models::*;
 
 /// Row in the persistent `maidan_events` log (Cluster D.6).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredEvent {
     pub id: i64,
     pub kind: EventKind,
