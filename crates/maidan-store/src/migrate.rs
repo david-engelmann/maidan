@@ -4,6 +4,7 @@ use crate::error::StoreError;
 
 const POSTGRES_UP_V1: &str = include_str!("../../../migrations/postgres/0001_core_up.sql");
 const POSTGRES_UP_V2: &str = include_str!("../../../migrations/postgres/0002_search.sql");
+const POSTGRES_UP_V3: &str = include_str!("../../../migrations/postgres/0003_embeddings.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 
@@ -24,6 +25,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
 
     apply_postgres(pool, 1, POSTGRES_UP_V1).await?;
     apply_postgres(pool, 2, POSTGRES_UP_V2).await?;
+    apply_postgres(pool, 3, POSTGRES_UP_V3).await?;
     Ok(())
 }
 

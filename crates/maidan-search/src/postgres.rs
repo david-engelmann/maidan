@@ -1,14 +1,21 @@
-//! Postgres tsvector + ts_headline search.
+//! Postgres tsvector + ts_headline lexical search, plus pgvector-backed
+//! semantic search.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_types::*;
+use pgvector::Vector;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::SearchError;
 use crate::hit::SearchHit;
 use crate::traits::Search;
+
+/// Dimension of every embedding vector. Must match the schema column
+/// declared in `migrations/postgres/0003_embeddings.sql`. Future
+/// migrations widen or partition by model.
+pub const EMBEDDING_DIM: usize = 1024;
 
 #[derive(Debug, Clone)]
 pub struct PostgresSearch {
@@ -67,11 +74,87 @@ impl Search for PostgresSearch {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(row_to_hit).collect())
+        Ok(rows.iter().map(row_to_lexical_hit).collect())
+    }
+
+    async fn upsert_embedding(
+        &self,
+        message_id: MessageId,
+        model: &str,
+        embedding: &[f32],
+    ) -> Result<(), SearchError> {
+        if embedding.len() != EMBEDDING_DIM {
+            return Err(SearchError::InvalidQuery(format!(
+                "expected {EMBEDDING_DIM}-dim vector, got {}",
+                embedding.len()
+            )));
+        }
+        let vector = Vector::from(embedding.to_vec());
+        sqlx::query(
+            r#"
+            INSERT INTO maidan_message_embeddings (message_id, model, embedding, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (message_id) DO UPDATE
+                SET model = EXCLUDED.model,
+                    embedding = EXCLUDED.embedding,
+                    updated_at = NOW()
+            "#,
+        )
+        .bind(message_id.0)
+        .bind(model)
+        .bind(vector)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn semantic_search(
+        &self,
+        workspace_id: WorkspaceId,
+        embedding: &[f32],
+        limit: i64,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        if embedding.len() != EMBEDDING_DIM {
+            return Err(SearchError::InvalidQuery(format!(
+                "expected {EMBEDDING_DIM}-dim vector, got {}",
+                embedding.len()
+            )));
+        }
+        let vector = Vector::from(embedding.to_vec());
+
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                m.id            AS message_id,
+                m.thread_id     AS thread_id,
+                t.channel_id    AS channel_id,
+                c.workspace_id  AS workspace_id,
+                m.author_id     AS author_id,
+                m.posted_at     AS posted_at,
+                m.body          AS body,
+                ''              AS snippet,
+                1.0 - (e.embedding <=> $2) AS rank
+            FROM maidan_message_embeddings e
+            JOIN maidan_messages m ON m.id = e.message_id
+            JOIN maidan_threads t ON t.id = m.thread_id
+            JOIN maidan_channels c ON c.id = t.channel_id
+            WHERE c.workspace_id = $1
+              AND m.tombstoned_at IS NULL
+            ORDER BY e.embedding <=> $2
+            LIMIT $3
+            "#,
+        )
+        .bind(workspace_id.0)
+        .bind(vector)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(row_to_semantic_hit).collect())
     }
 }
 
-fn row_to_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
+fn row_to_lexical_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
     SearchHit {
         message_id: MessageId(row.get::<Uuid, _>("message_id")),
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
@@ -82,5 +165,19 @@ fn row_to_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f32, _>("rank") as f64,
+    }
+}
+
+fn row_to_semantic_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
+    SearchHit {
+        message_id: MessageId(row.get::<Uuid, _>("message_id")),
+        thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+        channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
+        workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+        author_id: MemberId(row.get::<Uuid, _>("author_id")),
+        posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
+        body: row.get("body"),
+        snippet: row.get("snippet"),
+        rank: row.get::<f64, _>("rank"),
     }
 }

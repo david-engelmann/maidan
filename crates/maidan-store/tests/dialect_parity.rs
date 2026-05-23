@@ -16,7 +16,12 @@ use testcontainers_modules::postgres::Postgres;
 
 #[tokio::test]
 async fn parity_between_postgres_and_sqlite() {
-    let container = match Postgres::default().with_tag("17-alpine").start().await {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
         Ok(c) => c,
         Err(err) => {
             eprintln!("skipping dialect_parity: docker unavailable ({err})");

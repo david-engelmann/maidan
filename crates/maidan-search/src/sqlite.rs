@@ -71,6 +71,24 @@ impl Search for SqliteSearch {
 
         Ok(rows.iter().map(row_to_hit).collect())
     }
+
+    async fn upsert_embedding(
+        &self,
+        _message_id: maidan_types::MessageId,
+        _model: &str,
+        _embedding: &[f32],
+    ) -> Result<(), SearchError> {
+        Err(SearchError::Unsupported("embeddings on sqlite"))
+    }
+
+    async fn semantic_search(
+        &self,
+        _workspace_id: WorkspaceId,
+        _embedding: &[f32],
+        _limit: i64,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        Err(SearchError::Unsupported("semantic search on sqlite"))
+    }
 }
 
 fn row_to_hit(row: &sqlx::sqlite::SqliteRow) -> SearchHit {
