@@ -21,6 +21,7 @@ maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
+maidan-mcp = { path = "../maidan-mcp" }
 maidan-observability = { path = "../maidan-observability" }
 async-trait.workspace = true
 chrono.workspace = true
