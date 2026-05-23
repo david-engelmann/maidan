@@ -84,6 +84,14 @@ pub struct ListReferencesQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ListEventsQuery {
+    #[serde(default)]
+    pub after_id: i64,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default = "default_search_limit")]

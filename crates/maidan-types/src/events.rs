@@ -12,6 +12,18 @@ use serde::{Deserialize, Serialize};
 use crate::ids::*;
 use crate::models::*;
 
+/// Row in the persistent `maidan_events` log (Cluster D.6).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredEvent {
+    pub id: i64,
+    pub kind: EventKind,
+    pub workspace_id: Option<WorkspaceId>,
+    pub channel_id: Option<ChannelId>,
+    pub thread_id: Option<ThreadId>,
+    pub payload: serde_json::Value,
+    pub occurred_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
@@ -26,6 +38,24 @@ pub enum EventKind {
     VoteCast,
     ReferenceAdded,
     ArtifactUpserted,
+}
+
+impl EventKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::WorkspaceCreated => "workspace_created",
+            Self::MemberJoined => "member_joined",
+            Self::ChannelCreated => "channel_created",
+            Self::ThreadCreated => "thread_created",
+            Self::ThreadStateChanged => "thread_state_changed",
+            Self::MessagePosted => "message_posted",
+            Self::MessageTombstoned => "message_tombstoned",
+            Self::MentionRecorded => "mention_recorded",
+            Self::VoteCast => "vote_cast",
+            Self::ReferenceAdded => "reference_added",
+            Self::ArtifactUpserted => "artifact_upserted",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
