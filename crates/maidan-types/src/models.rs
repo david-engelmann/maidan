@@ -59,6 +59,47 @@ impl RefSide {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactKind {
+    Screenshot,
+    Recording,
+    Transcript,
+    CodeDump,
+    Attachment,
+}
+
+impl ArtifactKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Screenshot => "screenshot",
+            Self::Recording => "recording",
+            Self::Transcript => "transcript",
+            Self::CodeDump => "code_dump",
+            Self::Attachment => "attachment",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "screenshot" => Some(Self::Screenshot),
+            "recording" => Some(Self::Recording),
+            "transcript" => Some(Self::Transcript),
+            "code_dump" => Some(Self::CodeDump),
+            "attachment" => Some(Self::Attachment),
+            _ => None,
+        }
+    }
+
+    pub fn default_mime(self) -> &'static str {
+        match self {
+            Self::Screenshot => "image/png",
+            Self::Recording | Self::Attachment => "application/octet-stream",
+            Self::Transcript | Self::CodeDump => "text/plain",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workspace {
     pub id: WorkspaceId,
@@ -207,7 +248,7 @@ pub struct Artifact {
     pub sha256: String,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
-    pub kind: String,
+    pub kind: ArtifactKind,
     pub uploaded_by: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
@@ -218,7 +259,7 @@ pub struct NewArtifact {
     pub sha256: String,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
-    pub kind: String,
+    pub kind: ArtifactKind,
     pub uploaded_by: Option<MemberId>,
 }
 
