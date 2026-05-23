@@ -10,6 +10,7 @@ mod messages;
 mod refs;
 mod thread_transitions;
 mod threads;
+mod tokens;
 mod votes;
 mod workspaces;
 
@@ -163,5 +164,17 @@ impl Store for PostgresStore {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
         events::list_after(&self.pool, workspace_id, after_id, limit).await
+    }
+
+    async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {
+        tokens::create(&self.pool, new).await
+    }
+
+    async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError> {
+        tokens::get_active_by_hash(&self.pool, token_hash).await
+    }
+
+    async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
+        tokens::revoke(&self.pool, id).await
     }
 }
