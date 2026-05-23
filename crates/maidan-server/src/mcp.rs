@@ -12,6 +12,6 @@ pub async fn handler(State(state): State<AppState>, body: axum::body::Bytes) -> 
         Ok(r) => r,
         Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
     };
-    let server = McpServer::new(state.store.clone());
+    let server = McpServer::new(state.store.clone(), state.search.clone());
     Json(server.handle(request).await).into_response()
 }

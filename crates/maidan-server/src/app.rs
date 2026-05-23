@@ -59,6 +59,8 @@ pub fn router(state: AppState) -> Router {
             "/references",
             post(routes::create_reference).get(routes::list_references),
         )
+        // search
+        .route("/workspaces/:wid/search", get(routes::search_messages))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

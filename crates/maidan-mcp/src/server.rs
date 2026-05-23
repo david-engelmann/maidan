@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use maidan_search::Search;
 use maidan_store::Store;
 use serde_json::{json, Value};
 
@@ -15,14 +16,16 @@ const MCP_VERSION: &str = "2024-11-05";
 #[derive(Clone)]
 pub struct McpServer {
     store: Arc<dyn Store>,
+    search: Arc<dyn Search>,
     server_name: String,
     server_version: String,
 }
 
 impl McpServer {
-    pub fn new(store: Arc<dyn Store>) -> Self {
+    pub fn new(store: Arc<dyn Store>, search: Arc<dyn Search>) -> Self {
         Self {
             store,
+            search,
             server_name: "maidan".into(),
             server_version: env!("CARGO_PKG_VERSION").into(),
         }
@@ -70,7 +73,7 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing tool name".into()))?;
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        tools::dispatch(&self.store, name, &args).await
+        tools::dispatch(&self.store, &self.search, name, &args).await
     }
 
     async fn resources_read(&self, params: &Value) -> Result<Value, McpError> {

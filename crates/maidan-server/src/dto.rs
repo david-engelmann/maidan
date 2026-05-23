@@ -77,6 +77,17 @@ pub struct ListReferencesQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+    #[serde(default = "default_search_limit")]
+    pub limit: i64,
+}
+
+fn default_search_limit() -> i64 {
+    25
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ListMentionsQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,

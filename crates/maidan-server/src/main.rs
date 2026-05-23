@@ -6,6 +6,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
+use maidan_search::{PostgresSearch, Search, SqliteSearch};
 use maidan_server::{config::ArtifactBackend, router, version, AppState, Config};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
@@ -30,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let dialect = Dialect::from_url(&config.database_url).context("detect dialect")?;
     tracing::info!(?dialect, "database dialect");
 
-    let (store, bus): (Arc<dyn Store>, Arc<dyn EventBus>) = match dialect {
+    let (store, bus, search): (Arc<dyn Store>, Arc<dyn EventBus>, Arc<dyn Search>) = match dialect {
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
                 .max_connections(16)
@@ -44,7 +45,12 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .context("connect postgres bus")?;
             tracing::info!("event bus: postgres LISTEN/NOTIFY");
-            (Arc::new(PostgresStore::new(pool)), Arc::new(bus))
+            tracing::info!("search: postgres tsvector");
+            (
+                Arc::new(PostgresStore::new(pool.clone())),
+                Arc::new(bus),
+                Arc::new(PostgresSearch::new(pool)),
+            )
         }
         Dialect::Sqlite => {
             let pool = SqlitePoolOptions::new()
@@ -56,9 +62,11 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .context("apply sqlite migrations")?;
             tracing::info!("event bus: in-memory");
+            tracing::info!("search: sqlite fts5");
             (
-                Arc::new(SqliteStore::new(pool)),
+                Arc::new(SqliteStore::new(pool.clone())),
                 Arc::new(InMemoryBus::new()),
+                Arc::new(SqliteSearch::new(pool)),
             )
         }
     };
@@ -70,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = AppState::new(store, artifacts, bus);
+    let state = AppState::new(store, artifacts, bus, search);
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(config.bind)

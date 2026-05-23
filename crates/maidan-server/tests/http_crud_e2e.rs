@@ -54,8 +54,9 @@ async fn spawn_postgres() -> Option<Harness> {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool));
-    Some(launch(store, Some(container)).await)
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
+    Some(launch(store, search, Some(container)).await)
 }
 
 async fn spawn_sqlite() -> Harness {
@@ -69,18 +70,20 @@ async fn spawn_sqlite() -> Harness {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
-    launch(store, None).await
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    launch(store, search, None).await
 }
 
 async fn launch(
     store: Arc<dyn Store>,
+    search: Arc<dyn maidan_search::Search>,
     container: Option<testcontainers::ContainerAsync<Postgres>>,
 ) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(store, artifacts, bus));
+    let app = router(AppState::new(store, artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

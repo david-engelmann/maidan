@@ -62,3 +62,16 @@ impl From<serde_json::Error> for McpError {
         Self::InvalidParams(err.to_string())
     }
 }
+
+impl From<maidan_search::SearchError> for McpError {
+    fn from(err: maidan_search::SearchError) -> Self {
+        use maidan_search::SearchError;
+        match err {
+            SearchError::InvalidQuery(m) => Self::InvalidParams(m),
+            SearchError::Unsupported(f) => {
+                Self::InvalidParams(format!("not supported by backend: {f}"))
+            }
+            SearchError::Database(e) => Self::Internal(e.to_string()),
+        }
+    }
+}

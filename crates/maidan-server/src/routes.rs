@@ -388,6 +388,21 @@ pub async fn list_references(
     ))
 }
 
+// --- search ---
+
+pub async fn search_messages(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Query(q): Query<SearchQuery>,
+) -> ApiResult<Json<Vec<maidan_search::SearchHit>>> {
+    Ok(Json(
+        state
+            .search
+            .search_messages(WorkspaceId(workspace_id), &q.q, q.limit)
+            .await?,
+    ))
+}
+
 /// Fire-and-forget event publish. Errors are logged but never surfaced
 /// to the HTTP caller — the store has already committed, and the bus
 /// being temporarily unavailable should not turn a successful mutation
