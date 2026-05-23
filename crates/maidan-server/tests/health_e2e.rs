@@ -43,7 +43,8 @@ async fn spawn_server() -> Option<(
     let dir = tempfile::tempdir().expect("tempdir");
     let store = Arc::new(PostgresStore::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let app = router(AppState::new(store, artifacts));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let app = router(AppState::new(store, artifacts, bus));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
