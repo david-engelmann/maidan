@@ -16,9 +16,16 @@ id = "RUSTSEC-2025-0111"
 reason = "tokio-tar via testcontainers build context upload; trusted CI path only"
 
 [[advisories.ignore]]
-crate = "rustls-webpki"
-version = "=0.101.7"
-reason = "aws-sdk transitive rustls 0.21; MinIO compose uses HTTP not affected TLS paths"
+id = "RUSTSEC-2026-0104"
+reason = "rustls-webpki 0.101 via aws-sdk; CRL path unused for MinIO HTTP"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0099"
+reason = "rustls-webpki 0.101 via aws-sdk; name constraints unused for MinIO HTTP"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0098"
+reason = "rustls-webpki 0.101 via aws-sdk; URI name constraints unused for MinIO HTTP"
 
 [licenses]
 allow = [
