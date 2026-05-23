@@ -33,12 +33,12 @@ async fn main() -> anyhow::Result<()> {
     let dialect = Dialect::from_url(&config.database_url).context("detect dialect")?;
     tracing::info!(?dialect, "database dialect");
 
-    let (store, bus, search, use_embedding_indexer): (
-        Arc<dyn Store>,
-        Arc<dyn EventBus>,
-        Arc<dyn Search>,
-        bool,
-    ) = match dialect {
+    let store: Arc<dyn Store>;
+    let bus: Arc<dyn EventBus>;
+    let search: Arc<dyn Search>;
+    let use_embedding_indexer: bool;
+
+    match dialect {
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
                 .max_connections(16)
@@ -48,17 +48,15 @@ async fn main() -> anyhow::Result<()> {
             run_postgres_migrations(&pool)
                 .await
                 .context("apply postgres migrations")?;
-            let bus = PostgresBus::connect(pool.clone())
+            let pg_bus = PostgresBus::connect(pool.clone())
                 .await
                 .context("connect postgres bus")?;
             tracing::info!("event bus: postgres LISTEN/NOTIFY");
             tracing::info!("search: postgres tsvector");
-            (
-                Arc::new(PostgresStore::new(pool.clone())),
-                Arc::new(bus),
-                Arc::new(PostgresSearch::new(pool)),
-                true,
-            )
+            store = Arc::new(PostgresStore::new(pool.clone()));
+            bus = Arc::new(pg_bus);
+            search = Arc::new(PostgresSearch::new(pool));
+            use_embedding_indexer = true;
         }
         Dialect::Sqlite => {
             let pool = SqlitePoolOptions::new()
@@ -71,12 +69,10 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply sqlite migrations")?;
             tracing::info!("event bus: in-memory");
             tracing::info!("search: sqlite fts5");
-            (
-                Arc::new(SqliteStore::new(pool.clone())),
-                Arc::new(InMemoryBus::new()),
-                Arc::new(SqliteSearch::new(pool)),
-                false,
-            )
+            store = Arc::new(SqliteStore::new(pool.clone()));
+            bus = Arc::new(InMemoryBus::new());
+            search = Arc::new(SqliteSearch::new(pool));
+            use_embedding_indexer = false;
         }
     };
 
@@ -87,9 +83,6 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = AppState::new(store, artifacts, bus.clone(), search);
-    let app = router(state);
-
     let indexer_handler: Arc<dyn maidan_search::EventHandler> = if use_embedding_indexer {
         tracing::info!("indexer: hash-v1 embedding generation (postgres)");
         Arc::new(EmbeddingHandler::new(store.clone(), search.clone()))
@@ -97,6 +90,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("indexer: logging only (sqlite)");
         Arc::new(LoggingHandler::default())
     };
+
+    let state = AppState::new(store, artifacts, bus.clone(), search);
+    let app = router(state);
+
     let indexer = Indexer::new(bus, indexer_handler).spawn();
     tracing::info!("background indexer running");
 
