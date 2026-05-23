@@ -7,6 +7,20 @@ PR prepends a new section so the latest is always at the top.
 
 Populated when Cluster H lands.
 
+## v0.2.0 — Cluster C complete
+
+| Capability                                                    | Surface                  |
+|---------------------------------------------------------------|--------------------------|
+| Lexical search (Postgres tsvector + SQLite FTS5)              | `maidan-search::PostgresSearch` / `SqliteSearch` |
+| `GET /workspaces/:wid/search` HTTP route                      | `maidan-server::routes`  |
+| MCP `search_messages` tool (8th tool)                         | `maidan-mcp::tools`      |
+| `<mark>`-wrapped snippet highlights                           | `maidan-search`          |
+| `pgvector` semantic search (HNSW cosine, 1024-d)              | `maidan-search::PostgresSearch` |
+| `Search::upsert_embedding` / `semantic_search`                | `maidan-search::Search`  |
+| Bus-driven background indexer with reconnect backoff          | `maidan-search::Indexer` |
+| `EventHandler` trait + `LoggingHandler` baseline              | `maidan-search::indexer` |
+| Cross-dialect search parity test                              | `maidan-search/tests`    |
+
 ## v0.1.0 — Cluster B complete
 
 | Capability                                                    | Surface                  |

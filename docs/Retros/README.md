@@ -54,3 +54,4 @@ PR review credit; external contributors.
 
 - [[Cluster A]] — Foundation. Closed at `v0.0.1`.
 - [[Cluster B]] — Routing + event bus + MCP. Closed at `v0.1.0`.
+- [[Cluster C]] — Search + indexing. Closed at `v0.2.0`.

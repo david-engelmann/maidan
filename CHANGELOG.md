@@ -7,7 +7,49 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster C kickoff (search + indexing).
+Nothing yet. Next: Cluster D kickoff (FSM thread lifecycle).
+
+## [0.2.0] — 2026-05-23
+
+End of Cluster C. The workspace is now searchable: lexical search on
+both backends, vector search on Postgres, and the async indexer
+pipeline that future clusters will use for embedding generation.
+
+### Added
+
+- `maidan-search::Search` async trait with `search_messages`,
+  `upsert_embedding`, `semantic_search`.
+- `PostgresSearch` lexical impl using `tsvector` + GIN index +
+  `ts_headline` snippets (migration 0002).
+- `SqliteSearch` lexical impl using FTS5 + `snippet()` (migration
+  0002). FTS5 grammar-escaped queries.
+- `PostgresSearch` semantic impl using `pgvector` `vector(1024)` +
+  HNSW cosine index (migration 0003). SQLite returns
+  `SearchError::Unsupported` for semantic methods.
+- `GET /workspaces/:wid/search?q=...&limit=...` HTTP route with
+  RFC 7807 `application/problem+json` errors on bad input.
+- MCP `search_messages` tool (8th tool overall) sharing the same
+  `Arc<dyn Search>` as the HTTP route.
+- `maidan-search::Indexer` task: subscribes to the bus, reconnects
+  with exponential backoff, dispatches to a swappable `EventHandler`.
+- `LoggingHandler` baseline + `wait_for(timeout, predicate)` test
+  helper.
+- `maidan-server::main` wires the indexer on boot and shuts it
+  down cleanly on serve exit.
+
+### Changed
+
+- Every Postgres testcontainer in the workspace switched from
+  `postgres:17-alpine` to `pgvector/pgvector:pg17` so migration
+  0003's `CREATE EXTENSION vector` succeeds.
+- `AppState::new` signature gained `search: Arc<dyn Search>`.
+- `McpServer::new` signature gained the same.
+
+### Security
+
+- FTS5 query strings are escaped before binding to prevent grammar
+  injection. (Not a SQL injection concern — values are always
+  parameterized — only an FTS5 operator concern.)
 
 ## [0.1.0] — 2026-05-23
 
@@ -134,6 +176,7 @@ exposes a `/health` endpoint backed by Postgres or SQLite.
 - `k8s/base/secret.example.yaml` documents the required Secret shape
   without storing values.
 
-[Unreleased]: https://github.com/david-engelmann/maidan/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/david-engelmann/maidan/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.2.0
 [0.1.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.1.0
 [0.0.1]: https://github.com/david-engelmann/maidan/releases/tag/v0.0.1
