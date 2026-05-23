@@ -32,8 +32,8 @@ Updated at the close of each cluster. Items move from "open" to
 
 ## Cluster E backlog (artifact substrate)
 
-See [`docs/Clusters/Cluster E.md`](Clusters/Cluster%20E.md) when filed.
-Next delivery cluster after D retro + `v0.3.0` tag.
+In progress. Plan: [`docs/Clusters/Cluster E.md`](Clusters/Cluster%20E.md).
+Issues #56–#63. Next PR: **E.1** (`ArtifactKind` taxonomy).
 
 ## Specific items deferred to a later cluster
 
@@ -167,7 +167,7 @@ Next delivery cluster after D retro + `v0.3.0` tag.
   [`docs/Clusters/Cluster D.md`](Clusters/Cluster%20D.md). Retro:
   [`docs/Retros/Cluster D.md`](Retros/Cluster%20D.md). Tag `v0.3.0`
   after retro PR merges.
-- **Cluster E** plan doc and issues not yet filed — next kickoff task.
+- **Cluster E** in progress — E.1 (`ArtifactKind`) is the active PR.
 
 ## How to read this file
 
