@@ -11,6 +11,7 @@ pub mod error;
 pub mod health;
 pub mod routes;
 pub mod state;
+pub mod ws;
 
 pub use app::router;
 pub use config::Config;
