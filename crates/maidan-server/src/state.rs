@@ -13,6 +13,8 @@ pub struct AppState {
     pub artifacts: Arc<dyn ArtifactStore>,
     pub bus: Arc<dyn EventBus>,
     pub search: Arc<dyn Search>,
+    /// When true, all routes accept requests without a bearer token.
+    pub auth_disabled: bool,
 }
 
 impl AppState {
@@ -21,12 +23,14 @@ impl AppState {
         artifacts: Arc<dyn ArtifactStore>,
         bus: Arc<dyn EventBus>,
         search: Arc<dyn Search>,
+        auth_disabled: bool,
     ) -> Self {
         Self {
             store,
             artifacts,
             bus,
             search,
+            auth_disabled,
         }
     }
 }

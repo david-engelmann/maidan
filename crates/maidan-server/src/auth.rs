@@ -1,0 +1,61 @@
+//! Bearer authentication middleware and helpers.
+
+use axum::{
+    extract::{Request, State},
+    http::header,
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use maidan_auth::{resolve_bearer, AuthContext};
+
+use crate::error::ApiError;
+use crate::state::AppState;
+
+pub fn auth_disabled_from_env() -> bool {
+    matches!(
+        std::env::var("AUTH_DISABLED").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+    if state.auth_disabled {
+        req.extensions_mut().insert(AuthContext::bypass());
+        return next.run(req).await;
+    }
+
+    let bearer = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_bearer);
+
+    let Some(secret) = bearer else {
+        return ApiError::Unauthorized.into_response();
+    };
+
+    match resolve_bearer(state.store.as_ref(), secret).await {
+        Ok(ctx) => {
+            req.extensions_mut().insert(ctx);
+            next.run(req).await
+        }
+        Err(_) => ApiError::Unauthorized.into_response(),
+    }
+}
+
+pub fn parse_bearer(header_value: &str) -> Option<&str> {
+    let rest = header_value.strip_prefix("Bearer ")?;
+    let token = rest.trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_bearer)
+}

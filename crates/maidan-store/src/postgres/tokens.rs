@@ -28,6 +28,20 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
     row_to_token(&row)
 }
 
+pub async fn get_by_id(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, workspace_id, member_id, token_hash, label, capabilities,
+                created_at, expires_at, revoked_at
+         FROM maidan_api_tokens
+         WHERE id = $1",
+    )
+    .bind(id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_token(&row)
+}
+
 pub async fn get_active_by_hash(pool: &PgPool, token_hash: &str) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, token_hash, label, capabilities,

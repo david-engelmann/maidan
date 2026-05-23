@@ -10,6 +10,7 @@ publish.workspace = true
 description = "Model Context Protocol server surface for Maidan."
 
 [dependencies]
+maidan-auth = { path = "../maidan-auth" }
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 maidan-search = { path = "../maidan-search" }

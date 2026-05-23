@@ -173,6 +173,10 @@ impl Store for SqliteStore {
         tokens::create(&self.pool, new).await
     }
 
+    async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
+        tokens::get_by_id(&self.pool, id).await
+    }
+
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError> {
         tokens::get_active_by_hash(&self.pool, token_hash).await
     }

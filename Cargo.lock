@@ -2099,9 +2099,14 @@ dependencies = [
 name = "maidan-auth"
 version = "0.0.0"
 dependencies = [
+ "maidan-store",
  "maidan-types",
+ "sha2 0.10.9",
+ "subtle",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2154,6 +2159,7 @@ dependencies = [
  "base64",
  "bytes",
  "maidan-artifacts",
+ "maidan-auth",
  "maidan-search",
  "maidan-store",
  "maidan-types",
@@ -2218,6 +2224,7 @@ dependencies = [
  "chrono",
  "futures",
  "maidan-artifacts",
+ "maidan-auth",
  "maidan-bus",
  "maidan-fsm",
  "maidan-mcp",

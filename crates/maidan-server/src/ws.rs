@@ -14,7 +14,7 @@
 //! Close codes used:
 //! - 1000 normal client-initiated close
 //! - 1002 protocol error (bad first frame)
-//! - 1008 policy violation (invalid filter JSON)
+//! - 1008 policy violation (invalid filter JSON / auth failure)
 //! - 1011 backpressure / pong timeout / unexpected stream end
 
 use std::{borrow::Cow, time::Duration};
@@ -27,6 +27,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::StreamExt;
+use maidan_auth::{capability::EVENT_SUBSCRIBE, resolve_bearer};
 use maidan_types::EventFilter;
 use serde::Deserialize;
 use tokio::{
@@ -43,6 +44,8 @@ const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Deserialize)]
 pub struct SubscribeFrame {
+    #[serde(default)]
+    pub token: Option<String>,
     pub filter: EventFilter,
 }
 
@@ -51,7 +54,7 @@ pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> i
 }
 
 async fn run(mut socket: WebSocket, state: AppState) {
-    let filter = match read_subscribe(&mut socket).await {
+    let filter = match read_subscribe(&mut socket, &state).await {
         Ok(f) => f,
         Err((code, reason)) => {
             let _ = socket
@@ -139,7 +142,10 @@ async fn run(mut socket: WebSocket, state: AppState) {
     bus_task.abort();
 }
 
-async fn read_subscribe(socket: &mut WebSocket) -> Result<EventFilter, (u16, String)> {
+async fn read_subscribe(
+    socket: &mut WebSocket,
+    state: &AppState,
+) -> Result<EventFilter, (u16, String)> {
     let frame = timeout(FIRST_FRAME_TIMEOUT, socket.next())
         .await
         .map_err(|_| (1002u16, "subscribe frame timeout".to_string()))?;
@@ -154,5 +160,19 @@ async fn read_subscribe(socket: &mut WebSocket) -> Result<EventFilter, (u16, Str
 
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
+
+    if !state.auth_disabled {
+        let secret = sub
+            .token
+            .as_deref()
+            .filter(|t| !t.is_empty())
+            .ok_or_else(|| (1008u16, "missing token in subscribe frame".to_string()))?;
+        let ctx = resolve_bearer(state.store.as_ref(), secret)
+            .await
+            .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
+        ctx.require_capability(EVENT_SUBSCRIBE)
+            .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
+    }
+
     Ok(sub.filter)
 }

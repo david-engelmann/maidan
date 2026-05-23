@@ -50,7 +50,7 @@ async fn spawn_server() -> Option<(
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(store, artifacts, bus, search));
+    let app = router(AppState::new(store, artifacts, bus, search, true));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

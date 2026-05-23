@@ -22,6 +22,7 @@ maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
+maidan-auth = { path = "../maidan-auth" }
 maidan-mcp = { path = "../maidan-mcp" }
 maidan-search = { path = "../maidan-search" }
 maidan-observability = { path = "../maidan-observability" }

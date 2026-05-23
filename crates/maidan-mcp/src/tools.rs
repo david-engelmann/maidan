@@ -7,12 +7,29 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
 use maidan_artifacts::ArtifactStore;
+use maidan_auth::capability::{
+    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE,
+};
+use maidan_auth::AuthContext;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::error::McpError;
+
+pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
+    match name {
+        "list_channels" | "list_threads" | "list_messages" | "get_artifact_metadata" => {
+            Ok(WORKSPACE_READ)
+        }
+        "post_message" => Ok(MESSAGE_POST),
+        "record_mention" | "cast_vote" | "add_reference" => Ok(WORKSPACE_WRITE),
+        "upload_artifact" => Ok(ARTIFACT_UPLOAD),
+        "search_messages" => Ok(SEARCH_QUERY),
+        other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
+    }
+}
 
 /// Catalog of every tool the MCP server exposes. The JSON-RPC client
 /// receives this verbatim in the `tools/list` response.
@@ -154,6 +171,7 @@ pub async fn dispatch(
     store: &Arc<dyn Store>,
     artifacts: &Arc<dyn ArtifactStore>,
     search: &Arc<dyn maidan_search::Search>,
+    _auth: &AuthContext,
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {

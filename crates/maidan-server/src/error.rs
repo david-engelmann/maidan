@@ -37,6 +37,8 @@ pub enum ApiError {
     NotFound,
     Conflict(String),
     BadRequest(String),
+    Unauthorized,
+    Forbidden(String),
     Internal(String),
 }
 
@@ -46,6 +48,8 @@ impl ApiError {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -55,6 +59,8 @@ impl ApiError {
             Self::NotFound => "Not Found",
             Self::Conflict(_) => "Conflict",
             Self::BadRequest(_) => "Bad Request",
+            Self::Unauthorized => "Unauthorized",
+            Self::Forbidden(_) => "Forbidden",
             Self::Internal(_) => "Internal Server Error",
         }
     }
@@ -62,7 +68,11 @@ impl ApiError {
     fn detail(&self) -> String {
         match self {
             Self::NotFound => "the requested resource does not exist".to_string(),
-            Self::Conflict(msg) | Self::BadRequest(msg) | Self::Internal(msg) => msg.clone(),
+            Self::Unauthorized => "missing or invalid bearer token".to_string(),
+            Self::Conflict(msg)
+            | Self::BadRequest(msg)
+            | Self::Forbidden(msg)
+            | Self::Internal(msg) => msg.clone(),
         }
     }
 
@@ -71,7 +81,20 @@ impl ApiError {
             Self::NotFound => "https://maidan.dev/problems/not-found",
             Self::Conflict(_) => "https://maidan.dev/problems/conflict",
             Self::BadRequest(_) => "https://maidan.dev/problems/bad-request",
+            Self::Unauthorized => "https://maidan.dev/problems/unauthorized",
+            Self::Forbidden(_) => "https://maidan.dev/problems/forbidden",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
+        }
+    }
+}
+
+impl From<maidan_auth::AuthError> for ApiError {
+    fn from(err: maidan_auth::AuthError) -> Self {
+        use maidan_auth::AuthError;
+        match err {
+            AuthError::Unauthorized => Self::Unauthorized,
+            AuthError::Forbidden(msg) => Self::Forbidden(msg),
+            AuthError::Store(e) => e.into(),
         }
     }
 }
