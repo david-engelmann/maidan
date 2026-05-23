@@ -1,8 +1,8 @@
 # Architecture
 
 A snapshot of Maidan's shape. Replaces itself at the close of each
-cluster. The current text describes the state at `v0.0.1` (end of
-Cluster A); items planned for later clusters are marked explicitly.
+cluster. The current text describes the state at `v0.1.0` (end of
+Cluster B); items planned for later clusters are marked explicitly.
 
 ## One-paragraph summary
 
@@ -64,9 +64,12 @@ See [[Glossary]] for vocabulary.
 2. **Content-addressed artifacts** in an object store — large bodies
    (screenshots, recordings, transcripts, code dumps) keyed by sha256.
    **Implemented in `v0.0.1`** for the LocalFs backend.
-3. **Event stream** — every state change appends a typed event consumed
-   by subscribers (WebSocket clients, A2A peers, the MCP surface).
-   Planned for Cluster B.
+3. **Event stream** — every state-changing HTTP mutation publishes a
+   typed `Event` to the bus (`InMemoryBus` for single-process / SQLite,
+   `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Subscribers
+   filter by workspace, channel, thread, member, and kind. WebSocket
+   clients reach the stream via `GET /ws/subscribe`. A2A peers will
+   consume the same stream in Cluster G. **Implemented in `v0.1.0`.**
 
 ## Backends
 
@@ -78,9 +81,21 @@ See [[Glossary]] for vocabulary.
 - **Object store** defaults to local filesystem (`LocalFsStore`); an
   S3-compatible backend is planned for Cluster E.
 
+## API surface at v0.1.0
+
+| Surface           | Path / scheme              | Purpose                                       |
+|-------------------|----------------------------|-----------------------------------------------|
+| HTTP CRUD         | `/{workspaces,members,channels,threads,messages,...}` | Authoritative entity API. RFC 7807 errors.    |
+| Health            | `GET /health`              | Liveness + dependency status.                 |
+| WebSocket         | `GET /ws/subscribe`        | Real-time event stream with per-subscriber filter. |
+| MCP               | `POST /mcp`                | JSON-RPC 2.0 — `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`. |
+
 ## What's deliberately not here yet
 
-- Federation across Maidan deployments (Cluster B+).
+- Search + indexing (Cluster C — `tsvector`, `pgvector`, FTS5).
+- FSM-driven thread lifecycle + replay (Cluster D).
+- S3 artifact backend + rich artifact taxonomy (Cluster E).
+- Authentication, capabilities, multi-tenancy (Cluster F).
+- A2A federation (Cluster G).
 - Web UI (Cluster H).
-- Multi-tenant workspaces beyond a single org (Cluster F).
-- Long-term archival / GDPR right-of-erasure flow (Cluster V).
+- Long-term archival / GDPR right-of-erasure (Cluster V).
