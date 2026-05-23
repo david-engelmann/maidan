@@ -35,7 +35,8 @@ tags; they raise the bar each time they ship.
 
 Clusters A, B, C, D complete. See [[Retros/Cluster A]],
 [[Retros/Cluster B]], [[Retros/Cluster C]], [[Retros/Cluster D]].
-Cluster E (artifact substrate) is next.
+**Cluster E** (artifact substrate) is in progress — see
+[[Clusters/Cluster E]].
 
 ## Closing a cluster
 
