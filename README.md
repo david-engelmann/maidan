@@ -6,26 +6,23 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A + B complete. Current release:
-[`v0.1.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.1.0).
-See [`docs/Retros/Cluster B.md`](docs/Retros/Cluster%20B.md) for what
+Pre-alpha. Clusters A + B + C complete. Current release:
+[`v0.2.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.2.0).
+See [`docs/Retros/Cluster C.md`](docs/Retros/Cluster%20C.md) for what
 just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster C — search + indexing).
+(Cluster D — FSM thread lifecycle).
 
-## What's in `v0.1.0`
+## What's in `v0.2.0`
 
-- Everything in `v0.0.1` (workspace, schema, artifact store, `/health`,
-  Docker + k8s).
-- HTTP CRUD for workspaces, members, channels, threads, messages,
-  mentions, votes, references — with RFC 7807 problem+json errors.
-- Event bus: tokio broadcast for SQLite / single-node, Postgres
-  `LISTEN`/`NOTIFY` for multi-process. Every mutation publishes.
-- `GET /ws/subscribe` WebSocket — filter handshake, JSON event
-  stream, ping/pong keepalive, bounded backpressure.
-- `POST /mcp` Model Context Protocol surface — 7 tools, 3 resource
-  URI patterns, JSON-RPC 2.0.
-- GitHub Actions CI: lint + secrets + test + integration + e2e all
-  required on `main`; multi-arch ghcr.io images published on tag.
+- Everything in `v0.1.0` (HTTP CRUD, event bus, WebSocket, MCP,
+  Docker + k8s, CI).
+- Lexical search over messages — Postgres `tsvector` + GIN, SQLite
+  FTS5 — both with `<mark>`-wrapped snippets.
+- Semantic search on Postgres via `pgvector` (1024-d HNSW cosine).
+- `GET /workspaces/:wid/search` HTTP route and MCP `search_messages`
+  tool, both backed by the same `Search` impl.
+- Bus-driven background indexer with reconnect backoff and a
+  pluggable `EventHandler` for future embedding generation.
 
 Full capability list: [`docs/Capabilities.md`](docs/Capabilities.md).
 
