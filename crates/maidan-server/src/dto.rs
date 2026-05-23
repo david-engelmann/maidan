@@ -4,8 +4,9 @@
 //! independently of the storage layer (e.g., omitting `workspace_id` in
 //! a nested route in favor of the path parameter).
 
-use maidan_types::{ArtifactKind, MemberKind, RefSide};
-use serde::Deserialize;
+use chrono::{DateTime, Utc};
+use maidan_types::{ApiTokenId, ArtifactKind, MemberId, MemberKind, RefSide, WorkspaceId};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateWorkspace {
@@ -113,4 +114,22 @@ pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
     pub uploaded_by: Option<uuid::Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MintApiToken {
+    pub label: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MintApiTokenResponse {
+    pub id: ApiTokenId,
+    pub secret: String,
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
 }

@@ -5,6 +5,7 @@
 //! it through `reqwest` against a real listener.
 
 pub mod app;
+pub mod auth;
 pub mod config;
 pub mod dto;
 pub mod error;

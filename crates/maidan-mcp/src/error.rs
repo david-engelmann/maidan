@@ -18,6 +18,12 @@ pub enum McpError {
 
     #[error("not found")]
     NotFound,
+
+    #[error("unauthorized")]
+    Unauthorized,
+
+    #[error("forbidden: {0}")]
+    Forbidden(String),
 }
 
 impl McpError {
@@ -43,6 +49,27 @@ impl McpError {
                 message: "resource not found".into(),
                 data: None,
             },
+            Self::Unauthorized => JsonRpcError {
+                code: -32001,
+                message: "unauthorized".into(),
+                data: None,
+            },
+            Self::Forbidden(msg) => JsonRpcError {
+                code: -32003,
+                message: format!("forbidden: {msg}"),
+                data: None,
+            },
+        }
+    }
+}
+
+impl From<maidan_auth::AuthError> for McpError {
+    fn from(err: maidan_auth::AuthError) -> Self {
+        use maidan_auth::AuthError;
+        match err {
+            AuthError::Unauthorized => Self::Unauthorized,
+            AuthError::Forbidden(msg) => Self::Forbidden(msg),
+            AuthError::Store(e) => Self::Internal(e.to_string()),
         }
     }
 }

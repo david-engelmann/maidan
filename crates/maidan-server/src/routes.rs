@@ -8,10 +8,17 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
+    Extension, Json,
 };
 use chrono::Utc;
 use maidan_artifacts::Sha256;
+use maidan_auth::{
+    capability::{
+        self, ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION, TOKEN_ADMIN,
+        WORKSPACE_READ, WORKSPACE_WRITE,
+    },
+    hash_secret, AuthContext, TokenSecret,
+};
 use maidan_fsm::ThreadAction;
 use maidan_store::Store;
 use maidan_types::*;
@@ -21,6 +28,14 @@ use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
+
+fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
+    auth.require_capability(capability).map_err(Into::into)
+}
+
+fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
+    auth.ensure_workspace(workspace_id).map_err(Into::into)
+}
 
 async fn workspace_for_thread(
     store: &dyn Store,
@@ -63,20 +78,28 @@ pub async fn create_workspace(
 
 pub async fn get_workspace(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Workspace>> {
-    Ok(Json(state.store.get_workspace(WorkspaceId(id)).await?))
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(state.store.get_workspace(workspace_id).await?))
 }
 
 pub async fn list_events(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
     Query(q): Query<ListEventsQuery>,
 ) -> ApiResult<Json<Vec<StoredEvent>>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
     Ok(Json(
         state
             .store
-            .list_events_after(WorkspaceId(workspace_id), q.after_id, q.limit)
+            .list_events_after(workspace_id, q.after_id, q.limit)
             .await?,
     ))
 }
@@ -111,25 +134,35 @@ pub async fn create_member(
 
 pub async fn list_members(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Member>>> {
-    Ok(Json(
-        state.store.list_members(WorkspaceId(workspace_id)).await?,
-    ))
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(state.store.list_members(workspace_id).await?))
 }
 
 pub async fn get_member(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Member>> {
-    Ok(Json(state.store.get_member(MemberId(id)).await?))
+    let member = state.store.get_member(MemberId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    Ok(Json(member))
 }
 
 pub async fn list_mentions_for_member(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
     Query(q): Query<ListMentionsQuery>,
 ) -> ApiResult<Json<Vec<Mention>>> {
+    let member = state.store.get_member(MemberId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, member.workspace_id)?;
     Ok(Json(
         state
             .store
@@ -142,13 +175,17 @@ pub async fn list_mentions_for_member(
 
 pub async fn create_channel(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateChannel>,
 ) -> ApiResult<(StatusCode, Json<Channel>)> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
     let c = state
         .store
         .create_channel(NewChannel {
-            workspace_id: WorkspaceId(workspace_id),
+            workspace_id,
             name: body.name,
             topic: body.topic,
             private: body.private,
@@ -158,7 +195,7 @@ pub async fn create_channel(
         &state,
         Event::ChannelCreated {
             occurred_at: Utc::now(),
-            workspace_id: WorkspaceId(workspace_id),
+            workspace_id,
             channel: c.clone(),
         },
     )
@@ -168,28 +205,37 @@ pub async fn create_channel(
 
 pub async fn list_channels(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Channel>>> {
-    Ok(Json(
-        state.store.list_channels(WorkspaceId(workspace_id)).await?,
-    ))
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(state.store.list_channels(workspace_id).await?))
 }
 
 pub async fn get_channel(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Channel>> {
-    Ok(Json(state.store.get_channel(ChannelId(id)).await?))
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    Ok(Json(channel))
 }
 
 // --- threads ---
 
 pub async fn create_thread(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(channel_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
     let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
     let t = state
         .store
         .create_thread(NewThread {
@@ -213,23 +259,34 @@ pub async fn create_thread(
 
 pub async fn list_threads(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(channel_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Thread>>> {
+    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
     Ok(Json(state.store.list_threads(ChannelId(channel_id)).await?))
 }
 
 pub async fn get_thread(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
-    Ok(Json(state.store.get_thread(ThreadId(id)).await?))
+    let thread = state.store.get_thread(ThreadId(id)).await?;
+    let channel = state.store.get_channel(thread.channel_id).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    Ok(Json(thread))
 }
 
 pub async fn transition_thread(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<TransitionThread>,
 ) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
     let action = ThreadAction::parse(&body.action).ok_or_else(|| {
         ApiError::BadRequest(format!(
             "unknown action {:?}; expected start_review, close, or archive",
@@ -238,6 +295,7 @@ pub async fn transition_thread(
     })?;
     let thread_id = ThreadId(id);
     let (workspace_id, channel_id) = workspace_for_thread(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, workspace_id)?;
     let result = state
         .store
         .transition_thread(thread_id, MemberId(body.actor_id), action)
@@ -263,11 +321,14 @@ pub async fn transition_thread(
 
 pub async fn post_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(thread_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
+    cap(&auth, MESSAGE_POST)?;
     let (workspace_id, channel_id) =
         workspace_for_thread(state.store.as_ref(), ThreadId(thread_id)).await?;
+    ensure_workspace(&auth, workspace_id)?;
     let m = state
         .store
         .post_message(NewMessage {
@@ -293,9 +354,13 @@ pub async fn post_message(
 
 pub async fn list_messages(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(thread_id): Path<uuid::Uuid>,
     Query(q): Query<ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
+    let (workspace_id, _) = workspace_for_thread(state.store.as_ref(), ThreadId(thread_id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
     Ok(Json(
         state
             .store
@@ -306,17 +371,24 @@ pub async fn list_messages(
 
 pub async fn get_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Message>> {
+    let (workspace_id, _, _) = chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
 pub async fn tombstone_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let (workspace_id, channel_id, thread_id) =
         chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
     state.store.tombstone_message(MessageId(id)).await?;
     publish(
         &state,
@@ -334,11 +406,14 @@ pub async fn tombstone_message(
 
 pub async fn create_mention(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
     let (workspace_id, _channel_id, thread_id) =
         chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
     state
         .store
         .record_mention(MessageId(message_id), MemberId(body.member_id))
@@ -361,11 +436,14 @@ pub async fn create_mention(
 
 pub async fn cast_vote(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
     let (workspace_id, _channel_id, thread_id) =
         chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
     state
         .store
         .cast_vote(NewVote {
@@ -391,8 +469,13 @@ pub async fn cast_vote(
 
 pub async fn list_votes(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Vote>>> {
+    let (workspace_id, _, _) =
+        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
     Ok(Json(
         state
             .store
@@ -405,9 +488,11 @@ pub async fn list_votes(
 
 pub async fn upload_artifact(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Query(q): Query<UploadArtifactQuery>,
     body: Bytes,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
+    cap(&auth, ARTIFACT_UPLOAD)?;
     if body.is_empty() {
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
@@ -435,8 +520,10 @@ pub async fn upload_artifact(
 
 pub async fn get_artifact(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(sha_hex): Path<String>,
 ) -> ApiResult<Response> {
+    cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let meta = state.store.get_artifact_by_sha(&sha_hex).await?;
     let bytes = state.artifacts.get(&sha).await?;
@@ -455,8 +542,10 @@ pub async fn get_artifact(
 
 pub async fn get_artifact_metadata(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(sha_hex): Path<String>,
 ) -> ApiResult<Json<Artifact>> {
+    cap(&auth, WORKSPACE_READ)?;
     Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     Ok(Json(state.store.get_artifact_by_sha(&sha_hex).await?))
 }
@@ -465,8 +554,10 @@ pub async fn get_artifact_metadata(
 
 pub async fn create_reference(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     ApiJson(body): ApiJson<CreateReference>,
 ) -> ApiResult<(StatusCode, Json<Reference>)> {
+    cap(&auth, WORKSPACE_WRITE)?;
     let r = state
         .store
         .add_reference(NewReference {
@@ -490,8 +581,10 @@ pub async fn create_reference(
 
 pub async fn list_references(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Query(q): Query<ListReferencesQuery>,
 ) -> ApiResult<Json<Vec<Reference>>> {
+    cap(&auth, WORKSPACE_READ)?;
     Ok(Json(
         state
             .store
@@ -504,15 +597,84 @@ pub async fn list_references(
 
 pub async fn search_messages(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<Vec<maidan_search::SearchHit>>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, SEARCH_QUERY)?;
+    ensure_workspace(&auth, workspace_id)?;
     Ok(Json(
         state
             .search
-            .search_messages(WorkspaceId(workspace_id), &q.q, q.limit)
+            .search_messages(workspace_id, &q.q, q.limit)
             .await?,
     ))
+}
+
+// --- api tokens ---
+
+pub async fn mint_api_token(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((workspace_id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiJson(body): ApiJson<MintApiToken>,
+) -> ApiResult<(StatusCode, Json<MintApiTokenResponse>)> {
+    let workspace_id = WorkspaceId(workspace_id);
+    let member_id = MemberId(member_id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+
+    let member = state.store.get_member(member_id).await?;
+    if member.workspace_id != workspace_id {
+        return Err(ApiError::BadRequest(
+            "member does not belong to workspace".into(),
+        ));
+    }
+
+    let capabilities = if body.capabilities.is_empty() {
+        capability::default_minted()
+    } else {
+        capability::validate_list(&body.capabilities).map_err(ApiError::BadRequest)?;
+        body.capabilities
+    };
+
+    let secret = TokenSecret::generate();
+    let record = state
+        .store
+        .create_api_token(NewApiToken {
+            workspace_id,
+            member_id,
+            token_hash: hash_secret(secret.as_str()),
+            label: body.label,
+            capabilities,
+            expires_at: body.expires_at,
+        })
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(MintApiTokenResponse {
+            id: record.id,
+            secret: secret.as_str().to_string(),
+            workspace_id: record.workspace_id,
+            member_id: record.member_id,
+            capabilities: record.capabilities,
+            expires_at: record.expires_at,
+        }),
+    ))
+}
+
+pub async fn revoke_api_token(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ApiToken>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let token_id = ApiTokenId(id);
+    let existing = state.store.get_api_token(token_id).await?;
+    ensure_workspace(&auth, existing.workspace_id)?;
+    Ok(Json(state.store.revoke_api_token(token_id).await?))
 }
 
 /// Fire-and-forget event publish. Errors are logged but never surfaced

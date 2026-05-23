@@ -110,7 +110,11 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(LoggingHandler::default())
     };
 
-    let state = AppState::new(store, artifacts, bus.clone(), search);
+    let auth_disabled = maidan_server::auth::auth_disabled_from_env();
+    if auth_disabled {
+        tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
+    }
+    let state = AppState::new(store, artifacts, bus.clone(), search, auth_disabled);
     let app = router(state);
 
     let indexer = Indexer::new(bus, indexer_handler).spawn();

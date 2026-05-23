@@ -80,6 +80,7 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
+    async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
 }
