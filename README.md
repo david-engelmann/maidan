@@ -6,11 +6,17 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A–G complete. Current release:
-[`v0.6.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.6.0)
-(pending tag after retro merge). See [`docs/Retros/Cluster G.md`](docs/Retros/Cluster%20G.md)
-for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster H — web UI + MCP stdio + production polish).
+Pre-alpha. Clusters A–H complete. Current release:
+[`v0.7.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.7.0)
+(pending tag after retro merge). See [`docs/Retros/Cluster H.md`](docs/Retros/Cluster%20H.md)
+for what just landed; [`docs/Production.md`](docs/Production.md) for deploy guidance;
+[`docs/Roadmap.md`](docs/Roadmap.md) for Cluster 1.0.
+
+## What's in `v0.7.0`
+
+- Everything in `v0.6.0`.
+- `maidan mcp-stdio`, `GET /mcp/stream` (SSE), browser UI at `/ui/`.
+- Graceful shutdown, request IDs, liveness/readiness health probes.
 
 ## What's in `v0.6.0`
 

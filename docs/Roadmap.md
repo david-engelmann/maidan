@@ -15,7 +15,7 @@ PRs tracked by the GitHub issues labelled with that cluster.
 | **E**   | Artifact substrate (S3, types, refs) | `v0.4.0` ✓ |
 | **F**   | Auth, workspaces, capabilities       | `v0.5.0` ✓ |
 | **G**   | Agent-to-Agent transport             | `v0.6.0` ✓ |
-| H       | Web UI + MCP stdio + polish          | `v0.7.0`   |
+| **H**   | Web UI + MCP stdio + polish          | `v0.7.0` ✓ |
 | **1.0** | Production gates met                 | `v1.0.0`   |
 
 ## Cross-cutting tracks
@@ -33,9 +33,9 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–G complete. See [[Retros/Cluster A]] through [[Retros/Cluster G]].
-**Cluster H** (web UI, MCP stdio, production polish) is in progress — see
-[[Clusters/Cluster H]].
+Clusters A–H complete. See [[Retros/Cluster A]] through [[Retros/Cluster H]].
+**Cluster 1.0** (production gates + semver freeze) is in progress — see
+[[Clusters/Cluster 1.0]].
 
 ## Closing a cluster
 

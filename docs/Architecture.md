@@ -153,7 +153,12 @@ See [[Glossary]] for vocabulary.
 - **Auth** — peer bearer (SHA-256) distinct from member API tokens; capabilities
   `federation:ingest` and `federation:admin`.
 
-## What's deliberately not here yet
+## At v0.7.0 (Cluster H)
 
-- Web UI (Cluster H).
+- **Web UI** — static `/ui/` event tail viewer.
+- **MCP stdio** — `maidan mcp-stdio` for desktop clients.
+- **SSE** — `GET /mcp/stream` for `event:subscribe` consumers.
+- **Ops** — graceful shutdown, `X-Request-Id`, `/health/live` + `/health/ready`.
+
+## What's deliberately not here yet
 - Long-term archival / GDPR right-of-erasure (Cluster V).

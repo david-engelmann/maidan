@@ -83,9 +83,10 @@ Updated at the close of each cluster. Items move from "open" to
 | S3 multipart for multi-GB blobs                          | Cluster T        |
 | Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
 
-## Cluster H backlog (web UI / production polish)
+## Cluster 1.0 backlog (production gates)
 
-In progress. Plan: [`docs/Clusters/Cluster H.md`](Clusters/Cluster%20H.md).
+In progress. Plan: [`docs/Clusters/Cluster 1.0.md`](Clusters/Cluster%201.0.md).
+Issues #98–#99.
 
 ### To Cluster H (web UI / production polish)
 
@@ -161,7 +162,7 @@ In progress. Plan: [`docs/Clusters/Cluster H.md`](Clusters/Cluster%20H.md).
   [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md).
 - **Cluster F** complete (`v0.5.0`). Retro:
   [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md).
-- **Cluster H** in progress — web UI + MCP stdio; see Cluster H plan.
+- **Cluster 1.0** in progress — production gates; see Cluster 1.0 plan.
 
 ## How to read this file
 

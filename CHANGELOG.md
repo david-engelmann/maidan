@@ -7,7 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster H (web UI + MCP stdio + production polish).
+Nothing yet. Next: Cluster 1.0 (production gates + semver freeze).
+
+## [0.7.0] — 2026-05-24
+
+End of Cluster H. Web UI, MCP stdio, SSE stream, production ergonomics.
+
+### Added
+
+- Graceful shutdown and `X-Request-Id` middleware.
+- `/health/live` and `/health/ready` probes.
+- `maidan mcp-stdio` CLI transport.
+- `GET /mcp/stream` SSE for subscribed events.
+- Minimal browser UI at `/ui/`.
+- `docs/Production.md`; `MAIDAN_ENV=production` forbids `AUTH_DISABLED`.
 
 ## [0.6.0] — 2026-05-24
 
