@@ -22,6 +22,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+maidan-auth = { path = "../maidan-auth" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }

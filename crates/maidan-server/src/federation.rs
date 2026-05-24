@@ -12,7 +12,8 @@ use axum::{
 use maidan_a2a::{FederatedEventBatch, FederationEnvelope, FederationError};
 use maidan_auth::{
     capability::{FEDERATION_ADMIN, FEDERATION_INGEST},
-    hash_secret, resolve_peer_bearer, AuthContext, TokenSecret,
+    decrypt_peer_secret, encrypt_peer_secret, hash_secret, resolve_peer_bearer, AuthContext,
+    TokenSecret,
 };
 use maidan_types::{Event, NewPeer, Peer, PeerId, WorkspaceId};
 use serde::Serialize;
@@ -64,6 +65,44 @@ pub fn forget_peer_secret(secrets: &Arc<RwLock<HashMap<PeerId, String>>>, peer_i
     if let Ok(mut guard) = secrets.write() {
         guard.remove(&peer_id);
     }
+}
+
+pub async fn hydrate_federation_secrets(state: &AppState) -> Result<(), String> {
+    let Some(key) = state.federation.encryption_key.as_deref() else {
+        return Ok(());
+    };
+    let peers = state
+        .store
+        .list_enabled_peers()
+        .await
+        .map_err(|e| e.to_string())?;
+    for peer in peers {
+        let Some(ciphertext) = peer.outbound_secret_ciphertext.as_deref() else {
+            continue;
+        };
+        match decrypt_peer_secret(ciphertext, key) {
+            Ok(secret) => remember_peer_secret(&state.federation.outbound_secrets, peer.id, secret),
+            Err(err) => tracing::warn!(
+                peer = %peer.id,
+                error = %err,
+                "failed to decrypt stored federation peer secret"
+            ),
+        }
+    }
+    Ok(())
+}
+
+pub fn resolve_outbound_secret(state: &AppState, peer: &Peer) -> Option<String> {
+    if let Ok(guard) = state.federation.outbound_secrets.read() {
+        if let Some(secret) = guard.get(&peer.id) {
+            return Some(secret.clone());
+        }
+    }
+    let ciphertext = peer.outbound_secret_ciphertext.as_deref()?;
+    let key = state.federation.encryption_key.as_deref()?;
+    let secret = decrypt_peer_secret(ciphertext, key).ok()?;
+    remember_peer_secret(&state.federation.outbound_secrets, peer.id, secret.clone());
+    Some(secret)
 }
 
 pub async fn ingest_events(
@@ -287,6 +326,13 @@ pub async fn create_peer(
     maidan_a2a::validate_base_url(&body.base_url).map_err(federation_err)?;
 
     let secret = TokenSecret::generate();
+    let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
+        ApiError::Internal(
+            "FEDERATION_ENCRYPTION_KEY must be set to create federation peers".into(),
+        )
+    })?;
+    let outbound_secret_ciphertext =
+        encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
     let peer = state
         .store
         .create_peer(NewPeer {
@@ -294,10 +340,11 @@ pub async fn create_peer(
             name: body.name,
             base_url: body.base_url,
             token_hash: hash_secret(secret.as_str()),
+            outbound_secret_ciphertext: Some(outbound_secret_ciphertext),
         })
         .await?;
     remember_peer_secret(
-        &state.federation_secrets,
+        &state.federation.outbound_secrets,
         peer.id,
         secret.as_str().to_string(),
     );
@@ -337,7 +384,7 @@ pub async fn delete_peer(
         return Err(ApiError::NotFound);
     }
     state.store.delete_peer(peer_id).await?;
-    forget_peer_secret(&state.federation_secrets, peer_id);
+    forget_peer_secret(&state.federation.outbound_secrets, peer_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
