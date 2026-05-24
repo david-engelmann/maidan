@@ -4,12 +4,13 @@
 //! 1. Client opens `GET /ws/subscribe` and upgrades.
 //! 2. Client sends one text frame with a JSON [`SubscribeFrame`] body.
 //! 3. Server attaches a bus subscriber with the requested filter and
-//!    starts streaming matching events as text frames (one event per
-//!    frame, JSON-encoded).
-//! 4. Server pings every 30 s; if the client hasn't responded within
+//!    streams matching events as text frames (one JSON object per frame).
+//!    Each event frame includes `log_id` (persistent `maidan_events.id`)
+//!    plus the usual externally-tagged event fields.
+//! 4. When the subscriber lags the broadcast buffer, the server sends a
+//!    `replay_hint` frame with `after_id` for `GET /workspaces/:wid/events`.
+//! 5. Server pings every 30 s; if the client hasn't responded within
 //!    `PONG_TIMEOUT` the server closes with code 1011.
-//! 5. Slow consumers that overflow the bounded mpsc channel get closed
-//!    with code 1011 ("server overloaded").
 //!
 //! Close codes used:
 //! - 1000 normal client-initiated close
@@ -28,8 +29,9 @@ use axum::{
 };
 use futures::StreamExt;
 use maidan_auth::{capability::EVENT_SUBSCRIBE, resolve_bearer};
+use maidan_bus::BusItem;
 use maidan_types::EventFilter;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::{
     sync::mpsc,
     time::{timeout, Instant},
@@ -47,6 +49,18 @@ pub struct SubscribeFrame {
     #[serde(default)]
     pub token: Option<String>,
     pub filter: EventFilter,
+}
+
+#[derive(Debug, Serialize)]
+struct ReplayHint {
+    #[serde(rename = "type")]
+    frame_type: &'static str,
+    skipped: u64,
+    after_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<uuid::Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replay: Option<String>,
 }
 
 pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -67,7 +81,7 @@ async fn run(mut socket: WebSocket, state: AppState) {
         }
     };
 
-    let mut subscriber = match state.bus.subscribe(filter).await {
+    let mut subscriber = match state.bus.subscribe(filter.clone()).await {
         Ok(s) => s,
         Err(err) => {
             tracing::warn!(error = %err, "bus subscribe failed");
@@ -84,17 +98,48 @@ async fn run(mut socket: WebSocket, state: AppState) {
     let (tx, mut rx) = mpsc::channel::<WsMessage>(SEND_QUEUE);
 
     let bus_tx = tx.clone();
+    let replay_workspace = filter.workspace_id;
     let bus_task = tokio::spawn(async move {
-        while let Some(event) = subscriber.next().await {
-            let payload = match serde_json::to_string(&event) {
-                Ok(p) => p,
-                Err(err) => {
-                    tracing::warn!(error = %err, "drop unserializable event");
-                    continue;
+        let mut last_log_id: i64 = 0;
+        while let Some(item) = subscriber.next().await {
+            match item {
+                BusItem::Event(envelope) => {
+                    last_log_id = envelope.log_id;
+                    let payload = match serde_json::to_string(envelope.as_ref()) {
+                        Ok(p) => p,
+                        Err(err) => {
+                            tracing::warn!(error = %err, "drop unserializable event");
+                            continue;
+                        }
+                    };
+                    if bus_tx.send(WsMessage::Text(payload)).await.is_err() {
+                        break;
+                    }
                 }
-            };
-            if bus_tx.send(WsMessage::Text(payload)).await.is_err() {
-                break;
+                BusItem::Lagged { skipped } => {
+                    let hint = ReplayHint {
+                        frame_type: "replay_hint",
+                        skipped,
+                        after_id: last_log_id,
+                        workspace_id: replay_workspace.map(|w| w.0),
+                        replay: replay_workspace.map(|w| {
+                            format!(
+                                "/workspaces/{}/events?after_id={last_log_id}&limit=100",
+                                w.0
+                            )
+                        }),
+                    };
+                    let payload = match serde_json::to_string(&hint) {
+                        Ok(p) => p,
+                        Err(err) => {
+                            tracing::warn!(error = %err, "drop replay_hint");
+                            continue;
+                        }
+                    };
+                    if bus_tx.send(WsMessage::Text(payload)).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     });

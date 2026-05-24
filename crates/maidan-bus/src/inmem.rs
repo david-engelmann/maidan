@@ -7,7 +7,9 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use maidan_types::{Event, EventFilter};
+use maidan_types::{BusEnvelope, EventFilter};
+
+use crate::item::BusItem;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 
@@ -17,7 +19,7 @@ use crate::traits::EventBus;
 
 #[derive(Debug, Clone)]
 pub struct InMemoryBus {
-    tx: broadcast::Sender<Event>,
+    tx: broadcast::Sender<BusEnvelope>,
 }
 
 impl InMemoryBus {
@@ -39,10 +41,10 @@ impl Default for InMemoryBus {
 
 #[async_trait]
 impl EventBus for InMemoryBus {
-    async fn publish(&self, event: Event) -> Result<(), BusError> {
+    async fn publish(&self, envelope: BusEnvelope) -> Result<(), BusError> {
         // `send` errors only when there are zero receivers; that is not
         // a failure for fire-and-forget pub/sub.
-        let _ = self.tx.send(event);
+        let _ = self.tx.send(envelope);
         Ok(())
     }
 
@@ -52,11 +54,13 @@ impl EventBus for InMemoryBus {
             let filter = filter.clone();
             async move {
                 match msg {
-                    Ok(event) if filter.matches(&event) => Some(event),
+                    Ok(envelope) if filter.matches_envelope(&envelope) => {
+                        Some(BusItem::Event(Box::new(envelope)))
+                    }
                     Ok(_) => None,
-                    Err(BroadcastStreamRecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "inmem bus subscriber lagged");
-                        None
+                    Err(BroadcastStreamRecvError::Lagged(skipped)) => {
+                        tracing::warn!(skipped, "inmem bus subscriber lagged");
+                        Some(BusItem::Lagged { skipped })
                     }
                 }
             }

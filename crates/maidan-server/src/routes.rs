@@ -696,10 +696,18 @@ pub async fn revoke_api_token(
 /// being temporarily unavailable should not turn a successful mutation
 /// into a 5xx.
 pub(crate) async fn publish(state: &AppState, event: Event) {
-    if let Err(err) = state.store.append_event(&event).await {
-        tracing::warn!(error = %err, "event log append failed");
-    }
-    if let Err(err) = state.bus.publish(event).await {
+    let stored = match state.store.append_event(&event).await {
+        Ok(row) => row,
+        Err(err) => {
+            tracing::warn!(error = %err, "event log append failed");
+            return;
+        }
+    };
+    let envelope = BusEnvelope {
+        log_id: stored.id,
+        event,
+    };
+    if let Err(err) = state.bus.publish(envelope).await {
         tracing::warn!(error = %err, "bus publish failed");
     }
 }

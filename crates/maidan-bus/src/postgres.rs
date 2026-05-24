@@ -11,7 +11,9 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use maidan_types::{Event, EventFilter};
+use maidan_types::{BusEnvelope, EventFilter};
+
+use crate::item::BusItem;
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
 use tokio::sync::broadcast;
@@ -31,7 +33,7 @@ const BROADCAST_CAP: usize = 1024;
 #[derive(Clone)]
 pub struct PostgresBus {
     pool: PgPool,
-    local: broadcast::Sender<Event>,
+    local: broadcast::Sender<BusEnvelope>,
     listener_health: Arc<ListenerHealth>,
 }
 
@@ -54,9 +56,9 @@ impl PostgresBus {
                 match listener.recv().await {
                     Ok(note) => {
                         health.record_ok();
-                        match serde_json::from_str::<Event>(note.payload()) {
-                            Ok(event) => {
-                                let _ = listener_tx.send(event);
+                        match serde_json::from_str::<BusEnvelope>(note.payload()) {
+                            Ok(envelope) => {
+                                let _ = listener_tx.send(envelope);
                             }
                             Err(e) => {
                                 tracing::warn!(error = %e, payload = note.payload(), "drop malformed event");
@@ -86,8 +88,8 @@ impl PostgresBus {
 
 #[async_trait]
 impl EventBus for PostgresBus {
-    async fn publish(&self, event: Event) -> Result<(), BusError> {
-        let payload = serde_json::to_string(&event)?;
+    async fn publish(&self, envelope: BusEnvelope) -> Result<(), BusError> {
+        let payload = serde_json::to_string(&envelope)?;
         if payload.len() > PAYLOAD_LIMIT {
             return Err(BusError::PayloadTooLarge(payload.len()));
         }
@@ -105,11 +107,13 @@ impl EventBus for PostgresBus {
             let filter = filter.clone();
             async move {
                 match msg {
-                    Ok(event) if filter.matches(&event) => Some(event),
+                    Ok(envelope) if filter.matches_envelope(&envelope) => {
+                        Some(BusItem::Event(Box::new(envelope)))
+                    }
                     Ok(_) => None,
-                    Err(BroadcastStreamRecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "pg bus subscriber lagged");
-                        None
+                    Err(BroadcastStreamRecvError::Lagged(skipped)) => {
+                        tracing::warn!(skipped, "pg bus subscriber lagged");
+                        Some(BusItem::Lagged { skipped })
                     }
                 }
             }

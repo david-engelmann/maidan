@@ -8,7 +8,8 @@ use chrono::Utc;
 use maidan_bus::{EventBus, InMemoryBus};
 use maidan_search::{Indexer, LoggingHandler};
 use maidan_types::{
-    ChannelId, Event, EventKind, MemberId, Message, MessageId, ThreadId, Workspace, WorkspaceId,
+    BusEnvelope, ChannelId, Event, EventKind, MemberId, Message, MessageId, ThreadId, Workspace,
+    WorkspaceId,
 };
 
 fn make_message(thread_id: ThreadId, author_id: MemberId, body: &str) -> Message {
@@ -37,13 +38,13 @@ async fn indexer_observes_message_posted_within_500ms() {
     let author = MemberId(uuid::Uuid::new_v4());
     let msg = make_message(th_id, author, "hello indexer");
 
-    bus.publish(Event::MessagePosted {
+    bus.publish(BusEnvelope::synthetic(Event::MessagePosted {
         occurred_at: Utc::now(),
         workspace_id: ws_id,
         channel_id: ch_id,
         thread_id: th_id,
         message: msg,
-    })
+    }))
     .await
     .unwrap();
 
@@ -62,7 +63,7 @@ async fn indexer_filters_out_non_message_events() {
     let indexer = Indexer::new(bus.clone(), handler.clone()).spawn();
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    bus.publish(Event::WorkspaceCreated {
+    bus.publish(BusEnvelope::synthetic(Event::WorkspaceCreated {
         occurred_at: Utc::now(),
         workspace: Workspace {
             id: WorkspaceId(uuid::Uuid::new_v4()),
@@ -71,17 +72,17 @@ async fn indexer_filters_out_non_message_events() {
             updated_at: Utc::now(),
             tombstoned_at: None,
         },
-    })
+    }))
     .await
     .unwrap();
 
-    bus.publish(Event::MessageTombstoned {
+    bus.publish(BusEnvelope::synthetic(Event::MessageTombstoned {
         occurred_at: Utc::now(),
         workspace_id: WorkspaceId(uuid::Uuid::new_v4()),
         channel_id: ChannelId(uuid::Uuid::new_v4()),
         thread_id: ThreadId(uuid::Uuid::new_v4()),
         message_id: MessageId(uuid::Uuid::new_v4()),
-    })
+    }))
     .await
     .unwrap();
 

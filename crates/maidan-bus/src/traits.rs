@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use maidan_types::{Event, EventFilter};
+use maidan_types::{BusEnvelope, EventFilter};
 
 use crate::error::BusError;
 use crate::stream::EventStream;
@@ -15,7 +15,7 @@ pub trait EventBus: Send + Sync {
     /// Publish an event to all matching subscribers. Returns once the
     /// event has been accepted by the backend (not once every subscriber
     /// has consumed it).
-    async fn publish(&self, event: Event) -> Result<(), BusError>;
+    async fn publish(&self, envelope: BusEnvelope) -> Result<(), BusError>;
 
     /// Subscribe with the given filter. Returns a stream of matching
     /// events for the lifetime of the subscription.

@@ -206,7 +206,7 @@ async fn spawn_server_with_postgres_bus() -> Option<(
         occurred_at: chrono::Utc::now(),
         workspace: ws,
     };
-    maidan_bus::EventBus::publish(bus.as_ref(), event)
+    maidan_bus::EventBus::publish(bus.as_ref(), maidan_types::BusEnvelope::synthetic(event))
         .await
         .expect("publish");
 

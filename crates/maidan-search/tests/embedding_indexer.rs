@@ -83,13 +83,15 @@ async fn embedding_handler_upserts_on_message_posted() {
         .await
         .expect("message");
 
-    bus.publish(maidan_types::Event::MessagePosted {
-        occurred_at: chrono::Utc::now(),
-        workspace_id: ws.id,
-        channel_id: ch.id,
-        thread_id: thread.id,
-        message: msg.clone(),
-    })
+    bus.publish(maidan_types::BusEnvelope::synthetic(
+        maidan_types::Event::MessagePosted {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws.id,
+            channel_id: ch.id,
+            thread_id: thread.id,
+            message: msg.clone(),
+        },
+    ))
     .await
     .expect("publish");
 

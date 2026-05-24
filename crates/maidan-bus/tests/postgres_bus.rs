@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use futures::StreamExt;
-use maidan_bus::{EventBus, PostgresBus};
-use maidan_types::*;
+use maidan_bus::{BusItem, EventBus, PostgresBus};
+use maidan_types::{BusEnvelope, *};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
@@ -55,7 +55,9 @@ async fn round_trip_through_listen_notify() {
         workspace: workspace.clone(),
     };
 
-    bus.publish(event.clone()).await.unwrap();
+    bus.publish(BusEnvelope::synthetic(event.clone()))
+        .await
+        .unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
         .await
@@ -64,7 +66,10 @@ async fn round_trip_through_listen_notify() {
 
     assert!(bus.listener_health().check().is_ok());
 
-    match received {
+    let BusItem::Event(received) = received else {
+        panic!("expected event item");
+    };
+    match received.event {
         Event::WorkspaceCreated { workspace: w, .. } => {
             assert_eq!(w.id, workspace.id);
             assert_eq!(w.name, "pg-test");
@@ -118,6 +123,9 @@ async fn publish_rejects_payload_too_large() {
         message: msg,
     };
 
-    let err = bus.publish(event).await.unwrap_err();
+    let err = bus
+        .publish(BusEnvelope::synthetic(event))
+        .await
+        .unwrap_err();
     assert!(matches!(err, maidan_bus::BusError::PayloadTooLarge(_)));
 }

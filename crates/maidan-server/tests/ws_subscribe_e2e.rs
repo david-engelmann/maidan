@@ -222,6 +222,88 @@ async fn subscribe_filters_by_kind() {
 }
 
 #[tokio::test]
+async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
+    use maidan_bus::EventBus;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(2));
+    let app = router(AppState::new(
+        store.clone(),
+        artifacts,
+        bus.clone(),
+        search,
+        true,
+        true,
+        Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        None,
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let req = format!("ws://{addr}/ws/subscribe")
+        .into_client_request()
+        .unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(json!({"filter": {}}).to_string()))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let ws_id = uuid::Uuid::new_v4();
+    for i in 0..12 {
+        bus.publish(maidan_types::BusEnvelope::synthetic(
+            maidan_types::Event::WorkspaceCreated {
+                occurred_at: chrono::Utc::now(),
+                workspace: maidan_types::Workspace {
+                    id: maidan_types::WorkspaceId(ws_id),
+                    name: format!("flood-{i}"),
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    tombstoned_at: None,
+                },
+            },
+        ))
+        .await
+        .unwrap();
+    }
+
+    let mut saw_hint = false;
+    let wait = async {
+        while let Some(Ok(msg)) = ws.next().await {
+            if let Message::Text(payload) = msg {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
+                    saw_hint = true;
+                    assert!(v["skipped"].as_u64().unwrap() > 0);
+                    assert!(v["after_id"].is_number());
+                    break;
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(2), wait)
+        .await
+        .expect("timeout waiting for replay_hint");
+    assert!(saw_hint);
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn subscribe_with_invalid_filter_closes_with_1008() {
     let (addr, _client, server, _dir) = spawn_server().await;
     let ws_url = format!("ws://{addr}/ws/subscribe");
