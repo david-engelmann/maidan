@@ -9,6 +9,8 @@ pub mod auth;
 pub mod config;
 pub mod dto;
 pub mod error;
+pub mod federation;
+pub mod federation_worker;
 pub mod health;
 pub mod mcp;
 pub mod routes;

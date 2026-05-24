@@ -17,6 +17,12 @@ pub enum FederationError {
         peer_id: PeerId,
         remote_event_id: i64,
     },
+
+    #[error("federation transport error: {0}")]
+    Transport(String),
+
+    #[error("unauthorized")]
+    Unauthorized,
 }
 
 #[cfg(test)]

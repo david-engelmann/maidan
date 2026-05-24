@@ -5,7 +5,7 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, health, mcp, routes, state::AppState, ws};
+use crate::{auth, federation, health, mcp, routes, state::AppState, ws};
 
 /// Build the axum [`Router`] with all routes wired up.
 ///
@@ -67,16 +67,33 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_reference).get(routes::list_references),
         )
         .route("/tokens/:id", delete(routes::revoke_api_token))
+        .route(
+            "/workspaces/:wid/peers",
+            post(federation::create_peer).get(federation::list_peers),
+        )
+        .route(
+            "/workspaces/:wid/peers/:pid",
+            delete(federation::delete_peer),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::middleware,
         ))
         .layer(TraceLayer::new_for_http());
 
+    let a2a = Router::new()
+        .route("/a2a/v1/events", post(federation::ingest_events))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            federation::peer_auth_middleware,
+        ));
+
     Router::new()
         .route("/health", get(health::handler))
+        .route("/.well-known/maidan.json", get(federation::well_known))
         .merge(bootstrap)
         .merge(ws_only)
+        .merge(a2a)
         .merge(protected)
         .with_state(state)
 }

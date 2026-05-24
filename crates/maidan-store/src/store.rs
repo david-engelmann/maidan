@@ -83,4 +83,28 @@ pub trait Store: Send + Sync {
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
+
+    async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError>;
+    async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError>;
+    async fn get_peer_by_token_hash(&self, token_hash: &str) -> Result<Peer, StoreError>;
+    async fn list_peers(&self, workspace_id: WorkspaceId) -> Result<Vec<Peer>, StoreError>;
+    async fn list_enabled_peers(&self) -> Result<Vec<Peer>, StoreError>;
+    async fn update_peer_cursor(
+        &self,
+        id: PeerId,
+        last_synced_event_id: i64,
+    ) -> Result<Peer, StoreError>;
+    async fn delete_peer(&self, id: PeerId) -> Result<(), StoreError>;
+    async fn federated_ingest_exists(
+        &self,
+        peer_id: PeerId,
+        remote_event_id: i64,
+    ) -> Result<bool, StoreError>;
+    async fn try_record_federated_ingest(
+        &self,
+        peer_id: PeerId,
+        remote_event_id: i64,
+        local_event_id: i64,
+    ) -> Result<bool, StoreError>;
+    async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError>;
 }

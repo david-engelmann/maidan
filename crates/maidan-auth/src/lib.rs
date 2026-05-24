@@ -10,5 +10,5 @@ pub mod token;
 pub use capability::*;
 pub use context::AuthContext;
 pub use error::AuthError;
-pub use resolve::resolve_bearer;
+pub use resolve::{resolve_bearer, resolve_peer_bearer};
 pub use token::{hash_secret, TokenSecret};

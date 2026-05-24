@@ -10,6 +10,7 @@ const POSTGRES_UP_V5: &str = include_str!("../../../migrations/postgres/0005_par
 const POSTGRES_UP_V6: &str = include_str!("../../../migrations/postgres/0006_event_log.sql");
 const POSTGRES_UP_V7: &str = include_str!("../../../migrations/postgres/0007_artifact_kinds.sql");
 const POSTGRES_UP_V8: &str = include_str!("../../../migrations/postgres/0008_api_tokens.sql");
+const POSTGRES_UP_V9: &str = include_str!("../../../migrations/postgres/0009_federation_peers.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V4: &str = include_str!("../../../migrations/sqlite/0004_thread_fsm.sql");
@@ -17,6 +18,7 @@ const SQLITE_UP_V5: &str = include_str!("../../../migrations/sqlite/0005_parent_
 const SQLITE_UP_V6: &str = include_str!("../../../migrations/sqlite/0006_event_log.sql");
 const SQLITE_UP_V7: &str = include_str!("../../../migrations/sqlite/0007_artifact_kinds.sql");
 const SQLITE_UP_V8: &str = include_str!("../../../migrations/sqlite/0008_api_tokens.sql");
+const SQLITE_UP_V9: &str = include_str!("../../../migrations/sqlite/0009_federation_peers.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -41,6 +43,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 6, POSTGRES_UP_V6).await?;
     apply_postgres(pool, 7, POSTGRES_UP_V7).await?;
     apply_postgres(pool, 8, POSTGRES_UP_V8).await?;
+    apply_postgres(pool, 9, POSTGRES_UP_V9).await?;
     Ok(())
 }
 
@@ -62,6 +65,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 6, SQLITE_UP_V6).await?;
     apply_sqlite(pool, 7, SQLITE_UP_V7).await?;
     apply_sqlite(pool, 8, SQLITE_UP_V8).await?;
+    apply_sqlite(pool, 9, SQLITE_UP_V9).await?;
     Ok(())
 }
 

@@ -124,6 +124,45 @@ pub struct MintApiToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreatePeer {
+    pub name: String,
+    pub base_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PeerResponse {
+    pub id: maidan_types::PeerId,
+    pub workspace_id: maidan_types::WorkspaceId,
+    pub name: String,
+    pub base_url: String,
+    pub enabled: bool,
+    pub last_synced_event_id: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<maidan_types::Peer> for PeerResponse {
+    fn from(p: maidan_types::Peer) -> Self {
+        Self {
+            id: p.id,
+            workspace_id: p.workspace_id,
+            name: p.name,
+            base_url: p.base_url,
+            enabled: p.enabled,
+            last_synced_event_id: p.last_synced_event_id,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct MintPeerResponse {
+    pub peer: PeerResponse,
+    pub secret: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct MintApiTokenResponse {
     pub id: ApiTokenId,

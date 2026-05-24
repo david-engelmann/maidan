@@ -297,6 +297,28 @@ pub struct NewApiToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Peer {
+    pub id: PeerId,
+    pub workspace_id: WorkspaceId,
+    pub name: String,
+    pub base_url: String,
+    #[serde(skip_serializing)]
+    pub token_hash: String,
+    pub enabled: bool,
+    pub last_synced_event_id: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewPeer {
+    pub workspace_id: WorkspaceId,
+    pub name: String,
+    pub base_url: String,
+    pub token_hash: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAuditEvent {
     pub actor_id: Option<MemberId>,

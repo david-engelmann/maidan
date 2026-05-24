@@ -114,11 +114,34 @@ async fn main() -> anyhow::Result<()> {
     if auth_disabled {
         tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
     }
-    let state = AppState::new(store, artifacts, bus.clone(), search, auth_disabled);
-    let app = router(state);
+    let federation_disabled = maidan_server::federation::federation_disabled_from_env();
+    if federation_disabled {
+        tracing::warn!("FEDERATION_DISABLED is set; federation worker not started");
+    }
+    let state = AppState::new(
+        store,
+        artifacts,
+        bus.clone(),
+        search,
+        auth_disabled,
+        federation_disabled,
+    );
+    let app = router(state.clone());
 
     let indexer = Indexer::new(bus, indexer_handler).spawn();
     tracing::info!("background indexer running");
+
+    let federation_worker = if federation_disabled {
+        None
+    } else {
+        tracing::info!(
+            secs = maidan_server::federation::poll_interval_secs_from_env(),
+            "federation worker running"
+        );
+        Some(maidan_server::federation_worker::FederationWorker::spawn(
+            state.clone(),
+        ))
+    };
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
@@ -127,6 +150,9 @@ async fn main() -> anyhow::Result<()> {
     let serve_result = axum::serve(listener, app).await.context("axum serve");
 
     indexer.shutdown().await;
+    if let Some(worker) = federation_worker {
+        worker.shutdown().await;
+    }
     serve_result?;
     Ok(())
 }
