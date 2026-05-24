@@ -7,7 +7,7 @@ Guidance for running Maidan at `v1.0.0` and later.
 | Endpoint          | Use        | Behavior                                      |
 |-------------------|------------|-----------------------------------------------|
 | `GET /health/live`  | Liveness   | Always `200` if the process is up.            |
-| `GET /health/ready` | Readiness  | `200` when DB + artifact store respond.       |
+| `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
 ## Environment

@@ -36,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let bus: Arc<dyn EventBus>;
     let search: Arc<dyn Search>;
     let use_embedding_indexer: bool;
+    let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
 
     match dialect {
         Dialect::Postgres => {
@@ -50,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
             let pg_bus = PostgresBus::connect(pool.clone())
                 .await
                 .context("connect postgres bus")?;
+            bus_listener_health = Some(pg_bus.listener_health());
             tracing::info!("event bus: postgres LISTEN/NOTIFY");
             tracing::info!("search: postgres tsvector");
             store = Arc::new(PostgresStore::new(pool.clone()));
@@ -72,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
             bus = Arc::new(InMemoryBus::new());
             search = Arc::new(SqliteSearch::new(pool));
             use_embedding_indexer = false;
+            bus_listener_health = None;
         }
     };
 
@@ -126,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         auth_disabled,
         federation_disabled,
         indexer_heartbeat.clone(),
+        bus_listener_health,
     );
     let app = router(state.clone());
 

@@ -22,9 +22,9 @@ Updated at the close of each cluster. Items move from "open" to
 - **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
   (#36 → `macos-13` for x86_64 darwin). Verify `v0.3.0` tag triggers
   a successful release before considering this resolved.
-- **PostgresBus background listener task lacks supervision.** If the
-  listener errors permanently, it sleeps 1s and retries forever —
-  but never surfaces the failure to `/health`. → Cluster T.
+- **PostgresBus listener recovery is best-effort.** `/health` reports
+  `bus: error` while the background task is in a retry loop; it clears
+  after the next successful `recv`.
 - **No coverage gate in CI.** Local + integration tests run, but no
   `≥ N%` threshold is enforced. → Cluster T (when
   `cargo-llvm-cov` lands as a CI job).

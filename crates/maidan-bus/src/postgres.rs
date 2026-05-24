@@ -17,7 +17,10 @@ use sqlx::PgPool;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 
+use std::sync::Arc;
+
 use crate::error::BusError;
+use crate::listener_health::ListenerHealth;
 use crate::stream::EventStream;
 use crate::traits::EventBus;
 
@@ -29,6 +32,7 @@ const BROADCAST_CAP: usize = 1024;
 pub struct PostgresBus {
     pool: PgPool,
     local: broadcast::Sender<Event>,
+    listener_health: Arc<ListenerHealth>,
 }
 
 impl PostgresBus {
@@ -39,22 +43,28 @@ impl PostgresBus {
         let (tx, _) = broadcast::channel(BROADCAST_CAP);
         let listener_tx = tx.clone();
         let listener_pool = pool.clone();
+        let listener_health = Arc::new(ListenerHealth::default());
 
         let mut listener = PgListener::connect_with(&listener_pool).await?;
         listener.listen(CHANNEL).await?;
 
+        let health = listener_health.clone();
         tokio::spawn(async move {
             loop {
                 match listener.recv().await {
-                    Ok(note) => match serde_json::from_str::<Event>(note.payload()) {
-                        Ok(event) => {
-                            let _ = listener_tx.send(event);
+                    Ok(note) => {
+                        health.record_ok();
+                        match serde_json::from_str::<Event>(note.payload()) {
+                            Ok(event) => {
+                                let _ = listener_tx.send(event);
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, payload = note.payload(), "drop malformed event");
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!(error = %e, payload = note.payload(), "drop malformed event");
-                        }
-                    },
+                    }
                     Err(e) => {
+                        health.record_error();
                         tracing::error!(error = %e, "pg listener errored; sleeping then retrying");
                         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     }
@@ -62,7 +72,15 @@ impl PostgresBus {
             }
         });
 
-        Ok(Self { pool, local: tx })
+        Ok(Self {
+            pool,
+            local: tx,
+            listener_health,
+        })
+    }
+
+    pub fn listener_health(&self) -> Arc<ListenerHealth> {
+        self.listener_health.clone()
     }
 }
 
