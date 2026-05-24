@@ -4,7 +4,7 @@ use std::{collections::HashSet, time::Duration};
 
 use chrono::Utc;
 use futures::StreamExt;
-use maidan_bus::{EventBus, InMemoryBus};
+use maidan_bus::{BusItem, EventBus, InMemoryBus};
 use maidan_types::*;
 
 fn workspace(name: &str) -> Workspace {
@@ -138,15 +138,17 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
     }
 
     for ev in &posted {
-        bus.publish(ev.clone()).await.unwrap();
+        bus.publish(BusEnvelope::synthetic(ev.clone()))
+            .await
+            .unwrap();
     }
 
     async fn collect(s: &mut maidan_bus::EventStream, n: usize) -> Vec<Event> {
         let mut out = Vec::new();
         let collect = async {
             while out.len() < n {
-                if let Some(e) = s.next().await {
-                    out.push(e);
+                if let Some(BusItem::Event(envelope)) = s.next().await {
+                    out.push(envelope.event);
                 } else {
                     break;
                 }
@@ -194,27 +196,54 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
 async fn publish_with_no_subscribers_does_not_error() {
     let bus = InMemoryBus::new();
     let ws = workspace("orphan");
-    bus.publish(Event::WorkspaceCreated {
+    bus.publish(BusEnvelope::synthetic(Event::WorkspaceCreated {
         occurred_at: Utc::now(),
         workspace: ws,
-    })
+    }))
     .await
     .unwrap();
 }
 
 #[tokio::test]
+async fn lagged_subscriber_receives_lagged_item() {
+    let bus = InMemoryBus::with_capacity(2);
+    let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
+    for i in 0..8 {
+        let ws = workspace(&format!("lag-{i}"));
+        bus.publish(BusEnvelope::synthetic(Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: ws,
+        }))
+        .await
+        .unwrap();
+    }
+    let mut saw_lagged = false;
+    let wait = async {
+        while let Some(item) = sub.next().await {
+            if matches!(item, BusItem::Lagged { .. }) {
+                saw_lagged = true;
+                break;
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(1), wait)
+        .await
+        .expect("timeout");
+    assert!(saw_lagged, "expected BusItem::Lagged after overflow");
+}
+
+#[tokio::test]
 async fn slow_subscriber_drops_events_but_stays_open() {
-    // Capacity 4: publish 8, never read; stream survives, lagged events
-    // are silently skipped (logged as a warning).
+    // Capacity 4: publish 8, never read; stream survives and may emit Lagged.
     let bus = InMemoryBus::with_capacity(4);
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
 
     for i in 0..8 {
         let ws = workspace(&format!("ws-{i}"));
-        bus.publish(Event::WorkspaceCreated {
+        bus.publish(BusEnvelope::synthetic(Event::WorkspaceCreated {
             occurred_at: Utc::now(),
             workspace: ws,
-        })
+        }))
         .await
         .unwrap();
     }
@@ -222,10 +251,12 @@ async fn slow_subscriber_drops_events_but_stays_open() {
     // Drain whatever remains in the channel; expect <= 4 events.
     let mut received = Vec::new();
     let drain = async {
-        while let Some(e) = sub.next().await {
-            received.push(e);
-            if received.len() >= 4 {
-                break;
+        while let Some(item) = sub.next().await {
+            if let BusItem::Event(envelope) = item {
+                received.push(envelope);
+                if received.len() >= 4 {
+                    break;
+                }
             }
         }
     };

@@ -213,6 +213,21 @@ impl Event {
     }
 }
 
+/// Event plus persistent log id from `maidan_events` (set on publish from the server).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusEnvelope {
+    pub log_id: i64,
+    #[serde(flatten)]
+    pub event: Event,
+}
+
+impl BusEnvelope {
+    /// For tests and direct bus use without a backing event log row.
+    pub fn synthetic(event: Event) -> Self {
+        Self { log_id: 0, event }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventFilter {
     pub workspace_id: Option<WorkspaceId>,
@@ -258,6 +273,10 @@ impl EventFilter {
     pub fn with_kinds<I: IntoIterator<Item = EventKind>>(mut self, kinds: I) -> Self {
         self.kinds = Some(kinds.into_iter().collect());
         self
+    }
+
+    pub fn matches_envelope(&self, envelope: &BusEnvelope) -> bool {
+        self.matches(&envelope.event)
     }
 
     pub fn matches(&self, event: &Event) -> bool {

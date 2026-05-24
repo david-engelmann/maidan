@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_bus::{EventBus, InMemoryBus};
+use maidan_bus::{BusItem, EventBus, InMemoryBus};
 use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{Event, EventFilter, EventKind};
@@ -105,8 +105,8 @@ async fn http_mutations_publish_matching_events() {
     let mut events: Vec<Event> = Vec::new();
     let collect = async {
         while events.len() < 5 {
-            if let Some(e) = subscriber.next().await {
-                events.push(e);
+            if let Some(BusItem::Event(envelope)) = subscriber.next().await {
+                events.push(envelope.event);
             } else {
                 break;
             }

@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_bus::{EventBus, InMemoryBus};
+use maidan_bus::{BusItem, EventBus, InMemoryBus};
 use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{Event, EventFilter, EventKind};
@@ -104,7 +104,10 @@ async fn transition_thread_publishes_thread_state_changed() {
         .await
         .expect("timeout waiting for ThreadStateChanged")
         .expect("subscriber ended without event");
-    match event {
+    let BusItem::Event(envelope) = event else {
+        panic!("expected event, got lag or end");
+    };
+    match envelope.event {
         Event::ThreadStateChanged {
             from_state,
             to_state,

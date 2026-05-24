@@ -156,14 +156,17 @@ async fn consume(
 ) -> ConsumeOutcome {
     loop {
         tokio::select! {
-            event = stream.next() => {
-                match event {
-                    Some(e) => {
-                        handler.handle(&e).await;
+            item = stream.next() => {
+                match item {
+                    Some(maidan_bus::BusItem::Event(envelope)) => {
+                        handler.handle(&envelope.event).await;
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
                             Ordering::Relaxed,
                         );
+                    }
+                    Some(maidan_bus::BusItem::Lagged { skipped }) => {
+                        warn!(skipped, "indexer bus subscriber lagged; events may be missing from the index");
                     }
                     None => return ConsumeOutcome::StreamEnded,
                 }
