@@ -11,6 +11,8 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 
 - [[Architecture]] — what the system is and how the pieces connect.
 - [[Roadmap]] — clusters from foundation to v1.0.
+- [[Post-1.0]] — tracks + optional minors after v1.0.0.
+- [[Tracks/README]] — cross-cutting tracks T–X.
 - [[Capabilities]] — running list of what Maidan can do, by release.
 - [[Conventions]] — branch, commit, and PR conventions.
 - [[Operations]] — daily commands, PR flow, cluster kickoff + close,
