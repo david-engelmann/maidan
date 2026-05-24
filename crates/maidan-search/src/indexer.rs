@@ -10,7 +10,13 @@
 //! The default [`LoggingHandler`] just observes events for metrics +
 //! tracing; tests can swap in any [`EventHandler`].
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use maidan_bus::{EventBus, EventStream};
@@ -89,7 +95,13 @@ impl Indexer {
     /// Spawn the indexer as a tokio task. The returned handle owns the
     /// `JoinHandle` and a shutdown signal; dropping it aborts the task.
     pub fn spawn(self) -> IndexerHandle {
+        self.spawn_with_heartbeat(Arc::new(AtomicI64::new(0)))
+    }
+
+    /// Like [`spawn`](Self::spawn) but exposes `last_event_unix_ms` for health probes.
+    pub fn spawn_with_heartbeat(self, last_event_unix_ms: Arc<AtomicI64>) -> IndexerHandle {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+        let heartbeat = last_event_unix_ms.clone();
         let join = tokio::spawn(async move {
             let mut backoff = RECONNECT_INITIAL;
             loop {
@@ -111,7 +123,8 @@ impl Indexer {
                 };
                 backoff = RECONNECT_INITIAL;
                 info!("indexer attached to bus");
-                let outcome = consume(stream, self.handler.as_ref(), &mut shutdown_rx).await;
+                let outcome =
+                    consume(stream, self.handler.as_ref(), &mut shutdown_rx, &heartbeat).await;
                 match outcome {
                     ConsumeOutcome::ShutdownRequested => return,
                     ConsumeOutcome::StreamEnded => {
@@ -123,6 +136,7 @@ impl Indexer {
         IndexerHandle {
             shutdown: shutdown_tx,
             join,
+            last_event_unix_ms,
         }
     }
 }
@@ -138,12 +152,19 @@ async fn consume(
     mut stream: EventStream,
     handler: &dyn EventHandler,
     shutdown_rx: &mut mpsc::Receiver<()>,
+    last_event_unix_ms: &AtomicI64,
 ) -> ConsumeOutcome {
     loop {
         tokio::select! {
             event = stream.next() => {
                 match event {
-                    Some(e) => handler.handle(&e).await,
+                    Some(e) => {
+                        handler.handle(&e).await;
+                        last_event_unix_ms.store(
+                            chrono::Utc::now().timestamp_millis(),
+                            Ordering::Relaxed,
+                        );
+                    }
                     None => return ConsumeOutcome::StreamEnded,
                 }
             }
@@ -158,6 +179,7 @@ async fn consume(
 pub struct IndexerHandle {
     shutdown: mpsc::Sender<()>,
     join: tokio::task::JoinHandle<()>,
+    pub last_event_unix_ms: Arc<AtomicI64>,
 }
 
 impl IndexerHandle {

@@ -33,14 +33,7 @@ async fn transition_thread_publishes_thread_state_changed() {
         .await
         .unwrap();
 
-    let app = router(AppState::new(
-        store,
-        artifacts,
-        bus.clone(),
-        search,
-        true,
-        true,
-    ));
+    let app = router(AppState::for_tests(store, artifacts, bus.clone(), search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

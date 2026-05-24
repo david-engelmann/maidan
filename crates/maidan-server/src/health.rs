@@ -2,7 +2,10 @@
 //! the server needs to be useful — currently the DB and the artifact
 //! store. Returns 200 only when both subsystems respond.
 
+use std::sync::atomic::Ordering;
+
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use chrono::{DateTime, Utc};
 use maidan_artifacts::Sha256;
 use serde::Serialize;
 
@@ -14,6 +17,8 @@ pub struct HealthResponse {
     pub status: &'static str,
     pub db: SubsystemStatus,
     pub storage: SubsystemStatus,
+    pub indexer: SubsystemStatus,
+    pub indexer_last_event_at: Option<DateTime<Utc>>,
     pub version: &'static str,
 }
 
@@ -49,12 +54,15 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
     };
 
     let storage = check_artifact_store(&state).await;
+    let (indexer, indexer_last_event_at) = check_indexer(&state);
 
-    let healthy = db.is_ok() && storage.is_ok();
+    let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok();
     let body = HealthResponse {
         status: if healthy { "ok" } else { "degraded" },
         db,
         storage,
+        indexer,
+        indexer_last_event_at,
         version: version(),
     };
     let code = if healthy {
@@ -63,6 +71,30 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         StatusCode::SERVICE_UNAVAILABLE
     };
     (code, Json(body))
+}
+
+fn check_indexer(state: &AppState) -> (SubsystemStatus, Option<DateTime<Utc>>) {
+    let ms = state.indexer_last_event_unix_ms.load(Ordering::Relaxed);
+    if ms == 0 {
+        return (SubsystemStatus::Ok, None);
+    }
+    let at = DateTime::from_timestamp_millis(ms);
+    let stale_secs = std::env::var("INDEXER_STALE_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if stale_secs > 0 {
+        let age_secs = (Utc::now().timestamp_millis() - ms) / 1000;
+        if age_secs > stale_secs {
+            return (
+                SubsystemStatus::Error(format!(
+                    "no indexer activity for {age_secs}s (threshold {stale_secs}s)"
+                )),
+                at,
+            );
+        }
+    }
+    (SubsystemStatus::Ok, at)
 }
 
 async fn check_artifact_store(state: &AppState) -> SubsystemStatus {

@@ -34,7 +34,7 @@ async fn http_post_drives_indexer() {
     let indexer = Indexer::new(bus.clone(), handler.clone()).spawn();
     tokio::time::sleep(Duration::from_millis(20)).await;
 
-    let app = router(AppState::new(store, artifacts, bus, search, true, true));
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

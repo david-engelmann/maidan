@@ -1,7 +1,7 @@
 //! Maidan server entrypoint. Loads config, applies migrations, wires the
 //! axum router, and binds to the configured address.
 
-use std::sync::Arc;
+use std::sync::{atomic::AtomicI64, Arc};
 
 use anyhow::Context;
 use maidan_artifacts::{LocalFsStore, S3Config, S3Store};
@@ -19,10 +19,9 @@ use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_env().context("load config from env")?;
 
-    tracing_subscriber::fmt()
-        .with_env_filter(&config.log_filter)
-        .with_target(false)
-        .init();
+    let mut obs_config = maidan_observability::Config::from_env();
+    obs_config.log_filter = config.log_filter.clone();
+    let obs_guard = maidan_observability::init(obs_config).context("init observability")?;
 
     tracing::info!(
         version = version(),
@@ -118,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
     if federation_disabled {
         tracing::warn!("FEDERATION_DISABLED is set; federation worker not started");
     }
+    let indexer_heartbeat = Arc::new(AtomicI64::new(0));
     let state = AppState::new(
         store,
         artifacts,
@@ -125,10 +125,11 @@ async fn main() -> anyhow::Result<()> {
         search,
         auth_disabled,
         federation_disabled,
+        indexer_heartbeat.clone(),
     );
     let app = router(state.clone());
 
-    let indexer = Indexer::new(bus, indexer_handler).spawn();
+    let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);
     tracing::info!("background indexer running");
 
     let federation_worker = if federation_disabled {
@@ -164,5 +165,6 @@ async fn main() -> anyhow::Result<()> {
         worker.shutdown().await;
     }
     serve_result?;
+    obs_guard.shutdown();
     Ok(())
 }

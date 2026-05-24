@@ -10,6 +10,10 @@ publish.workspace = true
 description = "OpenTelemetry + tracing setup for Maidan."
 
 [dependencies]
-tracing.workspace = true
-tracing-subscriber.workspace = true
+opentelemetry = "0.27"
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"] }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
 thiserror.workspace = true
+tracing.workspace = true
+tracing-opentelemetry = "0.28"
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
