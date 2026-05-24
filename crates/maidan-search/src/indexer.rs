@@ -123,13 +123,8 @@ impl Indexer {
                 };
                 backoff = RECONNECT_INITIAL;
                 info!("indexer attached to bus");
-                let outcome = consume(
-                    stream,
-                    self.handler.as_ref(),
-                    &mut shutdown_rx,
-                    &heartbeat,
-                )
-                .await;
+                let outcome =
+                    consume(stream, self.handler.as_ref(), &mut shutdown_rx, &heartbeat).await;
                 match outcome {
                     ConsumeOutcome::ShutdownRequested => return,
                     ConsumeOutcome::StreamEnded => {
