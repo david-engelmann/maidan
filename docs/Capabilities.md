@@ -5,7 +5,18 @@ PR prepends a new section so the latest is always at the top.
 
 ## v1.0.0 (target)
 
-Populated when Cluster 1.0 lands.
+Production gates documented; API treated as stable from this release onward.
+
+## v0.7.0 — Cluster H complete
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Graceful shutdown + `X-Request-Id`                      | `maidan-server`               |
+| `/health/live` + `/health/ready`                        | `maidan-server::health`       |
+| `maidan mcp-stdio`                                        | `maidan-cli`                  |
+| `GET /mcp/stream` (SSE)                                 | `maidan-server::mcp_stream`   |
+| Browser UI `/ui/`                                       | `maidan-server/static`        |
+| `docs/Production.md`                                    | docs                          |
 
 ## v0.6.0 — Cluster G complete
 
