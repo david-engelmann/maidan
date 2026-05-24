@@ -6,11 +6,16 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A–H complete. Current release:
-[`v0.7.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.7.0)
-(pending tag after retro merge). See [`docs/Retros/Cluster H.md`](docs/Retros/Cluster%20H.md)
-for what just landed; [`docs/Production.md`](docs/Production.md) for deploy guidance;
-[`docs/Roadmap.md`](docs/Roadmap.md) for Cluster 1.0.
+**v1.0.0** — production gates met. Clusters A–H + 1.0 complete.
+Latest release:
+[`v1.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.0.0).
+See [`docs/Production.md`](docs/Production.md) for deployment;
+[`docs/Retros/Cluster 1.0.md`](docs/Retros/Cluster%201.0.md) for the closing retro.
+
+## What's in `v1.0.0`
+
+- Semver-stable HTTP + MCP API (breaking changes only in major versions).
+- Production runbook, liveness/readiness probes, `MAIDAN_ENV=production` guard.
 
 ## What's in `v0.7.0`
 

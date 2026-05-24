@@ -3,9 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
-## v1.0.0 (target)
+## v1.0.0 — Cluster 1.0 complete
 
-Production gates documented; API treated as stable from this release onward.
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Production runbook                                      | `docs/Production.md`          |
+| Semver-stable HTTP + MCP API                            | policy in `docs/Decisions.md` |
+| `MAIDAN_ENV=production` config guard                    | `maidan-server::config`       |
+| Liveness `/health/live` + readiness `/health/ready`     | `maidan-server::health`       |
 
 ## v0.7.0 — Cluster H complete
 

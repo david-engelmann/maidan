@@ -7,7 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster 1.0 (production gates + semver freeze).
+Nothing yet.
+
+## [1.0.0] — 2026-05-24
+
+Production gates and semver-stable public API. Deployment guidance in
+`docs/Production.md`. Liveness/readiness probes and production config
+guards shipped in `v0.7.0`; this release documents the contract and
+freezes breaking-change policy.
+
+### Added
+
+- `docs/Production.md` production runbook.
+- Documented API stability policy (see `docs/Decisions.md`).
 
 ## [0.7.0] — 2026-05-24
 

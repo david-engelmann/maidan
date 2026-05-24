@@ -321,7 +321,18 @@ signed. The user has not configured GPG/SSH signing as of `v0.1.0`.
 Don't gate every release tag on it. Future tags can be re-issued
 signed if needed.
 
-**To revisit:** when a key exists or before `v1.0.0`.
+**To revisit:** when a key exists.
+
+### Semver-stable API from v1.0.0
+
+**Decision.** From `v1.0.0`, HTTP route shapes and MCP tool/resource
+names are treated as stable public API. Breaking changes require a
+major version (`v2.0.0`). Pre-1.0 clusters could rename and delete freely.
+
+**Why this:** agents and operators integrate against HTTP and MCP;
+predictability matters once federation and UI exist.
+
+**To revisit:** only via a deliberate `v2.0.0` program.
 
 ## Documentation
 
