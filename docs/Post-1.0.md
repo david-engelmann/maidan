@@ -19,19 +19,19 @@ coherent capability batch warrants semver + changelog.
 stable `v1.0.0` surface) → **Track V** (production hardening) → **Track U**
 (perf regression gates) → **Track X**.
 
-## Optional minor: `v1.1.0` — delivery reliability
+## Optional minor: `v1.1.0` — delivery reliability ✓
 
-A cohesive product slice that addresses the top standing risks in
-[[Open Work]] without breaking the public API.
+Shipped at tag **`v1.1.0`** ([[Retros/Minor 1.1]]). Addresses top standing risks
+in [[Open Work]] without breaking the public API.
 
 | PR   | Scope | Outcome |
 |------|-------|---------|
-| 1.1.1 | PostgresBus listener health on `/health/ready` | Operator sees bus degradation. |
-| 1.1.2 | WS subscriber gap detection + replay hint | Server tells clients `after_id` to poll when NOTIFY missed. |
-| 1.1.3 | Resumable WS: `Last-Event-Id` or query param on subscribe | Clients reconnect without full replay from 0. |
-| 1.1.4 | Federation: persist peer outbound secrets (migration) | Pull worker survives restart. |
-| 1.1.5 | Federation pull compose smoke | Two-instance pull path CI. |
-| 1.1.retro | Capabilities + changelog + tag `v1.1.0` | Same close pattern as clusters. |
+| 1.1.1 ✓ | PostgresBus listener health on `/health/ready` | Operator sees bus degradation. |
+| 1.1.2 ✓ | WS subscriber gap detection + replay hint | Server tells clients `after_id` to poll when NOTIFY missed. |
+| 1.1.3 ✓ | Resumable WS: `after_id` on subscribe | Clients reconnect without full replay from 0. |
+| 1.1.4 ✓ | Federation: persist peer outbound secrets (migration) | Pull worker survives restart. |
+| 1.1.5 ✓ | Federation pull compose smoke | Two-instance pull path CI. |
+| 1.1.retro ✓ | Capabilities + changelog + tag `v1.1.0` | Same close pattern as clusters. |
 
 **Not in 1.1:** OAuth/OIDC, real ML embeddings, GDPR hard-delete (Track V /
 post-1.0 product).

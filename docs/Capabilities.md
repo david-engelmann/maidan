@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v1.1.0 — Delivery reliability minor
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Postgres bus listener health on `/health/ready`           | `maidan-bus`, `maidan-server::health` |
+| WS/MCP `replay_hint` on bus lag                           | `maidan-server::ws`, `mcp_stream` |
+| Resumable subscribe (`after_id`, `Last-Event-Id`)       | `maidan-server::ws`, `event_stream` |
+| Encrypted peer outbound secrets at rest                   | `maidan-auth::peer_secret`, migration 0010 |
+| `remote_workspace_id` on federation peers                 | migration 0011, `maidan-a2a::Outbound` |
+| Federation push + pull compose CI smoke                 | `scripts/federation-*.sh`, `compose.yaml` |
+
 ## v1.0.0 — Cluster 1.0 complete
 
 | Capability                                              | Surface                       |

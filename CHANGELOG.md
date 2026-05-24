@@ -9,6 +9,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [1.1.0] — 2026-05-24
+
+Delivery reliability minor: bus health, client replay, federation secrets + pull smoke.
+
+### Added
+
+- Postgres `LISTEN` task health on `/health/ready` (`bus` field).
+- WebSocket and MCP `replay_hint` when the in-process bus subscriber lags.
+- `after_id` on `/ws/subscribe` and MCP stream; persisted event replay on connect.
+- Migration 0010: ChaCha20-Poly1305 encrypted peer outbound bearer secrets (`FEDERATION_ENCRYPTION_KEY`).
+- Migration 0011: `maidan_peers.remote_workspace_id` for cross-instance poll.
+- `scripts/federation-pull-smoke.sh` and CI pull-path compose coverage.
+
+### Changed
+
+- Federation poll worker resolves outbound secrets from DB after restart.
+- `CreatePeer` accepts optional `remote_workspace_id`.
+
 ## [1.0.0] — 2026-05-24
 
 Production gates and semver-stable public API. Deployment guidance in

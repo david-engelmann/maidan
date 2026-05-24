@@ -33,14 +33,16 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–H and **1.0** are complete (`v1.0.0`). See [[Retros/README]].
+Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minor **`v1.1.0`**
+(delivery reliability) is complete — see [[Retros/Minor 1.1]].
+
 Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 **Active:** **Track T** (telemetry) — T.1/T.2 + federation compose smoke shipped;
 T.3 coverage optional.
 
-**Next recommended:** finish Track T → optional **`v1.1.0` minor** (delivery
-reliability) per [[Post-1.0]] → Track W (OpenAPI/docs).
+**Next recommended:** Track W (OpenAPI/docs) or optional **`v1.2.0`** (search +
+embeddings) per [[Post-1.0]].
 
 ## Closing a cluster
 

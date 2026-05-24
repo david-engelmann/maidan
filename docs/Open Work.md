@@ -23,9 +23,9 @@ Updated at the close of each cluster. Items move from "open" to
 - **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
   (#36 → `macos-13` for x86_64 darwin). Verify `v0.3.0` tag triggers
   a successful release before considering this resolved.
-- **PostgresBus listener recovery is best-effort.** `/health` reports
-  `bus: error` while the background task is in a retry loop; it clears
-  after the next successful `recv`.
+- **PostgresBus listener recovery is best-effort.** `/health/ready` reports
+  `bus: error` while the background task is in a retry loop (`v1.1.0`); it
+  clears after the next successful `recv`.
 - **No coverage gate in CI.** Local + integration tests run, but no
   `≥ N%` threshold is enforced. → Cluster T (when
   `cargo-llvm-cov` lands as a CI job).
@@ -138,12 +138,10 @@ See [`docs/Retros/Cluster 1.0.md`](Retros/Cluster%201.0.md). Tag `v1.0.0`.
 
 ## Known unfinished tasks at this handoff
 
-- **Cluster ladder A–H + 1.0 complete** — latest tag `v1.0.0`. See
-  [[Post-1.0]] for track order and optional `v1.1.0` minor.
+- **Cluster ladder A–H + 1.0 complete** — latest tag `v1.1.0` (optional minor).
+  See [[Post-1.0]] for tracks and optional `v1.2.0` minor.
 - **Track T in progress** — T.3 (`cargo-llvm-cov`) optional; federation
-  compose smoke shipped (#105).
-- **Federation pull-path compose smoke** — deferred; needs
-  `remote_workspace_id` or peer model clarification (see [[Tracks/Track T]]).
+  push + pull compose smoke shipped (`v1.1.0`).
 
 ## How to read this file
 

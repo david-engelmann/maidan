@@ -58,3 +58,4 @@ PR review credit; external contributors.
 - [[Cluster G]] — Agent-to-agent federation. Closed at `v0.6.0`.
 - [[Cluster H]] — Web UI + MCP stdio + polish. Closed at `v0.7.0`.
 - [[Cluster 1.0]] — Production gates. Closed at `v1.0.0`.
+- [[Minor 1.1]] — Delivery reliability. Closed at `v1.1.0`.
