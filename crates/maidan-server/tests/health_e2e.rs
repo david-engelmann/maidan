@@ -90,5 +90,19 @@ async fn health_returns_200_with_structured_body() {
     assert_eq!(body["storage"], "ok");
     assert!(body.get("version").is_some(), "expected version field");
 
+    let live = client
+        .get(format!("http://{addr}/health/live"))
+        .send()
+        .await
+        .expect("send /health/live");
+    assert!(live.status().is_success());
+
+    let resp2 = client
+        .get(format!("http://{addr}/health"))
+        .send()
+        .await
+        .expect("send /health again");
+    assert!(resp2.headers().get("x-request-id").is_some());
+
     handle.abort();
 }

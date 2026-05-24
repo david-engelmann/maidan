@@ -1,0 +1,30 @@
+# Production deployment
+
+Guidance for running Maidan at `v1.0.0` and later.
+
+## Probes
+
+| Endpoint          | Use        | Behavior                                      |
+|-------------------|------------|-----------------------------------------------|
+| `GET /health/live`  | Liveness   | Always `200` if the process is up.            |
+| `GET /health/ready` | Readiness  | `200` when DB + artifact store respond.       |
+| `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
+
+## Environment
+
+| Variable        | Required | Notes                                                |
+|-----------------|----------|------------------------------------------------------|
+| `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
+| `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED`.       |
+| `AUTH_DISABLED` | no       | Must **not** be set in production.                   |
+
+## Bootstrap
+
+1. Deploy with `AUTH_DISABLED=1` only for initial seed (if needed).
+2. Create workspace + member, mint admin token.
+3. Remove `AUTH_DISABLED`, set `MAIDAN_ENV=production`, restart.
+
+## API stability
+
+From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases
+may break without migration shims.

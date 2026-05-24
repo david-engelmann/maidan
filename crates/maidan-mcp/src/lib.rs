@@ -8,16 +8,18 @@
 //!
 //! Transport-agnostic: the [`McpServer`] takes JSON-RPC requests and
 //! returns responses. `maidan-server` wraps it behind an HTTP POST
-//! endpoint (`POST /mcp`). A stdio transport for desktop clients arrives
-//! in a later cluster.
+//! endpoint (`POST /mcp`). Stdio transport: [`stdio::run_stdio`] via
+//! `maidan-cli mcp-stdio`.
 
 pub mod error;
 pub mod prompts;
 pub mod protocol;
 pub mod resources;
 pub mod server;
+pub mod stdio;
 pub mod tools;
 
 pub use error::McpError;
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 pub use server::McpServer;
+pub use stdio::run_stdio;
