@@ -11,12 +11,14 @@
 
 pub mod error;
 pub mod inmem;
+pub mod listener_health;
 pub mod postgres;
 pub mod stream;
 pub mod traits;
 
 pub use error::BusError;
 pub use inmem::InMemoryBus;
+pub use listener_health::ListenerHealth;
 pub use postgres::PostgresBus;
 pub use stream::EventStream;
 pub use traits::EventBus;

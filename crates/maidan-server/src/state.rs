@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
-use maidan_bus::EventBus;
+use maidan_bus::{EventBus, ListenerHealth};
 use maidan_search::Search;
 use maidan_store::Store;
 use maidan_types::PeerId;
@@ -23,6 +23,8 @@ pub struct AppState {
     pub federation_secrets: Arc<RwLock<HashMap<PeerId, String>>>,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
+    /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
+    pub bus_listener_health: Option<Arc<ListenerHealth>>,
 }
 
 impl AppState {
@@ -34,6 +36,7 @@ impl AppState {
         auth_disabled: bool,
         federation_disabled: bool,
         indexer_last_event_unix_ms: Arc<AtomicI64>,
+        bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         Self {
             store,
@@ -44,6 +47,7 @@ impl AppState {
             federation_disabled,
             federation_secrets: Arc::new(RwLock::new(HashMap::new())),
             indexer_last_event_unix_ms,
+            bus_listener_health,
         }
     }
 
@@ -62,6 +66,7 @@ impl AppState {
             true,
             true,
             Arc::new(AtomicI64::new(0)),
+            None,
         )
     }
 }

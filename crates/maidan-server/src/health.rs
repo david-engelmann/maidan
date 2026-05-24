@@ -19,6 +19,7 @@ pub struct HealthResponse {
     pub storage: SubsystemStatus,
     pub indexer: SubsystemStatus,
     pub indexer_last_event_at: Option<DateTime<Utc>>,
+    pub bus: SubsystemStatus,
     pub version: &'static str,
 }
 
@@ -55,14 +56,16 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
 
     let storage = check_artifact_store(&state).await;
     let (indexer, indexer_last_event_at) = check_indexer(&state);
+    let bus = check_bus(&state);
 
-    let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok();
+    let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
     let body = HealthResponse {
         status: if healthy { "ok" } else { "degraded" },
         db,
         storage,
         indexer,
         indexer_last_event_at,
+        bus,
         version: version(),
     };
     let code = if healthy {
@@ -71,6 +74,16 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         StatusCode::SERVICE_UNAVAILABLE
     };
     (code, Json(body))
+}
+
+fn check_bus(state: &AppState) -> SubsystemStatus {
+    match &state.bus_listener_health {
+        None => SubsystemStatus::Ok,
+        Some(health) => match health.check() {
+            Ok(()) => SubsystemStatus::Ok,
+            Err(msg) => SubsystemStatus::Error(msg),
+        },
+    }
 }
 
 fn check_indexer(state: &AppState) -> (SubsystemStatus, Option<DateTime<Utc>>) {

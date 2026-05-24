@@ -62,6 +62,8 @@ async fn round_trip_through_listen_notify() {
         .expect("timeout waiting for event")
         .expect("stream closed");
 
+    assert!(bus.listener_health().check().is_ok());
+
     match received {
         Event::WorkspaceCreated { workspace: w, .. } => {
             assert_eq!(w.id, workspace.id);
