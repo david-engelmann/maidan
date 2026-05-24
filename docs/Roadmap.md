@@ -16,7 +16,7 @@ PRs tracked by the GitHub issues labelled with that cluster.
 | **F**   | Auth, workspaces, capabilities       | `v0.5.0` ✓ |
 | **G**   | Agent-to-Agent transport             | `v0.6.0` ✓ |
 | **H**   | Web UI + MCP stdio + polish          | `v0.7.0` ✓ |
-| **1.0** | Production gates met                 | `v1.0.0`   |
+| **1.0** | Production gates met                 | `v1.0.0` ✓ |
 
 ## Cross-cutting tracks
 
@@ -33,9 +33,8 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–H complete. See [[Retros/Cluster A]] through [[Retros/Cluster H]].
-**Cluster 1.0** (production gates + semver freeze) is in progress — see
-[[Clusters/Cluster 1.0]].
+Clusters A–H and **1.0** are complete. See [[Retros/README]] for the full index.
+Cross-cutting tracks T–X continue without version tags.
 
 ## Closing a cluster
 
