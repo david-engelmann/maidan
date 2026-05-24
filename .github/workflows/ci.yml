@@ -127,3 +127,17 @@ jobs:
       - name: compose down
         if: always()
         run: docker compose --profile full down -v
+      - name: federation compose up
+        run: docker compose --profile federation up -d
+      - name: federation smoke
+        run: bash scripts/federation-smoke.sh
+      - name: federation compose logs on failure
+        if: failure()
+        run: |
+          echo "=== maidan-a ==="
+          docker compose --profile federation logs maidan-a || true
+          echo "=== maidan-b ==="
+          docker compose --profile federation logs maidan-b || true
+      - name: federation compose down
+        if: always()
+        run: docker compose --profile federation down -v

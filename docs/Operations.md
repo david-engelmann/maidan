@@ -16,9 +16,13 @@ cargo test --workspace            # requires Docker for integration tests
 # Run the server against in-memory SQLite (no Docker)
 DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
 
-# Run the prod-style stack
+# Run the prod-style stack (postgres + minio + server)
 docker compose --profile full up
 curl http://localhost:8080/health
+
+# Two-instance federation push smoke (postgres + maidan-a + maidan-b)
+docker compose --profile federation up -d
+bash scripts/federation-smoke.sh
 ```
 
 ## PR flow (the long version)

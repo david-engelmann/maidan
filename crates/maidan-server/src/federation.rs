@@ -370,9 +370,6 @@ pub async fn peer_auth_middleware(
     mut req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    if state.auth_disabled {
-        return ApiError::Unauthorized.into_response();
-    }
     let Some(secret) = crate::auth::bearer_from_headers(req.headers()) else {
         return ApiError::Unauthorized.into_response();
     };

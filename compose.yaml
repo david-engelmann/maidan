@@ -5,8 +5,9 @@ name: maidan
 # pgvector extension + schema 0001 baked in.
 #
 # Usage:
-#   docker compose up               # postgres + minio
-#   docker compose --profile full up # + maidan-server
+#   docker compose up                    # postgres only
+#   docker compose --profile full up     # + maidan-server
+#   docker compose --profile federation up  # postgres + maidan-a + maidan-b
 #
 # For hot-reload dev, see `compose.dev.yaml`.
 
@@ -48,6 +49,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    profiles:
+      - full
 
   minio-init:
     image: minio/mc:latest
@@ -93,7 +96,59 @@ services:
     profiles:
       - full
 
+  maidan-a:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    image: maidan-server:dev
+    container_name: maidan-a
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      AUTH_DISABLED: 1
+      FEDERATION_DISABLED: 1
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "8080:8080"
+    volumes:
+      - maidan_a_data:/data
+    restart: on-failure:5
+    profiles:
+      - federation
+
+  maidan-b:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    image: maidan-server:dev
+    container_name: maidan-b
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      AUTH_DISABLED: 1
+      FEDERATION_DISABLED: 1
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "8081:8080"
+    volumes:
+      - maidan_b_data:/data
+    restart: on-failure:5
+    profiles:
+      - federation
+
 volumes:
   postgres_data:
   minio_data:
   maidan_data:
+  maidan_a_data:
+  maidan_b_data:
