@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Maidan</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 56rem; }
+      label { display: block; margin-top: 1rem; }
+      input { width: 100%; padding: 0.4rem; }
+      button { margin-top: 1rem; padding: 0.5rem 1rem; }
+      pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 24rem; }
+      .err { color: #b91c1c; }
+    </style>
+  </head>
+  <body>
+    <h1>Maidan</h1>
+    <p>Read-only workspace event tail (v0.7.0).</p>
+    <label>API base URL <input id="base" value="" /></label>
+    <label>Bearer token <input id="token" type="password" /></label>
+    <label>Workspace ID <input id="workspace" /></label>
+    <button id="load">Load events</button>
+    <p id="status"></p>
+    <pre id="out"></pre>
+    <script>
+      const baseInput = document.getElementById("base");
+      baseInput.value = window.location.origin;
+      const tokenKey = "maidan_token";
+      const wsKey = "maidan_workspace";
+      document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
+      document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
+
+      document.getElementById("load").onclick = async () => {
+        const status = document.getElementById("status");
+        const out = document.getElementById("out");
+        const base = baseInput.value.replace(/\/$/, "");
+        const token = document.getElementById("token").value.trim();
+        const wid = document.getElementById("workspace").value.trim();
+        localStorage.setItem(tokenKey, token);
+        localStorage.setItem(wsKey, wid);
+        status.textContent = "Loading…";
+        status.className = "";
+        out.textContent = "";
+        const headers = { Accept: "application/json" };
+        if (token) headers["Authorization"] = "Bearer " + token;
+        try {
+          const res = await fetch(
+            `${base}/workspaces/${wid}/events?after_id=0&limit=50`,
+            { headers }
+          );
+          const body = await res.text();
+          if (!res.ok) {
+            status.textContent = `HTTP ${res.status}`;
+            status.className = "err";
+            out.textContent = body;
+            return;
+          }
+          status.textContent = "OK";
+          out.textContent = JSON.stringify(JSON.parse(body), null, 2);
+        } catch (e) {
+          status.textContent = String(e);
+          status.className = "err";
+        }
+      };
+    </script>
+  </body>
+</html>

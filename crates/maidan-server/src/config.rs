@@ -79,6 +79,18 @@ impl Config {
         let log_filter =
             std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".to_string());
 
+        if std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
+            && matches!(
+                std::env::var("AUTH_DISABLED").as_deref(),
+                Ok("1") | Ok("true") | Ok("TRUE")
+            )
+        {
+            return Err(ConfigError::Invalid(
+                "AUTH_DISABLED",
+                "cannot be set when MAIDAN_ENV=production".into(),
+            ));
+        }
+
         Ok(Self {
             bind,
             database_url,

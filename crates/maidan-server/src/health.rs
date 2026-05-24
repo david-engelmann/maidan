@@ -30,7 +30,19 @@ impl SubsystemStatus {
     }
 }
 
-pub async fn handler(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn live() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })))
+}
+
+pub async fn ready(state: State<AppState>) -> impl IntoResponse {
+    readiness(state).await
+}
+
+pub async fn handler(state: State<AppState>) -> impl IntoResponse {
+    readiness(state).await
+}
+
+async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     let db = match state.store.health_check().await {
         Ok(()) => SubsystemStatus::Ok,
         Err(e) => SubsystemStatus::Error(e.to_string()),

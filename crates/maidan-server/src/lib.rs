@@ -13,6 +13,8 @@ pub mod federation;
 pub mod federation_worker;
 pub mod health;
 pub mod mcp;
+pub mod mcp_stream;
+pub mod request_id;
 pub mod routes;
 pub mod state;
 pub mod ws;

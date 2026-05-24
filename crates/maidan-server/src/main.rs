@@ -147,7 +147,17 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("bind {}", config.bind))?;
     tracing::info!(addr = %listener.local_addr()?, "listening");
-    let serve_result = axum::serve(listener, app).await.context("axum serve");
+
+    let shutdown = async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("shutdown signal received");
+        }
+    };
+
+    let serve_result = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+        .context("axum serve");
 
     indexer.shutdown().await;
     if let Some(worker) = federation_worker {

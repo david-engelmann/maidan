@@ -5,7 +5,7 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, federation, health, mcp, routes, state::AppState, ws};
+use crate::{auth, federation, health, mcp, mcp_stream, request_id, routes, state::AppState, ws};
 
 /// Build the axum [`Router`] with all routes wired up.
 ///
@@ -20,6 +20,7 @@ pub fn router(state: AppState) -> Router {
 
     let protected = Router::new()
         .route("/mcp", post(mcp::handler))
+        .route("/mcp/stream", get(mcp_stream::stream))
         .route("/workspaces/:id", get(routes::get_workspace))
         .route("/workspaces/:wid/events", get(routes::list_events))
         .route("/workspaces/:wid/search", get(routes::search_messages))
@@ -88,12 +89,21 @@ pub fn router(state: AppState) -> Router {
             federation::peer_auth_middleware,
         ));
 
+    async fn ui_index() -> axum::response::Html<&'static str> {
+        axum::response::Html(include_str!("../static/index.html"))
+    }
+
     Router::new()
         .route("/health", get(health::handler))
+        .route("/health/live", get(health::live))
+        .route("/health/ready", get(health::ready))
         .route("/.well-known/maidan.json", get(federation::well_known))
+        .route("/ui", get(ui_index))
+        .route("/ui/", get(ui_index))
         .merge(bootstrap)
         .merge(ws_only)
         .merge(a2a)
         .merge(protected)
+        .layer(middleware::from_fn(request_id::middleware))
         .with_state(state)
 }

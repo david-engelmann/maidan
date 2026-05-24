@@ -15,7 +15,18 @@ path = "src/main.rs"
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
+maidan-store = { path = "../maidan-store" }
+maidan-artifacts = { path = "../maidan-artifacts" }
+maidan-search = { path = "../maidan-search" }
+maidan-auth = { path = "../maidan-auth" }
+maidan-mcp = { path = "../maidan-mcp" }
+clap = { version = "4", features = ["derive", "env"] }
+sqlx.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[[test]]
+name = "stdio_smoke"
+path = "tests/stdio_smoke.rs"
