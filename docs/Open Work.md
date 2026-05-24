@@ -83,10 +83,9 @@ Updated at the close of each cluster. Items move from "open" to
 | S3 multipart for multi-GB blobs                          | Cluster T        |
 | Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
 
-## Cluster G backlog (A2A / federation)
+## Cluster H backlog (web UI / production polish)
 
-In progress. Plan: [`docs/Clusters/Cluster G.md`](Clusters/Cluster%20G.md).
-Issues #80–#87. Next PR: **G.1** (federation types in `maidan-a2a`).
+In progress. Plan: [`docs/Clusters/Cluster H.md`](Clusters/Cluster%20H.md).
 
 ### To Cluster H (web UI / production polish)
 
@@ -162,7 +161,7 @@ Issues #80–#87. Next PR: **G.1** (federation types in `maidan-a2a`).
   [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md).
 - **Cluster F** complete (`v0.5.0`). Retro:
   [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md).
-- **Cluster G** in progress — federation transport; see Cluster G plan.
+- **Cluster H** in progress — web UI + MCP stdio; see Cluster H plan.
 
 ## How to read this file
 

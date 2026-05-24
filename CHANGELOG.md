@@ -7,7 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet. Next: Cluster G (Maidan federation / A2A transport).
+Nothing yet. Next: Cluster H (web UI + MCP stdio + production polish).
+
+## [0.6.0] — 2026-05-24
+
+End of Cluster G. Maidan-native federation between deployments.
+
+### Added
+
+- Migration 0009 `maidan_peers` and `maidan_federated_ingest` dedupe table.
+- `maidan-a2a` federation envelope, batch validation, and `Outbound` HTTP client.
+- `POST /a2a/v1/events` inbound ingest with peer bearer auth.
+- `FederationWorker` background poll (`FEDERATION_POLL_INTERVAL_SECS`, `FEDERATION_DISABLED`).
+- Peer admin API and `GET /.well-known/maidan.json` agent card.
+- Capabilities `federation:ingest` and `federation:admin`.
 
 ## [0.5.0] — 2026-05-23
 

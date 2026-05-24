@@ -14,8 +14,8 @@ PRs tracked by the GitHub issues labelled with that cluster.
 | **D**   | FSM-driven thread lifecycle          | `v0.3.0` ✓ |
 | **E**   | Artifact substrate (S3, types, refs) | `v0.4.0` ✓ |
 | **F**   | Auth, workspaces, capabilities       | `v0.5.0` ✓ |
-| G       | Agent-to-Agent transport             | `v0.6.0`   |
-| H       | Web UI                               | `v0.7.0`   |
+| **G**   | Agent-to-Agent transport             | `v0.6.0` ✓ |
+| H       | Web UI + MCP stdio + polish          | `v0.7.0`   |
 | **1.0** | Production gates met                 | `v1.0.0`   |
 
 ## Cross-cutting tracks
@@ -33,9 +33,9 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–F complete. See [[Retros/Cluster A]] through [[Retros/Cluster F]].
-**Cluster G** (agent-to-agent / federation transport) is in progress — see
-[[Clusters/Cluster G]].
+Clusters A–G complete. See [[Retros/Cluster A]] through [[Retros/Cluster G]].
+**Cluster H** (web UI, MCP stdio, production polish) is in progress — see
+[[Clusters/Cluster H]].
 
 ## Closing a cluster
 

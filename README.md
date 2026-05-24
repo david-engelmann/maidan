@@ -6,11 +6,18 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-Pre-alpha. Clusters A–F complete. Current release:
-[`v0.5.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.5.0)
-(pending tag after retro merge). See [`docs/Retros/Cluster F.md`](docs/Retros/Cluster%20F.md)
+Pre-alpha. Clusters A–G complete. Current release:
+[`v0.6.0`](https://github.com/david-engelmann/maidan/releases/tag/v0.6.0)
+(pending tag after retro merge). See [`docs/Retros/Cluster G.md`](docs/Retros/Cluster%20G.md)
 for what just landed; [`docs/Roadmap.md`](docs/Roadmap.md) for what's next
-(Cluster G — Maidan federation / A2A transport).
+(Cluster H — web UI + MCP stdio + production polish).
+
+## What's in `v0.6.0`
+
+- Everything in `v0.5.0`.
+- Federation peer registry (migration 0009) and idempotent event ingest.
+- `POST /a2a/v1/events`, background poll worker, peer admin API.
+- `GET /.well-known/maidan.json` agent card.
 
 ## What's in `v0.5.0`
 
