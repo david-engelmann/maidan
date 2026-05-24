@@ -6,11 +6,16 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v1.0.0** — production gates met. Clusters A–H + 1.0 complete.
+**v1.1.0** — delivery reliability minor (bus health, replay, federation pull).
 Latest release:
-[`v1.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.0.0).
+[`v1.1.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.1.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Cluster 1.0.md`](docs/Retros/Cluster%201.0.md) for the closing retro.
+[`docs/Retros/Minor 1.1.md`](docs/Retros/Minor%201.1.md) for the closing retro.
+
+## What's in `v1.1.0`
+
+- Postgres bus listener health on readiness; WS/MCP `replay_hint` and `after_id` resume.
+- Federation outbound secrets encrypted at rest; `remote_workspace_id` + pull compose CI.
 
 ## What's in `v1.0.0`
 

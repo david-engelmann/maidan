@@ -41,7 +41,7 @@ health probe semantics are documented and load-bearing.
 ## Risks identified + still open
 
 - **Bootstrap routes** remain unauthenticated — production flow documented, not enforced in code.
-- **Peer outbound secrets** lost on restart (Cluster G).
+- **Peer outbound secrets** lost on restart (Cluster G) — fixed in `v1.1.0`.
 
 ## Forward look
 
