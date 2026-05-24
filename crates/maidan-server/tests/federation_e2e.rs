@@ -402,6 +402,7 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
     let peer = store
         .create_peer(maidan_types::NewPeer {
             workspace_id: ws.id,
+            remote_workspace_id: ws.id,
             name: "remote".to_string(),
             base_url: "https://remote.example".to_string(),
             token_hash: hash_secret(plaintext),

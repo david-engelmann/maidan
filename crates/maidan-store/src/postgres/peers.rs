@@ -6,19 +6,20 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 const PEER_COLS: &str =
-    "id, workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, \
+    "id, workspace_id, remote_workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, \
                           enabled, last_synced_event_id, created_at, updated_at";
 
 pub async fn create(pool: &PgPool, new: NewPeer) -> Result<Peer, StoreError> {
     let id = Uuid::new_v4();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_peers
-            (id, workspace_id, name, base_url, token_hash, outbound_secret_ciphertext)
-         VALUES ($1, $2, $3, $4, $5, $6)
+            (id, workspace_id, remote_workspace_id, name, base_url, token_hash, outbound_secret_ciphertext)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING {PEER_COLS}"
     ))
     .bind(id)
     .bind(new.workspace_id.0)
+    .bind(new.remote_workspace_id.0)
     .bind(&new.name)
     .bind(&new.base_url)
     .bind(&new.token_hash)
@@ -171,6 +172,7 @@ fn row_to_peer(row: &sqlx::postgres::PgRow) -> Result<Peer, StoreError> {
     Ok(Peer {
         id: PeerId(row.get::<Uuid, _>("id")),
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+        remote_workspace_id: WorkspaceId(row.get::<Uuid, _>("remote_workspace_id")),
         name: row.get("name"),
         base_url: row.get("base_url"),
         token_hash: row.get("token_hash"),
