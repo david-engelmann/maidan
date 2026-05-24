@@ -33,9 +33,14 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–H and **1.0** are complete. See [[Retros/README]] for the full index.
-**Track T** (telemetry) is in progress — see [[Tracks/Track T]].
-Cross-cutting tracks U–X continue without version tags.
+Clusters A–H and **1.0** are complete (`v1.0.0`). See [[Retros/README]].
+Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
+
+**Active:** **Track T** (telemetry) — T.1/T.2 + federation compose smoke shipped;
+T.3 coverage optional.
+
+**Next recommended:** finish Track T → optional **`v1.1.0` minor** (delivery
+reliability) per [[Post-1.0]] → Track W (OpenAPI/docs).
 
 ## Closing a cluster
 

@@ -137,33 +137,12 @@ See [`docs/Retros/Cluster 1.0.md`](Retros/Cluster%201.0.md). Tag `v1.0.0`.
 
 ## Known unfinished tasks at this handoff
 
-- **`v0.2.0` tag not yet cut.** PR #35 (retro) and PR #36 (release
-  fix) are merged on `main`. The next step is:
-
-  ```sh
-  cd ~/bg/maidan
-  git checkout main
-  git pull --ff-only
-  git tag -a v0.2.0 -m "Cluster C: search + indexing."
-  git push origin v0.2.0
-  ```
-
-  This fires `release.yml` which should produce the GitHub Release +
-  binaries + multi-arch ghcr.io images for both `maidan-server` and
-  `maidan-postgres`.
-
-- **The handoff doc PR itself** (this PR) is in flight; if you are
-  reading this, it has merged.
-
-- **Cluster D** complete (`v0.3.0`). Plan:
-  [`docs/Clusters/Cluster D.md`](Clusters/Cluster%20D.md). Retro:
-  [`docs/Retros/Cluster D.md`](Retros/Cluster%20D.md). Tag `v0.3.0`
-  after retro PR merges.
-- **Cluster E** complete (`v0.4.0`). Retro:
-  [`docs/Retros/Cluster E.md`](Retros/Cluster%20E.md).
-- **Cluster F** complete (`v0.5.0`). Retro:
-  [`docs/Retros/Cluster F.md`](Retros/Cluster%20F.md).
-- **Cluster ladder A–H + 1.0 complete** — cross-cutting tracks T–X remain in Open Work below.
+- **Cluster ladder A–H + 1.0 complete** — latest tag `v1.0.0`. See
+  [[Post-1.0]] for track order and optional `v1.1.0` minor.
+- **Track T in progress** — T.3 (`cargo-llvm-cov`) optional; federation
+  compose smoke shipped (#105).
+- **Federation pull-path compose smoke** — deferred; needs
+  `remote_workspace_id` or peer model clarification (see [[Tracks/Track T]]).
 
 ## How to read this file
 
