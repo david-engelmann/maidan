@@ -3,22 +3,14 @@
 //! Protocol:
 //! 1. Client opens `GET /ws/subscribe` and upgrades.
 //! 2. Client sends one text frame with a JSON [`SubscribeFrame`] body.
-//! 3. Server attaches a bus subscriber with the requested filter and
-//!    streams matching events as text frames (one JSON object per frame).
-//!    Each event frame includes `log_id` (persistent `maidan_events.id`)
-//!    plus the usual externally-tagged event fields.
-//! 4. When the subscriber lags the broadcast buffer, the server sends a
-//!    `replay_hint` frame with `after_id` for `GET /workspaces/:wid/events`.
-//! 5. Server pings every 30 s; if the client hasn't responded within
-//!    `PONG_TIMEOUT` the server closes with code 1011.
-//!
-//! Close codes used:
-//! - 1000 normal client-initiated close
-//! - 1002 protocol error (bad first frame)
-//! - 1008 policy violation (invalid filter JSON / auth failure)
-//! - 1011 backpressure / pong timeout / unexpected stream end
+//! 3. Optional `after_id` replays matching rows from `maidan_events` (requires
+//!    `filter.workspace_id`), then live bus events with `log_id` greater than
+//!    the replay watermark.
+//! 4. Each event frame includes `log_id` plus the externally-tagged event.
+//! 5. On broadcast lag, a `replay_hint` frame is sent (see 1.1.2).
+//! 6. Server pings every 30 s; pong timeout closes with 1011.
 
-use std::{borrow::Cow, time::Duration};
+use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use axum::{
     extract::{
@@ -29,14 +21,14 @@ use axum::{
 };
 use futures::StreamExt;
 use maidan_auth::{capability::EVENT_SUBSCRIBE, resolve_bearer};
-use maidan_bus::BusItem;
 use maidan_types::EventFilter;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::{
     sync::mpsc,
     time::{timeout, Instant},
 };
 
+use crate::event_stream::{self, replay_matching_events};
 use crate::state::AppState;
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -49,18 +41,14 @@ pub struct SubscribeFrame {
     #[serde(default)]
     pub token: Option<String>,
     pub filter: EventFilter,
+    /// Replay persisted events with `id > after_id` before attaching to the bus.
+    #[serde(default)]
+    pub after_id: i64,
 }
 
-#[derive(Debug, Serialize)]
-struct ReplayHint {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    skipped: u64,
+struct SubscribeRequest {
+    filter: EventFilter,
     after_id: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    workspace_id: Option<uuid::Uuid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    replay: Option<String>,
 }
 
 pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -68,8 +56,8 @@ pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> i
 }
 
 async fn run(mut socket: WebSocket, state: AppState) {
-    let filter = match read_subscribe(&mut socket, &state).await {
-        Ok(f) => f,
+    let request = match read_subscribe(&mut socket, &state).await {
+        Ok(r) => r,
         Err((code, reason)) => {
             let _ = socket
                 .send(WsMessage::Close(Some(CloseFrame {
@@ -81,7 +69,46 @@ async fn run(mut socket: WebSocket, state: AppState) {
         }
     };
 
-    let mut subscriber = match state.bus.subscribe(filter.clone()).await {
+    let (tx, mut rx) = mpsc::channel::<WsMessage>(SEND_QUEUE);
+
+    let text_tx = {
+        let ws_tx = tx.clone();
+        let (text_tx, mut text_rx) = mpsc::channel::<String>(SEND_QUEUE);
+        tokio::spawn(async move {
+            while let Some(payload) = text_rx.recv().await {
+                if ws_tx.send(WsMessage::Text(payload)).await.is_err() {
+                    break;
+                }
+            }
+        });
+        text_tx
+    };
+
+    let mut high_water = request.after_id;
+    if request.after_id > 0 {
+        match replay_matching_events(
+            state.store.as_ref(),
+            &request.filter,
+            request.after_id,
+            &text_tx,
+        )
+        .await
+        {
+            Ok(hw) => high_water = hw,
+            Err(err) => {
+                tracing::warn!(error = %err, "ws replay from event log failed");
+                let _ = socket
+                    .send(WsMessage::Close(Some(CloseFrame {
+                        code: 1011,
+                        reason: Cow::Borrowed("replay failed"),
+                    })))
+                    .await;
+                return;
+            }
+        }
+    }
+
+    let subscriber = match state.bus.subscribe(request.filter.clone()).await {
         Ok(s) => s,
         Err(err) => {
             tracing::warn!(error = %err, "bus subscribe failed");
@@ -95,53 +122,11 @@ async fn run(mut socket: WebSocket, state: AppState) {
         }
     };
 
-    let (tx, mut rx) = mpsc::channel::<WsMessage>(SEND_QUEUE);
-
-    let bus_tx = tx.clone();
-    let replay_workspace = filter.workspace_id;
+    let watermark = Arc::new(std::sync::atomic::AtomicI64::new(high_water));
+    let replay_workspace = request.filter.workspace_id;
+    let bus_tx = text_tx.clone();
     let bus_task = tokio::spawn(async move {
-        let mut last_log_id: i64 = 0;
-        while let Some(item) = subscriber.next().await {
-            match item {
-                BusItem::Event(envelope) => {
-                    last_log_id = envelope.log_id;
-                    let payload = match serde_json::to_string(envelope.as_ref()) {
-                        Ok(p) => p,
-                        Err(err) => {
-                            tracing::warn!(error = %err, "drop unserializable event");
-                            continue;
-                        }
-                    };
-                    if bus_tx.send(WsMessage::Text(payload)).await.is_err() {
-                        break;
-                    }
-                }
-                BusItem::Lagged { skipped } => {
-                    let hint = ReplayHint {
-                        frame_type: "replay_hint",
-                        skipped,
-                        after_id: last_log_id,
-                        workspace_id: replay_workspace.map(|w| w.0),
-                        replay: replay_workspace.map(|w| {
-                            format!(
-                                "/workspaces/{}/events?after_id={last_log_id}&limit=100",
-                                w.0
-                            )
-                        }),
-                    };
-                    let payload = match serde_json::to_string(&hint) {
-                        Ok(p) => p,
-                        Err(err) => {
-                            tracing::warn!(error = %err, "drop replay_hint");
-                            continue;
-                        }
-                    };
-                    if bus_tx.send(WsMessage::Text(payload)).await.is_err() {
-                        break;
-                    }
-                }
-            }
-        }
+        event_stream::forward_bus_items(subscriber, bus_tx, watermark, replay_workspace).await;
     });
 
     let mut last_pong = Instant::now();
@@ -184,13 +169,14 @@ async fn run(mut socket: WebSocket, state: AppState) {
         }
     }
 
+    drop(text_tx);
     bus_task.abort();
 }
 
 async fn read_subscribe(
     socket: &mut WebSocket,
     state: &AppState,
-) -> Result<EventFilter, (u16, String)> {
+) -> Result<SubscribeRequest, (u16, String)> {
     let frame = timeout(FIRST_FRAME_TIMEOUT, socket.next())
         .await
         .map_err(|_| (1002u16, "subscribe frame timeout".to_string()))?;
@@ -206,6 +192,16 @@ async fn read_subscribe(
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
+    if sub.after_id < 0 {
+        return Err((1008u16, "after_id must be non-negative".into()));
+    }
+    if sub.after_id > 0 && sub.filter.workspace_id.is_none() {
+        return Err((
+            1008u16,
+            "after_id requires filter.workspace_id for replay".into(),
+        ));
+    }
+
     if !state.auth_disabled {
         let secret = sub
             .token
@@ -217,7 +213,14 @@ async fn read_subscribe(
             .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
         ctx.require_capability(EVENT_SUBSCRIBE)
             .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
+        if let Some(ws) = sub.filter.workspace_id {
+            ctx.ensure_workspace(ws)
+                .map_err(|_| (1008u16, "token is not valid for this workspace".into()))?;
+        }
     }
 
-    Ok(sub.filter)
+    Ok(SubscribeRequest {
+        filter: sub.filter,
+        after_id: sub.after_id,
+    })
 }

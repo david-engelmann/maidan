@@ -9,6 +9,7 @@ pub mod auth;
 pub mod config;
 pub mod dto;
 pub mod error;
+pub mod event_stream;
 pub mod federation;
 pub mod federation_worker;
 pub mod health;
