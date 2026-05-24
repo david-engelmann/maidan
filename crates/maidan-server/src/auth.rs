@@ -6,9 +6,10 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use maidan_auth::{resolve_bearer, AuthContext};
+use maidan_auth::{resolve_bearer, resolve_peer_bearer, AuthContext};
 
 use crate::error::ApiError;
+use crate::federation::PeerContext;
 use crate::state::AppState;
 
 pub fn auth_disabled_from_env() -> bool {
@@ -39,7 +40,13 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             req.extensions_mut().insert(ctx);
             next.run(req).await
         }
-        Err(_) => ApiError::Unauthorized.into_response(),
+        Err(_) => match resolve_peer_bearer(state.store.as_ref(), secret).await {
+            Ok(peer) => {
+                req.extensions_mut().insert(PeerContext(peer));
+                next.run(req).await
+            }
+            Err(_) => ApiError::Unauthorized.into_response(),
+        },
     }
 }
 

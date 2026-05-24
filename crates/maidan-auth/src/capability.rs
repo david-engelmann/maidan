@@ -8,6 +8,8 @@ pub const ARTIFACT_UPLOAD: &str = "artifact:upload";
 pub const SEARCH_QUERY: &str = "search:query";
 pub const EVENT_SUBSCRIBE: &str = "event:subscribe";
 pub const TOKEN_ADMIN: &str = "token:admin";
+pub const FEDERATION_INGEST: &str = "federation:ingest";
+pub const FEDERATION_ADMIN: &str = "federation:admin";
 
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
@@ -18,6 +20,8 @@ const KNOWN: &[&str] = &[
     SEARCH_QUERY,
     EVENT_SUBSCRIBE,
     TOKEN_ADMIN,
+    FEDERATION_INGEST,
+    FEDERATION_ADMIN,
 ];
 
 /// Default capabilities for tokens minted by the admin API in tests and docs.

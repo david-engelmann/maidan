@@ -7,6 +7,7 @@ mod events;
 mod members;
 mod mentions;
 mod messages;
+mod peers;
 mod refs;
 mod thread_transitions;
 mod threads;
@@ -180,5 +181,58 @@ impl Store for PostgresStore {
 
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
+    }
+
+    async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError> {
+        peers::create(&self.pool, new).await
+    }
+
+    async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError> {
+        peers::get(&self.pool, id).await
+    }
+
+    async fn get_peer_by_token_hash(&self, token_hash: &str) -> Result<Peer, StoreError> {
+        peers::get_by_token_hash(&self.pool, token_hash).await
+    }
+
+    async fn list_peers(&self, workspace_id: WorkspaceId) -> Result<Vec<Peer>, StoreError> {
+        peers::list(&self.pool, workspace_id).await
+    }
+
+    async fn list_enabled_peers(&self) -> Result<Vec<Peer>, StoreError> {
+        peers::list_enabled(&self.pool).await
+    }
+
+    async fn update_peer_cursor(
+        &self,
+        id: PeerId,
+        last_synced_event_id: i64,
+    ) -> Result<Peer, StoreError> {
+        peers::update_cursor(&self.pool, id, last_synced_event_id).await
+    }
+
+    async fn delete_peer(&self, id: PeerId) -> Result<(), StoreError> {
+        peers::delete(&self.pool, id).await
+    }
+
+    async fn federated_ingest_exists(
+        &self,
+        peer_id: PeerId,
+        remote_event_id: i64,
+    ) -> Result<bool, StoreError> {
+        peers::ingest_exists(&self.pool, peer_id, remote_event_id).await
+    }
+
+    async fn try_record_federated_ingest(
+        &self,
+        peer_id: PeerId,
+        remote_event_id: i64,
+        local_event_id: i64,
+    ) -> Result<bool, StoreError> {
+        peers::try_record_ingest(&self.pool, peer_id, remote_event_id, local_event_id).await
+    }
+
+    async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError> {
+        peers::is_federated_local_event(&self.pool, local_event_id).await
     }
 }

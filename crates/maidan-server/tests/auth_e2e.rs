@@ -45,7 +45,14 @@ async fn spawn() -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(store.clone(), artifacts, bus, search, false));
+    let app = router(AppState::new(
+        store.clone(),
+        artifacts,
+        bus,
+        search,
+        false,
+        true,
+    ));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

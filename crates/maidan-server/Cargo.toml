@@ -25,6 +25,7 @@ maidan-bus = { path = "../maidan-bus" }
 maidan-auth = { path = "../maidan-auth" }
 maidan-mcp = { path = "../maidan-mcp" }
 maidan-search = { path = "../maidan-search" }
+maidan-a2a = { path = "../maidan-a2a" }
 maidan-observability = { path = "../maidan-observability" }
 async-trait.workspace = true
 bytes.workspace = true

@@ -1,5 +1,5 @@
 use maidan_store::Store;
-use maidan_types::ApiToken;
+use maidan_types::{ApiToken, Peer};
 
 use crate::context::AuthContext;
 use crate::error::AuthError;
@@ -13,6 +13,16 @@ pub async fn resolve_bearer(store: &dyn Store, bearer: &str) -> Result<AuthConte
         return Err(AuthError::Unauthorized);
     }
     Ok(token_to_context(token))
+}
+
+/// Resolve a federation peer bearer to a [`Peer`] row.
+pub async fn resolve_peer_bearer(store: &dyn Store, bearer: &str) -> Result<Peer, AuthError> {
+    let computed = hash_secret(bearer);
+    let peer = store.get_peer_by_token_hash(&computed).await?;
+    if !hashes_equal(&peer.token_hash, &computed) {
+        return Err(AuthError::Unauthorized);
+    }
+    Ok(peer)
 }
 
 fn token_to_context(token: ApiToken) -> AuthContext {

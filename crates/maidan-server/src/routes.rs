@@ -25,6 +25,7 @@ use maidan_types::*;
 
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
+use crate::federation::PeerContext;
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -89,13 +90,26 @@ pub async fn get_workspace(
 
 pub async fn list_events(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
     Path(workspace_id): Path<uuid::Uuid>,
     Query(q): Query<ListEventsQuery>,
+    auth: Option<Extension<AuthContext>>,
+    peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<Vec<StoredEvent>>> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, workspace_id)?;
+    match (&auth, &peer) {
+        (Some(Extension(auth)), None) => {
+            cap(auth, WORKSPACE_READ)?;
+            ensure_workspace(auth, workspace_id)?;
+        }
+        (None, Some(Extension(PeerContext(peer)))) => {
+            if peer.workspace_id != workspace_id {
+                return Err(ApiError::Forbidden(
+                    "peer may only read its registered workspace".into(),
+                ));
+            }
+        }
+        _ => return Err(ApiError::Unauthorized),
+    }
     Ok(Json(
         state
             .store
@@ -681,7 +695,7 @@ pub async fn revoke_api_token(
 /// to the HTTP caller — the store has already committed, and the bus
 /// being temporarily unavailable should not turn a successful mutation
 /// into a 5xx.
-async fn publish(state: &AppState, event: Event) {
+pub(crate) async fn publish(state: &AppState, event: Event) {
     if let Err(err) = state.store.append_event(&event).await {
         tracing::warn!(error = %err, "event log append failed");
     }
