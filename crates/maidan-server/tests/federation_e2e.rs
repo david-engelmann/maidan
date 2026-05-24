@@ -39,6 +39,47 @@ impl Harness {
     }
 }
 
+async fn spawn_with_auth_disabled() -> Harness {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let app = router(AppState::new(
+        store.clone(),
+        artifacts,
+        bus,
+        search,
+        true,
+        true,
+        Arc::new(AtomicI64::new(0)),
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    Harness {
+        addr,
+        server,
+        client,
+        store,
+        _dir: dir,
+    }
+}
+
 async fn spawn() -> Harness {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
@@ -215,6 +256,77 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
         .unwrap();
     assert_eq!(card.status(), StatusCode::OK);
 
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
+    let h = spawn_with_auth_disabled().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-dev".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let create = h
+        .client
+        .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
+        .json(&json!({
+            "name": "remote-a",
+            "base_url": "https://remote.example"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let body: serde_json::Value = create.json().await.unwrap();
+    let peer_id = PeerId(uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap());
+    let peer_secret = body["secret"].as_str().unwrap().to_string();
+
+    let member = h
+        .store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bot".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let event = Event::MemberJoined {
+        occurred_at: chrono::Utc::now(),
+        workspace_id: ws.id,
+        member: member.clone(),
+    };
+    let payload = serde_json::to_value(&event).unwrap();
+    let stored = StoredEvent {
+        id: 1,
+        kind: EventKind::MemberJoined,
+        workspace_id: Some(ws.id),
+        channel_id: None,
+        thread_id: None,
+        payload,
+        occurred_at: chrono::Utc::now(),
+    };
+    let batch = FederatedEventBatch {
+        events: vec![FederationEnvelope {
+            origin_peer_id: peer_id,
+            remote_event_id: 1,
+            event: stored,
+        }],
+    };
+
+    let ingest = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(&peer_secret)
+        .json(&batch)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ingest.status(), StatusCode::OK);
     h.shutdown().await;
 }
 
