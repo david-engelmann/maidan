@@ -128,12 +128,15 @@ pub struct MintApiToken {
 pub struct CreatePeer {
     pub name: String,
     pub base_url: String,
+    /// Workspace on the remote peer to poll; defaults to the path workspace when omitted.
+    pub remote_workspace_id: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PeerResponse {
     pub id: maidan_types::PeerId,
     pub workspace_id: maidan_types::WorkspaceId,
+    pub remote_workspace_id: maidan_types::WorkspaceId,
     pub name: String,
     pub base_url: String,
     pub enabled: bool,
@@ -147,6 +150,7 @@ impl From<maidan_types::Peer> for PeerResponse {
         Self {
             id: p.id,
             workspace_id: p.workspace_id,
+            remote_workspace_id: p.remote_workspace_id,
             name: p.name,
             base_url: p.base_url,
             enabled: p.enabled,

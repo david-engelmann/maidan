@@ -129,8 +129,12 @@ jobs:
         run: docker compose --profile full down -v
       - name: federation compose up
         run: docker compose --profile federation up -d
-      - name: federation smoke
+      - name: federation push smoke
         run: bash scripts/federation-smoke.sh
+      - name: federation pull smoke
+        env:
+          MAIDAN_A_PEER_URL: http://maidan-a:8080
+        run: bash scripts/federation-pull-smoke.sh
       - name: federation compose logs on failure
         if: failure()
         run: |

@@ -102,9 +102,9 @@ pub async fn list_events(
             ensure_workspace(auth, workspace_id)?;
         }
         (None, Some(Extension(PeerContext(peer)))) => {
-            if peer.workspace_id != workspace_id {
+            if peer.remote_workspace_id != workspace_id {
                 return Err(ApiError::Forbidden(
-                    "peer may only read its registered workspace".into(),
+                    "peer may only read its registered remote workspace".into(),
                 ));
             }
         }

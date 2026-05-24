@@ -301,6 +301,7 @@ pub struct NewApiToken {
 pub struct Peer {
     pub id: PeerId,
     pub workspace_id: WorkspaceId,
+    pub remote_workspace_id: WorkspaceId,
     pub name: String,
     pub base_url: String,
     #[serde(skip_serializing)]
@@ -316,6 +317,7 @@ pub struct Peer {
 #[derive(Debug, Clone)]
 pub struct NewPeer {
     pub workspace_id: WorkspaceId,
+    pub remote_workspace_id: WorkspaceId,
     pub name: String,
     pub base_url: String,
     pub token_hash: String,

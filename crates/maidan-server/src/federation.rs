@@ -333,10 +333,15 @@ pub async fn create_peer(
     })?;
     let outbound_secret_ciphertext =
         encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let remote_workspace_id = body
+        .remote_workspace_id
+        .map(WorkspaceId)
+        .unwrap_or(workspace_id);
     let peer = state
         .store
         .create_peer(NewPeer {
             workspace_id,
+            remote_workspace_id,
             name: body.name,
             base_url: body.base_url,
             token_hash: hash_secret(secret.as_str()),

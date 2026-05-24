@@ -33,6 +33,7 @@ async fn peer_create_lookup_and_delete() {
     let peer = store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "east".to_string(),
             base_url: "https://east.example".to_string(),
             token_hash: "a".repeat(64),
@@ -68,6 +69,7 @@ async fn peer_token_hash_is_unique() {
     store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "p1".to_string(),
             base_url: "https://p1.example".to_string(),
             token_hash: hash.clone(),
@@ -79,6 +81,7 @@ async fn peer_token_hash_is_unique() {
     let err = store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "p2".to_string(),
             base_url: "https://p2.example".to_string(),
             token_hash: hash,
@@ -106,6 +109,7 @@ async fn federated_ingest_dedupes_by_peer_and_remote_id() {
     let peer = store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "upstream".to_string(),
             base_url: "https://up.example".to_string(),
             token_hash: "c".repeat(64),
@@ -171,6 +175,7 @@ async fn update_peer_cursor_advances_last_synced_event_id() {
     let peer = store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "cursor-peer".to_string(),
             base_url: "https://cursor.example".to_string(),
             token_hash: "d".repeat(64),
@@ -204,6 +209,7 @@ async fn peer_outbound_secret_ciphertext_round_trips_via_auth() {
     let peer = store
         .create_peer(NewPeer {
             workspace_id: ws,
+            remote_workspace_id: ws,
             name: "encrypted".to_string(),
             base_url: "https://enc.example".to_string(),
             token_hash: "e".repeat(64),

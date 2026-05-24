@@ -34,7 +34,7 @@ impl Outbound {
         let base = peer.base_url.trim_end_matches('/');
         let url = format!(
             "{base}/workspaces/{}/events?after_id={after_id}&limit={limit}",
-            peer.workspace_id.0
+            peer.remote_workspace_id.0
         );
         let response = self
             .client
