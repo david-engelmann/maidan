@@ -34,7 +34,8 @@ tags; they raise the bar each time they ship.
 ## Current cluster
 
 Clusters A–H and **1.0** are complete. See [[Retros/README]] for the full index.
-Cross-cutting tracks T–X continue without version tags.
+**Track T** (telemetry) is in progress — see [[Tracks/Track T]].
+Cross-cutting tracks U–X continue without version tags.
 
 ## Closing a cluster
 

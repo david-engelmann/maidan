@@ -16,8 +16,9 @@ Updated at the close of each cluster. Items move from "open" to
 - **Bootstrap routes are unauthenticated.** `POST /workspaces` and
   `POST …/members` have no Bearer gate; production must seed with
   `AUTH_DISABLED` then mint tokens before enabling auth.
-- **No indexer lag metric on `/health`.** A stuck indexer is
-  invisible to operators. → Cluster T.
+- **Indexer staleness is opt-in.** Set `INDEXER_STALE_SECS` to mark
+  `/health/ready` degraded when the indexer has not observed an event
+  recently. Default `0` disables the check.
 - **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
   (#36 → `macos-13` for x86_64 darwin). Verify `v0.3.0` tag triggers
   a successful release before considering this resolved.
@@ -38,11 +39,12 @@ Updated at the close of each cluster. Items move from "open" to
 | What                                                              | Source                |
 |-------------------------------------------------------------------|-----------------------|
 | Coverage upload (`cargo-llvm-cov` + codecov)                      | Cluster A retro       |
-| OTLP exporter, request-id middleware, structured JSON logs        | Cluster A retro       |
+| OTLP exporter, structured JSON logs (shipped T.1)                 | Track T               |
+| Request-id middleware + HTTP spans (shipped H + T.1)                | —                     |
+| Indexer heartbeat on `/health/ready` (shipped T.2)                  | Track T               |
 | SQLite `journal_mode = WAL` + `busy_timeout` PRAGMA tuning        | Cluster A retro       |
 | Schema parity property test diffing `information_schema` rows     | Cluster A retro       |
 | Persistent event log (id-pointer + table fetch, beyond 8KB)       | Cluster B retro       |
-| Indexer lag metric on `/health`                                   | Cluster C retro       |
 | `websearch_to_tsquery` Google-style operators in `q`              | Cluster C retro       |
 | Score normalization across dialects (Postgres vs SQLite ranks)    | Cluster C retro       |
 | `cargo-cyclonedx` SBOM generation                                 | Cluster B retro       |

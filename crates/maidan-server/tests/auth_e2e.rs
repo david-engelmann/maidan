@@ -1,6 +1,10 @@
 //! Bearer auth and capability enforcement (SQLite harness, auth enabled).
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    sync::{atomic::AtomicI64, Arc},
+    time::Duration,
+};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
@@ -52,6 +56,7 @@ async fn spawn() -> Harness {
         search,
         false,
         true,
+        Arc::new(AtomicI64::new(0)),
     ));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

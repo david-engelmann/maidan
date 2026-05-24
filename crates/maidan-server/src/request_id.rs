@@ -6,6 +6,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use tracing::Instrument;
 use uuid::Uuid;
 
 fn request_id_header() -> HeaderName {
@@ -24,7 +25,8 @@ pub async fn middleware(mut req: Request, next: Next) -> Response {
 
     req.extensions_mut().insert(RequestId(id.clone()));
 
-    let mut response = next.run(req).await;
+    let span = tracing::info_span!("http_request", request_id = %id);
+    let mut response = async move { next.run(req).await }.instrument(span).await;
     if let Ok(value) = HeaderValue::from_str(&id) {
         response.headers_mut().insert(header, value);
     }

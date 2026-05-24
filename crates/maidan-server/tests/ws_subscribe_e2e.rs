@@ -40,7 +40,7 @@ async fn spawn_server() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
-    let app = router(AppState::new(store, artifacts, bus, search, true, true));
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
