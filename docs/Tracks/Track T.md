@@ -16,6 +16,7 @@ this track completes observability and related perf hygiene.
 | T.1  | `feat(maidan-observability): OTLP + JSON logs + request spans`  | #102  |
 | T.2  | `feat(maidan-server): indexer heartbeat on /health/ready`      | #103  |
 | T.3  | `chore(ci): cargo-llvm-cov coverage job` (optional)            | TBD   |
+| —    | `chore: federation two-instance compose smoke` (push path)     | —     |
 
 ## Order
 
@@ -46,4 +47,5 @@ this track completes observability and related perf hygiene.
 
 - Prometheus metrics exporter (later T PR).
 - Automatic WS replay on NOTIFY miss.
-- Federation compose smoke (separate chore PR).
+- Federation **pull** worker across compose instances (push-path smoke only;
+  `scripts/federation-smoke.sh` + `compose --profile federation`).
