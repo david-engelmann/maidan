@@ -121,13 +121,26 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("FEDERATION_DISABLED is set; federation worker not started");
     }
     let indexer_heartbeat = Arc::new(AtomicI64::new(0));
+    let federation_encryption_key = match maidan_auth::encryption_key_from_env() {
+        Ok(key) => Some(Arc::new(key)),
+        Err(_) => {
+            if !federation_disabled {
+                tracing::warn!(
+                    "FEDERATION_ENCRYPTION_KEY not set; cannot create peers or decrypt outbound secrets after restart"
+                );
+            }
+            None
+        }
+    };
+    let federation =
+        maidan_server::FederationRuntime::new(federation_disabled, federation_encryption_key);
     let state = AppState::new(
         store,
         artifacts,
         bus.clone(),
         search,
         auth_disabled,
-        federation_disabled,
+        federation,
         indexer_heartbeat.clone(),
         bus_listener_health,
     );
@@ -136,9 +149,12 @@ async fn main() -> anyhow::Result<()> {
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);
     tracing::info!("background indexer running");
 
-    let federation_worker = if federation_disabled {
+    let federation_worker = if state.federation.disabled {
         None
     } else {
+        if let Err(err) = maidan_server::federation::hydrate_federation_secrets(&state).await {
+            tracing::warn!(error = %err, "federation peer secret hydration failed");
+        }
         tracing::info!(
             secs = maidan_server::federation::poll_interval_secs_from_env(),
             "federation worker running"

@@ -5,21 +5,25 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
+const PEER_COLS: &str =
+    "id, workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, \
+                          enabled, last_synced_event_id, created_at, updated_at";
+
 pub async fn create(pool: &SqlitePool, new: NewPeer) -> Result<Peer, StoreError> {
     let id = Uuid::new_v4();
     let now = Utc::now();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "INSERT INTO maidan_peers
-            (id, workspace_id, name, base_url, token_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         RETURNING id, workspace_id, name, base_url, token_hash, enabled,
-                   last_synced_event_id, created_at, updated_at",
-    )
+            (id, workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING {PEER_COLS}"
+    ))
     .bind(id)
     .bind(new.workspace_id.0)
     .bind(&new.name)
     .bind(&new.base_url)
     .bind(&new.token_hash)
+    .bind(&new.outbound_secret_ciphertext)
     .bind(now)
     .bind(now)
     .fetch_one(pool)
@@ -29,11 +33,9 @@ pub async fn create(pool: &SqlitePool, new: NewPeer) -> Result<Peer, StoreError>
 }
 
 pub async fn get(pool: &SqlitePool, id: PeerId) -> Result<Peer, StoreError> {
-    let row = sqlx::query(
-        "SELECT id, workspace_id, name, base_url, token_hash, enabled,
-                last_synced_event_id, created_at, updated_at
-         FROM maidan_peers WHERE id = ?",
-    )
+    let row = sqlx::query(&format!(
+        "SELECT {PEER_COLS} FROM maidan_peers WHERE id = ?"
+    ))
     .bind(id.0)
     .fetch_optional(pool)
     .await?
@@ -42,12 +44,11 @@ pub async fn get(pool: &SqlitePool, id: PeerId) -> Result<Peer, StoreError> {
 }
 
 pub async fn get_by_token_hash(pool: &SqlitePool, token_hash: &str) -> Result<Peer, StoreError> {
-    let row = sqlx::query(
-        "SELECT id, workspace_id, name, base_url, token_hash, enabled,
-                last_synced_event_id, created_at, updated_at
+    let row = sqlx::query(&format!(
+        "SELECT {PEER_COLS}
          FROM maidan_peers
-         WHERE token_hash = ? AND enabled = 1",
-    )
+         WHERE token_hash = ? AND enabled = 1"
+    ))
     .bind(token_hash)
     .fetch_optional(pool)
     .await?
@@ -56,13 +57,12 @@ pub async fn get_by_token_hash(pool: &SqlitePool, token_hash: &str) -> Result<Pe
 }
 
 pub async fn list(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<Vec<Peer>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, workspace_id, name, base_url, token_hash, enabled,
-                last_synced_event_id, created_at, updated_at
+    let rows = sqlx::query(&format!(
+        "SELECT {PEER_COLS}
          FROM maidan_peers
          WHERE workspace_id = ?
-         ORDER BY name ASC",
-    )
+         ORDER BY name ASC"
+    ))
     .bind(workspace_id.0)
     .fetch_all(pool)
     .await?;
@@ -70,13 +70,12 @@ pub async fn list(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<Vec<Pe
 }
 
 pub async fn list_enabled(pool: &SqlitePool) -> Result<Vec<Peer>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, workspace_id, name, base_url, token_hash, enabled,
-                last_synced_event_id, created_at, updated_at
+    let rows = sqlx::query(&format!(
+        "SELECT {PEER_COLS}
          FROM maidan_peers
          WHERE enabled = 1
-         ORDER BY name ASC",
-    )
+         ORDER BY name ASC"
+    ))
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_peer).collect()
@@ -88,13 +87,12 @@ pub async fn update_cursor(
     last_synced_event_id: i64,
 ) -> Result<Peer, StoreError> {
     let now = Utc::now();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_peers
          SET last_synced_event_id = ?, updated_at = ?
          WHERE id = ?
-         RETURNING id, workspace_id, name, base_url, token_hash, enabled,
-                   last_synced_event_id, created_at, updated_at",
-    )
+         RETURNING {PEER_COLS}"
+    ))
     .bind(last_synced_event_id)
     .bind(now)
     .bind(id.0)
@@ -181,6 +179,7 @@ fn row_to_peer(row: &sqlx::sqlite::SqliteRow) -> Result<Peer, StoreError> {
         name: row.get("name"),
         base_url: row.get("base_url"),
         token_hash: row.get("token_hash"),
+        outbound_secret_ciphertext: row.get("outbound_secret_ciphertext"),
         enabled: row.get::<i64, _>("enabled") != 0,
         last_synced_event_id: row.get("last_synced_event_id"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),

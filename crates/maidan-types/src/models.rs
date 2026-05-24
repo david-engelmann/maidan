@@ -305,6 +305,8 @@ pub struct Peer {
     pub base_url: String,
     #[serde(skip_serializing)]
     pub token_hash: String,
+    #[serde(skip_serializing)]
+    pub outbound_secret_ciphertext: Option<String>,
     pub enabled: bool,
     pub last_synced_event_id: i64,
     pub created_at: DateTime<Utc>,
@@ -317,6 +319,7 @@ pub struct NewPeer {
     pub name: String,
     pub base_url: String,
     pub token_hash: String,
+    pub outbound_secret_ciphertext: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::EventKind;
 use serde_json::json;
@@ -246,7 +246,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         bus.clone(),
         search,
         true,
-        true,
+        FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,
     ));

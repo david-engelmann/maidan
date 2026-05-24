@@ -6,12 +6,16 @@ use std::{
     time::Duration,
 };
 
+fn federation_test_key() -> Option<Arc<[u8; 32]>> {
+    Some(Arc::new([0x42; 32]))
+}
+
 use maidan_a2a::{FederatedEventBatch, FederationEnvelope};
 use maidan_auth::{
     capability::{FEDERATION_ADMIN, WORKSPACE_READ},
     hash_secret, TokenSecret,
 };
-use maidan_server::{router, AppState};
+use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{
     Event, EventKind, MemberKind, NewApiToken, NewMember, NewWorkspace, PeerId, StoredEvent,
@@ -61,7 +65,7 @@ async fn spawn_with_auth_disabled() -> Harness {
         bus,
         search,
         true,
-        true,
+        FederationRuntime::new(true, federation_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
     ));
@@ -103,7 +107,7 @@ async fn spawn() -> Harness {
         bus,
         search,
         false,
-        true,
+        FederationRuntime::new(true, federation_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
     ));
@@ -352,4 +356,89 @@ async fn federation_ingest_rejects_wrong_peer_bearer() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     h.shutdown().await;
+}
+
+#[tokio::test]
+async fn federation_peer_outbound_secret_hydrates_after_restart() {
+    use maidan_auth::{encrypt_peer_secret, hash_secret};
+    use maidan_server::federation::{
+        forget_peer_secret, hydrate_federation_secrets, resolve_outbound_secret,
+    };
+
+    let key = Arc::new([0x42; 32]);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let state = AppState::new(
+        store.clone(),
+        artifacts,
+        bus,
+        search,
+        true,
+        FederationRuntime::new(true, Some(key.clone())),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "persist".to_string(),
+        })
+        .await
+        .unwrap();
+    let plaintext = "maid_peer_secret_for_poll";
+    let peer = store
+        .create_peer(maidan_types::NewPeer {
+            workspace_id: ws.id,
+            name: "remote".to_string(),
+            base_url: "https://remote.example".to_string(),
+            token_hash: hash_secret(plaintext),
+            outbound_secret_ciphertext: Some(
+                encrypt_peer_secret(plaintext, key.as_ref()).expect("encrypt"),
+            ),
+        })
+        .await
+        .unwrap();
+    assert!(peer.outbound_secret_ciphertext.is_some());
+
+    let fresh = AppState::new(
+        store,
+        state.artifacts.clone(),
+        state.bus.clone(),
+        state.search.clone(),
+        true,
+        FederationRuntime::new(true, Some(key)),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    assert!(fresh.federation.outbound_secrets.read().unwrap().is_empty());
+    assert_eq!(
+        resolve_outbound_secret(&fresh, &peer).as_deref(),
+        Some(plaintext)
+    );
+    assert!(fresh
+        .federation
+        .outbound_secrets
+        .read()
+        .unwrap()
+        .contains_key(&peer.id));
+
+    forget_peer_secret(&fresh.federation.outbound_secrets, peer.id);
+    hydrate_federation_secrets(&fresh).await.expect("hydrate");
+    assert_eq!(
+        resolve_outbound_secret(&fresh, &peer).as_deref(),
+        Some(plaintext)
+    );
 }

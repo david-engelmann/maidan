@@ -22,7 +22,7 @@ pub mod ws;
 
 pub use app::router;
 pub use config::Config;
-pub use state::AppState;
+pub use state::{AppState, FederationRuntime};
 
 /// Build the maidan-server git/build version string. Falls back to the
 /// crate version if no `MAIDAN_VERSION` is baked in at compile time.

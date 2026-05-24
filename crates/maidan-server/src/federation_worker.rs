@@ -6,7 +6,7 @@ use maidan_a2a::{FederationEnvelope, Outbound};
 use tokio::sync::watch;
 use tracing::{debug, warn};
 
-use crate::federation::{ingest_envelope, poll_interval_secs_from_env};
+use crate::federation::{ingest_envelope, poll_interval_secs_from_env, resolve_outbound_secret};
 use crate::state::AppState;
 
 pub struct FederationWorker {
@@ -52,15 +52,11 @@ async fn poll_once(state: &AppState, outbound: &Outbound) -> Result<(), String> 
         .await
         .map_err(|e| e.to_string())?;
     for peer in peers {
-        let secret = {
-            let guard = state
-                .federation_secrets
-                .read()
-                .map_err(|_| "federation secrets lock poisoned".to_string())?;
-            guard.get(&peer.id).cloned()
-        };
-        let Some(secret) = secret else {
-            warn!(peer = %peer.id, "skipping poll: peer secret not in memory (re-create peer after restart)");
+        let Some(secret) = resolve_outbound_secret(state, &peer) else {
+            warn!(
+                peer = %peer.id,
+                "skipping poll: no outbound secret (set FEDERATION_ENCRYPTION_KEY and re-create peer)"
+            );
             continue;
         };
         let events = outbound

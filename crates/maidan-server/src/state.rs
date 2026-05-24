@@ -7,6 +7,24 @@ use maidan_search::Search;
 use maidan_store::Store;
 use maidan_types::PeerId;
 
+/// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
+#[derive(Clone)]
+pub struct FederationRuntime {
+    pub disabled: bool,
+    pub encryption_key: Option<Arc<[u8; 32]>>,
+    pub outbound_secrets: Arc<RwLock<HashMap<PeerId, String>>>,
+}
+
+impl FederationRuntime {
+    pub fn new(disabled: bool, encryption_key: Option<Arc<[u8; 32]>>) -> Self {
+        Self {
+            disabled,
+            encryption_key,
+            outbound_secrets: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
 /// Shared handles passed to every request handler. `Arc`s are cheap to
 /// clone; the inner trait objects implement the relevant backend logic.
 #[derive(Clone)]
@@ -17,10 +35,7 @@ pub struct AppState {
     pub search: Arc<dyn Search>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
-    /// When true, the federation poll worker is not started.
-    pub federation_disabled: bool,
-    /// Peer bearer secrets shown once at create; used for outbound poll until restart.
-    pub federation_secrets: Arc<RwLock<HashMap<PeerId, String>>>,
+    pub federation: FederationRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
     /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
@@ -34,7 +49,7 @@ impl AppState {
         bus: Arc<dyn EventBus>,
         search: Arc<dyn Search>,
         auth_disabled: bool,
-        federation_disabled: bool,
+        federation: FederationRuntime,
         indexer_last_event_unix_ms: Arc<AtomicI64>,
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
@@ -44,8 +59,7 @@ impl AppState {
             bus,
             search,
             auth_disabled,
-            federation_disabled,
-            federation_secrets: Arc::new(RwLock::new(HashMap::new())),
+            federation,
             indexer_last_event_unix_ms,
             bus_listener_health,
         }
@@ -64,7 +78,7 @@ impl AppState {
             bus,
             search,
             true,
-            true,
+            FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),
             None,
         )

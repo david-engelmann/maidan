@@ -8,7 +8,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{run_postgres_migrations, PostgresStore};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
@@ -181,7 +181,7 @@ async fn spawn_server_with_postgres_bus() -> Option<(
         bus.clone(),
         search,
         true,
-        true,
+        FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         Some(bus_health),
     ));
