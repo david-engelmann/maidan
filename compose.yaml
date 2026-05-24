@@ -111,6 +111,8 @@ services:
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: 1
       FEDERATION_DISABLED: 1
+      # Smoke-only 32-byte key (hex); required to register federation peers.
+      FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
@@ -136,6 +138,7 @@ services:
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: 1
       FEDERATION_DISABLED: 1
+      FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
