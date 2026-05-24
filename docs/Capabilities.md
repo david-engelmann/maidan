@@ -5,7 +5,18 @@ PR prepends a new section so the latest is always at the top.
 
 ## v1.0.0 (target)
 
-Populated when Cluster H lands.
+Populated when Cluster 1.0 lands.
+
+## v0.6.0 — Cluster G complete
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Migration 0009 federation peers + ingest dedupe           | `maidan-store`                |
+| `FederationEnvelope` / `FederatedEventBatch`              | `maidan-a2a`                  |
+| `POST /a2a/v1/events` + peer bearer auth                  | `maidan-server::federation`   |
+| `FederationWorker` outbound poll                          | `maidan-server`               |
+| Peer CRUD + `/.well-known/maidan.json`                    | `maidan-server`               |
+| `federation:ingest` / `federation:admin` capabilities     | `maidan-auth`                 |
 
 ## v0.5.0 — Cluster F complete
 

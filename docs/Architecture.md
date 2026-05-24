@@ -146,8 +146,14 @@ See [[Glossary]] for vocabulary.
 - **MCP** — `tools/call`, `resources/read`, and `prompts/get` require a valid
   bearer; per-tool capability map in `maidan-mcp`.
 
+## At v0.6.0 (Cluster G)
+
+- **Federation** — `maidan_peers` registry, `POST /a2a/v1/events` ingest,
+  `FederationWorker` poll, `maidan-a2a::Outbound`, `/.well-known/maidan.json`.
+- **Auth** — peer bearer (SHA-256) distinct from member API tokens; capabilities
+  `federation:ingest` and `federation:admin`.
+
 ## What's deliberately not here yet
 
-- A2A federation (Cluster G).
 - Web UI (Cluster H).
 - Long-term archival / GDPR right-of-erasure (Cluster V).
