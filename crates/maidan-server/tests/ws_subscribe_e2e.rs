@@ -304,6 +304,99 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
 }
 
 #[tokio::test]
+async fn subscribe_resumes_after_id_from_event_log() {
+    let (addr, client, server, _dir) = spawn_server().await;
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    let req = ws_url.clone().into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(json!({"filter": {}}).to_string()))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "resume-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+    let _: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "alice", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let _: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let mut first_log_id = None;
+    let read_first = async {
+        while first_log_id.is_none() {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) != Some("replay_hint") {
+                    first_log_id = Some(v["log_id"].as_i64().unwrap());
+                    break;
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(3), read_first)
+        .await
+        .expect("timeout");
+    let after_id = first_log_id.unwrap();
+    ws.close(None).await.ok();
+
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws reconnect");
+    ws.send(Message::Text(
+        json!({
+            "filter": {"workspace_id": workspace_id},
+            "after_id": after_id
+        })
+        .to_string(),
+    ))
+    .await
+    .unwrap();
+
+    let mut kinds = Vec::new();
+    let collect = async {
+        while kinds.len() < 2 {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
+                    continue;
+                }
+                kinds.push(v["kind"].as_str().unwrap().to_string());
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(3), collect)
+        .await
+        .expect("timeout on resume");
+    assert_eq!(kinds, vec!["member_joined", "channel_created"]);
+
+    ws.close(None).await.ok();
+    server.abort();
+}
+
+#[tokio::test]
 async fn subscribe_with_invalid_filter_closes_with_1008() {
     let (addr, _client, server, _dir) = spawn_server().await;
     let ws_url = format!("ws://{addr}/ws/subscribe");

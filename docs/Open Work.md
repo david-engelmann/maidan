@@ -12,8 +12,8 @@ Updated at the close of each cluster. Items move from "open" to
 - **At-most-once delivery on the event bus.** Postgres
   `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
   API shipped in Cluster D, but subscribers must poll replay on gap —
-  no automatic WS backfill yet — `replay_hint` frames on lag (v1.1.2);
-  clients must still poll replay HTTP.
+  no automatic WS backfill on lag beyond `replay_hint` (v1.1.2); subscribe
+  `after_id` replays from `maidan_events` on connect (v1.1.3).
 - **Bootstrap routes are unauthenticated.** `POST /workspaces` and
   `POST …/members` have no Bearer gate; production must seed with
   `AUTH_DISABLED` then mint tokens before enabling auth.

@@ -1,6 +1,7 @@
 //! SSE event stream for MCP-style reactive clients (`GET /mcp/stream`).
 
 use std::convert::Infallible;
+use std::sync::{atomic::AtomicI64, Arc};
 use std::time::Duration;
 
 use axum::{
@@ -8,22 +9,24 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
     Extension,
 };
-use futures::StreamExt;
 use maidan_auth::{capability::EVENT_SUBSCRIBE, AuthContext};
-use maidan_bus::BusItem;
 use maidan_types::EventFilter;
 use serde::Deserialize;
-use serde::Serialize;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 
 use crate::error::ApiError;
+use crate::event_stream::{self, replay_matching_events};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct McpStreamQuery {
     #[serde(default)]
     pub workspace_id: Option<uuid::Uuid>,
+    /// Replay persisted events with `id > after_id` before live bus delivery.
+    #[serde(default)]
+    pub after_id: i64,
 }
 
 pub async fn stream(
@@ -34,76 +37,56 @@ pub async fn stream(
     auth.require_capability(EVENT_SUBSCRIBE)
         .map_err(|_| ApiError::Forbidden("missing event:subscribe capability".into()))?;
 
+    if q.after_id < 0 {
+        return Err(ApiError::BadRequest("after_id must be non-negative".into()));
+    }
+
     let mut filter = EventFilter::all();
     if let Some(ws) = q.workspace_id {
         filter.workspace_id = Some(maidan_types::WorkspaceId(ws));
         auth.ensure_workspace(maidan_types::WorkspaceId(ws))
             .map_err(|_| ApiError::Forbidden("token is not valid for this workspace".into()))?;
+    } else if q.after_id > 0 {
+        return Err(ApiError::BadRequest(
+            "after_id requires workspace_id query parameter".into(),
+        ));
     }
 
     let replay_workspace = filter.workspace_id;
-    let mut subscriber = state
-        .bus
-        .subscribe(filter)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    let (sse_tx, sse_rx) = mpsc::channel(256);
+    let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
 
     tokio::spawn(async move {
-        let mut last_log_id: i64 = 0;
-        while let Some(item) = subscriber.next().await {
-            let data = match item {
-                BusItem::Event(envelope) => {
-                    last_log_id = envelope.log_id;
-                    match serde_json::to_string(envelope.as_ref()) {
-                        Ok(s) => s,
-                        Err(err) => {
-                            tracing::warn!(error = %err, "drop unserializable event for sse");
-                            continue;
-                        }
-                    }
-                }
-                BusItem::Lagged { skipped } => {
-                    #[derive(Serialize)]
-                    struct ReplayHint {
-                        #[serde(rename = "type")]
-                        frame_type: &'static str,
-                        skipped: u64,
-                        after_id: i64,
-                        #[serde(skip_serializing_if = "Option::is_none")]
-                        workspace_id: Option<uuid::Uuid>,
-                        #[serde(skip_serializing_if = "Option::is_none")]
-                        replay: Option<String>,
-                    }
-                    let hint = ReplayHint {
-                        frame_type: "replay_hint",
-                        skipped,
-                        after_id: last_log_id,
-                        workspace_id: replay_workspace.map(|w| w.0),
-                        replay: replay_workspace.map(|w| {
-                            format!(
-                                "/workspaces/{}/events?after_id={last_log_id}&limit=100",
-                                w.0
-                            )
-                        }),
-                    };
-                    match serde_json::to_string(&hint) {
-                        Ok(s) => s,
-                        Err(err) => {
-                            tracing::warn!(error = %err, "drop replay_hint for sse");
-                            continue;
-                        }
-                    }
-                }
-            };
-            if tx.send(Ok(Event::default().data(data))).await.is_err() {
+        while let Some(payload) = text_rx.recv().await {
+            if sse_tx
+                .send(Ok(Event::default().data(payload)))
+                .await
+                .is_err()
+            {
                 break;
             }
         }
     });
 
-    let stream = ReceiverStream::new(rx);
+    let mut high_water = q.after_id;
+    if q.after_id > 0 {
+        high_water = replay_matching_events(state.store.as_ref(), &filter, q.after_id, &text_tx)
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
+
+    let subscriber = state
+        .bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let watermark = Arc::new(AtomicI64::new(high_water));
+    tokio::spawn(async move {
+        event_stream::forward_bus_items(subscriber, text_tx, watermark, replay_workspace).await;
+    });
+
+    let stream = ReceiverStream::new(sse_rx);
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
