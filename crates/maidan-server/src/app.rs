@@ -5,7 +5,9 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{auth, federation, health, mcp, mcp_stream, request_id, routes, state::AppState, ws};
+use crate::{
+    auth, federation, health, mcp, mcp_stream, openapi, request_id, routes, state::AppState, ws,
+};
 
 /// Build the axum [`Router`] with all routes wired up.
 ///
@@ -98,6 +100,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/.well-known/maidan.json", get(federation::well_known))
+        .route("/openapi.json", get(openapi::openapi_json))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .merge(bootstrap)

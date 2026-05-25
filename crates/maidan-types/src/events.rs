@@ -14,6 +14,7 @@ use crate::models::*;
 
 /// Row in the persistent `maidan_events` log (Cluster D.6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StoredEvent {
     pub id: i64,
     pub kind: EventKind,
@@ -25,6 +26,7 @@ pub struct StoredEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
     WorkspaceCreated,

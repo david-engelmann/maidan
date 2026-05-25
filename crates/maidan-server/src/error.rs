@@ -10,6 +10,7 @@ use axum::{
 };
 use maidan_store::StoreError;
 use serde::{de::DeserializeOwned, Serialize};
+use utoipa::ToSchema;
 
 /// Custom JSON extractor that maps deserialization errors to
 /// [`ApiError::BadRequest`] so the response is `application/problem+json`
@@ -99,21 +100,23 @@ impl From<maidan_auth::AuthError> for ApiError {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct ProblemBody<'a> {
+/// RFC 7807 problem details (`application/problem+json`).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProblemDetails {
     #[serde(rename = "type")]
-    type_: &'a str,
-    title: &'a str,
-    status: u16,
-    detail: String,
+    #[schema(example = "https://maidan.dev/problems/not-found")]
+    pub type_: String,
+    pub title: String,
+    pub status: u16,
+    pub detail: String,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status();
-        let body = ProblemBody {
-            type_: self.problem_type(),
-            title: self.title(),
+        let body = ProblemDetails {
+            type_: self.problem_type().to_string(),
+            title: self.title().to_string(),
             status: status.as_u16(),
             detail: self.detail(),
         };

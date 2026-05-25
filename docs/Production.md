@@ -27,6 +27,15 @@ Guidance for running Maidan at `v1.0.0` and later.
 2. Create workspace + member, mint admin token.
 3. Remove `AUTH_DISABLED`, set `MAIDAN_ENV=production`, restart.
 
+## API discovery
+
+| Endpoint            | Use                                      |
+|---------------------|------------------------------------------|
+| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. |
+
+Import into Swagger UI, Redoc, or your client generator. The document
+version tracks the server release (`info.version`).
+
 ## API stability
 
 From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases

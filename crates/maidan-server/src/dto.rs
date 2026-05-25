@@ -7,20 +7,21 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{ApiTokenId, ArtifactKind, MemberId, MemberKind, RefSide, WorkspaceId};
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkspace {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMember {
     pub handle: String,
     pub display_name: Option<String>,
     pub kind: MemberKind,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateChannel {
     pub name: String,
     pub topic: Option<String>,
@@ -28,19 +29,19 @@ pub struct CreateChannel {
     pub private: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateThread {
     pub title: Option<String>,
     pub parent_thread_id: Option<uuid::Uuid>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TransitionThread {
     pub actor_id: uuid::Uuid,
     pub action: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMessage {
     pub author_id: uuid::Uuid,
     pub body: String,
@@ -48,18 +49,18 @@ pub struct CreateMessage {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMention {
     pub member_id: uuid::Uuid,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateVote {
     pub member_id: uuid::Uuid,
     pub kind: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReference {
     pub src_kind: RefSide,
     pub src_id: uuid::Uuid,
@@ -68,7 +69,7 @@ pub struct CreateReference {
     pub relation: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListMessagesQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -78,13 +79,13 @@ fn default_limit() -> i64 {
     100
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListReferencesQuery {
     pub src_kind: RefSide,
     pub src_id: uuid::Uuid,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListEventsQuery {
     #[serde(default)]
     pub after_id: i64,
@@ -92,7 +93,7 @@ pub struct ListEventsQuery {
     pub limit: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default = "default_search_limit")]
@@ -103,20 +104,20 @@ fn default_search_limit() -> i64 {
     25
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListMentionsQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
     pub uploaded_by: Option<uuid::Uuid>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct MintApiToken {
     pub label: Option<String>,
     #[serde(default)]
@@ -124,7 +125,7 @@ pub struct MintApiToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreatePeer {
     pub name: String,
     pub base_url: String,
@@ -132,7 +133,7 @@ pub struct CreatePeer {
     pub remote_workspace_id: Option<uuid::Uuid>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PeerResponse {
     pub id: maidan_types::PeerId,
     pub workspace_id: maidan_types::WorkspaceId,
@@ -161,13 +162,13 @@ impl From<maidan_types::Peer> for PeerResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MintPeerResponse {
     pub peer: PeerResponse,
     pub secret: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MintApiTokenResponse {
     pub id: ApiTokenId,
     pub secret: String,

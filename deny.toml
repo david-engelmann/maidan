@@ -27,6 +27,10 @@ reason = "rustls-webpki 0.101 via aws-sdk; name constraints unused for MinIO HTT
 id = "RUSTSEC-2026-0098"
 reason = "rustls-webpki 0.101 via aws-sdk; URI name constraints unused for MinIO HTTP"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error unmaintained via utoipa-gen; compile-time only, no runtime surface"
+
 [licenses]
 allow = [
     "MIT",
