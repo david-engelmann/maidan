@@ -65,6 +65,9 @@ async fn main() -> anyhow::Result<()> {
                 .connect(&config.database_url)
                 .await
                 .context("connect to sqlite")?;
+            maidan_store::configure_sqlite_pool(&pool)
+                .await
+                .context("configure sqlite pragmas")?;
             run_sqlite_migrations(&pool)
                 .await
                 .context("apply sqlite migrations")?;
