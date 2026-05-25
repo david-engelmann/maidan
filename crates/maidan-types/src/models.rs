@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MemberKind {
     Human,
@@ -24,6 +25,7 @@ impl MemberKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ThreadState {
     Open,
@@ -44,6 +46,7 @@ impl ThreadState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RefSide {
     Thread,
@@ -60,6 +63,7 @@ impl RefSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
     Screenshot,
@@ -101,6 +105,7 @@ impl ArtifactKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Workspace {
     pub id: WorkspaceId,
     pub name: String,
@@ -115,6 +120,7 @@ pub struct NewWorkspace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Member {
     pub id: MemberId,
     pub workspace_id: WorkspaceId,
@@ -135,6 +141,7 @@ pub struct NewMember {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Channel {
     pub id: ChannelId,
     pub workspace_id: WorkspaceId,
@@ -155,6 +162,7 @@ pub struct NewChannel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Thread {
     pub id: ThreadId,
     pub channel_id: ChannelId,
@@ -181,6 +189,7 @@ pub struct ThreadTransitionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Message {
     pub id: MessageId,
     pub thread_id: ThreadId,
@@ -201,6 +210,7 @@ pub struct NewMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Mention {
     pub message_id: MessageId,
     pub member_id: MemberId,
@@ -208,6 +218,7 @@ pub struct Mention {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Vote {
     pub message_id: MessageId,
     pub member_id: MemberId,
@@ -223,6 +234,7 @@ pub struct NewVote {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Reference {
     pub id: uuid::Uuid,
     pub src_kind: RefSide,
@@ -243,6 +255,7 @@ pub struct NewReference {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Artifact {
     pub id: ArtifactId,
     pub sha256: String,

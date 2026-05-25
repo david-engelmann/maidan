@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 maidan-fsm = { path = "../maidan-fsm" }
-maidan-types = { path = "../maidan-types" }
+maidan-types = { path = "../maidan-types", features = ["openapi"] }
 maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
@@ -44,6 +44,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 
 [dev-dependencies]
 base64 = "0.22"

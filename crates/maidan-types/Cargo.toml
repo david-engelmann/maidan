@@ -9,9 +9,13 @@ authors.workspace = true
 publish.workspace = true
 description = "Core domain types for Maidan."
 
+[features]
+openapi = ["dep:utoipa"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+utoipa = { version = "4.2", optional = true, features = ["chrono", "uuid"] }
