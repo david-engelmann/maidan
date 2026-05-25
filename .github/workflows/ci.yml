@@ -109,9 +109,8 @@ jobs:
           tool: cargo-llvm-cov
       - name: coverage report
         run: |
-          cargo llvm-cov --workspace --lib --bins \
-            --lcov --output-path lcov.info \
-            --html --output-dir coverage-html
+          cargo llvm-cov --workspace --lib --bins --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --lib --bins --html --output-dir coverage-html
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
