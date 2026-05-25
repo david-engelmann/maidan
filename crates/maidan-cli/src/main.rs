@@ -62,10 +62,9 @@ async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Resu
         .connect(database_url)
         .await
         .context("connect sqlite")?;
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
+    maidan_store::configure_sqlite_pool(&pool)
         .await
-        .context("foreign_keys")?;
+        .context("configure sqlite pragmas")?;
     run_sqlite_migrations(&pool)
         .await
         .context("migrate sqlite")?;

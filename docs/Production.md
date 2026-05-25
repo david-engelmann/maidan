@@ -15,6 +15,7 @@ Guidance for running Maidan at `v1.0.0` and later.
 | Variable        | Required | Notes                                                |
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
+|                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED`.       |
 | `AUTH_DISABLED` | no       | Must **not** be set in production.                   |
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |

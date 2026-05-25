@@ -15,4 +15,9 @@ pub use error::StoreError;
 pub use migrate::{run_postgres_migrations, run_sqlite_migrations};
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
+
+/// Applies SQLite PRAGMAs (`foreign_keys`, WAL, `busy_timeout`).
+pub async fn configure_sqlite_pool(pool: &sqlx::SqlitePool) -> Result<(), StoreError> {
+    sqlite::configure_pool(pool).await
+}
 pub use store::Store;

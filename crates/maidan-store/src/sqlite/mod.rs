@@ -11,6 +11,7 @@ mod members;
 mod mentions;
 mod messages;
 mod peers;
+mod pragmas;
 mod refs;
 mod thread_transitions;
 mod threads;
@@ -24,6 +25,8 @@ use sqlx::SqlitePool;
 
 use crate::error::StoreError;
 use crate::store::Store;
+
+pub use pragmas::configure_pool;
 
 #[derive(Debug, Clone)]
 pub struct SqliteStore {
