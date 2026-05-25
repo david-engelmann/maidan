@@ -91,6 +91,33 @@ jobs:
       - name: integration tests
         run: cargo nextest run --workspace --tests --no-fail-fast
 
+  coverage:
+    name: coverage (llvm-cov)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: coverage report
+        run: |
+          cargo llvm-cov --workspace --lib --bins --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --lib --bins --html --output-dir coverage-html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            coverage-html
+
   e2e:
     name: docker compose smoke
     runs-on: ubuntu-latest

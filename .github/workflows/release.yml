@@ -22,7 +22,7 @@ jobs:
   build:
     name: build release binaries
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -36,9 +36,6 @@ jobs:
             cross: true
           - os: macos-latest
             target: aarch64-apple-darwin
-            archive: tar.gz
-          - os: macos-13
-            target: x86_64-apple-darwin
             archive: tar.gz
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +65,33 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: maidan-${{ matrix.target }}
+          path: dist/
+
+  # Optional: macos-13 runners can queue for hours and previously blocked the
+  # whole workflow until GitHub's 24h run cap. Failure does not block release.
+  build-darwin-x86:
+    name: build release binaries (darwin x86_64, optional)
+    runs-on: macos-13
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: build
+        run: cargo build --release --bin maidan-server --bin maidan --target x86_64-apple-darwin
+      - name: package
+        run: |
+          mkdir -p dist
+          tar -czf dist/maidan-x86_64-apple-darwin.tar.gz \
+            -C target/x86_64-apple-darwin/release maidan-server maidan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maidan-x86_64-apple-darwin
           path: dist/
 
   docker:
@@ -120,7 +144,8 @@ jobs:
 
   release:
     name: github release
-    needs: [build, docker]
+    needs: [build, build-darwin-x86, docker]
+    if: ${{ always() && needs.build.result == 'success' && needs.docker.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
