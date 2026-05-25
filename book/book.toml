@@ -1,0 +1,16 @@
+[book]
+title = "Maidan"
+authors = ["david-engelmann"]
+description = "Design, operations, and API reference for Maidan"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "build"
+
+[output.html]
+default-theme = "ayu"
+git-repository-url = "https://github.com/david-engelmann/maidan"
+edit-url-template = "https://github.com/david-engelmann/maidan/edit/main/{path}"
+site-url = "/maidan/"
+cname = ""

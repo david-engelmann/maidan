@@ -6,6 +6,9 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 
 > **Agents:** start at [`../CLAUDE.md`](../CLAUDE.md). It's the
 > operating manual; this vault is the reference.
+>
+> **Published site:** [mdBook](https://david-engelmann.github.io/maidan/)
+> (built from `book/` + this vault on every merge to `main`).
 
 ## Index
 

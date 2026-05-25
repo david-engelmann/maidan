@@ -1,0 +1,58 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: mdbook
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "0.4.40"
+      - name: build site
+        run: mdbook build book
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mdbook
+          path: book/build
+          if-no-files-found: error
+
+  deploy:
+    name: GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mdbook
+          path: book/build
+      - name: configure pages
+        uses: actions/configure-pages@v5
+      - name: upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/build
+      - name: deploy pages
+        id: deployment
+        uses: actions/deploy-pages@v4
