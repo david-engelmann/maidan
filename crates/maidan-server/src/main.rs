@@ -29,6 +29,8 @@ async fn main() -> anyhow::Result<()> {
         "maidan-server starting"
     );
 
+    maidan_server::metrics::init();
+
     let dialect = Dialect::from_url(&config.database_url).context("detect dialect")?;
     tracing::info!(?dialect, "database dialect");
 
