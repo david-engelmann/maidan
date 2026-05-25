@@ -45,14 +45,9 @@ fn render_tool(tool: &Value) -> String {
     let cap = tools::required_capability(&name)
         .map(|c| format!("`{c}`"))
         .unwrap_or_else(|_| "—".to_string());
-    let schema = tool
-        .get("inputSchema")
-        .map(pretty_json)
-        .unwrap_or_default();
+    let schema = tool.get("inputSchema").map(pretty_json).unwrap_or_default();
 
-    format!(
-        "### `{name}`\n\n{description}\n\n**Capability:** {cap}\n\n```json\n{schema}\n```\n"
-    )
+    format!("### `{name}`\n\n{description}\n\n**Capability:** {cap}\n\n```json\n{schema}\n```\n")
 }
 
 fn render_resource(resource: &Value) -> String {
@@ -69,9 +64,7 @@ fn render_prompt(prompt: &Value) -> String {
         .get("arguments")
         .map(pretty_json)
         .unwrap_or_else(|| "[]".to_string());
-    format!(
-        "### `{name}`\n\n{description}\n\n**Arguments:**\n\n```json\n{args}\n```\n"
-    )
+    format!("### `{name}`\n\n{description}\n\n**Arguments:**\n\n```json\n{args}\n```\n")
 }
 
 fn field_str(value: &Value, key: &str) -> String {
