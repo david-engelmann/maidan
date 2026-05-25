@@ -118,6 +118,7 @@ from [`book/`](book/) on every merge to `main` (see
 
 ```sh
 cargo install mdbook --locked   # once
+cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
 mdbook build book
 mdbook serve book               # http://127.0.0.1:3000
 ```

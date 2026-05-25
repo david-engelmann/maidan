@@ -23,6 +23,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/maidan-mcp
+      - name: generate MCP reference
+        run: cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: "0.4.40"
