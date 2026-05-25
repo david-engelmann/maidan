@@ -26,9 +26,8 @@ Updated at the close of each cluster. Items move from "open" to
 - **PostgresBus listener recovery is best-effort.** `/health/ready` reports
   `bus: error` while the background task is in a retry loop (`v1.1.0`); it
   clears after the next successful `recv`.
-- **No coverage gate in CI.** Local + integration tests run, but no
-  `≥ N%` threshold is enforced. → Cluster T (when
-  `cargo-llvm-cov` lands as a CI job).
+- **No coverage threshold in CI.** `cargo-llvm-cov` uploads `lcov.info` as a
+  CI artifact (Track T.3); no minimum % gate or Codecov upload yet.
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → Cluster F+ candidate via `sqlite-vec` if
   the extension's sqlx integration matures.
@@ -140,8 +139,10 @@ See [`docs/Retros/Cluster 1.0.md`](Retros/Cluster%201.0.md). Tag `v1.0.0`.
 
 - **Cluster ladder A–H + 1.0 complete** — latest tag `v1.1.0` (optional minor).
   See [[Post-1.0]] for tracks and optional `v1.2.0` minor.
-- **Track T in progress** — T.3 (`cargo-llvm-cov`) optional; federation
-  push + pull compose smoke shipped (`v1.1.0`).
+- **Track T** — T.1/T.2 + federation smoke + T.3 llvm-cov artifact shipped;
+  T.4+ (Prometheus, SQLite WAL) still open.
+- **`v1.1.0` GitHub Release** — tag pushed; release workflow was cancelled
+  after 24h (macos-13 queue). Re-run after release.yml fix merges.
 
 ## How to read this file
 
