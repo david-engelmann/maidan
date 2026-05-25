@@ -45,6 +45,8 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 
 [dev-dependencies]
 base64 = "0.22"

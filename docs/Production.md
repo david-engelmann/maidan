@@ -33,6 +33,7 @@ Guidance for running Maidan at `v1.0.0` and later.
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
 | `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. |
+| `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 
 Import into Swagger UI, Redoc, or your client generator. The document
 version tracks the server release (`info.version`).
