@@ -14,6 +14,7 @@
 pub mod error;
 pub mod prompts;
 pub mod protocol;
+pub mod reference;
 pub mod resources;
 pub mod server;
 pub mod stdio;

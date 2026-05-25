@@ -5,7 +5,7 @@ Maidan serves a machine-readable OpenAPI document at **`GET /openapi.json`**
 Redoc, or your client generator.
 
 The spec documents REST routes and `application/problem+json` errors. MCP
-(`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are described in the vault and
-MCP tool reference (Track W.3), not fully in OpenAPI.
+(`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are not fully in OpenAPI; see
+[MCP reference](./mcp-reference.md).
 
 See also [Production](../docs/Production.md) for probes, environment variables, and bootstrap.

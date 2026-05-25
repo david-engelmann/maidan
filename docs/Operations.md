@@ -25,6 +25,7 @@ docker compose --profile federation up -d
 bash scripts/federation-smoke.sh
 
 # Build the published docs site (mdBook)
+cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
 mdbook build book
 mdbook serve book   # preview at http://127.0.0.1:3000
 ```

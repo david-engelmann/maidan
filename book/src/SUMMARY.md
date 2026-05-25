@@ -5,6 +5,7 @@
 # Reference
 
 - [HTTP API (OpenAPI)](./api.md)
+- [MCP tools & resources](./mcp-reference.md)
 
 # Vault (Obsidian source)
 
