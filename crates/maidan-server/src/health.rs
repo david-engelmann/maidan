@@ -8,13 +8,14 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::{DateTime, Utc};
 use maidan_artifacts::Sha256;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::state::AppState;
 use crate::version;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
-    pub status: &'static str,
+    pub status: String,
     pub db: SubsystemStatus,
     pub storage: SubsystemStatus,
     pub indexer: SubsystemStatus,
@@ -23,7 +24,7 @@ pub struct HealthResponse {
     pub version: &'static str,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubsystemStatus {
     Ok,
@@ -60,7 +61,11 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
 
     let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
     let body = HealthResponse {
-        status: if healthy { "ok" } else { "degraded" },
+        status: if healthy {
+            "ok".to_string()
+        } else {
+            "degraded".to_string()
+        },
         db,
         storage,
         indexer,

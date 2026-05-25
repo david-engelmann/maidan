@@ -17,6 +17,7 @@ use maidan_auth::{
 };
 use maidan_types::{Event, NewPeer, Peer, PeerId, WorkspaceId};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::dto::{CreatePeer, MintPeerResponse, PeerResponse};
 use crate::error::{ApiError, ApiJson};
@@ -122,7 +123,7 @@ pub async fn ingest_events(
     Ok(Json(IngestSummary { ingested, skipped }))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct IngestSummary {
     pub ingested: u32,
     pub skipped: u32,
@@ -393,27 +394,27 @@ pub async fn delete_peer(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WellKnownMaidan {
-    pub name: &'static str,
-    pub version: &'static str,
+    pub name: String,
+    pub version: String,
     pub a2a: WellKnownA2a,
-    pub capabilities: &'static [&'static str],
+    pub capabilities: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WellKnownA2a {
-    pub ingress: &'static str,
+    pub ingress: String,
 }
 
 pub async fn well_known() -> impl IntoResponse {
     Json(WellKnownMaidan {
-        name: "maidan",
-        version: crate::version(),
+        name: "maidan".to_string(),
+        version: crate::version().to_string(),
         a2a: WellKnownA2a {
-            ingress: "/a2a/v1/events",
+            ingress: "/a2a/v1/events".to_string(),
         },
-        capabilities: &[FEDERATION_INGEST, FEDERATION_ADMIN],
+        capabilities: vec![FEDERATION_INGEST.to_string(), FEDERATION_ADMIN.to_string()],
     })
 }
 

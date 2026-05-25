@@ -22,6 +22,7 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Open Work]] — every deferred item across retros + standing
   risks. The "what could I work on" backlog.
 - [[Deploy]] — Docker + Kubernetes deployment.
+- [[Production]] — probes, env, bootstrap; links `GET /openapi.json`.
 - [[Glossary]] — domain vocabulary.
 - [[Clusters/Cluster A]], [[Clusters/Cluster B]], [[Clusters/Cluster C]]
   — per-cluster plan docs with PR ladder + risks.

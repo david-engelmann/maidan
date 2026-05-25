@@ -12,7 +12,7 @@ coherent capability batch warrants semver + changelog.
 | **T** | In progress | [[Tracks/Track T]] — OTLP + indexer health shipped; T.3 coverage optional. |
 | **U** | Not started | [[Tracks/Track U]] — benches, mutation tests, query tuning. |
 | **V** | Not started | [[Tracks/Track V]] — threat model, GDPR erasure, signed releases. |
-| **W** | Not started | [[Tracks/Track W]] — OpenAPI, docs site. |
+| **W** | In progress (W.1) | [[Tracks/Track W]] — OpenAPI, docs site. |
 | **X** | Not started | [[Tracks/Track X]] — release automation hygiene. |
 
 **Recommended order:** finish **Track T** → **Track W** (API reference for
