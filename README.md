@@ -112,6 +112,16 @@ See [`docs/Deploy.md`](docs/Deploy.md) for the full deployment guide.
 The project is documented as an [Obsidian](https://obsidian.md) vault
 under [`docs/`](docs/). Start at [`docs/README.md`](docs/README.md).
 
+A static [mdBook site](https://david-engelmann.github.io/maidan/) is built
+from [`book/`](book/) on every merge to `main` (see
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml)). Local build:
+
+```sh
+cargo install mdbook --locked   # once
+mdbook build book
+mdbook serve book               # http://127.0.0.1:3000
+```
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).

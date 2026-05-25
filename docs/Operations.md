@@ -23,6 +23,10 @@ curl http://localhost:8080/health
 # Two-instance federation push smoke (postgres + maidan-a + maidan-b)
 docker compose --profile federation up -d
 bash scripts/federation-smoke.sh
+
+# Build the published docs site (mdBook)
+mdbook build book
+mdbook serve book   # preview at http://127.0.0.1:3000
 ```
 
 ## PR flow (the long version)
