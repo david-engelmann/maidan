@@ -7,8 +7,10 @@ mod events;
 mod members;
 mod mentions;
 mod messages;
+mod oidc;
 mod peers;
 mod refs;
+mod sessions;
 mod thread_transitions;
 mod threads;
 mod tokens;
@@ -62,6 +64,41 @@ impl Store for PostgresStore {
     }
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError> {
         members::list(&self.pool, workspace_id).await
+    }
+    async fn get_member_by_handle(
+        &self,
+        workspace_id: WorkspaceId,
+        handle: &str,
+    ) -> Result<Member, StoreError> {
+        members::get_by_handle(&self.pool, workspace_id, handle).await
+    }
+
+    async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {
+        oidc::upsert_identity(&self.pool, new).await
+    }
+    async fn get_oidc_identity(
+        &self,
+        workspace_id: WorkspaceId,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<OidcIdentity, StoreError> {
+        oidc::get_identity(&self.pool, workspace_id, issuer, subject).await
+    }
+    async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError> {
+        oidc::insert_pending(&self.pool, new).await
+    }
+    async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError> {
+        oidc::take_pending(&self.pool, state).await
+    }
+
+    async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
+        sessions::create(&self.pool, new).await
+    }
+    async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError> {
+        sessions::get(&self.pool, id).await
+    }
+    async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
+        sessions::delete(&self.pool, id).await
     }
 
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError> {

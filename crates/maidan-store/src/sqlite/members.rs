@@ -38,6 +38,24 @@ pub async fn get(pool: &SqlitePool, id: MemberId) -> Result<Member, StoreError> 
     row_to_member(&row)
 }
 
+pub async fn get_by_handle(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    handle: &str,
+) -> Result<Member, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at
+         FROM maidan_members
+         WHERE workspace_id = ? AND handle = ? AND tombstoned_at IS NULL",
+    )
+    .bind(workspace_id.0)
+    .bind(handle)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_member(&row)
+}
+
 pub async fn list(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at

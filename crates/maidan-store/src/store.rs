@@ -19,7 +19,26 @@ pub trait Store: Send + Sync {
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;
+    async fn get_member_by_handle(
+        &self,
+        workspace_id: WorkspaceId,
+        handle: &str,
+    ) -> Result<Member, StoreError>;
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
+
+    async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
+    async fn get_oidc_identity(
+        &self,
+        workspace_id: WorkspaceId,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<OidcIdentity, StoreError>;
+    async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
+    async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
+
+    async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
+    async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
+    async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
 
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
