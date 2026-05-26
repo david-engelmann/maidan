@@ -15,7 +15,8 @@ use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
 use sqlx::sqlite::SqlitePoolOptions;
-use uuid::Uuid;
+
+const TEST_SESSION_SECRET: &[u8] = b"test-session-secret-32-bytes-min!";
 
 struct Harness {
     addr: SocketAddr,
@@ -91,6 +92,7 @@ async fn spawn() -> Harness {
             pending_ttl_secs: 600,
             cookie_secure: false,
         },
+        session_secret: Arc::from(TEST_SESSION_SECRET),
         client: None,
         http_client: None,
     }));
@@ -151,7 +153,12 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
                 .filter(|p| p.starts_with("maidan_session="))
         })
         .expect("session cookie");
-    assert!(Uuid::parse_str(session_cookie.trim_start_matches("maidan_session=")).is_ok());
+    let cookie_payload = session_cookie
+        .trim_start_matches("maidan_session=")
+        .split(';')
+        .next()
+        .unwrap();
+    assert!(cookie_payload.contains('.'));
 
     let session_res = h
         .client

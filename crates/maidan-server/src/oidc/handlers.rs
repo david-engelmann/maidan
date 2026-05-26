@@ -206,6 +206,7 @@ pub async fn callback(
         session.id,
         oidc.settings.session_ttl_secs,
         oidc.settings.cookie_secure,
+        oidc.session_secret.as_ref(),
     )
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
@@ -224,7 +225,7 @@ pub async fn logout(
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
 
-    if let Some(session_id) = parse_session_cookie(&headers_in) {
+    if let Some(session_id) = parse_session_cookie(&headers_in, oidc.session_secret.as_ref()) {
         let _ = state.store.delete_session(session_id).await;
     }
 

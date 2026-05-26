@@ -51,7 +51,7 @@ detail. Summary:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `MAIDAN_OIDC_ENABLED` | when using OIDC | `1` enables `/auth/oidc/*` and session routes. |
-| `MAIDAN_SESSION_SECRET` | when OIDC on | Session signing secret (32+ bytes). |
+| `MAIDAN_SESSION_SECRET` | when OIDC on | HMAC key for signed `maidan_session` cookies (32+ bytes). Bare session UUIDs in cookies are rejected. |
 | `MAIDAN_OIDC_ISSUER` | yes (non-mock) | IdP issuer URL for discovery. |
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |

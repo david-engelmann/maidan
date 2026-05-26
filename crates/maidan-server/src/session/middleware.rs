@@ -15,7 +15,12 @@ pub async fn load_session(
     state: &AppState,
     headers: &axum::http::HeaderMap,
 ) -> Result<SessionContext, ApiError> {
-    let session_id = parse_session_cookie(headers).ok_or(ApiError::Unauthorized)?;
+    let secret = state
+        .oidc
+        .as_ref()
+        .map(|o| o.session_secret.as_ref())
+        .ok_or(ApiError::Unauthorized)?;
+    let session_id = parse_session_cookie(headers, secret).ok_or(ApiError::Unauthorized)?;
     let session = state
         .store
         .get_session(session_id)
