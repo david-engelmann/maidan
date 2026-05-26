@@ -157,6 +157,18 @@ async fn main() -> anyhow::Result<()> {
     };
     let federation =
         maidan_server::FederationRuntime::new(federation_disabled, federation_encryption_key);
+    let oidc_runtime =
+        match maidan_server::oidc::OidcSettings::from_env().map_err(anyhow::Error::from)? {
+            Some(settings) => {
+                tracing::info!(mock = settings.mock, "OIDC login enabled");
+                Some(
+                    maidan_server::oidc::OidcRuntime::init(settings)
+                        .await
+                        .map_err(anyhow::Error::from)?,
+                )
+            }
+            None => None,
+        };
     let mut state = AppState::new(
         store,
         artifacts,
@@ -170,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
         bus_listener_health,
     );
     state.indexer_last_error = indexer_last_error;
+    state.oidc = oidc_runtime.map(Arc::new);
     let app = router(state.clone());
 
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);

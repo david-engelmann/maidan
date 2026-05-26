@@ -6,8 +6,8 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    auth, bootstrap, federation, health, mcp, mcp_stream, metrics, openapi, request_id, routes,
-    state::AppState, ws,
+    auth, bootstrap, federation, health, mcp, mcp_stream, metrics, oidc, openapi, request_id,
+    routes, state::AppState, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -101,6 +101,11 @@ pub fn router(state: AppState) -> Router {
         axum::response::Html(include_str!("../static/index.html"))
     }
 
+    let auth_routes = Router::new()
+        .route("/auth/oidc/login", get(oidc::login))
+        .route("/auth/oidc/callback", get(oidc::callback))
+        .route("/auth/logout", post(oidc::logout));
+
     Router::new()
         .route("/health", get(health::handler))
         .route("/health/live", get(health::live))
@@ -111,6 +116,7 @@ pub fn router(state: AppState) -> Router {
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .merge(bootstrap)
+        .merge(auth_routes)
         .merge(ws_only)
         .merge(a2a)
         .merge(protected)
