@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v1.2.0 — Search + embeddings minor
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Pluggable `EmbeddingProvider` (`hash-v1` default)         | `maidan-search`, `MAIDAN_EMBEDDING_PROVIDER` |
+| Lexical search facets (`author`, `channel`, `kind`)       | `GET /workspaces/:wid/search`, MCP `search_messages` |
+| Postgres `websearch_to_tsquery` operator pass-through     | `maidan-search::query`, Postgres `Search` |
+
 ## v1.1.0 — Delivery reliability minor
 
 | Capability                                              | Surface                       |

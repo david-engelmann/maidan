@@ -15,9 +15,42 @@ coherent capability batch warrants semver + changelog.
 | **W** | Complete | [[Tracks/Track W]] — OpenAPI, mdBook, MCP reference. |
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
-**Recommended order:** tracks above are closed. Next optional work is
-**`v1.2.0`** (search + embeddings minor) or product features in
-[[Open Work]].
+**Recommended order:** tracks and **`v1.2.0`** are closed. Next optional
+minor is **`v1.3.0`** (real embeddings + semantic search UX) — see ladder
+below — or ad-hoc items in [[Open Work]].
+
+## Optional minor: `v1.2.0` — search + embeddings ✓
+
+Shipped at tag **`v1.2.0`** ([[Retros/Minor 1.2]]).
+
+| PR   | Scope |
+|------|-------|
+| 1.2.1 ✓ | Pluggable embedding provider + `MAIDAN_EMBEDDING_PROVIDER` (#122). |
+| 1.2.2 ✓ | Faceted lexical search (`author`, `channel`, `kind`) (#123). |
+| 1.2.3 ✓ | Postgres `websearch_to_tsquery` pass-through (#124). |
+| 1.2.retro ✓ | Capabilities + changelog + tag `v1.2.0`. |
+
+## Optional minor: `v1.3.0` — semantic search UX (proposed)
+
+Natural follow-on to 1.2: expose semantic search and ship a real embedding
+provider without breaking the lexical API.
+
+| PR   | Scope |
+|------|-------|
+| 1.3.1 | `GET …/search?mode=semantic` (Postgres) or dedicated route; document rank semantics. |
+| 1.3.2 | Remote embedding provider (OpenAI-compatible HTTP) + config. |
+| 1.3.3 | Indexer failure visibility on `/health/ready` when embeddings enabled. |
+| 1.3.retro | Tag `v1.3.0`. |
+
+**Not in 1.3:** OAuth/OIDC, coverage % gate, SQLite semantic vectors.
+
+## Optional minor: `v1.4.0` — auth hardening (proposed)
+
+| PR   | Scope |
+|------|-------|
+| 1.4.1 | `MAIDAN_BOOTSTRAP=1` one-shot workspace seed gate. |
+| 1.4.2 | OIDC login spike / design doc (or defer to `v2.0.0`). |
+| 1.4.retro | Tag `v1.4.0`. |
 
 ## Optional minor: `v1.1.0` — delivery reliability ✓
 
@@ -35,15 +68,6 @@ in [[Open Work]] without breaking the public API.
 
 **Not in 1.1:** OAuth/OIDC, real ML embeddings, GDPR hard-delete (Track V /
 post-1.0 product).
-
-## Optional minor: `v1.2.0` — search + embeddings
-
-| PR   | Scope |
-|------|-------|
-| 1.2.1 | Pluggable embedding provider trait + config (keep `hash-v1` default). ✓ |
-| 1.2.2 | Faceted search filters on `GET …/search` (author, channel, kind). ✓ |
-| 1.2.3 | `websearch_to_tsquery` operator pass-through (Postgres). **In flight.** |
-| 1.2.retro | Tag `v1.2.0`. |
 
 ## Track T — shipped
 

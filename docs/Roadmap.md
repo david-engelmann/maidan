@@ -33,16 +33,18 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minor **`v1.1.0`**
-(delivery reliability) is complete — see [[Retros/Minor 1.1]].
+Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**
+and **`v1.2.0`** are complete — see [[Retros/Minor 1.1]] and [[Retros/Minor 1.2]].
 
 Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** optional minor **`v1.2.0`** — search + embeddings (1.2.1 → 1.2.retro).
+**Active:** optional minor **`v1.3.0`** — semantic search UX + real embeddings
+([[Post-1.0]] ladder 1.3.1 → 1.3.retro).
 
-**Next after 1.2:** product backlog in [[Open Work]] or a new optional minor.
+**Also on deck:** **`v1.4.0`** auth hardening (bootstrap gate, OIDC spike) or
+ad-hoc items in [[Open Work]].
 
 ## Closing a cluster
 

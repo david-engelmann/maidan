@@ -93,7 +93,7 @@ See [[Glossary]] for vocabulary.
 | Thread transitions | `POST /threads/:id`       | FSM actions: `start_review`, `close`, `archive`. |
 | Event replay      | `GET /workspaces/:wid/events` | Cursor-based replay from `maidan_events`.  |
 | Health            | `GET /health`              | Liveness + dependency status.                 |
-| Search            | `GET /workspaces/:wid/search` | Lexical + semantic search over messages.   |
+| Search            | `GET /workspaces/:wid/search` | Lexical search with optional facets; semantic via indexer/pgvector (Postgres). |
 | WebSocket         | `GET /ws/subscribe`        | Real-time event stream with per-subscriber filter. |
 | Artifacts         | `POST /artifacts`, `GET /artifacts/:sha` | Upload body + metadata; download by sha256. |
 | MCP               | `POST /mcp`                | JSON-RPC 2.0 — tools (incl. artifacts), resources, prompts. |
@@ -122,17 +122,21 @@ See [[Glossary]] for vocabulary.
 - **Events** — `ThreadStateChanged` on the bus when a transition
   commits.
 
-## Search at v0.4.0
+## Search at v1.2.0
 
 - **Lexical** — Postgres `tsvector` + GIN with `ts_headline`
-  snippets; SQLite FTS5 + `snippet()`. Index maintenance via DB
-  triggers (synchronous on write).
-- **Semantic** — Postgres `pgvector` `vector(1024)` + HNSW cosine.
-  SQLite returns `Unsupported`.
-- **Indexer** — `maidan-search::Indexer` subscribes to
-  `MessagePosted` / `MessageTombstoned`. Postgres deployments use
-  `EmbeddingHandler` with deterministic `hash-v1` vectors (SHA-256
-  expanded to 1024-d); SQLite keeps `LoggingHandler`.
+  snippets; SQLite FTS5 + `snippet()`. Plain queries use
+  `plainto_tsquery`; Postgres switches to `websearch_to_tsquery` when
+  `q` uses web-style operators (`"phrase"`, `-negation`, `or`).
+- **Facets** — optional `author`, `channel`, and author `kind`
+  (`human` / `agent`) on HTTP and MCP lexical search; applied in SQL on
+  both backends.
+- **Semantic** — Postgres `pgvector` `vector(1024)` + HNSW cosine;
+  SQLite returns `Unsupported`. No public HTTP semantic query yet.
+- **Indexer** — `maidan-search::Indexer` on `MessagePosted` /
+  `MessageTombstoned`. Postgres uses `EmbeddingHandler` with a pluggable
+  `EmbeddingProvider` (`hash-v1` default via `MAIDAN_EMBEDDING_PROVIDER`);
+  SQLite keeps `LoggingHandler`.
 
 ## Auth at v0.5.0
 

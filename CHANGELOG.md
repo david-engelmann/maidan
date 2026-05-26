@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [1.2.0] — 2026-05-26
+
+Search + embeddings minor: pluggable provider hook, faceted lexical search,
+Postgres web-style query operators.
+
+### Added
+
+- `EmbeddingProvider` trait and `MAIDAN_EMBEDDING_PROVIDER` (default `hash-v1`).
+- Optional `author`, `channel`, and `kind` filters on workspace search (HTTP + MCP).
+- Postgres `websearch_to_tsquery` when `q` contains quotes, `-negation`, or `or`.
+
+### Changed
+
+- `Search::search_messages` accepts `SearchFilters`; both backends apply facets in SQL.
+
 ## [1.1.0] — 2026-05-24
 
 Delivery reliability minor: bus health, client replay, federation secrets + pull smoke.
