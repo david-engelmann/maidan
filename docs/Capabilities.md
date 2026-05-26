@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v2.1.0 — OIDC operator hardening
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| HMAC-signed session cookie                              | `maidan_session` (`uuid.hmac`) |
+| IdP logout redirect                                     | `POST /auth/logout` → `end_session_endpoint` |
+| Auth routes in OpenAPI                                  | `/auth/*`, `sessionCookie` scheme |
+| Optional auto-mint after login                          | `MAIDAN_OIDC_AUTO_MINT`, `/ui/?auto_mint=1` |
+| UI copy-to-clipboard for minted admin secret            | `/ui/`                        |
+
 ## v2.0.0 — OIDC identities and human sessions
 
 | Capability                                              | Surface                       |
