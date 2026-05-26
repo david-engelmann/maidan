@@ -6,11 +6,17 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v1.1.0** — delivery reliability minor (bus health, replay, federation pull).
+**v1.2.0** — search + embeddings minor (facets, websearch operators, embedding provider hook).
 Latest release:
-[`v1.1.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.1.0).
+[`v1.2.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.2.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Minor 1.1.md`](docs/Retros/Minor%201.1.md) for the closing retro.
+[`docs/Retros/Minor 1.2.md`](docs/Retros/Minor%201.2.md) for the closing retro.
+
+## What's in `v1.2.0`
+
+- Pluggable embedding provider (`MAIDAN_EMBEDDING_PROVIDER`, `hash-v1` default).
+- Faceted lexical search: `author`, `channel`, `kind` on `GET …/search` and MCP.
+- Postgres websearch syntax in `q` (`"phrase"`, `-word`, `or`).
 
 ## What's in `v1.1.0`
 
