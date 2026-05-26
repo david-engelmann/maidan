@@ -101,17 +101,27 @@ pub fn router(state: AppState) -> Router {
         axum::response::Html(include_str!("../static/index.html"))
     }
 
+    let session_auth = middleware::from_fn_with_state(state.clone(), session::require_middleware);
+
     let auth_routes = Router::new()
         .route("/auth/oidc/login", get(oidc::login))
         .route("/auth/oidc/callback", get(oidc::callback))
         .route("/auth/logout", post(oidc::logout))
         .route(
             "/auth/session",
-            get(session::get_session).layer(middleware::from_fn_with_state(
-                state.clone(),
-                session::require_middleware,
-            )),
+            get(session::get_session).layer(session_auth.clone()),
+        )
+        .route(
+            "/auth/session/mint",
+            post(session::mint_first_admin_token).layer(session_auth),
         );
+
+    let ui_api = Router::new()
+        .route("/ui/api/workspaces/:wid/events", get(routes::list_events))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::session_or_bearer_middleware,
+        ));
 
     Router::new()
         .route("/health", get(health::handler))
@@ -124,6 +134,7 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/", get(ui_index))
         .merge(bootstrap)
         .merge(auth_routes)
+        .merge(ui_api)
         .merge(ws_only)
         .merge(a2a)
         .merge(protected)

@@ -65,6 +65,26 @@ pub async fn get_active_by_hash(
     row_to_token(&row)
 }
 
+pub async fn workspace_has_active_capability(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    capability: &str,
+) -> Result<bool, StoreError> {
+    let needle = format!("%\"{capability}\"%");
+    let found = sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM maidan_api_tokens
+         WHERE workspace_id = ?
+           AND revoked_at IS NULL
+           AND capabilities LIKE ?
+         LIMIT 1",
+    )
+    .bind(workspace_id.0)
+    .bind(needle)
+    .fetch_optional(pool)
+    .await?;
+    Ok(found.is_some())
+}
+
 pub async fn revoke(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let now = Utc::now();
     let row = sqlx::query(

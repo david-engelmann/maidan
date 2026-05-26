@@ -7,7 +7,7 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use maidan_types::{MemberId, SessionId, WorkspaceId};
 use uuid::Uuid;
 
-pub use handlers::get_session;
+pub use handlers::{get_session, mint_first_admin_token};
 pub use middleware::{load_session, require_middleware};
 
 pub const SESSION_COOKIE: &str = "maidan_session";

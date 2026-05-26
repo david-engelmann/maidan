@@ -45,8 +45,23 @@ Typical production seed (private network):
 
 Integration tests use `AUTH_DISABLED=1` (bootstrap flag not required).
 
-Human browser login via OIDC is **not implemented** in `v1.4.x`; see [[OIDC]]
-for the `v2.0.0` plan.
+Human browser login via OIDC ships in **`v2.0.0`**. See [[OIDC]] for design
+detail. Summary:
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `MAIDAN_OIDC_ENABLED` | when using OIDC | `1` enables `/auth/oidc/*` and session routes. |
+| `MAIDAN_SESSION_SECRET` | when OIDC on | Session signing secret (32+ bytes). |
+| `MAIDAN_OIDC_ISSUER` | yes (non-mock) | IdP issuer URL for discovery. |
+| `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
+| `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
+| `MAIDAN_OIDC_REDIRECT_URI` | yes | Registered callback (e.g. `https://host/auth/oidc/callback`). |
+| `MAIDAN_OIDC_MOCK` | no | `1` for deterministic dev/CI only; forbidden when `MAIDAN_ENV=production`. |
+| `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on: session may mint the first `token:admin` per workspace via `POST /auth/session/mint`. Set `0` to disable. |
+| `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
+
+After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
+Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 ## API discovery
 

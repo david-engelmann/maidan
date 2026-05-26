@@ -6,7 +6,10 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use maidan_auth::{resolve_bearer, resolve_peer_bearer, AuthContext};
+use maidan_auth::{
+    capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
+    resolve_bearer, resolve_peer_bearer, AuthContext,
+};
 
 use crate::error::ApiError;
 use crate::federation::PeerContext;
@@ -88,7 +91,15 @@ pub async fn session_or_bearer_middleware(
 
     match load_session(&state, req.headers()).await {
         Ok(session) => {
-            let ctx = AuthContext::from_token(session.member_id, session.workspace_id, Vec::new());
+            let ctx = AuthContext::from_token(
+                session.member_id,
+                session.workspace_id,
+                vec![
+                    WORKSPACE_READ.into(),
+                    EVENT_SUBSCRIBE.into(),
+                    SEARCH_QUERY.into(),
+                ],
+            );
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
             next.run(req).await

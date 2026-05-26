@@ -105,6 +105,11 @@ pub trait Store: Send + Sync {
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
+    async fn workspace_has_active_capability(
+        &self,
+        workspace_id: WorkspaceId,
+        capability: &str,
+    ) -> Result<bool, StoreError>;
 
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError>;
     async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError>;
