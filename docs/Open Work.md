@@ -13,9 +13,10 @@ from "open" to "shipped" when the owning release merges its retro PR.
   API shipped in Cluster D; subscribers must poll replay on gap —
   no automatic WS backfill on lag beyond `replay_hint` (v1.1.2); subscribe
   `after_id` replays from `maidan_events` on connect (v1.1.3).
-- **Bootstrap routes are unauthenticated.** `POST /workspaces` and
-  `POST …/members` have no Bearer gate; production must seed with
-  `AUTH_DISABLED` then mint tokens before enabling auth.
+- **Bootstrap flags are high-impact.** Bootstrap routes are now gated by
+  `MAIDAN_BOOTSTRAP=1` when auth is enabled (`v1.4.1`), but leaving
+  `AUTH_DISABLED` or bootstrap flags on outside controlled seed windows
+  still creates avoidable exposure.
 - **Indexer staleness is opt-in.** Set `INDEXER_STALE_SECS` to mark
   `/health/ready` degraded when the indexer has not observed an event
   recently. Default `0` disables the check.
@@ -26,22 +27,23 @@ from "open" to "shipped" when the owning release merges its retro PR.
   CI artifact (Track T.3); no minimum % gate or Codecov upload yet.
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → `v1.3.0+` or `sqlite-vec` when mature.
-- **`hash-v1` is not semantic.** Pluggable provider trait shipped in
-  `v1.2.0`; real ML provider targeted for **`v1.3.0`**.
+- **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
+  but default deployments may still run deterministic `hash-v1` if not configured.
 
 ## Shipped post-1.0
 
 | Release / area | Highlights |
 |----------------|------------|
 | Tracks T–X | See [[Post-1.0]] (closure #121) |
+| **`v1.4.0`** | Bootstrap one-shot gate + OIDC design spike — [[Retros/Minor 1.4]] |
 | **`v1.2.0`** | Embedding provider hook, search facets, Postgres websearch operators — [[Retros/Minor 1.2]] |
 | **`v1.1.0`** | Bus health, WS replay, federation secrets — [[Retros/Minor 1.1]] |
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Active plan: optional `v1.4.0`
+## Active plan: major `v2.0.0`
 
-See [[Post-1.0]] ladder **1.4.1 → 1.4.retro** (auth hardening).
+See [[OIDC]] and [[Post-1.0]] for runtime identity/session work scope.
 
 ## Still deferred (no owner yet)
 
@@ -63,8 +65,8 @@ See [[Post-1.0]] ladder **1.4.1 → 1.4.retro** (auth hardening).
 
 ## Known state at this handoff
 
-- **Latest tag (after retro merges):** `v1.3.0` — semantic search UX minor.
-- **Recommended next:** finish **`v1.4.0`** (1.4.2 OIDC spike + retro) ([[Post-1.0]]).
+- **Latest tag (after retro merges):** `v1.4.0` — auth hardening minor.
+- **Recommended next:** start **`v2.0.0`** runtime OIDC/session implementation planning ([[Post-1.0]], [[OIDC]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

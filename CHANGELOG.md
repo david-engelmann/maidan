@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [1.4.0] — 2026-05-26
+
+Auth hardening minor: bootstrap route gating and OIDC design planning.
+
+### Added
+
+- `MAIDAN_BOOTSTRAP=1` gate on unauthenticated bootstrap routes when auth is enabled.
+- One-shot bootstrap workspace seed behavior (`POST /workspaces` returns 403 after first workspace).
+- OIDC human login design spike document (`docs/OIDC.md`) with phased `v2.0.0` plan.
+
+### Changed
+
+- `Store` gained `count_workspaces` for bootstrap enforcement.
+- Production and threat-model docs now reflect bootstrap gating and OIDC deferral.
+
 ## [1.3.0] — 2026-05-26
 
 Semantic search UX minor: HTTP/MCP semantic mode, remote embedding provider
@@ -323,7 +338,17 @@ exposes a `/health` endpoint backed by Postgres or SQLite.
 - `k8s/base/secret.example.yaml` documents the required Secret shape
   without storing values.
 
-[Unreleased]: https://github.com/david-engelmann/maidan/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/david-engelmann/maidan/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/david-engelmann/maidan/releases/tag/v1.4.0
+[1.3.0]: https://github.com/david-engelmann/maidan/releases/tag/v1.3.0
+[1.2.0]: https://github.com/david-engelmann/maidan/releases/tag/v1.2.0
+[1.1.0]: https://github.com/david-engelmann/maidan/releases/tag/v1.1.0
+[1.0.0]: https://github.com/david-engelmann/maidan/releases/tag/v1.0.0
+[0.7.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.7.0
+[0.6.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.6.0
+[0.5.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.5.0
+[0.4.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.4.0
+[0.3.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.3.0
 [0.2.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.2.0
 [0.1.0]: https://github.com/david-engelmann/maidan/releases/tag/v0.1.0
 [0.0.1]: https://github.com/david-engelmann/maidan/releases/tag/v0.0.1

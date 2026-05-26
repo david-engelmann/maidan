@@ -6,11 +6,17 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v1.3.0** — semantic search UX minor (HTTP/MCP semantic mode, remote embedding provider, readiness surfacing).
+**v1.4.0** — auth hardening minor (`MAIDAN_BOOTSTRAP` one-shot seed gate + OIDC design spike).
 Latest release:
-[`v1.3.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.3.0).
+[`v1.4.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.4.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Minor 1.3.md`](docs/Retros/Minor%201.3.md) for the closing retro.
+[`docs/Retros/Minor 1.4.md`](docs/Retros/Minor%201.4.md) for the closing retro.
+
+## What's in `v1.4.0`
+
+- Bootstrap routes require `MAIDAN_BOOTSTRAP=1` when auth is enabled.
+- Bootstrap workspace creation is one-shot (first workspace only).
+- OIDC human login design spike in `docs/OIDC.md` (runtime deferred to `v2.0.0`).
 
 ## What's in `v1.3.0`
 
