@@ -1,21 +1,12 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use maidan_auth::{capability, hash_secret, TokenSecret, TOKEN_ADMIN};
-use maidan_types::{MemberId, NewApiToken, WorkspaceId};
-use serde::Serialize;
-use utoipa::ToSchema;
+use maidan_types::NewApiToken;
 
-use crate::dto::MintApiTokenResponse;
+use crate::dto::{MintApiTokenResponse, SessionResponse};
 use crate::error::ApiError;
 use crate::session::SessionContext;
 use crate::state::AppState;
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct SessionResponse {
-    pub member_id: MemberId,
-    pub workspace_id: WorkspaceId,
-    pub expires_at: DateTime<Utc>,
-}
 
 fn oidc_first_admin_enabled() -> bool {
     !matches!(

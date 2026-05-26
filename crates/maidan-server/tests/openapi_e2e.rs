@@ -54,7 +54,15 @@ async fn openapi_json_serves_document() {
     let paths = doc["paths"].as_object().expect("paths object");
     assert!(paths.contains_key("/health/live"));
     assert!(paths.contains_key("/workspaces"));
+    assert!(paths.contains_key("/auth/oidc/login"));
+    assert!(paths.contains_key("/auth/session"));
+    assert!(paths.contains_key("/ui/api/workspaces/{wid}/events"));
     assert!(!paths.contains_key("/mcp"));
+
+    let schemes = doc["components"]["securitySchemes"]
+        .as_object()
+        .expect("securitySchemes");
+    assert!(schemes.contains_key("sessionCookie"));
 
     server.abort();
 }

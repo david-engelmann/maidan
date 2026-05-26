@@ -10,27 +10,12 @@ use openidconnect::{
     PkceCodeVerifier, Scope, TokenResponse,
 };
 use rand::RngCore;
-use serde::Deserialize;
-use uuid::Uuid;
 
+use crate::dto::{OidcCallbackQuery, OidcLoginQuery};
 use crate::error::ApiError;
 use crate::oidc::member::{resolve_member_for_login, touch_identity};
 use crate::session::{clear_session_cookie, parse_session_cookie, set_session_cookie};
 use crate::state::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct LoginQuery {
-    pub workspace_id: Uuid,
-    pub return_to: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CallbackQuery {
-    pub state: String,
-    pub code: Option<String>,
-    pub mock_sub: Option<String>,
-    pub mock_email: Option<String>,
-}
 
 fn random_token() -> String {
     let mut bytes = [0u8; 32];
@@ -47,7 +32,7 @@ fn safe_return_to(return_to: Option<&str>) -> String {
 
 pub async fn login(
     State(state): State<AppState>,
-    Query(q): Query<LoginQuery>,
+    Query(q): Query<OidcLoginQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
         .oidc
@@ -110,7 +95,7 @@ pub async fn login(
 
 pub async fn callback(
     State(state): State<AppState>,
-    Query(q): Query<CallbackQuery>,
+    Query(q): Query<OidcCallbackQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
         .oidc

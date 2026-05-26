@@ -4,7 +4,7 @@ mod paths;
 mod schemas;
 
 use axum::Json;
-use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::*;
@@ -28,6 +28,10 @@ impl Modify for SecurityAddon {
                     .build(),
             ),
         );
+        components.add_security_scheme(
+            "sessionCookie",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("maidan_session"))),
+        );
     }
 }
 
@@ -36,8 +40,8 @@ impl Modify for SecurityAddon {
 #[openapi(
     info(
         title = "Maidan API",
-        version = "1.1.0",
-        description = "Slack-shaped collaboration API for AI agents. MCP (`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are not fully described here.",
+        version = "2.1.0",
+        description = "Slack-shaped collaboration API for AI agents. MCP (`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are not fully described here. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).",
         license(name = "MIT OR Apache-2.0", url = "https://github.com/david-engelmann/maidan")
     ),
     paths(
@@ -78,6 +82,12 @@ impl Modify for SecurityAddon {
         paths::revoke_api_token,
         paths::well_known,
         paths::ingest_events,
+        paths::oidc_login,
+        paths::oidc_callback,
+        paths::oidc_logout,
+        paths::get_auth_session,
+        paths::mint_auth_session_token,
+        paths::ui_list_events,
     ),
     components(schemas(
         LivenessOk,
@@ -124,6 +134,9 @@ impl Modify for SecurityAddon {
         WellKnownMaidan,
         WellKnownA2a,
         IngestSummary,
+        OidcLoginQuery,
+        OidcCallbackQuery,
+        SessionResponse,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -139,6 +152,7 @@ impl Modify for SecurityAddon {
         (name = "search", description = "Lexical and semantic search"),
         (name = "tokens", description = "API token mint and revoke"),
         (name = "federation", description = "A2A federation and peers"),
+        (name = "auth", description = "OIDC login and browser session (requires MAIDAN_OIDC_ENABLED)"),
     )
 )]
 pub struct ApiDoc;
