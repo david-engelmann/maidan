@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use openidconnect::{
-    core::{CoreClient, CoreProviderMetadata},
-    ClientId, ClientSecret, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, RedirectUrl,
+    core::CoreClient, ClientId, ClientSecret, EndSessionUrl, EndpointMaybeSet, EndpointNotSet,
+    EndpointSet, IssuerUrl, ProviderMetadataWithLogout, RedirectUrl,
 };
 
 /// [`CoreClient`] after provider discovery and redirect URI configuration.
@@ -51,6 +51,7 @@ pub struct OidcSettings {
     pub session_ttl_secs: u64,
     pub pending_ttl_secs: u64,
     pub cookie_secure: bool,
+    pub post_logout_redirect_uri: Option<String>,
 }
 
 impl OidcSettings {
@@ -98,6 +99,8 @@ impl OidcSettings {
         let cookie_secure = env_flag("MAIDAN_COOKIE_SECURE")
             || std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
 
+        let post_logout_redirect_uri = std::env::var("MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI").ok();
+
         Ok(Some(Self {
             enabled: true,
             mock,
@@ -108,6 +111,7 @@ impl OidcSettings {
             session_ttl_secs,
             pending_ttl_secs,
             cookie_secure,
+            post_logout_redirect_uri,
         }))
     }
 }
@@ -124,6 +128,8 @@ pub struct OidcRuntime {
     pub session_secret: Arc<[u8]>,
     pub client: Option<ConfiguredOidcClient>,
     pub http_client: Option<Arc<reqwest::Client>>,
+    pub end_session_url: Option<EndSessionUrl>,
+    pub logout_client_id: Option<ClientId>,
 }
 
 impl OidcRuntime {
@@ -135,20 +141,24 @@ impl OidcRuntime {
                 session_secret,
                 client: None,
                 http_client: None,
+                end_session_url: None,
+                logout_client_id: None,
             });
         }
 
         let http_client = Arc::new(build_oidc_http_client()?);
         let issuer = IssuerUrl::new(settings.issuer.clone())
             .map_err(|e| OidcInitError::Invalid(e.to_string()))?;
-        let metadata = CoreProviderMetadata::discover_async(issuer, http_client.as_ref())
+        let metadata = ProviderMetadataWithLogout::discover_async(issuer, http_client.as_ref())
             .await
             .map_err(|e| OidcInitError::Discovery(e.to_string()))?;
+        let end_session_url = metadata.additional_metadata().end_session_endpoint.clone();
 
         let client_id = ClientId::new(
             std::env::var("MAIDAN_OIDC_CLIENT_ID")
                 .map_err(|_| ConfigError::Missing("MAIDAN_OIDC_CLIENT_ID"))?,
         );
+        let logout_client_id = client_id.clone();
         let client_secret = std::env::var("MAIDAN_OIDC_CLIENT_SECRET")
             .ok()
             .map(ClientSecret::new);
@@ -164,6 +174,8 @@ impl OidcRuntime {
             session_secret,
             client: Some(client),
             http_client: Some(http_client),
+            end_session_url,
+            logout_client_id: Some(logout_client_id),
         })
     }
 }
