@@ -1,6 +1,7 @@
 # Production deployment
 
-Guidance for running Maidan at `v1.0.0` and later.
+Guidance for running Maidan at `v1.0.0` and later. Security overview:
+[[Threat-Model]].
 
 ## Probes
 

@@ -26,6 +26,8 @@ Obsidian for wikilink navigation, graph view, and backlinks.
   risks. The "what could I work on" backlog.
 - [[Deploy]] — Docker + Kubernetes deployment.
 - [[Production]] — probes, env, bootstrap; links `GET /openapi.json`.
+- [[Threat-Model]] — assets, threats, bootstrap hardening (Track V).
+- [[Query-Tuning]] — Postgres `EXPLAIN` playbook (Track U).
 - [[Glossary]] — domain vocabulary.
 - [[Clusters/Cluster A]], [[Clusters/Cluster B]], [[Clusters/Cluster C]]
   — per-cluster plan docs with PR ladder + risks.
