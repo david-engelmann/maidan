@@ -8,6 +8,7 @@
 //!   function. Semantic search returns [`SearchError::Unsupported`].
 
 pub mod embedding_handler;
+pub mod embedding_provider;
 pub mod embeddings;
 pub mod error;
 pub mod hit;
@@ -17,6 +18,10 @@ pub mod sqlite;
 pub mod traits;
 
 pub use embedding_handler::EmbeddingHandler;
+pub use embedding_provider::{
+    provider_from_env, provider_from_name, EmbeddingProvider, EmbeddingProviderError,
+    HashV1Provider,
+};
 pub use embeddings::{hash_embedding, model_name};
 pub use error::SearchError;
 pub use hit::SearchHit;

@@ -3,7 +3,7 @@
 use std::{sync::Arc, time::Duration};
 
 use maidan_bus::{EventBus, InMemoryBus};
-use maidan_search::{EmbeddingHandler, PostgresSearch, Search};
+use maidan_search::{EmbeddingHandler, HashV1Provider, PostgresSearch, Search};
 use maidan_store::{run_postgres_migrations, PostgresStore, Store};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::postgres::PgPoolOptions;
@@ -37,7 +37,11 @@ async fn embedding_handler_upserts_on_message_posted() {
     let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
     let bus: Arc<dyn EventBus> = Arc::new(InMemoryBus::with_capacity(64));
-    let handler = Arc::new(EmbeddingHandler::new(store.clone(), search.clone()));
+    let handler = Arc::new(EmbeddingHandler::new(
+        store.clone(),
+        search.clone(),
+        Arc::new(HashV1Provider),
+    ));
     let indexer = maidan_search::Indexer::new(bus.clone(), handler).spawn();
     tokio::time::sleep(Duration::from_millis(50)).await;
 

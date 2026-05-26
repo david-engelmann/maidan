@@ -38,11 +38,11 @@ Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minor **`v1.1.0`**
 
 Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
-**Active:** **Track T** (telemetry) — T.1/T.2 + federation compose smoke shipped;
-T.3 coverage optional.
+Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Next recommended:** Track W (OpenAPI/docs) or optional **`v1.2.0`** (search +
-embeddings) per [[Post-1.0]].
+**Active:** optional minor **`v1.2.0`** — search + embeddings (1.2.1 → 1.2.retro).
+
+**Next after 1.2:** product backlog in [[Open Work]] or a new optional minor.
 
 ## Closing a cluster
 

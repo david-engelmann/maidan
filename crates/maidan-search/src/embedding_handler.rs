@@ -7,7 +7,7 @@ use maidan_store::Store;
 use maidan_types::{Event, ThreadState};
 use tracing::warn;
 
-use crate::embeddings::{hash_embedding, model_name};
+use crate::embedding_provider::EmbeddingProvider;
 use crate::indexer::EventHandler;
 use crate::Search;
 use crate::SearchError;
@@ -15,11 +15,20 @@ use crate::SearchError;
 pub struct EmbeddingHandler {
     store: Arc<dyn Store>,
     search: Arc<dyn Search>,
+    provider: Arc<dyn EmbeddingProvider>,
 }
 
 impl EmbeddingHandler {
-    pub fn new(store: Arc<dyn Store>, search: Arc<dyn Search>) -> Self {
-        Self { store, search }
+    pub fn new(
+        store: Arc<dyn Store>,
+        search: Arc<dyn Search>,
+        provider: Arc<dyn EmbeddingProvider>,
+    ) -> Self {
+        Self {
+            store,
+            search,
+            provider,
+        }
     }
 }
 
@@ -44,10 +53,10 @@ impl EventHandler for EmbeddingHandler {
             return;
         }
 
-        let embedding = hash_embedding(&message.body);
+        let embedding = self.provider.embed(&message.body);
         if let Err(err) = self
             .search
-            .upsert_embedding(message.id, model_name(), &embedding)
+            .upsert_embedding(message.id, self.provider.model_name(), &embedding)
             .await
         {
             match err {

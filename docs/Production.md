@@ -22,6 +22,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
+| `MAIDAN_EMBEDDING_PROVIDER` | no | Postgres indexer only: `hash-v1` (default). Future providers register here without API changes. |
 
 ## Bootstrap
 

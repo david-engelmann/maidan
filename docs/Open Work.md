@@ -1,11 +1,10 @@
 # Open work
 
-Aggregate of everything deferred across the five completed retros
-plus standing risks. The "if I had two hours, what could I work on"
-backlog.
+Aggregate of everything deferred across retros plus standing risks.
+The "if I had two hours, what could I work on" backlog.
 
-Updated at the close of each cluster. Items move from "open" to
-"shipped" when the cluster that owns them merges its retro PR.
+Updated at the close of each cluster or optional minor retro. Items move
+from "open" to "shipped" when the owning release merges its retro PR.
 
 ## Standing risks (still open)
 
@@ -20,137 +19,71 @@ Updated at the close of each cluster. Items move from "open" to
 - **Indexer staleness is opt-in.** Set `INDEXER_STALE_SECS` to mark
   `/health/ready` degraded when the indexer has not observed an event
   recently. Default `0` disables the check.
-- **`v0.1.0` GitHub Release didn't auto-create.** Cleanup PR landed
-  (#36 → `macos-13` for x86_64 darwin). Verify `v0.3.0` tag triggers
-  a successful release before considering this resolved.
 - **PostgresBus listener recovery is best-effort.** `/health/ready` reports
   `bus: error` while the background task is in a retry loop (`v1.1.0`); it
   clears after the next successful `recv`.
 - **No coverage threshold in CI.** `cargo-llvm-cov` uploads `lcov.info` as a
   CI artifact (Track T.3); no minimum % gate or Codecov upload yet.
 - **SQLite has no semantic search.** `Search::semantic_search`
-  returns `Unsupported`. → Cluster F+ candidate via `sqlite-vec` if
-  the extension's sqlx integration matures.
+  returns `Unsupported`. → post-1.0 candidate via `sqlite-vec` if the
+  extension's sqlx integration matures.
+- **`hash-v1` is not semantic.** Pluggable provider trait shipped in
+  `v1.2.1`; real ML models still need an external provider implementation.
 
-## Specific items deferred to a later cluster
+## Shipped post-1.0 (tracks T, U, V, W, X)
 
-### To Cluster T (telemetry + perf)
+See [[Post-1.0]] (closure PR #121). Highlights:
 
-| What                                                              | Source                |
-|-------------------------------------------------------------------|-----------------------|
-| Coverage upload (`cargo-llvm-cov` + codecov)                      | Cluster A retro       |
-| OTLP exporter, structured JSON logs (shipped T.1)                 | Track T               |
-| Request-id middleware + HTTP spans (shipped H + T.1)                | —                     |
-| Indexer heartbeat on `/health/ready` (shipped T.2)                  | Track T               |
-| SQLite `journal_mode = WAL` + `busy_timeout` PRAGMA tuning        | Cluster A retro       |
-| Schema parity property test diffing `information_schema` rows     | Cluster A retro       |
-| Persistent event log (id-pointer + table fetch, beyond 8KB)       | Cluster B retro       |
-| `websearch_to_tsquery` Google-style operators in `q`              | Cluster C retro       |
-| Score normalization across dialects (Postgres vs SQLite ranks)    | Cluster C retro       |
-| `cargo-cyclonedx` SBOM generation                                 | Cluster B retro       |
-| 1000-event WS soak / slow-subscriber stress                       | Cluster B retro       |
-| Mutation tests against bus + routes                               | Cluster B retro       |
+| Area | Shipped |
+|------|---------|
+| T | OTLP, indexer on `/health/ready`, llvm-cov artifact, Prometheus `/metrics`, SQLite WAL + `busy_timeout` |
+| U | `criterion` store bench, nightly `cargo-mutants`, [[Query-Tuning]], WS 100-event soak |
+| V | [[Threat-Model]], `DELETE /messages/:id/purge`, k8s `NetworkPolicy` |
+| W | `GET /openapi.json`, mdBook + GitHub Pages, MCP reference generation |
+| X | CycloneDX SBOM on release workflow, prod digest docs |
 
-### Shipped in Cluster D (v0.3.0)
+**Still manual:** Sigstore/cosign of release artifacts (V.3 — documented in [[Operations]]).
 
-| What                                                  | PRs    |
-|-------------------------------------------------------|--------|
-| Thread FSM + transition log                           | #48–50 |
-| Nested threads + HSM                                  | #51    |
-| `hash-v1` embedding indexer (Postgres)                | #52    |
-| Persistent event log + replay API                     | #53    |
-| MCP `prompts/list` + `prompts/get`                      | #54    |
+## Deferred to optional `v1.2.0` minor
 
-### Still deferred from Cluster D scope
+| What | PR |
+|------|-----|
+| Pluggable embedding provider + `MAIDAN_EMBEDDING_PROVIDER` | 1.2.1 (in flight) |
+| Faceted search (author / channel / kind on `GET …/search`) | 1.2.2 |
+| `websearch_to_tsquery` operator pass-through (Postgres `q`) | 1.2.3 |
 
-| What                                                  | Target           |
-|-------------------------------------------------------|------------------|
-| Real ML embedding model (replace `hash-v1`)           | Post-1.0         |
-| Resumable WS subscriptions / reconnection tokens      | Cluster T / F    |
-| Per-model embedding tables / dimension variations     | Post-1.0         |
-| Faceted search (author / channel / kind filters)      | Cluster T        |
-| Automatic subscriber replay on NOTIFY miss            | Cluster T        |
+## Still deferred (no owner yet)
 
-### Shipped in Cluster E (v0.4.0)
+| What | Notes |
+|------|-------|
+| Real ML embedding model | Implement `EmbeddingProvider` + wire env |
+| Resumable WS beyond `after_id` | Reconnection tokens, automatic NOTIFY replay |
+| Per-model embedding tables / mixed dimensions | Schema + search API |
+| S3 multipart for multi-GB blobs | Cluster E follow-up |
+| OAuth/OIDC | Auth track / product |
+| MCP stdio transport | Cluster H retro |
+| SSE for MCP `resources/subscribe` | Cluster B retro |
+| Schema parity property test (`information_schema`) | Cluster A retro |
+| Score normalization across Postgres vs SQLite ranks | Cluster C retro |
+| Coverage upload site / Codecov + minimum gate | Track W partial |
+| `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Threat model T1 — defer to v2 |
+| SQLite file-backed durability tests | Cluster V retro |
+| HorizontalPodAutoscaler manifest | Cluster A retro |
+| Helm chart alternative to Kustomize | Cluster A plan |
 
-| What                                                   | PRs    |
-|--------------------------------------------------------|--------|
-| `ArtifactKind` + migration 0007                        | #65    |
-| S3Store + HTTP + MCP + streaming helpers               | #66    |
+## Known state at this handoff
 
-### Still deferred from Cluster E scope
-
-| What                                                   | Target           |
-|--------------------------------------------------------|------------------|
-| S3 multipart for multi-GB blobs                          | Cluster T        |
-| Upgrade aws-sdk off `rustls-webpki` 0.101              | When upstream    |
-
-## Cluster 1.0 — complete
-
-See [`docs/Retros/Cluster 1.0.md`](Retros/Cluster%201.0.md). Tag `v1.0.0`.
-
-### To Cluster H (web UI / production polish)
-
-| What                                                          | Source           |
-|---------------------------------------------------------------|------------------|
-| Web UI (`maidan-web` crate)                                   | Roadmap          |
-| MCP stdio transport for desktop clients                       | Cluster B retro  |
-| SSE for MCP `resources/subscribe`                             | Cluster B retro  |
-| Graceful shutdown                                             | Cluster B retro  |
-| Helm chart as an alternative to Kustomize                     | Cluster A plan   |
-| Docs site (mdBook / Docusaurus / VitePress) consuming `docs/` | Decisions        |
-| Auto-creating a v0.1.0 release retroactively                  | PR #36 body      |
-
-### To Cluster U (performance)
-
-| What                                                 | Source           |
-|------------------------------------------------------|------------------|
-| `cargo-mutants` mutation suite in nightly CI         | Cluster A retro  |
-| `criterion` bench suite                              | Cluster A retro  |
-| `bencher.dev` vs `cargo-criterion` decision          | Cluster A plan   |
-| HorizontalPodAutoscaler manifest                     | Cluster A retro  |
-| Postgres + SQLite EXPLAIN-driven query tuning        | (implicit)       |
-
-### To Cluster V (security + privacy)
-
-| What                                                        | Source           |
-|-------------------------------------------------------------|------------------|
-| GDPR right-of-erasure flow (hard delete past tombstones)    | Cluster A retro  |
-| NetworkPolicy manifests for k8s                             | Cluster A retro  |
-| Sigstore signing of release artifacts                       | Cluster A retro  |
-| SQLite file-backed durability tests                         | Cluster A retro  |
-
-### To Cluster W (docs)
-
-| What                                                  | Source           |
-|-------------------------------------------------------|------------------|
-| Coverage upload + report site                         | Cluster A retro  |
-| OpenAPI spec generation (utoipa or aide)              | Cluster B retro  |
-| Per-route reference docs auto-generated               | (implicit)       |
-
-### To Cluster X (release engineering)
-
-| What                                          | Source        |
-|-----------------------------------------------|---------------|
-| Auto-create v0.1.0 release retroactively      | PR #36 body   |
-| Pin docker image digests in k8s prod overlay  | k8s/README    |
-
-## Known unfinished tasks at this handoff
-
-- **Cluster ladder A–H + 1.0 complete** — latest tag `v1.1.0` (optional minor).
-  See [[Post-1.0]] for tracks and optional `v1.2.0` minor.
-- **Track T** — T.1/T.2 + federation smoke + T.3 llvm-cov artifact shipped;
-  T.4+ (Prometheus, SQLite WAL) still open.
-- **`v1.1.0` GitHub Release** — tag pushed; release workflow was cancelled
-  after 24h (macos-13 queue). Re-run after release.yml fix merges.
+- **Latest tag:** `v1.1.0` (optional minor — delivery reliability). Post-1.0
+  tracks T/U/V/W/X closed at `main` after #121.
+- **Active optional minor:** **`v1.2.0`** — search + embeddings ladder in
+  [[Post-1.0]]; PR **1.2.1** next.
+- **Docs site:** mdBook workflow ships on `main`; enable GitHub Pages in repo
+  settings if the site is not live yet.
 
 ## How to read this file
 
 - The "Standing risks" list at the top is the always-on register.
   Items leave the list when the underlying issue is fixed.
-- The per-cluster sections enumerate items the original PR scoped
-  out. Items move from "deferred to" tables into their respective
-  cluster's plan when work starts.
-- A retro PR is the only legitimate moment to add items here. If
-  you spot a deferred item that isn't listed, the previous retro
-  missed it — open a follow-up PR that updates this file.
+- Shipped tables are historical pointers; [[Post-1.0]] is the live plan.
+- A retro PR is the legitimate moment to add deferred items. If you spot
+  a gap, open a follow-up PR that updates this file.
