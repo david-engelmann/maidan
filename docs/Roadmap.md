@@ -41,13 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 2.1** — OIDC operator hardening → tag **`v2.1.0`**
-(see [[Clusters/Cluster 2.1]]).
+**Active:** **Cluster 3.0** — search facets + subscriber reliability
+(sketched in [[Clusters/Cluster 2.1]]; plan TBD).
 
-**Recently closed:** **`v2.0.0`** — OIDC + human sessions ([[Retros/Cluster 2.0]]).
-
-**On deck:** **Cluster 3.0** — search facets + subscriber reliability
-(sketched in [[Clusters/Cluster 2.1]]).
+**Recently closed:** **`v2.1.0`** — OIDC operator hardening ([[Retros/Cluster 2.1]]).
+**Before that:** **`v2.0.0`** — OIDC + human sessions ([[Retros/Cluster 2.0]]).
 
 **Also on deck:** ad-hoc reliability/search backlog in [[Open Work]].
 

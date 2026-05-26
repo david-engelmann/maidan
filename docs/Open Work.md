@@ -41,14 +41,17 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: major `v2.0.0`
+## Recently closed: `v2.1.0`
 
-Runtime OIDC + human sessions shipped at **`v2.0.0`** — [[Retros/Cluster 2.0]].
+OIDC operator hardening — [[Retros/Cluster 2.1]] (signed cookies, IdP logout,
+OpenAPI auth routes, optional auto-mint).
 
-## Active plan: minor `v2.1.0`
+Before that: runtime OIDC + human sessions at **`v2.0.0`** — [[Retros/Cluster 2.0]].
 
-OIDC operator hardening — [[Clusters/Cluster 2.1]] (signed cookies, IdP
-logout, OpenAPI, optional auto-mint).
+## Active plan: Cluster 3.0
+
+Search facets, coverage CI gate, WS gap auto-replay — sketched in
+[[Clusters/Cluster 2.1]]; dedicated cluster plan TBD.
 
 ## Still deferred (no owner yet)
 
@@ -70,9 +73,8 @@ logout, OpenAPI, optional auto-mint).
 
 ## Known state at this handoff
 
-- **Latest tag (after retro merges):** `v1.4.0` — auth hardening minor.
-- **Recommended next:** ship **Cluster 2.1** ([[Clusters/Cluster 2.1]]), then
-  **Cluster 3.0** search/subscriber work or standing risks below.
+- **Latest tag (after retro merges):** `v2.1.0` — OIDC operator hardening.
+- **Recommended next:** kick off **Cluster 3.0** or tackle standing risks below.
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

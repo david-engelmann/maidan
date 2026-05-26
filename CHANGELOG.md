@@ -9,6 +9,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [2.1.0] — 2026-05-26
+
+Minor release: OIDC operator hardening after `v2.0.0`.
+
+### Added
+
+- HMAC-signed `maidan_session` cookies; unsigned bare UUID cookies rejected.
+- IdP `end_session_endpoint` discovery and redirect on `POST /auth/logout`.
+- OpenAPI documentation for auth/session routes and `sessionCookie` security scheme.
+- `MAIDAN_OIDC_AUTO_MINT=1` redirects to `/ui/?auto_mint=1` when no `token:admin` exists.
+- `/ui/` improvements: session-aware controls, one-time secret banner, copy-to-clipboard.
+
+### Changed
+
+- `MAIDAN_SESSION_SECRET` is load-bearing for cookie integrity (invalidates existing sessions on upgrade).
+- OpenAPI document version `2.1.0`.
+
 ## [2.0.0] — 2026-05-26
 
 Major release: runtime OIDC human login, server-side sessions, and browser UI
