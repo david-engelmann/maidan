@@ -47,10 +47,5 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: bench (placeholder)
-        run: |
-          if [ -d bench ]; then
-            cargo bench --workspace --no-fail-fast
-          else
-            echo "no bench/ directory yet; criterion suites land in Cluster U"
-          fi
+      - name: bench store hot path
+        run: cargo bench -p maidan-store --bench store_hot --no-run

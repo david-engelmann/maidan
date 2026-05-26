@@ -47,6 +47,19 @@ placeholder, never committed with real values.
 kubectl apply -k k8s/overlays/prod
 ```
 
+## Production image digests (Track X.2)
+
+Pin images by digest in `overlays/prod/kustomization.yaml` after each release:
+
+```yaml
+images:
+  - name: maidan-server
+    newName: ghcr.io/david-engelmann/maidan-server
+    digest: sha256:… # from `docker buildx imagetools inspect`
+```
+
+Floating `newTag` is fine for dev; prod should not use `:latest`.
+
 ## Image references
 
 - `maidan-server:<tag>` — produced by `crates/maidan-server/Dockerfile`.

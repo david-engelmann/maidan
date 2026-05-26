@@ -427,3 +427,62 @@ async fn subscribe_with_invalid_filter_closes_with_1008() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn subscribe_receives_many_sequential_events() {
+    let (addr, client, server, _dir) = spawn_server().await;
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(json!({"filter": {}}).to_string()))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "soak"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+
+    const N: usize = 100;
+    for i in 0..N {
+        let _: serde_json::Value = client
+            .post(format!("{base}/workspaces/{workspace_id}/members"))
+            .json(&json!({"handle": format!("u{i}"), "kind": "agent"}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+    }
+
+    let mut count = 0usize;
+    let collect = async {
+        while count < N {
+            match ws.next().await {
+                Some(Ok(Message::Text(payload))) => {
+                    let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                    if v["kind"].as_str() == Some(EventKind::MemberJoined.as_str()) {
+                        count += 1;
+                    }
+                }
+                Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+                other => panic!("unexpected ws frame: {other:?}"),
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(30), collect)
+        .await
+        .expect("timeout waiting for 100 member events");
+
+    server.abort();
+}

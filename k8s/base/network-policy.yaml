@@ -1,0 +1,20 @@
+# Restrict maidan-server ingress to in-namespace callers and ingress controller.
+# Adjust namespaceSelector for your ingress controller installation (Track V.4).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maidan-server
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: maidan
+      app.kubernetes.io/component: server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
