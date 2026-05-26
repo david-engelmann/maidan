@@ -17,9 +17,11 @@ pub mod health;
 pub mod mcp;
 pub mod mcp_stream;
 pub mod metrics;
+pub mod oidc;
 pub mod openapi;
 pub mod request_id;
 pub mod routes;
+pub mod session;
 pub mod state;
 pub mod ws;
 

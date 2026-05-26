@@ -8,6 +8,8 @@ use maidan_store::Store;
 use maidan_types::PeerId;
 use tokio::sync::RwLock as AsyncRwLock;
 
+use crate::oidc::OidcRuntime;
+
 /// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
 #[derive(Clone)]
 pub struct FederationRuntime {
@@ -46,6 +48,8 @@ pub struct AppState {
     pub indexer_last_error: Arc<AsyncRwLock<Option<String>>>,
     /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
     pub bus_listener_health: Option<Arc<ListenerHealth>>,
+    /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
+    pub oidc: Option<Arc<OidcRuntime>>,
 }
 
 impl AppState {
@@ -74,6 +78,7 @@ impl AppState {
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
+            oidc: None,
         }
     }
 
