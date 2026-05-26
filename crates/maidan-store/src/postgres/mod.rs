@@ -106,6 +106,9 @@ impl Store for PostgresStore {
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError> {
         messages::tombstone(&self.pool, id).await
     }
+    async fn purge_message(&self, id: MessageId) -> Result<(), StoreError> {
+        messages::purge(&self.pool, id).await
+    }
 
     async fn record_mention(
         &self,

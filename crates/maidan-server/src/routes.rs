@@ -418,6 +418,18 @@ pub async fn tombstone_message(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn purge_message(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let (workspace_id, _, _) = chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.purge_message(MessageId(id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn create_mention(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
