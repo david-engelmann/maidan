@@ -52,6 +52,10 @@ pub struct OidcSettings {
     pub pending_ttl_secs: u64,
     pub cookie_secure: bool,
     pub post_logout_redirect_uri: Option<String>,
+    /// When true, `POST /auth/session/mint` may create the first `token:admin`.
+    pub first_admin_mint: bool,
+    /// When true, redirect to `/ui/?auto_mint=1` after login if no `token:admin` yet.
+    pub auto_mint: bool,
 }
 
 impl OidcSettings {
@@ -100,6 +104,11 @@ impl OidcSettings {
             || std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
 
         let post_logout_redirect_uri = std::env::var("MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI").ok();
+        let first_admin_mint = !matches!(
+            std::env::var("MAIDAN_OIDC_FIRST_ADMIN").as_deref(),
+            Ok("0") | Ok("false") | Ok("FALSE")
+        );
+        let auto_mint = env_flag("MAIDAN_OIDC_AUTO_MINT") && first_admin_mint;
 
         Ok(Some(Self {
             enabled: true,
@@ -112,6 +121,8 @@ impl OidcSettings {
             pending_ttl_secs,
             cookie_secure,
             post_logout_redirect_uri,
+            first_admin_mint,
+            auto_mint,
         }))
     }
 }

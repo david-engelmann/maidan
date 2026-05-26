@@ -68,6 +68,7 @@ detail. Summary:
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on: session may mint the first `token:admin` per workspace via `POST /auth/session/mint`. Set `0` to disable. |
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered post-logout redirect (e.g. `https://host/ui/`). Used when IdP exposes `end_session_endpoint`. |
+| `MAIDAN_OIDC_AUTO_MINT` | no | `1` redirects to `/ui/?auto_mint=1` after login when the workspace has no `token:admin` yet; the UI then calls `POST /auth/session/mint`. Off by default. Requires first-admin mint (`MAIDAN_OIDC_FIRST_ADMIN` not `0`). |
 
 After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.

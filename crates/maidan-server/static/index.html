@@ -6,24 +6,45 @@
     <style>
       body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 56rem; }
       label { display: block; margin-top: 1rem; }
-      input { width: 100%; padding: 0.4rem; }
+      input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
       button { margin-top: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; }
       pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 24rem; }
       .err { color: #b91c1c; }
       .ok { color: #166534; }
+      .muted { color: #52525b; font-size: 0.9rem; }
+      #mint-banner {
+        display: none;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #fef9c3;
+        border: 1px solid #ca8a04;
+        border-radius: 0.25rem;
+      }
+      #mint-banner code { word-break: break-all; }
+      .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     </style>
   </head>
   <body>
     <h1>Maidan</h1>
-    <p>Workspace event tail with OIDC session or bearer token (v2.0).</p>
+    <p class="muted">Workspace event tail with OIDC session or bearer token.</p>
     <label>API base URL <input id="base" value="" /></label>
     <label>Workspace ID <input id="workspace" /></label>
     <label>Bearer token (optional if logged in) <input id="token" type="password" /></label>
-    <p id="session-status"></p>
-    <button id="login" type="button">Sign in with OIDC</button>
-    <button id="mint" type="button">Mint first admin token</button>
-    <button id="logout" type="button">Sign out</button>
-    <button id="load" type="button">Load events</button>
+    <p id="session-status" class="muted">Checking session…</p>
+    <div class="row">
+      <button id="login" type="button">Sign in with OIDC</button>
+      <button id="mint" type="button" hidden>Mint first admin token</button>
+      <button id="logout" type="button" hidden>Sign out</button>
+      <button id="load" type="button">Load events</button>
+    </div>
+    <div id="mint-banner" role="status">
+      <strong>Admin token (shown once)</strong>
+      <p class="muted">Store this secret now; Maidan will not show it again.</p>
+      <code id="mint-secret"></code>
+      <div class="row">
+        <button id="copy-secret" type="button">Copy to clipboard</button>
+      </div>
+    </div>
     <p id="status"></p>
     <pre id="out"></pre>
     <script>
@@ -31,6 +52,11 @@
       baseInput.value = window.location.origin;
       const tokenKey = "maidan_token";
       const wsKey = "maidan_workspace";
+      const loginBtn = document.getElementById("login");
+      const mintBtn = document.getElementById("mint");
+      const logoutBtn = document.getElementById("logout");
+      const mintBanner = document.getElementById("mint-banner");
+      const mintSecretEl = document.getElementById("mint-secret");
       document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
@@ -38,13 +64,51 @@
         return baseInput.value.replace(/\/$/, "");
       }
 
+      function setSignedIn(signedIn) {
+        loginBtn.hidden = signedIn;
+        logoutBtn.hidden = !signedIn;
+        mintBtn.hidden = !signedIn;
+      }
+
+      function showMintedSecret(secret) {
+        document.getElementById("token").value = secret;
+        localStorage.setItem(tokenKey, secret);
+        mintSecretEl.textContent = secret;
+        mintBanner.style.display = "block";
+      }
+
+      async function mintAdminToken() {
+        const status = document.getElementById("status");
+        const out = document.getElementById("out");
+        status.textContent = "Minting…";
+        status.className = "";
+        const res = await fetch(`${base()}/auth/session/mint`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          status.textContent = `Mint failed (HTTP ${res.status})`;
+          status.className = "err";
+          out.textContent = body;
+          return false;
+        }
+        const parsed = JSON.parse(body);
+        showMintedSecret(parsed.secret);
+        status.textContent = "Admin token minted — copy and store it now.";
+        status.className = "ok";
+        out.textContent = JSON.stringify(parsed, null, 2);
+        return true;
+      }
+
       async function refreshSession() {
         const el = document.getElementById("session-status");
         try {
           const res = await fetch(`${base()}/auth/session`, { credentials: "include" });
           if (!res.ok) {
-            el.textContent = "Not signed in (OIDC session).";
-            el.className = "";
+            el.textContent = "Not signed in. Use OIDC to open a browser session.";
+            el.className = "muted";
+            setSignedIn(false);
             return null;
           }
           const body = await res.json();
@@ -53,10 +117,12 @@
           if (!document.getElementById("workspace").value) {
             document.getElementById("workspace").value = body.workspace_id;
           }
+          setSignedIn(true);
           return body;
         } catch (e) {
           el.textContent = String(e);
           el.className = "err";
+          setSignedIn(false);
           return null;
         }
       }
@@ -72,37 +138,27 @@
           `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid)}&return_to=/ui/`;
       };
 
-      document.getElementById("logout").onclick = async () => {
-        await fetch(`${base()}/auth/logout`, { method: "POST", credentials: "include" });
-        await refreshSession();
+      document.getElementById("logout").onclick = () => {
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = `${base()}/auth/logout`;
+        document.body.appendChild(form);
+        form.submit();
       };
 
-      document.getElementById("mint").onclick = async () => {
-        const status = document.getElementById("status");
-        const out = document.getElementById("out");
-        status.textContent = "Minting…";
-        status.className = "";
+      document.getElementById("mint").onclick = () => mintAdminToken();
+
+      document.getElementById("copy-secret").onclick = async () => {
+        const secret = mintSecretEl.textContent;
+        if (!secret) return;
         try {
-          const res = await fetch(`${base()}/auth/session/mint`, {
-            method: "POST",
-            credentials: "include",
-          });
-          const body = await res.text();
-          if (!res.ok) {
-            status.textContent = `HTTP ${res.status}`;
-            status.className = "err";
-            out.textContent = body;
-            return;
-          }
-          const parsed = JSON.parse(body);
-          document.getElementById("token").value = parsed.secret;
-          localStorage.setItem(tokenKey, parsed.secret);
-          status.textContent = "Admin token minted (copy now — shown once).";
-          status.className = "ok";
-          out.textContent = JSON.stringify(parsed, null, 2);
+          await navigator.clipboard.writeText(secret);
+          document.getElementById("status").textContent = "Copied to clipboard.";
+          document.getElementById("status").className = "ok";
         } catch (e) {
-          status.textContent = String(e);
-          status.className = "err";
+          document.getElementById("status").textContent =
+            "Clipboard unavailable — select and copy manually.";
+          document.getElementById("status").className = "err";
         }
       };
 
@@ -140,7 +196,20 @@
         }
       };
 
-      refreshSession();
+      (async () => {
+        const params = new URLSearchParams(window.location.search);
+        const autoMint = params.get("auto_mint") === "1";
+        if (autoMint) {
+          params.delete("auto_mint");
+          const qs = params.toString();
+          const path = window.location.pathname + (qs ? `?${qs}` : "");
+          window.history.replaceState({}, "", path);
+        }
+        await refreshSession();
+        if (autoMint) {
+          await mintAdminToken();
+        }
+      })();
     </script>
   </body>
 </html>

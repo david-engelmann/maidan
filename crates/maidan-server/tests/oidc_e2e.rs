@@ -36,7 +36,24 @@ impl Harness {
     }
 }
 
-async fn spawn() -> Harness {
+fn mock_oidc_settings(auto_mint: bool) -> OidcSettings {
+    OidcSettings {
+        enabled: true,
+        mock: true,
+        issuer: "https://mock.idp.local".into(),
+        redirect_uri: "http://127.0.0.1/auth/oidc/callback".into(),
+        auto_provision: true,
+        link_email: false,
+        session_ttl_secs: 3600,
+        pending_ttl_secs: 600,
+        cookie_secure: false,
+        post_logout_redirect_uri: None,
+        first_admin_mint: true,
+        auto_mint,
+    }
+}
+
+async fn spawn_with_settings(settings: OidcSettings) -> Harness {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -81,18 +98,7 @@ async fn spawn() -> Harness {
         None,
     );
     state.oidc = Some(Arc::new(OidcRuntime {
-        settings: OidcSettings {
-            enabled: true,
-            mock: true,
-            issuer: "https://mock.idp.local".into(),
-            redirect_uri: "http://127.0.0.1/auth/oidc/callback".into(),
-            auto_provision: true,
-            link_email: false,
-            session_ttl_secs: 3600,
-            pending_ttl_secs: 600,
-            cookie_secure: false,
-            post_logout_redirect_uri: None,
-        },
+        settings,
         session_secret: Arc::from(TEST_SESSION_SECRET),
         client: None,
         http_client: None,
@@ -116,6 +122,10 @@ async fn spawn() -> Harness {
         workspace_id: workspace.id,
         _dir: dir,
     }
+}
+
+async fn spawn() -> Harness {
+    spawn_with_settings(mock_oidc_settings(false)).await
 }
 
 #[tokio::test]
@@ -221,6 +231,47 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
         .iter()
         .any(|v| v.to_str().map(|s| s.contains("Max-Age=0")).unwrap_or(false));
     assert!(cleared);
+
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn mock_oidc_callback_redirects_with_auto_mint_hint_when_enabled() {
+    let h = spawn_with_settings(mock_oidc_settings(true)).await;
+    let base = h.base();
+    let wid = h.workspace_id.0;
+
+    let login = h
+        .client
+        .get(format!("{base}/auth/oidc/login?workspace_id={wid}"))
+        .send()
+        .await
+        .unwrap();
+    let location = login
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let callback = h
+        .client
+        .get(format!("{base}{location}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
+    let redirect = callback
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        redirect.contains("auto_mint=1"),
+        "expected auto_mint hint, got {redirect}"
+    );
 
     h.shutdown().await;
 }
