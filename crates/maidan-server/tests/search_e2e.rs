@@ -165,6 +165,52 @@ async fn http_search_returns_ranked_hits() {
 }
 
 #[tokio::test]
+async fn http_search_accepts_author_channel_and_kind_facets() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let (workspace_id, channel_id, _) = seed_corpus(&client, &base).await;
+
+    let hits: Vec<serde_json::Value> = client
+        .get(format!(
+            "{base}/workspaces/{workspace_id}/search?q=rust&channel={channel_id}"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 3);
+
+    let hits: Vec<serde_json::Value> = client
+        .get(format!(
+            "{base}/workspaces/{workspace_id}/search?q=rust&kind=human"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 3);
+
+    let hits: Vec<serde_json::Value> = client
+        .get(format!(
+            "{base}/workspaces/{workspace_id}/search?q=rust&kind=agent"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn mcp_search_messages_tool_works() {
     let (addr, client, server, _dir) = spawn().await;
     let base = format!("http://{addr}");

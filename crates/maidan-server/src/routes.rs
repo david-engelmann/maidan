@@ -630,10 +630,15 @@ pub async fn search_messages(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SEARCH_QUERY)?;
     ensure_workspace(&auth, workspace_id)?;
+    let filters = maidan_search::SearchFilters {
+        author_id: q.author.map(MemberId),
+        channel_id: q.channel.map(ChannelId),
+        author_kind: q.kind,
+    };
     Ok(Json(
         state
             .search
-            .search_messages(workspace_id, &q.q, q.limit)
+            .search_messages(workspace_id, &q.q, q.limit, &filters)
             .await?,
     ))
 }

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use maidan_types::{MessageId, WorkspaceId};
 
 use crate::error::SearchError;
+use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
 
 /// Backend-agnostic search interface.
@@ -20,6 +21,7 @@ pub trait Search: Send + Sync {
         workspace_id: WorkspaceId,
         query: &str,
         limit: i64,
+        filters: &SearchFilters,
     ) -> Result<Vec<SearchHit>, SearchError>;
 
     /// Store (or replace) the embedding vector for a message under the

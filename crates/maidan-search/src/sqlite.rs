@@ -11,6 +11,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::SearchError;
+use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
 use crate::traits::Search;
 
@@ -32,12 +33,16 @@ impl Search for SqliteSearch {
         workspace_id: WorkspaceId,
         query: &str,
         limit: i64,
+        filters: &SearchFilters,
     ) -> Result<Vec<SearchHit>, SearchError> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return Err(SearchError::InvalidQuery("empty query".into()));
         }
         let fts_query = escape_fts5_query(trimmed);
+        let author_id = filters.author_id.map(|id| id.0);
+        let channel_id = filters.channel_id.map(|id| id.0);
+        let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
         let rows = sqlx::query(
             r#"
@@ -56,15 +61,25 @@ impl Search for SqliteSearch {
             JOIN maidan_messages m ON m.id = map.message_id
             JOIN maidan_threads t ON t.id = m.thread_id
             JOIN maidan_channels c ON c.id = t.channel_id
+            JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = ?
               AND m.tombstoned_at IS NULL
               AND maidan_messages_fts MATCH ?
+              AND (? IS NULL OR m.author_id = ?)
+              AND (? IS NULL OR t.channel_id = ?)
+              AND (? IS NULL OR mem.kind = ?)
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT ?
             "#,
         )
         .bind(workspace_id.0)
         .bind(&fts_query)
+        .bind(author_id)
+        .bind(author_id)
+        .bind(channel_id)
+        .bind(channel_id)
+        .bind(author_kind.as_deref())
+        .bind(author_kind.as_deref())
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
