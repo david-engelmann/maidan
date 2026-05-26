@@ -10,6 +10,7 @@ use maidan_auth::{resolve_bearer, resolve_peer_bearer, AuthContext};
 
 use crate::error::ApiError;
 use crate::federation::PeerContext;
+use crate::session::load_session;
 use crate::state::AppState;
 
 pub fn auth_disabled_from_env() -> bool {
@@ -65,4 +66,33 @@ pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(parse_bearer)
+}
+
+/// Accept bearer token or valid `maidan_session` cookie (for UI / operator routes).
+pub async fn session_or_bearer_middleware(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    if state.auth_disabled {
+        req.extensions_mut().insert(AuthContext::bypass());
+        return next.run(req).await;
+    }
+
+    if let Some(secret) = bearer_from_headers(req.headers()) {
+        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
+            req.extensions_mut().insert(ctx);
+            return next.run(req).await;
+        }
+    }
+
+    match load_session(&state, req.headers()).await {
+        Ok(session) => {
+            let ctx = AuthContext::from_token(session.member_id, session.workspace_id, Vec::new());
+            req.extensions_mut().insert(session);
+            req.extensions_mut().insert(ctx);
+            next.run(req).await
+        }
+        Err(err) => err.into_response(),
+    }
 }

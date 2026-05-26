@@ -7,7 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::{
     auth, bootstrap, federation, health, mcp, mcp_stream, metrics, oidc, openapi, request_id,
-    routes, state::AppState, ws,
+    routes, session, state::AppState, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -104,7 +104,14 @@ pub fn router(state: AppState) -> Router {
     let auth_routes = Router::new()
         .route("/auth/oidc/login", get(oidc::login))
         .route("/auth/oidc/callback", get(oidc::callback))
-        .route("/auth/logout", post(oidc::logout));
+        .route("/auth/logout", post(oidc::logout))
+        .route(
+            "/auth/session",
+            get(session::get_session).layer(middleware::from_fn_with_state(
+                state.clone(),
+                session::require_middleware,
+            )),
+        );
 
     Router::new()
         .route("/health", get(health::handler))

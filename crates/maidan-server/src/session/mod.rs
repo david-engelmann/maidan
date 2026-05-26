@@ -1,8 +1,14 @@
 //! Browser session cookie helpers and request context.
 
+mod handlers;
+pub mod middleware;
+
 use axum::http::{header, HeaderMap, HeaderValue};
 use maidan_types::{MemberId, SessionId, WorkspaceId};
 use uuid::Uuid;
+
+pub use handlers::get_session;
+pub use middleware::{load_session, require_middleware};
 
 pub const SESSION_COOKIE: &str = "maidan_session";
 
