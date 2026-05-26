@@ -366,3 +366,21 @@ will pick a docs generator (mdBook / Docusaurus / VitePress) and
 add a build pipeline that consumes the vault.
 
 **To revisit:** in Cluster H when the docs site lands.
+
+### OIDC human login deferred to `v2.0.0` (spike in `v1.4.2`)
+
+**Decision.** `v1.4.0` ships bootstrap hardening (`MAIDAN_BOOTSTRAP`) and an
+OIDC **design document** ([[OIDC]]) only. Runtime OIDC login, session cookies,
+and identity tables land in **`v2.0.0`**.
+
+**Alternative.** Ship OIDC in `v1.4.0` alongside bootstrap gating; or defer
+both doc and code to `v2.0.0`.
+
+**Why this:** OIDC adds a new trust boundary (browser sessions, IdP claims,
+CSRF/PKCE) on top of the stable bearer-token API. A minor release should not
+break MCP/WS clients or semver-stable HTTP auth. The spike unblocks planning
+and threat-model updates without half-implemented login.
+
+**To revisit:** if a deployment needs browser login before `v2.0.0`, use an
+external reverse proxy (OAuth2 Proxy) in front of `/ui/` only — documented in
+[[OIDC]] as a stopgap, not a supported Maidan API.

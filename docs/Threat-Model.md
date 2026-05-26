@@ -46,6 +46,7 @@ Recommended production flow: seed with `AUTH_DISABLED=1` on a private network, m
 
 ## Related docs
 
+- [[OIDC]] — planned human login (v2.0.0); design spike in v1.4.2
 - [[Production]] — env vars and probes
 - [[Deploy]] — network placement
 - `DELETE /messages/:id/purge` — hard-delete after tombstone (Track V.2)

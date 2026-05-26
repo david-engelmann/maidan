@@ -45,6 +45,9 @@ Typical production seed (private network):
 
 Integration tests use `AUTH_DISABLED=1` (bootstrap flag not required).
 
+Human browser login via OIDC is **not implemented** in `v1.4.x`; see [[OIDC]]
+for the `v2.0.0` plan.
+
 ## API discovery
 
 | Endpoint            | Use                                      |
