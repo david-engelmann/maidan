@@ -15,11 +15,11 @@ designed in [[OIDC]].
 
 | #         | Title                                                                  | Issue |
 |-----------|------------------------------------------------------------------------|-------|
-| 2.0.1     | `feat(maidan-store): oidc identities + session schema`                 | TBD   |
-| 2.0.2     | `feat(maidan-server): OIDC login/callback/logout routes`              | TBD   |
-| 2.0.3     | `feat(maidan-server): session middleware + /auth/session`             | TBD   |
-| 2.0.4     | `feat(maidan-server): UI/session integration + first-human admin policy` | TBD |
-| 2.0.retro | `docs(retro): Cluster 2.0 retrospective + v2.0.0 tag prep`            | TBD   |
+| 2.0.1 ✓   | `feat(maidan-store): oidc identities + session schema`                 | #133  |
+| 2.0.2 ✓   | `feat(maidan-server): OIDC login/callback/logout routes`              | #134  |
+| 2.0.3 ✓   | `feat(maidan-server): session middleware + /auth/session`             | #135  |
+| 2.0.4 ✓   | `feat(maidan-server): UI/session integration + first-human admin policy` | #136 |
+| 2.0.retro ✓ | `docs(retro): Cluster 2.0 retrospective + v2.0.0 tag prep`          | TBD   |
 
 ## Order
 

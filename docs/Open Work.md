@@ -41,9 +41,9 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Active plan: major `v2.0.0`
+## Recently closed: major `v2.0.0`
 
-See [[OIDC]] and [[Post-1.0]] for runtime identity/session work scope.
+Runtime OIDC + human sessions shipped at **`v2.0.0`** — [[Retros/Cluster 2.0]].
 
 ## Still deferred (no owner yet)
 
@@ -53,7 +53,7 @@ See [[OIDC]] and [[Post-1.0]] for runtime identity/session work scope.
 | Per-model embedding tables / mixed dimensions | Schema + search API |
 | Resumable WS beyond `after_id` | Reconnection tokens, automatic NOTIFY replay |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
-| OAuth/OIDC implementation | **`v2.0.0`** — design in [[OIDC]] (`v1.4.2` spike) |
+| OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | SSE for MCP `resources/subscribe` | Cluster B retro |
 | Schema parity property test (`information_schema`) | Cluster A retro |
@@ -66,7 +66,7 @@ See [[OIDC]] and [[Post-1.0]] for runtime identity/session work scope.
 ## Known state at this handoff
 
 - **Latest tag (after retro merges):** `v1.4.0` — auth hardening minor.
-- **Recommended next:** start **`v2.0.0`** runtime OIDC/session implementation planning ([[Post-1.0]], [[OIDC]]).
+- **Recommended next:** pick from standing risks below or define the next major cluster in [[Post-1.0]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
