@@ -56,6 +56,17 @@ pub async fn list(
     rows.iter().map(row_to_message).collect()
 }
 
+pub async fn purge(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
+    let res = sqlx::query("DELETE FROM maidan_messages WHERE id = ? AND tombstoned_at IS NOT NULL")
+        .bind(id.0)
+        .execute(pool)
+        .await?;
+    if res.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    Ok(())
+}
+
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
     let now = Utc::now();
     let res = sqlx::query(

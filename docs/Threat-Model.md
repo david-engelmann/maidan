@@ -34,7 +34,7 @@ integrator document, not a formal audit.
 | T4 | Federation peer impersonation | Peer bearer + idempotent ingest | Compromised peer can push events |
 | T5 | Artifact exfiltration | Bearer on download; SHA-256 addressing | Guessable SHA if leaked elsewhere |
 | T6 | SQL injection | `sqlx` parameterized queries | ORM bypass bugs |
-| T7 | GDPR right-to-erasure | Tombstone hides content; **hard purge not yet shipped** (Track V.2) | DB backups retain bytes until purge |
+| T7 | GDPR right-to-erasure | Tombstone then `DELETE /messages/:id/purge` (`workspace:write`) | DB backups may retain bytes until backup rotation |
 
 ## Bootstrap hardening options
 
@@ -48,4 +48,4 @@ Recommended production flow: seed with `AUTH_DISABLED=1` on a private network, m
 
 - [[Production]] — env vars and probes
 - [[Deploy]] — network placement
-- Track V.2 — GDPR purge (planned)
+- `DELETE /messages/:id/purge` — hard-delete after tombstone (Track V.2)

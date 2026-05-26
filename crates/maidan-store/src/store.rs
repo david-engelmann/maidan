@@ -43,6 +43,8 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Message>, StoreError>;
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError>;
+    /// Hard-delete a tombstoned message (GDPR erasure). Fails if not tombstoned.
+    async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;
 
     async fn record_mention(
         &self,
