@@ -91,10 +91,13 @@ async fn spawn() -> Harness {
             session_ttl_secs: 3600,
             pending_ttl_secs: 600,
             cookie_secure: false,
+            post_logout_redirect_uri: None,
         },
         session_secret: Arc::from(TEST_SESSION_SECRET),
         client: None,
         http_client: None,
+        end_session_url: None,
+        logout_client_id: None,
     }));
 
     let app = router(state);

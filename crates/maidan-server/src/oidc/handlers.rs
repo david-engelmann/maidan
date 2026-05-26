@@ -6,8 +6,8 @@ use axum::{
 use chrono::{Duration, Utc};
 use maidan_types::{NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
 use openidconnect::{
-    core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, Nonce, PkceCodeChallenge,
-    PkceCodeVerifier, Scope, TokenResponse,
+    core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
+    PkceCodeChallenge, PkceCodeVerifier, PostLogoutRedirectUrl, Scope, TokenResponse,
 };
 use rand::RngCore;
 
@@ -218,7 +218,21 @@ pub async fn logout(
     clear_session_cookie(&mut headers, oidc.settings.cookie_secure)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let mut response = Redirect::temporary("/ui/").into_response();
+    let location =
+        if let (Some(end), Some(client_id)) = (&oidc.end_session_url, &oidc.logout_client_id) {
+            let mut logout = LogoutRequest::from(end.clone()).set_client_id(client_id.clone());
+            if let Some(uri) = &oidc.settings.post_logout_redirect_uri {
+                let redirect = PostLogoutRedirectUrl::new(uri.clone()).map_err(|e| {
+                    ApiError::Internal(format!("invalid post-logout redirect URI: {e}"))
+                })?;
+                logout = logout.set_post_logout_redirect_uri(redirect);
+            }
+            logout.http_get_url().to_string()
+        } else {
+            "/ui/".to_string()
+        };
+
+    let mut response = Redirect::temporary(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
 }
