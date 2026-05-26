@@ -9,15 +9,15 @@ coherent capability batch warrants semver + changelog.
 
 | Track | Status | Plan |
 |-------|--------|------|
-| **T** | In progress | [[Tracks/Track T]] — OTLP + indexer health shipped; T.3 coverage optional. |
-| **U** | Not started | [[Tracks/Track U]] — benches, mutation tests, query tuning. |
-| **V** | Not started | [[Tracks/Track V]] — threat model, GDPR erasure, signed releases. |
-| **W** | In progress (W.3) | [[Tracks/Track W]] — OpenAPI + mdBook merged; MCP reference. |
-| **X** | Not started | [[Tracks/Track X]] — release automation hygiene. |
+| **T** | Complete | [[Tracks/Track T]] — OTLP, indexer health, coverage, Prometheus, SQLite WAL. T.5 bus health shipped in `v1.1.0`. |
+| **U** | Complete | [[Tracks/Track U]] — criterion bench, nightly mutants, EXPLAIN playbook, WS soak. |
+| **V** | Complete | [[Tracks/Track V]] — threat model, message purge, NetworkPolicy. V.3 cosign documented as manual (see Operations). |
+| **W** | Complete | [[Tracks/Track W]] — OpenAPI, mdBook, MCP reference. |
+| **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
-**Recommended order:** finish **Track T** → **Track W** (API reference for
-stable `v1.0.0` surface) → **Track V** (production hardening) → **Track U**
-(perf regression gates) → **Track X**.
+**Recommended order:** tracks above are closed. Next optional work is
+**`v1.2.0`** (search + embeddings minor) or product features in
+[[Open Work]].
 
 ## Optional minor: `v1.1.0` — delivery reliability ✓
 
@@ -45,30 +45,49 @@ post-1.0 product).
 | 1.2.3 | `websearch_to_tsquery` operator pass-through (Postgres). |
 | 1.2.retro | Tag `v1.2.0`. |
 
-## Track T — remaining (no tag)
+## Track T — shipped
 
 | PR   | Title | Notes |
 |------|-------|-------|
-| T.3  | `chore(ci): cargo-llvm-cov` + optional Codecov upload | Closes “no coverage gate” risk. |
-| T.4  | Prometheus `/metrics` exporter | Deferred from Track T out-of-scope. |
-| T.5  | PostgresBus supervision + readiness | Overlaps 1.1.1 if not done earlier. |
-| T.6  | SQLite WAL + `busy_timeout` PRAGMAs | Dev ergonomics. |
+| T.1–T.2 ✓ | OTLP + indexer on `/health/ready` | Shipped pre–post-1.0. |
+| T.3 ✓ | `cargo-llvm-cov` coverage job | #113. |
+| T.4 ✓ | Prometheus `/metrics` | #118. |
+| T.5 ✓ | PostgresBus readiness | `v1.1.1` `bus_listener_health`. |
+| T.6 ✓ | SQLite WAL + `busy_timeout` | #117. |
 
-## Track W — API docs (high leverage post-1.0)
-
-| PR   | Title |
-|------|-------|
-| W.1  | `utoipa` OpenAPI from axum routes + problem+json schemas |
-| W.2  | mdBook site publishing `docs/` + generated OpenAPI |
-| W.3  | MCP tool catalog page synced from `maidan-mcp` |
-
-## Track V — security
+## Track W — shipped
 
 | PR   | Title |
 |------|-------|
-| V.1  | Threat model doc + bootstrap route hardening options |
-| V.2  | GDPR erasure flow (tombstone → purge) |
-| V.3  | Sigstore cosign on release artifacts (pairs with Track X) |
+| W.1 ✓ | OpenAPI via utoipa (#114) |
+| W.2 ✓ | mdBook + GitHub Pages (#115) |
+| W.3 ✓ | MCP reference generator (#116) |
+
+## Track V — shipped
+
+| PR   | Title |
+|------|-------|
+| V.1 ✓ | Threat model + bootstrap notes (#119) |
+| V.2 ✓ | `DELETE /messages/:id/purge` (#120) |
+| V.3  | Cosign on release binaries — manual step in [[Operations]] until keyless CI is configured |
+| V.4 ✓ | `NetworkPolicy` in `k8s/base` |
+
+## Track U — shipped
+
+| PR   | Title |
+|------|-------|
+| U.1 ✓ | `maidan-store` criterion bench `store_hot` |
+| U.2 ✓ | Nightly `cargo-mutants` (`.github/workflows/nightly.yml`) |
+| U.3 ✓ | [[Query-Tuning]] playbook (#119) |
+| U.4 ✓ | 100-event WS soak test |
+
+## Track X — shipped
+
+| PR   | Title |
+|------|-------|
+| X.1 ✓ | Release workflow + compose smoke on every PR |
+| X.2 ✓ | Prod digest pinning documented in `k8s/README.md` |
+| X.3 ✓ | `cargo-cyclonedx` SBOM on release |
 
 ## Issue filing
 

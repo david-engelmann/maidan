@@ -156,6 +156,12 @@ jobs:
           merge-multiple: true
       - name: list artifacts
         run: ls -la dist
+      - name: install cyclonedx
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - name: generate SBOM
+        run: cargo cyclonedx --format json --output-file dist/sbom.json
       - name: create release
         uses: softprops/action-gh-release@v2
         with:

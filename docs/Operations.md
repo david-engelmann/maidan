@@ -253,6 +253,9 @@ When PRs `X.1` through `X.N` are merged:
 
 7. Verify the Release at `https://github.com/david-engelmann/maidan/releases/tag/v0.X.0`.
    If anything failed, see "Debugging the release workflow" below.
+   The workflow attaches `sbom.json` (cyclonedx). **Artifact signing (Track V.3):**
+   cosign is not wired in CI yet; sign release tarballs manually with
+   your org's Sigstore key if policy requires it.
 
 8. Open the next cluster kickoff.
 
