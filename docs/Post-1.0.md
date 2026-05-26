@@ -47,8 +47,8 @@ Shipped at tag **`v1.3.0`** ([[Retros/Minor 1.3]]).
 
 | PR   | Scope |
 |------|-------|
-| 1.4.1 | `MAIDAN_BOOTSTRAP=1` one-shot workspace seed gate. |
-| 1.4.2 | OIDC login spike / design doc (or defer to `v2.0.0`). |
+| 1.4.1 ✓ | `MAIDAN_BOOTSTRAP=1` one-shot workspace seed gate (#129). |
+| 1.4.2 | OIDC login spike / design doc ([[OIDC]]; implementation `v2.0.0`). |
 | 1.4.retro | Tag `v1.4.0`. |
 
 ## Optional minor: `v1.1.0` — delivery reliability ✓

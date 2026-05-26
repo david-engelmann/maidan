@@ -51,8 +51,8 @@ See [[Post-1.0]] ladder **1.4.1 → 1.4.retro** (auth hardening).
 | Per-model embedding tables / mixed dimensions | Schema + search API |
 | Resumable WS beyond `after_id` | Reconnection tokens, automatic NOTIFY replay |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
-| OAuth/OIDC | **`v1.4.0`** proposed ladder |
-| `MAIDAN_BOOTSTRAP=1` one-shot seed flag | **`v1.4.0`** / threat model T1 |
+| OAuth/OIDC implementation | **`v2.0.0`** — design in [[OIDC]] (`v1.4.2` spike) |
+| `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | SSE for MCP `resources/subscribe` | Cluster B retro |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Cluster C retro |
@@ -64,7 +64,7 @@ See [[Post-1.0]] ladder **1.4.1 → 1.4.retro** (auth hardening).
 ## Known state at this handoff
 
 - **Latest tag (after retro merges):** `v1.3.0` — semantic search UX minor.
-- **Recommended next:** **`v1.4.0`** auth hardening ([[Post-1.0]]).
+- **Recommended next:** finish **`v1.4.0`** (1.4.2 OIDC spike + retro) ([[Post-1.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

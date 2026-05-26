@@ -7,6 +7,7 @@
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Threat model](../docs/Threat-Model.md)
+- [OIDC human login (design)](../docs/OIDC.md)
 - [Query tuning](../docs/Query-Tuning.md)
 
 # Vault (Obsidian source)
