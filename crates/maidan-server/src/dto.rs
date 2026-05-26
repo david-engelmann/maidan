@@ -98,6 +98,12 @@ pub struct SearchQuery {
     pub q: String,
     #[serde(default = "default_search_limit")]
     pub limit: i64,
+    /// Restrict hits to messages by this member.
+    pub author: Option<uuid::Uuid>,
+    /// Restrict hits to messages in threads under this channel.
+    pub channel: Option<uuid::Uuid>,
+    /// Restrict hits to messages whose author has this kind (`human` / `agent`).
+    pub kind: Option<MemberKind>,
 }
 
 fn default_search_limit() -> i64 {

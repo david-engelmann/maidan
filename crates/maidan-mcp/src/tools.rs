@@ -159,7 +159,10 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid"},
                     "query": {"type": "string", "minLength": 1},
-                    "limit": {"type": "integer", "default": 25}
+                    "limit": {"type": "integer", "default": 25},
+                    "author_id": {"type": "string", "format": "uuid"},
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "enum": ["human", "agent"]}
                 },
                 "required": ["workspace_id", "query"]
             }
@@ -196,6 +199,9 @@ struct SearchMessagesArgs {
     query: String,
     #[serde(default = "default_search_limit")]
     limit: i64,
+    author_id: Option<uuid::Uuid>,
+    channel_id: Option<uuid::Uuid>,
+    kind: Option<maidan_types::MemberKind>,
 }
 
 fn default_search_limit() -> i64 {
@@ -252,8 +258,13 @@ async fn search_messages(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
+    let filters = maidan_search::SearchFilters {
+        author_id: a.author_id.map(maidan_types::MemberId),
+        channel_id: a.channel_id.map(maidan_types::ChannelId),
+        author_kind: a.kind,
+    };
     let hits = search
-        .search_messages(WorkspaceId(a.workspace_id), &a.query, a.limit)
+        .search_messages(WorkspaceId(a.workspace_id), &a.query, a.limit, &filters)
         .await?;
     Ok(content_json(&hits))
 }

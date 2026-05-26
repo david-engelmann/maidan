@@ -2,7 +2,7 @@
 //! workspace and run the same query battery so their behavior stays in
 //! parity.
 
-use maidan_search::{Search, SearchError, SearchHit};
+use maidan_search::{Search, SearchError, SearchFilters, SearchHit};
 use maidan_store::Store;
 use maidan_types::*;
 
@@ -103,6 +103,10 @@ pub async fn seed(store: &dyn Store) -> Fixture {
 
     Fixture {
         workspace_id: ws.id,
+        general_channel_id: general.id,
+        release_channel_id: release.id,
+        alice_id: alice.id,
+        bot_id: bot.id,
         tombstoned,
         message_ids,
     }
@@ -111,6 +115,10 @@ pub async fn seed(store: &dyn Store) -> Fixture {
 #[allow(dead_code)]
 pub struct Fixture {
     pub workspace_id: WorkspaceId,
+    pub general_channel_id: ChannelId,
+    pub release_channel_id: ChannelId,
+    pub alice_id: MemberId,
+    pub bot_id: MemberId,
     pub tombstoned: MessageId,
     pub message_ids: Vec<MessageId>,
 }
@@ -118,7 +126,7 @@ pub struct Fixture {
 #[allow(dead_code)]
 pub async fn assert_search_finds_rust(search: &dyn Search, fx: &Fixture) {
     let hits = search
-        .search_messages(fx.workspace_id, "rust", 10)
+        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
         .await
         .expect("search rust");
     // 5 of the 6 messages mention rust, minus 1 tombstoned == 4 hits.
@@ -157,7 +165,7 @@ pub async fn assert_search_finds_rust(search: &dyn Search, fx: &Fixture) {
 #[allow(dead_code)]
 pub async fn assert_empty_query_rejected(search: &dyn Search, fx: &Fixture) {
     let err = search
-        .search_messages(fx.workspace_id, "   ", 10)
+        .search_messages(fx.workspace_id, "   ", 10, &SearchFilters::default())
         .await
         .unwrap_err();
     assert!(matches!(err, SearchError::InvalidQuery(_)));
@@ -166,7 +174,12 @@ pub async fn assert_empty_query_rejected(search: &dyn Search, fx: &Fixture) {
 #[allow(dead_code)]
 pub async fn assert_unknown_term_returns_empty(search: &dyn Search, fx: &Fixture) {
     let hits = search
-        .search_messages(fx.workspace_id, "xyzzy-not-in-corpus", 10)
+        .search_messages(
+            fx.workspace_id,
+            "xyzzy-not-in-corpus",
+            10,
+            &SearchFilters::default(),
+        )
         .await
         .unwrap();
     assert!(hits.is_empty());
@@ -184,4 +197,71 @@ pub async fn run_search_suite(search: &dyn Search, fx: &Fixture) {
 #[allow(dead_code)]
 pub fn hit_ids(hits: &[SearchHit]) -> Vec<MessageId> {
     hits.iter().map(|h| h.message_id).collect()
+}
+
+#[allow(dead_code)]
+pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
+    let release_only = SearchFilters {
+        channel_id: Some(fx.release_channel_id),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &release_only)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 2, "release channel has two rust messages");
+
+    let general_only = SearchFilters {
+        channel_id: Some(fx.general_channel_id),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &general_only)
+        .await
+        .unwrap();
+    assert_eq!(
+        hits.len(),
+        2,
+        "general has three rust messages minus one tombstoned"
+    );
+
+    let human_only = SearchFilters {
+        author_kind: Some(MemberKind::Human),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &human_only)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 4);
+
+    let agent_only = SearchFilters {
+        author_kind: Some(MemberKind::Agent),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &agent_only)
+        .await
+        .unwrap();
+    assert!(hits.is_empty(), "agents did not author rust messages");
+
+    let alice_only = SearchFilters {
+        author_id: Some(fx.alice_id),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &alice_only)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 4);
+
+    let bot_only = SearchFilters {
+        author_id: Some(fx.bot_id),
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "deployment", 10, &bot_only)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1, "bot authored one deployment message");
 }

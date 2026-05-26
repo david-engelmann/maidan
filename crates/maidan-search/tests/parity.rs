@@ -5,7 +5,7 @@ mod common;
 
 use std::{sync::Arc, time::Duration};
 
-use maidan_search::{PostgresSearch, Search, SqliteSearch};
+use maidan_search::{PostgresSearch, Search, SearchFilters, SqliteSearch};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, PostgresStore, SqliteStore, Store,
 };
@@ -57,11 +57,16 @@ async fn rust_query_returns_same_ids() {
     let sqlite_fx = common::seed(&*sqlite_store).await;
 
     let pg_hits = pg_search
-        .search_messages(pg_fx.workspace_id, "rust", 10)
+        .search_messages(pg_fx.workspace_id, "rust", 10, &SearchFilters::default())
         .await
         .unwrap();
     let sqlite_hits = sqlite_search
-        .search_messages(sqlite_fx.workspace_id, "rust", 10)
+        .search_messages(
+            sqlite_fx.workspace_id,
+            "rust",
+            10,
+            &SearchFilters::default(),
+        )
         .await
         .unwrap();
 

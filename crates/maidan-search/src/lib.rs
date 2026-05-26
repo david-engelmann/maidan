@@ -11,6 +11,7 @@ pub mod embedding_handler;
 pub mod embedding_provider;
 pub mod embeddings;
 pub mod error;
+pub mod filters;
 pub mod hit;
 pub mod indexer;
 pub mod postgres;
@@ -24,6 +25,7 @@ pub use embedding_provider::{
 };
 pub use embeddings::{hash_embedding, model_name};
 pub use error::SearchError;
+pub use filters::SearchFilters;
 pub use hit::SearchHit;
 pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
 pub use postgres::PostgresSearch;
