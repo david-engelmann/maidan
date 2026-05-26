@@ -10,6 +10,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{run_postgres_migrations, PostgresStore};
+use reqwest::StatusCode;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
@@ -129,6 +130,60 @@ async fn health_reports_postgres_bus_ok_after_notify() {
     assert!(resp.status().is_success());
     let body: serde_json::Value = resp.json().await.expect("parse json");
     assert_eq!(body["bus"], "ok");
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn health_reports_indexer_embedding_errors() {
+    use maidan_search::SqliteSearch;
+    use maidan_store::{run_sqlite_migrations, SqliteStore};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+
+    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let state = AppState::for_tests(store, artifacts, bus, search);
+    *state.indexer_last_error.write().await = Some("remote provider timeout".into());
+    let app = router(state);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    let resp = client
+        .get(format!("http://{addr}/health/ready"))
+        .send()
+        .await
+        .expect("send /health/ready");
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: serde_json::Value = resp.json().await.expect("json");
+    let idx = body["indexer"]["error"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        idx.contains("embedding indexer error"),
+        "unexpected indexer status: {idx}"
+    );
 
     handle.abort();
 }

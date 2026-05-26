@@ -293,7 +293,9 @@ async fn search_messages(
                     "facets are only supported for lexical search (mode=lexical)".into(),
                 ));
             }
-            let embedding = embedding_provider.embed(&a.query);
+            let embedding = embedding_provider
+                .embed(&a.query)
+                .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
             search
                 .semantic_search(workspace_id, &embedding, a.limit)
                 .await?

@@ -6,6 +6,7 @@ use maidan_bus::{EventBus, ListenerHealth};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use maidan_types::PeerId;
+use tokio::sync::RwLock as AsyncRwLock;
 
 /// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
 #[derive(Clone)]
@@ -39,6 +40,8 @@ pub struct AppState {
     pub federation: FederationRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
+    /// Most recent indexer-side embedding failure, if any.
+    pub indexer_last_error: Arc<AsyncRwLock<Option<String>>>,
     /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
     pub bus_listener_health: Option<Arc<ListenerHealth>>,
 }
@@ -65,6 +68,7 @@ impl AppState {
             auth_disabled,
             federation,
             indexer_last_event_unix_ms,
+            indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
         }
     }

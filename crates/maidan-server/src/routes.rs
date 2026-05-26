@@ -648,7 +648,10 @@ pub async fn search_messages(
                     "facets are only supported for lexical search (mode=lexical)".into(),
                 ));
             }
-            let embedding = state.embedding_provider.embed(&q.q);
+            let embedding = state
+                .embedding_provider
+                .embed(&q.q)
+                .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
             state
                 .search
                 .semantic_search(workspace_id, &embedding, q.limit)

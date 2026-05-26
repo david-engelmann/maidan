@@ -8,7 +8,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | Endpoint          | Use        | Behavior                                      |
 |-------------------|------------|-----------------------------------------------|
 | `GET /health/live`  | Liveness   | Always `200` if the process is up.            |
-| `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled), and Postgres `LISTEN` bus (when used) are healthy. |
+| `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled and no embedding errors), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
 ## Environment
@@ -22,7 +22,12 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
-| `MAIDAN_EMBEDDING_PROVIDER` | no | Postgres indexer only: `hash-v1` (default). Future providers register here without API changes. |
+| `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
+| `MAIDAN_EMBEDDING_ENDPOINT` | when provider is `openai-compatible` | Full URL to embeddings endpoint (OpenAI-compatible response shape). |
+| `MAIDAN_EMBEDDING_MODEL` | when provider is `openai-compatible` | Embedding model id sent in request body. |
+| `MAIDAN_EMBEDDING_API_KEY` | optional | Bearer token for remote provider. |
+| `MAIDAN_EMBEDDING_DIM` | no | Expected embedding dimension (default `1024`). |
+| `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
 
 ## Bootstrap
 
