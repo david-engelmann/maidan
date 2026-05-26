@@ -15,6 +15,7 @@ pub trait Store: Send + Sync {
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError>;
+    async fn count_workspaces(&self) -> Result<i64, StoreError>;
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;

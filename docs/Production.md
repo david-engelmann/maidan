@@ -19,6 +19,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED`.       |
 | `AUTH_DISABLED` | no       | Must **not** be set in production.                   |
+| `MAIDAN_BOOTSTRAP` | no    | Set to `1` only during initial seed when auth is on. Allows unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members`. Only the **first** workspace may be created via bootstrap; remove the flag and restart after minting tokens. |
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
@@ -31,9 +32,18 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 
 ## Bootstrap
 
-1. Deploy with `AUTH_DISABLED=1` only for initial seed (if needed).
+When bearer auth is enabled, unauthenticated `POST /workspaces` and
+`POST /workspaces/:wid/members` require `MAIDAN_BOOTSTRAP=1`. Only the **first**
+workspace may be created via bootstrap; a second `POST /workspaces` returns
+`403`.
+
+Typical production seed (private network):
+
+1. Set `MAIDAN_BOOTSTRAP=1` and `AUTH_DISABLED=1`.
 2. Create workspace + member, mint admin token.
-3. Remove `AUTH_DISABLED`, set `MAIDAN_ENV=production`, restart.
+3. Unset both flags, set `MAIDAN_ENV=production`, restart.
+
+Integration tests use `AUTH_DISABLED=1` (bootstrap flag not required).
 
 ## API discovery
 

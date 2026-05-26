@@ -135,6 +135,10 @@ async fn main() -> anyhow::Result<()> {
     if auth_disabled {
         tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
     }
+    let bootstrap_enabled = maidan_server::bootstrap::bootstrap_enabled_from_env();
+    if bootstrap_enabled {
+        tracing::warn!("MAIDAN_BOOTSTRAP is set; unauthenticated bootstrap routes are enabled");
+    }
     let federation_disabled = maidan_server::federation::federation_disabled_from_env();
     if federation_disabled {
         tracing::warn!("FEDERATION_DISABLED is set; federation worker not started");
@@ -160,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
         search,
         embedding_provider,
         auth_disabled,
+        bootstrap_enabled,
         federation,
         indexer_heartbeat.clone(),
         bus_listener_health,

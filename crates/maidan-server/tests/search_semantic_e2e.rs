@@ -115,6 +115,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
         search,
         embedding_provider,
         true,
+        false,
         maidan_server::FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,

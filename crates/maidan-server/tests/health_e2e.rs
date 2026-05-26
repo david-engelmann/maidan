@@ -237,6 +237,7 @@ async fn spawn_server_with_postgres_bus() -> Option<(
         search,
         Arc::new(maidan_search::HashV1Provider),
         true,
+        false,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         Some(bus_health),

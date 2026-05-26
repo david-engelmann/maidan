@@ -6,7 +6,7 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    auth, federation, health, mcp, mcp_stream, metrics, openapi, request_id, routes,
+    auth, bootstrap, federation, health, mcp, mcp_stream, metrics, openapi, request_id, routes,
     state::AppState, ws,
 };
 
@@ -17,7 +17,11 @@ use crate::{
 pub fn router(state: AppState) -> Router {
     let bootstrap = Router::new()
         .route("/workspaces", post(routes::create_workspace))
-        .route("/workspaces/:wid/members", post(routes::create_member));
+        .route("/workspaces/:wid/members", post(routes::create_member))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            bootstrap::middleware,
+        ));
 
     let ws_only = Router::new().route("/ws/subscribe", get(ws::subscribe));
 
