@@ -60,3 +60,4 @@ PR review credit; external contributors.
 - [[Cluster 1.0]] — Production gates. Closed at `v1.0.0`.
 - [[Minor 1.1]] — Delivery reliability. Closed at `v1.1.0`.
 - [[Minor 1.2]] — Search + embeddings. Closed at `v1.2.0`.
+- [[Minor 1.3]] — Semantic search UX. Closed at `v1.3.0`.

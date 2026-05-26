@@ -30,21 +30,20 @@ Shipped at tag **`v1.2.0`** ([[Retros/Minor 1.2]]).
 | 1.2.3 ✓ | Postgres `websearch_to_tsquery` pass-through (#124). |
 | 1.2.retro ✓ | Capabilities + changelog + tag `v1.2.0`. |
 
-## Optional minor: `v1.3.0` — semantic search UX (proposed)
+## Optional minor: `v1.3.0` — semantic search UX ✓
 
-Natural follow-on to 1.2: expose semantic search and ship a real embedding
-provider without breaking the lexical API.
+Shipped at tag **`v1.3.0`** ([[Retros/Minor 1.3]]).
 
 | PR   | Scope |
 |------|-------|
 | 1.3.1 ✓ | `GET …/search?mode=semantic` (Postgres) + MCP mode parity (#126). |
-| 1.3.2 | Remote embedding provider (OpenAI-compatible HTTP) + config. **In flight.** |
-| 1.3.3 | Indexer failure visibility on `/health/ready` when embeddings enabled. **In flight.** |
-| 1.3.retro | Tag `v1.3.0`. |
+| 1.3.2 ✓ | OpenAI-compatible remote embedding provider + config (#127). |
+| 1.3.3 ✓ | Indexer failure visibility on `/health/ready` when embeddings enabled (#127). |
+| 1.3.retro ✓ | Capabilities + changelog + tag `v1.3.0`. |
 
 **Not in 1.3:** OAuth/OIDC, coverage % gate, SQLite semantic vectors.
 
-## Optional minor: `v1.4.0` — auth hardening (proposed)
+## Optional minor: `v1.4.0` — auth hardening (recommended next)
 
 | PR   | Scope |
 |------|-------|

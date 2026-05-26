@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v1.3.0 — Semantic search UX minor
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Semantic query mode on search (`mode=semantic`)         | `GET /workspaces/:wid/search`, MCP `search_messages` |
+| OpenAI-compatible remote embedding provider             | `maidan-search::OpenAiCompatibleProvider`, env config |
+| Embedding provider errors surfaced in semantic queries  | `maidan-server::routes`, `maidan-mcp::tools` |
+| Embedding indexer failures visible on readiness         | `maidan-server::health`, `EmbeddingHandler` |
+
 ## v1.2.0 — Search + embeddings minor
 
 | Capability                                              | Surface                       |

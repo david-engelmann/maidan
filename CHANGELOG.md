@@ -9,6 +9,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [1.3.0] — 2026-05-26
+
+Semantic search UX minor: HTTP/MCP semantic mode, remote embedding provider
+support, and readiness visibility for embedding/indexer failures.
+
+### Added
+
+- `mode=semantic` for `GET /workspaces/:wid/search` (Postgres semantic ranking).
+- MCP `search_messages.mode` (`lexical` / `semantic`) with parity behavior.
+- OpenAI-compatible embedding provider via env:
+  `MAIDAN_EMBEDDING_PROVIDER=openai-compatible`,
+  `MAIDAN_EMBEDDING_ENDPOINT`, `MAIDAN_EMBEDDING_MODEL`,
+  optional `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_EMBEDDING_DIM`,
+  `MAIDAN_EMBEDDING_TIMEOUT_SECS`.
+- `/health/ready` now reports embedding indexer errors.
+
+### Changed
+
+- Semantic query paths now fail fast on embedding provider errors (HTTP + MCP).
+- `EmbeddingProvider::embed` returns `Result<Vec<f32>, EmbeddingProviderError>`.
+
 ## [1.2.0] — 2026-05-26
 
 Search + embeddings minor: pluggable provider hook, faceted lexical search,
