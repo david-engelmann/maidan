@@ -128,7 +128,7 @@ impl Modify for SecurityAddon {
     modifiers(&SecurityAddon),
     tags(
         (name = "health", description = "Liveness and readiness"),
-        (name = "bootstrap", description = "Unauthenticated seed routes"),
+        (name = "bootstrap", description = "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)"),
         (name = "workspaces", description = "Workspaces and event log"),
         (name = "members", description = "Members and mentions"),
         (name = "channels", description = "Channels"),

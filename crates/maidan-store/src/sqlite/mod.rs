@@ -56,6 +56,9 @@ impl Store for SqliteStore {
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError> {
         workspaces::get(&self.pool, id).await
     }
+    async fn count_workspaces(&self) -> Result<i64, StoreError> {
+        workspaces::count(&self.pool).await
+    }
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
         members::create(&self.pool, new).await

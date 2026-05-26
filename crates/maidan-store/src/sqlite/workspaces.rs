@@ -22,6 +22,13 @@ pub async fn create(pool: &SqlitePool, new: NewWorkspace) -> Result<Workspace, S
     Ok(row_to_workspace(&row))
 }
 
+pub async fn count(pool: &SqlitePool) -> Result<i64, StoreError> {
+    let row = sqlx::query("SELECT COUNT(*) AS n FROM maidan_workspaces")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get::<i64, _>("n"))
+}
+
 pub async fn get(pool: &SqlitePool, id: WorkspaceId) -> Result<Workspace, StoreError> {
     let row = sqlx::query(
         "SELECT id, name, created_at, updated_at, tombstoned_at

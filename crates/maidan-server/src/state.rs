@@ -37,6 +37,8 @@ pub struct AppState {
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
+    /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
+    pub bootstrap_enabled: bool,
     pub federation: FederationRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
@@ -55,6 +57,7 @@ impl AppState {
         search: Arc<dyn Search>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
         auth_disabled: bool,
+        bootstrap_enabled: bool,
         federation: FederationRuntime,
         indexer_last_event_unix_ms: Arc<AtomicI64>,
         bus_listener_health: Option<Arc<ListenerHealth>>,
@@ -66,6 +69,7 @@ impl AppState {
             search,
             embedding_provider,
             auth_disabled,
+            bootstrap_enabled,
             federation,
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
@@ -87,6 +91,7 @@ impl AppState {
             search,
             Arc::new(maidan_search::HashV1Provider),
             true,
+            false,
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),
             None,

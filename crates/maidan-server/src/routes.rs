@@ -62,6 +62,15 @@ pub async fn create_workspace(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CreateWorkspace>,
 ) -> ApiResult<(StatusCode, Json<Workspace>)> {
+    if !state.auth_disabled && state.bootstrap_enabled {
+        let count = state.store.count_workspaces().await?;
+        if count > 0 {
+            return Err(ApiError::Forbidden(
+                "bootstrap only allows creating the first workspace; use bearer auth thereafter"
+                    .into(),
+            ));
+        }
+    }
     let ws = state
         .store
         .create_workspace(NewWorkspace { name: body.name })
