@@ -110,8 +110,17 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let indexer_handler: Arc<dyn maidan_search::EventHandler> = if use_embedding_indexer {
-        tracing::info!("indexer: hash-v1 embedding generation (postgres)");
-        Arc::new(EmbeddingHandler::new(store.clone(), search.clone()))
+        let provider = maidan_search::provider_from_env().context("MAIDAN_EMBEDDING_PROVIDER")?;
+        tracing::info!(
+            model = provider.model_name(),
+            dim = provider.dimension(),
+            "indexer: embedding generation (postgres)"
+        );
+        Arc::new(EmbeddingHandler::new(
+            store.clone(),
+            search.clone(),
+            provider,
+        ))
     } else {
         tracing::info!("indexer: logging only (sqlite)");
         Arc::new(LoggingHandler::default())

@@ -40,7 +40,7 @@ post-1.0 product).
 
 | PR   | Scope |
 |------|-------|
-| 1.2.1 | Pluggable embedding provider trait + config (keep `hash-v1` default). |
+| 1.2.1 | Pluggable embedding provider trait + config (keep `hash-v1` default). **In flight.** |
 | 1.2.2 | Faceted search filters on `GET …/search` (author, channel, kind). |
 | 1.2.3 | `websearch_to_tsquery` operator pass-through (Postgres). |
 | 1.2.retro | Tag `v1.2.0`. |
