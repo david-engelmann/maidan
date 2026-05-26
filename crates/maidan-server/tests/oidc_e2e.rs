@@ -164,6 +164,39 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
     let body: serde_json::Value = session_res.json().await.unwrap();
     assert_eq!(body["workspace_id"].as_str().unwrap(), wid.to_string());
 
+    let mint = h
+        .client
+        .post(format!("{base}/auth/session/mint"))
+        .header(reqwest::header::COOKIE, session_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mint.status(), StatusCode::CREATED);
+    let mint_body: serde_json::Value = mint.json().await.unwrap();
+    let secret = mint_body["secret"].as_str().unwrap();
+
+    let events = h
+        .client
+        .get(format!(
+            "{base}/ui/api/workspaces/{wid}/events?after_id=0&limit=10"
+        ))
+        .header(reqwest::header::COOKIE, session_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(events.status(), StatusCode::OK);
+
+    let mint_again = h
+        .client
+        .post(format!("{base}/auth/session/mint"))
+        .header(reqwest::header::COOKIE, session_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mint_again.status(), StatusCode::FORBIDDEN);
+
+    let _ = secret;
+
     let logout = h
         .client
         .post(format!("{base}/auth/logout"))

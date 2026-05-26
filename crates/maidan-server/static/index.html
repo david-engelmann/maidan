@@ -7,18 +7,23 @@
       body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 56rem; }
       label { display: block; margin-top: 1rem; }
       input { width: 100%; padding: 0.4rem; }
-      button { margin-top: 1rem; padding: 0.5rem 1rem; }
+      button { margin-top: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; }
       pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 24rem; }
       .err { color: #b91c1c; }
+      .ok { color: #166534; }
     </style>
   </head>
   <body>
     <h1>Maidan</h1>
-    <p>Read-only workspace event tail (v0.7.0).</p>
+    <p>Workspace event tail with OIDC session or bearer token (v2.0).</p>
     <label>API base URL <input id="base" value="" /></label>
-    <label>Bearer token <input id="token" type="password" /></label>
     <label>Workspace ID <input id="workspace" /></label>
-    <button id="load">Load events</button>
+    <label>Bearer token (optional if logged in) <input id="token" type="password" /></label>
+    <p id="session-status"></p>
+    <button id="login" type="button">Sign in with OIDC</button>
+    <button id="mint" type="button">Mint first admin token</button>
+    <button id="logout" type="button">Sign out</button>
+    <button id="load" type="button">Load events</button>
     <p id="status"></p>
     <pre id="out"></pre>
     <script>
@@ -29,10 +34,82 @@
       document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
+      function base() {
+        return baseInput.value.replace(/\/$/, "");
+      }
+
+      async function refreshSession() {
+        const el = document.getElementById("session-status");
+        try {
+          const res = await fetch(`${base()}/auth/session`, { credentials: "include" });
+          if (!res.ok) {
+            el.textContent = "Not signed in (OIDC session).";
+            el.className = "";
+            return null;
+          }
+          const body = await res.json();
+          el.textContent = `Signed in as member ${body.member_id} (workspace ${body.workspace_id}).`;
+          el.className = "ok";
+          if (!document.getElementById("workspace").value) {
+            document.getElementById("workspace").value = body.workspace_id;
+          }
+          return body;
+        } catch (e) {
+          el.textContent = String(e);
+          el.className = "err";
+          return null;
+        }
+      }
+
+      document.getElementById("login").onclick = () => {
+        const wid = document.getElementById("workspace").value.trim();
+        if (!wid) {
+          alert("Enter a workspace ID first.");
+          return;
+        }
+        localStorage.setItem(wsKey, wid);
+        window.location.href =
+          `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid)}&return_to=/ui/`;
+      };
+
+      document.getElementById("logout").onclick = async () => {
+        await fetch(`${base()}/auth/logout`, { method: "POST", credentials: "include" });
+        await refreshSession();
+      };
+
+      document.getElementById("mint").onclick = async () => {
+        const status = document.getElementById("status");
+        const out = document.getElementById("out");
+        status.textContent = "Minting…";
+        status.className = "";
+        try {
+          const res = await fetch(`${base()}/auth/session/mint`, {
+            method: "POST",
+            credentials: "include",
+          });
+          const body = await res.text();
+          if (!res.ok) {
+            status.textContent = `HTTP ${res.status}`;
+            status.className = "err";
+            out.textContent = body;
+            return;
+          }
+          const parsed = JSON.parse(body);
+          document.getElementById("token").value = parsed.secret;
+          localStorage.setItem(tokenKey, parsed.secret);
+          status.textContent = "Admin token minted (copy now — shown once).";
+          status.className = "ok";
+          out.textContent = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+          status.textContent = String(e);
+          status.className = "err";
+        }
+      };
+
       document.getElementById("load").onclick = async () => {
         const status = document.getElementById("status");
         const out = document.getElementById("out");
-        const base = baseInput.value.replace(/\/$/, "");
+        const b = base();
         const token = document.getElementById("token").value.trim();
         const wid = document.getElementById("workspace").value.trim();
         localStorage.setItem(tokenKey, token);
@@ -42,11 +119,11 @@
         out.textContent = "";
         const headers = { Accept: "application/json" };
         if (token) headers["Authorization"] = "Bearer " + token;
+        const url = token
+          ? `${b}/workspaces/${wid}/events?after_id=0&limit=50`
+          : `${b}/ui/api/workspaces/${wid}/events?after_id=0&limit=50`;
         try {
-          const res = await fetch(
-            `${base}/workspaces/${wid}/events?after_id=0&limit=50`,
-            { headers }
-          );
+          const res = await fetch(url, { headers, credentials: "include" });
           const body = await res.text();
           if (!res.ok) {
             status.textContent = `HTTP ${res.status}`;
@@ -55,12 +132,15 @@
             return;
           }
           status.textContent = "OK";
+          status.className = "ok";
           out.textContent = JSON.stringify(JSON.parse(body), null, 2);
         } catch (e) {
           status.textContent = String(e);
           status.className = "err";
         }
       };
+
+      refreshSession();
     </script>
   </body>
 </html>

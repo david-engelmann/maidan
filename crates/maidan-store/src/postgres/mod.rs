@@ -226,6 +226,14 @@ impl Store for PostgresStore {
         tokens::revoke(&self.pool, id).await
     }
 
+    async fn workspace_has_active_capability(
+        &self,
+        workspace_id: WorkspaceId,
+        capability: &str,
+    ) -> Result<bool, StoreError> {
+        tokens::workspace_has_active_capability(&self.pool, workspace_id, capability).await
+    }
+
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError> {
         peers::create(&self.pool, new).await
     }
