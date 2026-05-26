@@ -8,21 +8,15 @@ use crate::error::ApiError;
 use crate::session::SessionContext;
 use crate::state::AppState;
 
-fn oidc_first_admin_enabled() -> bool {
-    !matches!(
-        std::env::var("MAIDAN_OIDC_FIRST_ADMIN").as_deref(),
-        Ok("0") | Ok("false") | Ok("FALSE")
-    )
-}
-
 pub async fn mint_first_admin_token(
     State(state): State<AppState>,
     Extension(ctx): Extension<SessionContext>,
 ) -> Result<(StatusCode, Json<MintApiTokenResponse>), ApiError> {
-    if state.oidc.is_none() {
-        return Err(ApiError::Forbidden("OIDC is not enabled".into()));
-    }
-    if !oidc_first_admin_enabled() {
+    let oidc = state
+        .oidc
+        .as_ref()
+        .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+    if !oidc.settings.first_admin_mint {
         return Err(ApiError::Forbidden(
             "first-admin session mint is disabled (MAIDAN_OIDC_FIRST_ADMIN)".into(),
         ));

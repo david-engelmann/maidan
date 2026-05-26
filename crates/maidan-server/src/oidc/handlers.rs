@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::{Duration, Utc};
+use maidan_auth::TOKEN_ADMIN;
 use maidan_types::{NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
@@ -28,6 +29,11 @@ fn safe_return_to(return_to: Option<&str>) -> String {
         Some(path) if path.starts_with('/') && !path.starts_with("//") => path.to_string(),
         _ => "/ui/".to_string(),
     }
+}
+
+fn with_auto_mint_hint(location: String) -> String {
+    let sep = if location.contains('?') { '&' } else { '?' };
+    format!("{location}{sep}auto_mint=1")
 }
 
 pub async fn login(
@@ -195,7 +201,16 @@ pub async fn callback(
     )
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let location = safe_return_to(pending.return_to.as_deref());
+    let mut location = safe_return_to(pending.return_to.as_deref());
+    if oidc.settings.auto_mint {
+        let has_admin = state
+            .store
+            .workspace_has_active_capability(pending.workspace_id, TOKEN_ADMIN)
+            .await?;
+        if !has_admin {
+            location = with_auto_mint_hint(location);
+        }
+    }
     let mut response = Redirect::temporary(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
