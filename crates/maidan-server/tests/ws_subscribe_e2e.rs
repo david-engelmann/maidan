@@ -245,6 +245,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         artifacts,
         bus.clone(),
         search,
+        Arc::new(maidan_search::HashV1Provider),
         true,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),

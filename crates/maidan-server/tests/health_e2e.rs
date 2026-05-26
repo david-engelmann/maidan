@@ -180,6 +180,7 @@ async fn spawn_server_with_postgres_bus() -> Option<(
         artifacts,
         bus.clone(),
         search,
+        Arc::new(maidan_search::HashV1Provider),
         true,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),

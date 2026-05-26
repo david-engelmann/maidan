@@ -159,6 +159,11 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid"},
                     "query": {"type": "string", "minLength": 1},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["lexical", "semantic"],
+                        "default": "lexical"
+                    },
                     "limit": {"type": "integer", "default": 25},
                     "author_id": {"type": "string", "format": "uuid"},
                     "channel_id": {"type": "string", "format": "uuid"},
@@ -174,6 +179,7 @@ pub async fn dispatch(
     store: &Arc<dyn Store>,
     artifacts: &Arc<dyn ArtifactStore>,
     search: &Arc<dyn maidan_search::Search>,
+    embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
     _auth: &AuthContext,
     name: &str,
     args: &Value,
@@ -188,15 +194,25 @@ pub async fn dispatch(
         "add_reference" => add_reference(store, args).await,
         "upload_artifact" => upload_artifact(store, artifacts, args).await,
         "get_artifact_metadata" => get_artifact_metadata(store, args).await,
-        "search_messages" => search_messages(search, args).await,
+        "search_messages" => search_messages(search, embedding_provider, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SearchMessagesMode {
+    #[default]
+    Lexical,
+    Semantic,
 }
 
 #[derive(Deserialize)]
 struct SearchMessagesArgs {
     workspace_id: uuid::Uuid,
     query: String,
+    #[serde(default)]
+    mode: SearchMessagesMode,
     #[serde(default = "default_search_limit")]
     limit: i64,
     author_id: Option<uuid::Uuid>,
@@ -255,17 +271,34 @@ async fn get_artifact_metadata(store: &Arc<dyn Store>, args: &Value) -> Result<V
 
 async fn search_messages(
     search: &Arc<dyn maidan_search::Search>,
+    embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
-    let filters = maidan_search::SearchFilters {
-        author_id: a.author_id.map(maidan_types::MemberId),
-        channel_id: a.channel_id.map(maidan_types::ChannelId),
-        author_kind: a.kind,
+    let workspace_id = WorkspaceId(a.workspace_id);
+    let hits = match a.mode {
+        SearchMessagesMode::Lexical => {
+            let filters = maidan_search::SearchFilters {
+                author_id: a.author_id.map(maidan_types::MemberId),
+                channel_id: a.channel_id.map(maidan_types::ChannelId),
+                author_kind: a.kind,
+            };
+            search
+                .search_messages(workspace_id, &a.query, a.limit, &filters)
+                .await?
+        }
+        SearchMessagesMode::Semantic => {
+            if a.author_id.is_some() || a.channel_id.is_some() || a.kind.is_some() {
+                return Err(McpError::InvalidParams(
+                    "facets are only supported for lexical search (mode=lexical)".into(),
+                ));
+            }
+            let embedding = embedding_provider.embed(&a.query);
+            search
+                .semantic_search(workspace_id, &embedding, a.limit)
+                .await?
+        }
     };
-    let hits = search
-        .search_messages(WorkspaceId(a.workspace_id), &a.query, a.limit, &filters)
-        .await?;
     Ok(content_json(&hits))
 }
 

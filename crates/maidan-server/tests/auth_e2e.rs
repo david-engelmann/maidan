@@ -54,6 +54,7 @@ async fn spawn() -> Harness {
         artifacts,
         bus,
         search,
+        Arc::new(maidan_search::HashV1Provider),
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

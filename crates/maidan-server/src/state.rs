@@ -3,7 +3,7 @@ use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
 use maidan_bus::{EventBus, ListenerHealth};
-use maidan_search::Search;
+use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use maidan_types::PeerId;
 
@@ -33,6 +33,7 @@ pub struct AppState {
     pub artifacts: Arc<dyn ArtifactStore>,
     pub bus: Arc<dyn EventBus>,
     pub search: Arc<dyn Search>,
+    pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     pub federation: FederationRuntime,
@@ -43,11 +44,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: Arc<dyn Store>,
         artifacts: Arc<dyn ArtifactStore>,
         bus: Arc<dyn EventBus>,
         search: Arc<dyn Search>,
+        embedding_provider: Arc<dyn EmbeddingProvider>,
         auth_disabled: bool,
         federation: FederationRuntime,
         indexer_last_event_unix_ms: Arc<AtomicI64>,
@@ -58,6 +61,7 @@ impl AppState {
             artifacts,
             bus,
             search,
+            embedding_provider,
             auth_disabled,
             federation,
             indexer_last_event_unix_ms,
@@ -77,6 +81,7 @@ impl AppState {
             artifacts,
             bus,
             search,
+            Arc::new(maidan_search::HashV1Provider),
             true,
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),

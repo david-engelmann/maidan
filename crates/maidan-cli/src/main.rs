@@ -81,7 +81,9 @@ async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Resu
         AuthContext::bypass()
     };
 
-    let server = McpServer::new(store, artifacts, search);
+    let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
+        Arc::new(maidan_search::HashV1Provider);
+    let server = McpServer::new(store, artifacts, search, embedding_provider);
     tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

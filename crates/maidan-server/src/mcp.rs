@@ -21,6 +21,7 @@ pub async fn handler(
         state.store.clone(),
         state.artifacts.clone(),
         state.search.clone(),
+        state.embedding_provider.clone(),
     );
     Json(server.handle(request, &auth).await).into_response()
 }

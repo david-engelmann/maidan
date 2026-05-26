@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
-use maidan_search::Search;
+use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use serde_json::{json, Value};
 
@@ -20,6 +20,7 @@ pub struct McpServer {
     store: Arc<dyn Store>,
     artifacts: Arc<dyn ArtifactStore>,
     search: Arc<dyn Search>,
+    embedding_provider: Arc<dyn EmbeddingProvider>,
     server_name: String,
     server_version: String,
 }
@@ -29,11 +30,13 @@ impl McpServer {
         store: Arc<dyn Store>,
         artifacts: Arc<dyn ArtifactStore>,
         search: Arc<dyn Search>,
+        embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {
         Self {
             store,
             artifacts,
             search,
+            embedding_provider,
             server_name: "maidan".into(),
             server_version: env!("CARGO_PKG_VERSION").into(),
         }
@@ -96,6 +99,7 @@ impl McpServer {
             &self.store,
             &self.artifacts,
             &self.search,
+            &self.embedding_provider,
             auth,
             name,
             &args,

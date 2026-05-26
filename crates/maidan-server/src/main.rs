@@ -109,17 +109,20 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let embedding_provider =
+        maidan_search::provider_from_env().context("MAIDAN_EMBEDDING_PROVIDER")?;
+    tracing::info!(
+        model = embedding_provider.model_name(),
+        dim = embedding_provider.dimension(),
+        "embedding provider configured"
+    );
+
     let indexer_handler: Arc<dyn maidan_search::EventHandler> = if use_embedding_indexer {
-        let provider = maidan_search::provider_from_env().context("MAIDAN_EMBEDDING_PROVIDER")?;
-        tracing::info!(
-            model = provider.model_name(),
-            dim = provider.dimension(),
-            "indexer: embedding generation (postgres)"
-        );
+        tracing::info!("indexer: embedding generation (postgres)");
         Arc::new(EmbeddingHandler::new(
             store.clone(),
             search.clone(),
-            provider,
+            embedding_provider.clone(),
         ))
     } else {
         tracing::info!("indexer: logging only (sqlite)");
@@ -153,6 +156,7 @@ async fn main() -> anyhow::Result<()> {
         artifacts,
         bus.clone(),
         search,
+        embedding_provider,
         auth_disabled,
         federation,
         indexer_heartbeat.clone(),
