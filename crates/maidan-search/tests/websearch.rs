@@ -57,12 +57,7 @@ async fn postgres_websearch_operator_pass_through() {
     );
 
     let hits = search
-        .search_messages(
-            fx.workspace_id,
-            "\"ferris the unofficial\"",
-            10,
-            &filters,
-        )
+        .search_messages(fx.workspace_id, "\"ferris the unofficial\"", 10, &filters)
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
