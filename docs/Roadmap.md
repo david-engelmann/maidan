@@ -42,7 +42,7 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
 **Active:** major **`v2.0.0`** planning — runtime OIDC identity/session
-work (see [[OIDC]] and [[Post-1.0]]).
+work (see [[OIDC]], [[Post-1.0]], and [[Clusters/Cluster 2.0]]).
 
 **Also on deck:** ad-hoc reliability/search backlog in [[Open Work]].
 

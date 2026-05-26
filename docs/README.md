@@ -30,6 +30,7 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[OIDC]] — human login design spike (implementation deferred to `v2.0.0`).
 - [[Query-Tuning]] — Postgres `EXPLAIN` playbook (Track U).
 - [[Glossary]] — domain vocabulary.
+- [[Clusters/Cluster 2.0]] — active major planning (OIDC identities + sessions).
 - [[Clusters/Cluster A]], [[Clusters/Cluster B]], [[Clusters/Cluster C]]
   — per-cluster plan docs with PR ladder + risks.
 - [[Retros/README]] — closing-wave retrospectives, one per cluster.

@@ -55,6 +55,8 @@ Shipped at tag **`v1.4.0`** ([[Retros/Minor 1.4]]).
 
 ## Next major: `v2.0.0` — identity + sessions (active planning)
 
+Detailed PR ladder: [[Clusters/Cluster 2.0]].
+
 | Focus | Notes |
 |------|-------|
 | Runtime OIDC flow | Authorization code + PKCE, callback verification, logout. |
