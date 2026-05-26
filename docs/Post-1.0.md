@@ -37,9 +37,9 @@ provider without breaking the lexical API.
 
 | PR   | Scope |
 |------|-------|
-| 1.3.1 | `GET …/search?mode=semantic` (Postgres) or dedicated route; document rank semantics. **In flight.** |
-| 1.3.2 | Remote embedding provider (OpenAI-compatible HTTP) + config. |
-| 1.3.3 | Indexer failure visibility on `/health/ready` when embeddings enabled. |
+| 1.3.1 ✓ | `GET …/search?mode=semantic` (Postgres) + MCP mode parity (#126). |
+| 1.3.2 | Remote embedding provider (OpenAI-compatible HTTP) + config. **In flight.** |
+| 1.3.3 | Indexer failure visibility on `/health/ready` when embeddings enabled. **In flight.** |
 | 1.3.retro | Tag `v1.3.0`. |
 
 **Not in 1.3:** OAuth/OIDC, coverage % gate, SQLite semantic vectors.

@@ -14,6 +14,7 @@ use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
 };
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -117,13 +118,14 @@ async fn main() -> anyhow::Result<()> {
         "embedding provider configured"
     );
 
+    let indexer_last_error = Arc::new(RwLock::new(None));
+
     let indexer_handler: Arc<dyn maidan_search::EventHandler> = if use_embedding_indexer {
         tracing::info!("indexer: embedding generation (postgres)");
-        Arc::new(EmbeddingHandler::new(
-            store.clone(),
-            search.clone(),
-            embedding_provider.clone(),
-        ))
+        Arc::new(
+            EmbeddingHandler::new(store.clone(), search.clone(), embedding_provider.clone())
+                .with_health_error_slot(indexer_last_error.clone()),
+        )
     } else {
         tracing::info!("indexer: logging only (sqlite)");
         Arc::new(LoggingHandler::default())
@@ -151,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let federation =
         maidan_server::FederationRuntime::new(federation_disabled, federation_encryption_key);
-    let state = AppState::new(
+    let mut state = AppState::new(
         store,
         artifacts,
         bus.clone(),
@@ -162,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
         indexer_heartbeat.clone(),
         bus_listener_health,
     );
+    state.indexer_last_error = indexer_last_error;
     let app = router(state.clone());
 
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);

@@ -56,7 +56,7 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
     };
 
     let storage = check_artifact_store(&state).await;
-    let (indexer, indexer_last_event_at) = check_indexer(&state);
+    let (indexer, indexer_last_event_at) = check_indexer(&state).await;
     let bus = check_bus(&state);
 
     let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
@@ -91,7 +91,13 @@ fn check_bus(state: &AppState) -> SubsystemStatus {
     }
 }
 
-fn check_indexer(state: &AppState) -> (SubsystemStatus, Option<DateTime<Utc>>) {
+async fn check_indexer(state: &AppState) -> (SubsystemStatus, Option<DateTime<Utc>>) {
+    if let Some(err) = state.indexer_last_error.read().await.clone() {
+        return (
+            SubsystemStatus::Error(format!("embedding indexer error: {err}")),
+            None,
+        );
+    }
     let ms = state.indexer_last_event_unix_ms.load(Ordering::Relaxed);
     if ms == 0 {
         return (SubsystemStatus::Ok, None);
