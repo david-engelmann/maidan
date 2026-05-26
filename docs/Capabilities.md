@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v2.0.0 — OIDC identities and human sessions
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| OIDC identity + session persistence (migration 0012)   | `maidan-store`, `maidan-types` |
+| OIDC authorization-code + PKCE login flow               | `/auth/oidc/login`, `/auth/oidc/callback` |
+| Session cookie + logout                                 | `maidan_session` cookie, `POST /auth/logout` |
+| Session introspection                                   | `GET /auth/session`           |
+| First-workspace `token:admin` mint via OIDC session     | `POST /auth/session/mint`     |
+| Browser UI OIDC sign-in + cookie-backed event tail      | `/ui/`, `/ui/api/workspaces/:wid/events` |
+| Mock OIDC for CI (`MAIDAN_OIDC_MOCK=1`)                 | `oidc_e2e.rs`                 |
+
 ## v1.4.0 — Auth hardening minor
 
 | Capability                                              | Surface                       |

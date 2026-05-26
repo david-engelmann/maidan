@@ -9,6 +9,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [2.0.0] — 2026-05-26
+
+Major release: runtime OIDC human login, server-side sessions, and browser UI
+integration. Agent MCP/A2A paths remain bearer-token authenticated.
+
+### Added
+
+- Migration `0012`: `maidan_oidc_identities`, `maidan_sessions`, `maidan_oidc_pending`.
+- OIDC routes: `GET /auth/oidc/login`, `GET /auth/oidc/callback`, `POST /auth/logout`.
+- Session routes: `GET /auth/session`, `POST /auth/session/mint` (first `token:admin` per workspace).
+- `GET /ui/api/workspaces/:wid/events` with session-or-bearer middleware.
+- `/ui/` HTML: OIDC sign-in, session status, first-admin token mint, cookie-backed events.
+- `MAIDAN_OIDC_*` and `MAIDAN_SESSION_*` configuration (see `docs/Production.md`).
+- `Store::workspace_has_active_capability` for admin-mint gating.
+- `openidconnect` v4 client with mock IdP for tests (`MAIDAN_OIDC_MOCK=1`).
+
+### Changed
+
+- `docs/OIDC.md` design spike superseded by runtime implementation.
+- `deny.toml`: ignore `RUSTSEC-2023-0071` for transitive `rsa` via `openidconnect`.
+
 ## [1.4.0] — 2026-05-26
 
 Auth hardening minor: bootstrap route gating and OIDC design planning.

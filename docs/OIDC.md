@@ -1,8 +1,8 @@
 # OIDC human login (design spike, v1.4.2)
 
-Status: **design only** — no runtime OIDC in `v1.4.0`. Full implementation is
-targeted for **`v2.0.0`** (breaking auth/session surface). This document is the
-spike deliverable for post-1.0 minor **1.4.2**.
+Status: **implemented** at **`v2.0.0`**. This document remains the design
+reference; runtime routes and env vars are documented in [[Production]] and
+[[Retros/Cluster 2.0]].
 
 Related: [[Threat-Model]], [[Production]], Cluster F auth (`v0.5.0`), `v1.4.1`
 bootstrap gating.

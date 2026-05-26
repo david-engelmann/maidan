@@ -144,7 +144,10 @@ See [[Glossary]] for vocabulary.
   stored as JSON text; optional expiry and revocation.
 - **HTTP** — Bearer middleware on protected routes; `/health` and bootstrap
   (`POST /workspaces`, `POST …/members`) exempt when `MAIDAN_BOOTSTRAP=1` or
-  `AUTH_DISABLED=1`. OIDC human login is planned for `v2.0.0` ([[OIDC]]).
+  `AUTH_DISABLED=1`.
+- **OIDC + sessions (v2.0.0)** — authorization code + PKCE; `maidan_session`
+  cookie; `GET /auth/session`; first `token:admin` via `POST /auth/session/mint`.
+  MCP/A2A remain bearer-only. See [[OIDC]] and [[Production]].
 - **WebSocket** — `SubscribeFrame` includes `token`; requires
   `event:subscribe` when auth is enabled.
 - **MCP** — `tools/call`, `resources/read`, and `prompts/get` require a valid

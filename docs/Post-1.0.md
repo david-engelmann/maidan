@@ -15,9 +15,9 @@ coherent capability batch warrants semver + changelog.
 | **W** | Complete | [[Tracks/Track W]] — OpenAPI, mdBook, MCP reference. |
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
-**Recommended order:** tracks and optional minors **`v1.1.0`** through
-**`v1.4.0`** are closed. Next major delivery is **`v2.0.0`** (runtime OIDC
-human login/session work), or ad-hoc items in [[Open Work]].
+**Recommended order:** tracks, minors **`v1.1.0`**–**`v1.4.0`**, and major
+**`v2.0.0`** are closed. Next work: ad-hoc [[Open Work]] items or the next
+planned major cluster.
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 
@@ -53,16 +53,17 @@ Shipped at tag **`v1.4.0`** ([[Retros/Minor 1.4]]).
 | 1.4.2 ✓ | OIDC login spike / design doc ([[OIDC]]; implementation `v2.0.0`) (#130). |
 | 1.4.retro ✓ | Capabilities + changelog + tag `v1.4.0`. |
 
-## Next major: `v2.0.0` — identity + sessions (active planning)
+## Major `v2.0.0` — identity + sessions ✓
 
-Detailed PR ladder: [[Clusters/Cluster 2.0]].
+Shipped at tag **`v2.0.0`** ([[Retros/Cluster 2.0]]). PR ladder: [[Clusters/Cluster 2.0]].
 
-| Focus | Notes |
+| PR   | Scope |
 |------|-------|
-| Runtime OIDC flow | Authorization code + PKCE, callback verification, logout. |
-| Human session model | Cookie/session middleware alongside existing bearer tokens. |
-| Identity mapping | `(iss, sub)` workspace identity linkage to `Member` records. |
-| First-human admin policy | Interaction with bootstrap and `token:admin` mint semantics. |
+| 2.0.1 ✓ | OIDC identity + session schema (#133). |
+| 2.0.2 ✓ | OIDC login/callback/logout (#134). |
+| 2.0.3 ✓ | Session middleware + `GET /auth/session` (#135). |
+| 2.0.4 ✓ | UI integration + first-admin mint (#136). |
+| 2.0.retro ✓ | Capabilities + changelog + tag `v2.0.0`. |
 
 ## Optional minor: `v1.1.0` — delivery reliability ✓
 
