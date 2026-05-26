@@ -153,6 +153,17 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
         .expect("session cookie");
     assert!(Uuid::parse_str(session_cookie.trim_start_matches("maidan_session=")).is_ok());
 
+    let session_res = h
+        .client
+        .get(format!("{base}/auth/session"))
+        .header(reqwest::header::COOKIE, session_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(session_res.status(), StatusCode::OK);
+    let body: serde_json::Value = session_res.json().await.unwrap();
+    assert_eq!(body["workspace_id"].as_str().unwrap(), wid.to_string());
+
     let logout = h
         .client
         .post(format!("{base}/auth/logout"))
