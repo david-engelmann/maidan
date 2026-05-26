@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v1.4.0 — Auth hardening minor
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Bootstrap routes gated by `MAIDAN_BOOTSTRAP=1` (when auth on) | `maidan-server::bootstrap`, `maidan-server::app` |
+| One-shot first-workspace bootstrap enforcement          | `maidan-server::routes`, `maidan-store::Store::count_workspaces` |
+| OIDC runtime design spike and phased plan              | `docs/OIDC.md`, `docs/Decisions.md` |
+
 ## v1.3.0 — Semantic search UX minor
 
 | Capability                                              | Surface                       |
