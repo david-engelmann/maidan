@@ -19,6 +19,7 @@ pub type ConfiguredOidcClient = CoreClient<
 use thiserror::Error;
 
 use crate::config::ConfigError;
+use crate::session::session_secret_from_env;
 
 #[derive(Debug, Error)]
 pub enum OidcInitError {
@@ -120,15 +121,18 @@ fn build_oidc_http_client() -> Result<reqwest::Client, OidcInitError> {
 
 pub struct OidcRuntime {
     pub settings: OidcSettings,
+    pub session_secret: Arc<[u8]>,
     pub client: Option<ConfiguredOidcClient>,
     pub http_client: Option<Arc<reqwest::Client>>,
 }
 
 impl OidcRuntime {
     pub async fn init(settings: OidcSettings) -> Result<Self, OidcInitError> {
+        let session_secret = session_secret_from_env()?;
         if settings.mock {
             return Ok(Self {
                 settings,
+                session_secret,
                 client: None,
                 http_client: None,
             });
@@ -157,6 +161,7 @@ impl OidcRuntime {
 
         Ok(Self {
             settings,
+            session_secret,
             client: Some(client),
             http_client: Some(http_client),
         })

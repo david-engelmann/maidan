@@ -1,11 +1,13 @@
 //! Browser session cookie helpers and request context.
 
+mod cookie;
 mod handlers;
 pub mod middleware;
 
+pub use cookie::session_secret_from_env;
+
 use axum::http::{header, HeaderMap, HeaderValue};
 use maidan_types::{MemberId, SessionId, WorkspaceId};
-use uuid::Uuid;
 
 pub use handlers::{get_session, mint_first_admin_token};
 pub use middleware::{load_session, require_middleware};
@@ -19,7 +21,7 @@ pub struct SessionContext {
     pub workspace_id: WorkspaceId,
 }
 
-pub fn parse_session_cookie(headers: &HeaderMap) -> Option<SessionId> {
+pub fn parse_session_cookie(headers: &HeaderMap, secret: &[u8]) -> Option<SessionId> {
     let raw = headers
         .get(header::COOKIE)?
         .to_str()
@@ -27,8 +29,7 @@ pub fn parse_session_cookie(headers: &HeaderMap) -> Option<SessionId> {
         .split(';')
         .map(str::trim)
         .find_map(|part| part.strip_prefix(&format!("{SESSION_COOKIE}=")))?;
-    let id = Uuid::parse_str(raw).ok()?;
-    Some(SessionId(id))
+    cookie::verify_session_value(raw, secret)
 }
 
 pub fn set_session_cookie(
@@ -36,10 +37,11 @@ pub fn set_session_cookie(
     session_id: SessionId,
     max_age_secs: u64,
     secure: bool,
+    secret: &[u8],
 ) -> Result<(), header::InvalidHeaderValue> {
+    let signed = cookie::sign_session_value(session_id, secret);
     let mut value = format!(
-        "{SESSION_COOKIE}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}",
-        session_id.0
+        "{SESSION_COOKIE}={signed}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}"
     );
     if secure {
         value.push_str("; Secure");
