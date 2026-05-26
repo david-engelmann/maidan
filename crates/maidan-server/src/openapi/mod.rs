@@ -113,6 +113,7 @@ impl Modify for SecurityAddon {
         ListMessagesQuery,
         ListMentionsQuery,
         ListReferencesQuery,
+        SearchMode,
         SearchQuery,
         UploadArtifactQuery,
         MintApiToken,

@@ -635,12 +635,27 @@ pub async fn search_messages(
         channel_id: q.channel.map(ChannelId),
         author_kind: q.kind,
     };
-    Ok(Json(
-        state
-            .search
-            .search_messages(workspace_id, &q.q, q.limit, &filters)
-            .await?,
-    ))
+    let hits = match q.mode {
+        SearchMode::Lexical => {
+            state
+                .search
+                .search_messages(workspace_id, &q.q, q.limit, &filters)
+                .await?
+        }
+        SearchMode::Semantic => {
+            if q.author.is_some() || q.channel.is_some() || q.kind.is_some() {
+                return Err(ApiError::BadRequest(
+                    "facets are only supported for lexical search (mode=lexical)".into(),
+                ));
+            }
+            let embedding = state.embedding_provider.embed(&q.q);
+            state
+                .search
+                .semantic_search(workspace_id, &embedding, q.limit)
+                .await?
+        }
+    };
+    Ok(Json(hits))
 }
 
 // --- api tokens ---

@@ -93,9 +93,20 @@ pub struct ListEventsQuery {
     pub limit: i64,
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMode {
+    #[default]
+    Lexical,
+    /// Embed `q` with the configured provider and rank by cosine similarity (Postgres only).
+    Semantic,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct SearchQuery {
     pub q: String,
+    #[serde(default)]
+    pub mode: SearchMode,
     #[serde(default = "default_search_limit")]
     pub limit: i64,
     /// Restrict hits to messages by this member.
