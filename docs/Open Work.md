@@ -49,8 +49,8 @@ See [[Post-1.0]] (closure PR #121). Highlights:
 | What | PR |
 |------|-----|
 | Pluggable embedding provider + `MAIDAN_EMBEDDING_PROVIDER` | 1.2.1 ✓ |
-| Faceted search (author / channel / kind on `GET …/search`) | 1.2.2 (in flight) |
-| `websearch_to_tsquery` operator pass-through (Postgres `q`) | 1.2.3 |
+| Faceted search (author / channel / kind on `GET …/search`) | 1.2.2 ✓ |
+| `websearch_to_tsquery` operator pass-through (Postgres `q`) | 1.2.3 (in flight) |
 
 ## Still deferred (no owner yet)
 

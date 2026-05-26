@@ -35,6 +35,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
 | `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. |
+| `GET /workspaces/:wid/search` | Lexical search (`q`, optional `author` / `channel` / `kind`). On **Postgres**, `q` with `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words still use `plainto_tsquery`. SQLite ignores operators. |
 | `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
 
