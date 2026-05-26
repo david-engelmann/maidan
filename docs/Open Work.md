@@ -39,15 +39,15 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Active plan: optional `v1.3.0`
+## Active plan: optional `v1.4.0`
 
-See [[Post-1.0]] ladder **1.3.1 → 1.3.retro** (semantic HTTP + real embeddings).
+See [[Post-1.0]] ladder **1.4.1 → 1.4.retro** (auth hardening).
 
 ## Still deferred (no owner yet)
 
 | What | Notes |
 |------|-------|
-| Semantic search facets | After `v1.3.1` HTTP surface exists |
+| Semantic search facets | After `v1.3.0` baseline; needs rank/filter semantics |
 | Per-model embedding tables / mixed dimensions | Schema + search API |
 | Resumable WS beyond `after_id` | Reconnection tokens, automatic NOTIFY replay |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
@@ -63,8 +63,8 @@ See [[Post-1.0]] ladder **1.3.1 → 1.3.retro** (semantic HTTP + real embeddings
 
 ## Known state at this handoff
 
-- **Latest tag (after retro merges):** `v1.2.0` — search + embeddings minor.
-- **Recommended next:** **`v1.3.0`** semantic search UX ([[Post-1.0]]).
+- **Latest tag (after retro merges):** `v1.3.0` — semantic search UX minor.
+- **Recommended next:** **`v1.4.0`** auth hardening ([[Post-1.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

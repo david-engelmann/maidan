@@ -6,11 +6,17 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v1.2.0** — search + embeddings minor (facets, websearch operators, embedding provider hook).
+**v1.3.0** — semantic search UX minor (HTTP/MCP semantic mode, remote embedding provider, readiness surfacing).
 Latest release:
-[`v1.2.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.2.0).
+[`v1.3.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.3.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Minor 1.2.md`](docs/Retros/Minor%201.2.md) for the closing retro.
+[`docs/Retros/Minor 1.3.md`](docs/Retros/Minor%201.3.md) for the closing retro.
+
+## What's in `v1.3.0`
+
+- Semantic query mode on HTTP/MCP search (`mode=semantic`, Postgres).
+- OpenAI-compatible embedding provider configuration.
+- `/health/ready` surfacing for embedding indexer failures.
 
 ## What's in `v1.2.0`
 
