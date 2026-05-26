@@ -30,6 +30,14 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_EMBEDDING_DIM` | no | Expected embedding dimension (default `1024`). |
 | `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
 
+### Local embedding servers (e.g. LM Studio)
+
+Maidan's indexer uses the **OpenAI-compatible embeddings** API shape, not chat
+completion. Point `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` at your server's
+**embeddings** URL (for example `http://localhost:1234/v1/embeddings`) and set
+`MAIDAN_EMBEDDING_MODEL` to the loaded model id. A chat endpoint such as
+`http://localhost:1235/api/v1/chat` is not used for search indexing.
+
 ## Bootstrap
 
 When bearer auth is enabled, unauthenticated `POST /workspaces` and
@@ -67,7 +75,7 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
-| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. |
+| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
 | `GET /workspaces/:wid/search` | Search (`q`, optional `author` / `channel` / `kind`, `mode`). Default `mode=lexical`. `mode=semantic` embeds `q` with the configured provider and ranks by cosine similarity (**Postgres only**; `rank` is `1.0 - distance`, higher is better). Facets apply only to lexical mode. On **Postgres** lexical `q`, `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words use `plainto_tsquery`. SQLite ignores web operators and rejects `mode=semantic`. |
 | `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |

@@ -194,3 +194,24 @@ pub struct MintApiTokenResponse {
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
 }
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct OidcLoginQuery {
+    pub workspace_id: uuid::Uuid,
+    pub return_to: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct OidcCallbackQuery {
+    pub state: String,
+    pub code: Option<String>,
+    pub mock_sub: Option<String>,
+    pub mock_email: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionResponse {
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub expires_at: DateTime<Utc>,
+}
