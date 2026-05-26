@@ -88,11 +88,7 @@ pub async fn session_or_bearer_middleware(
 
     match load_session(&state, req.headers()).await {
         Ok(session) => {
-            let ctx = AuthContext::from_token(
-                session.member_id,
-                session.workspace_id,
-                Vec::new(),
-            );
+            let ctx = AuthContext::from_token(session.member_id, session.workspace_id, Vec::new());
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
             next.run(req).await
