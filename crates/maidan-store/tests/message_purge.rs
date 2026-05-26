@@ -1,9 +1,7 @@
 //! Hard-delete tombstoned messages (Track V.2).
 
 use maidan_store::{configure_sqlite_pool, SqliteStore, Store};
-use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
-};
+use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
@@ -13,13 +11,13 @@ async fn purge_removes_only_tombstoned_messages() {
         .await
         .expect("connect");
     configure_sqlite_pool(&pool).await.expect("pragmas");
-    maidan_store::run_sqlite_migrations(&pool).await.expect("migrate");
+    maidan_store::run_sqlite_migrations(&pool)
+        .await
+        .expect("migrate");
     let store = SqliteStore::new(pool);
 
     let ws = store
-        .create_workspace(NewWorkspace {
-            name: "w".into(),
-        })
+        .create_workspace(NewWorkspace { name: "w".into() })
         .await
         .expect("ws");
     let member = store

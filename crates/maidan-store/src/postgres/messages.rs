@@ -54,12 +54,11 @@ pub async fn list(
 }
 
 pub async fn purge(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
-    let res = sqlx::query(
-        "DELETE FROM maidan_messages WHERE id = $1 AND tombstoned_at IS NOT NULL",
-    )
-    .bind(id.0)
-    .execute(pool)
-    .await?;
+    let res =
+        sqlx::query("DELETE FROM maidan_messages WHERE id = $1 AND tombstoned_at IS NOT NULL")
+            .bind(id.0)
+            .execute(pool)
+            .await?;
     if res.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
