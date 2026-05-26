@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
+use crate::query::use_websearch_to_tsquery;
 use crate::traits::Search;
 
 /// Dimension of every embedding vector. Must match the schema column
@@ -45,10 +46,16 @@ impl Search for PostgresSearch {
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
+        let websearch = use_websearch_to_tsquery(query);
 
         let rows = sqlx::query(
             r#"
-            WITH q AS (SELECT plainto_tsquery('english', $2) AS query)
+            WITH q AS (
+                SELECT CASE WHEN $7
+                    THEN websearch_to_tsquery('english', $2)
+                    ELSE plainto_tsquery('english', $2)
+                END AS query
+            )
             SELECT
                 m.id            AS message_id,
                 m.thread_id     AS thread_id,
@@ -84,6 +91,7 @@ impl Search for PostgresSearch {
         .bind(author_id)
         .bind(channel_id)
         .bind(author_kind)
+        .bind(websearch)
         .fetch_all(&self.pool)
         .await?;
 

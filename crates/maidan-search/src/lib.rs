@@ -15,6 +15,7 @@ pub mod filters;
 pub mod hit;
 pub mod indexer;
 pub mod postgres;
+pub mod query;
 pub mod sqlite;
 pub mod traits;
 
@@ -29,5 +30,6 @@ pub use filters::SearchFilters;
 pub use hit::SearchHit;
 pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
 pub use postgres::PostgresSearch;
+pub use query::use_websearch_to_tsquery;
 pub use sqlite::SqliteSearch;
 pub use traits::Search;
