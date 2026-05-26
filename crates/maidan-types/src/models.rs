@@ -337,6 +337,67 @@ pub struct NewPeer {
     pub outbound_secret_ciphertext: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OidcIdentity {
+    pub id: OidcIdentityId,
+    pub workspace_id: WorkspaceId,
+    pub issuer: String,
+    pub subject: String,
+    pub member_id: MemberId,
+    pub email: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_login_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MaidanSession {
+    pub id: SessionId,
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub csrf_secret: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewMaidanSession {
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub csrf_secret: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewOidcIdentity {
+    pub workspace_id: WorkspaceId,
+    pub issuer: String,
+    pub subject: String,
+    pub member_id: MemberId,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OidcPendingAuth {
+    pub state: String,
+    pub workspace_id: WorkspaceId,
+    pub nonce: String,
+    pub pkce_verifier: String,
+    pub return_to: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewOidcPendingAuth {
+    pub state: String,
+    pub workspace_id: WorkspaceId,
+    pub nonce: String,
+    pub pkce_verifier: String,
+    pub return_to: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAuditEvent {
     pub actor_id: Option<MemberId>,
