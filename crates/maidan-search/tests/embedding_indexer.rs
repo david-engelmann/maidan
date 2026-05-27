@@ -103,7 +103,13 @@ async fn embedding_handler_upserts_on_message_posted() {
 
     let query = maidan_search::hash_embedding("semantic body");
     let hits = search
-        .semantic_search(ws.id, &query, 5, &maidan_search::SearchFilters::default())
+        .semantic_search(
+            ws.id,
+            &query,
+            5,
+            &maidan_search::SearchFilters::default(),
+            maidan_search::model_name(),
+        )
         .await
         .expect("semantic search");
     assert!(

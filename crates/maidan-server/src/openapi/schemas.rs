@@ -10,7 +10,8 @@ pub struct LivenessOk {
     pub status: String,
 }
 
-/// Lexical/semantic search hit (`GET /workspaces/{wid}/search`).
+/// Search hit (`GET /workspaces/{wid}/search`). `rank` is higher-is-better within
+/// one response but not comparable across `mode=lexical` vs `mode=semantic` or SQLite vs Postgres.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SearchHit {
     pub message_id: MessageId,
@@ -22,4 +23,7 @@ pub struct SearchHit {
     pub body: String,
     pub snippet: String,
     pub rank: f64,
+    /// Present for `mode=semantic` on Postgres (active embedding model).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
 }

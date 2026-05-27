@@ -292,7 +292,13 @@ async fn search_messages(
                 .embed(&a.query)
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
             search
-                .semantic_search(workspace_id, &embedding, a.limit, &filters)
+                .semantic_search(
+                    workspace_id,
+                    &embedding,
+                    a.limit,
+                    &filters,
+                    embedding_provider.model_name(),
+                )
                 .await?
         }
     };

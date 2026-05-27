@@ -16,7 +16,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   RUSTFLAGS: -D warnings
-  COVERAGE_MIN_LINES: "9.0"
+  COVERAGE_MIN_LINES: "11.0"
 
 jobs:
   lint:
@@ -118,6 +118,14 @@ jobs:
           path: |
             lcov.info
             coverage-html
+      - name: upload to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v5
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
 
   e2e:
     name: docker compose smoke

@@ -134,6 +134,18 @@ mod tests {
     use maidan_types::WorkspaceId;
 
     #[test]
+    fn resume_token_rejects_expired_payload() {
+        let filter = EventFilter::workspace(WorkspaceId(uuid::Uuid::new_v4()));
+        let mut token = sign_resume_token(&filter, 0, TEST_SUBSCRIBE_RESUME_SECRET, 1).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        assert!(matches!(
+            verify_resume_token(&token, TEST_SUBSCRIBE_RESUME_SECRET),
+            Err(SubscribeResumeError::Expired)
+        ));
+        let _ = &mut token;
+    }
+
+    #[test]
     fn resume_token_round_trips_and_rejects_tampering() {
         let filter = EventFilter::workspace(WorkspaceId(uuid::Uuid::new_v4()));
         let signed = sign_resume_token(&filter, 42, TEST_SUBSCRIBE_RESUME_SECRET, 3600).unwrap();

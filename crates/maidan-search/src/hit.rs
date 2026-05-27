@@ -16,4 +16,7 @@ pub struct SearchHit {
     pub body: String,
     pub snippet: String,
     pub rank: f64,
+    /// Set for Postgres semantic hits: embedding row `model` that matched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
 }

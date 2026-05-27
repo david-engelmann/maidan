@@ -135,11 +135,27 @@ See [[Glossary]] for vocabulary.
   (`human` / `agent`) on HTTP and MCP lexical search; applied in SQL on
   both backends.
 - **Semantic** — Postgres `pgvector` `vector(1024)` + HNSW cosine;
-  SQLite returns `Unsupported`. No public HTTP semantic query yet.
+  SQLite returns `Unsupported`. HTTP `mode=semantic` and MCP semantic mode
+  ship since `v1.3.0`; facets since `v3.0.0`.
 - **Indexer** — `maidan-search::Indexer` on `MessagePosted` /
   `MessageTombstoned`. Postgres uses `EmbeddingHandler` with a pluggable
   `EmbeddingProvider` (`hash-v1` default via `MAIDAN_EMBEDDING_PROVIDER`);
   SQLite keeps `LoggingHandler`.
+
+## Search quality at v5.0.0
+
+- **Model binding** — Postgres `semantic_search` filters
+  `maidan_message_embeddings.model` to the active provider's
+  `model_name()`. Stale vectors from a prior provider are ignored.
+- **Hit metadata** — semantic hits include `embedding_model` (lexical hits omit it).
+- **Health** — `/health` includes `embedding: { model, dimension }` from the
+  configured provider.
+- **Rank semantics** — `rank` is always “higher is better” but **not comparable**
+  across modes or backends:
+  - Lexical Postgres: `ts_rank_cd` (unbounded positive).
+  - Lexical SQLite: negative `bm25` (more negative = better match).
+  - Semantic Postgres: `1.0 - cosine_distance` in `[0, 1]`.
+  Do not sort or merge lexical and semantic hit lists by `rank` alone.
 
 ## Auth at v0.5.0
 

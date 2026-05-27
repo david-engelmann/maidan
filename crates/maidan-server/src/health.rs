@@ -21,7 +21,15 @@ pub struct HealthResponse {
     pub indexer: SubsystemStatus,
     pub indexer_last_event_at: Option<DateTime<Utc>>,
     pub bus: SubsystemStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<EmbeddingStatus>,
     pub version: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EmbeddingStatus {
+    pub model: String,
+    pub dimension: usize,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -58,6 +66,10 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
     let storage = check_artifact_store(&state).await;
     let (indexer, indexer_last_event_at) = check_indexer(&state).await;
     let bus = check_bus(&state);
+    let embedding = Some(EmbeddingStatus {
+        model: state.embedding_provider.model_name().to_string(),
+        dimension: state.embedding_provider.dimension(),
+    });
 
     let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
     let body = HealthResponse {
@@ -71,6 +83,7 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         indexer,
         indexer_last_event_at,
         bus,
+        embedding,
         version: version(),
     };
     let code = if healthy {
