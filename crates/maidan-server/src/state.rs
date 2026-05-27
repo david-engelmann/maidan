@@ -4,7 +4,7 @@ use std::sync::{atomic::AtomicI64, Arc, RwLock};
 use maidan_artifacts::ArtifactStore;
 use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_search::{EmbeddingProvider, Search};
-use maidan_store::Store;
+use maidan_store::{OutboxBackend, Store};
 use maidan_types::PeerId;
 use tokio::sync::RwLock as AsyncRwLock;
 
@@ -53,8 +53,8 @@ pub struct AppState {
     pub bus_hydrate_stats: Option<Arc<HydrateStats>>,
     /// When true, `publish` enqueues outbox only; [`crate::outbox_relay`] calls `bus.publish`.
     pub outbox_relay: bool,
-    /// Postgres pool for outbox relay metrics; `None` on SQLite.
-    pub outbox_pool: Option<sqlx::PgPool>,
+    /// Outbox backend for relay metrics; `None` when outbox relay is disabled.
+    pub outbox_backend: Option<OutboxBackend>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
     /// HMAC secret for subscribe resume tokens (when OIDC is off).
@@ -91,7 +91,7 @@ impl AppState {
             bus_listener_health,
             bus_hydrate_stats: None,
             outbox_relay: false,
-            outbox_pool: None,
+            outbox_backend: None,
             oidc: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),

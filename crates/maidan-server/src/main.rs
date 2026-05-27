@@ -11,7 +11,8 @@ use maidan_search::{
 };
 use maidan_server::{config::ArtifactBackend, router, version, AppState, Config};
 use maidan_store::{
-    run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
+    run_postgres_migrations, run_sqlite_migrations, Dialect, OutboxBackend, PostgresStore,
+    SqliteStore, Store,
 };
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 use tokio::sync::RwLock;
@@ -42,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
     let bus_hydrate_stats: Option<Arc<maidan_bus::HydrateStats>>;
     let mut outbox_relay = false;
-    let mut outbox_pool: Option<sqlx::PgPool> = None;
+    let mut outbox_backend: Option<OutboxBackend> = None;
 
     match dialect {
         Dialect::Postgres => {
@@ -61,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
             bus_hydrate_stats = Some(pg_bus.hydrate_stats());
             tracing::info!("event bus: postgres LISTEN/NOTIFY");
             tracing::info!("search: postgres tsvector");
-            outbox_pool = Some(pool.clone());
+            outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
             outbox_relay = true;
             store = Arc::new(PostgresStore::new(pool.clone()));
             bus = Arc::new(pg_bus);
@@ -209,19 +210,19 @@ async fn main() -> anyhow::Result<()> {
     state.indexer_last_error = indexer_last_error;
     state.bus_hydrate_stats = bus_hydrate_stats;
     state.outbox_relay = outbox_relay;
-    state.outbox_pool = outbox_pool.clone();
+    state.outbox_backend = outbox_backend.clone();
     state.oidc = oidc_runtime.map(Arc::new);
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
     let app = router(state.clone());
 
     if outbox_relay {
-        if let Some(pool) = outbox_pool {
+        if let Some(backend) = outbox_backend {
             let relay_bus = bus.clone();
             tokio::spawn(async move {
                 let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
                 maidan_server::outbox_relay::OutboxRelay::with_max_attempts(
-                    pool,
+                    backend,
                     relay_bus,
                     max_attempts,
                 )

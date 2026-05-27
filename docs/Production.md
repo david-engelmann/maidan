@@ -165,11 +165,12 @@ Postgres pointer delivery records hydrate outcomes on `/metrics`:
 Subscribers may still recover via event-log replay (`maidan_subscribe_replay_total`);
 hydrate drops do not change at-most-once NOTIFY semantics.
 
-### Outbox relay (`v10.0.0`, hardening `v12.0.0`)
+### Outbox relay (`v10.0.0` Postgres, `v12.0.0` quarantine, `v14.0.0` SQLite)
 
-Postgres deployments enqueue `maidan_outbox` in the same transaction as
-`maidan_events`. A background relay publishes pointers; HTTP handlers do not
-call `bus.publish` directly.
+Postgres and SQLite deployments enqueue `maidan_outbox` in the same transaction
+as `maidan_events`. A background relay publishes after commit (Postgres pointer
+NOTIFY; SQLite in-memory bus). HTTP handlers do not call `bus.publish` directly
+when relay is enabled.
 
 | Env | Default | Notes |
 |-----|---------|-------|

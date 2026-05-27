@@ -2,9 +2,11 @@ use maidan_types::{Event, StoredEvent, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
+use crate::sqlite::outbox;
 
 pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, StoreError> {
     let payload = serde_json::to_string(event)?;
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at)
          VALUES (?, ?, ?, ?, ?, ?)
@@ -16,9 +18,12 @@ pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, Sto
     .bind(event.thread_id().map(|t| t.0))
     .bind(payload)
     .bind(event.occurred_at().to_rfc3339())
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
-    row_to_stored(&row)
+    let stored = row_to_stored(&row)?;
+    outbox::enqueue_in_tx(&mut tx, stored.id).await?;
+    tx.commit().await?;
+    Ok(stored)
 }
 
 pub async fn get_by_id(pool: &SqlitePool, log_id: i64) -> Result<StoredEvent, StoreError> {

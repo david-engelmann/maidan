@@ -6,11 +6,12 @@
 mod artifacts;
 mod audit;
 mod channels;
-mod events;
+pub mod events;
 mod members;
 mod mentions;
 mod messages;
 mod oidc;
+pub mod outbox;
 mod peers;
 mod pragmas;
 mod refs;

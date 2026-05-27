@@ -8,7 +8,7 @@ use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{test_support::FailingBus, BusItem, EventBus, PostgresBus};
 use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
-use maidan_store::{postgres::outbox, PostgresStore, Store};
+use maidan_store::{postgres::outbox, OutboxBackend, PostgresStore, Store};
 use maidan_types::EventFilter;
 use serde_json::json;
 use sqlx::PgPool;
@@ -34,7 +34,7 @@ async fn spawn_postgres_outbox() -> Option<Harness> {
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_pool = Some(pool.clone());
+    state.outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
 
     maidan_server::metrics::init();
     let app = router(state);
@@ -75,7 +75,7 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(h.pool.clone(), h.bus.clone());
+    let relay = OutboxRelay::new(OutboxBackend::Postgres(h.pool.clone()), h.bus.clone());
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -128,7 +128,7 @@ async fn metrics_scrape_reports_outbox_pending_on_postgres() {
         "expected pending gauge in metrics body"
     );
 
-    let relay = OutboxRelay::new(h.pool.clone(), h.bus.clone());
+    let relay = OutboxRelay::new(OutboxBackend::Postgres(h.pool.clone()), h.bus.clone());
     relay.run_once().await.unwrap();
 
     let body = client
@@ -163,7 +163,7 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
 
     let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_pool = Some(pool.clone());
+    state.outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
 
     maidan_server::metrics::init();
     let app = router(state);
@@ -185,7 +185,7 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
         .await
         .unwrap();
 
-    let relay = OutboxRelay::with_max_attempts(pool.clone(), bus, 2);
+    let relay = OutboxRelay::with_max_attempts(OutboxBackend::Postgres(pool.clone()), bus, 2);
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);

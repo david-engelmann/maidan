@@ -66,19 +66,19 @@ all writes fail).
 semantics with a stored event row + outbox pattern would make this
 trade-off pointless.
 
-### Postgres transactional outbox (`v10.0.0`)
+### Transactional outbox (`v10.0.0` Postgres, `v14.0.0` SQLite)
 
-**Decision.** On Postgres, `append_event` inserts `maidan_events` and
-`maidan_outbox` in one transaction. A background relay drains pending rows
-and calls `PostgresBus::publish` (pointer NOTIFY). HTTP `publish` no longer
-calls `bus.publish` directly on Postgres — the relay does after commit.
-SQLite and `InMemoryBus` keep append-then-publish in-process.
+**Decision.** On Postgres and SQLite, `append_event` inserts `maidan_events` and
+`maidan_outbox` in one transaction. A background relay drains pending rows after
+commit. On Postgres the relay calls `PostgresBus::publish` (pointer NOTIFY); on
+SQLite it calls `InMemoryBus::publish` (in-process fan-out). HTTP `publish` does
+not call `bus.publish` directly when outbox relay is enabled — the relay does.
 
 **Alternative.** Continue append-then-publish in the handler; rely on
 replay only when the process crashes between steps.
 
-**Why this:** closes the crash window where a row exists but NOTIFY never
-fires. NOTIFY remains fire-and-forget; relay retries can duplicate
+**Why this:** closes the crash window where a row exists but subscribers never
+see the event. Postgres NOTIFY remains fire-and-forget; relay retries can duplicate
 publishes — subscribers must treat `log_id` as idempotent.
 
 **To revisit:** end-to-end exactly-once or consumer dedup tables.
