@@ -165,19 +165,31 @@ Postgres pointer delivery records hydrate outcomes on `/metrics`:
 Subscribers may still recover via event-log replay (`maidan_subscribe_replay_total`);
 hydrate drops do not change at-most-once NOTIFY semantics.
 
-### Outbox relay (`v10.0.0`)
+### Outbox relay (`v10.0.0`, hardening `v12.0.0`)
 
 Postgres deployments enqueue `maidan_outbox` in the same transaction as
 `maidan_events`. A background relay publishes pointers; HTTP handlers do not
 call `bus.publish` directly.
 
+| Env | Default | Notes |
+|-----|---------|-------|
+| `MAIDAN_OUTBOX_MAX_ATTEMPTS` | `16` | After this many failed relay publishes, the row is quarantined (`quarantined_at` set). |
+
 | Metric | Symptom | Suggested action |
 |--------|---------|------------------|
 | `maidan_outbox_pending` high | Relay not keeping up or publish failures | Check relay logs; DB connectivity; `maidan_outbox_relay_total{result="failed"}` |
 | `maidan_outbox_relay_total{result="failed"}` rising | Bus or hydrate errors during relay | Same as hydrate/bus listener troubleshooting |
-| Events in DB but no live subscribers | Pending rows not relayed | Confirm relay task running; inspect stuck `published_at IS NULL` rows |
+| `maidan_outbox_relay_total{result="quarantined"}` | Poison row or persistent bus failure | Inspect row: `SELECT * FROM maidan_outbox WHERE quarantined_at IS NOT NULL`; fix root cause; manual recovery (below) |
+| `maidan_outbox_quarantined` > 0 | Unpublished events stopped retrying | Same as quarantined counter |
+| `maidan_outbox_oldest_pending_seconds` high | Oldest relayable row aging | Scale relay or fix publish failures before quarantine |
+| Events in DB but no live subscribers | Pending rows not relayed | Confirm relay task running; inspect `published_at IS NULL AND quarantined_at IS NULL` |
 
 Relay retries may duplicate NOTIFY; subscribers should dedupe by `log_id`.
+
+**Manual recovery for a quarantined row** (operator SQL, not exposed over HTTP in 12.0):
+
+1. Fix the underlying bus/hydrate issue.
+2. `UPDATE maidan_outbox SET quarantined_at = NULL, attempts = 0 WHERE id = $id;` so the relay picks it up again, **or** leave quarantined and rely on clients replaying from `maidan_events` by `log_id`.
 
 ## Search (`GET /workspaces/:wid/search`)
 

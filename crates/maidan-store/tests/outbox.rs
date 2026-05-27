@@ -84,8 +84,8 @@ async fn record_attempt_increments_attempts_while_row_stays_pending() {
         .find(|r| r.log_id == stored.id)
         .expect("pending row");
 
-    outbox::record_attempt(&pool, row.id).await.unwrap();
-    outbox::record_attempt(&pool, row.id).await.unwrap();
+    assert_eq!(outbox::record_attempt(&pool, row.id).await.unwrap(), 1);
+    assert_eq!(outbox::record_attempt(&pool, row.id).await.unwrap(), 2);
 
     let again = outbox::list_pending(&pool, 8).await.unwrap();
     let updated = again
@@ -170,4 +170,23 @@ async fn multiple_appends_enqueue_one_outbox_row_per_event() {
         .unwrap();
 
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 3);
+}
+
+#[tokio::test]
+async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+
+    let store = PostgresStore::new(pool.clone());
+    store
+        .append_event(&workspace_created_event("q-ws"))
+        .await
+        .unwrap();
+    let pending = outbox::list_pending(&pool, 1).await.unwrap();
+    outbox::quarantine(&pool, pending[0].id).await.unwrap();
+
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+    assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
+    assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
 }
