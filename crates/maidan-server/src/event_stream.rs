@@ -88,6 +88,7 @@ pub async fn replay_matching_events(
     filter: &EventFilter,
     after_id: i64,
     tx: &mpsc::Sender<String>,
+    delivery_consumer_id: Option<&str>,
 ) -> Result<ReplayOutcome, maidan_store::StoreError> {
     let Some(workspace_id) = filter.workspace_id else {
         return Ok(ReplayOutcome {
@@ -122,6 +123,12 @@ pub async fn replay_matching_events(
             break;
         }
         high_water = high_water.max(envelope.log_id);
+        if let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
+        {
+            let _ = store
+                .advance_delivery_cursor(consumer_id, workspace_id, envelope.log_id)
+                .await;
+        }
     }
     Ok(ReplayOutcome {
         high_water,
@@ -174,6 +181,7 @@ pub async fn forward_bus_items(
     store: Arc<dyn Store>,
     filter: EventFilter,
     transport: SubscribeTransport,
+    delivery_consumer_id: Option<String>,
 ) {
     while let Some(item) = subscriber.next().await {
         match item {
@@ -183,6 +191,21 @@ pub async fn forward_bus_items(
                     continue;
                 }
                 watermark.fetch_max(id, Ordering::Relaxed);
+                if let (Some(consumer_id), Some(workspace_id)) =
+                    (delivery_consumer_id.as_deref(), filter.workspace_id)
+                {
+                    if let Err(err) = store
+                        .advance_delivery_cursor(consumer_id, workspace_id, id)
+                        .await
+                    {
+                        tracing::warn!(
+                            error = %err,
+                            consumer_id,
+                            log_id = id,
+                            "delivery cursor advance failed"
+                        );
+                    }
+                }
                 let payload = match serde_json::to_string(envelope.as_ref()) {
                     Ok(p) => p,
                     Err(err) => {
@@ -198,7 +221,15 @@ pub async fn forward_bus_items(
                 record_bus_lag(transport, skipped);
                 let after_id = watermark.load(Ordering::Relaxed);
                 if filter.workspace_id.is_some() {
-                    match replay_matching_events(store.as_ref(), &filter, after_id, &tx).await {
+                    match replay_matching_events(
+                        store.as_ref(),
+                        &filter,
+                        after_id,
+                        &tx,
+                        delivery_consumer_id.as_deref(),
+                    )
+                    .await
+                    {
                         Ok(outcome) => {
                             watermark.fetch_max(outcome.high_water, Ordering::Relaxed);
                             record_subscribe_replay(transport, SubscribeReplayOutcome::AutoReplay);

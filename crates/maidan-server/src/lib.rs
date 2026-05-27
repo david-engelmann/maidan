@@ -8,6 +8,7 @@ pub mod app;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;
+pub mod delivery;
 pub mod dto;
 pub mod error;
 pub mod event_stream;

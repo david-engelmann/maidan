@@ -2,7 +2,8 @@
 //!
 //! Protocol:
 //! 1. Client opens `GET /ws/subscribe` and upgrades.
-//! 2. Client sends one text frame with a JSON [`SubscribeFrame`] body.
+//! 2. Client sends one text frame with a JSON [`SubscribeFrame`] body
+//!    (optional `consumer_id` for delivery cursor replay floor).
 //! 3. Optional `after_id` or `resume_token` replays matching rows from
 //!    `maidan_events` (requires `filter.workspace_id`), then a
 //!    `subscribe_ack` with a signed `resume_token`, then live bus events.
@@ -51,12 +52,16 @@ pub struct SubscribeFrame {
     /// Replay persisted events with `id > after_id` before attaching to the bus.
     #[serde(default)]
     pub after_id: i64,
+    /// Optional durable consumer id; server skips replay at or below stored cursor.
+    #[serde(default)]
+    pub consumer_id: Option<String>,
 }
 
 struct SubscribeRequest {
     filter: EventFilter,
     after_id: i64,
     from_resume_token: bool,
+    consumer_id: Option<String>,
 }
 
 pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -99,6 +104,7 @@ async fn run(mut socket: WebSocket, state: AppState) {
             &request.filter,
             request.after_id,
             &text_tx,
+            request.consumer_id.as_deref(),
         )
         .await
         {
@@ -156,6 +162,7 @@ async fn run(mut socket: WebSocket, state: AppState) {
     let bus_filter = request.filter.clone();
     let bus_store = state.store.clone();
     let bus_tx = text_tx.clone();
+    let delivery_consumer_id = request.consumer_id.clone();
     let bus_task = tokio::spawn(async move {
         event_stream::forward_bus_items(
             subscriber,
@@ -164,6 +171,7 @@ async fn run(mut socket: WebSocket, state: AppState) {
             bus_store,
             bus_filter,
             crate::subscribe_metrics::SubscribeTransport::Ws,
+            delivery_consumer_id,
         )
         .await;
     });
@@ -252,7 +260,18 @@ async fn read_subscribe(
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
-    let (filter, after_id) = resolve_subscribe_params(&sub, state)?;
+    let (filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
+    if let Some(ref consumer_id) = sub.consumer_id {
+        crate::delivery::validate_consumer_id(consumer_id).map_err(|e| (1008u16, e))?;
+        after_id = crate::delivery::effective_subscribe_after_id(
+            state.store.as_ref(),
+            Some(consumer_id.as_str()),
+            filter.workspace_id,
+            after_id,
+        )
+        .await
+        .map_err(|e| (1011u16, e.to_string()))?;
+    }
 
     if !state.auth_disabled {
         let secret = sub
@@ -275,6 +294,7 @@ async fn read_subscribe(
         filter,
         after_id,
         from_resume_token: sub.resume_token.as_deref().is_some_and(|t| !t.is_empty()),
+        consumer_id: sub.consumer_id.clone(),
     })
 }
 

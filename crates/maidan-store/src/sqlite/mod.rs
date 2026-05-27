@@ -296,4 +296,21 @@ impl Store for SqliteStore {
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError> {
         peers::is_federated_local_event(&self.pool, local_event_id).await
     }
+
+    async fn get_delivery_cursor(
+        &self,
+        _consumer_id: &str,
+        _workspace_id: WorkspaceId,
+    ) -> Result<i64, StoreError> {
+        Ok(0)
+    }
+
+    async fn advance_delivery_cursor(
+        &self,
+        _consumer_id: &str,
+        _workspace_id: WorkspaceId,
+        log_id: i64,
+    ) -> Result<i64, StoreError> {
+        Ok(log_id)
+    }
 }

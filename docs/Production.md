@@ -186,6 +186,17 @@ call `bus.publish` directly.
 
 Relay retries may duplicate NOTIFY; subscribers should dedupe by `log_id`.
 
+### Delivery cursors (`v13.0.0`)
+
+| Surface | Parameter | Notes |
+|---------|-----------|-------|
+| WebSocket subscribe frame | `consumer_id` | Optional; replay starts above stored cursor |
+| MCP `GET /mcp/stream` | `consumer_id` query | Same semantics as WS |
+
+Inspect cursors: `SELECT * FROM maidan_delivery_cursor WHERE workspace_id = $wid;`
+
+Reset a stuck cursor (operator SQL): `UPDATE maidan_delivery_cursor SET last_delivered_log_id = 0 WHERE consumer_id = $id AND workspace_id = $wid;`
+
 **Manual recovery for a quarantined row** (operator SQL, not exposed over HTTP in 12.0):
 
 1. Fix the underlying bus/hydrate issue.

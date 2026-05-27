@@ -98,6 +98,23 @@ quarantine stops relay only, not subscriber replay.
 
 **To revisit:** admin replay API; consumer dedup tables (Cluster 13).
 
+### Delivery cursors (`v13.0.0`)
+
+**Decision.** Postgres stores `maidan_delivery_cursor (consumer_id, workspace_id) →
+last_delivered_log_id`. Subscribe clients may pass `consumer_id` on WebSocket and MCP
+SSE; the server uses `max(after_id, cursor)` for replay and advances the cursor on
+each delivered `log_id`. Federation ingest advances `federation:{peer_id}` after
+successful local append.
+
+**Alternative.** Rely only on client-side dedup and `resume_token` without server
+ledger.
+
+**Why this:** reduces duplicate delivery on reconnect and documents a durable
+watermark per consumer. NOTIFY remains at-least-once; cursors are monotonic hints,
+not exactly-once guarantees.
+
+**To revisit:** SQLite cursors; HTTP admin to reset cursors.
+
 ### Triggers maintain the lexical index; the indexer is for embeddings
 
 **Decision.** Lexical (`tsvector` / FTS5) indexes are maintained by

@@ -165,6 +165,19 @@ pub(crate) async fn ingest_envelope(
     if !recorded {
         return Ok(IngestOutcome::SkippedDuplicate);
     }
+    let consumer_id = crate::delivery::federation_consumer_id(peer.id);
+    if let Err(err) = state
+        .store
+        .advance_delivery_cursor(&consumer_id, peer.workspace_id, log_id)
+        .await
+    {
+        tracing::warn!(
+            error = %err,
+            peer = %peer.id,
+            log_id,
+            "federation delivery cursor advance failed"
+        );
+    }
     Ok(IngestOutcome::Ingested)
 }
 
