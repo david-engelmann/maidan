@@ -10,6 +10,7 @@
 //!   rejected with [`BusError::PayloadTooLarge`].
 
 pub mod error;
+pub mod hydrate_stats;
 pub mod inmem;
 pub mod item;
 pub mod listener_health;
@@ -18,6 +19,7 @@ pub mod stream;
 pub mod traits;
 
 pub use error::BusError;
+pub use hydrate_stats::{HydrateResult, HydrateSnapshot, HydrateStats};
 pub use inmem::InMemoryBus;
 pub use item::BusItem;
 pub use listener_health::ListenerHealth;

@@ -352,6 +352,14 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 6. **Indexer silence** — set `INDEXER_STALE_SECS` (e.g. `300`) when embeddings are on;
    watch `maidan_indexer_last_event_age_seconds` and `/health` `indexer_last_event_at`.
 
+### Bus hydrate troubleshooting (`v8.0.0`)
+
+1. Reproduce missing row: `cargo test -p maidan-bus pointer_notify_for_missing_log_id_increments_not_found_hydrate_stat -- --nocapture` (requires Docker).
+2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_bus_notify_hydrate'`.
+3. **Spike in `not_found`** — confirm HTTP mutations call `append_event` before `bus.publish`; check for federation or scripts calling `pg_notify` directly.
+4. **Spike in `invalid_payload`** — inspect NOTIFY payloads in logs (`drop notify payload`); legacy full-envelope path still requires valid JSON.
+5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([[Production#Delivery reliability metrics]]); hydrate failures are listener-side only.
+
 ### `docker compose smoke` fails
 
 - "wait for /health timed out": the maidan-server container didn't
