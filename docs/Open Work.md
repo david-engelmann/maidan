@@ -50,23 +50,26 @@ Before that: runtime OIDC + human sessions at **`v2.0.0`** — [[Retros/Cluster 
 
 ## Active plan: Cluster 3.0
 
-Search facets, coverage CI gate, WS gap auto-replay — sketched in
-[[Clusters/Cluster 2.1]]; dedicated cluster plan TBD.
+Search & subscriber depth — [[Clusters/Cluster 3.0]] (`v3.0.0`):
+
+- Semantic search facets (Postgres)
+- WS/MCP auto-replay on bus lag
+- Coverage minimum gate in CI
 
 ## Still deferred (no owner yet)
 
 | What | Notes |
 |------|-------|
-| Semantic search facets | After `v1.3.0` baseline; needs rank/filter semantics |
+| Semantic search facets | **Cluster 3.0** PR 3.0.1 ([[Clusters/Cluster 3.0]]) |
 | Per-model embedding tables / mixed dimensions | Schema + search API |
-| Resumable WS beyond `after_id` | Reconnection tokens, automatic NOTIFY replay |
+| Resumable WS beyond `after_id` | Reconnection tokens; bus lag auto-replay → **3.0.2** |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | SSE for MCP `resources/subscribe` | Cluster B retro |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Cluster C retro |
-| Coverage upload site / Codecov + minimum gate | Track T partial |
+| Coverage minimum gate | **Cluster 3.0** PR 3.0.3; Codecov upload still deferred |
 | SQLite file-backed durability tests | Cluster V retro |
 | HorizontalPodAutoscaler manifest | Cluster A retro |
 | Helm chart alternative to Kustomize | Cluster A plan |
