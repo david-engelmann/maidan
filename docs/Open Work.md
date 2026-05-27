@@ -23,9 +23,9 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **PostgresBus listener recovery is best-effort.** `/health/ready` reports
   `bus: error` while the background task is in a retry loop (`v1.1.0`); it
   clears after the next successful `recv`.
-- **Coverage depth is still low.** CI enforces a **10.0%** line floor
-  (**`v5.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
-  Further uplift (e.g. 11%+) needs a measured bump PR.
+- **Coverage depth is still modest.** CI enforces a **10.5%** line floor
+  (**`v9.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
+  Further uplift toward **11%+** needs a measured bump PR.
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → `sqlite-vec` when mature.
 - **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
@@ -36,6 +36,7 @@ from "open" to "shipped" when the owning release merges its retro PR.
 | Release / area | Highlights |
 |----------------|------------|
 | Tracks T–X | See [[Post-1.0]] (closure #121) |
+| **`v9.0.0`** | Coverage floor 10.5%, targeted tests — [[Retros/Cluster 9.0]] |
 | **`v8.0.0`** | Bus hydrate Prometheus counters + runbooks — [[Retros/Cluster 8.0]] |
 | **`v7.0.0`** | Postgres bus NOTIFY pointer + hydrate — [[Retros/Cluster 7.0]] |
 | **`v6.0.0`** | Delivery reliability metrics + runbooks — [[Retros/Cluster 6.0]] |
@@ -46,24 +47,17 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v8.0.0`
+## Recently closed: `v9.0.0`
 
-Bus hydrate observability — [[Retros/Cluster 8.0]] (`maidan_bus_notify_hydrate_total`,
-hydrate runbooks, integration tests).
+Coverage depth — [[Retros/Cluster 9.0]] (floor 10.5%, targeted tests, Operations docs).
+
+Before that: `v8.0.0` bus hydrate observability — [[Retros/Cluster 8.0]].
 
 Before that: `v7.0.0` bus pointer delivery — [[Retros/Cluster 7.0]].
 
 Before that: `v6.0.0` delivery reliability — [[Retros/Cluster 6.0]].
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
-
-## Active plan: Cluster 9.0
-
-Coverage depth — [[Clusters/Cluster 9.0]] (`v9.0.0`):
-
-- Targeted unit/integration tests in bus, types, server metrics (9.0.1)
-- Re-measure and raise `COVERAGE_MIN_LINES` (9.0.2)
-- Operations bump documentation (9.0.3)
 
 ## Still deferred (no owner yet)
 
@@ -84,8 +78,8 @@ Coverage depth — [[Clusters/Cluster 9.0]] (`v9.0.0`):
 
 ## Known state at this handoff
 
-- **Latest tag:** `v8.0.0` — Bus hydrate observability.
-- **Active cluster:** **Cluster 9.0** — see [[Clusters/Cluster 9.0]].
+- **Latest tag:** `v9.0.0` — Coverage depth.
+- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

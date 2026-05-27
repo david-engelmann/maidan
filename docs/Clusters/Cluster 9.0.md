@@ -15,11 +15,8 @@ toward **11%+** (`COVERAGE_MIN_LINES=11.0` failed on first attempt in Cluster 5)
 
 | #         | Title                                                                  | Issue |
 |-----------|------------------------------------------------------------------------|-------|
-| kickoff   | `docs: Cluster 9.0 kickoff plan`                                       | TBD   |
-| 9.0.1     | `test: targeted coverage tests (bus, types, server metrics)`           | TBD   |
-| 9.0.2     | `ci: raise COVERAGE_MIN_LINES after re-measurement`                    | TBD   |
-| 9.0.3     | `docs: coverage bump policy in Operations`                             | TBD   |
-| 9.0.retro | `docs(retro): Cluster 9.0 retrospective + v9.0.0 tag prep`            | TBD   |
+| 9.0.1–3   | `feat: Cluster 9.0 coverage depth tests and floor bump` (#167)         | —     |
+| 9.0.retro | `docs(retro): Cluster 9.0 retrospective + v9.0.0 tag prep` (this PR)   | —     |
 
 ## Order
 

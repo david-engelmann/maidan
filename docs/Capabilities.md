@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v9.0.0 — Coverage depth
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| CI line-coverage floor at 10.5%                          | `.github/workflows/ci.yml`    |
+| Targeted coverage tests (bus, types, server metrics)      | `maidan-bus`, `maidan-types`, `maidan-server` |
+
 ## v8.0.0 — Bus hydrate observability
 
 | Capability                                              | Surface                       |
