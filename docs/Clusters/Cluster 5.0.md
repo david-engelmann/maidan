@@ -13,12 +13,10 @@ model because `semantic_search` does not filter on `maidan_message_embeddings.mo
 
 ## PRs
 
-| #         | Title                                                                  | Issue |
+| #         | Title                                                                  | PR    |
 |-----------|------------------------------------------------------------------------|-------|
-| 5.0.1     | `test: targeted coverage uplift + raise COVERAGE_MIN_LINES`            | TBD   |
-| 5.0.2     | `ci: optional Codecov upload from llvm-cov lcov artifact`              | TBD   |
-| 5.0.3     | `feat(maidan-search): bind semantic search to active embedding model`  | TBD   |
-| 5.0.4     | `docs: search rank semantics + embedding model in OpenAPI/Production` | TBD   |
+| kickoff   | `docs: Cluster 5.0 kickoff plan`                                       | #155  |
+| 5.0.1–4   | `feat: Cluster 5.0 coverage uplift and model-aware semantic search`    | #156  |
 | 5.0.retro | `docs(retro): Cluster 5.0 retrospective + v5.0.0 tag prep`            | TBD   |
 
 ## Order

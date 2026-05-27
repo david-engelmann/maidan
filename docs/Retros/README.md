@@ -66,3 +66,4 @@ PR review credit; external contributors.
 - [[Cluster 2.1]] — OIDC operator hardening. Closed at `v2.1.0`.
 - [[Cluster 3.0]] — Search & subscriber depth. Closed at `v3.0.0`.
 - [[Cluster 4.0]] — Subscriber continuity. Closed at `v4.0.0`.
+- [[Cluster 5.0]] — Coverage & search quality. Closed at `v5.0.0`.

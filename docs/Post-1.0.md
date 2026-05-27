@@ -15,9 +15,8 @@ coherent capability batch warrants semver + changelog.
 | **W** | Complete | [[Tracks/Track W]] — OpenAPI, mdBook, MCP reference. |
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
-**Recommended order:** **`v4.0.0`** is closed ([[Retros/Cluster 4.0]]).
-**Active:** **Cluster 5.0** ([[Clusters/Cluster 5.0]]) → `v5.0.0`. Then ad-hoc
-[[Open Work]] or Cluster 6 (reliability candidate).
+**Recommended order:** **`v5.0.0`** is closed ([[Retros/Cluster 5.0]]). Next:
+ad-hoc [[Open Work]] or **Cluster 6** (delivery reliability candidate).
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 

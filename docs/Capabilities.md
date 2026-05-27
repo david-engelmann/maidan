@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v5.0.0 — Coverage & search quality
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| CI line-coverage floor at 10.0%                         | `.github/workflows/ci.yml`    |
+| Optional Codecov upload from CI                         | `codecov/codecov-action`      |
+| Model-filtered Postgres semantic search                 | `maidan-search::postgres`, `GET …/search?mode=semantic` |
+| `embedding_model` on semantic hits                      | `SearchHit`, OpenAPI          |
+| Embedding model/dimension on `/health`                  | `maidan-server::health`       |
+| Rank semantics docs (lexical vs semantic)               | [[Architecture]], [[Production]] |
+
 ## v4.0.0 — Subscriber continuity
 
 | Capability                                              | Surface                       |
