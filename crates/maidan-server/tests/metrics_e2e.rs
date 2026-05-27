@@ -57,6 +57,7 @@ async fn metrics_endpoint_returns_prometheus_text() {
         .expect("body");
 
     assert!(body.contains("http_server_request_total"));
+    assert!(body.contains("maidan_indexer_last_event_age_seconds"));
 
     server.abort();
 }

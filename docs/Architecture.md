@@ -202,6 +202,20 @@ sequenceDiagram
     S-->>C: replay_truncated or events
 ```
 
+## Delivery reliability at v6.0.0
+
+Subscribe recovery and indexer/listener health also emit Prometheus metrics in
+addition to `/health`:
+
+- `maidan_bus_lag_total{transport}` + `maidan_bus_lag_skipped{transport}`
+- `maidan_subscribe_replay_total{transport,outcome}` where
+  `outcome ∈ {auto_replay,replay_hint,replay_truncated,auto_replay_failed}`
+- `maidan_indexer_last_event_age_seconds`
+- `maidan_bus_listener_ok` and `maidan_bus_listener_errors_total` (Postgres)
+
+These series use fixed label sets (no workspace UUID labels). Alert guidance
+lives in [[Production#Delivery reliability metrics]].
+
 ## At v0.6.0 (Cluster G)
 
 - **Federation** — `maidan_peers` registry, `POST /a2a/v1/events` ingest,

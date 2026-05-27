@@ -89,6 +89,8 @@ services:
       S3_SECRET_ACCESS_KEY: maidanmaidan
       # Smoke-only secret for subscribe resume tokens + future session signing.
       MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
+      # Postgres profile runs the embedding indexer; mark readiness degraded if silent 5m.
+      INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:

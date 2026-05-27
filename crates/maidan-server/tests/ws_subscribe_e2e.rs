@@ -243,6 +243,8 @@ async fn subscribe_filters_by_kind() {
 async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     use maidan_bus::EventBus;
 
+    maidan_server::metrics::init();
+
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -273,6 +275,10 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
 
     let req = format!("ws://{addr}/ws/subscribe")
         .into_client_request()
@@ -319,6 +325,23 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         .await
         .expect("timeout waiting for replay_hint");
     assert!(saw_hint);
+
+    let metrics = client
+        .get(format!("http://{addr}/metrics"))
+        .send()
+        .await
+        .expect("metrics")
+        .text()
+        .await
+        .expect("metrics body");
+    assert!(
+        metrics.contains("maidan_bus_lag_total"),
+        "expected bus lag counter in metrics"
+    );
+    assert!(
+        metrics.contains("maidan_subscribe_replay_total") && metrics.contains("replay_hint"),
+        "expected replay_hint outcome in metrics"
+    );
 
     server.abort();
 }

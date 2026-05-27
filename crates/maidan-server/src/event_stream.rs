@@ -12,6 +12,10 @@ use maidan_types::{BusEnvelope, Event, EventFilter, StoredEvent};
 use serde::Serialize;
 use tokio::sync::mpsc;
 
+use crate::subscribe_metrics::{
+    record_bus_lag, record_subscribe_replay, SubscribeReplayOutcome, SubscribeTransport,
+};
+
 pub const REPLAY_LIMIT: i64 = 500;
 
 #[derive(Debug, Clone, Copy)]
@@ -169,6 +173,7 @@ pub async fn forward_bus_items(
     watermark: Arc<AtomicI64>,
     store: Arc<dyn Store>,
     filter: EventFilter,
+    transport: SubscribeTransport,
 ) {
     while let Some(item) = subscriber.next().await {
         match item {
@@ -190,11 +195,13 @@ pub async fn forward_bus_items(
                 }
             }
             BusItem::Lagged { skipped } => {
+                record_bus_lag(transport, skipped);
                 let after_id = watermark.load(Ordering::Relaxed);
                 if filter.workspace_id.is_some() {
                     match replay_matching_events(store.as_ref(), &filter, after_id, &tx).await {
                         Ok(outcome) => {
                             watermark.fetch_max(outcome.high_water, Ordering::Relaxed);
+                            record_subscribe_replay(transport, SubscribeReplayOutcome::AutoReplay);
                             emit_replay_truncated_if_needed(
                                 &tx,
                                 outcome.high_water,
@@ -202,6 +209,12 @@ pub async fn forward_bus_items(
                                 outcome.truncated,
                             )
                             .await;
+                            if outcome.truncated {
+                                record_subscribe_replay(
+                                    transport,
+                                    SubscribeReplayOutcome::ReplayTruncated,
+                                );
+                            }
                             tracing::info!(
                                 skipped,
                                 after_id,
@@ -212,12 +225,20 @@ pub async fn forward_bus_items(
                         }
                         Err(err) => {
                             tracing::warn!(error = %err, "auto-replay after bus lag failed");
+                            record_subscribe_replay(
+                                transport,
+                                SubscribeReplayOutcome::AutoReplayFailed,
+                            );
                             if let Some(payload) =
                                 replay_hint_payload(skipped, after_id, filter.workspace_id)
                             {
                                 if tx.send(payload).await.is_err() {
                                     break;
                                 }
+                                record_subscribe_replay(
+                                    transport,
+                                    SubscribeReplayOutcome::ReplayHint,
+                                );
                             }
                         }
                     }
@@ -225,6 +246,7 @@ pub async fn forward_bus_items(
                     if tx.send(payload).await.is_err() {
                         break;
                     }
+                    record_subscribe_replay(transport, SubscribeReplayOutcome::ReplayHint);
                 }
             }
         }
