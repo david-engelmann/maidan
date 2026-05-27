@@ -9,6 +9,7 @@ use maidan_types::PeerId;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::oidc::OidcRuntime;
+use crate::subscribe_resume;
 
 /// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
 #[derive(Clone)]
@@ -50,6 +51,10 @@ pub struct AppState {
     pub bus_listener_health: Option<Arc<ListenerHealth>>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
+    /// HMAC secret for subscribe resume tokens (when OIDC is off).
+    pub subscribe_resume_secret: Option<Arc<[u8]>>,
+    /// TTL for signed resume tokens (seconds).
+    pub subscribe_resume_ttl_secs: u64,
 }
 
 impl AppState {
@@ -79,7 +84,18 @@ impl AppState {
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
             oidc: None,
+            subscribe_resume_secret: None,
+            subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
         }
+    }
+
+    pub fn subscribe_resume_secret(&self) -> &[u8] {
+        if let Some(oidc) = &self.oidc {
+            return oidc.session_secret.as_ref();
+        }
+        self.subscribe_resume_secret
+            .as_deref()
+            .expect("subscribe resume secret must be configured")
     }
 
     /// E2E harness: auth and federation disabled, fresh indexer heartbeat.
@@ -89,7 +105,7 @@ impl AppState {
         bus: Arc<dyn EventBus>,
         search: Arc<dyn Search>,
     ) -> Self {
-        Self::new(
+        let mut state = Self::new(
             store,
             artifacts,
             bus,
@@ -100,6 +116,9 @@ impl AppState {
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),
             None,
-        )
+        );
+        state.subscribe_resume_secret =
+            Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+        state
     }
 }

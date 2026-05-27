@@ -87,6 +87,8 @@ services:
       S3_REGION: us-east-1
       S3_ACCESS_KEY_ID: maidan
       S3_SECRET_ACCESS_KEY: maidanmaidan
+      # Smoke-only secret for subscribe resume tokens + future session signing.
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:

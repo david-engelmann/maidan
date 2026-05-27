@@ -23,6 +23,7 @@ pub mod request_id;
 pub mod routes;
 pub mod session;
 pub mod state;
+pub mod subscribe_resume;
 pub mod ws;
 
 pub use app::router;
