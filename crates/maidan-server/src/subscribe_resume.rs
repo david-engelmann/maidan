@@ -154,11 +154,8 @@ mod tests {
         assert_eq!(f.workspace_id, filter.workspace_id);
 
         let mut tampered = signed.clone();
-        if let Some((_, mac)) = tampered.rsplit_once('.') {
-            let mut bad_mac = mac.to_string();
-            bad_mac.replace_range(0..1, "a");
-            tampered = format!("{}.{}", tampered.rsplit_once('.').unwrap().0, bad_mac);
-        }
+        tampered.pop();
+        tampered.push('x');
         assert!(verify_resume_token(&tampered, TEST_SUBSCRIBE_RESUME_SECRET).is_err());
     }
 }
