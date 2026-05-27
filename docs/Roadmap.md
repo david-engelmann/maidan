@@ -41,7 +41,8 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** ad-hoc backlog in [[Open Work]]; next cluster is open planning.
+**Active:** **Cluster 11.0** — coverage toward 11% → tag **`v11.0.0`**
+(see [[Clusters/Cluster 11.0]]).
 
 **Recently closed:** **`v10.0.0`** — Postgres transactional outbox ([[Retros/Cluster 10.0]]).
 **Before that:** **`v9.0.0`** — coverage depth ([[Retros/Cluster 9.0]]).
