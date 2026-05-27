@@ -29,6 +29,8 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_EMBEDDING_API_KEY` | optional | Bearer token for remote provider. |
 | `MAIDAN_EMBEDDING_DIM` | no | Expected embedding dimension (default `1024`). |
 | `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
+| `INDEXER_STALE_SECS` | no | When **> 0**, `/health/ready` is degraded if the embedding indexer has not observed an event for this many seconds. Default `0` (disabled). **Recommended `300`** on Postgres deployments with embeddings enabled. |
+| `GET /metrics` | no | Prometheus text exposition (HTTP + subscribe recovery + indexer/bus gauges). Label cardinality is fixed (no workspace UUIDs). |
 
 ### Local embedding servers (e.g. LM Studio)
 
@@ -125,6 +127,19 @@ Loop: on `replay_truncated`, reconnect or resubscribe with `after_id` (or a fres
 
 Event envelopes follow: `{ "log_id": <i64>, "kind": "...", ... }`.
 
+### Delivery reliability metrics (`v6.0.0`)
+
+Scrape `GET /metrics` and alert on subscribe recovery paths (labels are fixed —
+no per-workspace series).
+
+| Metric | Symptom | Suggested action |
+|--------|---------|------------------|
+| `maidan_bus_lag_total` rising | In-process subscribers falling behind the broadcast buffer | Check publish rate; scale consumers; ensure clients use `workspace_id` filter for auto-replay |
+| `maidan_subscribe_replay_total{outcome="replay_hint"}` | Lag without workspace scope or auto-replay failed | Fix client filter; inspect store/DB errors in logs |
+| `maidan_subscribe_replay_total{outcome="replay_truncated"}` sustained | Event log replay hitting 500-row window | Client should loop on `after_id` / `resume_token` until truncation stops |
+| `maidan_indexer_last_event_age_seconds` high (with `INDEXER_STALE_SECS` set) | Indexer silent while messages post | Check embedding provider errors on `/health`; verify indexer task running |
+| `maidan_bus_listener_ok == 0` | Postgres `LISTEN` task degraded | Inspect DB connectivity; `maidan_bus_listener_errors_total` trend |
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |
@@ -151,7 +166,7 @@ After changing embedding providers, re-index or accept that old-model rows are i
 until re-upserted under the new model name.
 
 | `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
-| `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
+| `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
 
 Import into Swagger UI, Redoc, or your client generator. The document

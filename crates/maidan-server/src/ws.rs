@@ -157,7 +157,15 @@ async fn run(mut socket: WebSocket, state: AppState) {
     let bus_store = state.store.clone();
     let bus_tx = text_tx.clone();
     let bus_task = tokio::spawn(async move {
-        event_stream::forward_bus_items(subscriber, bus_tx, watermark, bus_store, bus_filter).await;
+        event_stream::forward_bus_items(
+            subscriber,
+            bus_tx,
+            watermark,
+            bus_store,
+            bus_filter,
+            crate::subscribe_metrics::SubscribeTransport::Ws,
+        )
+        .await;
     });
 
     let mut last_pong = Instant::now();

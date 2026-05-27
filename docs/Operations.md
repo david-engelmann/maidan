@@ -339,6 +339,19 @@ When `CODECOV_TOKEN` is configured as a repository secret, the coverage job
 uploads `lcov.info` via `codecov/codecov-action`. Fork PRs and local runs skip
 the upload step. The upload does not fail CI when Codecov is unreachable.
 
+### Subscribe delivery troubleshooting (`v6.0.0`)
+
+1. Reproduce lag locally: `cargo test -p maidan-server subscribe_emits_replay_hint_when_bus_subscriber_lags -- --nocapture`.
+2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_(bus_lag|subscribe_replay)'`.
+3. **No workspace filter** — subscribers without `filter.workspace_id` only get
+   `replay_hint`, not auto-replay; see [[Production#Delivery reliability metrics]].
+4. **Truncation loop** — sustained `replay_truncated` means the client must advance
+   `after_id` until the frame stops; see [[Clusters/Cluster 4.0]].
+5. **Postgres LISTEN** — `maidan_bus_listener_ok` and `/health/ready` `bus` field;
+   listener errors increment `maidan_bus_listener_errors_total`.
+6. **Indexer silence** — set `INDEXER_STALE_SECS` (e.g. `300`) when embeddings are on;
+   watch `maidan_indexer_last_event_age_seconds` and `/health` `indexer_last_event_at`.
+
 ### `docker compose smoke` fails
 
 - "wait for /health timed out": the maidan-server container didn't

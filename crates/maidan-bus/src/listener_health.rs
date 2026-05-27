@@ -1,12 +1,13 @@
 //! Health signals for the Postgres `LISTEN` background task.
 
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
 #[derive(Debug, Default)]
 pub struct ListenerHealth {
     degraded: AtomicBool,
     last_ok_unix_ms: AtomicI64,
     last_error_unix_ms: AtomicI64,
+    errors_total: AtomicU64,
 }
 
 impl ListenerHealth {
@@ -19,6 +20,11 @@ impl ListenerHealth {
         self.degraded.store(true, Ordering::Release);
         self.last_error_unix_ms
             .store(now_unix_ms(), Ordering::Relaxed);
+        self.errors_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn errors_total(&self) -> u64 {
+        self.errors_total.load(Ordering::Relaxed)
     }
 
     pub fn check(&self) -> Result<(), String> {
@@ -52,6 +58,7 @@ mod tests {
         let h = ListenerHealth::default();
         h.check().expect("initially ok");
         h.record_error();
+        assert_eq!(h.errors_total(), 1);
         h.check().expect_err("degraded after error");
         h.record_ok();
         h.check().expect("ok after successful recv");

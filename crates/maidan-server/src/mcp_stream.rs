@@ -99,8 +99,15 @@ pub async fn stream(
     let watermark = Arc::new(AtomicI64::new(high_water));
     let bus_store = state.store.clone();
     tokio::spawn(async move {
-        event_stream::forward_bus_items(subscriber, text_tx, watermark, bus_store, bus_filter)
-            .await;
+        event_stream::forward_bus_items(
+            subscriber,
+            text_tx,
+            watermark,
+            bus_store,
+            bus_filter,
+            crate::subscribe_metrics::SubscribeTransport::McpSse,
+        )
+        .await;
     });
 
     let stream = ReceiverStream::new(sse_rx);
