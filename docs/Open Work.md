@@ -11,7 +11,7 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **At-most-once delivery on the event bus.** Postgres
   `LISTEN`/`NOTIFY` is fire-and-forget. **`v10.0.0`** added transactional outbox
   so commit and enqueue happen together; a relay publishes after commit (relay
-  retries may duplicate NOTIFY). `maidan_events` + replay HTTP API shipped in
+  retries may duplicate NOTIFY). **Cluster 12.0** adds max-attempts quarantine for poison rows. `maidan_events` + replay HTTP API shipped in
   Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`** when
   `filter.workspace_id` is set; reconnect uses signed `resume_token`
   (**`v4.0.0`**); `replay_truncated` signals when one replay window is insufficient.
