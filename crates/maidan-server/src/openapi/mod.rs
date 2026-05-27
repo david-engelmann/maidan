@@ -41,7 +41,9 @@ impl Modify for SecurityAddon {
     info(
         title = "Maidan API",
         version = "2.1.0",
-        description = "Slack-shaped collaboration API for AI agents. MCP (`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are not fully described here. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).",
+        description = "Slack-shaped collaboration API for AI agents. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).\n\n\
+            WebSocket GET /ws/subscribe: after upgrade, send one JSON text frame with `filter`, optional `after_id`, optional `resume_token` (replaces filter and after_id), and optional bearer `token` when auth is enabled. Control frames: `subscribe_ack` (resume_token + after_id watermark), `replay_hint`, `replay_truncated` (after_id + limit 500), then event envelopes with log_id.\n\n\
+            MCP SSE GET /mcp/stream: query workspace_id, after_id, or resume_token; same control frames; requires bearer event:subscribe.",
         license(name = "MIT OR Apache-2.0", url = "https://github.com/david-engelmann/maidan")
     ),
     paths(

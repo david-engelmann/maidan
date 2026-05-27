@@ -70,9 +70,12 @@ See [[Glossary]] for vocabulary.
    `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Each publish
    also appends to `maidan_events` for replay. Subscribers filter by
    workspace, channel, thread, member, and kind. WebSocket clients reach
-   the stream via `GET /ws/subscribe`; gaps can be recovered via
-   `GET /workspaces/:wid/events?after_id=`. A2A peers will consume the
-   same stream in Cluster G. **Bus in `v0.1.0`; persistent log in `v0.3.0`.**
+   the stream via `GET /ws/subscribe`; MCP clients use `GET /mcp/stream`
+   (SSE). Gaps can be recovered via `GET /workspaces/:wid/events?after_id=`,
+   auto-replay on bus lag (when `filter.workspace_id` is set), signed
+   `resume_token` reconnect (`v4.0.0`), or `replay_truncated` loops when
+   replay hits 500 rows. A2A peers consume the same stream in Cluster G.
+   **Bus in `v0.1.0`; persistent log in `v0.3.0`.**
 
 ## Backends
 
@@ -149,9 +152,39 @@ See [[Glossary]] for vocabulary.
   cookie; `GET /auth/session`; first `token:admin` via `POST /auth/session/mint`.
   MCP/A2A remain bearer-only. See [[OIDC]] and [[Production]].
 - **WebSocket** — `SubscribeFrame` includes `token`; requires
-  `event:subscribe` when auth is enabled.
+  `event:subscribe` when auth is enabled. **`v4.0.0`:** `subscribe_ack` issues
+  HMAC `resume_token`; `replay_truncated` when replay fills `REPLAY_LIMIT`.
 - **MCP** — `tools/call`, `resources/read`, and `prompts/get` require a valid
-  bearer; per-tool capability map in `maidan-mcp`.
+  bearer; per-tool capability map in `maidan-mcp`. **`GET /mcp/stream`** mirrors
+  WS control frames (`subscribe_ack`, `replay_truncated`, …).
+
+## Subscriber continuity at v4.0.0
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as maidan-server
+    participant L as maidan_events
+    participant B as EventBus
+
+    C->>S: WS connect + subscribe frame
+    alt resume_token
+        S->>L: replay id > watermark (up to 500)
+        L-->>S: rows
+        opt 500 rows
+            S-->>C: replay_truncated
+        end
+    else after_id > 0
+        S->>L: replay
+    end
+    S-->>C: subscribe_ack (resume_token)
+    S->>B: subscribe(filter)
+    B-->>C: live events (log_id > watermark)
+    Note over B,C: on lag + workspace filter
+    B-->>S: Lagged
+    S->>L: auto-replay
+    S-->>C: replay_truncated or events
+```
 
 ## At v0.6.0 (Cluster G)
 
