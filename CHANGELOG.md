@@ -9,6 +9,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [9.0.0] — 2026-05-27
+
+Major release: coverage depth — targeted tests and raised CI line floor.
+
+### Added
+
+- Unit/e2e tests for `EventFilter`, bus hydrate/error paths, subscribe metrics,
+  `/metrics` hydrate scrape, search query edges, and auth peer decrypt failure.
+
+### Changed
+
+- `COVERAGE_MIN_LINES` raised from **10.0** to **10.5** in CI.
+- WS auto-replay integration test timeout extended for slow CI hosts.
+
 ## [8.0.0] — 2026-05-27
 
 Major release: Postgres bus hydrate observability on `/metrics`.
