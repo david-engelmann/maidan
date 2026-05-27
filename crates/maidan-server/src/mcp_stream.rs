@@ -52,7 +52,6 @@ pub async fn stream(
         ));
     }
 
-    let replay_workspace = filter.workspace_id;
     let (sse_tx, sse_rx) = mpsc::channel(256);
     let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
 
@@ -75,6 +74,7 @@ pub async fn stream(
             .map_err(|e| ApiError::Internal(e.to_string()))?;
     }
 
+    let bus_filter = filter.clone();
     let subscriber = state
         .bus
         .subscribe(filter)
@@ -82,8 +82,10 @@ pub async fn stream(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let watermark = Arc::new(AtomicI64::new(high_water));
+    let bus_store = state.store.clone();
     tokio::spawn(async move {
-        event_stream::forward_bus_items(subscriber, text_tx, watermark, replay_workspace).await;
+        event_stream::forward_bus_items(subscriber, text_tx, watermark, bus_store, bus_filter)
+            .await;
     });
 
     let stream = ReceiverStream::new(sse_rx);

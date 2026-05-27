@@ -306,6 +306,113 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
 }
 
 #[tokio::test]
+async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filter() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(2));
+    let app = router(AppState::new(
+        store,
+        artifacts,
+        bus,
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        true,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        None,
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "lag-replay"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
+
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(
+        json!({"filter": {"workspace_id": workspace_id}}).to_string(),
+    ))
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let flood_client = client.clone();
+    let flood_base = base.clone();
+    let flood_wid = workspace_id.clone();
+    let flood_task = tokio::spawn(async move {
+        for i in 0..16 {
+            let _: serde_json::Value = flood_client
+                .post(format!("{flood_base}/workspaces/{flood_wid}/channels"))
+                .json(&json!({"name": format!("ch-{i}")}))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+        }
+    });
+
+    let mut saw_channel_created = false;
+    let mut saw_replay_hint = false;
+    let wait = async {
+        loop {
+            if saw_channel_created && flood_task.is_finished() {
+                break;
+            }
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
+                    saw_replay_hint = true;
+                } else if v.get("kind").and_then(|k| k.as_str()) == Some("channel_created") {
+                    saw_channel_created = true;
+                    assert!(v["log_id"].as_i64().unwrap() > 0);
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), wait)
+        .await
+        .expect("timeout waiting for auto-replayed channel_created");
+    flood_task.await.unwrap();
+    assert!(saw_channel_created);
+    assert!(
+        !saw_replay_hint,
+        "workspace filter should auto-replay instead of hint"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn subscribe_resumes_after_id_from_event_log() {
     let (addr, client, server, _dir) = spawn_server().await;
     let base = format!("http://{addr}");

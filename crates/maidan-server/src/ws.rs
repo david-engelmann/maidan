@@ -7,7 +7,8 @@
 //!    `filter.workspace_id`), then live bus events with `log_id` greater than
 //!    the replay watermark.
 //! 4. Each event frame includes `log_id` plus the externally-tagged event.
-//! 5. On broadcast lag, a `replay_hint` frame is sent (see 1.1.2).
+//! 5. On broadcast lag, replay from `maidan_events` when `filter.workspace_id`
+//!    is set; otherwise a `replay_hint` frame (see 1.1.2 / 3.0.2).
 //! 6. Server pings every 30 s; pong timeout closes with 1011.
 
 use std::{borrow::Cow, sync::Arc, time::Duration};
@@ -123,10 +124,11 @@ async fn run(mut socket: WebSocket, state: AppState) {
     };
 
     let watermark = Arc::new(std::sync::atomic::AtomicI64::new(high_water));
-    let replay_workspace = request.filter.workspace_id;
+    let bus_filter = request.filter.clone();
+    let bus_store = state.store.clone();
     let bus_tx = text_tx.clone();
     let bus_task = tokio::spawn(async move {
-        event_stream::forward_bus_items(subscriber, bus_tx, watermark, replay_workspace).await;
+        event_stream::forward_bus_items(subscriber, bus_tx, watermark, bus_store, bus_filter).await;
     });
 
     let mut last_pong = Instant::now();
