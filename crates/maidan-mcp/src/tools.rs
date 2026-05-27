@@ -276,28 +276,23 @@ async fn search_messages(
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
+    let filters = maidan_search::SearchFilters {
+        author_id: a.author_id.map(maidan_types::MemberId),
+        channel_id: a.channel_id.map(maidan_types::ChannelId),
+        author_kind: a.kind,
+    };
     let hits = match a.mode {
         SearchMessagesMode::Lexical => {
-            let filters = maidan_search::SearchFilters {
-                author_id: a.author_id.map(maidan_types::MemberId),
-                channel_id: a.channel_id.map(maidan_types::ChannelId),
-                author_kind: a.kind,
-            };
             search
                 .search_messages(workspace_id, &a.query, a.limit, &filters)
                 .await?
         }
         SearchMessagesMode::Semantic => {
-            if a.author_id.is_some() || a.channel_id.is_some() || a.kind.is_some() {
-                return Err(McpError::InvalidParams(
-                    "facets are only supported for lexical search (mode=lexical)".into(),
-                ));
-            }
             let embedding = embedding_provider
                 .embed(&a.query)
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
             search
-                .semantic_search(workspace_id, &embedding, a.limit)
+                .semantic_search(workspace_id, &embedding, a.limit, &filters)
                 .await?
         }
     };

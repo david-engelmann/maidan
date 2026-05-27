@@ -652,18 +652,13 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Semantic => {
-            if q.author.is_some() || q.channel.is_some() || q.kind.is_some() {
-                return Err(ApiError::BadRequest(
-                    "facets are only supported for lexical search (mode=lexical)".into(),
-                ));
-            }
             let embedding = state
                 .embedding_provider
                 .embed(&q.q)
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
             state
                 .search
-                .semantic_search(workspace_id, &embedding, q.limit)
+                .semantic_search(workspace_id, &embedding, q.limit, &filters)
                 .await?
         }
     };

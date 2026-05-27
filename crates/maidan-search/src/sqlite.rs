@@ -101,6 +101,7 @@ impl Search for SqliteSearch {
         _workspace_id: WorkspaceId,
         _embedding: &[f32],
         _limit: i64,
+        _filters: &SearchFilters,
     ) -> Result<Vec<SearchHit>, SearchError> {
         Err(SearchError::Unsupported("semantic search on sqlite"))
     }

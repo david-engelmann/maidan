@@ -134,6 +134,7 @@ impl Search for PostgresSearch {
         workspace_id: WorkspaceId,
         embedding: &[f32],
         limit: i64,
+        filters: &SearchFilters,
     ) -> Result<Vec<SearchHit>, SearchError> {
         if embedding.len() != EMBEDDING_DIM {
             return Err(SearchError::InvalidQuery(format!(
@@ -142,6 +143,9 @@ impl Search for PostgresSearch {
             )));
         }
         let vector = Vector::from(embedding.to_vec());
+        let author_id = filters.author_id.map(|id| id.0);
+        let channel_id = filters.channel_id.map(|id| id.0);
+        let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
         let rows = sqlx::query(
             r#"
@@ -159,8 +163,12 @@ impl Search for PostgresSearch {
             JOIN maidan_messages m ON m.id = e.message_id
             JOIN maidan_threads t ON t.id = m.thread_id
             JOIN maidan_channels c ON c.id = t.channel_id
+            JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = $1
               AND m.tombstoned_at IS NULL
+              AND ($4::uuid IS NULL OR m.author_id = $4)
+              AND ($5::uuid IS NULL OR t.channel_id = $5)
+              AND ($6::text IS NULL OR mem.kind = $6)
             ORDER BY e.embedding <=> $2
             LIMIT $3
             "#,
@@ -168,6 +176,9 @@ impl Search for PostgresSearch {
         .bind(workspace_id.0)
         .bind(vector)
         .bind(limit)
+        .bind(author_id)
+        .bind(channel_id)
+        .bind(author_kind)
         .fetch_all(&self.pool)
         .await?;
 

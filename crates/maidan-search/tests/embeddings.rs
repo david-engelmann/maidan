@@ -4,7 +4,7 @@ mod common;
 
 use std::{sync::Arc, time::Duration};
 
-use maidan_search::{postgres::EMBEDDING_DIM, PostgresSearch, Search, SearchError};
+use maidan_search::{postgres::EMBEDDING_DIM, PostgresSearch, Search, SearchError, SearchFilters};
 use maidan_store::{run_postgres_migrations, PostgresStore, Store};
 use maidan_types::{MessageId, NewMessage};
 use sqlx::postgres::PgPoolOptions;
@@ -70,7 +70,7 @@ async fn semantic_search_orders_by_cosine_distance() {
     // (cosine distance 1.0 each).
     let query = one_hot(1);
     let hits = search
-        .semantic_search(fx.workspace_id, &query, 3)
+        .semantic_search(fx.workspace_id, &query, 3, &SearchFilters::default())
         .await
         .unwrap();
     assert_eq!(hits.len(), 3);
@@ -157,7 +157,10 @@ async fn upsert_replaces_existing_embedding() {
         .upsert_embedding(msg.id, "v1", &one_hot(0))
         .await
         .unwrap();
-    let hits = search.semantic_search(ws.id, &one_hot(0), 1).await.unwrap();
+    let hits = search
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default())
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
 
@@ -166,7 +169,10 @@ async fn upsert_replaces_existing_embedding() {
         .upsert_embedding(msg.id, "v2", &one_hot(1))
         .await
         .unwrap();
-    let hits = search.semantic_search(ws.id, &one_hot(0), 1).await.unwrap();
+    let hits = search
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default())
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
     assert!(
         hits[0].rank.abs() < 1e-6,
@@ -210,4 +216,97 @@ async fn rejects_wrong_dimension() {
         .await
         .unwrap_err();
     assert!(matches!(err, SearchError::InvalidQuery(_)));
+}
+
+#[tokio::test]
+async fn semantic_search_respects_author_channel_and_kind_facets() {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("skipping embeddings test: docker unavailable ({err})");
+            return;
+        }
+    };
+    let host = container.get_host().await.unwrap();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .unwrap();
+    run_postgres_migrations(&pool).await.unwrap();
+
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let search = PostgresSearch::new(pool);
+    let fx = common::seed(&*store).await;
+
+    let general_msg = fx.message_ids[1];
+    let release_msg = fx.message_ids[5];
+    let axis = one_hot(0);
+    search
+        .upsert_embedding(general_msg, "test-model", &axis)
+        .await
+        .unwrap();
+    search
+        .upsert_embedding(release_msg, "test-model", &axis)
+        .await
+        .unwrap();
+
+    let both = search
+        .semantic_search(fx.workspace_id, &axis, 10, &SearchFilters::default())
+        .await
+        .unwrap();
+    assert_eq!(both.len(), 2);
+
+    let general_only = search
+        .semantic_search(
+            fx.workspace_id,
+            &axis,
+            10,
+            &SearchFilters {
+                channel_id: Some(fx.general_channel_id),
+                ..SearchFilters::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(general_only.len(), 1);
+    assert_eq!(general_only[0].message_id, general_msg);
+
+    let human_only = search
+        .semantic_search(
+            fx.workspace_id,
+            &axis,
+            10,
+            &SearchFilters {
+                author_kind: Some(maidan_types::MemberKind::Human),
+                ..SearchFilters::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(human_only.len(), 1);
+    assert_eq!(human_only[0].message_id, general_msg);
+
+    let agent_only = search
+        .semantic_search(
+            fx.workspace_id,
+            &axis,
+            10,
+            &SearchFilters {
+                author_kind: Some(maidan_types::MemberKind::Agent),
+                ..SearchFilters::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(agent_only.len(), 1);
+    assert_eq!(agent_only[0].message_id, release_msg);
 }

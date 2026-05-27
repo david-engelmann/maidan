@@ -36,7 +36,7 @@ pub trait Search: Send + Sync {
     ) -> Result<(), SearchError>;
 
     /// Semantic search by cosine similarity. The query is a caller-
-    /// supplied embedding; the workspace filter applies. Hits are
+    /// supplied embedding; workspace and optional facets apply. Hits are
     /// returned ordered from most-similar to least-similar; `rank` is
     /// `1.0 - cosine_distance` so higher is more relevant (matching
     /// lexical search semantics).
@@ -45,5 +45,6 @@ pub trait Search: Send + Sync {
         workspace_id: WorkspaceId,
         embedding: &[f32],
         limit: i64,
+        filters: &SearchFilters,
     ) -> Result<Vec<SearchHit>, SearchError>;
 }

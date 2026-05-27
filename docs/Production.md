@@ -78,7 +78,7 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
 | `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
-| `GET /workspaces/:wid/search` | Search (`q`, optional `author` / `channel` / `kind`, `mode`). Default `mode=lexical`. `mode=semantic` embeds `q` with the configured provider and ranks by cosine similarity (**Postgres only**; `rank` is `1.0 - distance`, higher is better). Facets apply only to lexical mode. On **Postgres** lexical `q`, `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words use `plainto_tsquery`. SQLite ignores web operators and rejects `mode=semantic`. |
+| `GET /workspaces/:wid/search` | Search (`q`, optional `author` / `channel` / `kind`, `mode`). Default `mode=lexical`. `mode=semantic` embeds `q` with the configured provider and ranks by cosine similarity (**Postgres only**; `rank` is `1.0 - distance`, higher is better). Facets apply to both lexical and semantic modes on Postgres. On **Postgres** lexical `q`, `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words use `plainto_tsquery`. SQLite ignores web operators and rejects `mode=semantic`. |
 | `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
 
