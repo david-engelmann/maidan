@@ -16,7 +16,8 @@ coherent capability batch warrants semver + changelog.
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
 **Recommended order:** **`v3.0.0`** is closed ([[Retros/Cluster 3.0]]).
-Next: open the next cluster plan doc, or pick ad-hoc [[Open Work]] items.
+**Active:** **Cluster 4.0** ([[Clusters/Cluster 4.0]]) → `v4.0.0`. Then Cluster 5
+(coverage/search quality) or ad-hoc [[Open Work]] items.
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 

@@ -41,7 +41,8 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** next cluster planning (TBD).
+**Active:** **Cluster 4.0** — subscriber continuity → tag **`v4.0.0`**
+(see [[Clusters/Cluster 4.0]]).
 
 **Recently closed:** **`v3.0.0`** — search & subscriber depth ([[Retros/Cluster 3.0]]).
 **Before that:** **`v2.1.0`** — OIDC operator hardening ([[Retros/Cluster 2.1]]).
