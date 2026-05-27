@@ -16,6 +16,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   RUSTFLAGS: -D warnings
+  COVERAGE_MIN_LINES: "9.0"
 
 jobs:
   lint:
@@ -107,9 +108,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
-      - name: coverage report
+      - name: coverage report + line gate
         run: |
-          cargo llvm-cov --workspace --lib --bins --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --lib --bins --fail-under-lines "$COVERAGE_MIN_LINES" --lcov --output-path lcov.info
           cargo llvm-cov --workspace --lib --bins --html --output-dir coverage-html
       - uses: actions/upload-artifact@v4
         with:

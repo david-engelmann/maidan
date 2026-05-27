@@ -312,6 +312,24 @@ running. Common failures:
   ... }` pattern handles this; if it still fails, the pattern was
   removed.
 
+### `coverage (llvm-cov)` fails
+
+The CI coverage job now enforces a line-coverage floor with
+`--fail-under-lines` in `.github/workflows/ci.yml`.
+
+- Reproduce locally:
+
+  ```sh
+  COVERAGE_MIN_LINES=9.0 \
+  cargo llvm-cov --workspace --lib --bins \
+    --fail-under-lines "$COVERAGE_MIN_LINES"
+  ```
+
+- Baseline for the initial gate: **9.8%** line coverage from green main
+  run `26485125992` (gate set slightly lower at `9.0` to avoid noise).
+- If the floor needs to move, do it in a dedicated CI/docs PR and note
+  the run id used for recalibration.
+
 ### `docker compose smoke` fails
 
 - "wait for /health timed out": the maidan-server container didn't
