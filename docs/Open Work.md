@@ -83,7 +83,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 ## Known state at this handoff
 
 - **Latest tag:** `v10.0.0` — Postgres transactional outbox.
-- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
+- **Active cluster:** **Cluster 11.0** — coverage toward 11% ([[Clusters/Cluster 11.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
