@@ -9,6 +9,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [7.0.0] — 2026-05-27
+
+Major release: Postgres bus pointer delivery — NOTIFY carries `log_id`, listener
+hydrates from `maidan_events`.
+
+### Added
+
+- `Store::get_stored_event(log_id)` on Postgres and SQLite.
+- Postgres `NOTIFY` pointer payload (`log_id_v1`) with listener hydration;
+  `BusError::HydrateNotFound` and `HydrateFailed` for missing or corrupt rows.
+- Integration tests for pointer round-trip and large persisted events.
+
+### Changed
+
+- Postgres `publish` with `log_id > 0` no longer ships full envelopes on NOTIFY
+  (legacy full JSON retained for `log_id == 0` synthetic publishes).
+- [[Architecture]], [[Decisions]], and [[Production]] document pointer-default
+  semantics and unchanged at-most-once standing risk.
+
 ## [6.0.0] — 2026-05-27
 
 Major release: delivery reliability observability for subscribe recovery and
