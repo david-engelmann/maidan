@@ -155,23 +155,25 @@ still reference tombstoned ids without dangling foreign keys.
 
 **To revisit:** never. This is a load-bearing semantic.
 
-### Postgres NOTIFY full-payload over event-id-pointer
+### Postgres NOTIFY pointer delivery (`v7.0.0`)
 
-**Decision.** `PostgresBus` serializes the full event as JSON in the
-NOTIFY payload (capped at 7990 bytes), not an event-id with a side
-fetch.
+**Decision.** On Postgres, `PostgresBus::publish` sends a small NOTIFY
+payload `{"notify":"log_id_v1","log_id":N,"workspace_id":...}` when
+`BusEnvelope.log_id > 0` (the normal path after `append_event`). The
+background listener hydrates the row from `maidan_events` and fans out
+a full `BusEnvelope`. Publishes with `log_id == 0` (synthetic / tests)
+still use the legacy full JSON envelope and remain subject to the 7990-byte
+NOTIFY cap.
 
-**Alternative.** Persist events to a `maidan_events` table; NOTIFY
-carries only the id; subscribers do `Store::get_event(id)`.
+**Alternative.** Continue shipping full envelopes on NOTIFY; or add an
+outbox table for at-least-once delivery.
 
-**Why this:** for v0.1.0/v0.2.0, no persistent event log exists, so
-the alternative requires an extra table + indexing. Most events fit
-in 7990 bytes. The size check at publish time returns a typed error
-so callers know when to switch to a smaller payload shape.
+**Why this:** Cluster D made `maidan_events` authoritative; large events
+no longer fail publish because of NOTIFY size. Hydration adds one PK read
+per notification — acceptable vs multi-kilobyte JSON on the wire.
 
-**To revisit:** when the persistent event log lands (Cluster D).
-The full-payload path becomes a fallback for tiny events; the
-id-pointer path becomes the default.
+**To revisit:** outbox / guaranteed delivery remains a standing risk
+(see [[Open Work]]). `InMemoryBus` stays full-envelope.
 
 ### Embedding dimension is 1024
 

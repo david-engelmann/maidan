@@ -94,6 +94,7 @@ pub trait Store: Send + Sync {
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError>;
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError>;
+    async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError>;
     async fn list_events_after(
         &self,
         workspace_id: WorkspaceId,

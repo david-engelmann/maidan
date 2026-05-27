@@ -1,19 +1,19 @@
 //! Postgres `LISTEN`/`NOTIFY` event bus.
 //!
-//! Each `publish` runs `pg_notify('maidan_events', payload)` where the
-//! payload is the JSON-serialized [`Event`]. Each `subscribe` spawns a
-//! [`sqlx::postgres::PgListener`] task that decodes notifications,
-//! applies the client-side filter, and forwards matches to the
-//! subscriber's broadcast stream.
+//! Each `publish` runs `pg_notify('maidan_events', payload)`. When
+//! [`BusEnvelope::log_id`] is set (normal server path after
+//! `append_event`), the payload is a small pointer and the listener
+//! hydrates the full envelope from `maidan_events`. Synthetic publishes
+//! with `log_id == 0` still send the full JSON envelope (tests / direct
+//! bus use).
 //!
-//! NOTIFY payloads are capped at 7990 bytes (Postgres limit is 8000; we
-//! reserve some slack). Larger payloads return [`BusError::PayloadTooLarge`].
+//! NOTIFY payloads are capped at 7990 bytes for the legacy full-envelope
+//! path only.
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use maidan_types::{BusEnvelope, EventFilter};
-
-use crate::item::BusItem;
+use maidan_types::{BusEnvelope, Event, EventFilter};
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
 use tokio::sync::broadcast;
@@ -22,6 +22,7 @@ use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use std::sync::Arc;
 
 use crate::error::BusError;
+use crate::item::BusItem;
 use crate::listener_health::ListenerHealth;
 use crate::stream::EventStream;
 use crate::traits::EventBus;
@@ -29,6 +30,29 @@ use crate::traits::EventBus;
 const CHANNEL: &str = "maidan_events";
 const PAYLOAD_LIMIT: usize = 7990;
 const BROADCAST_CAP: usize = 1024;
+const NOTIFY_POINTER_SCHEMA: &str = "log_id_v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NotifyPointerPayload {
+    notify: String,
+    log_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<uuid::Uuid>,
+}
+
+impl NotifyPointerPayload {
+    fn new(log_id: i64, workspace_id: Option<maidan_types::WorkspaceId>) -> Self {
+        Self {
+            notify: NOTIFY_POINTER_SCHEMA.to_string(),
+            log_id,
+            workspace_id: workspace_id.map(|w| w.0),
+        }
+    }
+
+    fn is_pointer(&self) -> bool {
+        self.notify == NOTIFY_POINTER_SCHEMA && self.log_id > 0
+    }
+}
 
 #[derive(Clone)]
 pub struct PostgresBus {
@@ -56,12 +80,17 @@ impl PostgresBus {
                 match listener.recv().await {
                     Ok(note) => {
                         health.record_ok();
-                        match serde_json::from_str::<BusEnvelope>(note.payload()) {
-                            Ok(envelope) => {
+                        match decode_notify_payload(&listener_pool, note.payload()).await {
+                            Ok(Some(envelope)) => {
                                 let _ = listener_tx.send(envelope);
                             }
-                            Err(e) => {
-                                tracing::warn!(error = %e, payload = note.payload(), "drop malformed event");
+                            Ok(None) => {}
+                            Err(err) => {
+                                tracing::warn!(
+                                    error = %err,
+                                    payload = note.payload(),
+                                    "drop notify payload"
+                                );
                             }
                         }
                     }
@@ -86,13 +115,52 @@ impl PostgresBus {
     }
 }
 
+async fn decode_notify_payload(
+    pool: &PgPool,
+    payload: &str,
+) -> Result<Option<BusEnvelope>, BusError> {
+    if let Ok(pointer) = serde_json::from_str::<NotifyPointerPayload>(payload) {
+        if pointer.is_pointer() {
+            return hydrate_envelope(pool, pointer.log_id).await.map(Some);
+        }
+    }
+    let envelope: BusEnvelope = serde_json::from_str(payload)?;
+    Ok(Some(envelope))
+}
+
+async fn hydrate_envelope(pool: &PgPool, log_id: i64) -> Result<BusEnvelope, BusError> {
+    let stored = maidan_store::postgres::events::get_by_id(pool, log_id)
+        .await
+        .map_err(|err| match err {
+            maidan_store::StoreError::NotFound => BusError::HydrateNotFound { log_id },
+            maidan_store::StoreError::Database(e) => BusError::Database(e),
+            other => BusError::HydrateFailed {
+                log_id,
+                reason: other.to_string(),
+            },
+        })?;
+    let event: Event = serde_json::from_value(stored.payload)?;
+    Ok(BusEnvelope {
+        log_id: stored.id,
+        event,
+    })
+}
+
 #[async_trait]
 impl EventBus for PostgresBus {
     async fn publish(&self, envelope: BusEnvelope) -> Result<(), BusError> {
-        let payload = serde_json::to_string(&envelope)?;
-        if payload.len() > PAYLOAD_LIMIT {
-            return Err(BusError::PayloadTooLarge(payload.len()));
-        }
+        let payload = if envelope.log_id > 0 {
+            serde_json::to_string(&NotifyPointerPayload::new(
+                envelope.log_id,
+                envelope.event.workspace_id(),
+            ))?
+        } else {
+            let payload = serde_json::to_string(&envelope)?;
+            if payload.len() > PAYLOAD_LIMIT {
+                return Err(BusError::PayloadTooLarge(payload.len()));
+            }
+            payload
+        };
         sqlx::query("SELECT pg_notify($1, $2)")
             .bind(CHANNEL)
             .bind(&payload)

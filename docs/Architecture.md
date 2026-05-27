@@ -67,8 +67,9 @@ See [[Glossary]] for vocabulary.
    **LocalFs in `v0.0.1`; S3 + typed kinds in `v0.4.0`.**
 3. **Event stream** — every state-changing HTTP mutation publishes a
    typed `Event` to the bus (`InMemoryBus` for single-process / SQLite,
-   `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Each publish
-   also appends to `maidan_events` for replay. Subscribers filter by
+   `PostgresBus` for multi-process via `LISTEN`/`NOTIFY`). Server publish
+   appends to `maidan_events` first, then NOTIFY carries a `log_id` pointer
+   (`v7.0.0`); the listener hydrates the full envelope from the log. Subscribers filter by
    workspace, channel, thread, member, and kind. WebSocket clients reach
    the stream via `GET /ws/subscribe`; MCP clients use `GET /mcp/stream`
    (SSE). Gaps can be recovered via `GET /workspaces/:wid/events?after_id=`,
@@ -215,6 +216,32 @@ addition to `/health`:
 
 These series use fixed label sets (no workspace UUID labels). Alert guidance
 lives in [[Production#Delivery reliability metrics]].
+
+## Bus pointer delivery at v7.0.0
+
+On Postgres, `pg_notify` payloads are no longer full event JSON for the
+normal path (`log_id > 0`):
+
+```mermaid
+sequenceDiagram
+    participant H as HTTP handler
+    participant S as maidan_events
+    participant B as PostgresBus
+    participant L as LISTEN task
+    participant Sub as Subscriber
+
+    H->>S: append_event
+    S-->>H: log_id
+    H->>B: publish pointer {log_id}
+    B->>B: pg_notify(small JSON)
+    L->>S: SELECT by log_id
+    S-->>L: payload row
+    L->>Sub: BusEnvelope
+```
+
+Synthetic publishes (`log_id == 0`) still use the legacy full-envelope NOTIFY
+path (7990-byte cap). At-most-once semantics are unchanged — see [[Decisions]]
+and [[Open Work]].
 
 ## At v0.6.0 (Cluster G)
 

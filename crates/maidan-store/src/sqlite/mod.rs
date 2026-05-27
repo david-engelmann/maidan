@@ -207,6 +207,10 @@ impl Store for SqliteStore {
         events::append(&self.pool, event).await
     }
 
+    async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
+        events::get_by_id(&self.pool, log_id).await
+    }
+
     async fn list_events_after(
         &self,
         workspace_id: WorkspaceId,

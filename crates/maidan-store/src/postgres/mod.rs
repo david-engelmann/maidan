@@ -3,7 +3,7 @@
 mod artifacts;
 mod audit;
 mod channels;
-mod events;
+pub mod events;
 mod members;
 mod mentions;
 mod messages;
@@ -199,6 +199,10 @@ impl Store for PostgresStore {
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError> {
         events::append(&self.pool, event).await
+    }
+
+    async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
+        events::get_by_id(&self.pool, log_id).await
     }
 
     async fn list_events_after(
