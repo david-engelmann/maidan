@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v10.0.0 — Transactional outbox (Postgres)
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Transactional outbox (`maidan_outbox` + relay)          | `maidan-store`, `maidan-server::outbox_relay` |
+| Outbox metrics on `/metrics`                            | `maidan_outbox_pending`, `maidan_outbox_relay_total` |
+| Outbox ops guidance                                     | [[Production]], [[Architecture]], [[Decisions]] |
+
 ## v9.0.0 — Coverage depth
 
 | Capability                                              | Surface                       |

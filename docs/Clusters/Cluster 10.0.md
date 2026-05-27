@@ -21,12 +21,9 @@ row commit together; a background relay publishes pointers after commit.
 
 | #          | Title                                                                  | Issue |
 |------------|------------------------------------------------------------------------|-------|
-| kickoff    | `docs: Cluster 10.0 kickoff plan`                                      | TBD   |
-| 10.0.1     | `feat(maidan-store): outbox schema + enqueue in append transaction`      | TBD   |
-| 10.0.2     | `feat(maidan-server): outbox relay worker (Postgres)`                   | TBD   |
-| 10.0.3     | `test: outbox relay delivers after commit; crash-safe retry`             | TBD   |
-| 10.0.4     | `docs: outbox semantics in Decisions/Architecture/Production`          | TBD   |
-| 10.0.retro | `docs(retro): Cluster 10.0 retrospective + v10.0.0 tag prep`            | TBD   |
+| 10.0.1–4   | `feat: Cluster 10.0 Postgres transactional outbox` (#170)              | —     |
+| kickoff    | `docs: Cluster 10.0 kickoff plan` (#169)                                 | —     |
+| 10.0.retro | `docs(retro): Cluster 10.0 retrospective + v10.0.0 tag prep` (this PR) | —     |
 
 ## Order
 
