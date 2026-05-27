@@ -140,6 +140,17 @@ no per-workspace series).
 | `maidan_indexer_last_event_age_seconds` high (with `INDEXER_STALE_SECS` set) | Indexer silent while messages post | Check embedding provider errors on `/health`; verify indexer task running |
 | `maidan_bus_listener_ok == 0` | Postgres `LISTEN` task degraded | Inspect DB connectivity; `maidan_bus_listener_errors_total` trend |
 
+### Postgres bus NOTIFY pointers (`v7.0.0`)
+
+Production mutations append to `maidan_events` before `pg_notify`. The NOTIFY
+payload is a small `log_id_v1` pointer; the server hydrates the row before
+fan-out. Very large message bodies are limited by the database row, not the
+legacy ~8KB NOTIFY cap.
+
+Direct `bus.publish` without a prior `append_event` (tests only) still uses
+full JSON on NOTIFY and can hit `PayloadTooLarge`. Operators should rely on HTTP
+mutations or federation ingest for large events.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

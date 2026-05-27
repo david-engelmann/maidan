@@ -75,3 +75,47 @@ async fn append_and_replay_events_in_order() {
     assert_eq!(tail.len(), 1);
     assert_eq!(tail[0].id, e2.id);
 }
+
+#[tokio::test]
+async fn get_stored_event_returns_row_and_missing_is_not_found() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "get-log".to_string(),
+        })
+        .await
+        .expect("ws");
+    let stored = store
+        .append_event(&Event::MemberJoined {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws.id,
+            member: store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: "u".to_string(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .expect("member"),
+        })
+        .await
+        .expect("append");
+
+    let fetched = store.get_stored_event(stored.id).await.expect("get");
+    assert_eq!(fetched.id, stored.id);
+    assert_eq!(fetched.kind, EventKind::MemberJoined);
+
+    let err = store.get_stored_event(999_999).await.unwrap_err();
+    assert!(matches!(err, maidan_store::StoreError::NotFound));
+}

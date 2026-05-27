@@ -21,6 +21,21 @@ pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, Sto
     row_to_stored(&row)
 }
 
+pub async fn get_by_id(pool: &SqlitePool, log_id: i64) -> Result<StoredEvent, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE id = ?",
+    )
+    .bind(log_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Err(StoreError::NotFound);
+    };
+    row_to_stored(&row)
+}
+
 pub async fn list_after(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

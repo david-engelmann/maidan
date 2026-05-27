@@ -10,6 +10,7 @@ publish.workspace = true
 description = "Event bus for Maidan: in-memory + Postgres LISTEN/NOTIFY backends."
 
 [dependencies]
+maidan-store = { path = "../maidan-store" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
 futures = "0.3"
@@ -20,6 +21,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store" }
