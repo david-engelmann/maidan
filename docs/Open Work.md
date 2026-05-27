@@ -49,6 +49,15 @@ Delivery reliability — [[Retros/Cluster 6.0]] (subscribe replay metrics, index
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
+## Active plan: Cluster 7.0
+
+Bus pointer delivery — [[Clusters/Cluster 7.0]] (`v7.0.0`):
+
+- `Store::get_stored_event(log_id)` (7.0.1)
+- Postgres `NOTIFY` pointer payload + listener hydrate (7.0.2)
+- Integration tests including large events (7.0.3)
+- Decisions/Architecture/Production updates (7.0.4)
+
 ## Still deferred (no owner yet)
 
 | What | Notes |
@@ -69,7 +78,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 ## Known state at this handoff
 
 - **Latest tag:** `v6.0.0` — Delivery reliability.
-- **Active cluster:** none — next wave is open planning in [[Open Work]].
+- **Active cluster:** **Cluster 7.0** — see [[Clusters/Cluster 7.0]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
