@@ -32,6 +32,8 @@ pub struct McpStreamQuery {
     pub after_id: i64,
     #[serde(default)]
     pub resume_token: Option<String>,
+    #[serde(default)]
+    pub consumer_id: Option<String>,
 }
 
 pub async fn stream(
@@ -42,7 +44,19 @@ pub async fn stream(
     auth.require_capability(EVENT_SUBSCRIBE)
         .map_err(|_| ApiError::Forbidden("missing event:subscribe capability".into()))?;
 
-    let (filter, after_id, from_resume_token) = resolve_stream_params(&state, &q, &auth)?;
+    let (filter, mut after_id, from_resume_token) = resolve_stream_params(&state, &q, &auth)?;
+    if let Some(ref consumer_id) = q.consumer_id {
+        crate::delivery::validate_consumer_id(consumer_id).map_err(ApiError::BadRequest)?;
+        after_id = crate::delivery::effective_subscribe_after_id(
+            state.store.as_ref(),
+            Some(consumer_id.as_str()),
+            filter.workspace_id,
+            after_id,
+        )
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
+    let delivery_consumer_id = q.consumer_id.clone();
 
     let (sse_tx, sse_rx) = mpsc::channel(256);
     let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
@@ -61,9 +75,15 @@ pub async fn stream(
 
     let mut high_water = after_id;
     if after_id > 0 || from_resume_token {
-        let outcome = replay_matching_events(state.store.as_ref(), &filter, after_id, &text_tx)
-            .await
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let outcome = replay_matching_events(
+            state.store.as_ref(),
+            &filter,
+            after_id,
+            &text_tx,
+            delivery_consumer_id.as_deref(),
+        )
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
         high_water = outcome.high_water;
         emit_replay_truncated_if_needed(
             &text_tx,
@@ -106,6 +126,7 @@ pub async fn stream(
             bus_store,
             bus_filter,
             crate::subscribe_metrics::SubscribeTransport::McpSse,
+            delivery_consumer_id,
         )
         .await;
     });

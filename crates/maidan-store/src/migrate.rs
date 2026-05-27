@@ -19,6 +19,7 @@ const POSTGRES_UP_V12: &str = include_str!("../../../migrations/postgres/0012_oi
 const POSTGRES_UP_V13: &str = include_str!("../../../migrations/postgres/0013_outbox.sql");
 const POSTGRES_UP_V14: &str =
     include_str!("../../../migrations/postgres/0014_outbox_quarantine.sql");
+const POSTGRES_UP_V15: &str = include_str!("../../../migrations/postgres/0015_delivery_cursor.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V4: &str = include_str!("../../../migrations/sqlite/0004_thread_fsm.sql");
@@ -62,6 +63,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 12, POSTGRES_UP_V12).await?;
     apply_postgres(pool, 13, POSTGRES_UP_V13).await?;
     apply_postgres(pool, 14, POSTGRES_UP_V14).await?;
+    apply_postgres(pool, 15, POSTGRES_UP_V15).await?;
     Ok(())
 }
 

@@ -135,4 +135,19 @@ pub trait Store: Send + Sync {
         local_event_id: i64,
     ) -> Result<bool, StoreError>;
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError>;
+
+    /// Last `log_id` delivered to `consumer_id` in `workspace_id` (0 if none).
+    async fn get_delivery_cursor(
+        &self,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
+    ) -> Result<i64, StoreError>;
+
+    /// Monotonic advance; returns the stored cursor after update.
+    async fn advance_delivery_cursor(
+        &self,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
+        log_id: i64,
+    ) -> Result<i64, StoreError>;
 }

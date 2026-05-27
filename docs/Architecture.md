@@ -265,6 +265,13 @@ sequenceDiagram
 `maidan_outbox_pending` and `maidan_outbox_relay_total` on `/metrics`.
 NOTIFY delivery is still at-most-once; see [[Production#Outbox relay]].
 
+## Delivery cursors at v13.0.0
+
+Postgres table `maidan_delivery_cursor` tracks `last_delivered_log_id` per
+`(consumer_id, workspace_id)`. WebSocket and MCP SSE accept optional `consumer_id`;
+federation ingest uses `federation:{peer_id}`. Advance is monotonic (`GREATEST`);
+clients must still treat `log_id` as idempotent under duplicate NOTIFY.
+
 ## Outbox quarantine at v12.0.0
 
 Relayable rows: `published_at IS NULL AND quarantined_at IS NULL`. After

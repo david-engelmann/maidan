@@ -3,6 +3,7 @@
 mod artifacts;
 mod audit;
 mod channels;
+pub mod delivery_cursor;
 pub mod events;
 mod members;
 mod mentions;
@@ -290,5 +291,22 @@ impl Store for PostgresStore {
 
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError> {
         peers::is_federated_local_event(&self.pool, local_event_id).await
+    }
+
+    async fn get_delivery_cursor(
+        &self,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
+    ) -> Result<i64, StoreError> {
+        delivery_cursor::get_cursor(&self.pool, consumer_id, workspace_id).await
+    }
+
+    async fn advance_delivery_cursor(
+        &self,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
+        log_id: i64,
+    ) -> Result<i64, StoreError> {
+        delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
     }
 }
