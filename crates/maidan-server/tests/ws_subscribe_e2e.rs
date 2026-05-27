@@ -755,3 +755,77 @@ async fn subscribe_receives_many_sequential_events() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() {
+    use maidan_server::event_stream::REPLAY_LIMIT;
+
+    let (addr, client, server, _dir) = spawn_server().await;
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "trunc-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+
+    for i in 0..REPLAY_LIMIT {
+        let _: serde_json::Value = client
+            .post(format!("{base}/workspaces/{workspace_id}/members"))
+            .json(&json!({"handle": format!("m{i}"), "kind": "agent"}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+    }
+
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(
+        json!({
+            "filter": {"workspace_id": workspace_id},
+            "after_id": 1
+        })
+        .to_string(),
+    ))
+    .await
+    .unwrap();
+
+    let mut truncated = None;
+    let wait = async {
+        while truncated.is_none() {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("replay_truncated") {
+                    truncated = Some(v);
+                    break;
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(60), wait)
+        .await
+        .expect("timeout waiting for replay_truncated");
+    let frame = truncated.unwrap();
+    assert_eq!(frame["limit"].as_i64(), Some(REPLAY_LIMIT));
+    assert_eq!(
+        frame["workspace_id"].as_str(),
+        Some(workspace_id),
+        "workspace_id should be present"
+    );
+    assert!(
+        frame["after_id"].as_i64().unwrap() > 1,
+        "truncated watermark should advance past after_id=1"
+    );
+
+    ws.close(None).await.ok();
+    server.abort();
+}

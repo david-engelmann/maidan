@@ -69,6 +69,9 @@ detail. Summary:
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered post-logout redirect (e.g. `https://host/ui/`). Used when IdP exposes `end_session_endpoint`. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` redirects to `/ui/?auto_mint=1` after login when the workspace has no `token:admin` yet; the UI then calls `POST /auth/session/mint`. Off by default. Requires first-admin mint (`MAIDAN_OIDC_FIRST_ADMIN` not `0`). |
+| `MAIDAN_SESSION_SECRET` | when auth on (or OIDC) | HMAC key for signed `resume_token` and session cookies (32+ bytes). |
+| `MAIDAN_SUBSCRIBE_RESUME_SECRET` | no | Override HMAC key for subscribe resume tokens only. |
+| `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | no | Resume token lifetime in seconds (default `3600`). |
 
 After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
@@ -77,7 +80,51 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
-| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; MCP and WebSocket are not fully described. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
+| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; subscribe/resume protocol summary in `info.description`. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
+
+## WebSocket and MCP subscribe (`v4.0.0`)
+
+Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/stream`**
+(SSE). Both share the same control frames and event envelope shape.
+
+### First message (WebSocket)
+
+Send one text frame after connect:
+
+```json
+{
+  "filter": { "workspace_id": "<uuid>", "kinds": ["message_posted"] },
+  "after_id": 0,
+  "token": "<bearer when auth enabled>"
+}
+```
+
+Or reconnect with only:
+
+```json
+{ "resume_token": "<from subscribe_ack>", "token": "<bearer>" }
+```
+
+Invalid or expired `resume_token` closes the socket with code **1008**.
+
+### MCP SSE query
+
+`GET /mcp/stream?workspace_id=<uuid>&after_id=0` or
+`?resume_token=<opaque>`. Requires bearer with `event:subscribe`.
+
+### Control frames
+
+| `type`              | When | Fields |
+|---------------------|------|--------|
+| `subscribe_ack`     | After subscribe / replay | `resume_token`, `after_id` (watermark for next resume) |
+| `replay_hint`       | Bus lag without workspace scope (or replay failure) | `skipped`, `after_id`, optional `workspace_id`, `replay` URL |
+| `replay_truncated`  | Event-log replay returned 500 rows | `after_id` (new watermark), `limit` (`500`), optional `workspace_id` |
+
+Loop: on `replay_truncated`, reconnect or resubscribe with `after_id` (or a fresh
+`resume_token` from the next `subscribe_ack`) until no truncation frame.
+
+Event envelopes follow: `{ "log_id": <i64>, "kind": "...", ... }`.
+
 | `GET /workspaces/:wid/search` | Search (`q`, optional `author` / `channel` / `kind`, `mode`). Default `mode=lexical`. `mode=semantic` embeds `q` with the configured provider and ranks by cosine similarity (**Postgres only**; `rank` is `1.0 - distance`, higher is better). Facets apply to both lexical and semantic modes on Postgres. On **Postgres** lexical `q`, `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words use `plainto_tsquery`. SQLite ignores web operators and rejects `mode=semantic`. |
 | `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
