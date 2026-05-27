@@ -151,6 +151,20 @@ Direct `bus.publish` without a prior `append_event` (tests only) still uses
 full JSON on NOTIFY and can hit `PayloadTooLarge`. Operators should rely on HTTP
 mutations or federation ingest for large events.
 
+### Bus hydrate metrics (`v8.0.0`)
+
+Postgres pointer delivery records hydrate outcomes on `/metrics`:
+
+| Metric | Symptom | Suggested action |
+|--------|---------|------------------|
+| `maidan_bus_notify_hydrate_total{result="not_found"}` rising | NOTIFY referenced a `log_id` with no `maidan_events` row | Audit publish order (append before notify); check replication lag; verify no manual `pg_notify` with stale ids |
+| `maidan_bus_notify_hydrate_total{result="failed"}` rising | Row present but payload corrupt or DB errors during hydrate | Inspect `maidan_events` payload JSON; check DB errors in logs |
+| `maidan_bus_notify_hydrate_total{result="invalid_payload"}` | Malformed NOTIFY JSON (not pointer, not legacy envelope) | Find rogue publishers; check NOTIFY payload size and encoding |
+| `maidan_bus_notify_hydrate_total{result="ok"}` flat while events post | Listener not receiving NOTIFY or hydrate path bypassed | Check `maidan_bus_listener_ok`; confirm Postgres bus backend |
+
+Subscribers may still recover via event-log replay (`maidan_subscribe_replay_total`);
+hydrate drops do not change at-most-once NOTIFY semantics.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

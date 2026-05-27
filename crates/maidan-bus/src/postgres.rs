@@ -22,6 +22,7 @@ use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use std::sync::Arc;
 
 use crate::error::BusError;
+use crate::hydrate_stats::{HydrateResult, HydrateStats};
 use crate::item::BusItem;
 use crate::listener_health::ListenerHealth;
 use crate::stream::EventStream;
@@ -59,6 +60,7 @@ pub struct PostgresBus {
     pool: PgPool,
     local: broadcast::Sender<BusEnvelope>,
     listener_health: Arc<ListenerHealth>,
+    hydrate_stats: Arc<HydrateStats>,
 }
 
 impl PostgresBus {
@@ -70,17 +72,19 @@ impl PostgresBus {
         let listener_tx = tx.clone();
         let listener_pool = pool.clone();
         let listener_health = Arc::new(ListenerHealth::default());
+        let hydrate_stats = Arc::new(HydrateStats::default());
 
         let mut listener = PgListener::connect_with(&listener_pool).await?;
         listener.listen(CHANNEL).await?;
 
         let health = listener_health.clone();
+        let stats = hydrate_stats.clone();
         tokio::spawn(async move {
             loop {
                 match listener.recv().await {
                     Ok(note) => {
                         health.record_ok();
-                        match decode_notify_payload(&listener_pool, note.payload()).await {
+                        match decode_notify_payload(&listener_pool, note.payload(), &stats).await {
                             Ok(Some(envelope)) => {
                                 let _ = listener_tx.send(envelope);
                             }
@@ -107,25 +111,49 @@ impl PostgresBus {
             pool,
             local: tx,
             listener_health,
+            hydrate_stats,
         })
     }
 
     pub fn listener_health(&self) -> Arc<ListenerHealth> {
         self.listener_health.clone()
     }
+
+    pub fn hydrate_stats(&self) -> Arc<HydrateStats> {
+        self.hydrate_stats.clone()
+    }
 }
 
 async fn decode_notify_payload(
     pool: &PgPool,
     payload: &str,
+    stats: &HydrateStats,
 ) -> Result<Option<BusEnvelope>, BusError> {
     if let Ok(pointer) = serde_json::from_str::<NotifyPointerPayload>(payload) {
         if pointer.is_pointer() {
-            return hydrate_envelope(pool, pointer.log_id).await.map(Some);
+            return match hydrate_envelope(pool, pointer.log_id).await {
+                Ok(envelope) => {
+                    stats.record(HydrateResult::Ok);
+                    Ok(Some(envelope))
+                }
+                Err(err @ BusError::HydrateNotFound { .. }) => {
+                    stats.record(HydrateResult::NotFound);
+                    Err(err)
+                }
+                Err(err) => {
+                    stats.record(HydrateResult::Failed);
+                    Err(err)
+                }
+            };
         }
     }
-    let envelope: BusEnvelope = serde_json::from_str(payload)?;
-    Ok(Some(envelope))
+    match serde_json::from_str::<BusEnvelope>(payload) {
+        Ok(envelope) => Ok(Some(envelope)),
+        Err(err) => {
+            stats.record(HydrateResult::InvalidPayload);
+            Err(err.into())
+        }
+    }
 }
 
 async fn hydrate_envelope(pool: &PgPool, log_id: i64) -> Result<BusEnvelope, BusError> {

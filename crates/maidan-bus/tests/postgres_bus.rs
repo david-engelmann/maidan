@@ -66,6 +66,8 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
     };
     let stored = store.append_event(&event).await.unwrap();
 
+    let hydrate_before = bus.hydrate_stats().snapshot();
+
     bus.publish(BusEnvelope {
         log_id: stored.id,
         event: event.clone(),
@@ -79,6 +81,8 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
         .expect("stream closed");
 
     assert!(bus.listener_health().check().is_ok());
+    let hydrate_after = bus.hydrate_stats().snapshot();
+    assert!(hydrate_after.ok > hydrate_before.ok);
 
     let BusItem::Event(received) = received else {
         panic!("expected event item");
@@ -91,6 +95,29 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
         }
         other => panic!("expected WorkspaceCreated, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn pointer_notify_for_missing_log_id_increments_not_found_hydrate_stat() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+
+    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let before = bus.hydrate_stats().snapshot();
+    let payload = r#"{"notify":"log_id_v1","log_id":999999999}"#;
+    sqlx::query("SELECT pg_notify($1, $2)")
+        .bind("maidan_events")
+        .bind(payload)
+        .execute(&pool)
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let after = bus.hydrate_stats().snapshot();
+    assert!(after.not_found > before.not_found);
 }
 
 #[tokio::test]

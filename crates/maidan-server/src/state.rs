@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
-use maidan_bus::{EventBus, ListenerHealth};
+use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use maidan_types::PeerId;
@@ -49,6 +49,8 @@ pub struct AppState {
     pub indexer_last_error: Arc<AsyncRwLock<Option<String>>>,
     /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
     pub bus_listener_health: Option<Arc<ListenerHealth>>,
+    /// Postgres NOTIFY hydrate outcomes; `None` when using [`maidan_bus::InMemoryBus`].
+    pub bus_hydrate_stats: Option<Arc<HydrateStats>>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
     /// HMAC secret for subscribe resume tokens (when OIDC is off).
@@ -83,6 +85,7 @@ impl AppState {
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
+            bus_hydrate_stats: None,
             oidc: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),

@@ -40,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let search: Arc<dyn Search>;
     let use_embedding_indexer: bool;
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
+    let bus_hydrate_stats: Option<Arc<maidan_bus::HydrateStats>>;
 
     match dialect {
         Dialect::Postgres => {
@@ -55,6 +56,7 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .context("connect postgres bus")?;
             bus_listener_health = Some(pg_bus.listener_health());
+            bus_hydrate_stats = Some(pg_bus.hydrate_stats());
             tracing::info!("event bus: postgres LISTEN/NOTIFY");
             tracing::info!("search: postgres tsvector");
             store = Arc::new(PostgresStore::new(pool.clone()));
@@ -81,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
             search = Arc::new(SqliteSearch::new(pool));
             use_embedding_indexer = false;
             bus_listener_health = None;
+            bus_hydrate_stats = None;
         }
     };
 
@@ -200,6 +203,7 @@ async fn main() -> anyhow::Result<()> {
         bus_listener_health,
     );
     state.indexer_last_error = indexer_last_error;
+    state.bus_hydrate_stats = bus_hydrate_stats;
     state.oidc = oidc_runtime.map(Arc::new);
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;

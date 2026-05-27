@@ -1,9 +1,11 @@
 //! Prometheus metrics (Track T.4).
 
 use std::{
-    sync::{atomic::Ordering, Once, OnceLock},
+    sync::{atomic::Ordering, Mutex, Once, OnceLock},
     time::Instant,
 };
+
+use maidan_bus::HydrateSnapshot;
 
 use axum::{
     extract::Request,
@@ -20,6 +22,7 @@ use crate::state::AppState;
 
 static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
 static INIT: Once = Once::new();
+static LAST_HYDRATE: Mutex<Option<HydrateSnapshot>> = Mutex::new(None);
 
 /// Install the global metrics recorder (idempotent).
 pub fn init() {
@@ -60,7 +63,36 @@ pub fn init() {
             "maidan_bus_listener_errors_total",
             "Cumulative Postgres LISTEN listener errors since process start"
         );
+        describe_counter!(
+            "maidan_bus_notify_hydrate_total",
+            "Postgres NOTIFY pointer hydrations by outcome"
+        );
     });
+}
+
+fn sync_hydrate_counters(current: HydrateSnapshot) {
+    let mut guard = LAST_HYDRATE.lock().expect("hydrate metrics lock poisoned");
+    let last = guard.unwrap_or_default();
+    increment_hydrate_delta("ok", current.ok, last.ok);
+    increment_hydrate_delta("not_found", current.not_found, last.not_found);
+    increment_hydrate_delta("failed", current.failed, last.failed);
+    increment_hydrate_delta(
+        "invalid_payload",
+        current.invalid_payload,
+        last.invalid_payload,
+    );
+    *guard = Some(current);
+}
+
+fn increment_hydrate_delta(result: &str, current: u64, last: u64) {
+    let delta = current.saturating_sub(last);
+    if delta > 0 {
+        counter!(
+            "maidan_bus_notify_hydrate_total",
+            "result" => result.to_string()
+        )
+        .increment(delta);
+    }
 }
 
 fn refresh_runtime_gauges(state: &AppState) {
@@ -76,6 +108,10 @@ fn refresh_runtime_gauges(state: &AppState) {
         let ok = health.check().is_ok();
         gauge!("maidan_bus_listener_ok").set(if ok { 1.0 } else { 0.0 });
         gauge!("maidan_bus_listener_errors_total").set(health.errors_total() as f64);
+    }
+
+    if let Some(stats) = state.bus_hydrate_stats.as_ref() {
+        sync_hydrate_counters(stats.snapshot());
     }
 }
 

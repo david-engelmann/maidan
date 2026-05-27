@@ -243,6 +243,14 @@ Synthetic publishes (`log_id == 0`) still use the legacy full-envelope NOTIFY
 path (7990-byte cap). At-most-once semantics are unchanged — see [[Decisions]]
 and [[Open Work]].
 
+## Bus hydrate observability at v8.0.0
+
+The Postgres listener increments `maidan_bus_notify_hydrate_total{result}` for
+each pointer hydrate attempt (`ok`, `not_found`, `failed`, `invalid_payload`).
+Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
+(same delta-sync pattern as other bus series). Alert guidance lives in
+[[Production#Bus hydrate metrics]].
+
 ## At v0.6.0 (Cluster G)
 
 - **Federation** — `maidan_peers` registry, `POST /a2a/v1/events` ingest,
