@@ -70,7 +70,13 @@ async fn semantic_search_orders_by_cosine_distance() {
     // (cosine distance 1.0 each).
     let query = one_hot(1);
     let hits = search
-        .semantic_search(fx.workspace_id, &query, 3, &SearchFilters::default())
+        .semantic_search(
+            fx.workspace_id,
+            &query,
+            3,
+            &SearchFilters::default(),
+            "test-model",
+        )
         .await
         .unwrap();
     assert_eq!(hits.len(), 3);
@@ -158,25 +164,32 @@ async fn upsert_replaces_existing_embedding() {
         .await
         .unwrap();
     let hits = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default())
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
+    assert_eq!(hits[0].embedding_model.as_deref(), Some("v1"));
 
-    // Replace at axis 1; query near axis 0 now ranks lower.
+    // Replace at axis 1; stale model rows no longer match.
     search
         .upsert_embedding(msg.id, "v2", &one_hot(1))
         .await
         .unwrap();
+    let stale = search
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
+        .await
+        .unwrap();
+    assert!(stale.is_empty(), "v1 filter should not see v2 row");
+
     let hits = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default())
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v2")
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
     assert!(
         hits[0].rank.abs() < 1e-6,
-        "expected near-zero rank after model swap"
+        "expected near-zero rank for v2 query on v2 embedding"
     );
 }
 
@@ -260,7 +273,13 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
         .unwrap();
 
     let both = search
-        .semantic_search(fx.workspace_id, &axis, 10, &SearchFilters::default())
+        .semantic_search(
+            fx.workspace_id,
+            &axis,
+            10,
+            &SearchFilters::default(),
+            "test-model",
+        )
         .await
         .unwrap();
     assert_eq!(both.len(), 2);
@@ -274,6 +293,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
                 channel_id: Some(fx.general_channel_id),
                 ..SearchFilters::default()
             },
+            "test-model",
         )
         .await
         .unwrap();
@@ -289,6 +309,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
                 author_kind: Some(maidan_types::MemberKind::Human),
                 ..SearchFilters::default()
             },
+            "test-model",
         )
         .await
         .unwrap();
@@ -304,6 +325,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
                 author_kind: Some(maidan_types::MemberKind::Agent),
                 ..SearchFilters::default()
             },
+            "test-model",
         )
         .await
         .unwrap();

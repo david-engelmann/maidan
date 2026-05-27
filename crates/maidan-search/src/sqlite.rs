@@ -102,6 +102,7 @@ impl Search for SqliteSearch {
         _embedding: &[f32],
         _limit: i64,
         _filters: &SearchFilters,
+        _model: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
         Err(SearchError::Unsupported("semantic search on sqlite"))
     }
@@ -118,6 +119,7 @@ fn row_to_hit(row: &sqlx::sqlite::SqliteRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f64, _>("rank"),
+        embedding_model: None,
     }
 }
 

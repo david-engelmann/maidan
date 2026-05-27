@@ -125,7 +125,32 @@ Loop: on `replay_truncated`, reconnect or resubscribe with `after_id` (or a fres
 
 Event envelopes follow: `{ "log_id": <i64>, "kind": "...", ... }`.
 
-| `GET /workspaces/:wid/search` | Search (`q`, optional `author` / `channel` / `kind`, `mode`). Default `mode=lexical`. `mode=semantic` embeds `q` with the configured provider and ranks by cosine similarity (**Postgres only**; `rank` is `1.0 - distance`, higher is better). Facets apply to both lexical and semantic modes on Postgres. On **Postgres** lexical `q`, `"phrase"`, `-word`, or `or` uses `websearch_to_tsquery`; plain words use `plainto_tsquery`. SQLite ignores web operators and rejects `mode=semantic`. |
+## Search (`GET /workspaces/:wid/search`)
+
+| Query param | Notes |
+|-------------|-------|
+| `q` | Required search text. |
+| `mode` | `lexical` (default) or `semantic` (Postgres only). |
+| `author` / `channel` / `kind` | Optional facets (both modes on Postgres). |
+| `limit` | Max hits (default 20). |
+
+**Semantic mode (`v5.0.0`):** embeds `q` with `MAIDAN_EMBEDDING_PROVIDER`, queries only
+rows where `maidan_message_embeddings.model` matches the active provider. Each hit
+includes `embedding_model`. `/health` reports `embedding.model` and `embedding.dimension`.
+
+**Rank field:** higher is always better within a single response, but values are **not
+comparable across `mode` or database backend**:
+
+| Mode / backend | `rank` meaning |
+|----------------|----------------|
+| Lexical Postgres | `ts_rank_cd` (unbounded) |
+| Lexical SQLite | negative BM25 (more negative = better) |
+| Semantic Postgres | `1.0 - cosine_distance` in `[0, 1]` |
+
+After changing embedding providers, re-index or accept that old-model rows are ignored
+until re-upserted under the new model name.
+
+| `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
 | `GET /metrics`    | Prometheus text exposition (HTTP request counters + latency histogram). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
 

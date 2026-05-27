@@ -327,8 +327,17 @@ The CI coverage job now enforces a line-coverage floor with
 
 - Baseline for the initial gate: **9.8%** line coverage from green main
   run `26485125992` (gate set slightly lower at `9.0` to avoid noise).
+- **Cluster 5.0** raised the floor to **`10.0`** after targeted unit tests
+  (filters, subscribe resume, listener health). Re-measure on `main` before
+  the next bump.
 - If the floor needs to move, do it in a dedicated CI/docs PR and note
   the run id used for recalibration.
+
+### Codecov (optional)
+
+When `CODECOV_TOKEN` is configured as a repository secret, the coverage job
+uploads `lcov.info` via `codecov/codecov-action`. Fork PRs and local runs skip
+the upload step. The upload does not fail CI when Codecov is unreachable.
 
 ### `docker compose smoke` fails
 

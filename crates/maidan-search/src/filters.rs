@@ -16,3 +16,35 @@ impl SearchFilters {
         self.author_id.is_none() && self.channel_id.is_none() && self.author_kind.is_none()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maidan_types::{ChannelId, MemberId, MemberKind};
+
+    #[test]
+    fn is_empty_when_no_facets_set() {
+        assert!(SearchFilters::default().is_empty());
+    }
+
+    #[test]
+    fn is_not_empty_when_any_facet_set() {
+        let with_author = SearchFilters {
+            author_id: Some(MemberId(uuid::Uuid::new_v4())),
+            ..Default::default()
+        };
+        assert!(!with_author.is_empty());
+
+        let with_channel = SearchFilters {
+            channel_id: Some(ChannelId(uuid::Uuid::new_v4())),
+            ..Default::default()
+        };
+        assert!(!with_channel.is_empty());
+
+        let with_kind = SearchFilters {
+            author_kind: Some(MemberKind::Agent),
+            ..Default::default()
+        };
+        assert!(!with_kind.is_empty());
+    }
+}

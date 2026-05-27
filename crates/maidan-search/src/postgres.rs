@@ -135,6 +135,7 @@ impl Search for PostgresSearch {
         embedding: &[f32],
         limit: i64,
         filters: &SearchFilters,
+        model: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
         if embedding.len() != EMBEDDING_DIM {
             return Err(SearchError::InvalidQuery(format!(
@@ -165,6 +166,7 @@ impl Search for PostgresSearch {
             JOIN maidan_channels c ON c.id = t.channel_id
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = $1
+              AND e.model = $7
               AND m.tombstoned_at IS NULL
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
@@ -179,10 +181,14 @@ impl Search for PostgresSearch {
         .bind(author_id)
         .bind(channel_id)
         .bind(author_kind)
+        .bind(model)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(row_to_semantic_hit).collect())
+        Ok(rows
+            .iter()
+            .map(|row| row_to_semantic_hit(row, model))
+            .collect())
     }
 }
 
@@ -197,10 +203,11 @@ fn row_to_lexical_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f32, _>("rank") as f64,
+        embedding_model: None,
     }
 }
 
-fn row_to_semantic_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
+fn row_to_semantic_hit(row: &sqlx::postgres::PgRow, model: &str) -> SearchHit {
     SearchHit {
         message_id: MessageId(row.get::<Uuid, _>("message_id")),
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
@@ -211,5 +218,6 @@ fn row_to_semantic_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f64, _>("rank"),
+        embedding_model: Some(model.to_string()),
     }
 }

@@ -46,5 +46,6 @@ pub trait Search: Send + Sync {
         embedding: &[f32],
         limit: i64,
         filters: &SearchFilters,
+        model: &str,
     ) -> Result<Vec<SearchHit>, SearchError>;
 }
