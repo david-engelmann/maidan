@@ -310,3 +310,54 @@ impl EventFilter {
         true
     }
 }
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+    use chrono::Utc;
+    use std::collections::HashSet;
+
+    fn sample_workspace(id: WorkspaceId) -> Workspace {
+        Workspace {
+            id,
+            name: "ws".into(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            tombstoned_at: None,
+        }
+    }
+
+    #[test]
+    fn all_filter_matches_workspace_event() {
+        let ws_id = WorkspaceId(uuid::Uuid::new_v4());
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: sample_workspace(ws_id),
+        };
+        assert!(EventFilter::all().matches(&event));
+        assert!(EventFilter::all().matches_envelope(&BusEnvelope { log_id: 1, event }));
+    }
+
+    #[test]
+    fn workspace_filter_rejects_other_workspace() {
+        let ws_id = WorkspaceId(uuid::Uuid::new_v4());
+        let other = WorkspaceId(uuid::Uuid::new_v4());
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: sample_workspace(ws_id),
+        };
+        assert!(EventFilter::workspace(ws_id).matches(&event));
+        assert!(!EventFilter::workspace(other).matches(&event));
+    }
+
+    #[test]
+    fn kinds_filter_limits_event_kind() {
+        let ws_id = WorkspaceId(uuid::Uuid::new_v4());
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: sample_workspace(ws_id),
+        };
+        let kinds: HashSet<EventKind> = [EventKind::MessagePosted].into_iter().collect();
+        assert!(!EventFilter::all().with_kinds(kinds).matches(&event));
+    }
+}

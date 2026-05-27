@@ -60,4 +60,18 @@ mod tests {
         assert_eq!(snap.not_found, 1);
         assert_eq!(snap.ok, 1);
     }
+
+    #[test]
+    fn all_result_labels_accumulate() {
+        let stats = HydrateStats::default();
+        stats.record(HydrateResult::Ok);
+        stats.record(HydrateResult::NotFound);
+        stats.record(HydrateResult::Failed);
+        stats.record(HydrateResult::InvalidPayload);
+        let snap = stats.snapshot();
+        assert_eq!(snap.ok, 1);
+        assert_eq!(snap.not_found, 1);
+        assert_eq!(snap.failed, 1);
+        assert_eq!(snap.invalid_payload, 1);
+    }
 }

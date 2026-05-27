@@ -16,7 +16,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   RUSTFLAGS: -D warnings
-  COVERAGE_MIN_LINES: "10.0"
+  COVERAGE_MIN_LINES: "10.5"
 
 jobs:
   lint:
