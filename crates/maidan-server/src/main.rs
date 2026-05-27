@@ -219,11 +219,19 @@ async fn main() -> anyhow::Result<()> {
         if let Some(pool) = outbox_pool {
             let relay_bus = bus.clone();
             tokio::spawn(async move {
-                maidan_server::outbox_relay::OutboxRelay::new(pool, relay_bus)
-                    .run()
-                    .await;
+                let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
+                maidan_server::outbox_relay::OutboxRelay::with_max_attempts(
+                    pool,
+                    relay_bus,
+                    max_attempts,
+                )
+                .run()
+                .await;
             });
-            tracing::info!("outbox relay running");
+            tracing::info!(
+                max_attempts = maidan_server::outbox_relay::max_attempts_from_env(),
+                "outbox relay running"
+            );
         }
     }
 

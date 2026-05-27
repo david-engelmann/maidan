@@ -12,15 +12,25 @@ use tracing::warn;
 
 const BATCH: i64 = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+pub const DEFAULT_MAX_ATTEMPTS: u32 = 16;
 
 pub struct OutboxRelay {
     pool: PgPool,
     bus: Arc<dyn EventBus>,
+    max_attempts: u32,
 }
 
 impl OutboxRelay {
     pub fn new(pool: PgPool, bus: Arc<dyn EventBus>) -> Self {
-        Self { pool, bus }
+        Self::with_max_attempts(pool, bus, max_attempts_from_env())
+    }
+
+    pub fn with_max_attempts(pool: PgPool, bus: Arc<dyn EventBus>, max_attempts: u32) -> Self {
+        Self {
+            pool,
+            bus,
+            max_attempts: max_attempts.max(1),
+        }
     }
 
     pub async fn run(self) {
@@ -40,14 +50,29 @@ impl OutboxRelay {
                     counter!("maidan_outbox_relay_total", "result" => "ok").increment(1);
                 }
                 Err(err) => {
-                    counter!("maidan_outbox_relay_total", "result" => "failed").increment(1);
-                    let _ = outbox::record_attempt(&self.pool, row.id).await;
-                    warn!(
-                        outbox_id = row.id,
-                        log_id = row.log_id,
-                        error = %err,
-                        "outbox relay failed"
-                    );
+                    let attempts = outbox::record_attempt(&self.pool, row.id).await?;
+                    if attempts >= self.max_attempts as i32 {
+                        let _ = outbox::quarantine(&self.pool, row.id).await;
+                        counter!("maidan_outbox_relay_total", "result" => "quarantined")
+                            .increment(1);
+                        warn!(
+                            outbox_id = row.id,
+                            log_id = row.log_id,
+                            attempts,
+                            max_attempts = self.max_attempts,
+                            error = %err,
+                            "outbox row quarantined after max relay attempts"
+                        );
+                    } else {
+                        counter!("maidan_outbox_relay_total", "result" => "failed").increment(1);
+                        warn!(
+                            outbox_id = row.id,
+                            log_id = row.log_id,
+                            attempts,
+                            error = %err,
+                            "outbox relay failed"
+                        );
+                    }
                 }
             }
         }
@@ -70,8 +95,26 @@ impl OutboxRelay {
     }
 }
 
+pub fn max_attempts_from_env() -> u32 {
+    std::env::var("MAIDAN_OUTBOX_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_ATTEMPTS)
+}
+
 pub async fn pending_count(pool: &PgPool) -> Result<i64, maidan_store::StoreError> {
     outbox::count_pending(pool).await
+}
+
+pub async fn quarantined_count(pool: &PgPool) -> Result<i64, maidan_store::StoreError> {
+    outbox::count_quarantined(pool).await
+}
+
+pub async fn oldest_pending_age_secs(
+    pool: &PgPool,
+) -> Result<Option<f64>, maidan_store::StoreError> {
+    outbox::oldest_relayable_pending_age_secs(pool).await
 }
 
 #[cfg(test)]
@@ -135,7 +178,8 @@ mod tests {
         let pending = outbox::list_pending(&pool, 1).await.unwrap();
         let row = &pending[0];
 
-        let relay = OutboxRelay::new(pool.clone(), Arc::new(FailingBus::new("injected")));
+        let relay =
+            OutboxRelay::with_max_attempts(pool.clone(), Arc::new(FailingBus::new("injected")), 16);
         relay.run_once().await.unwrap();
 
         assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
@@ -143,5 +187,35 @@ mod tests {
         assert_eq!(after[0].id, row.id);
         assert_eq!(after[0].log_id, stored.id);
         assert_eq!(after[0].attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn relay_quarantines_row_after_max_attempts() {
+        let Some((_container, pool)) = postgres_pool().await else {
+            return;
+        };
+
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(uuid::Uuid::new_v4()),
+                name: "quarantine-ws".into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        };
+        events::append(&pool, &event).await.unwrap();
+
+        let relay =
+            OutboxRelay::with_max_attempts(pool.clone(), Arc::new(FailingBus::new("injected")), 2);
+        relay.run_once().await.unwrap();
+        assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
+        assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 0);
+
+        relay.run_once().await.unwrap();
+        assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+        assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
+        assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
     }
 }

@@ -265,6 +265,14 @@ sequenceDiagram
 `maidan_outbox_pending` and `maidan_outbox_relay_total` on `/metrics`.
 NOTIFY delivery is still at-most-once; see [[Production#Outbox relay]].
 
+## Outbox quarantine at v12.0.0
+
+Relayable rows: `published_at IS NULL AND quarantined_at IS NULL`. After
+`MAIDAN_OUTBOX_MAX_ATTEMPTS` failed publishes, the relay sets `quarantined_at`
+and stops selecting the row. States: **pending** → **published** | **quarantined**.
+Metrics: `maidan_outbox_quarantined`, `maidan_outbox_oldest_pending_seconds`,
+`maidan_outbox_relay_total{result="quarantined"}`.
+
 ## Bus hydrate observability at v8.0.0
 
 The Postgres listener increments `maidan_bus_notify_hydrate_total{result}` for

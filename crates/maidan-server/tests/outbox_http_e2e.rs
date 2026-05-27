@@ -143,6 +143,8 @@ async fn metrics_scrape_reports_outbox_pending_on_postgres() {
         body.contains("maidan_outbox_relay_total"),
         "relay counter should appear after a successful relay tick"
     );
+    assert!(body.contains("maidan_outbox_quarantined"));
+    assert!(body.contains("maidan_outbox_oldest_pending_seconds"));
 
     h.server.abort();
 }
@@ -183,9 +185,11 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
         .await
         .unwrap();
 
-    let relay = OutboxRelay::new(pool.clone(), bus);
+    let relay = OutboxRelay::with_max_attempts(pool.clone(), bus, 2);
     relay.run_once().await.unwrap();
-    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
+    relay.run_once().await.unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+    assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -200,6 +204,7 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
         .await
         .unwrap();
     assert!(body.contains("maidan_outbox_pending"));
+    assert!(body.contains("maidan_outbox_quarantined"));
 
     server.abort();
     drop(container);

@@ -83,6 +83,21 @@ publishes — subscribers must treat `log_id` as idempotent.
 
 **To revisit:** end-to-end exactly-once or consumer dedup tables.
 
+### Outbox quarantine after max relay attempts (`v12.0.0`)
+
+**Decision.** After `MAIDAN_OUTBOX_MAX_ATTEMPTS` (default **16**) failed relay
+publishes, the row is marked `quarantined_at` and excluded from relay batches.
+Operators recover manually (clear quarantine, adjust `attempts`, or re-append);
+rows are never auto-deleted.
+
+**Alternative.** Retry forever; or delete quarantined rows automatically.
+
+**Why this:** poison payloads or prolonged bus outages must not spin the relay
+or inflate `maidan_outbox_pending` indefinitely. NOTIFY remains at-least-once;
+quarantine stops relay only, not subscriber replay.
+
+**To revisit:** admin replay API; consumer dedup tables (Cluster 13).
+
 ### Triggers maintain the lexical index; the indexer is for embeddings
 
 **Decision.** Lexical (`tsvector` / FTS5) indexes are maintained by

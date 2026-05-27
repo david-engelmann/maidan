@@ -75,6 +75,14 @@ pub fn init() {
             "maidan_outbox_relay_total",
             "Outbox relay publish attempts by outcome"
         );
+        describe_gauge!(
+            "maidan_outbox_quarantined",
+            "Outbox rows quarantined after max relay attempts (unpublished)"
+        );
+        describe_gauge!(
+            "maidan_outbox_oldest_pending_seconds",
+            "Age in seconds of the oldest relayable pending outbox row"
+        );
     });
 }
 
@@ -125,6 +133,14 @@ async fn refresh_runtime_gauges(state: &AppState) {
     if let Some(pool) = state.outbox_pool.as_ref() {
         if let Ok(pending) = crate::outbox_relay::pending_count(pool).await {
             gauge!("maidan_outbox_pending").set(pending as f64);
+        }
+        if let Ok(quarantined) = crate::outbox_relay::quarantined_count(pool).await {
+            gauge!("maidan_outbox_quarantined").set(quarantined as f64);
+        }
+        if let Ok(Some(age)) = crate::outbox_relay::oldest_pending_age_secs(pool).await {
+            gauge!("maidan_outbox_oldest_pending_seconds").set(age);
+        } else {
+            gauge!("maidan_outbox_oldest_pending_seconds").set(0.0);
         }
     }
 }
