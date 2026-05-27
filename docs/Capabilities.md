@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v11.0.0 — Coverage 11%
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| CI line-coverage floor at 11.0%                          | `.github/workflows/ci.yml`    |
+| Outbox/relay/publish deferral test coverage               | `maidan-store`, `maidan-server`, `maidan-bus::test_support` |
+| Static UI smoke (`GET /ui/`)                            | `maidan-server/tests/ui_static_e2e` |
+
 ## v10.0.0 — Transactional outbox (Postgres)
 
 | Capability                                              | Surface                       |
