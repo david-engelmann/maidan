@@ -14,12 +14,10 @@ subscribe recovery paths.
 
 ## PRs
 
-| #         | Title                                                                  | Issue |
+| #         | Title                                                                  | PR    |
 |-----------|------------------------------------------------------------------------|-------|
-| 6.0.1     | `feat(maidan-server): Prometheus metrics for subscribe replay paths`   | TBD   |
-| 6.0.2     | `feat(maidan-server): indexer age metric + production stale defaults`  | TBD   |
-| 6.0.3     | `feat(maidan-bus): listener health Prometheus gauges`                   | TBD   |
-| 6.0.4     | `docs: delivery reliability runbook + alerting on subscribe metrics`   | TBD   |
+| kickoff   | `docs: Cluster 6.0 kickoff plan`                                       | #158  |
+| 6.0.1–4   | `feat: Cluster 6.0 delivery reliability metrics and runbooks`          | #159  |
 | 6.0.retro | `docs(retro): Cluster 6.0 retrospective + v6.0.0 tag prep`            | TBD   |
 
 ## Order
