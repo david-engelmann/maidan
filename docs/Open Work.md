@@ -10,9 +10,9 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 - **At-most-once delivery on the event bus.** Postgres
   `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
-  API shipped in Cluster D; subscribers must poll replay on gap —
-  no automatic WS backfill on lag beyond `replay_hint` (v1.1.2); subscribe
-  `after_id` replays from `maidan_events` on connect (v1.1.3).
+  API shipped in Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`**
+  when `filter.workspace_id` is set; clients still need explicit `after_id` or
+  HTTP replay for reconnect/resume beyond that (→ **Cluster 4.0**).
 - **Bootstrap flags are high-impact.** Bootstrap routes are now gated by
   `MAIDAN_BOOTSTRAP=1` when auth is enabled (`v1.4.1`), but leaving
   `AUTH_DISABLED` or bootstrap flags on outside controlled seed windows
@@ -23,8 +23,9 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **PostgresBus listener recovery is best-effort.** `/health/ready` reports
   `bus: error` while the background task is in a retry loop (`v1.1.0`); it
   clears after the next successful `recv`.
-- **No coverage threshold in CI.** `cargo-llvm-cov` uploads `lcov.info` as a
-  CI artifact (Track T.3); no minimum % gate or Codecov upload yet.
+- **Coverage depth is still low.** CI enforces a line floor (`COVERAGE_MIN_LINES`,
+  shipped **`v3.0.0`**); Codecov upload and meaningful % uplift remain open
+  (candidate **Cluster 5**).
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → `v1.3.0+` or `sqlite-vec` when mature.
 - **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
@@ -48,16 +49,20 @@ auto-replay on lag, coverage gate).
 
 Before that: `v2.1.0` OIDC operator hardening — [[Retros/Cluster 2.1]].
 
-## Active plan: next cluster (TBD)
+## Active plan: Cluster 4.0
 
-Choose from backlog/risks below; no cluster plan doc opened yet.
+Subscriber continuity — [[Clusters/Cluster 4.0]] (`v4.0.0`):
+
+- Signed WS/MCP `resume_token` for reconnect without re-sending filter JSON
+- `replay_truncated` when auto-replay hits `REPLAY_LIMIT`
+- OpenAPI + operator docs for the subscribe protocol
 
 ## Still deferred (no owner yet)
 
 | What | Notes |
 |------|-------|
 | Per-model embedding tables / mixed dimensions | Schema + search API |
-| Resumable WS beyond `after_id` | Reconnection tokens beyond `after_id` still deferred; lag auto-replay shipped in **v3.0.0** |
+| Resumable WS beyond `after_id` | **Cluster 4.0** PR 4.0.1 (signed `resume_token`) |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
@@ -72,7 +77,7 @@ Choose from backlog/risks below; no cluster plan doc opened yet.
 ## Known state at this handoff
 
 - **Latest tag (after retro merges):** `v3.0.0` — Search & subscriber depth.
-- **Recommended next:** kick off the next cluster plan (TBD) or tackle standing risks below.
+- **Recommended next:** ship **Cluster 4.0** ([[Clusters/Cluster 4.0]]), then plan Cluster 5 (coverage/search quality).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
