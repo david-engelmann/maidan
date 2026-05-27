@@ -79,3 +79,30 @@ async fn relay_publishes_enqueued_event_to_bus() {
     assert_eq!(envelope.log_id, stored.id);
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
 }
+
+#[tokio::test]
+async fn relay_run_twice_does_not_leave_duplicate_pending_rows() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+
+    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    let event = Event::WorkspaceCreated {
+        occurred_at: Utc::now(),
+        workspace: Workspace {
+            id: WorkspaceId(uuid::Uuid::new_v4()),
+            name: "relay-twice".into(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            tombstoned_at: None,
+        },
+    };
+    events::append(&pool, &event).await.unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
+
+    let relay = OutboxRelay::new(pool.clone(), Arc::new(bus));
+    relay.run_once().await.unwrap();
+    relay.run_once().await.unwrap();
+
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+}

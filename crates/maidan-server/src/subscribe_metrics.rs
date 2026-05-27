@@ -81,4 +81,19 @@ mod tests {
             SubscribeReplayOutcome::ReplayHint,
         );
     }
+
+    #[test]
+    fn record_all_subscribe_replay_outcome_labels() {
+        init_metrics();
+        for transport in [SubscribeTransport::Ws, SubscribeTransport::McpSse] {
+            for outcome in [
+                SubscribeReplayOutcome::AutoReplay,
+                SubscribeReplayOutcome::ReplayHint,
+                SubscribeReplayOutcome::ReplayTruncated,
+                SubscribeReplayOutcome::AutoReplayFailed,
+            ] {
+                record_subscribe_replay(transport, outcome);
+            }
+        }
+    }
 }

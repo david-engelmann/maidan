@@ -333,7 +333,11 @@ The CI coverage job now enforces a line-coverage floor with
 - **Cluster 9.0** raised the floor to **`10.5`** after targeted tests in
   `maidan-types` (`EventFilter`), `maidan-bus` (hydrate/error), `maidan-server`
   (subscribe metrics, hydrate `/metrics` e2e), `maidan-search`, and `maidan-auth`.
-  Full-workspace `11.0` remains the next target once a green CI run confirms headroom.
+- **Cluster 11.0** raised the floor to **`11.0`** after outbox/relay coverage:
+  `maidan-store` outbox integration tests, `maidan-bus` `test_support` doubles,
+  `maidan-server` `publish` deferral unit tests, outbox relay failure path,
+  Postgres HTTP outbox e2e, `/ui/` static e2e, and subscribe metrics label sweep.
+  Re-measure on `main` before the next bump.
 - If the floor needs to move, do it in a dedicated CI/docs PR and note
   the run id used for recalibration.
 
