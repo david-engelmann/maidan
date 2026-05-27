@@ -9,6 +9,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [10.0.0] — 2026-05-27
+
+Major release: Postgres transactional outbox for commit-then-publish ordering.
+
+### Added
+
+- `maidan_outbox` table; `append_event` enqueues outbox rows in the same transaction.
+- `OutboxRelay` background task publishes pending rows via `PostgresBus`.
+- Metrics `maidan_outbox_pending` and `maidan_outbox_relay_total{result}`.
+- Integration tests for outbox enqueue and relay delivery.
+
+### Changed
+
+- Postgres `publish()` defers direct `bus.publish` to the relay; SQLite unchanged.
+- Federation ingest uses a single `publish()` path (fixes double append).
+
 ## [9.0.0] — 2026-05-27
 
 Major release: coverage depth — targeted tests and raised CI line floor.

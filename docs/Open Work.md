@@ -9,9 +9,11 @@ from "open" to "shipped" when the owning release merges its retro PR.
 ## Standing risks (still open)
 
 - **At-most-once delivery on the event bus.** Postgres
-  `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
-  API shipped in Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`**
-  when `filter.workspace_id` is set; reconnect uses signed `resume_token`
+  `LISTEN`/`NOTIFY` is fire-and-forget. **`v10.0.0`** added transactional outbox
+  so commit and enqueue happen together; a relay publishes after commit (relay
+  retries may duplicate NOTIFY). `maidan_events` + replay HTTP API shipped in
+  Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`** when
+  `filter.workspace_id` is set; reconnect uses signed `resume_token`
   (**`v4.0.0`**); `replay_truncated` signals when one replay window is insufficient.
 - **Bootstrap flags are high-impact.** Bootstrap routes are now gated by
   `MAIDAN_BOOTSTRAP=1` when auth is enabled (`v1.4.1`), but leaving
@@ -47,9 +49,11 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v9.0.0`
+## Recently closed: `v10.0.0`
 
-Coverage depth — [[Retros/Cluster 9.0]] (floor 10.5%, targeted tests, Operations docs).
+Postgres transactional outbox — [[Retros/Cluster 10.0]] (outbox TX, relay, metrics, federation fix).
+
+Before that: `v9.0.0` coverage depth — [[Retros/Cluster 9.0]].
 
 Before that: `v8.0.0` bus hydrate observability — [[Retros/Cluster 8.0]].
 
@@ -58,15 +62,6 @@ Before that: `v7.0.0` bus pointer delivery — [[Retros/Cluster 7.0]].
 Before that: `v6.0.0` delivery reliability — [[Retros/Cluster 6.0]].
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
-
-## Active plan: Cluster 10.0
-
-Postgres transactional outbox — [[Clusters/Cluster 10.0]] (`v10.0.0`):
-
-- Outbox schema + enqueue in `append_event` transaction (10.0.1)
-- Relay worker drains pending rows to `PostgresBus` (10.0.2)
-- Integration tests for commit-then-relay delivery (10.0.3)
-- Decisions/Architecture/Production semantics (10.0.4)
 
 ## Still deferred (no owner yet)
 
@@ -87,8 +82,8 @@ Postgres transactional outbox — [[Clusters/Cluster 10.0]] (`v10.0.0`):
 
 ## Known state at this handoff
 
-- **Latest tag:** `v9.0.0` — Coverage depth.
-- **Active cluster:** **Cluster 10.0** — see [[Clusters/Cluster 10.0]].
+- **Latest tag:** `v10.0.0` — Postgres transactional outbox.
+- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

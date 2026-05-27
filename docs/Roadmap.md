@@ -41,10 +41,10 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 10.0** — Postgres transactional outbox → tag **`v10.0.0`**
-(see [[Clusters/Cluster 10.0]]).
+**Active:** ad-hoc backlog in [[Open Work]]; next cluster is open planning.
 
-**Recently closed:** **`v9.0.0`** — coverage depth ([[Retros/Cluster 9.0]]).
+**Recently closed:** **`v10.0.0`** — Postgres transactional outbox ([[Retros/Cluster 10.0]]).
+**Before that:** **`v9.0.0`** — coverage depth ([[Retros/Cluster 9.0]]).
 **Before that:** **`v8.0.0`** — bus hydrate observability ([[Retros/Cluster 8.0]]).
 **Before that:** **`v7.0.0`** — bus pointer delivery ([[Retros/Cluster 7.0]]).
 **Before that:** **`v6.0.0`** — delivery reliability ([[Retros/Cluster 6.0]]).
