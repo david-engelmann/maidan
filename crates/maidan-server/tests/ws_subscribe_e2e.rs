@@ -417,6 +417,14 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
         .await
         .expect("timeout waiting for subscribe_ack");
 
+    // Drain WS in the background so a full send queue cannot block bus lag replay.
+    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::unbounded_channel();
+    let ws_reader = tokio::spawn(async move {
+        while let Some(Ok(Message::Text(payload))) = ws.next().await {
+            let _ = frame_tx.send(payload);
+        }
+    });
+
     let flood_client = client.clone();
     let flood_base = base.clone();
     let flood_wid = workspace_id.clone();
@@ -434,30 +442,33 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
         }
     });
 
+    flood_task.await.unwrap();
+
     let mut saw_channel_created = false;
     let mut saw_replay_hint = false;
     let wait = async {
-        loop {
-            if saw_channel_created && flood_task.is_finished() {
-                break;
-            }
-            if let Some(Ok(Message::Text(payload))) = ws.next().await {
-                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
-                if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
-                    saw_replay_hint = true;
-                } else if is_control_frame(&v) {
-                    continue;
-                } else if v.get("kind").and_then(|k| k.as_str()) == Some("channel_created") {
-                    saw_channel_created = true;
-                    assert!(v["log_id"].as_i64().unwrap() > 0);
-                }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while !saw_channel_created && tokio::time::Instant::now() < deadline {
+            let payload =
+                match tokio::time::timeout(Duration::from_millis(500), frame_rx.recv()).await {
+                    Ok(Some(p)) => p,
+                    Ok(None) | Err(_) => continue,
+                };
+            let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+            if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
+                saw_replay_hint = true;
+            } else if is_control_frame(&v) {
+                continue;
+            } else if v.get("kind").and_then(|k| k.as_str()) == Some("channel_created") {
+                saw_channel_created = true;
+                assert!(v["log_id"].as_i64().unwrap() > 0);
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(20), wait)
+    tokio::time::timeout(Duration::from_secs(12), wait)
         .await
         .expect("timeout waiting for auto-replayed channel_created");
-    flood_task.await.unwrap();
+    ws_reader.abort();
     assert!(saw_channel_created);
     assert!(
         !saw_replay_hint,
