@@ -21,11 +21,9 @@ revisit without promising at-most-once delivery.
 
 | #         | Title                                                                  | Issue |
 |-----------|------------------------------------------------------------------------|-------|
-| 7.0.1     | `feat(maidan-store): get stored event by log_id`                       | TBD   |
-| 7.0.2     | `feat(maidan-bus): Postgres NOTIFY pointer payload + hydrate`          | TBD   |
-| 7.0.3     | `test: postgres bus pointer round-trip and large event delivery`         | TBD   |
-| 7.0.4     | `docs: bus pointer delivery in Architecture/Decisions/Production`      | TBD   |
-| 7.0.retro | `docs(retro): Cluster 7.0 retrospective + v7.0.0 tag prep`            | TBD   |
+| 7.0.1–4   | `feat: Cluster 7.0 bus pointer delivery` (#162)                        | —     |
+| 7.0.kickoff | `docs: Cluster 7.0 kickoff plan` (#161)                                | —     |
+| 7.0.retro | `docs(retro): Cluster 7.0 retrospective + v7.0.0 tag prep` (this PR)   | —     |
 
 ## Order
 

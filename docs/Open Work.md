@@ -36,6 +36,8 @@ from "open" to "shipped" when the owning release merges its retro PR.
 | Release / area | Highlights |
 |----------------|------------|
 | Tracks T–X | See [[Post-1.0]] (closure #121) |
+| **`v7.0.0`** | Postgres bus NOTIFY pointer + hydrate — [[Retros/Cluster 7.0]] |
+| **`v6.0.0`** | Delivery reliability metrics + runbooks — [[Retros/Cluster 6.0]] |
 | **`v5.0.0`** | Coverage floor 10%, Codecov optional, model-aware semantic search — [[Retros/Cluster 5.0]] |
 | **`v1.4.0`** | Bootstrap one-shot gate + OIDC design spike — [[Retros/Minor 1.4]] |
 | **`v1.2.0`** | Embedding provider hook, search facets, Postgres websearch operators — [[Retros/Minor 1.2]] |
@@ -43,20 +45,14 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v6.0.0`
+## Recently closed: `v7.0.0`
 
-Delivery reliability — [[Retros/Cluster 6.0]] (subscribe replay metrics, indexer age, bus listener gauges, runbooks).
+Bus pointer delivery — [[Retros/Cluster 7.0]] (`Store::get_stored_event`, Postgres
+`log_id_v1` NOTIFY + hydrate, large-event publish, docs).
+
+Before that: `v6.0.0` delivery reliability — [[Retros/Cluster 6.0]].
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
-
-## Active plan: Cluster 7.0
-
-Bus pointer delivery — [[Clusters/Cluster 7.0]] (`v7.0.0`):
-
-- `Store::get_stored_event(log_id)` (7.0.1)
-- Postgres `NOTIFY` pointer payload + listener hydrate (7.0.2)
-- Integration tests including large events (7.0.3)
-- Decisions/Architecture/Production updates (7.0.4)
 
 ## Still deferred (no owner yet)
 
@@ -77,8 +73,8 @@ Bus pointer delivery — [[Clusters/Cluster 7.0]] (`v7.0.0`):
 
 ## Known state at this handoff
 
-- **Latest tag:** `v6.0.0` — Delivery reliability.
-- **Active cluster:** **Cluster 7.0** — see [[Clusters/Cluster 7.0]].
+- **Latest tag:** `v7.0.0` — Bus pointer delivery.
+- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

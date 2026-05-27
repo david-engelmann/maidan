@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v7.0.0 — Bus pointer delivery
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| `Store::get_stored_event(log_id)`                       | `maidan-store::Store`         |
+| Postgres NOTIFY `log_id_v1` pointer + hydrate           | `maidan-bus::PostgresBus`     |
+| Large event publish beyond legacy NOTIFY JSON cap       | Postgres bus + `maidan_events` |
+| Bus pointer delivery ops notes                          | [[Production]], [[Architecture]], [[Decisions]] |
+
 ## v6.0.0 — Delivery reliability
 
 | Capability                                              | Surface                       |
