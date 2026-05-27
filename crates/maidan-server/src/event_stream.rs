@@ -1,6 +1,9 @@
 //! Shared helpers for live event delivery (WebSocket, MCP SSE).
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{
+    atomic::{AtomicI64, Ordering},
+    Arc,
+};
 
 use futures::StreamExt;
 use maidan_bus::BusItem;
@@ -89,11 +92,16 @@ pub fn replay_hint_payload(
 }
 
 /// Forward bus items with `log_id` strictly greater than `watermark`.
+///
+/// On [`BusItem::Lagged`], when `filter.workspace_id` is set the server replays
+/// matching rows from `maidan_events` up to [`REPLAY_LIMIT`]. Otherwise it emits
+/// a `replay_hint` frame for manual HTTP replay.
 pub async fn forward_bus_items(
     mut subscriber: maidan_bus::EventStream,
     tx: mpsc::Sender<String>,
-    watermark: std::sync::Arc<AtomicI64>,
-    replay_workspace: Option<maidan_types::WorkspaceId>,
+    watermark: Arc<AtomicI64>,
+    store: Arc<dyn Store>,
+    filter: EventFilter,
 ) {
     while let Some(item) = subscriber.next().await {
         match item {
@@ -116,11 +124,32 @@ pub async fn forward_bus_items(
             }
             BusItem::Lagged { skipped } => {
                 let after_id = watermark.load(Ordering::Relaxed);
-                let Some(payload) = replay_hint_payload(skipped, after_id, replay_workspace) else {
-                    continue;
-                };
-                if tx.send(payload).await.is_err() {
-                    break;
+                if filter.workspace_id.is_some() {
+                    match replay_matching_events(store.as_ref(), &filter, after_id, &tx).await {
+                        Ok(hw) => {
+                            watermark.fetch_max(hw, Ordering::Relaxed);
+                            tracing::info!(
+                                skipped,
+                                after_id,
+                                new_watermark = hw,
+                                "auto-replayed events after bus lag"
+                            );
+                        }
+                        Err(err) => {
+                            tracing::warn!(error = %err, "auto-replay after bus lag failed");
+                            if let Some(payload) =
+                                replay_hint_payload(skipped, after_id, filter.workspace_id)
+                            {
+                                if tx.send(payload).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else if let Some(payload) = replay_hint_payload(skipped, after_id, None) {
+                    if tx.send(payload).await.is_err() {
+                        break;
+                    }
                 }
             }
         }
