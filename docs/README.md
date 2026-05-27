@@ -30,7 +30,7 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[OIDC]] — human login design spike (implementation deferred to `v2.0.0`).
 - [[Query-Tuning]] — Postgres `EXPLAIN` playbook (Track U).
 - [[Glossary]] — domain vocabulary.
-- [[Clusters/Cluster 10.0]] — active cluster (Postgres transactional outbox).
+- [[Clusters/Cluster 10.0]] — closed at `v10.0.0` (Postgres transactional outbox).
 - [[Clusters/Cluster 9.0]] — closed at `v9.0.0` (coverage depth).
 - [[Clusters/Cluster 8.0]] — closed at `v8.0.0` (bus hydrate observability).
 - [[Clusters/Cluster 7.0]] — closed at `v7.0.0` (bus pointer delivery).
