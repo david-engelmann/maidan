@@ -67,6 +67,14 @@ pub fn init() {
             "maidan_bus_notify_hydrate_total",
             "Postgres NOTIFY pointer hydrations by outcome"
         );
+        describe_gauge!(
+            "maidan_outbox_pending",
+            "Unpublished outbox rows awaiting relay (Postgres)"
+        );
+        describe_counter!(
+            "maidan_outbox_relay_total",
+            "Outbox relay publish attempts by outcome"
+        );
     });
 }
 
@@ -95,7 +103,7 @@ fn increment_hydrate_delta(result: &str, current: u64, last: u64) {
     }
 }
 
-fn refresh_runtime_gauges(state: &AppState) {
+async fn refresh_runtime_gauges(state: &AppState) {
     let ms = state.indexer_last_event_unix_ms.load(Ordering::Relaxed);
     let age_secs = if ms == 0 {
         0.0
@@ -113,11 +121,17 @@ fn refresh_runtime_gauges(state: &AppState) {
     if let Some(stats) = state.bus_hydrate_stats.as_ref() {
         sync_hydrate_counters(stats.snapshot());
     }
+
+    if let Some(pool) = state.outbox_pool.as_ref() {
+        if let Ok(pending) = crate::outbox_relay::pending_count(pool).await {
+            gauge!("maidan_outbox_pending").set(pending as f64);
+        }
+    }
 }
 
 /// `GET /metrics` — Prometheus text exposition.
 pub async fn scrape(State(state): State<AppState>) -> impl IntoResponse {
-    refresh_runtime_gauges(&state);
+    refresh_runtime_gauges(&state).await;
     let body = PROMETHEUS
         .get()
         .map(|h| h.render())

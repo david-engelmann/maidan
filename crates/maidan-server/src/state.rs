@@ -51,6 +51,10 @@ pub struct AppState {
     pub bus_listener_health: Option<Arc<ListenerHealth>>,
     /// Postgres NOTIFY hydrate outcomes; `None` when using [`maidan_bus::InMemoryBus`].
     pub bus_hydrate_stats: Option<Arc<HydrateStats>>,
+    /// When true, `publish` enqueues outbox only; [`crate::outbox_relay`] calls `bus.publish`.
+    pub outbox_relay: bool,
+    /// Postgres pool for outbox relay metrics; `None` on SQLite.
+    pub outbox_pool: Option<sqlx::PgPool>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
     /// HMAC secret for subscribe resume tokens (when OIDC is off).
@@ -86,6 +90,8 @@ impl AppState {
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
             bus_hydrate_stats: None,
+            outbox_relay: false,
+            outbox_pool: None,
             oidc: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),

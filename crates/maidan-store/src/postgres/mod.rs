@@ -8,6 +8,7 @@ mod members;
 mod mentions;
 mod messages;
 mod oidc;
+pub mod outbox;
 mod peers;
 mod refs;
 mod sessions;

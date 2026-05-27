@@ -165,6 +165,20 @@ Postgres pointer delivery records hydrate outcomes on `/metrics`:
 Subscribers may still recover via event-log replay (`maidan_subscribe_replay_total`);
 hydrate drops do not change at-most-once NOTIFY semantics.
 
+### Outbox relay (`v10.0.0`)
+
+Postgres deployments enqueue `maidan_outbox` in the same transaction as
+`maidan_events`. A background relay publishes pointers; HTTP handlers do not
+call `bus.publish` directly.
+
+| Metric | Symptom | Suggested action |
+|--------|---------|------------------|
+| `maidan_outbox_pending` high | Relay not keeping up or publish failures | Check relay logs; DB connectivity; `maidan_outbox_relay_total{result="failed"}` |
+| `maidan_outbox_relay_total{result="failed"}` rising | Bus or hydrate errors during relay | Same as hydrate/bus listener troubleshooting |
+| Events in DB but no live subscribers | Pending rows not relayed | Confirm relay task running; inspect stuck `published_at IS NULL` rows |
+
+Relay retries may duplicate NOTIFY; subscribers should dedupe by `log_id`.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

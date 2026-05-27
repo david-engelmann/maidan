@@ -735,14 +735,19 @@ pub async fn revoke_api_token(
 /// to the HTTP caller — the store has already committed, and the bus
 /// being temporarily unavailable should not turn a successful mutation
 /// into a 5xx.
-pub(crate) async fn publish(state: &AppState, event: Event) {
+///
+/// Returns the new `log_id` when append succeeded.
+pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     let stored = match state.store.append_event(&event).await {
         Ok(row) => row,
         Err(err) => {
             tracing::warn!(error = %err, "event log append failed");
-            return;
+            return None;
         }
     };
+    if state.outbox_relay {
+        return Some(stored.id);
+    }
     let envelope = BusEnvelope {
         log_id: stored.id,
         event,
@@ -750,4 +755,5 @@ pub(crate) async fn publish(state: &AppState, event: Event) {
     if let Err(err) = state.bus.publish(envelope).await {
         tracing::warn!(error = %err, "bus publish failed");
     }
+    Some(stored.id)
 }
