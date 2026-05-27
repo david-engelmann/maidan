@@ -11,8 +11,8 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **At-most-once delivery on the event bus.** Postgres
   `LISTEN`/`NOTIFY` is fire-and-forget. `maidan_events` + replay HTTP
   API shipped in Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`**
-  when `filter.workspace_id` is set; clients still need explicit `after_id` or
-  HTTP replay for reconnect/resume beyond that (→ **Cluster 4.0**).
+  when `filter.workspace_id` is set; reconnect uses signed `resume_token`
+  (**`v4.0.0`**); `replay_truncated` signals when one replay window is insufficient.
 - **Bootstrap flags are high-impact.** Bootstrap routes are now gated by
   `MAIDAN_BOOTSTRAP=1` when auth is enabled (`v1.4.1`), but leaving
   `AUTH_DISABLED` or bootstrap flags on outside controlled seed windows
@@ -42,27 +42,23 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v3.0.0`
+## Recently closed: `v4.0.0`
 
-Search & subscriber depth — [[Retros/Cluster 3.0]] (semantic facets, WS/MCP
-auto-replay on lag, coverage gate).
+Subscriber continuity — [[Retros/Cluster 4.0]] (resume tokens, `replay_truncated`, subscribe docs).
 
-Before that: `v2.1.0` OIDC operator hardening — [[Retros/Cluster 2.1]].
+Before that: `v3.0.0` search & subscriber depth — [[Retros/Cluster 3.0]].
 
-## Active plan: Cluster 4.0
+## Active plan
 
-Subscriber continuity — [[Clusters/Cluster 4.0]] (`v4.0.0`):
-
-- Signed WS/MCP `resume_token` for reconnect without re-sending filter JSON
-- `replay_truncated` when auto-replay hits `REPLAY_LIMIT`
-- OpenAPI + operator docs for the subscribe protocol
+**Cluster 5** (candidate) — coverage uplift, Codecov, embedding metadata — see
+[[Clusters/Cluster 4.0#Alternative next cluster]] and standing risks below.
 
 ## Still deferred (no owner yet)
 
 | What | Notes |
 |------|-------|
 | Per-model embedding tables / mixed dimensions | Schema + search API |
-| Resumable WS beyond `after_id` | **Cluster 4.0** PR 4.0.1 (signed `resume_token`) |
+| Resumable WS beyond `after_id` | Shipped **`v4.0.0`** — signed `resume_token` |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
@@ -76,8 +72,8 @@ Subscriber continuity — [[Clusters/Cluster 4.0]] (`v4.0.0`):
 
 ## Known state at this handoff
 
-- **Latest tag (after retro merges):** `v3.0.0` — Search & subscriber depth.
-- **Recommended next:** ship **Cluster 4.0** ([[Clusters/Cluster 4.0]]), then plan Cluster 5 (coverage/search quality).
+- **Latest tag (after retro merges):** `v4.0.0` — Subscriber continuity.
+- **Recommended next:** plan **Cluster 5** (coverage/search quality) or pick from deferred table.
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

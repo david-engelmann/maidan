@@ -15,9 +15,9 @@ requires the client to remember `after_id` and the full filter JSON.
 
 | #         | Title                                                                  | Issue |
 |-----------|------------------------------------------------------------------------|-------|
-| 4.0.1     | `feat(maidan-server): signed subscribe resume tokens (WS + MCP SSE)`   | TBD   |
-| 4.0.2     | `feat(maidan-server): replay_truncated frame after capped auto-replay` | TBD   |
-| 4.0.3     | `feat(maidan-server): OpenAPI + docs for subscribe resume protocol`    | TBD   |
+| 4.0.1     | `feat(maidan-server): signed subscribe resume tokens (WS + MCP SSE)`   | #151  |
+| 4.0.2     | `feat(maidan-server): replay_truncated frame after capped auto-replay` | #152  |
+| 4.0.3     | `feat(maidan-server): OpenAPI + docs for subscribe resume protocol`    | #153  |
 | 4.0.retro | `docs(retro): Cluster 4.0 retrospective + v4.0.0 tag prep`            | TBD   |
 
 ## Order

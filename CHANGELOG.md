@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [4.0.0] — 2026-05-27
+
+Major release: subscriber continuity with signed resume tokens and replay truncation signaling.
+
+### Added
+
+- HMAC-signed `resume_token` and `subscribe_ack` on WebSocket subscribe and MCP SSE (`/mcp/stream`).
+- `replay_truncated` control frame when event-log replay returns 500 rows (`REPLAY_LIMIT`).
+- Production and Architecture documentation for subscribe/resume; OpenAPI `info.description` summary.
+- E2e: resume-token reconnect and `replay_truncated` when the log exceeds one replay window.
+
+### Changed
+
+- Full-profile `compose.yaml` sets `MAIDAN_SESSION_SECRET` so auth-on smoke tests start with resume signing configured.
+
 ## [3.0.0] — 2026-05-27
 
 Major release: search/subscriber depth with semantic facets, automatic lag replay, and a CI coverage floor.

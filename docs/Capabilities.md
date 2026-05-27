@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v4.0.0 — Subscriber continuity
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Signed `resume_token` + `subscribe_ack` (WS + MCP SSE)  | `/ws/subscribe`, `/mcp/stream` |
+| `replay_truncated` when replay hits 500 rows            | `maidan-server::event_stream` |
+| Subscribe/resume operator docs                          | [[Production]], [[Architecture]], OpenAPI `info.description` |
+
 ## v3.0.0 — Search & subscriber depth
 
 | Capability                                              | Surface                       |

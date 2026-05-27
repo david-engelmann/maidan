@@ -41,10 +41,10 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 4.0** — subscriber continuity → tag **`v4.0.0`**
-(see [[Clusters/Cluster 4.0]]).
+**Active:** Plan **Cluster 5** (coverage/search quality) or ad-hoc [[Open Work]].
 
-**Recently closed:** **`v3.0.0`** — search & subscriber depth ([[Retros/Cluster 3.0]]).
+**Recently closed:** **`v4.0.0`** — subscriber continuity ([[Retros/Cluster 4.0]]).
+**Before that:** **`v3.0.0`** — search & subscriber depth ([[Retros/Cluster 3.0]]).
 **Before that:** **`v2.1.0`** — OIDC operator hardening ([[Retros/Cluster 2.1]]).
 
 **Also on deck:** ad-hoc reliability/search backlog in [[Open Work]].
