@@ -46,4 +46,10 @@ mod tests {
     fn or_operator_uses_websearch() {
         assert!(use_websearch_to_tsquery("rust or go"));
     }
+
+    #[test]
+    fn empty_or_whitespace_uses_plainto() {
+        assert!(!use_websearch_to_tsquery(""));
+        assert!(!use_websearch_to_tsquery("   "));
+    }
 }

@@ -57,3 +57,28 @@ pub fn record_subscribe_replay(transport: SubscribeTransport, outcome: Subscribe
     )
     .increment(1);
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Once;
+
+    use super::*;
+
+    static INIT: Once = Once::new();
+
+    fn init_metrics() {
+        INIT.call_once(|| {
+            crate::metrics::init();
+        });
+    }
+
+    #[test]
+    fn record_bus_lag_and_replay_do_not_panic() {
+        init_metrics();
+        record_bus_lag(SubscribeTransport::Ws, 3);
+        record_subscribe_replay(
+            SubscribeTransport::McpSse,
+            SubscribeReplayOutcome::ReplayHint,
+        );
+    }
+}

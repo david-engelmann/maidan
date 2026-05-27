@@ -97,4 +97,11 @@ mod tests {
         let key = parse_key_bytes(&hex).expect("hex key");
         assert_eq!(key, [0xab; 32]);
     }
+
+    #[test]
+    fn decrypt_rejects_wrong_key() {
+        let ct = encrypt_peer_secret("secret", &test_key()).expect("encrypt");
+        let wrong = [0x22; 32];
+        assert!(decrypt_peer_secret(&ct, &wrong).is_err());
+    }
 }

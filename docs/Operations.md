@@ -330,6 +330,10 @@ The CI coverage job now enforces a line-coverage floor with
 - **Cluster 5.0** raised the floor to **`10.0`** after targeted unit tests
   (filters, subscribe resume, listener health). Green run `26492169902` (11.0
   failed on first attempt). Re-measure on `main` before the next bump.
+- **Cluster 9.0** raised the floor to **`10.5`** after targeted tests in
+  `maidan-types` (`EventFilter`), `maidan-bus` (hydrate/error), `maidan-server`
+  (subscribe metrics, hydrate `/metrics` e2e), `maidan-search`, and `maidan-auth`.
+  Full-workspace `11.0` remains the next target once a green CI run confirms headroom.
 - If the floor needs to move, do it in a dedicated CI/docs PR and note
   the run id used for recalibration.
 

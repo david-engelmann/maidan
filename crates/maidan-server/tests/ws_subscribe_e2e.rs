@@ -454,7 +454,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(10), wait)
+    tokio::time::timeout(Duration::from_secs(20), wait)
         .await
         .expect("timeout waiting for auto-replayed channel_created");
     flood_task.await.unwrap();

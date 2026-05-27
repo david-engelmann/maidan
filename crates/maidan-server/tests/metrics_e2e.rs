@@ -3,6 +3,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
+use maidan_bus::{HydrateResult, HydrateStats};
 use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -58,6 +59,56 @@ async fn metrics_endpoint_returns_prometheus_text() {
 
     assert!(body.contains("http_server_request_total"));
     assert!(body.contains("maidan_indexer_last_event_age_seconds"));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn metrics_scrape_exports_hydrate_counters_when_stats_configured() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("foreign_keys");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+
+    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let hydrate_stats = Arc::new(HydrateStats::default());
+    hydrate_stats.record(HydrateResult::NotFound);
+
+    maidan_server::metrics::init();
+    let mut state = AppState::for_tests(store, artifacts, bus, search);
+    state.bus_hydrate_stats = Some(hydrate_stats);
+
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("client");
+
+    let body = client
+        .get(format!("http://{addr}/metrics"))
+        .send()
+        .await
+        .expect("metrics")
+        .text()
+        .await
+        .expect("body");
+
+    assert!(body.contains("maidan_bus_notify_hydrate_total"));
+    assert!(body.contains("not_found"));
 
     server.abort();
 }

@@ -41,7 +41,8 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** ad-hoc backlog in [[Open Work]]; next cluster is open planning.
+**Active:** **Cluster 9.0** — coverage depth → tag **`v9.0.0`**
+(see [[Clusters/Cluster 9.0]]).
 
 **Recently closed:** **`v8.0.0`** — bus hydrate observability ([[Retros/Cluster 8.0]]).
 **Before that:** **`v7.0.0`** — bus pointer delivery ([[Retros/Cluster 7.0]]).
