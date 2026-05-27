@@ -59,6 +59,15 @@ Before that: `v6.0.0` delivery reliability — [[Retros/Cluster 6.0]].
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
+## Active plan: Cluster 10.0
+
+Postgres transactional outbox — [[Clusters/Cluster 10.0]] (`v10.0.0`):
+
+- Outbox schema + enqueue in `append_event` transaction (10.0.1)
+- Relay worker drains pending rows to `PostgresBus` (10.0.2)
+- Integration tests for commit-then-relay delivery (10.0.3)
+- Decisions/Architecture/Production semantics (10.0.4)
+
 ## Still deferred (no owner yet)
 
 | What | Notes |
@@ -79,7 +88,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 ## Known state at this handoff
 
 - **Latest tag:** `v9.0.0` — Coverage depth.
-- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
+- **Active cluster:** **Cluster 10.0** — see [[Clusters/Cluster 10.0]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
