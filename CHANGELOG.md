@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [3.0.0] — 2026-05-27
+
+Major release: search/subscriber depth with semantic facets, automatic lag replay, and a CI coverage floor.
+
+### Added
+
+- Semantic facets on Postgres search (`author`, `channel`, `kind`) for `mode=semantic` on HTTP and MCP.
+- Automatic WS/MCP replay from `maidan_events` when subscribers lag and `workspace_id` scope is present.
+- Coverage gate in CI with `cargo llvm-cov --fail-under-lines` (`COVERAGE_MIN_LINES=9.0`).
+
+### Changed
+
+- `replay_hint` is now a fallback path (no workspace filter or replay failure), not the primary lag path when workspace scope exists.
+- Operations runbook documents the measured baseline (9.8% lines from run `26485125992`) and gate bump policy.
+
 ## [2.1.0] — 2026-05-26
 
 Minor release: OIDC operator hardening after `v2.0.0`.

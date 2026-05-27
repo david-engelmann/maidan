@@ -41,43 +41,38 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v2.1.0`
+## Recently closed: `v3.0.0`
 
-OIDC operator hardening — [[Retros/Cluster 2.1]] (signed cookies, IdP logout,
-OpenAPI auth routes, optional auto-mint).
+Search & subscriber depth — [[Retros/Cluster 3.0]] (semantic facets, WS/MCP
+auto-replay on lag, coverage gate).
 
-Before that: runtime OIDC + human sessions at **`v2.0.0`** — [[Retros/Cluster 2.0]].
+Before that: `v2.1.0` OIDC operator hardening — [[Retros/Cluster 2.1]].
 
-## Active plan: Cluster 3.0
+## Active plan: next cluster (TBD)
 
-Search & subscriber depth — [[Clusters/Cluster 3.0]] (`v3.0.0`):
-
-- Semantic search facets (Postgres)
-- WS/MCP auto-replay on bus lag
-- Coverage minimum gate in CI
+Choose from backlog/risks below; no cluster plan doc opened yet.
 
 ## Still deferred (no owner yet)
 
 | What | Notes |
 |------|-------|
-| Semantic search facets | **Cluster 3.0** PR 3.0.1 ([[Clusters/Cluster 3.0]]) |
 | Per-model embedding tables / mixed dimensions | Schema + search API |
-| Resumable WS beyond `after_id` | Reconnection tokens; bus lag auto-replay → **3.0.2** |
+| Resumable WS beyond `after_id` | Reconnection tokens beyond `after_id` still deferred; lag auto-replay shipped in **v3.0.0** |
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | SSE for MCP `resources/subscribe` | Cluster B retro |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Cluster C retro |
-| Coverage minimum gate | **Cluster 3.0** PR 3.0.3; Codecov upload still deferred |
+| Coverage minimum gate | Shipped in **`v3.0.0`**; Codecov upload still deferred |
 | SQLite file-backed durability tests | Cluster V retro |
 | HorizontalPodAutoscaler manifest | Cluster A retro |
 | Helm chart alternative to Kustomize | Cluster A plan |
 
 ## Known state at this handoff
 
-- **Latest tag (after retro merges):** `v2.1.0` — OIDC operator hardening.
-- **Recommended next:** kick off **Cluster 3.0** or tackle standing risks below.
+- **Latest tag (after retro merges):** `v3.0.0` — Search & subscriber depth.
+- **Recommended next:** kick off the next cluster plan (TBD) or tackle standing risks below.
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

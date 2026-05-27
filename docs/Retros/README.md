@@ -64,3 +64,4 @@ PR review credit; external contributors.
 - [[Minor 1.4]] — Auth hardening. Closed at `v1.4.0`.
 - [[Cluster 2.0]] — OIDC identities and human sessions. Closed at `v2.0.0`.
 - [[Cluster 2.1]] — OIDC operator hardening. Closed at `v2.1.0`.
+- [[Cluster 3.0]] — Search & subscriber depth. Closed at `v3.0.0`.

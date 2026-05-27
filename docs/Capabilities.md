@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v3.0.0 — Search & subscriber depth
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Semantic facets on Postgres (`mode=semantic` + facets) | `GET /workspaces/:wid/search`, MCP `search_messages` |
+| WS/MCP auto-replay on bus lag with workspace filter    | `maidan-server::event_stream`, `/ws/subscribe`, `/mcp/stream` |
+| CI coverage floor (`llvm-cov --fail-under-lines`)      | `.github/workflows/ci.yml`    |
+
 ## v2.1.0 — OIDC operator hardening
 
 | Capability                                              | Surface                       |
