@@ -14,7 +14,7 @@ high `maidan_outbox_pending`.
 
 | #          | Title                                                                  | Issue |
 |------------|------------------------------------------------------------------------|-------|
-| kickoff    | `docs: Cluster 12.0 kickoff plan`                                      | TBD   |
+| kickoff    | `docs: Cluster 12.0 kickoff plan` (#174, refinements in this PR)       | —     |
 | 12.0.1     | `feat(maidan-store): outbox quarantine schema + cap attempts`          | TBD   |
 | 12.0.2     | `feat(maidan-server): relay skips quarantined rows; oldest-pending gauge` | TBD   |
 | 12.0.3     | `test: outbox quarantine and max-attempts integration`                 | TBD   |
@@ -23,18 +23,53 @@ high `maidan_outbox_pending`.
 
 ## Order
 
-1. **12.0.1** — migration (e.g. `quarantined_at TIMESTAMPTZ` on `maidan_outbox`);
-   `MAIDAN_OUTBOX_MAX_ATTEMPTS` (default sensible, e.g. 16); when `attempts >= max`,
-   set `quarantined_at` instead of retrying forever; `list_pending` excludes quarantined.
-2. **12.0.2** — relay respects quarantine; metric
-   `maidan_outbox_quarantined` (gauge count) and `maidan_outbox_oldest_pending_seconds`
-   (age of min pending `created_at`); optional log at quarantine time.
-3. **12.0.3** — testcontainers: poison publish → attempts increment → quarantine →
-   pending count drops from relay batch; oldest-pending gauge moves; relay does not
-   spin on quarantined row.
-4. **12.0.4** — [[Production]] runbook (clear quarantine, replay row); [[Decisions]]
-   ADR snippet; [[Architecture]] one-line relay state diagram.
-5. **12.0.retro** + `v12.0.0` tag.
+### 12.0.1 — store + migration
+
+- Migration **`0014_outbox_quarantine.sql`** (Postgres v14 in `migrate.rs`):
+  - `ALTER TABLE maidan_outbox ADD COLUMN quarantined_at TIMESTAMPTZ;`
+  - Partial index on pending non-quarantined rows (extend `idx_outbox_pending` predicate or add
+    `idx_outbox_relayable` where `published_at IS NULL AND quarantined_at IS NULL`).
+- **`maidan-store/src/postgres/outbox.rs`**:
+  - `list_pending` / `count_pending`: exclude `quarantined_at IS NOT NULL`.
+  - `quarantine(pool, outbox_id)` — set `quarantined_at = NOW()` (idempotent).
+  - `count_quarantined(pool)` — gauge source.
+  - `oldest_pending_created_at(pool)` — for age gauge (nullable if none pending).
+  - After `record_attempt`, if `attempts >= max_attempts`, call `quarantine` (max from env,
+    wired in 12.0.2 or passed into store helper).
+- **`MAIDAN_OUTBOX_MAX_ATTEMPTS`** — default **16**; parse in `maidan-server` `main` (invalid
+  → log + use default). Store on `AppState` for relay.
+
+### 12.0.2 — relay + metrics
+
+- **`OutboxRelay::relay_one` failure path**: after `record_attempt`, if at cap → `quarantine`
+  + `counter!(maidan_outbox_relay_total, result=quarantined)` + warn log with `outbox_id`,
+  `log_id`, `attempts`.
+- **`metrics.rs`**: describe + set in `refresh_runtime_gauges`:
+  - `maidan_outbox_quarantined` (gauge, count of quarantined unpublished rows or all
+    quarantined — pick one and document).
+  - `maidan_outbox_oldest_pending_seconds` (gauge, seconds since oldest relayable
+    `created_at`, 0 when none).
+- **`Production.md`**: env table row for `MAIDAN_OUTBOX_MAX_ATTEMPTS`; triage table rows for
+  new metrics.
+
+### 12.0.3 — tests
+
+- **`maidan-store/tests/outbox.rs`**: attempts reach max → quarantine; `list_pending` skips
+  quarantined; `count_quarantined`.
+- **`maidan-server`**: extend `outbox_relay` unit test or `outbox_http_e2e` — `FailingBus`
+  until quarantine, then pending relayable count 0, quarantined count 1.
+- **`metrics` e2e**: scrape includes new gauges when pool + pending rows exist.
+
+### 12.0.4 — docs
+
+- [[Decisions]] — outbox quarantine ADR (bounded retry, manual recovery, no auto-delete).
+- [[Architecture]] — relay states: pending → published | quarantined.
+- [[Production]] — SQL to inspect quarantined rows; manual recovery (clear `quarantined_at`,
+  reset `attempts`, or delete row + re-append — document safe path).
+
+### 12.0.retro
+
+- Retro, CHANGELOG `v12.0.0`, [[Capabilities]], tag.
 
 ## Exit criteria
 
@@ -71,5 +106,6 @@ high `maidan_outbox_pending`.
 ## References
 
 - Outbox relay: `maidan-server/src/outbox_relay.rs`, `maidan-store/src/postgres/outbox.rs`.
+- Migration v13: `migrations/postgres/0013_outbox.sql`.
 - Cluster 10.0 retro: [[Retros/Cluster 10.0]].
 - Cluster 11.0 tests: `tests/outbox_http_e2e.rs`, `maidan-store/tests/outbox.rs`.
