@@ -69,3 +69,4 @@ PR review credit; external contributors.
 - [[Cluster 5.0]] — Coverage & search quality. Closed at `v5.0.0`.
 - [[Cluster 6.0]] — Delivery reliability. Closed at `v6.0.0`.
 - [[Cluster 7.0]] — Bus pointer delivery. Closed at `v7.0.0`.
+- [[Cluster 8.0]] — Bus hydrate observability. Closed at `v8.0.0`.

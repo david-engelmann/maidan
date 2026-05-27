@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v8.0.0 — Bus hydrate observability
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| `maidan_bus_notify_hydrate_total{result}` on `/metrics` | `maidan-bus::HydrateStats`, `maidan-server::metrics` |
+| Bus hydrate alerting and troubleshooting                | [[Production]], [[Operations]], [[Architecture]] |
+
 ## v7.0.0 — Bus pointer delivery
 
 | Capability                                              | Surface                       |

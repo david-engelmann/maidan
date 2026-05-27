@@ -18,11 +18,9 @@ health gauges; the pointer path still lacks operator-facing counters for
 
 | #         | Title                                                                  | Issue |
 |-----------|------------------------------------------------------------------------|-------|
-| kickoff   | `docs: Cluster 8.0 kickoff plan`                                       | TBD   |
-| 8.0.1     | `feat(maidan-bus): notify hydrate Prometheus counters`                 | TBD   |
-| 8.0.2     | `docs: hydrate alerting and troubleshooting`                           | TBD   |
-| 8.0.3     | `test: hydrate metrics and failure paths`                                | TBD   |
-| 8.0.retro | `docs(retro): Cluster 8.0 retrospective + v8.0.0 tag prep`            | TBD   |
+| 8.0.1–3   | `feat: Cluster 8.0 bus hydrate observability` (#165)                   | —     |
+| kickoff   | `docs: Cluster 8.0 kickoff plan` (#164)                                 | —     |
+| 8.0.retro | `docs(retro): Cluster 8.0 retrospective + v8.0.0 tag prep` (this PR)   | —     |
 
 ## Order
 

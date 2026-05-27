@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [8.0.0] — 2026-05-27
+
+Major release: Postgres bus hydrate observability on `/metrics`.
+
+### Added
+
+- `maidan_bus_notify_hydrate_total{result}` (`ok`, `not_found`, `failed`,
+  `invalid_payload`) for Postgres NOTIFY pointer hydrations.
+- `HydrateStats` in `maidan-bus`; exported via `AppState.bus_hydrate_stats` on scrape.
+- Production/Operations/Architecture hydrate alerting and troubleshooting.
+
+### Changed
+
+- OpenAPI `/metrics` description includes hydrate series (Postgres deployments).
+
 ## [7.0.0] — 2026-05-27
 
 Major release: Postgres bus pointer delivery — NOTIFY carries `log_id`, listener
