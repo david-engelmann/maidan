@@ -243,6 +243,28 @@ Synthetic publishes (`log_id == 0`) still use the legacy full-envelope NOTIFY
 path (7990-byte cap). At-most-once semantics are unchanged — see [[Decisions]]
 and [[Open Work]].
 
+## Transactional outbox at v10.0.0
+
+On Postgres, event append and outbox enqueue share a transaction; a relay
+task publishes to `PostgresBus` after commit:
+
+```mermaid
+sequenceDiagram
+    participant H as HTTP handler
+    participant DB as Postgres TX
+    participant R as Outbox relay
+    participant B as PostgresBus
+
+    H->>DB: INSERT maidan_events + maidan_outbox
+    DB-->>H: commit
+    R->>DB: SELECT pending outbox
+    R->>B: publish(log_id pointer)
+    B->>B: pg_notify + hydrate
+```
+
+`maidan_outbox_pending` and `maidan_outbox_relay_total` on `/metrics`.
+NOTIFY delivery is still at-most-once; see [[Production#Outbox relay]].
+
 ## Bus hydrate observability at v8.0.0
 
 The Postgres listener increments `maidan_bus_notify_hydrate_total{result}` for

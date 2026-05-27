@@ -155,15 +155,16 @@ pub(crate) async fn ingest_envelope(
 
     let mut event = event_from_stored(&envelope.event)?;
     event = remap_event_workspace(event, peer.workspace_id);
-    let stored = state.store.append_event(&event).await?;
+    let Some(log_id) = publish(state, event).await else {
+        return Err(ApiError::Internal("event log append failed".into()));
+    };
     let recorded = state
         .store
-        .try_record_federated_ingest(peer.id, envelope.remote_event_id, stored.id)
+        .try_record_federated_ingest(peer.id, envelope.remote_event_id, log_id)
         .await?;
     if !recorded {
         return Ok(IngestOutcome::SkippedDuplicate);
     }
-    publish(state, event).await;
     Ok(IngestOutcome::Ingested)
 }
 

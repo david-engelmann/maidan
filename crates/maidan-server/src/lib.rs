@@ -19,6 +19,7 @@ pub mod mcp_stream;
 pub mod metrics;
 pub mod oidc;
 pub mod openapi;
+pub mod outbox_relay;
 pub mod request_id;
 pub mod routes;
 pub mod session;
