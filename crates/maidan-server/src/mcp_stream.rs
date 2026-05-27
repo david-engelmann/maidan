@@ -17,7 +17,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 
 use crate::error::ApiError;
-use crate::event_stream::{self, replay_matching_events, subscribe_ack_payload};
+use crate::event_stream::{
+    self, emit_replay_truncated_if_needed, replay_matching_events, subscribe_ack_payload,
+};
 use crate::state::AppState;
 use crate::subscribe_resume;
 
@@ -59,9 +61,17 @@ pub async fn stream(
 
     let mut high_water = after_id;
     if after_id > 0 || from_resume_token {
-        high_water = replay_matching_events(state.store.as_ref(), &filter, after_id, &text_tx)
+        let outcome = replay_matching_events(state.store.as_ref(), &filter, after_id, &text_tx)
             .await
             .map_err(|e| ApiError::Internal(e.to_string()))?;
+        high_water = outcome.high_water;
+        emit_replay_truncated_if_needed(
+            &text_tx,
+            outcome.high_water,
+            filter.workspace_id,
+            outcome.truncated,
+        )
+        .await;
     }
 
     let token = subscribe_resume::sign_resume_token(

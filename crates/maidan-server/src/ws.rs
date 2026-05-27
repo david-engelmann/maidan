@@ -29,7 +29,9 @@ use tokio::{
     time::{timeout, Instant},
 };
 
-use crate::event_stream::{self, replay_matching_events, subscribe_ack_payload};
+use crate::event_stream::{
+    self, emit_replay_truncated_if_needed, replay_matching_events, subscribe_ack_payload,
+};
 use crate::state::AppState;
 use crate::subscribe_resume;
 
@@ -100,7 +102,16 @@ async fn run(mut socket: WebSocket, state: AppState) {
         )
         .await
         {
-            Ok(hw) => high_water = hw,
+            Ok(outcome) => {
+                high_water = outcome.high_water;
+                emit_replay_truncated_if_needed(
+                    &text_tx,
+                    outcome.high_water,
+                    request.filter.workspace_id,
+                    outcome.truncated,
+                )
+                .await;
+            }
             Err(err) => {
                 tracing::warn!(error = %err, "ws replay from event log failed");
                 let _ = socket

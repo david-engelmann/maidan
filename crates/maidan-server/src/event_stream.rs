@@ -14,6 +14,23 @@ use tokio::sync::mpsc;
 
 pub const REPLAY_LIMIT: i64 = 500;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ReplayOutcome {
+    pub high_water: i64,
+    /// `true` when the store returned exactly [`REPLAY_LIMIT`] rows (more may remain).
+    pub truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReplayTruncated {
+    #[serde(rename = "type")]
+    pub frame_type: &'static str,
+    pub after_id: i64,
+    pub limit: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<uuid::Uuid>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ReplayHint {
     #[serde(rename = "type")]
@@ -34,20 +51,50 @@ pub fn envelope_from_stored(stored: &StoredEvent) -> Result<BusEnvelope, serde_j
     })
 }
 
-/// Replay persisted events matching `filter` with `id > after_id`. Returns the
-/// highest `log_id` sent (still `after_id` if nothing matched).
+pub fn replay_truncated_payload(
+    after_id: i64,
+    workspace_id: Option<maidan_types::WorkspaceId>,
+) -> Option<String> {
+    let frame = ReplayTruncated {
+        frame_type: "replay_truncated",
+        after_id,
+        limit: REPLAY_LIMIT,
+        workspace_id: workspace_id.map(|w| w.0),
+    };
+    serde_json::to_string(&frame).ok()
+}
+
+pub async fn emit_replay_truncated_if_needed(
+    tx: &mpsc::Sender<String>,
+    after_id: i64,
+    workspace_id: Option<maidan_types::WorkspaceId>,
+    truncated: bool,
+) {
+    if !truncated {
+        return;
+    }
+    if let Some(payload) = replay_truncated_payload(after_id, workspace_id) {
+        let _ = tx.send(payload).await;
+    }
+}
+
+/// Replay persisted events matching `filter` with `id > after_id`.
 pub async fn replay_matching_events(
     store: &dyn Store,
     filter: &EventFilter,
     after_id: i64,
     tx: &mpsc::Sender<String>,
-) -> Result<i64, maidan_store::StoreError> {
+) -> Result<ReplayOutcome, maidan_store::StoreError> {
     let Some(workspace_id) = filter.workspace_id else {
-        return Ok(after_id);
+        return Ok(ReplayOutcome {
+            high_water: after_id,
+            truncated: false,
+        });
     };
     let rows = store
         .list_events_after(workspace_id, after_id, REPLAY_LIMIT)
         .await?;
+    let truncated = rows.len() as i64 == REPLAY_LIMIT;
     let mut high_water = after_id;
     for row in rows {
         let envelope = match envelope_from_stored(&row) {
@@ -72,7 +119,10 @@ pub async fn replay_matching_events(
         }
         high_water = high_water.max(envelope.log_id);
     }
-    Ok(high_water)
+    Ok(ReplayOutcome {
+        high_water,
+        truncated,
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -143,12 +193,20 @@ pub async fn forward_bus_items(
                 let after_id = watermark.load(Ordering::Relaxed);
                 if filter.workspace_id.is_some() {
                     match replay_matching_events(store.as_ref(), &filter, after_id, &tx).await {
-                        Ok(hw) => {
-                            watermark.fetch_max(hw, Ordering::Relaxed);
+                        Ok(outcome) => {
+                            watermark.fetch_max(outcome.high_water, Ordering::Relaxed);
+                            emit_replay_truncated_if_needed(
+                                &tx,
+                                outcome.high_water,
+                                filter.workspace_id,
+                                outcome.truncated,
+                            )
+                            .await;
                             tracing::info!(
                                 skipped,
                                 after_id,
-                                new_watermark = hw,
+                                new_watermark = outcome.high_water,
+                                truncated = outcome.truncated,
                                 "auto-replayed events after bus lag"
                             );
                         }
@@ -170,5 +228,19 @@ pub async fn forward_bus_items(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replay_truncated_payload_includes_limit_and_watermark() {
+        let payload = replay_truncated_payload(99, None).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(v["type"], "replay_truncated");
+        assert_eq!(v["after_id"], 99);
+        assert_eq!(v["limit"], REPLAY_LIMIT);
     }
 }

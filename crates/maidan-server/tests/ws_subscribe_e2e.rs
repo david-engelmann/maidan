@@ -55,7 +55,7 @@ async fn spawn_server() -> (
 fn is_control_frame(v: &serde_json::Value) -> bool {
     matches!(
         v.get("type").and_then(|t| t.as_str()),
-        Some("subscribe_ack") | Some("replay_hint")
+        Some("subscribe_ack") | Some("replay_hint") | Some("replay_truncated")
     )
 }
 
