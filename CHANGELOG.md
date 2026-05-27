@@ -9,6 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [12.0.0] — 2026-05-27
+
+Major release: outbox relay quarantine and operator metrics.
+
+### Added
+
+- `quarantined_at` on `maidan_outbox`; relay skips quarantined rows.
+- `MAIDAN_OUTBOX_MAX_ATTEMPTS` (default 16) caps failed relay retries.
+- Metrics `maidan_outbox_quarantined`, `maidan_outbox_oldest_pending_seconds`,
+  `maidan_outbox_relay_total{result="quarantined"}`.
+- Production runbook for quarantine triage and manual recovery.
+
 ## [11.0.0] — 2026-05-27
 
 Major release: coverage depth — outbox/relay tests and CI floor at 11%.

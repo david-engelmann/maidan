@@ -73,3 +73,4 @@ PR review credit; external contributors.
 - [[Cluster 9.0]] — Coverage depth. Closed at `v9.0.0`.
 - [[Cluster 10.0]] — Postgres transactional outbox. Closed at `v10.0.0`.
 - [[Cluster 11.0]] — Coverage 11%. Closed at `v11.0.0`.
+- [[Cluster 12.0]] — Outbox relay hardening. Closed at `v12.0.0`.
