@@ -54,6 +54,14 @@ Before that: `v6.0.0` delivery reliability — [[Retros/Cluster 6.0]].
 
 Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
+## Active plan: Cluster 8.0
+
+Bus hydrate observability — [[Clusters/Cluster 8.0]] (`v8.0.0`):
+
+- `maidan_bus_notify_hydrate_total{result}` counters (8.0.1)
+- Production/Operations hydrate alerting and troubleshooting (8.0.2)
+- Integration tests for hydrate failure paths (8.0.3)
+
 ## Still deferred (no owner yet)
 
 | What | Notes |
@@ -74,7 +82,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 ## Known state at this handoff
 
 - **Latest tag:** `v7.0.0` — Bus pointer delivery.
-- **Active cluster:** none — see [[Open Work#Still deferred (no owner yet)]].
+- **Active cluster:** **Cluster 8.0** — see [[Clusters/Cluster 8.0]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
