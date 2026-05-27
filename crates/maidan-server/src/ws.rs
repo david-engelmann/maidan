@@ -3,9 +3,9 @@
 //! Protocol:
 //! 1. Client opens `GET /ws/subscribe` and upgrades.
 //! 2. Client sends one text frame with a JSON [`SubscribeFrame`] body.
-//! 3. Optional `after_id` replays matching rows from `maidan_events` (requires
-//!    `filter.workspace_id`), then live bus events with `log_id` greater than
-//!    the replay watermark.
+//! 3. Optional `after_id` or `resume_token` replays matching rows from
+//!    `maidan_events` (requires `filter.workspace_id`), then a
+//!    `subscribe_ack` with a signed `resume_token`, then live bus events.
 //! 4. Each event frame includes `log_id` plus the externally-tagged event.
 //! 5. On broadcast lag, replay from `maidan_events` when `filter.workspace_id`
 //!    is set; otherwise a `replay_hint` frame (see 1.1.2 / 3.0.2).
@@ -29,8 +29,9 @@ use tokio::{
     time::{timeout, Instant},
 };
 
-use crate::event_stream::{self, replay_matching_events};
+use crate::event_stream::{self, replay_matching_events, subscribe_ack_payload};
 use crate::state::AppState;
+use crate::subscribe_resume;
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(60);
@@ -41,6 +42,9 @@ const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct SubscribeFrame {
     #[serde(default)]
     pub token: Option<String>,
+    #[serde(default)]
+    pub resume_token: Option<String>,
+    #[serde(default)]
     pub filter: EventFilter,
     /// Replay persisted events with `id > after_id` before attaching to the bus.
     #[serde(default)]
@@ -50,6 +54,7 @@ pub struct SubscribeFrame {
 struct SubscribeRequest {
     filter: EventFilter,
     after_id: i64,
+    from_resume_token: bool,
 }
 
 pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -86,7 +91,7 @@ async fn run(mut socket: WebSocket, state: AppState) {
     };
 
     let mut high_water = request.after_id;
-    if request.after_id > 0 {
+    if request.after_id > 0 || request.from_resume_token {
         match replay_matching_events(
             state.store.as_ref(),
             &request.filter,
@@ -106,6 +111,19 @@ async fn run(mut socket: WebSocket, state: AppState) {
                     .await;
                 return;
             }
+        }
+    }
+
+    match send_subscribe_ack(&state, &request.filter, high_water, &text_tx).await {
+        Ok(()) => {}
+        Err(reason) => {
+            let _ = socket
+                .send(WsMessage::Close(Some(CloseFrame {
+                    code: 1011,
+                    reason: Cow::Owned(reason),
+                })))
+                .await;
+            return;
         }
     }
 
@@ -175,6 +193,27 @@ async fn run(mut socket: WebSocket, state: AppState) {
     bus_task.abort();
 }
 
+async fn send_subscribe_ack(
+    state: &AppState,
+    filter: &EventFilter,
+    after_id: i64,
+    text_tx: &mpsc::Sender<String>,
+) -> Result<(), String> {
+    let token = subscribe_resume::sign_resume_token(
+        filter,
+        after_id,
+        state.subscribe_resume_secret(),
+        state.subscribe_resume_ttl_secs,
+    )
+    .map_err(|e| format!("resume token: {e}"))?;
+    let payload = subscribe_ack_payload(&token, after_id)
+        .ok_or_else(|| "subscribe_ack serialization failed".to_string())?;
+    text_tx
+        .send(payload)
+        .await
+        .map_err(|_| "client disconnected before subscribe_ack".to_string())
+}
+
 async fn read_subscribe(
     socket: &mut WebSocket,
     state: &AppState,
@@ -194,15 +233,7 @@ async fn read_subscribe(
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
-    if sub.after_id < 0 {
-        return Err((1008u16, "after_id must be non-negative".into()));
-    }
-    if sub.after_id > 0 && sub.filter.workspace_id.is_none() {
-        return Err((
-            1008u16,
-            "after_id requires filter.workspace_id for replay".into(),
-        ));
-    }
+    let (filter, after_id) = resolve_subscribe_params(&sub, state)?;
 
     if !state.auth_disabled {
         let secret = sub
@@ -215,14 +246,47 @@ async fn read_subscribe(
             .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
         ctx.require_capability(EVENT_SUBSCRIBE)
             .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
-        if let Some(ws) = sub.filter.workspace_id {
+        if let Some(ws) = filter.workspace_id {
             ctx.ensure_workspace(ws)
                 .map_err(|_| (1008u16, "token is not valid for this workspace".into()))?;
         }
     }
 
     Ok(SubscribeRequest {
-        filter: sub.filter,
-        after_id: sub.after_id,
+        filter,
+        after_id,
+        from_resume_token: sub.resume_token.as_deref().is_some_and(|t| !t.is_empty()),
     })
+}
+
+fn resolve_subscribe_params(
+    sub: &SubscribeFrame,
+    state: &AppState,
+) -> Result<(EventFilter, i64), (u16, String)> {
+    if let Some(token) = sub.resume_token.as_deref().filter(|t| !t.is_empty()) {
+        if state.subscribe_resume_secret.is_none() && state.oidc.is_none() {
+            return Err((1011u16, "subscribe resume not configured on server".into()));
+        }
+        let (filter, after_id) =
+            subscribe_resume::verify_resume_token(token, state.subscribe_resume_secret())
+                .map_err(|e| (1008u16, format!("invalid resume_token: {e}")))?;
+        if after_id > 0 && filter.workspace_id.is_none() {
+            return Err((
+                1008u16,
+                "resume token requires filter.workspace_id for replay".into(),
+            ));
+        }
+        return Ok((filter, after_id));
+    }
+
+    if sub.after_id < 0 {
+        return Err((1008u16, "after_id must be non-negative".into()));
+    }
+    if sub.after_id > 0 && sub.filter.workspace_id.is_none() {
+        return Err((
+            1008u16,
+            "after_id requires filter.workspace_id for replay".into(),
+        ));
+    }
+    Ok((sub.filter.clone(), sub.after_id))
 }

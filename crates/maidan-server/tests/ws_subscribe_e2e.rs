@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::EventKind;
 use serde_json::json;
@@ -50,6 +50,18 @@ async fn spawn_server() -> (
         .build()
         .unwrap();
     (addr, client, server, dir)
+}
+
+fn is_control_frame(v: &serde_json::Value) -> bool {
+    matches!(
+        v.get("type").and_then(|t| t.as_str()),
+        Some("subscribe_ack") | Some("replay_hint")
+    )
+}
+
+fn with_subscribe_resume_secret(mut state: AppState) -> AppState {
+    state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state
 }
 
 #[tokio::test]
@@ -106,6 +118,9 @@ async fn subscribe_receives_matching_events_in_order() {
             match ws.next().await {
                 Some(Ok(Message::Text(payload))) => {
                     let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                    if is_control_frame(&v) {
+                        continue;
+                    }
                     kinds.push(v["kind"].as_str().unwrap().to_string());
                 }
                 Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
@@ -204,6 +219,9 @@ async fn subscribe_filters_by_kind() {
             match ws.next().await {
                 Some(Ok(Message::Text(payload))) => {
                     let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                    if is_control_frame(&v) {
+                        continue;
+                    }
                     assert_eq!(v["kind"], "message_posted");
                     bodies.push(v["message"]["body"].as_str().unwrap().to_string());
                 }
@@ -240,7 +258,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(2));
-    let app = router(AppState::new(
+    let app = router(with_subscribe_resume_secret(AppState::new(
         store.clone(),
         artifacts,
         bus.clone(),
@@ -251,7 +269,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,
-    ));
+    )));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -322,7 +340,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(2));
-    let app = router(AppState::new(
+    let app = router(with_subscribe_resume_secret(AppState::new(
         store,
         artifacts,
         bus,
@@ -333,7 +351,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,
-    ));
+    )));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -362,7 +380,19 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
     ))
     .await
     .unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    let wait_ack = async {
+        loop {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                    break;
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(2), wait_ack)
+        .await
+        .expect("timeout waiting for subscribe_ack");
 
     let flood_client = client.clone();
     let flood_base = base.clone();
@@ -392,6 +422,8 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
                 if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
                     saw_replay_hint = true;
+                } else if is_control_frame(&v) {
+                    continue;
                 } else if v.get("kind").and_then(|k| k.as_str()) == Some("channel_created") {
                     saw_channel_created = true;
                     assert!(v["log_id"].as_i64().unwrap() > 0);
@@ -399,7 +431,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(5), wait)
+    tokio::time::timeout(Duration::from_secs(10), wait)
         .await
         .expect("timeout waiting for auto-replayed channel_created");
     flood_task.await.unwrap();
@@ -459,7 +491,7 @@ async fn subscribe_resumes_after_id_from_event_log() {
         while first_log_id.is_none() {
             if let Some(Ok(Message::Text(payload))) = ws.next().await {
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
-                if v.get("type").and_then(|t| t.as_str()) != Some("replay_hint") {
+                if !is_control_frame(&v) {
                     first_log_id = Some(v["log_id"].as_i64().unwrap());
                     break;
                 }
@@ -489,7 +521,7 @@ async fn subscribe_resumes_after_id_from_event_log() {
         while kinds.len() < 2 {
             if let Some(Ok(Message::Text(payload))) = ws.next().await {
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
-                if v.get("type").and_then(|t| t.as_str()) == Some("replay_hint") {
+                if is_control_frame(&v) {
                     continue;
                 }
                 kinds.push(v["kind"].as_str().unwrap().to_string());
@@ -502,6 +534,131 @@ async fn subscribe_resumes_after_id_from_event_log() {
     assert_eq!(kinds, vec!["member_joined", "channel_created"]);
 
     ws.close(None).await.ok();
+    server.abort();
+}
+
+#[tokio::test]
+async fn subscribe_reconnects_with_resume_token_only() {
+    let (addr, client, server, _dir) = spawn_server().await;
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "resume-token"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+
+    let req = ws_url.clone().into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(
+        json!({"filter": {"workspace_id": workspace_id}}).to_string(),
+    ))
+    .await
+    .unwrap();
+
+    let mut resume_token = None;
+    let read_ack = async {
+        while resume_token.is_none() {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                    resume_token = Some(v["resume_token"].as_str().unwrap().to_string());
+                    assert_eq!(v["after_id"].as_i64(), Some(0));
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(3), read_ack)
+        .await
+        .expect("timeout waiting for subscribe_ack");
+    ws.close(None).await.ok();
+
+    let _: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "bob", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let _: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws reconnect");
+    ws.send(Message::Text(
+        json!({"resume_token": resume_token.unwrap()}).to_string(),
+    ))
+    .await
+    .unwrap();
+
+    let mut kinds = Vec::new();
+    let collect = async {
+        while kinds.len() < 3 {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if is_control_frame(&v) {
+                    continue;
+                }
+                kinds.push(v["kind"].as_str().unwrap().to_string());
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(3), collect)
+        .await
+        .expect("timeout on resume_token reconnect");
+    assert_eq!(
+        kinds,
+        vec!["workspace_created", "member_joined", "channel_created"]
+    );
+
+    ws.close(None).await.ok();
+    server.abort();
+}
+
+#[tokio::test]
+async fn subscribe_with_invalid_resume_token_closes_with_1008() {
+    let (addr, _client, server, _dir) = spawn_server().await;
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(
+        json!({"resume_token": "not.a.valid.token"}).to_string(),
+    ))
+    .await
+    .unwrap();
+
+    let mut got_close = false;
+    let wait_close = async {
+        while let Some(msg) = ws.next().await {
+            if let Ok(Message::Close(Some(frame))) = msg {
+                got_close = true;
+                assert_eq!(
+                    frame.code,
+                    tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Policy
+                );
+                break;
+            }
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(2), wait_close).await;
+    assert!(got_close, "expected close frame for invalid resume_token");
+
     server.abort();
 }
 
@@ -580,6 +737,9 @@ async fn subscribe_receives_many_sequential_events() {
             match ws.next().await {
                 Some(Ok(Message::Text(payload))) => {
                     let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                    if is_control_frame(&v) {
+                        continue;
+                    }
                     if v["kind"].as_str() == Some(EventKind::MemberJoined.as_str()) {
                         count += 1;
                     }

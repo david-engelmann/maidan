@@ -169,6 +169,24 @@ async fn main() -> anyhow::Result<()> {
             }
             None => None,
         };
+    let subscribe_resume_secret = if oidc_runtime.is_some() {
+        None
+    } else {
+        match maidan_server::subscribe_resume::secret_from_env() {
+            Ok(s) => Some(s),
+            Err(err) if auth_disabled => {
+                tracing::warn!(
+                    %err,
+                    "subscribe resume uses built-in test secret; set MAIDAN_SESSION_SECRET for production"
+                );
+                Some(Arc::from(
+                    maidan_server::subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET,
+                ))
+            }
+            Err(err) => return Err(err.into()),
+        }
+    };
+    let subscribe_resume_ttl_secs = maidan_server::subscribe_resume::ttl_secs_from_env();
     let mut state = AppState::new(
         store,
         artifacts,
@@ -183,6 +201,8 @@ async fn main() -> anyhow::Result<()> {
     );
     state.indexer_last_error = indexer_last_error;
     state.oidc = oidc_runtime.map(Arc::new);
+    state.subscribe_resume_secret = subscribe_resume_secret;
+    state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
     let app = router(state.clone());
 
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);

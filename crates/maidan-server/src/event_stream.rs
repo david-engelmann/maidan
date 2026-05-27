@@ -75,6 +75,23 @@ pub async fn replay_matching_events(
     Ok(high_water)
 }
 
+#[derive(Debug, Serialize)]
+pub struct SubscribeAck {
+    #[serde(rename = "type")]
+    pub frame_type: &'static str,
+    pub resume_token: String,
+    pub after_id: i64,
+}
+
+pub fn subscribe_ack_payload(resume_token: &str, after_id: i64) -> Option<String> {
+    let ack = SubscribeAck {
+        frame_type: "subscribe_ack",
+        resume_token: resume_token.to_string(),
+        after_id,
+    };
+    serde_json::to_string(&ack).ok()
+}
+
 pub fn replay_hint_payload(
     skipped: u64,
     after_id: i64,
