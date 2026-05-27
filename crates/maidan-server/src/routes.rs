@@ -757,3 +757,79 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     }
     Some(stored.id)
 }
+
+#[cfg(test)]
+mod publish_tests {
+    use std::sync::Arc;
+
+    use chrono::Utc;
+    use maidan_artifacts::LocalFsStore;
+    use maidan_bus::{test_support::RecordingBus, InMemoryBus};
+    use maidan_search::SqliteSearch;
+    use maidan_store::{run_sqlite_migrations, SqliteStore};
+    use maidan_types::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::publish;
+    use crate::state::AppState;
+
+    async fn sqlite_state(bus: Arc<dyn maidan_bus::EventBus>) -> AppState {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect");
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("fk");
+        run_sqlite_migrations(&pool).await.expect("migrate");
+        let store = Arc::new(SqliteStore::new(pool.clone()));
+        let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
+        let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
+        AppState::for_tests(store, artifacts, bus, search)
+    }
+
+    #[tokio::test]
+    async fn publish_calls_bus_when_outbox_relay_disabled() {
+        let inner = Arc::new(InMemoryBus::new());
+        let bus = Arc::new(RecordingBus::new(inner));
+        let mut state = sqlite_state(bus.clone()).await;
+        state.outbox_relay = false;
+
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(uuid::Uuid::new_v4()),
+                name: "pub-ws".into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        };
+        let log_id = publish(&state, event).await;
+        assert!(log_id.is_some());
+        assert_eq!(bus.publishes(), 1);
+    }
+
+    #[tokio::test]
+    async fn publish_skips_bus_when_outbox_relay_enabled() {
+        let inner = Arc::new(InMemoryBus::new());
+        let bus = Arc::new(RecordingBus::new(inner));
+        let mut state = sqlite_state(bus.clone()).await;
+        state.outbox_relay = true;
+
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(uuid::Uuid::new_v4()),
+                name: "defer-ws".into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        };
+        let log_id = publish(&state, event).await;
+        assert!(log_id.is_some());
+        assert_eq!(bus.publishes(), 0);
+    }
+}

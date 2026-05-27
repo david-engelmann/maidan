@@ -73,3 +73,75 @@ impl OutboxRelay {
 pub async fn pending_count(pool: &PgPool) -> Result<i64, maidan_store::StoreError> {
     outbox::count_pending(pool).await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use chrono::Utc;
+    use maidan_bus::test_support::FailingBus;
+    use maidan_store::{postgres::events, postgres::outbox, run_postgres_migrations};
+    use maidan_types::*;
+    use sqlx::postgres::PgPoolOptions;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    use super::*;
+
+    async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, PgPool)> {
+        let container = match Postgres::default()
+            .with_name("pgvector/pgvector")
+            .with_tag("pg17")
+            .start()
+            .await
+        {
+            Ok(c) => c,
+            Err(err) => {
+                eprintln!("skipping outbox_relay unit tests: docker unavailable ({err})");
+                return None;
+            }
+        };
+
+        let host = container.get_host().await.ok()?;
+        let port = container.get_host_port_ipv4(5432).await.ok()?;
+        let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+        let pool = PgPoolOptions::new()
+            .max_connections(4)
+            .acquire_timeout(std::time::Duration::from_secs(15))
+            .connect(&url)
+            .await
+            .ok()?;
+        run_postgres_migrations(&pool).await.ok()?;
+        Some((container, pool))
+    }
+
+    #[tokio::test]
+    async fn relay_failure_increments_attempts_and_leaves_row_pending() {
+        let Some((_container, pool)) = postgres_pool().await else {
+            return;
+        };
+
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(uuid::Uuid::new_v4()),
+                name: "fail-ws".into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        };
+        let stored = events::append(&pool, &event).await.unwrap();
+        let pending = outbox::list_pending(&pool, 1).await.unwrap();
+        let row = &pending[0];
+
+        let relay = OutboxRelay::new(pool.clone(), Arc::new(FailingBus::new("injected")));
+        relay.run_once().await.unwrap();
+
+        assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
+        let after = outbox::list_pending(&pool, 1).await.unwrap();
+        assert_eq!(after[0].id, row.id);
+        assert_eq!(after[0].log_id, stored.id);
+        assert_eq!(after[0].attempts, 1);
+    }
+}

@@ -16,6 +16,8 @@ pub mod item;
 pub mod listener_health;
 pub mod postgres;
 pub mod stream;
+/// Test doubles for integration tests in downstream crates.
+pub mod test_support;
 pub mod traits;
 
 pub use error::BusError;
