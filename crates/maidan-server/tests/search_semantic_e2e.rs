@@ -323,9 +323,9 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .json()
         .await
         .unwrap();
-    assert!(!hits.iter().any(|h| {
-        h["message_id"].as_str() == Some(release_msg.id.0.to_string().as_str())
-    }));
+    assert!(!hits
+        .iter()
+        .any(|h| { h["message_id"].as_str() == Some(release_msg.id.0.to_string().as_str()) }));
 
     let hits: Vec<serde_json::Value> = client
         .get(format!("{base}/workspaces/{}/search", ws.id.0))
