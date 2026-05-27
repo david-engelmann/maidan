@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v12.0.0 — Outbox relay hardening
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Outbox quarantine after max relay attempts              | `maidan_outbox.quarantined_at`, `OutboxRelay` |
+| `MAIDAN_OUTBOX_MAX_ATTEMPTS`                            | `maidan-server` env           |
+| Quarantine / oldest-pending outbox metrics              | `/metrics`                    |
+
 ## v11.0.0 — Coverage 11%
 
 | Capability                                              | Surface                       |

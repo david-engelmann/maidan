@@ -38,6 +38,7 @@ from "open" to "shipped" when the owning release merges its retro PR.
 | Release / area | Highlights |
 |----------------|------------|
 | Tracks T–X | See [[Post-1.0]] (closure #121) |
+| **`v12.0.0`** | Outbox quarantine + max attempts — [[Retros/Cluster 12.0]] |
 | **`v11.0.0`** | Coverage floor 11%, outbox/relay tests — [[Retros/Cluster 11.0]] |
 | **`v9.0.0`** | Coverage floor 10.5%, targeted tests — [[Retros/Cluster 9.0]] |
 | **`v8.0.0`** | Bus hydrate Prometheus counters + runbooks — [[Retros/Cluster 8.0]] |
@@ -50,9 +51,13 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v10.0.0`
+## Recently closed: `v12.0.0`
 
-Postgres transactional outbox — [[Retros/Cluster 10.0]] (outbox TX, relay, metrics, federation fix).
+Outbox relay hardening — [[Retros/Cluster 12.0]] (quarantine, max attempts, metrics).
+
+Before that: `v11.0.0` coverage 11% — [[Retros/Cluster 11.0]].
+
+Before that: `v10.0.0` Postgres transactional outbox — [[Retros/Cluster 10.0]].
 
 Before that: `v9.0.0` coverage depth — [[Retros/Cluster 9.0]].
 
@@ -83,8 +88,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v11.0.0` — coverage 11%.
-- **Active cluster:** **Cluster 12.0** — outbox relay hardening ([[Clusters/Cluster 12.0]]).
+- **Latest tag:** `v12.0.0` — outbox relay hardening.
+- **Active cluster:** **Cluster 13.0** — delivery ledger ([[Clusters/Cluster 13.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

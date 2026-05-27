@@ -15,9 +15,9 @@ coherent capability batch warrants semver + changelog.
 | **W** | Complete | [[Tracks/Track W]] — OpenAPI, mdBook, MCP reference. |
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
-**Recommended order:** **`v11.0.0`** is closed ([[Retros/Cluster 11.0]]).
-**Active:** **Cluster 12.0** ([[Clusters/Cluster 12.0]]) → `v12.0.0`. Then Cluster 13
-(delivery ledger), 14 (epic pick — see Cluster 12 kickoff).
+**Recommended order:** **`v12.0.0`** is closed ([[Retros/Cluster 12.0]]).
+**Active:** **Cluster 13.0** ([[Clusters/Cluster 13.0]]) → `v13.0.0`. Then Cluster 14
+(epic pick).
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 

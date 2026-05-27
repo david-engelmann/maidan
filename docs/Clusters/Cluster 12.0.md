@@ -14,12 +14,9 @@ high `maidan_outbox_pending`.
 
 | #          | Title                                                                  | Issue |
 |------------|------------------------------------------------------------------------|-------|
-| kickoff    | `docs: Cluster 12.0 kickoff plan` (#174, refinements in this PR)       | —     |
-| 12.0.1     | `feat(maidan-store): outbox quarantine schema + cap attempts`          | TBD   |
-| 12.0.2     | `feat(maidan-server): relay skips quarantined rows; oldest-pending gauge` | TBD   |
-| 12.0.3     | `test: outbox quarantine and max-attempts integration`                 | TBD   |
-| 12.0.4     | `docs: outbox failure modes in Production/Decisions`                   | TBD   |
-| 12.0.retro | `docs(retro): Cluster 12.0 retrospective + v12.0.0 tag prep`            | TBD   |
+| 12.0.1–4   | `feat: Cluster 12.0 outbox relay hardening` (#176)                     | —     |
+| kickoff    | `docs: Cluster 12.0 kickoff` (#175)                                    | —     |
+| 12.0.retro | `docs(retro): Cluster 12.0 + v12.0.0 tag prep` (this PR)                | —     |
 
 ## Order
 
