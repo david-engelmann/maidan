@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v6.0.0 — Delivery reliability
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Subscribe lag + replay Prometheus metrics (WS + MCP SSE) | `maidan-server::event_stream`, `/metrics` |
+| Indexer age gauge (`maidan_indexer_last_event_age_seconds`) | `/metrics`, `maidan-server::metrics` |
+| Postgres listener health/error gauges                   | `maidan-bus::ListenerHealth`, `/metrics` |
+| Delivery reliability runbook + alert mapping            | [[Production]], [[Operations]], [[Architecture]] |
+
 ## v5.0.0 — Coverage & search quality
 
 | Capability                                              | Surface                       |

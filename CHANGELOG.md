@@ -9,6 +9,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [6.0.0] — 2026-05-27
+
+Major release: delivery reliability observability for subscribe recovery and
+background task health.
+
+### Added
+
+- Prometheus metrics for subscriber lag/recovery across WebSocket and MCP SSE:
+  `maidan_bus_lag_total`, `maidan_bus_lag_skipped`, and
+  `maidan_subscribe_replay_total{transport,outcome}`.
+- Runtime gauges on `/metrics`: `maidan_indexer_last_event_age_seconds`,
+  `maidan_bus_listener_ok`, and `maidan_bus_listener_errors_total`.
+- Production/Operations/Architecture guidance for delivery reliability alerts and
+  troubleshooting.
+
+### Changed
+
+- Full `compose.yaml` profile now sets `INDEXER_STALE_SECS=300` to surface indexer
+  silence in readiness during smoke-style runs.
+
 ## [5.0.0] — 2026-05-27
 
 Major release: coverage uplift, optional Codecov, and model-aware semantic search.

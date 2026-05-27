@@ -43,20 +43,11 @@ from "open" to "shipped" when the owning release merges its retro PR.
 
 **Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
 
-## Recently closed: `v5.0.0`
+## Recently closed: `v6.0.0`
 
-Coverage & search quality — [[Retros/Cluster 5.0]] (floor 10%, Codecov, model filter, rank docs).
+Delivery reliability — [[Retros/Cluster 6.0]] (subscribe replay metrics, indexer age, bus listener gauges, runbooks).
 
-Before that: `v4.0.0` subscriber continuity — [[Retros/Cluster 4.0]].
-
-## Active plan: Cluster 6.0
-
-Delivery reliability — [[Clusters/Cluster 6.0]] (`v6.0.0`):
-
-- Subscribe replay / bus-lag Prometheus metrics (6.0.1)
-- Indexer age gauge + production `INDEXER_STALE_SECS` guidance (6.0.2)
-- Bus listener health on `/metrics` (6.0.3)
-- Alerting runbook in Production / Operations (6.0.4)
+Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Still deferred (no owner yet)
 
@@ -77,8 +68,8 @@ Delivery reliability — [[Clusters/Cluster 6.0]] (`v6.0.0`):
 
 ## Known state at this handoff
 
-- **Latest tag:** `v5.0.0` — Coverage & search quality.
-- **Active cluster:** **Cluster 6.0** — see [[Clusters/Cluster 6.0]].
+- **Latest tag:** `v6.0.0` — Delivery reliability.
+- **Active cluster:** none — next wave is open planning in [[Open Work]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

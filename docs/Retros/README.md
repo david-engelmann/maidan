@@ -67,3 +67,4 @@ PR review credit; external contributors.
 - [[Cluster 3.0]] — Search & subscriber depth. Closed at `v3.0.0`.
 - [[Cluster 4.0]] — Subscriber continuity. Closed at `v4.0.0`.
 - [[Cluster 5.0]] — Coverage & search quality. Closed at `v5.0.0`.
+- [[Cluster 6.0]] — Delivery reliability. Closed at `v6.0.0`.
