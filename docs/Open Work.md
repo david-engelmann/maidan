@@ -25,9 +25,9 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **PostgresBus listener recovery is best-effort.** `/health/ready` reports
   `bus: error` while the background task is in a retry loop (`v1.1.0`); it
   clears after the next successful `recv`.
-- **Coverage depth is still modest.** CI enforces a **10.5%** line floor
-  (**`v9.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
-  Further uplift toward **11%+** needs a measured bump PR.
+- **Coverage depth is still modest.** CI enforces an **11.0%** line floor
+  (**`v11.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
+  Further incremental uplift is opportunistic.
 - **SQLite has no semantic search.** `Search::semantic_search`
   returns `Unsupported`. → `sqlite-vec` when mature.
 - **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
@@ -38,6 +38,7 @@ from "open" to "shipped" when the owning release merges its retro PR.
 | Release / area | Highlights |
 |----------------|------------|
 | Tracks T–X | See [[Post-1.0]] (closure #121) |
+| **`v11.0.0`** | Coverage floor 11%, outbox/relay tests — [[Retros/Cluster 11.0]] |
 | **`v9.0.0`** | Coverage floor 10.5%, targeted tests — [[Retros/Cluster 9.0]] |
 | **`v8.0.0`** | Bus hydrate Prometheus counters + runbooks — [[Retros/Cluster 8.0]] |
 | **`v7.0.0`** | Postgres bus NOTIFY pointer + hydrate — [[Retros/Cluster 7.0]] |
@@ -82,8 +83,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v10.0.0` — Postgres transactional outbox.
-- **Active cluster:** **Cluster 11.0** — coverage toward 11% ([[Clusters/Cluster 11.0]]).
+- **Latest tag:** `v11.0.0` — coverage 11%.
+- **Active cluster:** **Cluster 12.0** — outbox relay hardening ([[Clusters/Cluster 12.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

@@ -17,11 +17,9 @@ with integration tests but modest unit coverage on failure paths.
 
 | #          | Title                                                                  | Issue |
 |------------|------------------------------------------------------------------------|-------|
-| kickoff    | `docs: Cluster 11.0 kickoff plan`                                      | TBD   |
-| 11.0.1     | `test: coverage depth for outbox and delivery paths`                     | TBD   |
-| 11.0.2     | `ci: raise COVERAGE_MIN_LINES after green measurement`                 | TBD   |
-| 11.0.3     | `docs: Cluster 11.0 coverage bump in Operations`                       | TBD   |
-| 11.0.retro | `docs(retro): Cluster 11.0 retrospective + v11.0.0 tag prep`            | TBD   |
+| 11.0.1–3   | `test: Cluster 11.0 coverage depth and 11% CI floor` (#173)            | —     |
+| kickoff    | `docs: Cluster 11.0 kickoff plan` (#172)                                 | —     |
+| 11.0.retro | `docs(retro): Cluster 11.0 retrospective + v11.0.0 tag prep` (this PR) | —     |
 
 ## Order
 

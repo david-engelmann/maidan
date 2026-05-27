@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [11.0.0] — 2026-05-27
+
+Major release: coverage depth — outbox/relay tests and CI floor at 11%.
+
+### Added
+
+- Postgres outbox integration tests (`record_attempt`, `mark_published`, ordering).
+- `maidan-bus::test_support` bus doubles (`FailingBus`, `RecordingBus`).
+- Server tests: `publish` deferral when `outbox_relay`, relay failure path, HTTP outbox e2e,
+  `/metrics` outbox gauges, `GET /ui/` static e2e.
+
+### Changed
+
+- `COVERAGE_MIN_LINES` raised from **10.5** to **11.0** in CI.
+
 ## [10.0.0] — 2026-05-27
 
 Major release: Postgres transactional outbox for commit-then-publish ordering.

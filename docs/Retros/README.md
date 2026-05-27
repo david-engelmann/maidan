@@ -72,3 +72,4 @@ PR review credit; external contributors.
 - [[Cluster 8.0]] — Bus hydrate observability. Closed at `v8.0.0`.
 - [[Cluster 9.0]] — Coverage depth. Closed at `v9.0.0`.
 - [[Cluster 10.0]] — Postgres transactional outbox. Closed at `v10.0.0`.
+- [[Cluster 11.0]] — Coverage 11%. Closed at `v11.0.0`.
