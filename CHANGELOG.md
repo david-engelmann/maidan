@@ -9,6 +9,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [5.0.0] — 2026-05-27
+
+Major release: coverage uplift, optional Codecov, and model-aware semantic search.
+
+### Added
+
+- Targeted unit tests; CI line-coverage floor raised to **10.0%** (`COVERAGE_MIN_LINES`).
+- Optional Codecov upload from the `llvm-cov` job when `CODECOV_TOKEN` is configured.
+- Postgres `semantic_search` filters embeddings by the active provider `model`.
+- `SearchHit.embedding_model` on semantic hits; `/health` reports embedding model and dimension when enabled.
+- Architecture and Production documentation for lexical vs semantic `rank` semantics.
+
+### Changed
+
+- `Search::semantic_search` takes an explicit `model` argument (breaking for implementors).
+- OpenAPI `SearchHit` schema includes optional `embedding_model`.
+
 ## [4.0.0] — 2026-05-27
 
 Major release: subscriber continuity with signed resume tokens and replay truncation signaling.

@@ -328,8 +328,8 @@ The CI coverage job now enforces a line-coverage floor with
 - Baseline for the initial gate: **9.8%** line coverage from green main
   run `26485125992` (gate set slightly lower at `9.0` to avoid noise).
 - **Cluster 5.0** raised the floor to **`10.0`** after targeted unit tests
-  (filters, subscribe resume, listener health). Re-measure on `main` before
-  the next bump.
+  (filters, subscribe resume, listener health). Green run `26492169902` (11.0
+  failed on first attempt). Re-measure on `main` before the next bump.
 - If the floor needs to move, do it in a dedicated CI/docs PR and note
   the run id used for recalibration.
 
