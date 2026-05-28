@@ -45,7 +45,6 @@ pub async fn stream(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use maidan_mcp::JsonRpcNotification;
     use serde_json::json;
 
