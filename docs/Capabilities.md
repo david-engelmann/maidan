@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v13.0.0 — Delivery contract & subscriber ledger
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Per-consumer delivery cursor (Postgres)                   | `maidan_delivery_cursor`, `Store::advance_delivery_cursor` |
+| Optional `consumer_id` on subscribe                       | `/ws/subscribe`, `/mcp/stream` |
+| Federation delivery cursor per peer                       | `federation:{peer_id}`        |
+
 ## v12.0.0 — Outbox relay hardening
 
 | Capability                                              | Surface                       |

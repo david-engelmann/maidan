@@ -88,8 +88,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v12.0.0` — outbox relay hardening.
-- **Active cluster:** **Cluster 13.0** — delivery ledger ([[Clusters/Cluster 13.0]]).
+- **Latest tag:** `v13.0.0` — delivery ledger (retro PR pending tag cut).
+- **Active cluster:** **Cluster 14.0** — SQLite outbox ([[Clusters/Cluster 14.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
