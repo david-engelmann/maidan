@@ -17,11 +17,7 @@ use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{
-        client::IntoClientRequest,
-        protocol::frame::coding::CloseCode,
-        Message,
-    },
+    tungstenite::{client::IntoClientRequest, protocol::frame::coding::CloseCode, Message},
 };
 
 struct Harness {
@@ -156,12 +152,7 @@ async fn seed_thread(h: &Harness, bearer: &str, workspace_id: &str) -> String {
     th["id"].as_str().unwrap().to_string()
 }
 
-async fn mcp_rpc(
-    h: &Harness,
-    bearer: &str,
-    method: &str,
-    params: Value,
-) -> Value {
+async fn mcp_rpc(h: &Harness, bearer: &str, method: &str, params: Value) -> Value {
     h.client
         .post(format!("{}/mcp", h.base()))
         .header("Authorization", format!("Bearer {bearer}"))
@@ -190,13 +181,7 @@ fn read_only_caps() -> Vec<String> {
 async fn search_without_search_query_returns_403() {
     let h = spawn().await;
     let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
-    let bearer = mint_token(
-        h.store.as_ref(),
-        workspace_id,
-        member_id,
-        read_only_caps(),
-    )
-    .await;
+    let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let ws = workspace_id.0.to_string();
     let resp = h
         .client
@@ -214,13 +199,7 @@ async fn search_without_search_query_returns_403() {
 async fn mcp_post_message_without_message_post_returns_forbidden_jsonrpc() {
     let h = spawn().await;
     let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
-    let bearer = mint_token(
-        h.store.as_ref(),
-        workspace_id,
-        member_id,
-        read_only_caps(),
-    )
-    .await;
+    let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let ws = workspace_id.0.to_string();
     let thread_id = seed_thread(&h, &bearer, &ws).await;
     let member = member_id.0.to_string();
@@ -247,13 +226,7 @@ async fn mcp_post_message_without_message_post_returns_forbidden_jsonrpc() {
 async fn a2a_send_message_without_message_post_returns_jsonrpc_forbidden() {
     let h = spawn().await;
     let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
-    let bearer = mint_token(
-        h.store.as_ref(),
-        workspace_id,
-        member_id,
-        read_only_caps(),
-    )
-    .await;
+    let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let ws = workspace_id.0.to_string();
     let thread_id = seed_thread(&h, &bearer, &ws).await;
 
@@ -289,13 +262,7 @@ async fn a2a_send_message_without_message_post_returns_jsonrpc_forbidden() {
 async fn upload_artifact_without_artifact_upload_returns_403() {
     let h = spawn().await;
     let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
-    let bearer = mint_token(
-        h.store.as_ref(),
-        workspace_id,
-        member_id,
-        read_only_caps(),
-    )
-    .await;
+    let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let resp = h
         .client
         .post(format!("{}/artifacts", h.base()))
@@ -313,13 +280,7 @@ async fn upload_artifact_without_artifact_upload_returns_403() {
 async fn ws_subscribe_without_event_subscribe_closes_with_policy_violation() {
     let h = spawn().await;
     let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
-    let bearer = mint_token(
-        h.store.as_ref(),
-        workspace_id,
-        member_id,
-        read_only_caps(),
-    )
-    .await;
+    let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let ws_url = format!("ws://{}/ws/subscribe", h.addr);
     let (mut ws, _) = connect_async(ws_url.into_client_request().unwrap())
         .await
