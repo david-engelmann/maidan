@@ -85,16 +85,18 @@ async fn a2a_send_message_posts_to_thread_and_get_task_round_trips() {
 
     let a2a = A2aClient::new(&base).unwrap();
     let result = a2a
-        .send_message(serde_json::from_value::<SendMessageRequest>(json!({
-            "message": {
-                "role": "user",
-                "parts": [{ "type": "text", "text": "via a2a" }]
-            },
-            "metadata": {
-                "maidan": { "threadId": thread_id, "authorId": author_id }
-            }
-        }))
-        .unwrap())
+        .send_message(
+            serde_json::from_value::<SendMessageRequest>(json!({
+                "message": {
+                    "role": "user",
+                    "parts": [{ "type": "text", "text": "via a2a" }]
+                },
+                "metadata": {
+                    "maidan": { "threadId": thread_id, "authorId": author_id }
+                }
+            }))
+            .unwrap(),
+        )
         .await
         .unwrap();
     let task_id = result["task"]["id"].as_str().expect("task id");
@@ -115,9 +117,7 @@ async fn a2a_send_message_posts_to_thread_and_get_task_round_trips() {
         .await
         .unwrap();
     assert!(
-        listed
-            .iter()
-            .any(|m| m["body"].as_str() == Some("via a2a")),
+        listed.iter().any(|m| m["body"].as_str() == Some("via a2a")),
         "message body not found"
     );
 }

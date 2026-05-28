@@ -19,8 +19,8 @@ pub use error::{A2aClientError, FederationError};
 pub use outbound::Outbound;
 pub use peer::{validate_base_url, validate_peer_name, NewPeer, Peer};
 pub use protocol::{
-    maidan_context_from_metadata, message_text, A2aMessage, GetTaskRequest, JsonRpcId, TextPart,
+    maidan_context_from_metadata, message_text, A2aMessage, GetTaskRequest, JsonRpcId,
     JsonRpcRequest, JsonRpcResponse, MaidanA2aContext, SendMessageRequest, SendMessageResponse,
-    Task, TaskStatus, METHOD_GET_TASK, METHOD_SEND_MESSAGE, TASK_STATE_COMPLETED,
+    Task, TaskStatus, TextPart, METHOD_GET_TASK, METHOD_SEND_MESSAGE, TASK_STATE_COMPLETED,
 };
 pub use tasks::TaskRegistry;
