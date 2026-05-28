@@ -6,8 +6,8 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, auth, bootstrap, federation, health, mcp, mcp_notifications, mcp_stream, metrics,
-    oidc, openapi, request_id, routes, session, state::AppState, ws,
+    a2a_agent, auth, bootstrap, federation, health, mcp, mcp_notifications, mcp_stream,
+    mcp_streamable, metrics, oidc, openapi, request_id, routes, session, state::AppState, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -27,10 +27,12 @@ pub fn router(state: AppState) -> Router {
 
     let protected = Router::new()
         .route("/mcp", post(mcp::handler))
+        .route("/mcp/streamable", post(mcp_streamable::streamable))
         .route("/a2a/v1/rpc", post(a2a_agent::json_rpc))
         .route("/mcp/notifications", get(mcp_notifications::stream))
         .route("/mcp/stream", get(mcp_stream::stream))
         .route("/workspaces/:id", get(routes::get_workspace))
+        .route("/workspaces/:id/purge", post(routes::purge_workspace))
         .route("/workspaces/:wid/events", get(routes::list_events))
         .route("/workspaces/:wid/search", get(routes::search_messages))
         .route("/workspaces/:wid/members", get(routes::list_members))

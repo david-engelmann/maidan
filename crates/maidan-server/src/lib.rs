@@ -19,6 +19,7 @@ pub mod health;
 pub mod mcp;
 pub mod mcp_notifications;
 pub mod mcp_stream;
+pub mod mcp_streamable;
 pub mod metrics;
 pub mod oidc;
 pub mod openapi;

@@ -1,0 +1,35 @@
+replicaCount: 2
+
+image:
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: maidan.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: maidan-tls
+      hosts:
+        - maidan.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 1Gi
+
+persistence:
+  enabled: true
+  size: 50Gi

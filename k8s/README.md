@@ -2,6 +2,9 @@
 
 Kustomize-based manifests for deploying Maidan.
 
+**Production (main stack):** use the Helm chart at [`helm/maidan/`](../helm/maidan/README.md).
+These Kustomize overlays remain for local/dev reference after Cluster 24.
+
 ## Layout
 
 ```

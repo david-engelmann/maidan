@@ -81,6 +81,32 @@ pub async fn get_workspace(
     Ok(Json(state.store.get_workspace(workspace_id).await?))
 }
 
+pub async fn purge_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<WorkspacePurgeResult>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let result = state.store.purge_workspace_messages(workspace_id).await?;
+    state
+        .store
+        .append_audit(NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "workspace.purge".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({
+                "messages_tombstoned": result.messages_tombstoned,
+                "messages_purged": result.messages_purged,
+            }),
+        })
+        .await?;
+    Ok(Json(result))
+}
+
 pub async fn list_events(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,

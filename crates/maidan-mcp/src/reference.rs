@@ -14,6 +14,7 @@ pub fn markdown() -> String {
          ## Transport\n\n\
          - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)\n\
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
+         - **Streamable HTTP:** `POST /mcp/streamable` (JSON-RPC response + live notifications on one SSE body)\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
          - **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",
@@ -26,7 +27,7 @@ pub fn markdown() -> String {
          - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
          - `prompts/list`, `prompts/get`\n\n\
          **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }` \
-         (stdio after each response; HTTP via `GET /mcp/notifications` SSE). \
+         (stdio after each response; HTTP via `GET /mcp/notifications` or `POST /mcp/streamable`). \
          Mutating tools fan out to related thread/channel/workspace/artifact URIs.\n\n",
     );
 

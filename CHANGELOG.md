@@ -9,6 +9,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [27.0.0] — 2026-05-28
+
+### Added
+
+- MCP streamable HTTP: `POST /mcp/streamable` returns JSON-RPC response then SSE notifications on one connection.
+
+## [26.0.0] — 2026-05-28
+
+### Added
+
+- Product completion checklist and `product_completion_gate_e2e` smoke.
+
+## [25.0.0] — 2026-05-28
+
+### Added
+
+- `POST /workspaces/:id/purge` workspace message erasure with `workspace.purge` audit events.
+
+## [24.0.0] — 2026-05-28
+
+### Added
+
+- `helm/maidan` chart (Deployment, Service, ConfigMap, Secret, Ingress, HPA, PVC) and `scripts/helm-template-smoke.sh`.
+
+## [23.0.0] — 2026-05-28
+
+### Added
+
+- Web UI tabs: events, search, thread FSM transitions, member API token mint.
+
 ## [22.0.0] — 2026-05-28
 
 ### Added

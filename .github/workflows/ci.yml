@@ -41,6 +41,8 @@ jobs:
           tool: cargo-deny
       - name: deny check
         run: cargo deny check
+      - name: helm template smoke
+        run: ./scripts/helm-template-smoke.sh
 
   secrets:
     name: secrets scan

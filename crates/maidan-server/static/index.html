@@ -4,14 +4,19 @@
     <meta charset="utf-8" />
     <title>Maidan</title>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 56rem; }
-      label { display: block; margin-top: 1rem; }
-      input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-      button { margin-top: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; }
-      pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 24rem; }
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 64rem; }
+      label { display: block; margin-top: 0.75rem; }
+      input, select, textarea { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+      button { margin-top: 0.75rem; padding: 0.5rem 1rem; margin-right: 0.5rem; }
+      pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 20rem; }
       .err { color: #b91c1c; }
       .ok { color: #166534; }
       .muted { color: #52525b; font-size: 0.9rem; }
+      .tabs { display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap; }
+      .tabs button { margin: 0; }
+      .tabs button[aria-selected="true"] { font-weight: 600; text-decoration: underline; }
+      .panel { display: none; }
+      .panel.active { display: block; }
       #mint-banner {
         display: none;
         margin-top: 1rem;
@@ -26,118 +31,152 @@
   </head>
   <body>
     <h1>Maidan</h1>
-    <p class="muted">Workspace event tail with OIDC session or bearer token.</p>
+    <p class="muted">Operator UI: events, search, threads, API tokens.</p>
     <label>API base URL <input id="base" value="" /></label>
     <label>Workspace ID <input id="workspace" /></label>
-    <label>Bearer token (optional if logged in) <input id="token" type="password" /></label>
+    <label>Bearer token <input id="token" type="password" /></label>
     <p id="session-status" class="muted">Checking session…</p>
     <div class="row">
       <button id="login" type="button">Sign in with OIDC</button>
       <button id="mint" type="button" hidden>Mint first admin token</button>
       <button id="logout" type="button" hidden>Sign out</button>
-      <button id="load" type="button">Load events</button>
     </div>
     <div id="mint-banner" role="status">
       <strong>Admin token (shown once)</strong>
       <p class="muted">Store this secret now; Maidan will not show it again.</p>
       <code id="mint-secret"></code>
-      <div class="row">
-        <button id="copy-secret" type="button">Copy to clipboard</button>
-      </div>
+      <button id="copy-secret" type="button">Copy to clipboard</button>
     </div>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" data-tab="events" aria-selected="true">Events</button>
+      <button type="button" data-tab="search">Search</button>
+      <button type="button" data-tab="thread">Thread</button>
+      <button type="button" data-tab="tokens">API tokens</button>
+    </nav>
+
+    <section id="panel-events" class="panel active">
+      <button id="load-events" type="button">Load events</button>
+    </section>
+    <section id="panel-search" class="panel">
+      <label>Query <input id="search-q" placeholder="keywords" /></label>
+      <label>Mode
+        <select id="search-mode">
+          <option value="lexical">lexical</option>
+          <option value="semantic">semantic</option>
+        </select>
+      </label>
+      <button id="run-search" type="button">Search</button>
+    </section>
+    <section id="panel-thread" class="panel">
+      <label>Channel ID <input id="channel-id" /></label>
+      <label>Thread ID <input id="thread-id" /></label>
+      <label>Actor member ID <input id="actor-id" /></label>
+      <label>FSM action
+        <select id="fsm-action">
+          <option value="start_review">start_review</option>
+          <option value="close">close</option>
+          <option value="archive">archive</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="load-thread" type="button">Load thread</button>
+        <button id="transition-thread" type="button">Transition</button>
+        <button id="load-messages" type="button">List messages</button>
+      </div>
+    </section>
+    <section id="panel-tokens" class="panel">
+      <label>Member ID <input id="token-member" /></label>
+      <label>Label <input id="token-label" placeholder="optional" /></label>
+      <button id="mint-member-token" type="button">Mint token (token:admin)</button>
+    </section>
+
     <p id="status"></p>
     <pre id="out"></pre>
     <script>
-      const baseInput = document.getElementById("base");
-      baseInput.value = window.location.origin;
       const tokenKey = "maidan_token";
       const wsKey = "maidan_workspace";
-      const loginBtn = document.getElementById("login");
-      const mintBtn = document.getElementById("mint");
-      const logoutBtn = document.getElementById("logout");
-      const mintBanner = document.getElementById("mint-banner");
-      const mintSecretEl = document.getElementById("mint-secret");
+      const baseInput = document.getElementById("base");
+      baseInput.value = window.location.origin;
       document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
       }
-
-      function setSignedIn(signedIn) {
-        loginBtn.hidden = signedIn;
-        logoutBtn.hidden = !signedIn;
-        mintBtn.hidden = !signedIn;
+      function wid() {
+        return document.getElementById("workspace").value.trim();
+      }
+      function persist() {
+        localStorage.setItem(tokenKey, document.getElementById("token").value.trim());
+        localStorage.setItem(wsKey, wid());
+      }
+      function headers(json) {
+        const h = { Accept: "application/json" };
+        if (json) h["Content-Type"] = "application/json";
+        const t = document.getElementById("token").value.trim();
+        if (t) h["Authorization"] = "Bearer " + t;
+        return h;
+      }
+      function setStatus(msg, cls) {
+        document.getElementById("status").textContent = msg;
+        document.getElementById("status").className = cls || "";
+      }
+      function setOut(obj) {
+        document.getElementById("out").textContent =
+          typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
       }
 
-      function showMintedSecret(secret) {
-        document.getElementById("token").value = secret;
-        localStorage.setItem(tokenKey, secret);
-        mintSecretEl.textContent = secret;
-        mintBanner.style.display = "block";
-      }
-
-      async function mintAdminToken() {
-        const status = document.getElementById("status");
-        const out = document.getElementById("out");
-        status.textContent = "Minting…";
-        status.className = "";
-        const res = await fetch(`${base()}/auth/session/mint`, {
-          method: "POST",
-          credentials: "include",
-        });
-        const body = await res.text();
-        if (!res.ok) {
-          status.textContent = `Mint failed (HTTP ${res.status})`;
-          status.className = "err";
-          out.textContent = body;
-          return false;
-        }
-        const parsed = JSON.parse(body);
-        showMintedSecret(parsed.secret);
-        status.textContent = "Admin token minted — copy and store it now.";
-        status.className = "ok";
-        out.textContent = JSON.stringify(parsed, null, 2);
-        return true;
-      }
+      document.querySelectorAll(".tabs button").forEach((btn) => {
+        btn.onclick = () => {
+          document.querySelectorAll(".tabs button").forEach((b) => {
+            b.setAttribute("aria-selected", "false");
+          });
+          btn.setAttribute("aria-selected", "true");
+          document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+          document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+        };
+      });
 
       async function refreshSession() {
         const el = document.getElementById("session-status");
         try {
           const res = await fetch(`${base()}/auth/session`, { credentials: "include" });
           if (!res.ok) {
-            el.textContent = "Not signed in. Use OIDC to open a browser session.";
+            el.textContent = "Not signed in. Use OIDC or paste a bearer token.";
             el.className = "muted";
-            setSignedIn(false);
+            document.getElementById("login").hidden = false;
+            document.getElementById("logout").hidden = true;
+            document.getElementById("mint").hidden = true;
             return null;
           }
           const body = await res.json();
-          el.textContent = `Signed in as member ${body.member_id} (workspace ${body.workspace_id}).`;
+          el.textContent = `Signed in as ${body.member_id} (workspace ${body.workspace_id}).`;
           el.className = "ok";
-          if (!document.getElementById("workspace").value) {
-            document.getElementById("workspace").value = body.workspace_id;
+          if (!wid()) document.getElementById("workspace").value = body.workspace_id;
+          if (!document.getElementById("actor-id").value) {
+            document.getElementById("actor-id").value = body.member_id;
           }
-          setSignedIn(true);
+          if (!document.getElementById("token-member").value) {
+            document.getElementById("token-member").value = body.member_id;
+          }
+          document.getElementById("login").hidden = true;
+          document.getElementById("logout").hidden = false;
+          document.getElementById("mint").hidden = false;
           return body;
         } catch (e) {
           el.textContent = String(e);
           el.className = "err";
-          setSignedIn(false);
           return null;
         }
       }
 
       document.getElementById("login").onclick = () => {
-        const wid = document.getElementById("workspace").value.trim();
-        if (!wid) {
-          alert("Enter a workspace ID first.");
-          return;
-        }
-        localStorage.setItem(wsKey, wid);
+        if (!wid()) return alert("Enter workspace ID first.");
+        persist();
         window.location.href =
-          `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid)}&return_to=/ui/`;
+          `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
       };
-
       document.getElementById("logout").onclick = () => {
         const form = document.createElement("form");
         form.method = "POST";
@@ -145,71 +184,138 @@
         document.body.appendChild(form);
         form.submit();
       };
-
-      document.getElementById("mint").onclick = () => mintAdminToken();
-
-      document.getElementById("copy-secret").onclick = async () => {
-        const secret = mintSecretEl.textContent;
-        if (!secret) return;
-        try {
-          await navigator.clipboard.writeText(secret);
-          document.getElementById("status").textContent = "Copied to clipboard.";
-          document.getElementById("status").className = "ok";
-        } catch (e) {
-          document.getElementById("status").textContent =
-            "Clipboard unavailable — select and copy manually.";
-          document.getElementById("status").className = "err";
+      document.getElementById("mint").onclick = async () => {
+        setStatus("Minting session admin token…");
+        const res = await fetch(`${base()}/auth/session/mint`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`Mint failed (${res.status})`, "err");
+          return setOut(body);
         }
+        const parsed = JSON.parse(body);
+        document.getElementById("token").value = parsed.secret;
+        persist();
+        document.getElementById("mint-banner").style.display = "block";
+        document.getElementById("mint-secret").textContent = parsed.secret;
+        setStatus("Admin token minted — store it now.", "ok");
+        setOut(parsed);
+      };
+      document.getElementById("copy-secret").onclick = () => {
+        const s = document.getElementById("mint-secret").textContent;
+        if (s) navigator.clipboard.writeText(s);
       };
 
-      document.getElementById("load").onclick = async () => {
-        const status = document.getElementById("status");
-        const out = document.getElementById("out");
-        const b = base();
-        const token = document.getElementById("token").value.trim();
-        const wid = document.getElementById("workspace").value.trim();
-        localStorage.setItem(tokenKey, token);
-        localStorage.setItem(wsKey, wid);
-        status.textContent = "Loading…";
-        status.className = "";
-        out.textContent = "";
-        const headers = { Accept: "application/json" };
-        if (token) headers["Authorization"] = "Bearer " + token;
-        const url = token
-          ? `${b}/workspaces/${wid}/events?after_id=0&limit=50`
-          : `${b}/ui/api/workspaces/${wid}/events?after_id=0&limit=50`;
-        try {
-          const res = await fetch(url, { headers, credentials: "include" });
-          const body = await res.text();
-          if (!res.ok) {
-            status.textContent = `HTTP ${res.status}`;
-            status.className = "err";
-            out.textContent = body;
-            return;
-          }
-          status.textContent = "OK";
-          status.className = "ok";
-          out.textContent = JSON.stringify(JSON.parse(body), null, 2);
-        } catch (e) {
-          status.textContent = String(e);
-          status.className = "err";
+      document.getElementById("load-events").onclick = async () => {
+        persist();
+        setStatus("Loading events…");
+        const t = document.getElementById("token").value.trim();
+        const url = t
+          ? `${base()}/workspaces/${wid()}/events?after_id=0&limit=50`
+          : `${base()}/ui/api/workspaces/${wid()}/events?after_id=0&limit=50`;
+        const res = await fetch(url, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
         }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
       };
 
-      (async () => {
-        const params = new URLSearchParams(window.location.search);
-        const autoMint = params.get("auto_mint") === "1";
-        if (autoMint) {
-          params.delete("auto_mint");
-          const qs = params.toString();
-          const path = window.location.pathname + (qs ? `?${qs}` : "");
-          window.history.replaceState({}, "", path);
+      document.getElementById("run-search").onclick = async () => {
+        persist();
+        const q = document.getElementById("search-q").value.trim();
+        const mode = document.getElementById("search-mode").value;
+        setStatus("Searching…");
+        const res = await fetch(
+          `${base()}/workspaces/${wid()}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=20`,
+          { headers: headers() }
+        );
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
         }
-        await refreshSession();
-        if (autoMint) {
-          await mintAdminToken();
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("load-thread").onclick = async () => {
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        setStatus("Loading thread…");
+        const res = await fetch(`${base()}/threads/${id}`, { headers: headers() });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
         }
-      })();
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("transition-thread").onclick = async () => {
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        const actor = document.getElementById("actor-id").value.trim();
+        const action = document.getElementById("fsm-action").value;
+        setStatus("Transitioning…");
+        const res = await fetch(`${base()}/threads/${id}`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ action, actor_id: actor }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("load-messages").onclick = async () => {
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        setStatus("Loading messages…");
+        const res = await fetch(`${base()}/threads/${id}/messages?limit=50`, {
+          headers: headers(),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("mint-member-token").onclick = async () => {
+        persist();
+        const mid = document.getElementById("token-member").value.trim();
+        const label = document.getElementById("token-label").value.trim();
+        setStatus("Minting API token…");
+        const res = await fetch(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ label: label || null, capabilities: [] }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        document.getElementById("token").value = parsed.secret;
+        persist();
+        setStatus("Token minted — secret shown once.", "ok");
+        setOut(parsed);
+      };
+
+      refreshSession();
     </script>
   </body>
 </html>

@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberId, Message, MessageId, NewMessage, ThreadId};
+use maidan_types::{
+    MemberId, Message, MessageId, NewMessage, ThreadId, WorkspaceId, WorkspacePurgeResult,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -63,6 +65,43 @@ pub async fn purge(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
         return Err(StoreError::NotFound);
     }
     Ok(())
+}
+
+pub async fn purge_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<WorkspacePurgeResult, StoreError> {
+    let tombstone = sqlx::query(
+        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = ''
+         WHERE tombstoned_at IS NULL
+           AND thread_id IN (
+             SELECT t.id FROM maidan_threads t
+             INNER JOIN maidan_channels c ON t.channel_id = c.id
+             WHERE c.workspace_id = $1
+           )",
+    )
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?;
+    let purge = sqlx::query(
+        "DELETE FROM maidan_messages
+         WHERE tombstoned_at IS NOT NULL
+           AND thread_id IN (
+             SELECT t.id FROM maidan_threads t
+             INNER JOIN maidan_channels c ON t.channel_id = c.id
+             WHERE c.workspace_id = $1
+           )",
+    )
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?;
+    let occurred_at = Utc::now();
+    Ok(WorkspacePurgeResult {
+        workspace_id,
+        messages_tombstoned: tombstone.rows_affected(),
+        messages_purged: purge.rows_affected(),
+        occurred_at,
+    })
 }
 
 pub async fn tombstone(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
