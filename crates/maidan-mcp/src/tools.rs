@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
-use maidan_artifacts::ArtifactStore;
+use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store};
 use maidan_auth::capability::{
     ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE,
 };
@@ -25,7 +25,11 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         }
         "post_message" => Ok(MESSAGE_POST),
         "record_mention" | "cast_vote" | "add_reference" => Ok(WORKSPACE_WRITE),
-        "upload_artifact" => Ok(ARTIFACT_UPLOAD),
+        "upload_artifact"
+        | "begin_artifact_multipart"
+        | "upload_artifact_multipart_part"
+        | "complete_artifact_multipart"
+        | "abort_artifact_multipart" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -141,6 +145,66 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "begin_artifact_multipart",
+            "description": "Start an S3 multipart upload for a large artifact (requires S3 backend).",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
+            "name": "upload_artifact_multipart_part",
+            "description": "Upload one part of an in-progress multipart artifact.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"},
+                    "part_number": {"type": "integer", "minimum": 1},
+                    "content_base64": {"type": "string"}
+                },
+                "required": ["upload_id", "object_key", "part_number", "content_base64"]
+            }
+        }),
+        json!({
+            "name": "complete_artifact_multipart",
+            "description": "Finish multipart upload, content-address bytes, and register artifact metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"},
+                    "parts": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "part_number": {"type": "integer"},
+                                "etag": {"type": "string"}
+                            },
+                            "required": ["part_number", "etag"]
+                        }
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
+                    },
+                    "mime_type": {"type": "string"},
+                    "uploaded_by": {"type": "string", "format": "uuid"}
+                },
+                "required": ["upload_id", "object_key", "parts", "kind"]
+            }
+        }),
+        json!({
+            "name": "abort_artifact_multipart",
+            "description": "Abort a failed multipart upload.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"}
+                },
+                "required": ["upload_id", "object_key"]
+            }
+        }),
+        json!({
             "name": "get_artifact_metadata",
             "description": "Fetch artifact metadata by sha256 hex digest.",
             "inputSchema": {
@@ -193,6 +257,10 @@ pub async fn dispatch(
         "cast_vote" => cast_vote(store, args).await,
         "add_reference" => add_reference(store, args).await,
         "upload_artifact" => upload_artifact(store, artifacts, args).await,
+        "begin_artifact_multipart" => begin_artifact_multipart(artifacts).await,
+        "upload_artifact_multipart_part" => upload_artifact_multipart_part(artifacts, args).await,
+        "complete_artifact_multipart" => complete_artifact_multipart(store, artifacts, args).await,
+        "abort_artifact_multipart" => abort_artifact_multipart(artifacts, args).await,
         "get_artifact_metadata" => get_artifact_metadata(store, args).await,
         "search_messages" => search_messages(search, embedding_provider, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
@@ -230,6 +298,133 @@ struct UploadArtifactArgs {
     content_base64: String,
     mime_type: Option<String>,
     uploaded_by: Option<uuid::Uuid>,
+}
+
+fn s3_artifacts(artifacts: &Arc<dyn ArtifactStore>) -> Result<&S3Store, McpError> {
+    artifacts
+        .as_ref()
+        .as_any()
+        .downcast_ref::<S3Store>()
+        .ok_or_else(|| {
+            McpError::InvalidParams(
+                "multipart uploads require S3 artifact backend (ARTIFACT_BACKEND=s3)".into(),
+            )
+        })
+}
+
+fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
+    MultipartUpload {
+        upload_id: upload_id.to_string(),
+        object_key: object_key.to_string(),
+    }
+}
+
+async fn begin_artifact_multipart(artifacts: &Arc<dyn ArtifactStore>) -> Result<Value, McpError> {
+    let upload = s3_artifacts(artifacts)?
+        .begin_multipart_upload()
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    Ok(json!({
+        "upload_id": upload.upload_id,
+        "object_key": upload.object_key,
+    }))
+}
+
+#[derive(Deserialize)]
+struct UploadMultipartPartArgs {
+    upload_id: String,
+    object_key: String,
+    part_number: i32,
+    content_base64: String,
+}
+
+async fn upload_artifact_multipart_part(
+    artifacts: &Arc<dyn ArtifactStore>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: UploadMultipartPartArgs = serde_json::from_value(args.clone())?;
+    let raw = STANDARD
+        .decode(&a.content_base64)
+        .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
+    let upload = multipart_upload(&a.upload_id, &a.object_key);
+    let etag = s3_artifacts(artifacts)?
+        .upload_part(&upload, a.part_number, Bytes::from(raw))
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    Ok(json!({
+        "part_number": a.part_number,
+        "etag": etag,
+    }))
+}
+
+#[derive(Deserialize)]
+struct MultipartPartArg {
+    part_number: i32,
+    etag: String,
+}
+
+#[derive(Deserialize)]
+struct CompleteMultipartArgs {
+    upload_id: String,
+    object_key: String,
+    parts: Vec<MultipartPartArg>,
+    kind: ArtifactKind,
+    mime_type: Option<String>,
+    uploaded_by: Option<uuid::Uuid>,
+}
+
+async fn complete_artifact_multipart(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CompleteMultipartArgs = serde_json::from_value(args.clone())?;
+    let upload = multipart_upload(&a.upload_id, &a.object_key);
+    let parts: Vec<CompletedPart> = a
+        .parts
+        .into_iter()
+        .map(|p| CompletedPart {
+            part_number: p.part_number,
+            etag: p.etag,
+        })
+        .collect();
+    let sha = s3_artifacts(artifacts)?
+        .complete_multipart_upload(&upload, &parts)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    let bytes = artifacts
+        .get(&sha)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    let artifact = store
+        .upsert_artifact(NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: bytes.len() as i64,
+            mime_type: a.mime_type,
+            kind: a.kind,
+            uploaded_by: a.uploaded_by.map(MemberId),
+        })
+        .await?;
+    Ok(content_json(&artifact))
+}
+
+#[derive(Deserialize)]
+struct AbortMultipartArgs {
+    upload_id: String,
+    object_key: String,
+}
+
+async fn abort_artifact_multipart(
+    artifacts: &Arc<dyn ArtifactStore>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AbortMultipartArgs = serde_json::from_value(args.clone())?;
+    let upload = multipart_upload(&a.upload_id, &a.object_key);
+    s3_artifacts(artifacts)?
+        .abort_multipart_upload(&upload)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    Ok(json!({ "aborted": true }))
 }
 
 async fn upload_artifact(

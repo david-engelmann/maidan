@@ -13,6 +13,8 @@ use crate::sha::Sha256;
 /// separate concern.
 #[async_trait]
 pub trait ArtifactStore: Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
+
     async fn put(&self, bytes: Bytes) -> Result<Sha256, ArtifactError>;
     async fn get(&self, sha: &Sha256) -> Result<Bytes, ArtifactError>;
     async fn exists(&self, sha: &Sha256) -> Result<bool, ArtifactError>;

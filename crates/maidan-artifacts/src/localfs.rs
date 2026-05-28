@@ -44,6 +44,10 @@ impl LocalFsStore {
 
 #[async_trait]
 impl ArtifactStore for LocalFsStore {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     async fn put(&self, bytes: Bytes) -> Result<Sha256, ArtifactError> {
         let sha = Sha256::compute(&bytes);
         let final_path = self.body_path(&sha);

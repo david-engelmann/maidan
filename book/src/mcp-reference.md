@@ -262,6 +262,137 @@ Store bytes in the artifact substrate and register metadata.
 }
 ```
 
+### `begin_artifact_multipart`
+
+Start an S3 multipart upload for a large artifact (requires S3 backend).
+
+**Capability:** `artifact:upload`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
+### `upload_artifact_multipart_part`
+
+Upload one part of an in-progress multipart artifact.
+
+**Capability:** `artifact:upload`
+
+```json
+{
+  "properties": {
+    "content_base64": {
+      "type": "string"
+    },
+    "object_key": {
+      "type": "string"
+    },
+    "part_number": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "upload_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "upload_id",
+    "object_key",
+    "part_number",
+    "content_base64"
+  ],
+  "type": "object"
+}
+```
+
+### `complete_artifact_multipart`
+
+Finish multipart upload, content-address bytes, and register artifact metadata.
+
+**Capability:** `artifact:upload`
+
+```json
+{
+  "properties": {
+    "kind": {
+      "enum": [
+        "screenshot",
+        "recording",
+        "transcript",
+        "code_dump",
+        "attachment"
+      ],
+      "type": "string"
+    },
+    "mime_type": {
+      "type": "string"
+    },
+    "object_key": {
+      "type": "string"
+    },
+    "parts": {
+      "items": {
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "part_number": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "part_number",
+          "etag"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "upload_id": {
+      "type": "string"
+    },
+    "uploaded_by": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "upload_id",
+    "object_key",
+    "parts",
+    "kind"
+  ],
+  "type": "object"
+}
+```
+
+### `abort_artifact_multipart`
+
+Abort a failed multipart upload.
+
+**Capability:** `artifact:upload`
+
+```json
+{
+  "properties": {
+    "object_key": {
+      "type": "string"
+    },
+    "upload_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "upload_id",
+    "object_key"
+  ],
+  "type": "object"
+}
+```
+
 ### `get_artifact_metadata`
 
 Fetch artifact metadata by sha256 hex digest.
