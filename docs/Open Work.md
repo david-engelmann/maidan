@@ -78,7 +78,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
-| SSE for MCP `resources/subscribe` | Cluster B retro |
+| Streamable HTTP for MCP `resources/subscribe` | Stdio notifications shipped in `v15.0.0`; HTTP parity deferred to Cluster 16 |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Documented in 5.0; unification deferred |
 | Coverage minimum gate | Shipped **`v3.0.0`**; floor raised **`v5.0.0`**; Codecov optional **`v5.0.0`** |
@@ -88,8 +88,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v14.0.0` — SQLite transactional outbox (tags pending push).
-- **Active cluster:** **Cluster 15.0** — MCP `resources/subscribe` ([[Clusters/Cluster 15.0]]).
+- **Latest tag:** `v15.0.0` — MCP stdio resource subscriptions (tag pending push).
+- **Active cluster:** **Cluster 16.0** — MCP streamable HTTP parity ([[Clusters/Cluster 16.0]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
