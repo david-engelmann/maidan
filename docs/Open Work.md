@@ -75,7 +75,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 |------|-------|
 | Per-model embedding tables / mixed dimensions | 5.0 filters by model at query time; table split deferred |
 | Resumable WS beyond `after_id` | Shipped **`v4.0.0`** — signed `resume_token` |
-| S3 multipart for multi-GB blobs | Cluster 19.0 in progress |
+| S3 multipart for multi-GB blobs | Shipped `v19.0.0` |
 | Full MCP streamable HTTP multiplexing | Cluster 27.0 ([[Clusters/Cluster 27.0]]) |
 | Helm chart (main stack deploy) | Cluster 24.0 ([[Clusters/Cluster 24.0]]) |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
@@ -91,8 +91,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v18.0.0` (after retro merge).
-- **Active cluster:** **Cluster 19.0** — S3 multipart ([[Clusters/Product Ladder 17-27]]).
+- **Latest tag:** `v19.0.0` (after retro merge).
+- **Active cluster:** **Cluster 20.0** — message router ([[Clusters/Product Ladder 17-27]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

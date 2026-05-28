@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v19.0.0 — S3 multipart artifacts
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| S3 multipart upload (begin / part / complete / abort)   | `maidan-artifacts::S3Store`          |
+| Multipart artifact HTTP API                             | `/artifacts/multipart`               |
+| Multipart artifact MCP tools                          | `begin_artifact_multipart`, etc.     |
+
 ## v18.0.0 — SQLite semantic search
 
 | Capability                                              | Surface                       |
