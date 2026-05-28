@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v14.0.0 — SQLite transactional outbox
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| SQLite transactional outbox + relay                     | `maidan-store::sqlite::outbox`, `OutboxRelay` |
+| `OutboxBackend` for relay and metrics                     | `maidan-store::outbox`, `AppState` |
+
 ## v13.0.0 — Delivery contract & subscriber ledger
 
 | Capability                                              | Surface                       |
