@@ -322,5 +322,10 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 - **Unchanged** — `GET /mcp/stream` remains workspace bus events (`event:subscribe`);
   not full MCP streamable HTTP spec.
 
+## At v17.0.0 (Cluster 17, in progress)
+
+- **MCP resource fan-out** — tool mutations map to thread, channel, workspace, and
+  artifact URIs for subscribers (not only `post_message` → thread).
+
 ## What's deliberately not here yet
 - Long-term archival / GDPR right-of-erasure (Cluster V).

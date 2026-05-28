@@ -26,7 +26,8 @@ pub fn markdown() -> String {
          - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
          - `prompts/list`, `prompts/get`\n\n\
          **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }` \
-         (stdio after each response; HTTP via `GET /mcp/notifications` SSE).\n\n",
+         (stdio after each response; HTTP via `GET /mcp/notifications` SSE). \
+         Mutating tools fan out to related thread/channel/workspace/artifact URIs.\n\n",
     );
 
     out.push_str("## Tools\n\n");

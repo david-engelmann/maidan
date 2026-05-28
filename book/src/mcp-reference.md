@@ -18,7 +18,7 @@ Bearer token required unless `AUTH_DISABLED=1`.
 - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`
 - `prompts/list`, `prompts/get`
 
-**Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` SSE).
+**Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` SSE). Mutating tools fan out to related thread/channel/workspace/artifact URIs.
 
 ## Tools
 
