@@ -93,6 +93,9 @@ MCP resource subscription notifications use **`GET /mcp/notifications`** (SSE JS
 lines) with **`POST /mcp`** for `resources/subscribe` / `tools/call` — requires
 `workspace:read` (same as resource read). Distinct from `/mcp/stream` workspace events.
 
+**Semantic search:** Postgres uses `pgvector`; SQLite uses stored 1024-dim embeddings
+with cosine ranking (dev parity, no HNSW index on SQLite).
+
 ### First message (WebSocket)
 
 Send one text frame after connect:

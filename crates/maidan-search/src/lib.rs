@@ -4,8 +4,7 @@
 //!
 //! - [`PostgresSearch`] — `tsvector` lexical search with `ts_headline`
 //!   snippets. Semantic search via `pgvector` arrives in Cluster C PR #3.
-//! - [`SqliteSearch`] — FTS5 lexical search with the `snippet()`
-//!   function. Semantic search returns [`SearchError::Unsupported`].
+//! - [`SqliteSearch`] — FTS5 lexical search; semantic search over stored embeddings.
 
 pub mod embedding_handler;
 pub mod embedding_provider;

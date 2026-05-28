@@ -219,6 +219,20 @@ replacing `/mcp/stream` or implementing the full transport spec.
 **To revisit:** session-scoped MCP servers per bearer token; broader resource
 fan-out beyond `post_message`.
 
+### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
+
+**Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`
+and rank with cosine similarity in Rust inside `SqliteSearch::semantic_search`.
+
+**Alternative.** Load `sqlite-vec` via `sqlite3_auto_extension` and use
+`vec_distance_cosine()` in SQL.
+
+**Why this:** the `sqlite-vec` crate did not register with sqlx's libsqlite3
+(`no such function: vec_distance_cosine`); alpha crate builds were also brittle.
+Dev parity matters more than SQL-side distance for SQLite.
+
+**To revisit:** wire `sqlite-vec` when sqlx/extension linkage is reliable.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)

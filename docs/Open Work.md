@@ -28,8 +28,8 @@ from "open" to "shipped" when the owning release merges its retro PR.
 - **Coverage depth is still modest.** CI enforces an **11.0%** line floor
   (**`v11.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
   Further incremental uplift is opportunistic.
-- **SQLite has no semantic search.** `Search::semantic_search`
-  returns `Unsupported`. → `sqlite-vec` when mature.
+- **SQLite semantic search** ships at `v18.0.0` with brute-force cosine over stored
+  embeddings (no HNSW); `sqlite-vec` SQL functions deferred (sqlx linkage).
 - **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
   but default deployments may still run deterministic `hash-v1` if not configured.
 
