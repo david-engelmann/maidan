@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{AuditEvent, MemberId, NewAuditEvent};
+use maidan_types::{AuditEvent, MemberId, NewAuditEvent, WorkspaceId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -19,6 +19,28 @@ pub async fn append(pool: &PgPool, new: NewAuditEvent) -> Result<AuditEvent, Sto
     .fetch_one(pool)
     .await?;
     Ok(row_to_audit(&row))
+}
+
+pub async fn list_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<AuditEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, occurred_at, actor_id, action, target_kind, target_id, metadata
+         FROM maidan_audit a
+         WHERE (a.target_kind = 'workspace' AND a.target_id = $1)
+            OR a.actor_id IN (
+              SELECT m.id FROM maidan_members m WHERE m.workspace_id = $1
+            )
+         ORDER BY a.occurred_at DESC, a.id DESC
+         LIMIT $2",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_audit).collect())
 }
 
 pub async fn list(pool: &PgPool, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {

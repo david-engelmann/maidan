@@ -93,6 +93,12 @@ pub struct ListEventsQuery {
     pub limit: i64,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct ListAuditQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchMode {

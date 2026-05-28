@@ -85,3 +85,4 @@ PR review credit; external contributors.
 - [[Cluster 25.0]] — Privacy & erasure. Closed at `v25.0.0` (integration PR #198).
 - [[Cluster 26.0]] — Product completion gate. Closed at `v26.0.0` (integration PR #198).
 - [[Cluster 27.0]] — MCP streamable HTTP. Closed at **`v27.0.0`** (culminating ladder release).
+- [[Cluster 28.0]] — Privacy complete (deep purge + audit). Closed at **`v28.0.0`**.

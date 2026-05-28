@@ -101,10 +101,32 @@ pub async fn purge_workspace(
             metadata: serde_json::json!({
                 "messages_tombstoned": result.messages_tombstoned,
                 "messages_purged": result.messages_purged,
+                "embeddings_removed": result.embeddings_removed,
+                "references_removed": result.references_removed,
+                "api_tokens_revoked": result.api_tokens_revoked,
+                "events_removed": result.events_removed,
             }),
         })
         .await?;
     Ok(Json(result))
+}
+
+pub async fn list_workspace_audit(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Query(q): Query<ListAuditQuery>,
+) -> ApiResult<Json<Vec<AuditEvent>>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let limit = q.limit.clamp(1, 500);
+    Ok(Json(
+        state
+            .store
+            .list_audit_for_workspace(workspace_id, limit)
+            .await?,
+    ))
 }
 
 pub async fn list_events(

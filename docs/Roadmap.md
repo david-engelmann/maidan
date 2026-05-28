@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Post-ladder backlog — [[Remaining Work]] (no Cluster 28 defined).
+**Active:** Post–Cluster 28 backlog — [[Remaining Work]].
+
+**Recently closed:** **Cluster 28.0** — privacy complete at **`v28.0.0`** ([[Retros/Cluster 28.0]]).
 
 **Recently closed:** Product Ladder **17–27** at **`v27.0.0`**
 ([[Retros/Cluster 27.0]], PR #198); tags **`v23.0.0`–`v27.0.0`** documented in

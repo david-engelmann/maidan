@@ -14,7 +14,7 @@ Critical-path surfaces for agents and operators after Clusters 17–27.
 | Message router | ✓ | `maidan-router` |
 | Web UI `/ui` | ✓ | events, search, FSM, tokens |
 | Helm deploy | ✓ | `helm/maidan` |
-| Workspace purge | ✓ | `POST /workspaces/:id/purge` + audit |
+| Workspace purge (deep) | ✓ | Purge messages, embeddings, references, tokens, events; GET audit |
 | Federation ingest | ✓ | peer bearer |
 
 Deferred (not blocking 27): OTLP dashboards (Cluster T), multi-region HA.

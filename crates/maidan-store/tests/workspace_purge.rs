@@ -71,5 +71,9 @@ async fn purge_workspace_tombstones_then_deletes_all_messages() {
     let result = store.purge_workspace_messages(ws.id).await.unwrap();
     assert_eq!(result.messages_tombstoned, 2);
     assert_eq!(result.messages_purged, 2);
+    assert_eq!(result.embeddings_removed, 0);
+    assert_eq!(result.references_removed, 0);
+    assert_eq!(result.api_tokens_revoked, 0);
+    assert_eq!(result.events_removed, 0);
     assert!(store.list_messages(th.id, 10).await.unwrap().is_empty());
 }
