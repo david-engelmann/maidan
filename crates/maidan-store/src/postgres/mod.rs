@@ -136,6 +136,9 @@ impl Store for PostgresStore {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await
     }
+    async fn edit_message(&self, id: MessageId, edit: EditMessage) -> Result<Message, StoreError> {
+        messages::edit(&self.pool, id, edit).await
+    }
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
         messages::get(&self.pool, id).await
     }

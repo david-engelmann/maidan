@@ -192,6 +192,13 @@ pub fn post_message() {}
     responses((status = 200, body = Message)))]
 pub fn get_message() {}
 
+#[utoipa::path(patch, path = "/messages/{id}", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    request_body = EditMessageRequest,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Message)))]
+pub fn edit_message() {}
+
 #[utoipa::path(delete, path = "/messages/{id}", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
     security(("bearerAuth" = [])),

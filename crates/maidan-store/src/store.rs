@@ -56,6 +56,7 @@ pub trait Store: Send + Sync {
     ) -> Result<ThreadTransitionResult, StoreError>;
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
+    async fn edit_message(&self, id: MessageId, edit: EditMessage) -> Result<Message, StoreError>;
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError>;
     async fn list_messages(
         &self,

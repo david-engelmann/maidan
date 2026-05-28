@@ -9,6 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [29.0.0] — 2026-05-28
+
+### Added
+
+- `PATCH /messages/:id` — edit message body/metadata; sets `edited_at`; publishes `MessageEdited`.
+- MCP `edit_message` tool with author vs moderator capability rules.
+- Search indexer and embedding handler react to `MessageEdited`.
+
 ## [28.0.0] — 2026-05-28
 
 ### Added

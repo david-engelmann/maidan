@@ -90,6 +90,7 @@ async fn full_mcp_flow() {
         .collect();
     assert!(names.contains(&"list_channels"));
     assert!(names.contains(&"post_message"));
+    assert!(names.contains(&"edit_message"));
     assert!(names.contains(&"add_reference"));
 
     // need a workspace/member/channel/thread to exercise tools
@@ -167,6 +168,26 @@ async fn full_mcp_flow() {
     .await;
     let posted = unwrap_tool_text(&resp["result"]);
     assert_eq!(posted["body"], "hi from mcp");
+    let msg_id = posted["id"].as_str().unwrap().to_string();
+
+    // tools/call: edit_message
+    let resp = rpc(
+        &client,
+        &base,
+        41,
+        "tools/call",
+        json!({
+            "name": "edit_message",
+            "arguments": {
+                "message_id": msg_id,
+                "editor_id": alice_id,
+                "body": "edited via mcp"
+            }
+        }),
+    )
+    .await;
+    let edited = unwrap_tool_text(&resp["result"]);
+    assert_eq!(edited["body"], "edited via mcp");
 
     // tools/call: list_messages
     let resp = rpc(
@@ -183,7 +204,7 @@ async fn full_mcp_flow() {
     let messages = unwrap_tool_text(&resp["result"]);
     let msgs = messages.as_array().unwrap();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0]["body"], "hi from mcp");
+    assert_eq!(msgs[0]["body"], "edited via mcp");
 
     // resources/list
     let resources = rpc(&client, &base, 6, "resources/list", json!({})).await;

@@ -65,7 +65,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/messages/:id",
-            get(routes::get_message).delete(routes::tombstone_message),
+            get(routes::get_message)
+                .patch(routes::edit_message)
+                .delete(routes::tombstone_message),
         )
         .route("/messages/:id/purge", delete(routes::purge_message))
         .route("/messages/:id/mentions", post(routes::create_mention))

@@ -35,6 +35,7 @@ pub enum EventKind {
     ThreadCreated,
     ThreadStateChanged,
     MessagePosted,
+    MessageEdited,
     MessageTombstoned,
     MentionRecorded,
     VoteCast,
@@ -51,6 +52,7 @@ impl EventKind {
             Self::ThreadCreated => "thread_created",
             Self::ThreadStateChanged => "thread_state_changed",
             Self::MessagePosted => "message_posted",
+            Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
             Self::MentionRecorded => "mention_recorded",
             Self::VoteCast => "vote_cast",
@@ -100,6 +102,14 @@ pub enum Event {
         thread_id: ThreadId,
         message: Message,
     },
+    MessageEdited {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        editor_id: MemberId,
+        message: Message,
+    },
     MessageTombstoned {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -141,6 +151,7 @@ impl Event {
             Self::ThreadCreated { .. } => EventKind::ThreadCreated,
             Self::ThreadStateChanged { .. } => EventKind::ThreadStateChanged,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
+            Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
             Self::MentionRecorded { .. } => EventKind::MentionRecorded,
             Self::VoteCast { .. } => EventKind::VoteCast,
@@ -157,6 +168,7 @@ impl Event {
             | Self::ThreadCreated { occurred_at, .. }
             | Self::ThreadStateChanged { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
+            | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
             | Self::MentionRecorded { occurred_at, .. }
             | Self::VoteCast { occurred_at, .. }
@@ -173,6 +185,7 @@ impl Event {
             | Self::ThreadCreated { workspace_id, .. }
             | Self::ThreadStateChanged { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
+            | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
             | Self::MentionRecorded { workspace_id, .. }
             | Self::VoteCast { workspace_id, .. } => Some(*workspace_id),
@@ -186,6 +199,7 @@ impl Event {
             Self::ThreadCreated { channel_id, .. }
             | Self::ThreadStateChanged { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
+            | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. } => Some(*channel_id),
             _ => None,
         }
@@ -196,6 +210,7 @@ impl Event {
             Self::ThreadCreated { thread, .. } => Some(thread.id),
             Self::ThreadStateChanged { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
+            | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
             | Self::MentionRecorded { thread_id, .. }
             | Self::VoteCast { thread_id, .. } => Some(*thread_id),
@@ -210,6 +225,7 @@ impl Event {
             Self::MentionRecorded { member_id, .. } | Self::VoteCast { member_id, .. } => {
                 Some(*member_id)
             }
+            Self::MessageEdited { editor_id, .. } => Some(*editor_id),
             _ => None,
         }
     }

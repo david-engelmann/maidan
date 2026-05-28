@@ -263,6 +263,21 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             thread_id,
             message,
         },
+        MessageEdited {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            editor_id,
+            message,
+        } => MessageEdited {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            editor_id,
+            message,
+        },
         MessageTombstoned {
             occurred_at,
             workspace_id: _,

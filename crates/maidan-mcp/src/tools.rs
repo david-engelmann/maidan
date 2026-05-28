@@ -23,7 +23,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "list_channels" | "list_threads" | "list_messages" | "get_artifact_metadata" => {
             Ok(WORKSPACE_READ)
         }
-        "post_message" => Ok(MESSAGE_POST),
+        "post_message" | "edit_message" => Ok(MESSAGE_POST),
         "record_mention" | "cast_vote" | "add_reference" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
@@ -85,6 +85,20 @@ pub fn catalog() -> Vec<Value> {
                     "metadata": {"type": "object"}
                 },
                 "required": ["thread_id", "author_id", "body"]
+            }
+        }),
+        json!({
+            "name": "edit_message",
+            "description": "Edit a message body (author needs message:post; others need workspace:write).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "editor_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["message_id", "editor_id", "body"]
             }
         }),
         json!({
@@ -244,7 +258,7 @@ pub async fn dispatch(
     artifacts: &Arc<dyn ArtifactStore>,
     search: &Arc<dyn maidan_search::Search>,
     embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
-    _auth: &AuthContext,
+    auth: &AuthContext,
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
@@ -253,6 +267,7 @@ pub async fn dispatch(
         "list_threads" => list_threads(store, args).await,
         "list_messages" => list_messages(store, args).await,
         "post_message" => post_message(store, args).await,
+        "edit_message" => edit_message(store, auth, args).await,
         "record_mention" => record_mention(store, args).await,
         "cast_vote" => cast_vote(store, args).await,
         "add_reference" => add_reference(store, args).await,
@@ -561,6 +576,52 @@ async fn post_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, Mcp
                 a.metadata
             },
         })
+        .await?;
+    Ok(content_json(&msg))
+}
+
+#[derive(Deserialize)]
+struct EditMessageArgs {
+    message_id: uuid::Uuid,
+    editor_id: uuid::Uuid,
+    body: String,
+    #[serde(default)]
+    metadata: Option<Value>,
+}
+
+async fn edit_message(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: EditMessageArgs = serde_json::from_value(args.clone())?;
+    let message_id = MessageId(a.message_id);
+    let existing = store.get_message(message_id).await?;
+    if existing.tombstoned_at.is_some() {
+        return Err(McpError::InvalidParams("message is tombstoned".into()));
+    }
+    let editor_id = MemberId(a.editor_id);
+    if !auth.bypass {
+        if editor_id == existing.author_id {
+            auth.require_capability(MESSAGE_POST)
+                .map_err(McpError::from)?;
+        } else {
+            auth.require_capability(WORKSPACE_WRITE)
+                .map_err(McpError::from)?;
+        }
+    }
+    let metadata = match a.metadata {
+        Some(v) if !v.is_null() => v,
+        _ => existing.metadata,
+    };
+    let msg = store
+        .edit_message(
+            message_id,
+            EditMessage {
+                body: a.body,
+                metadata,
+            },
+        )
         .await?;
     Ok(content_json(&msg))
 }

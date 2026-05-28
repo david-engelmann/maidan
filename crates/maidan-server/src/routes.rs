@@ -40,6 +40,21 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
+fn ensure_message_edit(
+    auth: &AuthContext,
+    editor_id: MemberId,
+    author_id: MemberId,
+) -> ApiResult<()> {
+    if auth.bypass {
+        return Ok(());
+    }
+    if editor_id == author_id {
+        cap(auth, MESSAGE_POST)
+    } else {
+        cap(auth, WORKSPACE_WRITE)
+    }
+}
+
 // --- workspaces ---
 
 pub async fn create_workspace(
@@ -406,6 +421,47 @@ pub async fn post_message(
     )
     .await;
     Ok((StatusCode::CREATED, Json(m)))
+}
+
+pub async fn edit_message(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(message_id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<EditMessageRequest>,
+) -> ApiResult<Json<Message>> {
+    let message_id = MessageId(message_id);
+    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
+    ensure_workspace(&auth, chain.workspace_id)?;
+    let existing = state.store.get_message(message_id).await?;
+    if existing.tombstoned_at.is_some() {
+        return Err(ApiError::BadRequest("message is tombstoned".into()));
+    }
+    let editor_id = MemberId(body.editor_id);
+    ensure_message_edit(&auth, editor_id, existing.author_id)?;
+    let metadata = body.metadata.unwrap_or(existing.metadata);
+    let updated = state
+        .store
+        .edit_message(
+            message_id,
+            EditMessage {
+                body: body.body,
+                metadata,
+            },
+        )
+        .await?;
+    publish(
+        &state,
+        Event::MessageEdited {
+            occurred_at: Utc::now(),
+            workspace_id: chain.workspace_id,
+            channel_id: chain.channel_id,
+            thread_id: chain.thread_id,
+            editor_id,
+            message: updated.clone(),
+        },
+    )
+    .await;
+    Ok(Json(updated))
 }
 
 pub async fn list_messages(

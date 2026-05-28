@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v29.0.0 — Message edit
+
+| Capability | Surface |
+|------------|---------|
+| HTTP message edit (body/metadata, `edited_at`) | `PATCH /messages/:id` |
+| MCP message edit | `edit_message` tool |
+| Bus fan-out on edit | `MessageEdited` event |
+
 ## v28.0.0 — Privacy complete
 
 | Capability                                              | Surface                              |

@@ -25,6 +25,18 @@ pub async fn uris_for_tool_mutation(
                 }
             }
         }
+        "edit_message" => {
+            if let Some(mid) = uuid_arg(args, "message_id") {
+                if let Ok(msg) = store.get_message(MessageId(mid)).await {
+                    push_thread_chain(store, msg.thread_id, &mut uris).await;
+                }
+            }
+            if let Some(body) = tool_result_json(result) {
+                if let Ok(msg) = serde_json::from_value::<Message>(body) {
+                    push_thread_chain(store, msg.thread_id, &mut uris).await;
+                }
+            }
+        }
         "upload_artifact" | "complete_artifact_multipart" => {
             if let Some(body) = tool_result_json(result) {
                 if let Some(sha) = body.get("sha256").and_then(|v| v.as_str()) {
