@@ -41,10 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 16.0** — MCP streamable HTTP parity → **`v16.0.0`**
-(see [[Clusters/Cluster 16.0]]).
+**Active:** **Cluster 17.0** — MCP resource fan-out → **`v17.0.0`**
+(see [[Clusters/Cluster 17.0]]; epic map [[Clusters/Product Ladder 17-26]]).
 
-**Recently closed:** **`v15.0.0`** — MCP stdio resource subscribe ([[Retros/Cluster 15.0]]).
+**Recently closed:** **`v16.0.0`** — MCP HTTP resource notifications ([[Retros/Cluster 16.0]]).
+**Before that:** **`v15.0.0`** — MCP stdio resource subscribe ([[Retros/Cluster 15.0]]).
 **Before that:** **`v14.0.0`** — SQLite outbox ([[Retros/Cluster 14.0]]).
 **Before that:** **`v13.0.0`** — delivery ledger ([[Retros/Cluster 13.0]]).
 **Before that:** **`v12.0.0`** — outbox relay hardening ([[Retros/Cluster 12.0]]).
