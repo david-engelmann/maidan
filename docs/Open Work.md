@@ -91,8 +91,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v19.0.0` (after retro merge).
-- **Active cluster:** **Cluster 20.0** — message router ([[Clusters/Product Ladder 17-27]]).
+- **Latest tag:** `v20.0.0` (after retro merge).
+- **Active cluster:** **Cluster 21.0** — A2A agent transport ([[Clusters/Product Ladder 17-27]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

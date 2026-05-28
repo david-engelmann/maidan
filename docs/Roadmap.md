@@ -41,10 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 20.0** — message router → **`v20.0.0`**
-(see [[Clusters/Cluster 20.0]]; ladder [[Clusters/Product Ladder 17-27]]).
+**Active:** **Cluster 21.0** — A2A agent transport → **`v21.0.0`**
+(see [[Clusters/Cluster 21.0]]; ladder [[Clusters/Product Ladder 17-27]]).
 
-**Recently closed:** **`v19.0.0`** — S3 multipart artifacts ([[Retros/Cluster 19.0]]).
+**Recently closed:** **`v20.0.0`** — message router ([[Retros/Cluster 20.0]]).
+**Before that:** **`v19.0.0`** — S3 multipart artifacts ([[Retros/Cluster 19.0]]).
 **Before that:** **`v18.0.0`** — SQLite semantic search ([[Retros/Cluster 18.0]]).
 **Before that:** **`v17.0.0`** — MCP resource fan-out ([[Retros/Cluster 17.0]]).
 **Before that:** **`v16.0.0`** — MCP HTTP resource notifications ([[Retros/Cluster 16.0]]).
