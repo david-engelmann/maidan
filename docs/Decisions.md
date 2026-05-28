@@ -203,6 +203,22 @@ infrastructure.
 
 **To revisit:** streamable HTTP parity and broader resource update fan-out.
 
+### MCP resource notifications on HTTP SSE (`v16.0.0`)
+
+**Decision.** Share one [`McpServer`] per process in [`AppState`]; fan-out
+`notifications/resources/updated` on a tokio broadcast channel; expose
+`GET /mcp/notifications` as an SSE stream of JSON-RPC notification lines.
+`POST /mcp` stays one-request-one-response.
+
+**Alternative.** Full MCP streamable HTTP session multiplexing on a single
+connection.
+
+**Why this:** closes HTTP parity for the Cluster 15 subscribe surface without
+replacing `/mcp/stream` or implementing the full transport spec.
+
+**To revisit:** session-scoped MCP servers per bearer token; broader resource
+fan-out beyond `post_message`.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)

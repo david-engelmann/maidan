@@ -312,8 +312,15 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
   `notifications/resources/updated`.
 - **Current trigger surface** — `tools/call post_message` notifies
   `maidan://threads/{id}` subscribers after successful write.
-- **HTTP parity** — `POST /mcp` remains request/response only; no streamable HTTP
-  channel in this cluster.
+- **HTTP parity** — deferred to Cluster 16.
+
+## At v16.0.0 (Cluster 16)
+
+- **MCP resource notifications (HTTP)** — `GET /mcp/notifications` SSE delivers
+  `notifications/resources/updated` to HTTP MCP clients; shared `McpServer` state
+  on `POST /mcp` so subscriptions persist across requests.
+- **Unchanged** — `GET /mcp/stream` remains workspace bus events (`event:subscribe`);
+  not full MCP streamable HTTP spec.
 
 ## What's deliberately not here yet
 - Long-term archival / GDPR right-of-erasure (Cluster V).

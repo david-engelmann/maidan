@@ -9,7 +9,9 @@ use maidan_auth::AuthContext;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use serde_json::{json, Value};
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
+
+const NOTIFICATION_BROADCAST_CAPACITY: usize = 64;
 
 use crate::error::McpError;
 use crate::protocol::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -28,6 +30,7 @@ pub struct McpServer {
     server_version: String,
     subscriptions: Arc<Mutex<HashSet<String>>>,
     pending_notifications: Arc<Mutex<Vec<JsonRpcNotification>>>,
+    notification_tx: broadcast::Sender<JsonRpcNotification>,
 }
 
 impl McpServer {
@@ -37,6 +40,7 @@ impl McpServer {
         search: Arc<dyn Search>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {
+        let (notification_tx, _) = broadcast::channel(NOTIFICATION_BROADCAST_CAPACITY);
         Self {
             store,
             artifacts,
@@ -46,7 +50,13 @@ impl McpServer {
             server_version: env!("CARGO_PKG_VERSION").into(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             pending_notifications: Arc::new(Mutex::new(Vec::new())),
+            notification_tx,
         }
+    }
+
+    /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport).
+    pub fn subscribe_notifications(&self) -> broadcast::Receiver<JsonRpcNotification> {
+        self.notification_tx.subscribe()
     }
 
     pub async fn handle(&self, request: JsonRpcRequest, auth: &AuthContext) -> JsonRpcResponse {
@@ -204,10 +214,10 @@ impl McpServer {
         }
         let mut pending = self.pending_notifications.lock().await;
         for uri in matching {
-            pending.push(JsonRpcNotification::new(
-                NOTIFY_RESOURCE_UPDATED,
-                json!({ "uri": uri }),
-            ));
+            let notification =
+                JsonRpcNotification::new(NOTIFY_RESOURCE_UPDATED, json!({ "uri": uri }));
+            pending.push(notification.clone());
+            let _ = self.notification_tx.send(notification);
         }
     }
 

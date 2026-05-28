@@ -5,6 +5,7 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 ## Transport
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
+- **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
 - **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)
 
@@ -17,7 +18,7 @@ Bearer token required unless `AUTH_DISABLED=1`.
 - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`
 - `prompts/list`, `prompts/get`
 
-**Notification (stdio):** `notifications/resources/updated` with `{ "uri": "maidan://..." }`.
+**Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` SSE).
 
 ## Tools
 
