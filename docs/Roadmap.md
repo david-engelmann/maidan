@@ -41,10 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 23.0** — Web UI product → **`v23.0.0`**
-(see [[Clusters/Cluster 23.0]]; ladder [[Clusters/Product Ladder 17-27]]).
+**Active:** **Post–Product Ladder** — retro + tags for **`v23.0.0`–`v27.0.0`**
+(code merged PR #198). Next work: [[Remaining Work]].
 
-**Recently closed:** **`v22.0.0`** — capabilities hardening ([[Retros/Cluster 22.0]]).
+**Recently closed:** Product Ladder **17–27** ([[Clusters/Product Ladder 17-27]]);
+**`v22.0.0`** — capabilities hardening ([[Retros/Cluster 22.0]]).
 **Before that:** **`v21.0.0`** — A2A agent transport ([[Retros/Cluster 21.0]]).
 **Before that:** **`v20.0.0`** — message router ([[Retros/Cluster 20.0]]).
 **Before that:** **`v19.0.0`** — S3 multipart artifacts ([[Retros/Cluster 19.0]]).
