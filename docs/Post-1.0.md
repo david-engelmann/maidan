@@ -16,8 +16,8 @@ coherent capability batch warrants semver + changelog.
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
 **Recommended order:** **`v12.0.0`** is closed ([[Retros/Cluster 12.0]]).
-**Active:** **Cluster 13.0** ([[Clusters/Cluster 13.0]]) → `v13.0.0`. Then Cluster 14
-(epic pick).
+**Active:** **Cluster 14.0** ([[Clusters/Cluster 14.0]]) → `v14.0.0`.
+**Recently closed:** **`v13.0.0`** ([[Retros/Cluster 13.0]]).
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 

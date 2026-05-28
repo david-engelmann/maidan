@@ -9,6 +9,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [13.0.0] — 2026-05-27
+
+Major release: delivery cursors and subscriber idempotency contract.
+
+### Added
+
+- Postgres `maidan_delivery_cursor` (`consumer_id`, `workspace_id` → `last_delivered_log_id`).
+- Optional `consumer_id` on WebSocket subscribe and MCP SSE; replay floors from stored cursor.
+- Federation ingest advances `federation:{peer_id}` cursor after successful handoff.
+- Delivery contract documented in Decisions, Architecture, Production.
+
 ## [12.0.0] — 2026-05-27
 
 Major release: outbox relay quarantine and operator metrics.
