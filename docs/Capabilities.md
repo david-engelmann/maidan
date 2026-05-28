@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v16.0.0 — MCP HTTP resource notifications
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Shared MCP dispatcher (HTTP)                            | `AppState.mcp`                |
+| Resource notification SSE                               | `GET /mcp/notifications`      |
+| HTTP + stdio `notifications/resources/updated`          | `maidan-mcp` broadcast        |
+
 ## v14.0.0 — SQLite transactional outbox
 
 | Capability                                              | Surface                       |
