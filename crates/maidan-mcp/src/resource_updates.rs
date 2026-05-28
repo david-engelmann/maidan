@@ -24,7 +24,7 @@ pub async fn uris_for_tool_mutation(
                 }
             }
         }
-        "upload_artifact" => {
+        "upload_artifact" | "complete_artifact_multipart" => {
             if let Some(body) = tool_result_json(result) {
                 if let Some(sha) = body.get("sha256").and_then(|v| v.as_str()) {
                     uris.insert(format!("maidan://artifacts/{sha}"));

@@ -134,6 +134,44 @@ pub struct UploadArtifactQuery {
     pub uploaded_by: Option<uuid::Uuid>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MultipartUploadResponse {
+    pub upload_id: String,
+    pub object_key: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct MultipartUploadQuery {
+    pub object_key: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct AbortMultipartQuery {
+    pub upload_id: String,
+    pub object_key: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MultipartPartResponse {
+    pub part_number: i32,
+    pub etag: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MultipartPartInput {
+    pub part_number: i32,
+    pub etag: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CompleteMultipartArtifact {
+    pub object_key: String,
+    pub parts: Vec<MultipartPartInput>,
+    pub kind: ArtifactKind,
+    pub mime_type: Option<String>,
+    pub uploaded_by: Option<uuid::Uuid>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MintApiToken {
     pub label: Option<String>,

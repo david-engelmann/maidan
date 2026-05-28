@@ -157,6 +157,7 @@ impl From<maidan_artifacts::ArtifactError> for ApiError {
         match err {
             ArtifactError::NotFound => Self::NotFound,
             ArtifactError::InvalidSha(msg) => Self::BadRequest(msg),
+            ArtifactError::InvalidInput(msg) => Self::BadRequest(msg),
             ArtifactError::Io(e) => {
                 tracing::error!(error = %e, "artifact io error");
                 Self::Internal("artifact storage error".into())

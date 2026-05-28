@@ -63,6 +63,10 @@ impl S3Store {
         &self.bucket
     }
 
+    pub(crate) fn client(&self) -> &Client {
+        &self.client
+    }
+
     async fn ensure_bucket(&self) -> Result<(), ArtifactError> {
         match self.client.head_bucket().bucket(&self.bucket).send().await {
             Ok(_) => Ok(()),
@@ -81,6 +85,10 @@ impl S3Store {
 
 #[async_trait]
 impl ArtifactStore for S3Store {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     #[instrument(skip(self, bytes), fields(bucket = %self.bucket))]
     async fn put(&self, bytes: Bytes) -> Result<Sha256, ArtifactError> {
         let sha = Sha256::compute(&bytes);

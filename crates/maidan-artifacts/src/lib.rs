@@ -11,6 +11,7 @@ pub mod helpers;
 pub mod localfs;
 pub mod path;
 pub mod s3;
+pub mod s3_multipart;
 pub mod sha;
 pub mod store;
 
@@ -18,5 +19,6 @@ pub use error::ArtifactError;
 pub use helpers::{put_attachment, put_code_dump, put_recording, put_screenshot, put_transcript};
 pub use localfs::LocalFsStore;
 pub use s3::{S3Config, S3Store};
+pub use s3_multipart::{CompletedPart, MultipartUpload};
 pub use sha::Sha256;
 pub use store::{put_reader, ArtifactStore};

@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use tower_http::trace::TraceLayer;
@@ -70,6 +70,18 @@ pub fn router(state: AppState) -> Router {
             post(routes::cast_vote).get(routes::list_votes),
         )
         .route("/artifacts", post(routes::upload_artifact))
+        .route(
+            "/artifacts/multipart",
+            post(routes::begin_multipart_artifact).delete(routes::abort_multipart_artifact),
+        )
+        .route(
+            "/artifacts/multipart/:upload_id/complete",
+            post(routes::complete_multipart_artifact),
+        )
+        .route(
+            "/artifacts/multipart/:upload_id/parts/:part_number",
+            put(routes::upload_multipart_artifact_part),
+        )
         .route("/artifacts/:sha", get(routes::get_artifact))
         .route("/artifacts/:sha/meta", get(routes::get_artifact_metadata))
         .route(
