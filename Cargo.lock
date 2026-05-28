@@ -2581,6 +2581,7 @@ dependencies = [
  "bytes",
  "maidan-artifacts",
  "maidan-auth",
+ "maidan-router",
  "maidan-search",
  "maidan-store",
  "maidan-types",
@@ -2611,8 +2612,11 @@ dependencies = [
 name = "maidan-router"
 version = "0.0.0"
 dependencies = [
+ "maidan-store",
  "maidan-types",
+ "sqlx",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 
@@ -2661,6 +2665,7 @@ dependencies = [
  "maidan-fsm",
  "maidan-mcp",
  "maidan-observability",
+ "maidan-router",
  "maidan-search",
  "maidan-store",
  "maidan-types",

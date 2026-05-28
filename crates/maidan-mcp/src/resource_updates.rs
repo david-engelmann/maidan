@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use maidan_router::resolve_thread_context;
 use maidan_store::Store;
 use maidan_types::*;
 use serde_json::Value;
@@ -49,14 +50,11 @@ pub async fn uris_for_tool_mutation(
 
 async fn push_thread_chain(store: &dyn Store, thread_id: ThreadId, uris: &mut HashSet<String>) {
     uris.insert(format!("maidan://threads/{}", thread_id.0));
-    let Ok(thread) = store.get_thread(thread_id).await else {
+    let Ok(ctx) = resolve_thread_context(store, thread_id).await else {
         return;
     };
-    uris.insert(format!("maidan://channels/{}", thread.channel_id.0));
-    let Ok(channel) = store.get_channel(thread.channel_id).await else {
-        return;
-    };
-    uris.insert(format!("maidan://workspaces/{}", channel.workspace_id.0));
+    uris.insert(format!("maidan://channels/{}", ctx.channel_id.0));
+    uris.insert(format!("maidan://workspaces/{}", ctx.workspace_id.0));
 }
 
 async fn push_ref_side(

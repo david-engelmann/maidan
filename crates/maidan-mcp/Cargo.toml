@@ -12,6 +12,7 @@ description = "Model Context Protocol server surface for Maidan."
 [dependencies]
 maidan-auth = { path = "../maidan-auth" }
 maidan-types = { path = "../maidan-types" }
+maidan-router = { path = "../maidan-router" }
 maidan-store = { path = "../maidan-store" }
 maidan-search = { path = "../maidan-search" }
 maidan-artifacts = { path = "../maidan-artifacts" }
