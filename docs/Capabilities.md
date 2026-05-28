@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v21.0.0 — A2A agent transport
+
+| Capability                                              | Surface                    |
+|---------------------------------------------------------|----------------------------|
+| A2A JSON-RPC `SendMessage` / `GetTask`                  | `POST /a2a/v1/rpc`         |
+| Outbound A2A client                                     | `maidan-a2a::A2aClient`    |
+| Agent card protocol hints                               | `GET /.well-known/maidan.json` |
+
 ## v20.0.0 — Message router
 
 | Capability                                              | Surface                       |

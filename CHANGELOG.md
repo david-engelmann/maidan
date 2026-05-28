@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [21.0.0] — 2026-05-28
+
+Major release: Google A2A protocol v1.0 ingress and client.
+
+### Added
+
+- `POST /a2a/v1/rpc` with `SendMessage` and `GetTask`.
+- `maidan-a2a::A2aClient` and protocol types.
+
 ## [20.0.0] — 2026-05-28
 
 Major release: message router crate wired into HTTP and MCP.
