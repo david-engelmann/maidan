@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
+use maidan_a2a::TaskRegistry;
 use maidan_artifacts::ArtifactStore;
 use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
@@ -41,6 +42,8 @@ pub struct AppState {
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// Shared MCP dispatcher (subscriptions + notification fan-out).
     pub mcp: Arc<McpServer>,
+    /// In-memory A2A protocol tasks (`GetTask` / `SendMessage`).
+    pub a2a_tasks: Arc<TaskRegistry>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
@@ -93,6 +96,7 @@ impl AppState {
             search,
             embedding_provider,
             mcp,
+            a2a_tasks: Arc::new(TaskRegistry::new()),
             auth_disabled,
             bootstrap_enabled,
             federation,

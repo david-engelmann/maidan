@@ -1,6 +1,18 @@
 use maidan_types::PeerId;
 use thiserror::Error;
 
+#[derive(Debug, Error)]
+pub enum A2aClientError {
+    #[error("http error: {0}")]
+    Http(String),
+    #[error("json-rpc error {code}: {message}")]
+    Rpc { code: i32, message: String },
+    #[error("decode error: {0}")]
+    Decode(String),
+    #[error("serde error: {0}")]
+    Serde(#[from] serde_json::Error),
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum FederationError {
     #[error("invalid federation input: {0}")]
