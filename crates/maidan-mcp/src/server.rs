@@ -124,7 +124,7 @@ impl McpServer {
             &args,
         )
         .await?;
-        self.queue_resource_updates(name, &args).await;
+        self.queue_resource_updates(name, &args, &result).await;
         Ok(result)
     }
 
@@ -198,8 +198,14 @@ impl McpServer {
         }))
     }
 
-    async fn queue_resource_updates(&self, tool_name: &str, args: &Value) {
-        let uris = resource_uris_for_tool_call(tool_name, args);
+    async fn queue_resource_updates(&self, tool_name: &str, args: &Value, result: &Value) {
+        let uris = crate::resource_updates::uris_for_tool_mutation(
+            self.store.as_ref(),
+            tool_name,
+            args,
+            result,
+        )
+        .await;
         if uris.is_empty() {
             return;
         }
@@ -224,18 +230,6 @@ impl McpServer {
     pub async fn take_pending_notifications(&self) -> Vec<JsonRpcNotification> {
         let mut pending = self.pending_notifications.lock().await;
         std::mem::take(&mut *pending)
-    }
-}
-
-fn resource_uris_for_tool_call(tool_name: &str, args: &Value) -> Vec<String> {
-    match tool_name {
-        "post_message" => {
-            let Some(thread_id) = args.get("thread_id").and_then(|v| v.as_str()) else {
-                return Vec::new();
-            };
-            vec![format!("maidan://threads/{thread_id}")]
-        }
-        _ => Vec::new(),
     }
 }
 
