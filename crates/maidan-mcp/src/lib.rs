@@ -21,6 +21,6 @@ pub mod stdio;
 pub mod tools;
 
 pub use error::McpError;
-pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
+pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::McpServer;
 pub use stdio::run_stdio;

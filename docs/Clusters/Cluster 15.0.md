@@ -7,10 +7,9 @@ for desktop clients.
 
 > **Epic pick:** **MCP `resources/subscribe`** (deferred since Cluster B retro).
 >
-> **Goal:** Implement `resources/subscribe` / `notifications/resources/updated` (or the
-> minimal subset documented in [[Decisions]]) so MCP clients can watch Maidan resources
-> without polling. Reuse event-log / bus semantics where possible; do not duplicate
-> `/mcp/stream` event fan-out.
+> **Goal:** Implement `resources/subscribe` / `notifications/resources/updated` (stdio first)
+> so MCP clients can watch Maidan resources without polling. Reuse existing mutation
+> paths where possible; do not duplicate `/mcp/stream` event fan-out.
 >
 > **Target tag:** `v15.0.0`.
 
@@ -27,7 +26,7 @@ for desktop clients.
 |------------|------------------------------------------------------------------------|-------|
 | kickoff    | `docs: Cluster 15.0 kickoff plan` (this doc)                           | —     |
 | 15.0.1     | `feat(maidan-mcp): resources/subscribe handler + notification shape`   | TBD   |
-| 15.0.2     | `feat(maidan-server): wire subscribe transport (stdio / HTTP)`         | TBD   |
+| 15.0.2     | `feat(maidan-cli): stdio notification wiring + validation`             | TBD   |
 | 15.0.3     | `test: MCP subscribe integration`                                      | TBD   |
 | 15.0.4     | `docs: MCP subscribe in Architecture + MCP reference`                  | TBD   |
 | 15.0.retro | `docs(retro): Cluster 15.0 + v15.0.0 tag prep`                          | TBD   |
@@ -35,7 +34,7 @@ for desktop clients.
 ## Order
 
 1. **15.0.1** — JSON-RPC methods in `maidan-mcp`; resource URI scheme; notification payload.
-2. **15.0.2** — stdio loop (and HTTP if applicable) delivers notifications to subscribed clients.
+2. **15.0.2** — stdio loop delivers notifications to subscribed clients.
 3. **15.0.3** — integration tests (in-process dispatcher + at least one transport).
 4. **15.0.4** — docs + generated MCP reference update.
 5. **15.0.retro** + `v15.0.0` tag.

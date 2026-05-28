@@ -4,7 +4,7 @@ use std::io::{self, BufRead, Write};
 
 use maidan_auth::AuthContext;
 
-use crate::{JsonRpcRequest, JsonRpcResponse, McpServer};
+use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpServer};
 
 /// Run the MCP dispatcher until stdin EOF.
 pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()> {
@@ -25,12 +25,26 @@ pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()>
         };
         let response = server.handle(request, auth).await;
         write_response(&mut stdout, response)?;
+        let notifications = server.take_pending_notifications().await;
+        for notification in notifications {
+            write_notification(&mut stdout, notification)?;
+        }
     }
     Ok(())
 }
 
 fn write_response(stdout: &mut impl Write, response: JsonRpcResponse) -> io::Result<()> {
     let line = serde_json::to_string(&response).map_err(|e| io::Error::other(e.to_string()))?;
+    writeln!(stdout, "{line}")?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn write_notification(
+    stdout: &mut impl Write,
+    notification: JsonRpcNotification,
+) -> io::Result<()> {
+    let line = serde_json::to_string(&notification).map_err(|e| io::Error::other(e.to_string()))?;
     writeln!(stdout, "{line}")?;
     stdout.flush()?;
     Ok(())
