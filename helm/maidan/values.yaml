@@ -1,0 +1,47 @@
+replicaCount: 1
+
+image:
+  repository: maidan-server
+  tag: dev
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: maidan.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+config:
+  MAIDAN_BIND: "0.0.0.0:8080"
+  MAIDAN_LOG: "info,sqlx=warn"
+  ARTIFACT_BACKEND: "localfs"
+  ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
+
+secrets:
+  MAIDAN_DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
+
+persistence:
+  enabled: true
+  size: 10Gi

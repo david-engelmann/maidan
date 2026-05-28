@@ -23,6 +23,9 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Decisions]] — every load-bearing architectural decision with
   rationale and the alternative that was rejected.
 - [[Open Work]] — every deferred item across retros + standing
+  risks (short list).
+- [[Remaining Work]] — exhaustive post–ladder backlog, Slack parity
+  matrix, and partial implementations.
   risks. The "what could I work on" backlog.
 - [[Deploy]] — Docker + Kubernetes deployment.
 - [[Production]] — probes, env, bootstrap; links `GET /openapi.json`.

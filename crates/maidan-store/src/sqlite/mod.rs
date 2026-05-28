@@ -156,6 +156,12 @@ impl Store for SqliteStore {
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError> {
         messages::purge(&self.pool, id).await
     }
+    async fn purge_workspace_messages(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<WorkspacePurgeResult, StoreError> {
+        messages::purge_workspace(&self.pool, workspace_id).await
+    }
 
     async fn record_mention(
         &self,

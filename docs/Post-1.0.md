@@ -16,8 +16,8 @@ coherent capability batch warrants semver + changelog.
 | **X** | Complete | [[Tracks/Track X]] — release SBOM, prod digest docs, nightly/release hygiene. |
 
 **Recommended order:** **`v12.0.0`** is closed ([[Retros/Cluster 12.0]]).
-**Active:** **Cluster 23.0** ([[Clusters/Cluster 23.0]]) → `v23.0.0`. Epic: [[Clusters/Product Ladder 17-27]].
-**Recently closed:** **`v22.0.0`** ([[Retros/Cluster 22.0]]), **`v21.0.0`** ([[Retros/Cluster 21.0]]), **`v20.0.0`** ([[Retros/Cluster 20.0]]).
+**Active:** Post-ladder backlog — [[Remaining Work]] (tags `v23.0.0`–`v27.0.0` pending retro).
+**Recently closed:** Product Ladder **17–27** (PR #198); **`v22.0.0`** ([[Retros/Cluster 22.0]]), **`v21.0.0`** ([[Retros/Cluster 21.0]]), **`v20.0.0`** ([[Retros/Cluster 20.0]]).
 
 ## Optional minor: `v1.2.0` — search + embeddings ✓
 

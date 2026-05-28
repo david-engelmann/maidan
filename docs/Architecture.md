@@ -332,5 +332,18 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 - **SQLite semantic search** — `maidan_message_embeddings` (float32 BLOBs) with
   cosine ranking in `maidan-search`; HTTP/MCP `mode=semantic` on SQLite deployments.
 
+## At v23.0.0–v27.0.0 (Product Ladder close)
+
+- **Web UI** — `/ui` tabs: events, search, thread FSM, API token mint.
+- **Helm** — `helm/maidan` primary server chart (HPA in prod values).
+- **Privacy** — `POST /workspaces/:id/purge` (messages only) + audit.
+- **MCP streamable HTTP (subset)** — `POST /mcp/streamable` SSE after JSON-RPC POST body.
+
 ## What's deliberately not here yet
-- Long-term archival / GDPR right-of-erasure (Cluster V).
+
+See [[Remaining Work]] for the full register. Highlights:
+
+- Full MCP streamable HTTP **bidirectional** session (27 shipped response + notify SSE).
+- Full workspace GDPR erasure (25 shipped message purge only).
+- Slack parity: DMs, message edit, pins, presence, huddles, enterprise org layer.
+- Long-term archival beyond message purge.

@@ -7,8 +7,8 @@ check the required capability before handling the request.
 
 | Capability | Routes / behavior |
 |------------|-------------------|
-| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), MCP notifications SSE |
-| `workspace:write` | POST channels, threads, messages (mentions, votes), references |
+| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), MCP notifications SSE, `POST /mcp/streamable` |
+| `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
 | `thread:transition` | POST thread FSM transitions |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |

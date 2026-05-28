@@ -65,6 +65,11 @@ pub trait Store: Send + Sync {
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError>;
     /// Hard-delete a tombstoned message (GDPR erasure). Fails if not tombstoned.
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;
+    /// Tombstone then hard-delete all messages in a workspace (GDPR erasure).
+    async fn purge_workspace_messages(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<WorkspacePurgeResult, StoreError>;
 
     async fn record_mention(
         &self,

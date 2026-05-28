@@ -19,11 +19,11 @@ Each cluster closes with retro PR + tag, same as post-1.0 minors/clusters.
 | **20** ✓ | Message router | `v20.0.0` | `maidan-router` resolves channels/threads/mentions; server uses it |
 | **21** ✓ | A2A agent transport | `v21.0.0` | Google A2A v1.0 `SendMessage`/`GetTask` RPC + `A2aClient` |
 | **22** ✓ | Capabilities hardening | `v22.0.0` | Every HTTP/MCP/WS route enforces capabilities; negative tests |
-| **23** | Web UI product | `v23.0.0` | UI: FSM transitions, search, MCP token UX, thread detail |
-| **24** | Deploy & scale (Helm) | `v24.0.0` | **`helm/maidan` chart** (main stack), HPA, prod values + runbook |
-| **25** | Privacy & erasure | `v25.0.0` | Workspace purge API, audit trail for tombstone/purge, docs |
-| **26** | Product completion gate | `v26.0.0` | Integration gate: compose smoke + e2e matrix; “no stubs” checklist |
-| **27** | MCP streamable HTTP multiplexing | `v27.0.0` | Full spec: session-scoped bidirectional JSON-RPC over HTTP (not only SSE side channel) |
+| **23** ✓ | Web UI product | `v23.0.0` | UI: FSM transitions, search, MCP token UX, thread detail |
+| **24** ✓ | Deploy & scale (Helm) | `v24.0.0` | **`helm/maidan` chart** (main stack), HPA, prod values + runbook |
+| **25** ✓ | Privacy & erasure | `v25.0.0` | Workspace purge API, audit trail for tombstone/purge, docs |
+| **26** ✓ | Product completion gate | `v26.0.0` | Integration gate: compose smoke + e2e matrix; “no stubs” checklist |
+| **27** ✓ | MCP streamable HTTP multiplexing | `v27.0.0` | `POST /mcp/streamable`: JSON-RPC response + notifications on one SSE stream |
 
 ## Ordering rationale
 
