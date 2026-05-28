@@ -79,7 +79,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | Full MCP streamable HTTP spec | `GET /mcp/notifications` at `v16.0.0`; not full spec |
-| MCP resource fan-out beyond `post_message` | Cluster 17.0 in progress |
+| MCP resource fan-out beyond `post_message` | Shipped `v17.0.0` |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Documented in 5.0; unification deferred |
 | Coverage minimum gate | Shipped **`v3.0.0`**; floor raised **`v5.0.0`**; Codecov optional **`v5.0.0`** |
@@ -89,8 +89,8 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 
 ## Known state at this handoff
 
-- **Latest tag:** `v16.0.0` (after retro merge).
-- **Active cluster:** **Cluster 17.0** — MCP resource fan-out ([[Clusters/Cluster 17.0]]).
+- **Latest tag:** `v17.0.0` (after retro merge).
+- **Active cluster:** **Cluster 18.0** — SQLite semantic search ([[Clusters/Product Ladder 17-26]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file

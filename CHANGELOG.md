@@ -9,6 +9,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [17.0.0] — 2026-05-28
+
+Major release: MCP resource fan-out for tool mutations.
+
+### Added
+
+- `maidan-mcp::resource_updates` resolves thread, channel, workspace, and artifact URIs from mutating tools.
+- Notifications fan out to all subscribed related resources.
+
+### Changed
+
+- MCP reference documents multi-URI fan-out behavior.
+
 ## [16.0.0] — 2026-05-28
 
 Major release: MCP HTTP resource notification SSE.

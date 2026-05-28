@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v17.0.0 — MCP resource fan-out
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Multi-URI fan-out on MCP tool mutations                 | `maidan-mcp::resource_updates` |
+
 ## v16.0.0 — MCP HTTP resource notifications
 
 | Capability                                              | Surface                       |
