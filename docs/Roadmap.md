@@ -41,10 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 18.0** — SQLite semantic search → **`v18.0.0`**
-(see [[Clusters/Product Ladder 17-26]]).
+**Active:** **Cluster 19.0** — large artifacts (S3 multipart) → **`v19.0.0`**
+(see [[Clusters/Cluster 19.0]]; ladder [[Clusters/Product Ladder 17-27]]).
 
-**Recently closed:** **`v17.0.0`** — MCP resource fan-out ([[Retros/Cluster 17.0]]).
+**Recently closed:** **`v18.0.0`** — SQLite semantic search ([[Retros/Cluster 18.0]]).
+**Before that:** **`v17.0.0`** — MCP resource fan-out ([[Retros/Cluster 17.0]]).
 **Before that:** **`v16.0.0`** — MCP HTTP resource notifications ([[Retros/Cluster 16.0]]).
 **Before that:** **`v15.0.0`** — MCP stdio resource subscribe ([[Retros/Cluster 15.0]]).
 **Before that:** **`v14.0.0`** — SQLite outbox ([[Retros/Cluster 14.0]]).

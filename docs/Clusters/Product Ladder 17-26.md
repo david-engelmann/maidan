@@ -1,4 +1,9 @@
-# Product ladder — Clusters 17–26 (`v17.0.0` → `v26.0.0`)
+# Product ladder — Clusters 17–26 (superseded)
+
+> **Superseded by** [[Clusters/Product Ladder 17-27]] (adds Cluster **27** MCP streamable
+> HTTP multiplexing and Helm-first Cluster **24**).
+
+# Product ladder — Clusters 17–26 (`v17.0.0` → `v26.0.0`) — archive
 
 Ten delivery clusters after **Cluster 16.0** (`v16.0.0` MCP HTTP resource
 notifications). Goal at **`v26.0.0`**: a **complete, operator-ready product** —

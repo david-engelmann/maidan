@@ -75,7 +75,9 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 |------|-------|
 | Per-model embedding tables / mixed dimensions | 5.0 filters by model at query time; table split deferred |
 | Resumable WS beyond `after_id` | Shipped **`v4.0.0`** — signed `resume_token` |
-| S3 multipart for multi-GB blobs | Cluster E follow-up |
+| S3 multipart for multi-GB blobs | Cluster 19.0 in progress |
+| Full MCP streamable HTTP multiplexing | Cluster 27.0 ([[Clusters/Cluster 27.0]]) |
+| Helm chart (main stack deploy) | Cluster 24.0 ([[Clusters/Cluster 24.0]]) |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
 | Full MCP streamable HTTP spec | `GET /mcp/notifications` at `v16.0.0`; not full spec |
@@ -85,12 +87,12 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 | Coverage minimum gate | Shipped **`v3.0.0`**; floor raised **`v5.0.0`**; Codecov optional **`v5.0.0`** |
 | SQLite file-backed durability tests | Cluster V retro |
 | HorizontalPodAutoscaler manifest | Cluster A retro |
-| Helm chart alternative to Kustomize | Cluster A plan |
+| Helm chart alternative to Kustomize | Cluster 24.0 (Helm is main stack) |
 
 ## Known state at this handoff
 
-- **Latest tag:** `v17.0.0` (after retro merge).
-- **Active cluster:** **Cluster 18.0** — SQLite semantic search ([[Clusters/Product Ladder 17-26]]).
+- **Latest tag:** `v18.0.0` (after retro merge).
+- **Active cluster:** **Cluster 19.0** — S3 multipart ([[Clusters/Product Ladder 17-27]]).
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
