@@ -240,9 +240,9 @@ pub async fn create_thread(
     Path(channel_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
-    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     let t = state
         .store
         .create_thread(NewThread {
@@ -255,7 +255,7 @@ pub async fn create_thread(
         &state,
         Event::ThreadCreated {
             occurred_at: Utc::now(),
-            workspace_id: channel.workspace_id,
+            workspace_id: ctx.workspace_id,
             channel_id: ChannelId(channel_id),
             thread: t.clone(),
         },
@@ -269,9 +269,9 @@ pub async fn list_threads(
     Extension(auth): Extension<AuthContext>,
     Path(channel_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Thread>>> {
-    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     Ok(Json(state.store.list_threads(ChannelId(channel_id)).await?))
 }
 
@@ -281,9 +281,9 @@ pub async fn get_thread(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     let thread = state.store.get_thread(ThreadId(id)).await?;
-    let channel = state.store.get_channel(thread.channel_id).await?;
+    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     Ok(Json(thread))
 }
 
