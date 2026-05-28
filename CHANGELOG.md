@@ -9,6 +9,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [18.0.0] — 2026-05-28
+
+Major release: SQLite semantic search.
+
+### Added
+
+- SQLite `maidan_message_embeddings` migration and semantic `Search` impl.
+- HTTP/MCP `mode=semantic` on SQLite backends.
+
+### Changed
+
+- Cosine ranking in Rust (sqlite-vec SQL deferred; see Decisions).
+
 ## [17.0.0] — 2026-05-28
 
 Major release: MCP resource fan-out for tool mutations.

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v18.0.0 — SQLite semantic search
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| SQLite embedding storage + semantic search              | `maidan-search::SqliteSearch` |
+| HTTP `mode=semantic` on SQLite                          | `GET …/search?mode=semantic`  |
+
 ## v17.0.0 — MCP resource fan-out
 
 | Capability                                              | Surface                       |
