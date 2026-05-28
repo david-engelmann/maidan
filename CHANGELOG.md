@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [19.0.0] — 2026-05-28
+
+Major release: S3 multipart large artifacts.
+
+### Added
+
+- S3 multipart upload API and MinIO integration test.
+- HTTP multipart routes and MCP multipart tools.
+
 ## [18.0.0] — 2026-05-28
 
 Major release: SQLite semantic search.
