@@ -4,6 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use base64::Engine;
+use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
@@ -284,6 +285,111 @@ async fn full_mcp_flow() {
     assert!(resp["error"].is_object());
     assert_eq!(resp["error"]["code"], -32602);
 
+    server.abort();
+}
+
+#[tokio::test]
+async fn http_resource_subscribe_delivers_sse_notification() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws_resp: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "mcp-notify-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+    let alice: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "alice", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let alice_id = alice["id"].as_str().unwrap();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let th: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "notify"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = th["id"].as_str().unwrap();
+    let uri = format!("maidan://threads/{thread_id}");
+
+    let (notify_tx, mut notify_rx) = tokio::sync::mpsc::channel::<String>(4);
+    let sse_client = client.clone();
+    let sse_base = base.clone();
+    let sse_task = tokio::spawn(async move {
+        let resp = sse_client
+            .get(format!("{sse_base}/mcp/notifications"))
+            .send()
+            .await
+            .unwrap();
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.unwrap();
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            if buf.contains("notifications/resources/updated") {
+                let _ = notify_tx.send(buf).await;
+                break;
+            }
+        }
+    });
+
+    let subscribe = rpc(
+        &client,
+        &base,
+        1,
+        "resources/subscribe",
+        json!({ "uri": uri }),
+    )
+    .await;
+    assert!(subscribe["error"].is_null());
+
+    let _ = rpc(
+        &client,
+        &base,
+        2,
+        "tools/call",
+        json!({
+            "name": "post_message",
+            "arguments": {
+                "thread_id": thread_id,
+                "author_id": alice_id,
+                "body": "notify me"
+            }
+        }),
+    )
+    .await;
+
+    let payload = tokio::time::timeout(Duration::from_secs(5), notify_rx.recv())
+        .await
+        .expect("timed out waiting for SSE notification")
+        .expect("SSE collector exited without notification");
+    assert!(payload.contains("notifications/resources/updated"));
+    assert!(payload.contains(&uri));
+
+    sse_task.abort();
     server.abort();
 }
 

@@ -78,7 +78,7 @@ Before that: `v5.0.0` coverage & search quality — [[Retros/Cluster 5.0]].
 | S3 multipart for multi-GB blobs | Cluster E follow-up |
 | OAuth/OIDC implementation | Shipped **`v2.0.0`** — [[Retros/Cluster 2.0]] |
 | `MAIDAN_BOOTSTRAP=1` one-shot seed flag | Shipped **`v1.4.1`** (#129) |
-| Streamable HTTP for MCP `resources/subscribe` | Stdio notifications shipped in `v15.0.0`; HTTP parity deferred to Cluster 16 |
+| Full MCP streamable HTTP spec | `GET /mcp/notifications` ships resource notifications at `v16.0.0`; not full spec |
 | Schema parity property test (`information_schema`) | Cluster A retro |
 | Score normalization across Postgres vs SQLite ranks | Documented in 5.0; unification deferred |
 | Coverage minimum gate | Shipped **`v3.0.0`**; floor raised **`v5.0.0`**; Codecov optional **`v5.0.0`** |

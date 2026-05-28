@@ -89,6 +89,10 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/stream`**
 (SSE). Both share the same control frames and event envelope shape.
 
+MCP resource subscription notifications use **`GET /mcp/notifications`** (SSE JSON-RPC
+lines) with **`POST /mcp`** for `resources/subscribe` / `tools/call` — requires
+`workspace:read` (same as resource read). Distinct from `/mcp/stream` workspace events.
+
 ### First message (WebSocket)
 
 Send one text frame after connect:

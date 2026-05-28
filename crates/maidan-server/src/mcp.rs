@@ -1,10 +1,10 @@
 //! HTTP transport for the MCP server: `POST /mcp` accepts a single
 //! JSON-RPC 2.0 request and returns the corresponding response.
-//! `resources/subscribe` notifications currently ship on stdio only.
+//! Resource subscription notifications also stream on `GET /mcp/notifications`.
 
 use axum::{extract::State, response::IntoResponse, Extension, Json};
 use maidan_auth::AuthContext;
-use maidan_mcp::{JsonRpcRequest, JsonRpcResponse, McpServer};
+use maidan_mcp::{JsonRpcRequest, JsonRpcResponse};
 
 use crate::state::AppState;
 
@@ -17,11 +17,5 @@ pub async fn handler(
         Ok(r) => r,
         Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
     };
-    let server = McpServer::new(
-        state.store.clone(),
-        state.artifacts.clone(),
-        state.search.clone(),
-        state.embedding_provider.clone(),
-    );
-    Json(server.handle(request, &auth).await).into_response()
+    Json(state.mcp.handle(request, &auth).await).into_response()
 }

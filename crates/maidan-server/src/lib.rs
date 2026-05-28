@@ -16,6 +16,7 @@ pub mod federation;
 pub mod federation_worker;
 pub mod health;
 pub mod mcp;
+pub mod mcp_notifications;
 pub mod mcp_stream;
 pub mod metrics;
 pub mod oidc;

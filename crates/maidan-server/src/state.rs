@@ -3,6 +3,7 @@ use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
 use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
+use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
 use maidan_types::PeerId;
@@ -38,6 +39,8 @@ pub struct AppState {
     pub bus: Arc<dyn EventBus>,
     pub search: Arc<dyn Search>,
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
+    /// Shared MCP dispatcher (subscriptions + notification fan-out).
+    pub mcp: Arc<McpServer>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
@@ -77,12 +80,19 @@ impl AppState {
         indexer_last_event_unix_ms: Arc<AtomicI64>,
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
+        let mcp = Arc::new(McpServer::new(
+            store.clone(),
+            artifacts.clone(),
+            search.clone(),
+            embedding_provider.clone(),
+        ));
         Self {
             store,
             artifacts,
             bus,
             search,
             embedding_provider,
+            mcp,
             auth_disabled,
             bootstrap_enabled,
             federation,
