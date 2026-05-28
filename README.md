@@ -6,11 +6,25 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v1.4.0** — auth hardening minor (`MAIDAN_BOOTSTRAP` one-shot seed gate + OIDC design spike).
-Latest release:
-[`v1.4.0`](https://github.com/david-engelmann/maidan/releases/tag/v1.4.0).
+**v27.0.0** — Product Ladder 17–27 close (UI, Helm, workspace purge, completion gate,
+MCP streamable HTTP). Latest release:
+[`v27.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v27.0.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Minor 1.4.md`](docs/Retros/Minor%201.4.md) for the closing retro.
+[`docs/Retros/Cluster 27.0.md`](docs/Retros/Cluster%2027.0.md) for the closing retro;
+[`docs/Remaining Work.md`](docs/Remaining%20Work.md) for what is still open.
+
+## What's in `v27.0.0`
+
+- Everything in **`v22.0.0`** through ladder **23–26** (see [`CHANGELOG.md`](CHANGELOG.md)).
+- `POST /mcp/streamable` — JSON-RPC response + MCP notifications on one SSE stream.
+- Post-ladder backlog: [`docs/Remaining Work.md`](docs/Remaining%20Work.md).
+
+## What's in `v23.0.0`–`v26.0.0` (same integration as v27)
+
+- **v23** — `/ui` product tabs (events, search, thread FSM, API tokens).
+- **v24** — `helm/maidan` chart + template smoke in CI.
+- **v25** — `POST /workspaces/:id/purge` + audit.
+- **v26** — product completion checklist + gate e2e.
 
 ## What's in `v1.4.0`
 

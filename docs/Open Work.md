@@ -83,8 +83,8 @@ Before that: **`v22.0.0`** capabilities — [[Retros/Cluster 22.0]].
 
 ## Known state at this handoff
 
-- **Latest tag on main (pre–23–27 retro):** `v22.0.0`.
-- **Active cluster:** **none** — Product Ladder 17–27 code merged; close with retro(s) + tags.
+- **Latest tag:** **`v27.0.0`** (Product Ladder 17–27 close; GitHub Release from this tag).
+- **Active cluster:** **none** — ladder complete; pick work from [[Remaining Work]].
 - **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
 
 ## How to read this file
