@@ -40,6 +40,7 @@ pub enum ApiError {
     BadRequest(String),
     Unauthorized,
     Forbidden(String),
+    TooManyRequests(String),
     Internal(String),
 }
 
@@ -51,6 +52,7 @@ impl ApiError {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -62,6 +64,7 @@ impl ApiError {
             Self::BadRequest(_) => "Bad Request",
             Self::Unauthorized => "Unauthorized",
             Self::Forbidden(_) => "Forbidden",
+            Self::TooManyRequests(_) => "Too Many Requests",
             Self::Internal(_) => "Internal Server Error",
         }
     }
@@ -73,6 +76,7 @@ impl ApiError {
             Self::Conflict(msg)
             | Self::BadRequest(msg)
             | Self::Forbidden(msg)
+            | Self::TooManyRequests(msg)
             | Self::Internal(msg) => msg.clone(),
         }
     }
@@ -84,6 +88,7 @@ impl ApiError {
             Self::BadRequest(_) => "https://maidan.dev/problems/bad-request",
             Self::Unauthorized => "https://maidan.dev/problems/unauthorized",
             Self::Forbidden(_) => "https://maidan.dev/problems/forbidden",
+            Self::TooManyRequests(_) => "https://maidan.dev/problems/rate-limited",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
         }
     }

@@ -97,7 +97,7 @@ Maidan is **Slack-shaped**, not Slack-complete. Use this when prioritizing produ
 | Compliance export | Workspace message purge + per-message purge | Incomplete workspace erasure (see §1). |
 | Real-time | WS `/ws/subscribe`, MCP SSE | UI does not subscribe over WS; bus not guaranteed exactly-once. |
 | Admin / audit | `GET /workspaces/:id/audit` at **`v28.0.0`** | No admin console beyond `/ui`; global audit admin API still absent. |
-| Rate limits / abuse | — | **No rate limiting** on HTTP/MCP (threat model gap). |
+| Rate limits / abuse | Optional HTTP limit (`MAIDAN_RATE_LIMIT_MAX`, v30) | Per-capability quotas, MCP, distributed limiter still open. |
 
 ---
 

@@ -7,7 +7,8 @@ use tower_http::trace::TraceLayer;
 
 use crate::{
     a2a_agent, auth, bootstrap, federation, health, mcp, mcp_notifications, mcp_stream,
-    mcp_streamable, metrics, oidc, openapi, request_id, routes, session, state::AppState, ws,
+    mcp_streamable, metrics, oidc, openapi, rate_limit, request_id, routes, session,
+    state::AppState, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -158,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         .merge(a2a)
         .merge(protected)
         .layer(middleware::from_fn(metrics::middleware))
+        .layer(middleware::from_fn(rate_limit::middleware))
         .layer(middleware::from_fn(request_id::middleware))
         .with_state(state)
 }
