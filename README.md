@@ -6,12 +6,16 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v27.0.0** — Product Ladder 17–27 close (UI, Helm, workspace purge, completion gate,
-MCP streamable HTTP). Latest release:
-[`v27.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v27.0.0).
+**v28.0.0** — Deep workspace purge + operator audit API. Latest release:
+[`v28.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v28.0.0).
 See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Cluster 27.0.md`](docs/Retros/Cluster%2027.0.md) for the closing retro;
+[`docs/Retros/Cluster 28.0.md`](docs/Retros/Cluster%2028.0.md) for the closing retro;
 [`docs/Remaining Work.md`](docs/Remaining%20Work.md) for what is still open.
+
+## What's in `v28.0.0`
+
+- Deep `POST /workspaces/:id/purge` (embeddings, references, token revoke, event log).
+- `GET /workspaces/:id/audit` for workspace-scoped audit events.
 
 ## What's in `v27.0.0`
 

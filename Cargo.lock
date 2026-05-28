@@ -2705,6 +2705,7 @@ dependencies = [
  "criterion",
  "maidan-auth",
  "maidan-fsm",
+ "maidan-search",
  "maidan-types",
  "serde",
  "serde_json",

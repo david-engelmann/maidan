@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v28.0.0 — Privacy complete
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Deep workspace purge (messages, embeddings, refs, tokens, events) | `POST /workspaces/:id/purge` |
+| Workspace-scoped audit list                               | `GET /workspaces/:id/audit`          |
+
 ## v27.0.0 — MCP streamable HTTP (Product Ladder close)
 
 | Capability                                              | Surface                              |

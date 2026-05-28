@@ -9,6 +9,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [28.0.0] — 2026-05-28
+
+### Added
+
+- Deep workspace purge: embeddings, references, API token revocation, event log removal; extended `WorkspacePurgeResult` counts.
+- `GET /workspaces/:id/audit` — workspace-scoped audit trail for operators.
+
+### Changed
+
+- `POST /workspaces/:id/purge` audit metadata includes full purge counts.
+
 ## [27.0.0] — 2026-05-28
 
 Major release: **Product Ladder 17–27 close** (clusters 23–27 shipped in PR #198;

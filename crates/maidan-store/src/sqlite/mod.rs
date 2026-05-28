@@ -14,6 +14,7 @@ mod oidc;
 pub mod outbox;
 mod peers;
 mod pragmas;
+mod purge_workspace;
 mod refs;
 mod sessions;
 mod thread_transitions;
@@ -160,7 +161,7 @@ impl Store for SqliteStore {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError> {
-        messages::purge_workspace(&self.pool, workspace_id).await
+        purge_workspace::purge(&self.pool, workspace_id).await
     }
 
     async fn record_mention(
@@ -208,6 +209,13 @@ impl Store for SqliteStore {
     }
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {
         audit::list(&self.pool, limit).await
+    }
+    async fn list_audit_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<AuditEvent>, StoreError> {
+        audit::list_for_workspace(&self.pool, workspace_id, limit).await
     }
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError> {

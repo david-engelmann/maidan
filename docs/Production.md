@@ -238,6 +238,8 @@ until re-upserted under the new model name.
 | `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
 | `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
+| `POST /workspaces/:id/purge` | Deep workspace erasure (`v28.0.0`): tombstone+purge all messages, remove embeddings/references, revoke API tokens, delete event log; returns counts JSON. |
+| `GET /workspaces/:id/audit` | Workspace-scoped audit trail (`workspace:read`). |
 
 Import into Swagger UI, Redoc, or your client generator. The document
 version tracks the server release (`info.version`).

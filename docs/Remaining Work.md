@@ -19,7 +19,7 @@ upstream specs, or Slack-grade product depth.
 | **MCP streamable HTTP (27)** | `POST /mcp/streamable` returns JSON-RPC response on SSE, then live notifications | Not the full MCP spec **session-scoped bidirectional** JSON-RPC on one HTTP connection (no `Mcp-Session-Id` mux, no client→server frames after open). `GET /mcp/notifications` remains a separate channel. |
 | **Web UI (23)** | Vanilla `/ui` tabs: events, search, thread FSM, token mint | No channel list, no create-channel/thread flows, no WS live tail, no artifact upload UI, no federation admin, no purge UI, no faceted search controls, no React/Vite app (deferred since Cluster H). |
 | **Helm (24)** | `helm/maidan` for **maidan-server** only | Chart does **not** bundle Postgres, MinIO, ingress controller, or cert-manager; operators wire dependencies. No `helm install` CI job (only `helm template` smoke). |
-| **Workspace purge (25)** | `POST /workspaces/:id/purge` — all messages tombstone + hard-delete + audit | Does **not** purge embeddings, artifacts, votes, mentions, references, members, channels, threads, OIDC rows, API tokens, peers, or event log; workspace row remains. Not a full “delete workspace” GDPR erasure. |
+| **Workspace purge (25→28)** | Deep purge at **`v28.0.0`**: messages, embeddings, references, tokens, events + `GET …/audit` | Does **not** delete artifact blobs, members, channels, threads, workspace row, peers, or OIDC identities. |
 | **Product gate (26)** | Checklist + lightweight e2e | Does not prove compose multi-instance federation, MinIO multipart at scale, or Postgres+Helm e2e deploy. |
 | **Capabilities (22)** | Denial matrix for five paths | Not exhaustive positive/negative coverage of every route and MCP tool. |
 | **A2A (21)** | `SendMessage`, `GetTask` | No `SendStreamingMessage`, push configs, or agent card discovery beyond well-known hints. |
@@ -96,7 +96,7 @@ Maidan is **Slack-shaped**, not Slack-complete. Use this when prioritizing produ
 | Enterprise SSO | OIDC (Cluster 2.0) | No SAML-in-Maidan; no SCIM provisioning. |
 | Compliance export | Workspace message purge + per-message purge | Incomplete workspace erasure (see §1). |
 | Real-time | WS `/ws/subscribe`, MCP SSE | UI does not subscribe over WS; bus not guaranteed exactly-once. |
-| Admin / audit | `maidan_audit_events` | No admin console beyond `/ui`; audit not exposed on HTTP list API for operators. |
+| Admin / audit | `GET /workspaces/:id/audit` at **`v28.0.0`** | No admin console beyond `/ui`; global audit admin API still absent. |
 | Rate limits / abuse | — | **No rate limiting** on HTTP/MCP (threat model gap). |
 
 ---
