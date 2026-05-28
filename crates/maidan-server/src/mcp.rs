@@ -1,6 +1,6 @@
 //! HTTP transport for the MCP server: `POST /mcp` accepts a single
 //! JSON-RPC 2.0 request and returns the corresponding response.
-//! Streamable HTTP (SSE notifications) arrives in a later cluster.
+//! `resources/subscribe` notifications currently ship on stdio only.
 
 use axum::{extract::State, response::IntoResponse, Extension, Json};
 use maidan_auth::AuthContext;

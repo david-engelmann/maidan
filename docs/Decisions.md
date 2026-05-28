@@ -188,6 +188,21 @@ change.
 **To revisit:** if `McpServer` accumulates HTTP-specific assumptions
 (e.g., streaming responses for `resources/subscribe`).
 
+### MCP `resources/subscribe` ships stdio-first (`v15.0.0`)
+
+**Decision.** Implement `resources/subscribe` and `resources/unsubscribe`
+on the JSON-RPC dispatcher, and deliver
+`notifications/resources/updated` on stdio transport in the same process.
+`POST /mcp` remains request/response-only for now.
+
+**Alternative.** Implement streamable HTTP and stdio together in one cluster.
+
+**Why this:** desktop MCP clients are already stdio-first, and this closes
+the long-standing subscription deferral without coupling to HTTP streaming
+infrastructure.
+
+**To revisit:** streamable HTTP parity and broader resource update fan-out.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)

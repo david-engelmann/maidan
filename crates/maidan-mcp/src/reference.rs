@@ -13,9 +13,18 @@ pub fn markdown() -> String {
          `cargo run -p maidan-mcp --bin gen-mcp-reference`.\n\n\
          ## Transport\n\n\
          - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)\n\
-         - **SSE:** `GET /mcp/stream` for resource subscriptions (server push)\n\
-         - **stdio:** `maidan mcp-stdio` for desktop clients\n\n\
+         - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
+         - **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",
+    );
+
+    out.push_str(
+        "## JSON-RPC methods\n\n\
+         - `initialize`\n\
+         - `tools/list`, `tools/call`\n\
+         - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
+         - `prompts/list`, `prompts/get`\n\n\
+         **Notification (stdio):** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }`.\n\n",
     );
 
     out.push_str("## Tools\n\n");

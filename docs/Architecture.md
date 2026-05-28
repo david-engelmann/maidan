@@ -305,5 +305,15 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 - **SSE** — `GET /mcp/stream` for `event:subscribe` consumers.
 - **Ops** — graceful shutdown, `X-Request-Id`, `/health/live` + `/health/ready`.
 
+## At v15.0.0 (Cluster 15)
+
+- **MCP resource subscriptions (stdio first)** — `resources/subscribe` and
+  `resources/unsubscribe` on JSON-RPC; notifications via
+  `notifications/resources/updated`.
+- **Current trigger surface** — `tools/call post_message` notifies
+  `maidan://threads/{id}` subscribers after successful write.
+- **HTTP parity** — `POST /mcp` remains request/response only; no streamable HTTP
+  channel in this cluster.
+
 ## What's deliberately not here yet
 - Long-term archival / GDPR right-of-erasure (Cluster V).

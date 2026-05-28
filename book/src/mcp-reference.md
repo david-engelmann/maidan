@@ -5,10 +5,19 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 ## Transport
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
-- **SSE:** `GET /mcp/stream` for resource subscriptions (server push)
-- **stdio:** `maidan mcp-stdio` for desktop clients
+- **SSE:** `GET /mcp/stream` for workspace event stream replay/live
+- **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)
 
 Bearer token required unless `AUTH_DISABLED=1`.
+
+## JSON-RPC methods
+
+- `initialize`
+- `tools/list`, `tools/call`
+- `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`
+- `prompts/list`, `prompts/get`
+
+**Notification (stdio):** `notifications/resources/updated` with `{ "uri": "maidan://..." }`.
 
 ## Tools
 
@@ -283,9 +292,32 @@ Lexical full-text search over a workspace's messages. Returns ranked hits with h
 ```json
 {
   "properties": {
+    "author_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "channel_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "human",
+        "agent"
+      ],
+      "type": "string"
+    },
     "limit": {
       "default": 25,
       "type": "integer"
+    },
+    "mode": {
+      "default": "lexical",
+      "enum": [
+        "lexical",
+        "semantic"
+      ],
+      "type": "string"
     },
     "query": {
       "minLength": 1,

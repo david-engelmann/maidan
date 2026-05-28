@@ -22,6 +22,13 @@ pub struct JsonRpcResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct JsonRpcNotification {
+    pub jsonrpc: &'static str,
+    pub method: String,
+    pub params: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct JsonRpcError {
     pub code: i32,
     pub message: String,
@@ -59,5 +66,15 @@ impl JsonRpcResponse {
                 data: None,
             },
         )
+    }
+}
+
+impl JsonRpcNotification {
+    pub fn new(method: impl Into<String>, params: serde_json::Value) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            method: method.into(),
+            params,
+        }
     }
 }

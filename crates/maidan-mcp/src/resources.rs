@@ -45,14 +45,7 @@ pub async fn read(
     artifacts: &Arc<dyn ArtifactStore>,
     uri: &str,
 ) -> Result<Value, McpError> {
-    let path = uri
-        .strip_prefix(URI_PREFIX)
-        .ok_or_else(|| McpError::InvalidParams(format!("uri must start with maidan://: {uri}")))?;
-    let mut parts = path.splitn(2, '/');
-    let kind = parts.next().unwrap_or("");
-    let id_str = parts
-        .next()
-        .ok_or_else(|| McpError::InvalidParams("missing id segment".into()))?;
+    let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
         "artifacts" => {
@@ -113,4 +106,40 @@ pub async fn read(
             }
         ]
     }))
+}
+
+pub fn validate_uri(uri: &str) -> Result<(), McpError> {
+    let (kind, id_str) = parse_uri(uri)?;
+    match kind {
+        "artifacts" => {
+            if id_str.len() != 64 {
+                return Err(McpError::InvalidParams(
+                    "artifact sha256 must be 64 hex chars".into(),
+                ));
+            }
+            let _ = Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        }
+        "workspaces" | "channels" | "threads" => {
+            let _ = uuid::Uuid::parse_str(id_str)
+                .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
+        }
+        other => {
+            return Err(McpError::InvalidParams(format!(
+                "unknown resource kind: {other}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_uri(uri: &str) -> Result<(&str, &str), McpError> {
+    let path = uri
+        .strip_prefix(URI_PREFIX)
+        .ok_or_else(|| McpError::InvalidParams(format!("uri must start with maidan://: {uri}")))?;
+    let mut parts = path.splitn(2, '/');
+    let kind = parts.next().unwrap_or("");
+    let id_str = parts
+        .next()
+        .ok_or_else(|| McpError::InvalidParams("missing id segment".into()))?;
+    Ok((kind, id_str))
 }
