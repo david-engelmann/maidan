@@ -10,6 +10,13 @@ PR prepends a new section so the latest is always at the top.
 | SQLite transactional outbox + relay                     | `maidan-store::sqlite::outbox`, `OutboxRelay` |
 | `OutboxBackend` for relay and metrics                     | `maidan-store::outbox`, `AppState` |
 
+## v15.0.0 — MCP resource subscriptions (stdio)
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| MCP `resources/subscribe` / `resources/unsubscribe`    | `maidan-mcp::McpServer`       |
+| Resource update notifications on stdio                 | `notifications/resources/updated` |
+
 ## v13.0.0 — Delivery contract & subscriber ledger
 
 | Capability                                              | Surface                       |

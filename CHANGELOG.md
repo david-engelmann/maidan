@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [15.0.0] — 2026-05-28
+
+Major release: MCP resource subscriptions (stdio first).
+
+### Added
+
+- MCP JSON-RPC methods `resources/subscribe` and `resources/unsubscribe`.
+- Stdio notification delivery: `notifications/resources/updated`.
+- Resource URI validation helper in `maidan-mcp`.
+- `post_message` trigger mapping to notify subscribed `maidan://threads/{id}` resources.
+
+### Changed
+
+- MCP reference now documents subscription methods and notification shape.
+
 ## [14.0.0] — 2026-05-28
 
 Major release: SQLite transactional outbox parity.
