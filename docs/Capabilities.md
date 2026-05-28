@@ -3,6 +3,41 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v27.0.0 — MCP streamable HTTP (Product Ladder close)
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| MCP streamable HTTP subset                              | `POST /mcp/streamable`               |
+| Post-ladder backlog register                            | [[Remaining Work]]                   |
+
+Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] … [[Retros/Cluster 26.0]]).
+
+## v26.0.0 — Product completion gate
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Product completion checklist                            | [[Product Completion Checklist]]     |
+| Completion gate e2e                                     | `product_completion_gate_e2e.rs`     |
+
+## v25.0.0 — Privacy & erasure
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Workspace message purge + audit                         | `POST /workspaces/:id/purge`         |
+
+## v24.0.0 — Deploy & scale (Helm)
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Helm chart (maidan-server)                              | `helm/maidan/`                       |
+| Helm template CI smoke                                  | `scripts/helm-template-smoke.sh`     |
+
+## v23.0.0 — Web UI product
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Operator UI: events, search, thread FSM, token mint     | `/ui`                                |
+
 ## v22.0.0 — Capabilities hardening
 
 | Capability                                              | Surface                              |

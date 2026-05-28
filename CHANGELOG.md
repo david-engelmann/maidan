@@ -11,9 +11,17 @@ Nothing yet.
 
 ## [27.0.0] — 2026-05-28
 
+Major release: **Product Ladder 17–27 close** (clusters 23–27 shipped in PR #198;
+CHANGELOG sections v23–v26 record logical cluster boundaries at the same merge).
+
 ### Added
 
 - MCP streamable HTTP: `POST /mcp/streamable` returns JSON-RPC response then SSE notifications on one connection.
+- Post-ladder backlog: `docs/Remaining Work.md` and vault refresh.
+
+### Documentation
+
+- Retros: `docs/Retros/Cluster 23.0.md` … `Cluster 27.0.md`.
 
 ## [26.0.0] — 2026-05-28
 

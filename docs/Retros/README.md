@@ -74,3 +74,14 @@ PR review credit; external contributors.
 - [[Cluster 10.0]] — Postgres transactional outbox. Closed at `v10.0.0`.
 - [[Cluster 11.0]] — Coverage 11%. Closed at `v11.0.0`.
 - [[Cluster 12.0]] — Outbox relay hardening. Closed at `v12.0.0`.
+- [[Cluster 17.0]] — MCP resource fan-out. Closed at `v17.0.0`.
+- [[Cluster 18.0]] — SQLite semantic search. Closed at `v18.0.0`.
+- [[Cluster 19.0]] — S3 multipart artifacts. Closed at `v19.0.0`.
+- [[Cluster 20.0]] — Message router. Closed at `v20.0.0`.
+- [[Cluster 21.0]] — A2A agent transport. Closed at `v21.0.0`.
+- [[Cluster 22.0]] — Capabilities hardening. Closed at `v22.0.0`.
+- [[Cluster 23.0]] — Web UI product. Closed at `v23.0.0` (integration PR #198).
+- [[Cluster 24.0]] — Helm deploy. Closed at `v24.0.0` (integration PR #198).
+- [[Cluster 25.0]] — Privacy & erasure. Closed at `v25.0.0` (integration PR #198).
+- [[Cluster 26.0]] — Product completion gate. Closed at `v26.0.0` (integration PR #198).
+- [[Cluster 27.0]] — MCP streamable HTTP. Closed at **`v27.0.0`** (culminating ladder release).

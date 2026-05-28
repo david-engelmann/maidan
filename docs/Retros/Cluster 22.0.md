@@ -11,4 +11,5 @@ MCP, A2A, and WebSocket paths.
 
 ## Forward look
 
-Next: **Cluster 23.0** — Web UI product. Ladder: [[Clusters/Product Ladder 17-27]].
+**Clusters 23.0–27.0** closed in PR #198; ladder release **`v27.0.0`**. See
+[[Retros/Cluster 27.0]] and [[Remaining Work]].

@@ -41,10 +41,13 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Post–Product Ladder** — retro + tags for **`v23.0.0`–`v27.0.0`**
-(code merged PR #198). Next work: [[Remaining Work]].
+**Active:** Post-ladder backlog — [[Remaining Work]] (no Cluster 28 defined).
 
-**Recently closed:** Product Ladder **17–27** ([[Clusters/Product Ladder 17-27]]);
+**Recently closed:** Product Ladder **17–27** at **`v27.0.0`**
+([[Retros/Cluster 27.0]], PR #198); tags **`v23.0.0`–`v27.0.0`** documented in
+CHANGELOG (GitHub Release cut at **`v27.0.0`**).
+
+**Before that:** Product Ladder integration ([[Clusters/Product Ladder 17-27]]);
 **`v22.0.0`** — capabilities hardening ([[Retros/Cluster 22.0]]).
 **Before that:** **`v21.0.0`** — A2A agent transport ([[Retros/Cluster 21.0]]).
 **Before that:** **`v20.0.0`** — message router ([[Retros/Cluster 20.0]]).
