@@ -4,7 +4,8 @@ Cluster 17.0 closed MCP resource fan-out at **`v17.0.0`**. Postgres semantic sea
 shipped in minors 1.2–1.3; SQLite still returns `Unsupported` for
 `Search::semantic_search`.
 
-> **Goal:** Enable semantic search on SQLite dev deployments via `sqlite-vec`.
+> **Goal:** Enable semantic search on SQLite dev deployments (stored embeddings +
+> cosine ranking; `sqlite-vec` SQL deferred until sqlx extension linkage is stable).
 >
 > **Target tag:** `v18.0.0`.
 

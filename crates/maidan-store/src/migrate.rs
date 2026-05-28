@@ -22,6 +22,7 @@ const POSTGRES_UP_V14: &str =
 const POSTGRES_UP_V15: &str = include_str!("../../../migrations/postgres/0015_delivery_cursor.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
+const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
 const SQLITE_UP_V4: &str = include_str!("../../../migrations/sqlite/0004_thread_fsm.sql");
 const SQLITE_UP_V5: &str = include_str!("../../../migrations/sqlite/0005_parent_threads.sql");
 const SQLITE_UP_V6: &str = include_str!("../../../migrations/sqlite/0006_event_log.sql");
@@ -81,6 +82,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
 
     apply_sqlite(pool, 1, SQLITE_UP_V1).await?;
     apply_sqlite(pool, 2, SQLITE_UP_V2).await?;
+    apply_sqlite(pool, 3, SQLITE_UP_V3).await?;
     apply_sqlite(pool, 4, SQLITE_UP_V4).await?;
     apply_sqlite(pool, 5, SQLITE_UP_V5).await?;
     apply_sqlite(pool, 6, SQLITE_UP_V6).await?;
