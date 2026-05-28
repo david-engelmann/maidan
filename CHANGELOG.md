@@ -9,6 +9,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [14.0.0] — 2026-05-28
+
+Major release: SQLite transactional outbox parity.
+
+### Added
+
+- SQLite `maidan_outbox` migration and transactional `append_event`.
+- `OutboxBackend` for Postgres and SQLite; relay + metrics on both dialects.
+- SQLite deployments run outbox relay against `InMemoryBus` after commit.
+
+### Changed
+
+- `AppState.outbox_backend` replaces `outbox_pool` for dialect-neutral metrics.
+
 ## [13.0.0] — 2026-05-27
 
 Major release: delivery cursors and subscriber idempotency contract.
