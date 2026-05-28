@@ -129,6 +129,14 @@ impl IntoResponse for ApiError {
     }
 }
 
+impl From<maidan_router::RouterError> for ApiError {
+    fn from(err: maidan_router::RouterError) -> Self {
+        match err {
+            maidan_router::RouterError::Store(e) => e.into(),
+        }
+    }
+}
+
 impl From<StoreError> for ApiError {
     fn from(err: StoreError) -> Self {
         match err {

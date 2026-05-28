@@ -22,7 +22,7 @@ use maidan_auth::{
     hash_secret, AuthContext, TokenSecret,
 };
 use maidan_fsm::ThreadAction;
-use maidan_store::Store;
+use maidan_router::{resolve_channel_context, resolve_message_chain, resolve_thread_context};
 use maidan_types::*;
 
 use crate::dto::*;
@@ -38,24 +38,6 @@ fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
 
 fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
     auth.ensure_workspace(workspace_id).map_err(Into::into)
-}
-
-async fn workspace_for_thread(
-    store: &dyn Store,
-    thread_id: ThreadId,
-) -> Result<(WorkspaceId, ChannelId), ApiError> {
-    let thread = store.get_thread(thread_id).await?;
-    let channel = store.get_channel(thread.channel_id).await?;
-    Ok((channel.workspace_id, channel.id))
-}
-
-async fn chain_for_message(
-    store: &dyn Store,
-    message_id: MessageId,
-) -> Result<(WorkspaceId, ChannelId, ThreadId), ApiError> {
-    let message = store.get_message(message_id).await?;
-    let (workspace_id, channel_id) = workspace_for_thread(store, message.thread_id).await?;
-    Ok((workspace_id, channel_id, message.thread_id))
 }
 
 // --- workspaces ---
@@ -258,9 +240,9 @@ pub async fn create_thread(
     Path(channel_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
-    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     let t = state
         .store
         .create_thread(NewThread {
@@ -273,7 +255,7 @@ pub async fn create_thread(
         &state,
         Event::ThreadCreated {
             occurred_at: Utc::now(),
-            workspace_id: channel.workspace_id,
+            workspace_id: ctx.workspace_id,
             channel_id: ChannelId(channel_id),
             thread: t.clone(),
         },
@@ -287,9 +269,9 @@ pub async fn list_threads(
     Extension(auth): Extension<AuthContext>,
     Path(channel_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Thread>>> {
-    let channel = state.store.get_channel(ChannelId(channel_id)).await?;
+    let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     Ok(Json(state.store.list_threads(ChannelId(channel_id)).await?))
 }
 
@@ -299,9 +281,9 @@ pub async fn get_thread(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     let thread = state.store.get_thread(ThreadId(id)).await?;
-    let channel = state.store.get_channel(thread.channel_id).await?;
+    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, channel.workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     Ok(Json(thread))
 }
 
@@ -319,7 +301,9 @@ pub async fn transition_thread(
         ))
     })?;
     let thread_id = ThreadId(id);
-    let (workspace_id, channel_id) = workspace_for_thread(state.store.as_ref(), thread_id).await?;
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    let workspace_id = ctx.workspace_id;
+    let channel_id = ctx.channel_id;
     ensure_workspace(&auth, workspace_id)?;
     let result = state
         .store
@@ -351,9 +335,8 @@ pub async fn post_message(
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
-    let (workspace_id, channel_id) =
-        workspace_for_thread(state.store.as_ref(), ThreadId(thread_id)).await?;
-    ensure_workspace(&auth, workspace_id)?;
+    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     let m = state
         .store
         .post_message(NewMessage {
@@ -367,8 +350,8 @@ pub async fn post_message(
         &state,
         Event::MessagePosted {
             occurred_at: Utc::now(),
-            workspace_id,
-            channel_id,
+            workspace_id: ctx.workspace_id,
+            channel_id: ctx.channel_id,
             thread_id: ThreadId(thread_id),
             message: m.clone(),
         },
@@ -383,9 +366,9 @@ pub async fn list_messages(
     Path(thread_id): Path<uuid::Uuid>,
     Query(q): Query<ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
-    let (workspace_id, _) = workspace_for_thread(state.store.as_ref(), ThreadId(thread_id)).await?;
+    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     Ok(Json(
         state
             .store
@@ -399,9 +382,9 @@ pub async fn get_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Message>> {
-    let (workspace_id, _, _) = chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
@@ -410,18 +393,17 @@ pub async fn tombstone_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    let (workspace_id, channel_id, thread_id) =
-        chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     state.store.tombstone_message(MessageId(id)).await?;
     publish(
         &state,
         Event::MessageTombstoned {
             occurred_at: Utc::now(),
-            workspace_id,
-            channel_id,
-            thread_id,
+            workspace_id: chain.workspace_id,
+            channel_id: chain.channel_id,
+            thread_id: chain.thread_id,
             message_id: MessageId(id),
         },
     )
@@ -434,9 +416,9 @@ pub async fn purge_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    let (workspace_id, _, _) = chain_for_message(state.store.as_ref(), MessageId(id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     state.store.purge_message(MessageId(id)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -447,10 +429,9 @@ pub async fn create_mention(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
-    let (workspace_id, _channel_id, thread_id) =
-        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     state
         .store
         .record_mention(MessageId(message_id), MemberId(body.member_id))
@@ -459,8 +440,8 @@ pub async fn create_mention(
         &state,
         Event::MentionRecorded {
             occurred_at: Utc::now(),
-            workspace_id,
-            thread_id,
+            workspace_id: chain.workspace_id,
+            thread_id: chain.thread_id,
             message_id: MessageId(message_id),
             member_id: MemberId(body.member_id),
         },
@@ -477,10 +458,9 @@ pub async fn cast_vote(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
-    let (workspace_id, _channel_id, thread_id) =
-        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     state
         .store
         .cast_vote(NewVote {
@@ -493,8 +473,8 @@ pub async fn cast_vote(
         &state,
         Event::VoteCast {
             occurred_at: Utc::now(),
-            workspace_id,
-            thread_id,
+            workspace_id: chain.workspace_id,
+            thread_id: chain.thread_id,
             message_id: MessageId(message_id),
             member_id: MemberId(body.member_id),
             vote_kind: body.kind,
@@ -509,10 +489,9 @@ pub async fn list_votes(
     Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Vote>>> {
-    let (workspace_id, _, _) =
-        chain_for_message(state.store.as_ref(), MessageId(message_id)).await?;
+    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
     Ok(Json(
         state
             .store

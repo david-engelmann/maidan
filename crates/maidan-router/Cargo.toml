@@ -10,6 +10,12 @@ publish.workspace = true
 description = "Channel/thread/mention router for Maidan."
 
 [dependencies]
+maidan-store = { path = "../maidan-store" }
 maidan-types = { path = "../maidan-types" }
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+maidan-store = { path = "../maidan-store" }
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
