@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberId, Message, MessageId, NewMessage, ThreadId};
+use maidan_types::{EditMessage, MemberId, Message, MessageId, NewMessage, ThreadId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -65,6 +65,28 @@ pub async fn purge(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
         return Err(StoreError::NotFound);
     }
     Ok(())
+}
+
+pub async fn edit(
+    pool: &SqlitePool,
+    id: MessageId,
+    edit: EditMessage,
+) -> Result<Message, StoreError> {
+    let now = Utc::now();
+    let metadata_text = serde_json::to_string(&edit.metadata)?;
+    let row = sqlx::query(
+        "UPDATE maidan_messages SET body = ?, metadata = ?, edited_at = ?
+         WHERE id = ? AND tombstoned_at IS NULL
+         RETURNING id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at",
+    )
+    .bind(&edit.body)
+    .bind(&metadata_text)
+    .bind(now)
+    .bind(id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_message(&row)
 }
 
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {

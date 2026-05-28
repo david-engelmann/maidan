@@ -303,6 +303,21 @@ async fn run_suite(h: &Harness) {
     assert_eq!(listed[0]["body"], "hello");
     assert_eq!(listed[0]["metadata"]["client"], "test");
 
+    // edit message (author)
+    let edited: serde_json::Value = h
+        .client
+        .patch(format!("{base}/messages/{msg1_id}"))
+        .json(&json!({"editor_id": alice_id, "body": "hello edited"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(edited["body"], "hello edited");
+    assert!(edited["edited_at"].as_str().is_some());
+    assert_eq!(edited["metadata"]["client"], "test");
+
     // mention
     let resp = h
         .client

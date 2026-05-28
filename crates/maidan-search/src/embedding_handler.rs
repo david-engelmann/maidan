@@ -1,4 +1,4 @@
-//! Indexer handler that writes semantic embeddings on `MessagePosted`.
+//! Indexer handler that writes semantic embeddings on message post/edit events.
 
 use std::sync::Arc;
 
@@ -55,14 +55,17 @@ impl EmbeddingHandler {
 #[async_trait]
 impl EventHandler for EmbeddingHandler {
     async fn handle(&self, event: &Event) {
-        let Event::MessagePosted {
-            thread_id, message, ..
-        } = event
-        else {
-            return;
+        let (thread_id, message) = match event {
+            Event::MessagePosted {
+                thread_id, message, ..
+            }
+            | Event::MessageEdited {
+                thread_id, message, ..
+            } => (*thread_id, message),
+            _ => return,
         };
 
-        let thread = match self.store.get_thread(*thread_id).await {
+        let thread = match self.store.get_thread(thread_id).await {
             Ok(t) => t,
             Err(err) => {
                 self.set_health_error(format!("load thread failed: {err}"))

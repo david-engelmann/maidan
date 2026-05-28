@@ -50,6 +50,14 @@ pub struct CreateMessage {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct EditMessageRequest {
+    pub editor_id: uuid::Uuid,
+    pub body: String,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMention {
     pub member_id: uuid::Uuid,
 }

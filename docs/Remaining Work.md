@@ -31,7 +31,7 @@ upstream specs, or Slack-grade product depth.
 | **Semantic search (18)** | SQLite brute-force cosine | No `sqlite-vec` / HNSW; large workspaces will not scale on SQLite. |
 | **Embeddings** | Pluggable provider | Default **`hash-v1`** is not semantic; per-model **table split** deferred (mixed dimensions). |
 | **Search scores** | Lexical + semantic per backend | **Score normalization** across Postgres vs SQLite ranks not unified. |
-| **Message edit** | `edited_at` column exists | **No HTTP/MCP edit API** — Slack “edit message” parity missing. |
+| **Message edit** | `PATCH /messages/:id`, MCP `edit_message`, `MessageEdited` bus event (v29) | Edit history / UI affordance still deferred. |
 | **Pinned content** | Architecture mentions pins | **No pin API** or UI. |
 | **Bootstrap hardening** | `MAIDAN_BOOTSTRAP=1` gate | Threat model: **compile-time removal** of bootstrap routes **not implemented**. |
 
@@ -82,7 +82,7 @@ Maidan is **Slack-shaped**, not Slack-complete. Use this when prioritizing produ
 | Threads | First-class `Thread` + FSM | No thread sidebar UI, no “also send to channel” split. |
 | @mentions | `Mention` records | No highlight rules, notification prefs, or email digests. |
 | Reactions | **Votes** (approval / request-changes) | Not emoji reactions; no custom emoji. |
-| Message editing | — | Column only; **no edit API**. |
+| Message editing | PATCH + MCP | No edit history or UI. |
 | Message deletion | Tombstone + purge | No “delete for me” vs “for everyone” UX; purge is admin API. |
 | Pins | — | **Not implemented**. |
 | Files / snippets | Artifacts (localfs / S3 multipart) | No gallery, previews, or GDrive-style integrations in UI. |

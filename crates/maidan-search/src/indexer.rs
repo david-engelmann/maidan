@@ -105,8 +105,11 @@ impl Indexer {
         let join = tokio::spawn(async move {
             let mut backoff = RECONNECT_INITIAL;
             loop {
-                let filter = EventFilter::all()
-                    .with_kinds([EventKind::MessagePosted, EventKind::MessageTombstoned]);
+                let filter = EventFilter::all().with_kinds([
+                    EventKind::MessagePosted,
+                    EventKind::MessageEdited,
+                    EventKind::MessageTombstoned,
+                ]);
                 let stream = match self.bus.subscribe(filter).await {
                     Ok(s) => s,
                     Err(err) => {

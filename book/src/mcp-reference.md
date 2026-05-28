@@ -6,6 +6,7 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
+- **Streamable HTTP:** `POST /mcp/streamable` (JSON-RPC response + live notifications on one SSE body)
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
 - **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)
 
@@ -18,7 +19,7 @@ Bearer token required unless `AUTH_DISABLED=1`.
 - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`
 - `prompts/list`, `prompts/get`
 
-**Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` SSE). Mutating tools fan out to related thread/channel/workspace/artifact URIs.
+**Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` or `POST /mcp/streamable`). Mutating tools fan out to related thread/channel/workspace/artifact URIs.
 
 ## Tools
 
@@ -116,6 +117,39 @@ Post a message to a thread on behalf of a member.
   "required": [
     "thread_id",
     "author_id",
+    "body"
+  ],
+  "type": "object"
+}
+```
+
+### `edit_message`
+
+Edit a message body (author needs message:post; others need workspace:write).
+
+**Capability:** `message:post`
+
+```json
+{
+  "properties": {
+    "body": {
+      "type": "string"
+    },
+    "editor_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "message_id",
+    "editor_id",
     "body"
   ],
   "type": "object"

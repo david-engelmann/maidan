@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Post–Cluster 28 backlog — [[Remaining Work]].
+**Active:** Post–Cluster 29 backlog — [[Remaining Work]]; **Cluster 30.0** — rate limits ([[Clusters/Cluster 30.0]]).
+
+**Recently closed:** **Cluster 29.0** — message edit at **`v29.0.0`** ([[Retros/Cluster 29.0]]).
 
 **Recently closed:** **Cluster 28.0** — privacy complete at **`v28.0.0`** ([[Retros/Cluster 28.0]]).
 

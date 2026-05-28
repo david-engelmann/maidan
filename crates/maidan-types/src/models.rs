@@ -209,6 +209,13 @@ pub struct NewMessage {
     pub metadata: serde_json::Value,
 }
 
+/// Body/metadata replacement for [`Store::edit_message`] (Cluster 29).
+#[derive(Debug, Clone)]
+pub struct EditMessage {
+    pub body: String,
+    pub metadata: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Mention {
