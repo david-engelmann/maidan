@@ -7,7 +7,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use maidan_bus::{BusItem, EventBus, PostgresBus};
 use maidan_server::outbox_relay::OutboxRelay;
-use maidan_store::{postgres::events, postgres::outbox, run_postgres_migrations};
+use maidan_store::{postgres::events, postgres::outbox, run_postgres_migrations, OutboxBackend};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
@@ -66,7 +66,7 @@ async fn relay_publishes_enqueued_event_to_bus() {
     let stored = events::append(&pool, &event).await.unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(pool.clone(), Arc::new(bus));
+    let relay = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), Arc::new(bus));
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -100,7 +100,7 @@ async fn relay_run_twice_does_not_leave_duplicate_pending_rows() {
     events::append(&pool, &event).await.unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(pool.clone(), Arc::new(bus));
+    let relay = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), Arc::new(bus));
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
 

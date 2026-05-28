@@ -33,6 +33,7 @@ const SQLITE_UP_V10: &str =
 const SQLITE_UP_V11: &str =
     include_str!("../../../migrations/sqlite/0011_peer_remote_workspace.sql");
 const SQLITE_UP_V12: &str = include_str!("../../../migrations/sqlite/0012_oidc_sessions.sql");
+const SQLITE_UP_V13: &str = include_str!("../../../migrations/sqlite/0013_outbox.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -89,6 +90,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 10, SQLITE_UP_V10).await?;
     apply_sqlite(pool, 11, SQLITE_UP_V11).await?;
     apply_sqlite(pool, 12, SQLITE_UP_V12).await?;
+    apply_sqlite(pool, 13, SQLITE_UP_V13).await?;
     Ok(())
 }
 

@@ -243,10 +243,13 @@ Synthetic publishes (`log_id == 0`) still use the legacy full-envelope NOTIFY
 path (7990-byte cap). At-most-once semantics are unchanged — see [[Decisions]]
 and [[Open Work]].
 
-## Transactional outbox at v10.0.0
+## Transactional outbox at v10.0.0 / v14.0.0
 
-On Postgres, event append and outbox enqueue share a transaction; a relay
-task publishes to `PostgresBus` after commit:
+On Postgres and SQLite, event append and outbox enqueue share a transaction; a
+relay task publishes after commit. Postgres uses `PostgresBus` (NOTIFY +
+hydrate); SQLite uses `InMemoryBus` in the same process.
+
+Postgres path:
 
 ```mermaid
 sequenceDiagram

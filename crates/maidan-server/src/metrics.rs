@@ -130,14 +130,14 @@ async fn refresh_runtime_gauges(state: &AppState) {
         sync_hydrate_counters(stats.snapshot());
     }
 
-    if let Some(pool) = state.outbox_pool.as_ref() {
-        if let Ok(pending) = crate::outbox_relay::pending_count(pool).await {
+    if let Some(backend) = state.outbox_backend.as_ref() {
+        if let Ok(pending) = crate::outbox_relay::pending_count(backend).await {
             gauge!("maidan_outbox_pending").set(pending as f64);
         }
-        if let Ok(quarantined) = crate::outbox_relay::quarantined_count(pool).await {
+        if let Ok(quarantined) = crate::outbox_relay::quarantined_count(backend).await {
             gauge!("maidan_outbox_quarantined").set(quarantined as f64);
         }
-        if let Ok(Some(age)) = crate::outbox_relay::oldest_pending_age_secs(pool).await {
+        if let Ok(Some(age)) = crate::outbox_relay::oldest_pending_age_secs(backend).await {
             gauge!("maidan_outbox_oldest_pending_seconds").set(age);
         } else {
             gauge!("maidan_outbox_oldest_pending_seconds").set(0.0);
