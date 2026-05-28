@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v20.0.0 — Message router
+
+| Capability                                              | Surface                       |
+|---------------------------------------------------------|-------------------------------|
+| Channel/thread/message hierarchy resolution             | `maidan-router::resolve_*`    |
+| HTTP + MCP use shared router                            | `maidan-server`, `maidan-mcp`   |
+
 ## v19.0.0 — S3 multipart artifacts
 
 | Capability                                              | Surface                              |

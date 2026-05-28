@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [20.0.0] — 2026-05-28
+
+Major release: message router crate wired into HTTP and MCP.
+
+### Added
+
+- `maidan-router` resolve helpers for channel, thread, and message chains.
+- SQLite integration test; server and MCP fan-out use the router.
+
 ## [19.0.0] — 2026-05-28
 
 Major release: S3 multipart large artifacts.
