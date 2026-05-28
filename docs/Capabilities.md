@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v22.0.0 — Capabilities hardening
+
+| Capability                                              | Surface                              |
+|---------------------------------------------------------|--------------------------------------|
+| Documented capability map                               | [[Capability Map]]                   |
+| Denial e2e matrix (HTTP, MCP, A2A, WS)                   | `capability_matrix_e2e.rs`           |
+
 ## v21.0.0 — A2A agent transport
 
 | Capability                                              | Surface                    |

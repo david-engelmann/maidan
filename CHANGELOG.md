@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [22.0.0] — 2026-05-28
+
+### Added
+
+- Capability map documentation and denial e2e tests for HTTP, MCP, A2A, and WS.
+
 ## [21.0.0] — 2026-05-28
 
 Major release: Google A2A protocol v1.0 ingress and client.

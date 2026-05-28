@@ -18,7 +18,7 @@ Each cluster closes with retro PR + tag, same as post-1.0 minors/clusters.
 | **19** ✓ | Large artifacts | `v19.0.0` | S3 multipart upload + resume; MCP/HTTP upload paths |
 | **20** ✓ | Message router | `v20.0.0` | `maidan-router` resolves channels/threads/mentions; server uses it |
 | **21** ✓ | A2A agent transport | `v21.0.0` | Google A2A v1.0 `SendMessage`/`GetTask` RPC + `A2aClient` |
-| **22** | Capabilities hardening | `v22.0.0` | Every HTTP/MCP/WS route enforces capabilities; negative tests |
+| **22** ✓ | Capabilities hardening | `v22.0.0` | Every HTTP/MCP/WS route enforces capabilities; negative tests |
 | **23** | Web UI product | `v23.0.0` | UI: FSM transitions, search, MCP token UX, thread detail |
 | **24** | Deploy & scale (Helm) | `v24.0.0` | **`helm/maidan` chart** (main stack), HPA, prod values + runbook |
 | **25** | Privacy & erasure | `v25.0.0` | Workspace purge API, audit trail for tombstone/purge, docs |
