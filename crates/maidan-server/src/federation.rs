@@ -419,6 +419,8 @@ pub struct WellKnownMaidan {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WellKnownA2a {
     pub ingress: String,
+    pub protocol_rpc: String,
+    pub protocol_version: String,
 }
 
 pub async fn well_known() -> impl IntoResponse {
@@ -427,6 +429,8 @@ pub async fn well_known() -> impl IntoResponse {
         version: crate::version().to_string(),
         a2a: WellKnownA2a {
             ingress: "/a2a/v1/events".to_string(),
+            protocol_rpc: "/a2a/v1/rpc".to_string(),
+            protocol_version: "1.0".to_string(),
         },
         capabilities: vec![FEDERATION_INGEST.to_string(), FEDERATION_ADMIN.to_string()],
     })

@@ -4,6 +4,7 @@
 //! integration tests can build the same router in-process and exercise
 //! it through `reqwest` against a real listener.
 
+pub mod a2a_agent;
 pub mod app;
 pub mod auth;
 pub mod bootstrap;
