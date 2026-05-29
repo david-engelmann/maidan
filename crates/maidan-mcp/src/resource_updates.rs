@@ -60,13 +60,23 @@ pub async fn uris_for_tool_mutation(
     uris.into_iter().collect()
 }
 
-/// URIs to notify after HTTP message tombstone.
-pub async fn uris_for_message_tombstone(store: &dyn Store, message_id: MessageId) -> Vec<String> {
+/// URIs to notify after HTTP message tombstone or other message-scoped mutations.
+pub async fn uris_for_message(store: &dyn Store, message_id: MessageId) -> Vec<String> {
     let mut uris = HashSet::new();
     if let Ok(msg) = store.get_message(message_id).await {
         push_thread_chain(store, msg.thread_id, &mut uris).await;
     }
     uris.into_iter().collect()
+}
+
+/// URIs to notify after HTTP message tombstone.
+pub async fn uris_for_message_tombstone(store: &dyn Store, message_id: MessageId) -> Vec<String> {
+    uris_for_message(store, message_id).await
+}
+
+/// URIs to notify after workspace deep purge.
+pub fn uris_for_workspace_purge(workspace_id: WorkspaceId) -> Vec<String> {
+    vec![format!("maidan://workspaces/{}", workspace_id.0)]
 }
 
 /// URIs to notify after thread FSM transition.
@@ -145,6 +155,13 @@ mod tests {
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
         Arc::new(SqliteStore::new(pool))
+    }
+
+    #[tokio::test]
+    async fn workspace_purge_uri_targets_workspace() {
+        let ws_id = WorkspaceId(uuid::Uuid::new_v4());
+        let uris = uris_for_workspace_purge(ws_id);
+        assert_eq!(uris, vec![format!("maidan://workspaces/{}", ws_id.0)]);
     }
 
     #[tokio::test]

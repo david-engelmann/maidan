@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v38.0.0 — MCP resource fan-out complete
+
+| Capability | Surface |
+|------------|---------|
+| Resource notifications on all HTTP mutations | edit, purge, mention, vote + existing tombstone/FSM |
+
 ## v37.0.0 — A2A SendStreamingMessage
 
 | Capability | Surface |

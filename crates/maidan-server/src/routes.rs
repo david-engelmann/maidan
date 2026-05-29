@@ -135,6 +135,8 @@ pub async fn purge_workspace(
             }),
         })
         .await?;
+    let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
+    state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result))
 }
 
@@ -477,6 +479,9 @@ pub async fn edit_message(
         },
     )
     .await;
+    let uris =
+        maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message_id).await;
+    state.mcp.publish_resource_uris(uris).await;
     Ok(Json(updated))
 }
 
@@ -573,6 +578,10 @@ pub async fn create_mention(
         },
     )
     .await;
+    let uris =
+        maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), MessageId(message_id))
+            .await;
+    state.mcp.publish_resource_uris(uris).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -607,6 +616,10 @@ pub async fn cast_vote(
         },
     )
     .await;
+    let uris =
+        maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), MessageId(message_id))
+            .await;
+    state.mcp.publish_resource_uris(uris).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
