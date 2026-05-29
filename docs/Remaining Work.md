@@ -26,7 +26,7 @@ upstream specs, or Slack-grade product depth.
 | **MCP resource fan-out (17→33)** | Tools + HTTP tombstone + FSM at **`v33.0.0`** | Other HTTP mutations (edit, purge) still omit notifications. |
 | **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl is **no-op** (`Ok(0)` / passthrough). |
 | **Outbox (10–12)** | Postgres transactional outbox + quarantine | SQLite outbox **shipped** (14) but poison-row **manual** recovery API still absent; NOTIFY remains at-most-once. |
-| **mcp-stdio** | SQLite-only CLI transport | **Postgres `mcp-stdio` deferred** since Cluster H. |
+| **mcp-stdio** | SQLite + Postgres at **`v36.0.0`** | No bundled bus/indexer — read-only MCP surface only. |
 | **Semantic search (18)** | SQLite brute-force cosine | No `sqlite-vec` / HNSW; large workspaces will not scale on SQLite. |
 | **Embeddings** | Pluggable provider | Default **`hash-v1`** is not semantic; per-model **table split** deferred (mixed dimensions). |
 | **Search scores** | Lexical + semantic per backend | **Score normalization** across Postgres vs SQLite ranks not unified. |

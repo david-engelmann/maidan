@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [36.0.0] — 2026-05-29
+
+### Added
+
+- `maidan mcp-stdio` supports Postgres `DATABASE_URL` (`PostgresStore` + `PostgresSearch`).
+
 ## [35.0.0] — 2026-05-29
 
 ### Added

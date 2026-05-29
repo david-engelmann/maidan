@@ -27,6 +27,15 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[dev-dependencies]
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
 [[test]]
 name = "stdio_smoke"
 path = "tests/stdio_smoke.rs"
+
+[[test]]
+name = "stdio_postgres_smoke"
+path = "tests/stdio_postgres_smoke.rs"

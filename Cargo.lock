@@ -2557,6 +2557,8 @@ dependencies = [
  "maidan-store",
  "maidan-types",
  "sqlx",
+ "testcontainers",
+ "testcontainers-modules",
  "tokio",
  "tracing",
  "tracing-subscriber",

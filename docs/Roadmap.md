@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 36.0** — `mcp-stdio` Postgres ([[Clusters/Product Ladder 35+]] Phase I).
+**Active:** **Cluster 37.0** — A2A `SendStreamingMessage` ([[Clusters/Product Ladder 35+]] Phase I).
+
+**Recently closed:** **Cluster 36.0** — `mcp-stdio` Postgres at **`v36.0.0`** ([[Retros/Cluster 36.0]]).
 
 **Recently closed:** **Cluster 35.0** — MCP streamable bidirectional mux at **`v35.0.0`** ([[Retros/Cluster 35.0]]).
 

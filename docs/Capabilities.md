@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v36.0.0 — `mcp-stdio` Postgres
+
+| Capability | Surface |
+|------------|---------|
+| MCP stdio against Postgres | `maidan mcp-stdio` with `postgres://` `DATABASE_URL` |
+
 ## v35.0.0 — MCP streamable bidirectional mux
 
 | Capability | Surface |
