@@ -43,6 +43,7 @@ async fn indexer_observes_message_posted_within_500ms() {
         workspace_id: ws_id,
         channel_id: ch_id,
         thread_id: th_id,
+        dm_conversation_id: None,
         message: msg,
     }))
     .await
@@ -81,6 +82,7 @@ async fn indexer_filters_out_non_message_events() {
         workspace_id: WorkspaceId(uuid::Uuid::new_v4()),
         channel_id: ChannelId(uuid::Uuid::new_v4()),
         thread_id: ThreadId(uuid::Uuid::new_v4()),
+        dm_conversation_id: None,
         message_id: MessageId(uuid::Uuid::new_v4()),
     }))
     .await

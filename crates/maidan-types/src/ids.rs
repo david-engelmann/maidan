@@ -31,6 +31,7 @@ macro_rules! id_newtype {
     };
 }
 
+id_newtype!(DmConversationId);
 id_newtype!(MemberId);
 id_newtype!(ChannelId);
 id_newtype!(ThreadId);

@@ -100,6 +100,8 @@ pub enum Event {
         workspace_id: WorkspaceId,
         channel_id: ChannelId,
         thread_id: ThreadId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dm_conversation_id: Option<DmConversationId>,
         message: Message,
     },
     MessageEdited {
@@ -107,6 +109,8 @@ pub enum Event {
         workspace_id: WorkspaceId,
         channel_id: ChannelId,
         thread_id: ThreadId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dm_conversation_id: Option<DmConversationId>,
         editor_id: MemberId,
         message: Message,
     },
@@ -115,6 +119,8 @@ pub enum Event {
         workspace_id: WorkspaceId,
         channel_id: ChannelId,
         thread_id: ThreadId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dm_conversation_id: Option<DmConversationId>,
         message_id: MessageId,
     },
     MentionRecorded {
@@ -218,6 +224,21 @@ impl Event {
         }
     }
 
+    pub fn dm_conversation_id(&self) -> Option<DmConversationId> {
+        match self {
+            Self::MessagePosted {
+                dm_conversation_id, ..
+            }
+            | Self::MessageEdited {
+                dm_conversation_id, ..
+            }
+            | Self::MessageTombstoned {
+                dm_conversation_id, ..
+            } => *dm_conversation_id,
+            _ => None,
+        }
+    }
+
     pub fn member_id(&self) -> Option<MemberId> {
         match self {
             Self::MemberJoined { member, .. } => Some(member.id),
@@ -251,6 +272,7 @@ pub struct EventFilter {
     pub workspace_id: Option<WorkspaceId>,
     pub channel_id: Option<ChannelId>,
     pub thread_id: Option<ThreadId>,
+    pub dm_conversation_id: Option<DmConversationId>,
     pub member_id: Option<MemberId>,
     pub kinds: Option<HashSet<EventKind>>,
 }
@@ -277,6 +299,13 @@ impl EventFilter {
     pub fn thread(thread_id: ThreadId) -> Self {
         Self {
             thread_id: Some(thread_id),
+            ..Default::default()
+        }
+    }
+
+    pub fn dm_conversation(dm_conversation_id: DmConversationId) -> Self {
+        Self {
+            dm_conversation_id: Some(dm_conversation_id),
             ..Default::default()
         }
     }
@@ -310,6 +339,11 @@ impl EventFilter {
         }
         if let Some(th) = self.thread_id {
             if event.thread_id() != Some(th) {
+                return false;
+            }
+        }
+        if let Some(dm) = self.dm_conversation_id {
+            if event.dm_conversation_id() != Some(dm) {
                 return false;
             }
         }

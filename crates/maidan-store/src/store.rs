@@ -44,6 +44,24 @@ pub trait Store: Send + Sync {
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
 
+    async fn open_dm_conversation(
+        &self,
+        workspace_id: WorkspaceId,
+        member_a: MemberId,
+        member_b: MemberId,
+    ) -> Result<DmConversation, StoreError>;
+    async fn get_dm_conversation(&self, id: DmConversationId)
+        -> Result<DmConversation, StoreError>;
+    async fn list_dm_conversations_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<DmConversation>, StoreError>;
+    async fn dm_conversation_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<DmConversation>, StoreError>;
+
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;

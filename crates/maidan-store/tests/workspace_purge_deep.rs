@@ -93,6 +93,7 @@ async fn seed_workspace(
             workspace_id: ws.id,
             channel_id: ch.id,
             thread_id: th.id,
+            dm_conversation_id: None,
             message: msg.clone(),
         })
         .await

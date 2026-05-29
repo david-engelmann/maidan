@@ -76,7 +76,7 @@ Maidan is **Slack-shaped**, not Slack-complete. Use this when prioritizing produ
 |----------------|--------------|-------------|
 | Workspaces / orgs | Single workspace per token; OIDC binds user→workspace | No org hierarchy above workspace ([[OIDC]] non-goal). |
 | Channels (public/private) | `Channel` + `private` flag | No channel archiving UI, shared channels, or Slack Connect-style cross-org channels (federation is event replication, not shared channel UX). |
-| Direct messages | — | **No DMs** — agents/humans only via channels/threads. |
+| Direct messages | **`v39.0.0`**: thread-backed 1:1 DMs + HTTP/MCP/WS | No group DMs; `__dm__` system channel per workspace. |
 | Threads | First-class `Thread` + FSM | No thread sidebar UI, no “also send to channel” split. |
 | @mentions | `Mention` records | No highlight rules, notification prefs, or email digests. |
 | Reactions | **Votes** (approval / request-changes) | Not emoji reactions; no custom emoji. |

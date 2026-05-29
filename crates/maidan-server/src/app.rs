@@ -6,7 +6,7 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, auth, bootstrap, federation, health, mcp, mcp_notifications, mcp_stream,
+    a2a_agent, auth, bootstrap, dm, federation, health, mcp, mcp_notifications, mcp_stream,
     mcp_streamable, metrics, oidc, openapi, rate_limit, request_id, routes, session,
     state::AppState, ws,
 };
@@ -46,6 +46,15 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/members/:id/mentions",
             get(routes::list_mentions_for_member),
+        )
+        .route(
+            "/workspaces/:wid/dm",
+            post(dm::open_dm_conversation).get(dm::list_dm_conversations),
+        )
+        .route("/dm/:id", get(dm::get_dm_conversation))
+        .route(
+            "/dm/:id/messages",
+            post(dm::post_dm_message).get(dm::list_dm_messages),
         )
         .route(
             "/workspaces/:wid/channels",

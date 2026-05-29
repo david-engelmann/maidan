@@ -4,6 +4,7 @@
 //! and SQLite implementations backed by `sqlx`.
 
 pub mod dialect;
+pub mod dm;
 pub mod error;
 pub mod migrate;
 pub mod outbox;

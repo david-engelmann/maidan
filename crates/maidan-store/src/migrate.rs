@@ -20,6 +20,8 @@ const POSTGRES_UP_V13: &str = include_str!("../../../migrations/postgres/0013_ou
 const POSTGRES_UP_V14: &str =
     include_str!("../../../migrations/postgres/0014_outbox_quarantine.sql");
 const POSTGRES_UP_V15: &str = include_str!("../../../migrations/postgres/0015_delivery_cursor.sql");
+const POSTGRES_UP_V16: &str =
+    include_str!("../../../migrations/postgres/0016_dm_conversations.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -35,6 +37,7 @@ const SQLITE_UP_V11: &str =
     include_str!("../../../migrations/sqlite/0011_peer_remote_workspace.sql");
 const SQLITE_UP_V12: &str = include_str!("../../../migrations/sqlite/0012_oidc_sessions.sql");
 const SQLITE_UP_V13: &str = include_str!("../../../migrations/sqlite/0013_outbox.sql");
+const SQLITE_UP_V14: &str = include_str!("../../../migrations/sqlite/0014_dm_conversations.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -66,6 +69,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 13, POSTGRES_UP_V13).await?;
     apply_postgres(pool, 14, POSTGRES_UP_V14).await?;
     apply_postgres(pool, 15, POSTGRES_UP_V15).await?;
+    apply_postgres(pool, 16, POSTGRES_UP_V16).await?;
     Ok(())
 }
 
@@ -93,6 +97,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 11, SQLITE_UP_V11).await?;
     apply_sqlite(pool, 12, SQLITE_UP_V12).await?;
     apply_sqlite(pool, 13, SQLITE_UP_V13).await?;
+    apply_sqlite(pool, 14, SQLITE_UP_V14).await?;
     Ok(())
 }
 

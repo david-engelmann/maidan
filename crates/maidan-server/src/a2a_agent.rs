@@ -115,6 +115,7 @@ async fn post_a2a_message(
             workspace_id: thread_ctx.workspace_id,
             channel_id: thread_ctx.channel_id,
             thread_id: ThreadId(ctx.thread_id),
+            dm_conversation_id: None,
             message: posted.clone(),
         },
     )

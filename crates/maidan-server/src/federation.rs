@@ -255,12 +255,14 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             workspace_id: _,
             channel_id,
             thread_id,
+            dm_conversation_id,
             message,
         } => MessagePosted {
             occurred_at,
             workspace_id,
             channel_id,
             thread_id,
+            dm_conversation_id,
             message,
         },
         MessageEdited {
@@ -268,6 +270,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             workspace_id: _,
             channel_id,
             thread_id,
+            dm_conversation_id,
             editor_id,
             message,
         } => MessageEdited {
@@ -275,6 +278,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             workspace_id,
             channel_id,
             thread_id,
+            dm_conversation_id,
             editor_id,
             message,
         },
@@ -283,12 +287,14 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             workspace_id: _,
             channel_id,
             thread_id,
+            dm_conversation_id,
             message_id,
         } => MessageTombstoned {
             occurred_at,
             workspace_id,
             channel_id,
             thread_id,
+            dm_conversation_id,
             message_id,
         },
         MentionRecorded {

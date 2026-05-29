@@ -161,6 +161,36 @@ pub struct NewChannel {
     pub private: bool,
 }
 
+/// System channel name for DM threads in a workspace.
+pub const DM_CHANNEL_NAME: &str = "__dm__";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DmConversation {
+    pub id: DmConversationId,
+    pub workspace_id: WorkspaceId,
+    pub member_low_id: MemberId,
+    pub member_high_id: MemberId,
+    pub thread_id: ThreadId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenDmConversation {
+    pub other_member_id: uuid::Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PostDmMessage {
+    pub author_id: uuid::Uuid,
+    pub body: String,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Thread {

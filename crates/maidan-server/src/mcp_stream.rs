@@ -34,6 +34,8 @@ pub struct McpStreamQuery {
     pub resume_token: Option<String>,
     #[serde(default)]
     pub consumer_id: Option<String>,
+    #[serde(default)]
+    pub dm_conversation_id: Option<uuid::Uuid>,
 }
 
 pub async fn stream(
@@ -44,7 +46,8 @@ pub async fn stream(
     auth.require_capability(EVENT_SUBSCRIBE)
         .map_err(|_| ApiError::Forbidden("missing event:subscribe capability".into()))?;
 
-    let (filter, mut after_id, from_resume_token) = resolve_stream_params(&state, &q, &auth)?;
+    let (mut filter, mut after_id, from_resume_token) = resolve_stream_params(&state, &q, &auth)?;
+    crate::dm::expand_event_filter(&state, &mut filter).await?;
     if let Some(ref consumer_id) = q.consumer_id {
         crate::delivery::validate_consumer_id(consumer_id).map_err(ApiError::BadRequest)?;
         after_id = crate::delivery::effective_subscribe_after_id(
@@ -178,6 +181,9 @@ fn resolve_stream_params(
         return Err(ApiError::BadRequest(
             "after_id requires workspace_id query parameter".into(),
         ));
+    }
+    if let Some(dm) = q.dm_conversation_id {
+        filter.dm_conversation_id = Some(maidan_types::DmConversationId(dm));
     }
 
     Ok((filter, q.after_id, false))

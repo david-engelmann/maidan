@@ -434,6 +434,13 @@ pub async fn post_message(
             workspace_id: ctx.workspace_id,
             channel_id: ctx.channel_id,
             thread_id: ThreadId(thread_id),
+            dm_conversation_id: state
+                .store
+                .dm_conversation_for_thread(ThreadId(thread_id))
+                .await
+                .ok()
+                .flatten()
+                .map(|d| d.id),
             message: m.clone(),
         },
     )
@@ -474,6 +481,11 @@ pub async fn edit_message(
             workspace_id: chain.workspace_id,
             channel_id: chain.channel_id,
             thread_id: chain.thread_id,
+            dm_conversation_id: crate::dm::dm_conversation_id_for_thread(
+                state.store.as_ref(),
+                chain.thread_id,
+            )
+            .await,
             editor_id,
             message: updated.clone(),
         },
@@ -529,6 +541,11 @@ pub async fn tombstone_message(
             workspace_id: chain.workspace_id,
             channel_id: chain.channel_id,
             thread_id: chain.thread_id,
+            dm_conversation_id: crate::dm::dm_conversation_id_for_thread(
+                state.store.as_ref(),
+                chain.thread_id,
+            )
+            .await,
             message_id: MessageId(id),
         },
     )
