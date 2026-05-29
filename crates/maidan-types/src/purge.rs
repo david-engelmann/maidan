@@ -16,5 +16,9 @@ pub struct WorkspacePurgeResult {
     pub references_removed: u64,
     pub api_tokens_revoked: u64,
     pub events_removed: u64,
+    /// Artifact metadata rows removed (Cluster 31); SHA-256 hex for blob purge.
+    pub artifacts_removed: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifact_shas: Vec<String>,
     pub occurred_at: DateTime<Utc>,
 }

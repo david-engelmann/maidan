@@ -9,6 +9,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [31.0.0] — 2026-05-28
+
+### Added
+
+- Workspace deep purge removes artifact metadata for workspace members and deletes content-addressed blobs from the artifact store.
+- `WorkspacePurgeResult.artifacts_removed`; audit metadata `artifact_blobs_deleted`.
+
+## [30.0.0] — 2026-05-28
+
+### Added
+
+- Optional HTTP rate limiting via `MAIDAN_RATE_LIMIT_MAX` and `MAIDAN_RATE_LIMIT_WINDOW_SECS`.
+- `429 Too Many Requests` with `application/problem+json` and `Retry-After`.
+
 ## [29.0.0] — 2026-05-28
 
 ### Added

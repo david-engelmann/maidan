@@ -89,6 +89,22 @@ pub async fn purge(
         .execute(pool)
         .await?;
 
+    let artifact_shas: Vec<String> = sqlx::query_scalar(
+        "SELECT sha256 FROM maidan_artifacts
+         WHERE uploaded_by IN (SELECT id FROM maidan_members WHERE workspace_id = $1)",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+
+    let artifacts_removed = sqlx::query(
+        "DELETE FROM maidan_artifacts
+         WHERE uploaded_by IN (SELECT id FROM maidan_members WHERE workspace_id = $1)",
+    )
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?;
+
     Ok(WorkspacePurgeResult {
         workspace_id,
         messages_tombstoned: tombstone.rows_affected(),
@@ -97,6 +113,8 @@ pub async fn purge(
         references_removed: references_removed.rows_affected(),
         api_tokens_revoked: api_tokens_revoked.rows_affected(),
         events_removed: events_removed.rows_affected(),
+        artifacts_removed: artifacts_removed.rows_affected(),
+        artifact_shas,
         occurred_at: Utc::now(),
     })
 }

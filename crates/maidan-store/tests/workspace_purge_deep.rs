@@ -78,6 +78,16 @@ async fn seed_workspace(
         .await
         .unwrap();
     store
+        .upsert_artifact(NewArtifact {
+            sha256: "aa".repeat(32),
+            size_bytes: 4,
+            mime_type: Some("text/plain".into()),
+            kind: ArtifactKind::Attachment,
+            uploaded_by: Some(alice.id),
+        })
+        .await
+        .unwrap();
+    store
         .append_event(&Event::MessagePosted {
             occurred_at: chrono::Utc::now(),
             workspace_id: ws.id,
@@ -112,8 +122,10 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
     assert_eq!(result.references_removed, 1);
     assert_eq!(result.api_tokens_revoked, 1);
     assert_eq!(result.events_removed, 1);
+    assert_eq!(result.artifacts_removed, 1);
 
     assert!(store.list_messages(th.id, 10).await.unwrap().is_empty());
+    assert!(store.get_artifact_by_sha(&"aa".repeat(32)).await.is_err());
     let hits = search
         .search_messages(ws.id, "secret", 10, &Default::default())
         .await
