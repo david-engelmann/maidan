@@ -45,7 +45,7 @@ impl Modify for SecurityAddon {
             WebSocket GET /ws/subscribe: after upgrade, send one JSON text frame with `filter`, optional `after_id`, optional `resume_token` (replaces filter and after_id), and optional bearer `token` when auth is enabled. Control frames: `subscribe_ack` (resume_token + after_id watermark), `replay_hint`, `replay_truncated` (after_id + limit 500), then event envelopes with log_id.\n\n\
             MCP SSE GET /mcp/stream: query workspace_id, after_id, or resume_token; same control frames; requires bearer event:subscribe.\n\
             MCP SSE GET /mcp/notifications: JSON-RPC notifications (e.g. notifications/resources/updated); requires workspace:read.\n\
-            MCP streamable HTTP POST /mcp/streamable: JSON-RPC response then SSE notifications on one connection.\n\n\
+            MCP streamable HTTP POST /mcp/streamable: JSON-RPC response then SSE notifications; response includes `Mcp-Session-Id` (Cluster 34).\n\n\
             GET /metrics: Prometheus exposition (HTTP latency + maidan_bus_lag_total, maidan_subscribe_replay_total, maidan_indexer_last_event_age_seconds, maidan_bus_listener_ok, maidan_bus_notify_hydrate_total, maidan_outbox_pending, maidan_outbox_quarantined, maidan_outbox_oldest_pending_seconds, maidan_outbox_relay_total{result} on Postgres). Fixed label cardinality only.",
         license(name = "MIT OR Apache-2.0", url = "https://github.com/david-engelmann/maidan")
     ),

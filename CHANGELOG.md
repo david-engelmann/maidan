@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [34.0.0] — 2026-05-29
+
+### Added
+
+- `Mcp-Session-Id` response header on `POST /mcp/streamable` for streamable HTTP session correlation.
+
 ## [33.0.0] — 2026-05-29
 
 ### Added
