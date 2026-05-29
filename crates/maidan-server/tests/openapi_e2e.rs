@@ -61,6 +61,8 @@ async fn openapi_json_serves_document() {
     assert!(paths.contains_key("/ui/api/channels/{cid}/threads"));
     assert!(paths.contains_key("/ui/api/threads/{tid}/messages"));
     assert!(paths.contains_key("/ui/api/workspaces/{wid}/search"));
+    assert!(paths.contains_key("/ui/api/workspaces/{wid}/audit"));
+    assert!(paths.contains_key("/ui/api/workspaces/{wid}/peers"));
     assert!(!paths.contains_key("/mcp"));
 
     let schemes = doc["components"]["securitySchemes"]

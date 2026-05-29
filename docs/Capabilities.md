@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v45.0.0 — Admin console
+
+| Capability | Surface |
+|------------|---------|
+| Operator UI admin | Audit log, purge confirm, federation peers, token revoke |
+| Session admin reads | `GET /ui/api/workspaces/:wid/audit`, `.../peers` |
+
 ## v44.0.0 — UI collaboration flows
 
 | Capability | Surface |

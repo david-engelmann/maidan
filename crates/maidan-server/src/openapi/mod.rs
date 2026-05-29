@@ -106,6 +106,8 @@ impl Modify for SecurityAddon {
         paths::ui_list_threads,
         paths::ui_list_messages,
         paths::ui_search_messages,
+        paths::ui_list_audit,
+        paths::ui_list_peers,
     ),
     components(schemas(
         LivenessOk,

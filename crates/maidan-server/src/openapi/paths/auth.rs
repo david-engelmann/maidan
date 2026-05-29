@@ -3,12 +3,12 @@
 use uuid::Uuid;
 
 use crate::dto::{
-    ListEventsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery,
-    SearchQuery, SessionResponse,
+    ListAuditQuery, ListEventsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery,
+    OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{Channel, Message, StoredEvent, Thread};
+use maidan_types::{AuditEvent, Channel, Message, StoredEvent, Thread};
 
 #[utoipa::path(
     get,
@@ -152,3 +152,32 @@ pub fn ui_list_messages() {}
     responses((status = 200, body = Vec<SearchHit>))
 )]
 pub fn ui_search_messages() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/audit",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ListAuditQuery,
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<AuditEvent>))
+)]
+pub fn ui_list_audit() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/peers",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<PeerResponse>))
+)]
+pub fn ui_list_peers() {}
