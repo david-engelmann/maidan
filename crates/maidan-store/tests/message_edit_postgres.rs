@@ -81,6 +81,7 @@ async fn postgres_edit_message_sets_edited_at() {
     let updated = store
         .edit_message(
             msg.id,
+            member.id,
             EditMessage {
                 body: "after".into(),
                 metadata: serde_json::json!({"v": 1}),
@@ -90,4 +91,8 @@ async fn postgres_edit_message_sets_edited_at() {
         .unwrap();
     assert_eq!(updated.body, "after");
     assert!(updated.edited_at.is_some());
+    let history = store.list_message_edits(msg.id, 10).await.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].body_before, "before");
+    assert_eq!(history[0].body_after, "after");
 }

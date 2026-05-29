@@ -818,6 +818,7 @@ async fn edit_message(
     let msg = store
         .edit_message(
             message_id,
+            editor_id,
             EditMessage {
                 body: a.body,
                 metadata,

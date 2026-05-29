@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v46.0.0 — Edit history & message UX
+
+| Capability | Surface |
+|------------|---------|
+| Message edit history | `maidan_message_edits`, `GET /messages/:id/edits` |
+| UI edited affordance | `/ui` v5 history panel + “edited” on messages |
+
 ## v45.0.0 — Admin console
 
 | Capability | Surface |

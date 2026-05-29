@@ -159,13 +159,19 @@
       .inline-form input { flex: 1; min-width: 6rem; }
       #search-results { margin-top: 0.5rem; font-size: 0.85rem; }
       #search-results .hit { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
-      #audit-list, #peer-list { font-size: 0.85rem; max-height: 10rem; overflow: auto; margin: 0.5rem 0; }
+      #audit-list, #peer-list, #edit-history-list {
+        font-size: 0.85rem;
+        max-height: 10rem;
+        overflow: auto;
+        margin: 0.5rem 0;
+      }
+      #message-list .edited { color: var(--muted); font-size: 0.75rem; font-style: italic; }
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
     </style>
   </head>
-  <body data-ui-version="4">
+  <body data-ui-version="5">
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -225,6 +231,11 @@
             <label>Message ID <input id="edit-message-id" /></label>
             <label>New body <textarea id="edit-message-body" class="compose"></textarea></label>
             <button id="edit-message" type="button">Save edit</button>
+          </details>
+          <details style="margin-top: 0.5rem" open>
+            <summary>Edit history</summary>
+            <button id="load-edit-history" type="button">Load history</button>
+            <div id="edit-history-list" class="muted">Select a message</div>
           </details>
           <details style="margin-top: 0.5rem">
             <summary>Upload artifact</summary>
@@ -490,7 +501,9 @@
           div.className = "msg";
           const meta = document.createElement("div");
           meta.className = "meta";
-          meta.textContent = `${m.id} · ${m.author_id}`;
+          let metaText = `${m.id} · ${m.author_id}`;
+          if (m.edited_at) metaText += " · edited";
+          meta.textContent = metaText;
           const body = document.createElement("div");
           body.textContent = m.body;
           div.appendChild(meta);
@@ -498,9 +511,44 @@
           div.onclick = () => {
             document.getElementById("edit-message-id").value = m.id;
             document.getElementById("edit-message-body").value = m.body;
+            loadMessageEdits(m.id);
           };
           box.appendChild(div);
         });
+      }
+
+      async function loadMessageEdits(messageId) {
+        const box = document.getElementById("edit-history-list");
+        if (!messageId) {
+          box.textContent = "Select a message";
+          return;
+        }
+        const url = `${uiReadPath(`/messages/${messageId}/edits`)}?limit=50`;
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          const body = await res.text();
+          if (!res.ok) {
+            box.textContent = body;
+            return;
+          }
+          const edits = JSON.parse(body);
+          box.innerHTML = "";
+          if (!edits.length) {
+            box.textContent = "No edit history (body unchanged or never edited)";
+            return;
+          }
+          edits.forEach((e) => {
+            const div = document.createElement("div");
+            div.className = "row";
+            div.innerHTML =
+              `<span class="edited">${escapeHtml(e.edited_at)}</span> ` +
+              `<span class="muted">${escapeHtml(e.editor_id)}</span><br>` +
+              `<del>${escapeHtml(e.body_before)}</del> → ${escapeHtml(e.body_after)}`;
+            box.appendChild(div);
+          });
+        } catch (e) {
+          box.textContent = String(e);
+        }
       }
 
       document.querySelectorAll(".tabs button").forEach((btn) => {
@@ -868,8 +916,14 @@
           return setOut(body);
         }
         setStatus("Edited", "ok");
-        setOut(JSON.parse(body));
+        const parsed = JSON.parse(body);
+        setOut(parsed);
         await loadMessages();
+        await loadMessageEdits(id);
+      };
+      document.getElementById("load-edit-history").onclick = () => {
+        const id = document.getElementById("edit-message-id").value.trim();
+        loadMessageEdits(id);
       };
       document.getElementById("upload-artifact").onclick = async () => {
         if (!requireTokenForWrite()) return;

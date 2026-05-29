@@ -215,6 +215,15 @@ pub fn get_message() {}
     responses((status = 200, body = Message)))]
 pub fn edit_message() {}
 
+#[utoipa::path(get, path = "/messages/{id}/edits", tag = "messages",
+    params(
+        ("id" = Uuid, Path, description = "Message id"),
+        crate::dto::ListMessageEditsQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MessageEdit>)))]
+pub fn list_message_edits() {}
+
 #[utoipa::path(delete, path = "/messages/{id}", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
     security(("bearerAuth" = [])),

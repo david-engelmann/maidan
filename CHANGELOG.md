@@ -9,6 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [46.0.0] — 2026-05-29
+
+### Added
+
+- `maidan_message_edits` stores body before/after on each edit.
+- `GET /messages/:id/edits` and `GET /ui/api/messages/:mid/edits`.
+- UI v5: “edited” labels and edit history panel in the collab view.
+
 ## [45.0.0] — 2026-05-29
 
 ### Added

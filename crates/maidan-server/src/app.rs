@@ -84,6 +84,7 @@ pub fn router(state: AppState) -> Router {
                 .patch(routes::edit_message)
                 .delete(routes::tombstone_message),
         )
+        .route("/messages/:id/edits", get(routes::list_message_edits))
         .route("/messages/:id/purge", delete(routes::purge_message))
         .route("/messages/:id/mentions", post(routes::create_mention))
         .route(
@@ -179,6 +180,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_workspace_audit),
         )
         .route("/ui/api/workspaces/:wid/peers", get(federation::list_peers))
+        .route(
+            "/ui/api/messages/:mid/edits",
+            get(routes::list_message_edits),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,

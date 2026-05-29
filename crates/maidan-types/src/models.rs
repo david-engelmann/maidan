@@ -246,6 +246,18 @@ pub struct EditMessage {
     pub metadata: serde_json::Value,
 }
 
+/// One recorded body change for a message (Cluster 46).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MessageEdit {
+    pub id: i64,
+    pub message_id: MessageId,
+    pub editor_id: MemberId,
+    pub body_before: String,
+    pub body_after: String,
+    pub edited_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Mention {

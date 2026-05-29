@@ -502,6 +502,7 @@ pub async fn edit_message(
         .store
         .edit_message(
             message_id,
+            editor_id,
             EditMessage {
                 body: body.body,
                 metadata,
@@ -557,6 +558,22 @@ pub async fn get_message(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, chain.workspace_id)?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
+}
+
+pub async fn list_message_edits(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<crate::dto::ListMessageEditsQuery>,
+) -> ApiResult<Json<Vec<MessageEdit>>> {
+    let message_id = MessageId(id);
+    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
+    let limit = q.limit.clamp(1, 500);
+    Ok(Json(
+        state.store.list_message_edits(message_id, limit).await?,
+    ))
 }
 
 pub async fn tombstone_message(

@@ -318,6 +318,19 @@ async fn run_suite(h: &Harness) {
     assert!(edited["edited_at"].as_str().is_some());
     assert_eq!(edited["metadata"]["client"], "test");
 
+    let history: Vec<serde_json::Value> = h
+        .client
+        .get(format!("{base}/messages/{msg1_id}/edits"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0]["body_before"], "hello");
+    assert_eq!(history[0]["body_after"], "hello edited");
+
     // mention
     let resp = h
         .client

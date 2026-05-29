@@ -1,19 +1,15 @@
-//! UI v4 admin console: audit/peers session API, destructive ops markers.
+//! UI v5 edit history: message edits API and shell markers.
 
 use std::{sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
-use maidan_types::{MemberKind, NewAuditEvent, NewMember, NewWorkspace};
-use reqwest::StatusCode;
-use serde_json::json;
+use maidan_types::{
+    EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
+};
 use sqlx::sqlite::SqlitePoolOptions;
-
-fn federation_test_key() -> Option<Arc<[u8; 32]>> {
-    Some(Arc::new([0x42; 32]))
-}
 
 async fn spawn() -> (
     std::net::SocketAddr,
@@ -35,18 +31,7 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::new(
-        store.clone(),
-        artifacts,
-        bus,
-        search,
-        Arc::new(maidan_search::HashV1Provider),
-        true,
-        false,
-        FederationRuntime::new(true, federation_test_key()),
-        Arc::new(std::sync::atomic::AtomicI64::new(0)),
-        None,
-    ));
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -58,7 +43,7 @@ async fn spawn() -> (
 }
 
 #[tokio::test]
-async fn ui_v4_admin_shell_and_session_audit_api() {
+async fn ui_v5_edit_history_shell_and_session_edits_api() {
     let (addr, client, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -71,14 +56,12 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         .await
         .unwrap();
     assert!(html.contains(r#"data-ui-version="5""#));
-    assert!(html.contains(r#"data-tab="admin""#));
-    assert!(html.contains("load-audit"));
-    assert!(html.contains("purge-workspace"));
-    assert!(html.contains("revoke-token"));
+    assert!(html.contains("load-edit-history"));
+    assert!(html.contains("edit-history-list"));
 
     let ws = store
         .create_workspace(NewWorkspace {
-            name: "admin-ui".into(),
+            name: "edit-ui".into(),
         })
         .await
         .unwrap();
@@ -91,61 +74,65 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         })
         .await
         .unwrap();
-    store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(alice.id),
-            action: "operator.test".into(),
-            target_kind: None,
-            target_id: None,
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+        })
+        .await
+        .unwrap();
+    let msg = store
+        .post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: alice.id,
+            body: "version one".into(),
             metadata: serde_json::json!({}),
         })
         .await
         .unwrap();
+    store
+        .edit_message(
+            msg.id,
+            alice.id,
+            EditMessage {
+                body: "version two".into(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
 
-    let audit: Vec<serde_json::Value> = client
-        .get(format!(
-            "{base}/ui/api/workspaces/{}/audit?limit=10",
-            ws.id.0
-        ))
+    let edits: Vec<serde_json::Value> = client
+        .get(format!("{base}/ui/api/messages/{}/edits", msg.id.0))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(audit.len(), 1);
-    assert_eq!(audit[0]["action"], "operator.test");
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0]["body_before"], "version one");
+    assert_eq!(edits[0]["body_after"], "version two");
 
-    let peers: Vec<serde_json::Value> = client
-        .get(format!("{base}/ui/api/workspaces/{}/peers", ws.id.0))
+    let via_http: Vec<serde_json::Value> = client
+        .get(format!("{base}/messages/{}/edits", msg.id.0))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert!(peers.is_empty());
-
-    let created = client
-        .post(format!("{base}/workspaces/{}/peers", ws.id.0))
-        .json(&json!({"name": "upstream", "base_url": "https://peer.example"}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(created.status(), StatusCode::CREATED);
-    let peer_body: serde_json::Value = created.json().await.unwrap();
-    assert!(peer_body["secret"].as_str().is_some());
-
-    let peers: Vec<serde_json::Value> = client
-        .get(format!("{base}/ui/api/workspaces/{}/peers", ws.id.0))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(peers.len(), 1);
-    assert_eq!(peers[0]["name"], "upstream");
+    assert_eq!(via_http.len(), 1);
 
     server.abort();
 }
