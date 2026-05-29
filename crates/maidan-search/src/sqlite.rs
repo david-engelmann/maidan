@@ -6,10 +6,10 @@ use maidan_types::*;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::embedding_tables;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
-use crate::postgres::EMBEDDING_DIM;
 use crate::traits::Search;
 
 #[derive(Debug, Clone)]
@@ -90,28 +90,23 @@ impl Search for SqliteSearch {
         model: &str,
         embedding: &[f32],
     ) -> Result<(), SearchError> {
-        if embedding.len() != EMBEDDING_DIM {
-            return Err(SearchError::InvalidQuery(format!(
-                "expected {EMBEDDING_DIM}-dim vector, got {}",
-                embedding.len()
-            )));
-        }
+        let table =
+            embedding_tables::ensure_model_sqlite(&self.pool, model, embedding.len()).await?;
         let bytes = embedding_bytes(embedding);
-        sqlx::query(
+        let sql = format!(
             r#"
-            INSERT INTO maidan_message_embeddings (message_id, model, embedding, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO {table} (message_id, embedding, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT (message_id) DO UPDATE SET
-                model = excluded.model,
                 embedding = excluded.embedding,
                 updated_at = CURRENT_TIMESTAMP
-            "#,
-        )
-        .bind(message_id.0)
-        .bind(model)
-        .bind(bytes)
-        .execute(&self.pool)
-        .await?;
+            "#
+        );
+        sqlx::query(&sql)
+            .bind(message_id.0)
+            .bind(bytes)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -123,9 +118,14 @@ impl Search for SqliteSearch {
         filters: &SearchFilters,
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
-        if embedding.len() != EMBEDDING_DIM {
+        let Some((table, registered_dim)) =
+            embedding_tables::resolve_table_sqlite(&self.pool, model).await?
+        else {
+            return Ok(vec![]);
+        };
+        if embedding.len() != registered_dim {
             return Err(SearchError::InvalidQuery(format!(
-                "expected {EMBEDDING_DIM}-dim vector, got {}",
+                "expected {registered_dim}-dim vector for model {model}, got {}",
                 embedding.len()
             )));
         }
@@ -133,7 +133,7 @@ impl Search for SqliteSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
-        let rows = sqlx::query(
+        let rows = sqlx::query(&format!(
             r#"
             SELECT
                 m.id            AS message_id,
@@ -144,21 +144,19 @@ impl Search for SqliteSearch {
                 m.posted_at     AS posted_at,
                 m.body          AS body,
                 e.embedding     AS embedding
-            FROM maidan_message_embeddings e
+            FROM {table} e
             JOIN maidan_messages m ON m.id = e.message_id
             JOIN maidan_threads t ON t.id = m.thread_id
             JOIN maidan_channels c ON c.id = t.channel_id
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = ?
-              AND e.model = ?
               AND m.tombstoned_at IS NULL
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
-            "#,
-        )
+            "#
+        ))
         .bind(workspace_id.0)
-        .bind(model)
         .bind(author_id)
         .bind(author_id)
         .bind(channel_id)
@@ -172,7 +170,7 @@ impl Search for SqliteSearch {
             .iter()
             .filter_map(|row| {
                 let stored = row.get::<Vec<u8>, _>("embedding");
-                let stored_vec = parse_embedding_bytes(&stored).ok()?;
+                let stored_vec = parse_embedding_bytes(&stored, registered_dim).ok()?;
                 let distance = cosine_distance(embedding, &stored_vec);
                 Some(SearchHit {
                     message_id: MessageId(row.get::<Uuid, _>("message_id")),
@@ -198,11 +196,11 @@ impl Search for SqliteSearch {
     }
 }
 
-fn parse_embedding_bytes(bytes: &[u8]) -> Result<Vec<f32>, SearchError> {
-    if bytes.len() != EMBEDDING_DIM * 4 {
+fn parse_embedding_bytes(bytes: &[u8], dimension: usize) -> Result<Vec<f32>, SearchError> {
+    if bytes.len() != dimension * 4 {
         return Err(SearchError::InvalidQuery(format!(
             "expected {} embedding bytes, got {}",
-            EMBEDDING_DIM * 4,
+            dimension * 4,
             bytes.len()
         )));
     }

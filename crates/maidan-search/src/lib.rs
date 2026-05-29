@@ -8,6 +8,7 @@
 
 pub mod embedding_handler;
 pub mod embedding_provider;
+pub mod embedding_tables;
 pub mod embeddings;
 pub mod error;
 pub mod filters;
@@ -15,6 +16,7 @@ pub mod hit;
 pub mod indexer;
 pub mod postgres;
 pub mod query;
+pub mod reindex;
 pub mod sqlite;
 pub mod traits;
 
@@ -30,5 +32,6 @@ pub use hit::SearchHit;
 pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
 pub use postgres::PostgresSearch;
 pub use query::use_websearch_to_tsquery;
+pub use reindex::{reindex_postgres, reindex_sqlite, ReindexReport};
 pub use sqlite::SqliteSearch;
 pub use traits::Search;

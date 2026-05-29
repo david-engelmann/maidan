@@ -2557,12 +2557,15 @@ dependencies = [
  "maidan-search",
  "maidan-store",
  "maidan-types",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "testcontainers",
  "testcontainers-modules",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

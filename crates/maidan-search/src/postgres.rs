@@ -8,16 +8,15 @@ use pgvector::Vector;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::embedding_tables;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
 use crate::query::use_websearch_to_tsquery;
 use crate::traits::Search;
 
-/// Dimension of every embedding vector. Must match the schema column
-/// declared in `migrations/postgres/0003_embeddings.sql`. Future
-/// migrations widen or partition by model.
-pub const EMBEDDING_DIM: usize = 1024;
+/// Default embedding dimension (`hash-v1`). Per-model tables may use other sizes.
+pub use crate::embedding_tables::DEFAULT_EMBEDDING_DIM as EMBEDDING_DIM;
 
 #[derive(Debug, Clone)]
 pub struct PostgresSearch {
@@ -104,28 +103,23 @@ impl Search for PostgresSearch {
         model: &str,
         embedding: &[f32],
     ) -> Result<(), SearchError> {
-        if embedding.len() != EMBEDDING_DIM {
-            return Err(SearchError::InvalidQuery(format!(
-                "expected {EMBEDDING_DIM}-dim vector, got {}",
-                embedding.len()
-            )));
-        }
+        let table =
+            embedding_tables::ensure_model_postgres(&self.pool, model, embedding.len()).await?;
         let vector = Vector::from(embedding.to_vec());
-        sqlx::query(
+        let sql = format!(
             r#"
-            INSERT INTO maidan_message_embeddings (message_id, model, embedding, updated_at)
-            VALUES ($1, $2, $3, NOW())
+            INSERT INTO {table} (message_id, embedding, updated_at)
+            VALUES ($1, $2, NOW())
             ON CONFLICT (message_id) DO UPDATE
-                SET model = EXCLUDED.model,
-                    embedding = EXCLUDED.embedding,
+                SET embedding = EXCLUDED.embedding,
                     updated_at = NOW()
-            "#,
-        )
-        .bind(message_id.0)
-        .bind(model)
-        .bind(vector)
-        .execute(&self.pool)
-        .await?;
+            "#
+        );
+        sqlx::query(&sql)
+            .bind(message_id.0)
+            .bind(vector)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -137,9 +131,14 @@ impl Search for PostgresSearch {
         filters: &SearchFilters,
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
-        if embedding.len() != EMBEDDING_DIM {
+        let Some((table, registered_dim)) =
+            embedding_tables::resolve_table_postgres(&self.pool, model).await?
+        else {
+            return Ok(vec![]);
+        };
+        if embedding.len() != registered_dim {
             return Err(SearchError::InvalidQuery(format!(
-                "expected {EMBEDDING_DIM}-dim vector, got {}",
+                "expected {registered_dim}-dim vector for model {model}, got {}",
                 embedding.len()
             )));
         }
@@ -148,7 +147,7 @@ impl Search for PostgresSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
-        let rows = sqlx::query(
+        let rows = sqlx::query(&format!(
             r#"
             SELECT
                 m.id            AS message_id,
@@ -160,28 +159,26 @@ impl Search for PostgresSearch {
                 m.body          AS body,
                 ''              AS snippet,
                 1.0 - (e.embedding <=> $2) AS rank
-            FROM maidan_message_embeddings e
+            FROM {table} e
             JOIN maidan_messages m ON m.id = e.message_id
             JOIN maidan_threads t ON t.id = m.thread_id
             JOIN maidan_channels c ON c.id = t.channel_id
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = $1
-              AND e.model = $7
               AND m.tombstoned_at IS NULL
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)
             ORDER BY e.embedding <=> $2
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(workspace_id.0)
         .bind(vector)
         .bind(limit)
         .bind(author_id)
         .bind(channel_id)
         .bind(author_kind)
-        .bind(model)
         .fetch_all(&self.pool)
         .await?;
 

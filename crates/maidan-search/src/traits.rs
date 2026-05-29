@@ -25,9 +25,9 @@ pub trait Search: Send + Sync {
     ) -> Result<Vec<SearchHit>, SearchError>;
 
     /// Store (or replace) the embedding vector for a message under the
-    /// given model name. Vector dimension must match the schema
-    /// (currently 1024). Implementations that do not support vectors
-    /// return [`SearchError::Unsupported`].
+    /// given model name. Dimension must match the model registry entry.
+    /// Implementations that do not support vectors return
+    /// [`SearchError::Unsupported`].
     async fn upsert_embedding(
         &self,
         message_id: MessageId,
