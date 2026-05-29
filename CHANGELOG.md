@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [38.0.0] — 2026-05-29
+
+### Added
+
+- MCP `notifications/resources/updated` fan-out on HTTP `edit_message`, `purge_workspace`,
+  `create_mention`, and `cast_vote`.
+
 ## [37.0.0] — 2026-05-29
 
 ### Added
