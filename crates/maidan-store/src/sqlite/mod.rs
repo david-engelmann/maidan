@@ -11,6 +11,7 @@ pub mod events;
 mod inbox;
 mod members;
 mod mentions;
+mod message_edits;
 mod messages;
 mod oidc;
 pub mod outbox;
@@ -174,8 +175,20 @@ impl Store for SqliteStore {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await
     }
-    async fn edit_message(&self, id: MessageId, edit: EditMessage) -> Result<Message, StoreError> {
-        messages::edit(&self.pool, id, edit).await
+    async fn edit_message(
+        &self,
+        id: MessageId,
+        editor_id: MemberId,
+        edit: EditMessage,
+    ) -> Result<Message, StoreError> {
+        messages::edit(&self.pool, id, editor_id, edit).await
+    }
+    async fn list_message_edits(
+        &self,
+        message_id: MessageId,
+        limit: i64,
+    ) -> Result<Vec<MessageEdit>, StoreError> {
+        message_edits::list(&self.pool, message_id, limit).await
     }
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
         messages::get(&self.pool, id).await

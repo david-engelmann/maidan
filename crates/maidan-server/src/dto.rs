@@ -101,6 +101,12 @@ pub struct ListMessagesQuery {
     pub limit: i64,
 }
 
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListMessageEditsQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
 fn default_limit() -> i64 {
     100
 }

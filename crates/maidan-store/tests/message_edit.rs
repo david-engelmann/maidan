@@ -61,6 +61,7 @@ async fn edit_message_sets_body_and_edited_at() {
     let updated = store
         .edit_message(
             msg.id,
+            member.id,
             EditMessage {
                 body: "revised".into(),
                 metadata: serde_json::json!({"k": 2}),
@@ -71,6 +72,12 @@ async fn edit_message_sets_body_and_edited_at() {
     assert_eq!(updated.body, "revised");
     assert_eq!(updated.metadata["k"], 2);
     assert!(updated.edited_at.is_some());
+
+    let history = store.list_message_edits(msg.id, 10).await.expect("edits");
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].body_before, "original");
+    assert_eq!(history[0].body_after, "revised");
+    assert_eq!(history[0].editor_id, member.id);
 
     let fetched = store.get_message(msg.id).await.expect("get");
     assert_eq!(fetched.body, "revised");
@@ -132,6 +139,7 @@ async fn edit_message_rejects_tombstoned() {
     let err = store
         .edit_message(
             msg.id,
+            member.id,
             EditMessage {
                 body: "nope".into(),
                 metadata: serde_json::json!({}),

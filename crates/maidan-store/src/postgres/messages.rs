@@ -65,7 +65,17 @@ pub async fn purge(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
     Ok(())
 }
 
-pub async fn edit(pool: &PgPool, id: MessageId, edit: EditMessage) -> Result<Message, StoreError> {
+pub async fn edit(
+    pool: &PgPool,
+    id: MessageId,
+    editor_id: MemberId,
+    edit: EditMessage,
+) -> Result<Message, StoreError> {
+    let existing = get(pool, id).await?;
+    if existing.body != edit.body {
+        super::message_edits::append(pool, id, editor_id, &existing.body, &edit.body, Utc::now())
+            .await?;
+    }
     let metadata = serde_json::to_value(&edit.metadata)?;
     let row = sqlx::query(
         "UPDATE maidan_messages SET body = $2, metadata = $3, edited_at = NOW()

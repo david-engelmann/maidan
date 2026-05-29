@@ -3,12 +3,13 @@
 use uuid::Uuid;
 
 use crate::dto::{
-    ListAuditQuery, ListEventsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery,
-    OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
+    ListAuditQuery, ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery,
+    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, SearchQuery,
+    SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{AuditEvent, Channel, Message, StoredEvent, Thread};
+use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread};
 
 #[utoipa::path(
     get,
@@ -181,3 +182,19 @@ pub fn ui_list_audit() {}
     responses((status = 200, body = Vec<PeerResponse>))
 )]
 pub fn ui_list_peers() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/messages/{mid}/edits",
+    tag = "auth",
+    params(
+        ("mid" = Uuid, Path, description = "Message id"),
+        ListMessageEditsQuery,
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<MessageEdit>))
+)]
+pub fn ui_list_message_edits() {}
