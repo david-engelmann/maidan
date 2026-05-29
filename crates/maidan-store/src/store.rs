@@ -74,6 +74,12 @@ pub trait Store: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<ThreadTransitionResult, StoreError>;
 
+    async fn list_thread_transitions(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<ThreadTransition>, StoreError>;
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     async fn edit_message(
         &self,

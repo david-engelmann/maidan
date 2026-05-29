@@ -220,6 +220,17 @@ pub struct ThreadTransitionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadTransition {
+    pub id: uuid::Uuid,
+    pub thread_id: ThreadId,
+    pub from_state: ThreadState,
+    pub to_state: ThreadState,
+    pub actor_id: MemberId,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Message {
     pub id: MessageId,
     pub thread_id: ThreadId,

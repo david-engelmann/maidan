@@ -12,6 +12,7 @@ use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::openapi::schemas::{LivenessOk, SearchHit};
+use crate::thread_context::{ThreadContext, ThreadFsmContext};
 use maidan_types::*;
 
 struct SecurityAddon;
@@ -73,6 +74,7 @@ impl Modify for SecurityAddon {
         paths::list_threads,
         paths::create_thread,
         paths::get_thread,
+        paths::get_thread_context,
         paths::transition_thread,
         paths::list_messages,
         paths::post_message,
@@ -137,6 +139,10 @@ impl Modify for SecurityAddon {
         CreateMember,
         CreateChannel,
         CreateThread,
+        ThreadTransition,
+        ThreadContext,
+        ThreadFsmContext,
+        ThreadContextQuery,
         TransitionThread,
         CreateMessage,
         EditMessageRequest,

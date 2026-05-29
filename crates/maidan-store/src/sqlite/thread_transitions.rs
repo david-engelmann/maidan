@@ -1,6 +1,6 @@
 use chrono::Utc;
 use maidan_fsm::ThreadAction;
-use maidan_types::{MemberId, ThreadId, ThreadTransitionResult};
+use maidan_types::{MemberId, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -88,4 +88,52 @@ pub async fn transition(
         from_state,
         to_state,
     })
+}
+
+pub async fn list(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    limit: i64,
+) -> Result<Vec<ThreadTransition>, StoreError> {
+    use chrono::{DateTime, Utc};
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT id, thread_id, from_state, to_state, actor_id, occurred_at
+         FROM maidan_thread_transitions
+         WHERE thread_id = ?
+         ORDER BY occurred_at ASC
+         LIMIT ?",
+    )
+    .bind(thread_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    rows.iter()
+        .map(|row| {
+            let from_state = parse_state(row.get::<&str, _>("from_state"))?;
+            let to_state = parse_state(row.get::<&str, _>("to_state"))?;
+            Ok(ThreadTransition {
+                id: row.get::<Uuid, _>("id"),
+                thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+                from_state,
+                to_state,
+                actor_id: MemberId(row.get::<Uuid, _>("actor_id")),
+                occurred_at: row.get::<DateTime<Utc>, _>("occurred_at"),
+            })
+        })
+        .collect()
+}
+
+fn parse_state(state_str: &str) -> Result<ThreadState, StoreError> {
+    match state_str {
+        "open" => Ok(ThreadState::Open),
+        "in_review" => Ok(ThreadState::InReview),
+        "closed" => Ok(ThreadState::Closed),
+        "archived" => Ok(ThreadState::Archived),
+        other => Err(StoreError::InvalidInput(format!(
+            "unknown thread state: {other}"
+        ))),
+    }
 }

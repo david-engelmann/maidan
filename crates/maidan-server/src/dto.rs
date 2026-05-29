@@ -96,6 +96,18 @@ pub struct CreateReference {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ThreadContextQuery {
+    #[serde(default = "default_limit")]
+    pub message_limit: i64,
+    #[serde(default = "default_transition_limit")]
+    pub transition_limit: i64,
+}
+
+fn default_transition_limit() -> i64 {
+    50
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListMessagesQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
