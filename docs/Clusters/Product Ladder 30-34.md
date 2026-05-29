@@ -7,3 +7,5 @@
 | **32** | Helm umbrella chart | `v32.0.0` ✓ |
 | **33** | MCP resource fan-out (tombstone + FSM) | `v33.0.0` ✓ |
 | **34** | MCP streamable `Mcp-Session-Id` | `v34.0.0` ✓ |
+
+Retro: [[Retros/Product Ladder 30-34]]. Next: [[Clusters/Product Ladder 35+]].

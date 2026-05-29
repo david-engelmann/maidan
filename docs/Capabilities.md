@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v35.0.0 — MCP streamable bidirectional mux
+
+| Capability | Surface |
+|------------|---------|
+| Streamable session mux | Follow-up `POST /mcp/streamable` on open `Mcp-Session-Id` → JSON response + SSE push |
+
 ## v34.0.0 — MCP streamable session
 
 | Capability | Surface |

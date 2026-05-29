@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [35.0.0] — 2026-05-29
+
+### Added
+
+- MCP streamable HTTP bidirectional mux: follow-up `POST /mcp/streamable` requests with an open
+  `Mcp-Session-Id` return JSON-RPC responses pushed to the original SSE session.
+
 ## [34.0.0] — 2026-05-29
 
 ### Added

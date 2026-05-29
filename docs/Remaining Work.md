@@ -1,11 +1,10 @@
-# Remaining work (post–Product Ladder 17–27)
+# Remaining work (post–Product Ladder 17–34)
 
-Exhaustive backlog after Clusters **17–27** (`v17.0.0` → `v27.0.0`). Use with
-[[Open Work]] (standing risks + short deferrals) and [[Product Completion Checklist]]
-(what the ladder declared “done” on the critical path).
+Exhaustive backlog after Clusters **17–27** and **28–34** (`v17.0.0` → `v34.0.0`). Use with
+[[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and the
+forward plan [[Clusters/Product Ladder 35+]].
 
-**Latest product ladder close:** PR #198 — tags `v23.0.0`–`v27.0.0` still require
-retro PR(s) and maintainer tag push per [[Operations]].
+**Latest ladder close:** [[Retros/Product Ladder 30-34]] — tags **`v30.0.0`–`v34.0.0`** (PRs #202–#206).
 
 ---
 
@@ -16,7 +15,7 @@ upstream specs, or Slack-grade product depth.
 
 | Area | Shipped | Gap |
 |------|---------|-----|
-| **MCP streamable HTTP (27→34)** | `POST /mcp/streamable` + SSE + **`Mcp-Session-Id`** at **`v34.0.0`** | Not full spec bidirectional mux on one HTTP connection. |
+| **MCP streamable HTTP (27→35)** | Bidirectional mux at **`v35.0.0`**: open SSE session + follow-up `POST` on `Mcp-Session-Id` | Not full MCP 2024-11-05 transport (no session TTL, no `GET` upgrade path). |
 | **Web UI (23)** | Vanilla `/ui` tabs: events, search, thread FSM, token mint | No channel list, no create-channel/thread flows, no WS live tail, no artifact upload UI, no federation admin, no purge UI, no faceted search controls, no React/Vite app (deferred since Cluster H). |
 | **Helm (24→32)** | `helm/maidan` + **`helm/maidan-stack`** optional Postgres/MinIO at **`v32.0.0`** | No ingress/cert-manager bundle; no `helm install` CI (template smoke only). |
 | **Workspace purge (25→31)** | Deep purge through **`v31.0.0`**: messages, embeddings, references, tokens, events, artifact metadata + blobs | Does **not** delete members, channels, threads, workspace row, peers, or OIDC identities. |
@@ -173,4 +172,5 @@ No widespread `todo!()` / `unimplemented!()` in library crates. Notable **intent
 2. **Open a cluster or track issue** per [[Operations]].
 3. On ship: move items to [[Capabilities]], [[CHANGELOG]], and trim §3 here via retro PR.
 
-See also: [[Open Work]], [[Roadmap]], [[Post-1.0]], [[Clusters/Product Ladder 17-27]].
+See also: [[Open Work]], [[Roadmap]], [[Post-1.0]], [[Clusters/Product Ladder 17-27]],
+[[Clusters/Product Ladder 35+]].

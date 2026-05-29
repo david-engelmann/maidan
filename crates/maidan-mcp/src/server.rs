@@ -11,6 +11,8 @@ use maidan_store::Store;
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, Mutex};
 
+use crate::streamable_session::StreamableSessionRegistry;
+
 const NOTIFICATION_BROADCAST_CAPACITY: usize = 64;
 
 use crate::error::McpError;
@@ -31,7 +33,7 @@ pub struct McpServer {
     subscriptions: Arc<Mutex<HashSet<String>>>,
     pending_notifications: Arc<Mutex<Vec<JsonRpcNotification>>>,
     notification_tx: broadcast::Sender<JsonRpcNotification>,
-    streamable_sessions: Arc<Mutex<HashSet<String>>>,
+    streamable_sessions: Arc<StreamableSessionRegistry>,
 }
 
 impl McpServer {
@@ -52,18 +54,20 @@ impl McpServer {
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             pending_notifications: Arc::new(Mutex::new(Vec::new())),
             notification_tx,
-            streamable_sessions: Arc::new(Mutex::new(HashSet::new())),
+            streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
         }
     }
 
-    /// Register or reuse a streamable HTTP session id (`Mcp-Session-Id`, Cluster 34).
+    pub fn streamable_sessions(&self) -> Arc<StreamableSessionRegistry> {
+        self.streamable_sessions.clone()
+    }
+
+    /// Register a new streamable HTTP session id, or validate an existing open session.
     pub async fn touch_streamable_session(&self, existing: Option<&str>) -> String {
-        let id = existing
+        existing
             .filter(|s| !s.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        self.streamable_sessions.lock().await.insert(id.clone());
-        id
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
     }
 
     /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport).
