@@ -11,6 +11,10 @@
 //! 5. On broadcast lag, replay from `maidan_events` when `filter.workspace_id`
 //!    is set; otherwise a `replay_hint` frame (see 1.1.2 / 3.0.2).
 //! 6. Server pings every 30 s; pong timeout closes with 1011.
+//! 7. Optional `member_id` with `filter.workspace_id` enables ephemeral
+//!    `presence` / `typing` frames (see [`crate::presence`]).
+//! 8. After subscribe, client may send `{"type":"presence","status":"online"|"away"}`
+//!    or `{"type":"typing","thread_id":"…","active":true|false}`.
 
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
@@ -23,12 +27,13 @@ use axum::{
 };
 use futures::StreamExt;
 use maidan_auth::{capability::EVENT_SUBSCRIBE, resolve_bearer};
-use maidan_types::EventFilter;
+use maidan_types::{EventFilter, MemberId, ThreadId, WorkspaceId};
 use serde::Deserialize;
 use tokio::{
     sync::mpsc,
     time::{timeout, Instant},
 };
+use uuid::Uuid;
 
 use crate::event_stream::{
     self, emit_replay_truncated_if_needed, replay_matching_events, subscribe_ack_payload,
@@ -55,6 +60,9 @@ pub struct SubscribeFrame {
     /// Optional durable consumer id; server skips replay at or below stored cursor.
     #[serde(default)]
     pub consumer_id: Option<String>,
+    /// When set with `filter.workspace_id`, enables presence/typing fan-out.
+    #[serde(default)]
+    pub member_id: Option<Uuid>,
 }
 
 struct SubscribeRequest {
@@ -62,6 +70,14 @@ struct SubscribeRequest {
     after_id: i64,
     from_resume_token: bool,
     consumer_id: Option<String>,
+    member_id: Option<MemberId>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ClientWsFrame {
+    Presence { status: String },
+    Typing { thread_id: Uuid, active: bool },
 }
 
 pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -176,6 +192,34 @@ async fn run(mut socket: WebSocket, state: AppState) {
         .await;
     });
 
+    let _presence_reg = match (request.filter.workspace_id, request.member_id) {
+        (Some(workspace_id), Some(member_id)) => {
+            let (mut ephemeral_rx, reg, snapshot) =
+                state.presence.register(workspace_id, member_id);
+            let _ = text_tx.send(snapshot).await;
+            let ephemeral_tx = text_tx.clone();
+            tokio::spawn(async move {
+                loop {
+                    match ephemeral_rx.recv().await {
+                        Ok(msg) => {
+                            if ephemeral_tx.send(msg).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+            Some(reg)
+        }
+        _ => None,
+    };
+
+    let presence_hub = state.presence.clone();
+    let presence_workspace = request.filter.workspace_id;
+    let presence_member = request.member_id;
+
     let mut last_pong = Instant::now();
     let mut ping_interval = tokio::time::interval(PING_INTERVAL);
     ping_interval.tick().await;
@@ -192,6 +236,16 @@ async fn run(mut socket: WebSocket, state: AppState) {
                 match inbound {
                     Some(Ok(WsMessage::Pong(_))) => last_pong = Instant::now(),
                     Some(Ok(WsMessage::Close(_))) | None => break,
+                    Some(Ok(WsMessage::Text(text))) => {
+                        if let Ok(frame) = serde_json::from_str::<ClientWsFrame>(&text) {
+                            handle_client_frame(
+                                &presence_hub,
+                                presence_workspace,
+                                presence_member,
+                                &frame,
+                            );
+                        }
+                    }
                     Some(Ok(_)) => {}
                     Some(Err(err)) => {
                         tracing::debug!(error = %err, "ws inbound error");
@@ -293,12 +347,42 @@ async fn read_subscribe(
         }
     }
 
+    let member_id = sub.member_id.map(MemberId);
+    if member_id.is_some() && filter.workspace_id.is_none() {
+        return Err((
+            1008u16,
+            "member_id requires filter.workspace_id for presence".into(),
+        ));
+    }
+
     Ok(SubscribeRequest {
         filter,
         after_id,
         from_resume_token: sub.resume_token.as_deref().is_some_and(|t| !t.is_empty()),
         consumer_id: sub.consumer_id.clone(),
+        member_id,
     })
+}
+
+fn handle_client_frame(
+    hub: &crate::presence::PresenceHub,
+    workspace_id: Option<WorkspaceId>,
+    member_id: Option<MemberId>,
+    frame: &ClientWsFrame,
+) {
+    let (Some(workspace_id), Some(member_id)) = (workspace_id, member_id) else {
+        return;
+    };
+    match frame {
+        ClientWsFrame::Presence { status } => {
+            if let Some(st) = crate::presence::PresenceStatus::parse(status) {
+                hub.set_presence(workspace_id, member_id, st);
+            }
+        }
+        ClientWsFrame::Typing { thread_id, active } => {
+            hub.set_typing(workspace_id, ThreadId(*thread_id), member_id, *active);
+        }
+    }
 }
 
 fn resolve_subscribe_params(

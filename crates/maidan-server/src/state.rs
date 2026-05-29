@@ -11,6 +11,7 @@ use maidan_types::PeerId;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::oidc::OidcRuntime;
+use crate::presence::PresenceHub;
 use crate::subscribe_resume;
 
 /// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
@@ -67,6 +68,8 @@ pub struct AppState {
     pub subscribe_resume_secret: Option<Arc<[u8]>>,
     /// TTL for signed resume tokens (seconds).
     pub subscribe_resume_ttl_secs: u64,
+    /// Ephemeral presence/typing fan-out for WebSocket subscribers.
+    pub presence: Arc<PresenceHub>,
 }
 
 impl AppState {
@@ -109,6 +112,7 @@ impl AppState {
             oidc: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
+            presence: Arc::new(PresenceHub::default()),
         }
     }
 

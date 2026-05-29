@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [42.0.0] — 2026-05-29
+
+### Added
+
+- WebSocket ephemeral presence (`presence_snapshot`, online/away/offline) and typing
+  indicators when subscribe includes `member_id` and `filter.workspace_id`.
+
 ## [41.0.0] — 2026-05-29
 
 ### Added

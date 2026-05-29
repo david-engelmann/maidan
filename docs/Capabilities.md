@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v42.0.0 — Presence & typing
+
+| Capability | Surface |
+|------------|---------|
+| Ephemeral presence | WS `member_id` + `presence` / `presence_snapshot` frames |
+| Typing indicators | WS `{"type":"typing","thread_id",…,"active"}` fan-out |
+
 ## v41.0.0 — Reactions & pins
 
 | Capability | Surface |
