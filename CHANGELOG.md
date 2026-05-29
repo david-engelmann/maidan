@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [51.0.0] — 2026-05-29
+
+### Added
+
+- Slash commands: `/name args` parsed on `post_message` when a workspace command is registered.
+- `POST/GET/DELETE /workspaces/:wid/slash-commands` with `http` or `mcp_tool` handlers.
+- MCP tools `register_slash_command` and `list_slash_commands`.
+- Handler results stored on the posted message under `metadata.slash_command` / `metadata.slash_response`.
+
 ## [50.0.0] — 2026-05-28
 
 ### Added

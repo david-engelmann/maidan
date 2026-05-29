@@ -7,7 +7,7 @@ use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
-use maidan_types::{PeerId, WebhookSubscriptionId};
+use maidan_types::{PeerId, SlashCommandId, WebhookSubscriptionId};
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::oidc::OidcRuntime;
@@ -22,6 +22,22 @@ pub struct WebhookRuntime {
 }
 
 impl WebhookRuntime {
+    pub fn new(encryption_key: Option<Arc<[u8; 32]>>) -> Self {
+        Self {
+            encryption_key,
+            secrets: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+/// Slash command signing secrets for outbound HTTP handlers.
+#[derive(Clone)]
+pub struct SlashRuntime {
+    pub encryption_key: Option<Arc<[u8; 32]>>,
+    pub secrets: Arc<RwLock<HashMap<SlashCommandId, String>>>,
+}
+
+impl SlashRuntime {
     pub fn new(encryption_key: Option<Arc<[u8; 32]>>) -> Self {
         Self {
             encryption_key,
@@ -67,6 +83,7 @@ pub struct AppState {
     pub bootstrap_enabled: bool,
     pub federation: FederationRuntime,
     pub webhooks: WebhookRuntime,
+    pub slash: SlashRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
     /// Most recent indexer-side embedding failure, if any.
@@ -121,6 +138,7 @@ impl AppState {
             bootstrap_enabled,
             federation,
             webhooks: WebhookRuntime::new(None),
+            slash: SlashRuntime::new(None),
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,

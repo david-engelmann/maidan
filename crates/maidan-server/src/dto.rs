@@ -235,6 +235,49 @@ pub struct MintWebhookResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateSlashCommand {
+    pub name: String,
+    pub description: Option<String>,
+    pub handler_kind: String,
+    pub handler_target: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SlashCommandResponse {
+    pub id: maidan_types::SlashCommandId,
+    pub workspace_id: maidan_types::WorkspaceId,
+    pub name: String,
+    pub description: Option<String>,
+    pub handler_kind: maidan_types::SlashHandlerKind,
+    pub handler_target: String,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<maidan_types::SlashCommand> for SlashCommandResponse {
+    fn from(c: maidan_types::SlashCommand) -> Self {
+        Self {
+            id: c.id,
+            workspace_id: c.workspace_id,
+            name: c.name,
+            description: c.description,
+            handler_kind: c.handler_kind,
+            handler_target: c.handler_target,
+            enabled: c.enabled,
+            created_at: c.created_at,
+            revoked_at: c.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintSlashCommandResponse {
+    pub command: SlashCommandResponse,
+    pub secret: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWebhook {
     pub url: String,
     pub label: Option<String>,
