@@ -260,7 +260,10 @@ async fn read_subscribe(
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
-    let (filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
+    let (mut filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
+    crate::dm::expand_event_filter(state, &mut filter)
+        .await
+        .map_err(|e| (1008u16, format!("{e:?}")))?;
     if let Some(ref consumer_id) = sub.consumer_id {
         crate::delivery::validate_consumer_id(consumer_id).map_err(|e| (1008u16, e))?;
         after_id = crate::delivery::effective_subscribe_after_id(

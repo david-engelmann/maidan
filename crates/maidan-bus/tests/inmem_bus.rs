@@ -94,6 +94,7 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
             workspace_id: ws_a.id,
             channel_id: ch_a1.id,
             thread_id: th_a1.id,
+            dm_conversation_id: None,
             message: msg,
         });
     }
@@ -104,6 +105,7 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
             workspace_id: ws_b.id,
             channel_id: ch_b1.id,
             thread_id: th_b1.id,
+            dm_conversation_id: None,
             message: msg,
         });
     }

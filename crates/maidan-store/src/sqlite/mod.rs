@@ -6,6 +6,7 @@
 mod artifacts;
 mod audit;
 mod channels;
+mod dm;
 pub mod events;
 mod members;
 mod mentions;
@@ -117,6 +118,34 @@ impl Store for SqliteStore {
     }
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError> {
         channels::list(&self.pool, workspace_id).await
+    }
+
+    async fn open_dm_conversation(
+        &self,
+        workspace_id: WorkspaceId,
+        member_a: MemberId,
+        member_b: MemberId,
+    ) -> Result<DmConversation, StoreError> {
+        dm::open(&self.pool, workspace_id, member_a, member_b).await
+    }
+    async fn get_dm_conversation(
+        &self,
+        id: DmConversationId,
+    ) -> Result<DmConversation, StoreError> {
+        dm::get(&self.pool, id).await
+    }
+    async fn list_dm_conversations_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<DmConversation>, StoreError> {
+        dm::list_for_member(&self.pool, workspace_id, member_id).await
+    }
+    async fn dm_conversation_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<DmConversation>, StoreError> {
+        dm::get_for_thread(&self.pool, thread_id).await
     }
 
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError> {

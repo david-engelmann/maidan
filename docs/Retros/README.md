@@ -96,4 +96,5 @@ PR review credit; external contributors.
 - [[Cluster 36.0]] — `mcp-stdio` Postgres. Closed at **`v36.0.0`**.
 - [[Cluster 37.0]] — A2A `SendStreamingMessage`. Closed at **`v37.0.0`**.
 - [[Cluster 38.0]] — MCP resource fan-out complete. Closed at **`v38.0.0`**.
+- [[Cluster 39.0]] — Direct messages. Closed at **`v39.0.0`**.
 - [[Product Ladder 30-34]] — Ladder close retro (`v30`–`v34`). See [[Clusters/Product Ladder 35+]].

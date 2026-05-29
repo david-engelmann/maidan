@@ -20,10 +20,14 @@ use crate::error::McpError;
 
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
-        "list_channels" | "list_threads" | "list_messages" | "get_artifact_metadata" => {
-            Ok(WORKSPACE_READ)
+        "list_channels"
+        | "list_threads"
+        | "list_messages"
+        | "list_dm_conversations"
+        | "get_artifact_metadata" => Ok(WORKSPACE_READ),
+        "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
+            Ok(MESSAGE_POST)
         }
-        "post_message" | "edit_message" => Ok(MESSAGE_POST),
         "record_mention" | "cast_vote" | "add_reference" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
@@ -39,6 +43,45 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
 /// receives this verbatim in the `tools/list` response.
 pub fn catalog() -> Vec<Value> {
     vec![
+        json!({
+            "name": "open_dm_conversation",
+            "description": "Open or fetch a 1:1 DM conversation between two workspace members.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "other_member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "member_id", "other_member_id"]
+            }
+        }),
+        json!({
+            "name": "list_dm_conversations",
+            "description": "List DM conversations for a member in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "post_dm_message",
+            "description": "Post a message in a DM conversation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dm_conversation_id": {"type": "string", "format": "uuid"},
+                    "author_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["dm_conversation_id", "author_id", "body"]
+            }
+        }),
         json!({
             "name": "list_channels",
             "description": "List channels in a workspace.",
@@ -264,6 +307,9 @@ pub async fn dispatch(
 ) -> Result<Value, McpError> {
     match name {
         "list_channels" => list_channels(store, args).await,
+        "open_dm_conversation" => open_dm_conversation(store, args).await,
+        "list_dm_conversations" => list_dm_conversations(store, args).await,
+        "post_dm_message" => post_dm_message(store, args).await,
         "list_threads" => list_threads(store, args).await,
         "list_messages" => list_messages(store, args).await,
         "post_message" => post_message(store, args).await,
@@ -524,6 +570,73 @@ async fn list_channels(store: &Arc<dyn Store>, args: &Value) -> Result<Value, Mc
     let a: ListChannelsArgs = serde_json::from_value(args.clone())?;
     let channels = store.list_channels(WorkspaceId(a.workspace_id)).await?;
     Ok(content_json(&channels))
+}
+
+#[derive(Deserialize)]
+struct OpenDmArgs {
+    workspace_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    other_member_id: uuid::Uuid,
+}
+
+async fn open_dm_conversation(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: OpenDmArgs = serde_json::from_value(args.clone())?;
+    let dm = store
+        .open_dm_conversation(
+            WorkspaceId(a.workspace_id),
+            MemberId(a.member_id),
+            MemberId(a.other_member_id),
+        )
+        .await?;
+    Ok(content_json(&dm))
+}
+
+#[derive(Deserialize)]
+struct ListDmArgs {
+    workspace_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+async fn list_dm_conversations(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ListDmArgs = serde_json::from_value(args.clone())?;
+    let list = store
+        .list_dm_conversations_for_member(WorkspaceId(a.workspace_id), MemberId(a.member_id))
+        .await?;
+    Ok(content_json(&list))
+}
+
+#[derive(Deserialize)]
+struct PostDmMessageArgs {
+    dm_conversation_id: uuid::Uuid,
+    author_id: uuid::Uuid,
+    body: String,
+    #[serde(default)]
+    metadata: Value,
+}
+
+async fn post_dm_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: PostDmMessageArgs = serde_json::from_value(args.clone())?;
+    let dm = store
+        .get_dm_conversation(DmConversationId(a.dm_conversation_id))
+        .await?;
+    if dm.member_low_id != MemberId(a.author_id) && dm.member_high_id != MemberId(a.author_id) {
+        return Err(McpError::InvalidParams(
+            "author_id must be a DM participant".into(),
+        ));
+    }
+    let msg = store
+        .post_message(NewMessage {
+            thread_id: dm.thread_id,
+            author_id: MemberId(a.author_id),
+            body: a.body,
+            metadata: if a.metadata.is_null() {
+                json!({})
+            } else {
+                a.metadata
+            },
+        })
+        .await?;
+    Ok(content_json(&msg))
 }
 
 #[derive(Deserialize)]

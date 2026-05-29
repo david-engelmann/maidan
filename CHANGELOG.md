@@ -9,6 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [39.0.0] — 2026-05-29
+
+### Added
+
+- Direct messages: `maidan_dm_conversations` schema, HTTP `POST/GET /workspaces/:id/dm`,
+  `POST/GET /dm/:id/messages`, MCP `open_dm_conversation` / `list_dm_conversations` /
+  `post_dm_message`, and WebSocket `filter.dm_conversation_id` (resolves to thread).
+
 ## [38.0.0] — 2026-05-29
 
 ### Added

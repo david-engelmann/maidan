@@ -55,6 +55,15 @@ pub async fn uris_for_tool_mutation(
             push_ref_side(store, args, "src_kind", "src_id", &mut uris).await;
             push_ref_side(store, args, "dst_kind", "dst_id", &mut uris).await;
         }
+        "open_dm_conversation" | "post_dm_message" => {
+            if let Some(body) = tool_result_json(result) {
+                if let Ok(dm) = serde_json::from_value::<DmConversation>(body.clone()) {
+                    push_thread_chain(store, dm.thread_id, &mut uris).await;
+                } else if let Ok(msg) = serde_json::from_value::<Message>(body) {
+                    push_thread_chain(store, msg.thread_id, &mut uris).await;
+                }
+            }
+        }
         _ => {}
     }
     uris.into_iter().collect()

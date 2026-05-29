@@ -93,6 +93,7 @@ async fn embedding_handler_upserts_on_message_posted() {
             workspace_id: ws.id,
             channel_id: ch.id,
             thread_id: thread.id,
+            dm_conversation_id: None,
             message: msg.clone(),
         },
     ))

@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v39.0.0 — Direct messages
+
+| Capability | Surface |
+|------------|---------|
+| 1:1 DM conversations | `POST/GET /workspaces/:wid/dm`, `POST/GET /dm/:id/messages` |
+| MCP DM tools | `open_dm_conversation`, `list_dm_conversations`, `post_dm_message` |
+| WS DM filter | `filter.dm_conversation_id` on `/ws/subscribe` and `GET /mcp/stream` |
+
 ## v38.0.0 — MCP resource fan-out complete
 
 | Capability | Surface |

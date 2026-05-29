@@ -10,6 +10,7 @@ pub mod auth;
 pub mod bootstrap;
 pub mod config;
 pub mod delivery;
+pub mod dm;
 pub mod dto;
 pub mod error;
 pub mod event_stream;

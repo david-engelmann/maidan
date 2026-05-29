@@ -144,6 +144,7 @@ async fn publish_rejects_legacy_synthetic_payload_too_large() {
         workspace_id: WorkspaceId(uuid::Uuid::new_v4()),
         channel_id: ChannelId(uuid::Uuid::new_v4()),
         thread_id: ThreadId(uuid::Uuid::new_v4()),
+        dm_conversation_id: None,
         message: msg,
     };
 
@@ -179,6 +180,7 @@ async fn pointer_delivery_for_large_persisted_event() {
         workspace_id: ws.id,
         channel_id: ChannelId(uuid::Uuid::new_v4()),
         thread_id: ThreadId(uuid::Uuid::new_v4()),
+        dm_conversation_id: None,
         message: Message {
             id: MessageId(uuid::Uuid::new_v4()),
             thread_id: ThreadId(uuid::Uuid::new_v4()),
