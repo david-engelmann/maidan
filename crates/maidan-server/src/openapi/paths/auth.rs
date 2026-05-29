@@ -3,10 +3,12 @@
 use uuid::Uuid;
 
 use crate::dto::{
-    ListEventsQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, SessionResponse,
+    ListEventsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery,
+    SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
-use maidan_types::{Channel, StoredEvent};
+use crate::openapi::schemas::SearchHit;
+use maidan_types::{Channel, Message, StoredEvent, Thread};
 
 #[utoipa::path(
     get,
@@ -105,3 +107,48 @@ pub fn ui_list_events() {}
     )
 )]
 pub fn ui_list_channels() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/channels/{cid}/threads",
+    tag = "auth",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<Thread>))
+)]
+pub fn ui_list_threads() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/messages",
+    tag = "auth",
+    params(
+        ("tid" = Uuid, Path, description = "Thread id"),
+        ListMessagesQuery,
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<Message>))
+)]
+pub fn ui_list_messages() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/search",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        SearchQuery,
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses((status = 200, body = Vec<SearchHit>))
+)]
+pub fn ui_search_messages() {}

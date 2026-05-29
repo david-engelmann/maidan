@@ -132,9 +132,36 @@
         border-radius: 0.25rem;
       }
       #mint-banner code { word-break: break-all; }
+      #thread-list { list-style: none; margin: 0.75rem 0 0; padding: 0; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+      #thread-list li { padding: 0.35rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.85rem; }
+      #thread-list li:hover { background: #f4f4f5; }
+      #thread-list li.selected { background: #e0e7ff; font-weight: 600; }
+      #collab-panel {
+        border-top: 1px solid var(--border);
+        padding: 0.75rem;
+        background: var(--panel);
+        max-height: 22rem;
+        overflow: auto;
+      }
+      #message-list {
+        background: #f4f4f5;
+        padding: 0.5rem;
+        border-radius: 0.35rem;
+        max-height: 8rem;
+        overflow: auto;
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+      }
+      #message-list .msg { margin-bottom: 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+      #message-list .meta { color: var(--muted); font-size: 0.75rem; }
+      textarea.compose { min-height: 3rem; font-family: inherit; }
+      .inline-form { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
+      .inline-form input { flex: 1; min-width: 6rem; }
+      #search-results { margin-top: 0.5rem; font-size: 0.85rem; }
+      #search-results .hit { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
     </style>
   </head>
-  <body data-ui-version="2">
+  <body data-ui-version="3">
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -154,8 +181,18 @@
     <div id="shell">
       <aside>
         <h2>Channels</h2>
+        <div class="inline-form">
+          <input id="new-channel-name" placeholder="New channel" />
+          <button id="create-channel" type="button" title="Requires bearer token">+</button>
+        </div>
         <button id="refresh-channels" type="button" style="margin-bottom: 0.5rem; width: 100%">Refresh</button>
         <ul id="channel-list"></ul>
+        <h2>Threads</h2>
+        <div class="inline-form">
+          <input id="new-thread-title" placeholder="New thread title" />
+          <button id="create-thread" type="button" title="Requires bearer token">+</button>
+        </div>
+        <ul id="thread-list"><li class="muted">Select a channel</li></ul>
       </aside>
       <main>
         <section id="live-panel">
@@ -168,21 +205,49 @@
           </div>
           <pre id="live-feed"></pre>
         </section>
+        <section id="collab-panel">
+          <strong>Thread</strong>
+          <span id="thread-context" class="muted">none selected</span>
+          <div id="message-list"></div>
+          <label>Message
+            <textarea id="compose-body" class="compose" placeholder="Post a message (@handle for mentions)"></textarea>
+          </label>
+          <div class="row">
+            <button id="post-message" type="button">Post</button>
+            <button id="reload-messages" type="button">Reload messages</button>
+          </div>
+          <details style="margin-top: 0.75rem">
+            <summary>Edit message</summary>
+            <label>Message ID <input id="edit-message-id" /></label>
+            <label>New body <textarea id="edit-message-body" class="compose"></textarea></label>
+            <button id="edit-message" type="button">Save edit</button>
+          </details>
+          <details style="margin-top: 0.5rem">
+            <summary>Upload artifact</summary>
+            <label>Kind
+              <select id="artifact-kind">
+                <option value="attachment">attachment</option>
+                <option value="screenshot">screenshot</option>
+                <option value="transcript">transcript</option>
+                <option value="code_dump">code_dump</option>
+              </select>
+            </label>
+            <label>File <input id="artifact-file" type="file" /></label>
+            <button id="upload-artifact" type="button">Upload</button>
+          </details>
+        </section>
       </main>
     </div>
 
     <details id="tools" open>
-      <summary>Operator tools</summary>
+      <summary>More tools</summary>
       <nav class="tabs" role="tablist">
-        <button type="button" data-tab="events" aria-selected="true">Events (HTTP)</button>
-        <button type="button" data-tab="search">Search</button>
-        <button type="button" data-tab="thread">Thread</button>
+        <button type="button" data-tab="search" aria-selected="true">Search</button>
+        <button type="button" data-tab="events">Events (HTTP)</button>
+        <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="tokens">Tokens</button>
       </nav>
-      <section id="panel-events" class="panel active">
-        <button id="load-events" type="button">Load events</button>
-      </section>
-      <section id="panel-search" class="panel">
+      <section id="panel-search" class="panel active">
         <label>Query <input id="search-q" placeholder="keywords" /></label>
         <label>Mode
           <select id="search-mode">
@@ -190,7 +255,22 @@
             <option value="semantic">semantic</option>
           </select>
         </label>
+        <label>Channel filter
+          <input id="search-channel" placeholder="defaults to selected channel" />
+        </label>
+        <label>Author member ID <input id="search-author" placeholder="optional uuid" /></label>
+        <label>Author kind
+          <select id="search-kind">
+            <option value="">any</option>
+            <option value="human">human</option>
+            <option value="agent">agent</option>
+          </select>
+        </label>
         <button id="run-search" type="button">Search</button>
+        <div id="search-results"></div>
+      </section>
+      <section id="panel-events" class="panel">
+        <button id="load-events" type="button">Load events</button>
       </section>
       <section id="panel-thread" class="panel">
         <label>Channel ID <input id="channel-id" /></label>
@@ -230,6 +310,7 @@
       let wsSocket = null;
       let wsAfterId = 0;
       let selectedChannelId = null;
+      let selectedThreadId = null;
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
@@ -271,6 +352,118 @@
         const el = document.getElementById("ws-status");
         el.textContent = text;
         el.className = cls || "";
+      }
+      function authorId() {
+        return (
+          sessionMemberId ||
+          document.getElementById("actor-id").value.trim() ||
+          null
+        );
+      }
+      function requireTokenForWrite() {
+        if (!token()) {
+          alert("Bearer token required for writes (mint from session or Tokens tab).");
+          return false;
+        }
+        return true;
+      }
+      function uiReadPath(suffix) {
+        return `${base()}/ui/api${suffix}`;
+      }
+
+      async function loadThreads() {
+        const list = document.getElementById("thread-list");
+        list.innerHTML = "";
+        if (!selectedChannelId) {
+          list.innerHTML = "<li class='muted'>Select a channel</li>";
+          return;
+        }
+        persist();
+        try {
+          const res = await fetch(
+            uiReadPath(`/channels/${selectedChannelId}/threads`),
+            { headers: headers(), credentials: "include" }
+          );
+          const body = await res.text();
+          if (!res.ok) {
+            list.innerHTML = `<li class='err'>HTTP ${res.status}</li>`;
+            return;
+          }
+          const threads = JSON.parse(body);
+          if (!threads.length) {
+            list.innerHTML = "<li class='muted'>No threads</li>";
+            return;
+          }
+          threads.forEach((th) => {
+            const li = document.createElement("li");
+            li.dataset.id = th.id;
+            const title = th.title || th.id.slice(0, 8);
+            li.textContent = title;
+            if (th.id === selectedThreadId) li.classList.add("selected");
+            li.onclick = () => selectThread(th.id, title);
+            list.appendChild(li);
+          });
+        } catch (e) {
+          list.innerHTML = `<li class='err'>${escapeHtml(String(e))}</li>`;
+        }
+      }
+
+      function selectThread(id, label) {
+        selectedThreadId = id;
+        document.getElementById("thread-id").value = id;
+        document.getElementById("thread-context").textContent = label || id;
+        document.querySelectorAll("#thread-list li").forEach((n) => {
+          n.classList.toggle("selected", n.dataset.id === id);
+        });
+        loadMessages();
+      }
+
+      async function loadMessages() {
+        const box = document.getElementById("message-list");
+        box.innerHTML = "";
+        if (!selectedThreadId) {
+          box.textContent = "Select a thread";
+          return;
+        }
+        persist();
+        const url = token()
+          ? `${base()}/threads/${selectedThreadId}/messages?limit=50`
+          : uiReadPath(`/threads/${selectedThreadId}/messages?limit=50`);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          const body = await res.text();
+          if (!res.ok) {
+            box.textContent = `HTTP ${res.status}`;
+            return;
+          }
+          renderMessages(JSON.parse(body), box);
+        } catch (e) {
+          box.textContent = String(e);
+        }
+      }
+
+      function renderMessages(messages, box) {
+        box.innerHTML = "";
+        if (!messages.length) {
+          box.textContent = "No messages yet";
+          return;
+        }
+        messages.forEach((m) => {
+          const div = document.createElement("div");
+          div.className = "msg";
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = `${m.id} · ${m.author_id}`;
+          const body = document.createElement("div");
+          body.textContent = m.body;
+          div.appendChild(meta);
+          div.appendChild(body);
+          div.onclick = () => {
+            document.getElementById("edit-message-id").value = m.id;
+            document.getElementById("edit-message-body").value = m.body;
+          };
+          box.appendChild(div);
+        });
       }
 
       document.querySelectorAll(".tabs button").forEach((btn) => {
@@ -353,10 +546,15 @@
             if (ch.id === selectedChannelId) li.classList.add("selected");
             li.onclick = () => {
               selectedChannelId = ch.id;
+              selectedThreadId = null;
               document.getElementById("channel-id").value = ch.id;
+              const sc = document.getElementById("search-channel");
+              if (!sc.value.trim()) sc.value = ch.id;
+              document.getElementById("thread-context").textContent = "none selected";
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);
               });
+              loadThreads();
             };
             list.appendChild(li);
           });
@@ -508,18 +706,156 @@
       };
       document.getElementById("run-search").onclick = async () => {
         persist();
+        if (!wid()) return alert("Workspace ID required");
         const q = document.getElementById("search-q").value.trim();
         const mode = document.getElementById("search-mode").value;
-        const res = await fetch(
-          `${base()}/workspaces/${wid()}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=20`,
-          { headers: headers() }
-        );
+        const params = new URLSearchParams({ q, mode, limit: "20" });
+        const ch =
+          document.getElementById("search-channel").value.trim() ||
+          selectedChannelId ||
+          "";
+        if (ch) params.set("channel", ch);
+        const author = document.getElementById("search-author").value.trim();
+        if (author) params.set("author", author);
+        const kind = document.getElementById("search-kind").value;
+        if (kind) params.set("kind", kind);
+        const url = token()
+          ? `${base()}/workspaces/${wid()}/search?${params}`
+          : `${uiReadPath(`/workspaces/${wid()}/search`)}?${params}`;
+        const res = await fetch(url, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("search-results");
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          box.textContent = body;
+          return;
+        }
+        setStatus("OK", "ok");
+        const hits = JSON.parse(body);
+        box.innerHTML = "";
+        if (!hits.length) {
+          box.textContent = "No hits";
+          setOut(hits);
+          return;
+        }
+        hits.forEach((h) => {
+          const div = document.createElement("div");
+          div.className = "hit";
+          div.innerHTML = `<strong>${escapeHtml(h.message_id || h.id || "?")}</strong> ${escapeHtml(h.body || h.snippet || "")}`;
+          box.appendChild(div);
+        });
+        setOut(hits);
+      };
+      document.getElementById("create-channel").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        if (!wid()) return alert("Workspace ID required");
+        const name = document.getElementById("new-channel-name").value.trim();
+        if (!name) return alert("Channel name required");
+        persist();
+        const res = await fetch(`${base()}/workspaces/${wid()}/channels`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ name, private: false }),
+        });
         const body = await res.text();
         if (!res.ok) {
           setStatus(`HTTP ${res.status}`, "err");
           return setOut(body);
         }
-        setStatus("OK", "ok");
+        document.getElementById("new-channel-name").value = "";
+        setStatus("Channel created", "ok");
+        setOut(JSON.parse(body));
+        await loadChannels();
+      };
+      document.getElementById("create-thread").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        if (!selectedChannelId) return alert("Select a channel first");
+        const title = document.getElementById("new-thread-title").value.trim();
+        persist();
+        const res = await fetch(`${base()}/channels/${selectedChannelId}/threads`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ title: title || null }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        document.getElementById("new-thread-title").value = "";
+        setStatus("Thread created", "ok");
+        setOut(parsed);
+        await loadThreads();
+        selectThread(parsed.id, parsed.title || parsed.id);
+      };
+      document.getElementById("post-message").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        if (!selectedThreadId) return alert("Select a thread first");
+        const author = authorId();
+        if (!author) return alert("Sign in or set Actor ID");
+        const text = document.getElementById("compose-body").value.trim();
+        if (!text) return alert("Message body required");
+        persist();
+        const res = await fetch(`${base()}/threads/${selectedThreadId}/messages`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ author_id: author, body: text }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        document.getElementById("compose-body").value = "";
+        setStatus("Posted", "ok");
+        setOut(JSON.parse(body));
+        await loadMessages();
+      };
+      document.getElementById("reload-messages").onclick = loadMessages;
+      document.getElementById("edit-message").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        const id = document.getElementById("edit-message-id").value.trim();
+        const editor = authorId();
+        if (!id || !editor) return alert("Message ID and actor required");
+        const text = document.getElementById("edit-message-body").value.trim();
+        persist();
+        const res = await fetch(`${base()}/messages/${id}`, {
+          method: "PATCH",
+          headers: headers(true),
+          body: JSON.stringify({ editor_id: editor, body: text }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Edited", "ok");
+        setOut(JSON.parse(body));
+        await loadMessages();
+      };
+      document.getElementById("upload-artifact").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        const fileInput = document.getElementById("artifact-file");
+        if (!fileInput.files || !fileInput.files[0]) return alert("Choose a file");
+        const kind = document.getElementById("artifact-kind").value;
+        const uploadedBy = authorId();
+        persist();
+        const params = new URLSearchParams({ kind });
+        if (uploadedBy) params.set("uploaded_by", uploadedBy);
+        const file = fileInput.files[0];
+        if (file.type) params.set("mime_type", file.type);
+        const res = await fetch(`${base()}/artifacts?${params}`, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token(), Accept: "application/json" },
+          body: file,
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Artifact uploaded", "ok");
         setOut(JSON.parse(body));
       };
       document.getElementById("load-thread").onclick = async () => {

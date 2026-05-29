@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v44.0.0 — UI collaboration flows
+
+| Capability | Surface |
+|------------|---------|
+| Operator UI v3 | Thread sidebar, compose/edit, artifact upload, faceted search |
+| Session read APIs | `GET /ui/api/channels/:cid/threads`, `.../threads/:tid/messages`, `.../search` |
+
 ## v43.0.0 — UI v2 shell
 
 | Capability | Surface |

@@ -168,6 +168,12 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/channels",
             get(routes::list_channels),
         )
+        .route("/ui/api/channels/:cid/threads", get(routes::list_threads))
+        .route("/ui/api/threads/:tid/messages", get(routes::list_messages))
+        .route(
+            "/ui/api/workspaces/:wid/search",
+            get(routes::search_messages),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
