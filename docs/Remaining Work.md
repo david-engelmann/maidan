@@ -21,7 +21,7 @@ upstream specs, or Slack-grade product depth.
 | **Workspace purge (25→31)** | Deep purge through **`v31.0.0`**: messages, embeddings, references, tokens, events, artifact metadata + blobs | Does **not** delete members, channels, threads, workspace row, peers, or OIDC identities. |
 | **Product gate (26)** | Checklist + lightweight e2e | Does not prove compose multi-instance federation, MinIO multipart at scale, or Postgres+Helm e2e deploy. |
 | **Capabilities (22)** | Denial matrix for five paths | Not exhaustive positive/negative coverage of every route and MCP tool. |
-| **A2A (21)** | `SendMessage`, `GetTask` | No `SendStreamingMessage`, push configs, or agent card discovery beyond well-known hints. |
+| **A2A (21→37)** | `SendMessage`, `GetTask`, **`SendStreamingMessage`** at **`v37.0.0`** | No push configs, `SubscribeToTask`, or agent card discovery beyond well-known hints. |
 | **Router (20)** | `resolve_*` for HTTP/MCP | No mention routing policies, channel default subscriptions, or push notifications. |
 | **MCP resource fan-out (17→33)** | Tools + HTTP tombstone + FSM at **`v33.0.0`** | Other HTTP mutations (edit, purge) still omit notifications. |
 | **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl is **no-op** (`Ok(0)` / passthrough). |
@@ -59,7 +59,6 @@ From [[Open Work]] — unchanged by 23–27 except where noted.
 | SQLite file-backed durability tests | Track V retro | |
 | Sigstore/cosign release artifacts | Track V.3 / Operations | Manual today. |
 | Client-side 5 MiB S3 multipart chunking runbook | Cluster 19.0 retro | Operator docs thin. |
-| `SendStreamingMessage` (A2A) | Cluster 21.0 retro | |
 | GitHub Pages enablement | Open Work | mdBook builds; site may be off in repo settings. |
 | Post-quarantine outbox replay API | Cluster 12.0 retro | Manual DB intervention only. |
 | OTLP dashboards / SLO wiring | Track T / Product checklist | Observability crate exists; dashboards not productized. |

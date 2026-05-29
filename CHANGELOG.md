@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [37.0.0] — 2026-05-29
+
+### Added
+
+- A2A `SendStreamingMessage` on `POST /a2a/v1/rpc`: SSE stream of JSON-RPC frames with initial
+  `Task` and `TaskStatusUpdateEvent` when a message is posted.
+
 ## [36.0.0] — 2026-05-29
 
 ### Added
