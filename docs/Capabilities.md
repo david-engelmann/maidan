@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v53.0.0 — Workspace full erasure
+
+| Capability | Where |
+|------------|-------|
+| Full workspace delete | `DELETE /workspaces/:id` + `confirm_workspace_id` |
+| Deep purge + row delete | `Store::erase_workspace` |
+| Pre-delete audit | `workspace.erase` action |
+
 ## v52.0.0 — FSM automation hooks
 
 | Capability | Where |

@@ -106,6 +106,11 @@ pub trait Store: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError>;
+    /// Deep purge then delete the workspace row and CASCADE-owned data (Cluster 53).
+    async fn erase_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<WorkspaceEraseResult, StoreError>;
 
     async fn record_mention(
         &self,

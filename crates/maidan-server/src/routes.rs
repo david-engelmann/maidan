@@ -143,6 +143,48 @@ pub async fn purge_workspace(
     Ok(Json(result))
 }
 
+pub async fn erase_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<crate::dto::EraseWorkspace>,
+) -> ApiResult<Json<WorkspaceEraseResult>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    if body.confirm_workspace_id != workspace_id.0 {
+        return Err(ApiError::BadRequest(
+            "confirm_workspace_id must match path workspace id".into(),
+        ));
+    }
+    state.store.get_workspace(workspace_id).await?;
+    state
+        .store
+        .append_audit(NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "workspace.erase".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({ "phase": "started" }),
+        })
+        .await?;
+    let mut result = state.store.erase_workspace(workspace_id).await?;
+    let mut artifact_blobs_deleted = 0u64;
+    for sha_hex in &result.purge.artifact_shas {
+        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
+            continue;
+        };
+        if state.artifacts.delete(&sha).await.is_ok() {
+            artifact_blobs_deleted += 1;
+        }
+    }
+    let _ = artifact_blobs_deleted;
+    result.purge.artifact_shas.clear();
+    let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
+    state.mcp.publish_resource_uris(uris).await;
+    Ok(Json(result))
+}
+
 pub async fn list_workspace_audit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

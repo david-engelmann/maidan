@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 53.0** — Workspace full erasure ([[Clusters/Product Ladder 35+]] Phase VI).
+**Active:** **Cluster 54.0** — Capability quotas & distributed limits ([[Clusters/Product Ladder 35+]] Phase VI).
+
+**Recently closed:** **Cluster 53.0** — Workspace full erasure at **`v53.0.0`** ([[Retros/Cluster 53.0]]).
 
 **Recently closed:** **Cluster 52.0** — FSM automation hooks at **`v52.0.0`** ([[Retros/Cluster 52.0]]).
 
