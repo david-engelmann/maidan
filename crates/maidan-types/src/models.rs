@@ -449,6 +449,14 @@ pub struct NewApiToken {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TokenQuota {
+    pub capability: String,
+    pub max_per_window: u32,
+    pub window_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Peer {
     pub id: PeerId,
     pub workspace_id: WorkspaceId,

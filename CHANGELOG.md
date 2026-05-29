@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [54.0.0] — 2026-05-28
+
+### Added
+
+- Per-token capability quotas: `maidan_token_quotas` and `quotas` on API token mint.
+- Quota middleware enforces limits per capability after bearer auth (429 + `Retry-After`).
+- Optional Redis rate limiter via `MAIDAN_RATE_LIMIT_REDIS_URL` (global + per-token keys).
+- `AuthContext.token_id` for bearer-authenticated requests.
+
 ## [53.0.0] — 2026-05-28
 
 ### Added

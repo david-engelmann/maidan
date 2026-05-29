@@ -28,6 +28,7 @@ pub mod oidc;
 pub mod openapi;
 pub mod outbox_relay;
 pub mod presence;
+pub mod quota;
 pub mod rate_limit;
 pub mod request_id;
 pub mod routes;

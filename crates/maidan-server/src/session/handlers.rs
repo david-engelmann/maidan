@@ -55,6 +55,7 @@ pub async fn mint_first_admin_token(
             member_id: record.member_id,
             capabilities: record.capabilities,
             expires_at: record.expires_at,
+            quotas: vec![],
         }),
     ))
 }

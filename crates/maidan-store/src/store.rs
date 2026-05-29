@@ -194,6 +194,12 @@ pub trait Store: Send + Sync {
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
+    async fn replace_token_quotas(
+        &self,
+        token_id: ApiTokenId,
+        quotas: &[TokenQuota],
+    ) -> Result<(), StoreError>;
+    async fn list_token_quotas(&self, token_id: ApiTokenId) -> Result<Vec<TokenQuota>, StoreError>;
     async fn workspace_has_active_capability(
         &self,
         workspace_id: WorkspaceId,

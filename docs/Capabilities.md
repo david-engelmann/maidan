@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v54.0.0 — Capability quotas & distributed limits
+
+| Capability | Where |
+|------------|-------|
+| Per-token capability quotas | `maidan_token_quotas`, mint `quotas` field |
+| Quota enforcement | `maidan-server::quota` middleware |
+| Redis rate limiter | `MAIDAN_RATE_LIMIT_REDIS_URL` |
+
 ## v53.0.0 — Workspace full erasure
 
 | Capability | Where |

@@ -26,5 +26,10 @@ pub async fn resolve_peer_bearer(store: &dyn Store, bearer: &str) -> Result<Peer
 }
 
 fn token_to_context(token: ApiToken) -> AuthContext {
-    AuthContext::from_token(token.member_id, token.workspace_id, token.capabilities)
+    AuthContext::from_token(
+        token.id,
+        token.member_id,
+        token.workspace_id,
+        token.capabilities,
+    )
 }

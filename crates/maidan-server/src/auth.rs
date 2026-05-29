@@ -91,7 +91,7 @@ pub async fn session_or_bearer_middleware(
 
     match load_session(&state, req.headers()).await {
         Ok(session) => {
-            let ctx = AuthContext::from_token(
+            let ctx = AuthContext::from_session(
                 session.member_id,
                 session.workspace_id,
                 vec![

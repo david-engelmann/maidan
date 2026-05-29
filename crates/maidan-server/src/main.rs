@@ -219,6 +219,7 @@ async fn main() -> anyhow::Result<()> {
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
+    state.rate_limit_redis = maidan_server::rate_limit::connect_redis_from_env().await;
     let app = router(state.clone());
 
     if outbox_relay {
