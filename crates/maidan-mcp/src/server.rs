@@ -206,6 +206,11 @@ impl McpServer {
             result,
         )
         .await;
+        self.publish_resource_uris(uris).await;
+    }
+
+    /// Fan-out `notifications/resources/updated` for HTTP and tool mutations (Cluster 33).
+    pub async fn publish_resource_uris(&self, uris: Vec<String>) {
         if uris.is_empty() {
             return;
         }

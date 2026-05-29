@@ -398,6 +398,10 @@ pub async fn transition_thread(
         },
     )
     .await;
+    let uris =
+        maidan_mcp::resource_updates::uris_for_thread_transition(state.store.as_ref(), thread_id)
+            .await;
+    state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result.thread))
 }
 
@@ -524,6 +528,12 @@ pub async fn tombstone_message(
         },
     )
     .await;
+    let uris = maidan_mcp::resource_updates::uris_for_message_tombstone(
+        state.store.as_ref(),
+        MessageId(id),
+    )
+    .await;
+    state.mcp.publish_resource_uris(uris).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

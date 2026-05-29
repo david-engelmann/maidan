@@ -24,7 +24,7 @@ upstream specs, or Slack-grade product depth.
 | **Capabilities (22)** | Denial matrix for five paths | Not exhaustive positive/negative coverage of every route and MCP tool. |
 | **A2A (21)** | `SendMessage`, `GetTask` | No `SendStreamingMessage`, push configs, or agent card discovery beyond well-known hints. |
 | **Router (20)** | `resolve_*` for HTTP/MCP | No mention routing policies, channel default subscriptions, or push notifications. |
-| **MCP resource fan-out (17)** | Multi-URI on tool mutations | Not every MCP method / HTTP mutation emits `notifications/resources/updated` (e.g. FSM transition, tombstone). |
+| **MCP resource fan-out (17→33)** | Tools + HTTP tombstone + FSM at **`v33.0.0`** | Other HTTP mutations (edit, purge) still omit notifications. |
 | **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl is **no-op** (`Ok(0)` / passthrough). |
 | **Outbox (10–12)** | Postgres transactional outbox + quarantine | SQLite outbox **shipped** (14) but poison-row **manual** recovery API still absent; NOTIFY remains at-most-once. |
 | **mcp-stdio** | SQLite-only CLI transport | **Postgres `mcp-stdio` deferred** since Cluster H. |
