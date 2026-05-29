@@ -47,11 +47,8 @@ async fn receiver_handler(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    if !maidan_server::webhooks::verify_signature(
-        &state.secret.lock().await,
-        &body_str,
-        &signature,
-    ) {
+    if !maidan_server::webhooks::verify_signature(&state.secret.lock().await, &body_str, &signature)
+    {
         return StatusCode::UNAUTHORIZED;
     }
     *state.last_body.lock().await = Some(body_str);
