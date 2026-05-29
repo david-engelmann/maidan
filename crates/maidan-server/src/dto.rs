@@ -142,6 +142,12 @@ pub struct ListMentionsQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListInboxQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,

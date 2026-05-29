@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use maidan_types::*;
 
 use crate::error::StoreError;
@@ -100,6 +101,23 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
         limit: i64,
     ) -> Result<Vec<Mention>, StoreError>;
+
+    async fn get_inbox_last_read_at(
+        &self,
+        member_id: MemberId,
+    ) -> Result<DateTime<Utc>, StoreError>;
+
+    async fn advance_inbox_last_read_at(
+        &self,
+        member_id: MemberId,
+        read_through: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, StoreError>;
+
+    async fn list_member_inbox(
+        &self,
+        member_id: MemberId,
+        limit: i64,
+    ) -> Result<MemberInbox, StoreError>;
 
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;

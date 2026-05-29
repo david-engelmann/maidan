@@ -8,6 +8,7 @@ mod audit;
 mod channels;
 mod dm;
 pub mod events;
+mod inbox;
 mod members;
 mod mentions;
 mod messages;
@@ -25,6 +26,7 @@ mod votes;
 mod workspaces;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use maidan_types::*;
 use sqlx::SqlitePool;
 
@@ -209,6 +211,29 @@ impl Store for SqliteStore {
         limit: i64,
     ) -> Result<Vec<Mention>, StoreError> {
         mentions::list_for_member(&self.pool, member_id, limit).await
+    }
+
+    async fn get_inbox_last_read_at(
+        &self,
+        member_id: MemberId,
+    ) -> Result<DateTime<Utc>, StoreError> {
+        inbox::get_last_read_at(&self.pool, member_id).await
+    }
+
+    async fn advance_inbox_last_read_at(
+        &self,
+        member_id: MemberId,
+        read_through: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, StoreError> {
+        inbox::advance_last_read_at(&self.pool, member_id, read_through).await
+    }
+
+    async fn list_member_inbox(
+        &self,
+        member_id: MemberId,
+        limit: i64,
+    ) -> Result<MemberInbox, StoreError> {
+        inbox::list_for_member(&self.pool, member_id, limit).await
     }
 
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError> {

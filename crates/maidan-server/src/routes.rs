@@ -22,7 +22,10 @@ use maidan_auth::{
     hash_secret, AuthContext, TokenSecret,
 };
 use maidan_fsm::ThreadAction;
-use maidan_router::{resolve_channel_context, resolve_message_chain, resolve_thread_context};
+use maidan_router::{
+    resolve_channel_context, resolve_message_chain, resolve_thread_context,
+    route_mentions_for_message,
+};
 use maidan_types::*;
 
 use crate::dto::*;
@@ -255,6 +258,36 @@ pub async fn list_mentions_for_member(
     ))
 }
 
+pub async fn get_member_inbox(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ListInboxQuery>,
+) -> ApiResult<Json<MemberInbox>> {
+    let member = state.store.get_member(MemberId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    Ok(Json(
+        state.store.list_member_inbox(MemberId(id), q.limit).await?,
+    ))
+}
+
+pub async fn mark_member_inbox_read(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<MarkInboxRead>,
+) -> ApiResult<Json<MemberInbox>> {
+    let member = state.store.get_member(MemberId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    state
+        .store
+        .advance_inbox_last_read_at(MemberId(id), body.read_through)
+        .await?;
+    Ok(Json(state.store.list_member_inbox(MemberId(id), 50).await?))
+}
+
 // --- channels ---
 
 pub async fn create_channel(
@@ -445,6 +478,7 @@ pub async fn post_message(
         },
     )
     .await;
+    publish_routed_mentions(&state, ctx.thread_id, ctx.workspace_id, &m).await;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -974,6 +1008,41 @@ pub async fn revoke_api_token(
     let existing = state.store.get_api_token(token_id).await?;
     ensure_workspace(&auth, existing.workspace_id)?;
     Ok(Json(state.store.revoke_api_token(token_id).await?))
+}
+
+pub(crate) async fn publish_routed_mentions(
+    state: &AppState,
+    thread_id: ThreadId,
+    workspace_id: WorkspaceId,
+    message: &Message,
+) {
+    let mentioned = match route_mentions_for_message(
+        state.store.as_ref(),
+        message.id,
+        message.author_id,
+        &message.body,
+    )
+    .await
+    {
+        Ok(ids) => ids,
+        Err(err) => {
+            tracing::warn!(error = %err, "mention routing failed");
+            return;
+        }
+    };
+    for member_id in mentioned {
+        publish(
+            state,
+            Event::MentionRecorded {
+                occurred_at: Utc::now(),
+                workspace_id,
+                thread_id,
+                message_id: message.id,
+                member_id,
+            },
+        )
+        .await;
+    }
 }
 
 /// Fire-and-forget event publish. Errors are logged but never surfaced

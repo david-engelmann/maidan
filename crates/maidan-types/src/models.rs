@@ -254,6 +254,42 @@ pub struct Mention {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum InboxItemKind {
+    Mention,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InboxItem {
+    pub kind: InboxItemKind,
+    pub message_id: MessageId,
+    pub member_id: MemberId,
+    pub created_at: DateTime<Utc>,
+    pub unread: bool,
+    pub message_body: String,
+    pub thread_id: ThreadId,
+    pub channel_id: ChannelId,
+    pub author_id: MemberId,
+    pub author_handle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberInbox {
+    pub items: Vec<InboxItem>,
+    pub unread_count: i64,
+    pub last_read_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarkInboxRead {
+    pub read_through: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Vote {

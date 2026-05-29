@@ -1,5 +1,6 @@
 //! Direct message HTTP routes and subscribe filter expansion.
 
+use crate::routes::publish_routed_mentions;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -165,6 +166,7 @@ pub async fn post_dm_message(
         },
     )
     .await;
+    publish_routed_mentions(&state, dm.thread_id, dm.workspace_id, &m).await;
     let uris = maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), m.id).await;
     state.mcp.publish_resource_uris(uris).await;
     Ok((StatusCode::CREATED, Json(m)))

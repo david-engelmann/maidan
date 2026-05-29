@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [40.0.0] — 2026-05-29
+
+### Added
+
+- Member inbox: `maidan_inbox_cursor`, `GET /members/:id/inbox`, `POST /members/:id/inbox/read`.
+- Baseline `@handle` mention routing in `maidan-router` when messages are posted (HTTP + MCP).
+
 ## [39.0.0] — 2026-05-29
 
 ### Added

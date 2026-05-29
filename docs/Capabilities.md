@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v40.0.0 — Mention router & inbox
+
+| Capability | Surface |
+|------------|---------|
+| Member inbox + unread cursor | `GET /members/:id/inbox`, `POST /members/:id/inbox/read` |
+| `@handle` mention routing | `maidan-router` on HTTP/MCP `post_message` / `post_dm_message` |
+
 ## v39.0.0 — Direct messages
 
 | Capability | Surface |
