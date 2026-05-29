@@ -115,6 +115,40 @@ pub fn create_peer() {}
 )]
 pub fn delete_peer() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/webhooks",
+    tag = "webhooks",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<WebhookResponse>))
+)]
+pub fn list_webhooks() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/webhooks",
+    tag = "webhooks",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWebhook,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = MintWebhookResponse))
+)]
+pub fn create_webhook() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/webhooks/{whid}",
+    tag = "webhooks",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("whid" = Uuid, Path, description = "Webhook subscription id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Revoked"))
+)]
+pub fn revoke_webhook() {}
+
 // --- members ---
 
 #[utoipa::path(get, path = "/members/{id}", tag = "members",

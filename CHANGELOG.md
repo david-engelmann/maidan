@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [50.0.0] — 2026-05-28
+
+### Added
+
+- Outbound webhooks: subscribe to `EventKind` filters per workspace.
+- `POST/GET/DELETE /workspaces/:wid/webhooks` with HMAC-SHA256 signed delivery and retry queue.
+- `maidan_webhook_subscriptions` and `maidan_webhook_deliveries` migrations (Postgres v21, SQLite v19).
+
+## [49.0.0] — 2026-05-28
+
 ### Added
 
 - `GET /threads/:id/context` — messages, references, metadata-linked artifacts, FSM history.

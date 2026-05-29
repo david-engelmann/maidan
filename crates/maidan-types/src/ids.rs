@@ -41,4 +41,5 @@ id_newtype!(WorkspaceId);
 id_newtype!(ApiTokenId);
 id_newtype!(PeerId);
 id_newtype!(SessionId);
+id_newtype!(WebhookSubscriptionId);
 id_newtype!(OidcIdentityId);

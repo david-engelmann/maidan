@@ -7,12 +7,28 @@ use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
-use maidan_types::PeerId;
+use maidan_types::{PeerId, WebhookSubscriptionId};
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::oidc::OidcRuntime;
 use crate::presence::PresenceHub;
 use crate::subscribe_resume;
+
+/// Webhook signing secrets: encryption key + in-memory cache after mint.
+#[derive(Clone)]
+pub struct WebhookRuntime {
+    pub encryption_key: Option<Arc<[u8; 32]>>,
+    pub secrets: Arc<RwLock<HashMap<WebhookSubscriptionId, String>>>,
+}
+
+impl WebhookRuntime {
+    pub fn new(encryption_key: Option<Arc<[u8; 32]>>) -> Self {
+        Self {
+            encryption_key,
+            secrets: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
 
 /// Outbound federation poll: encryption key, in-memory secret cache, disable flag.
 #[derive(Clone)]
@@ -50,6 +66,7 @@ pub struct AppState {
     /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
     pub bootstrap_enabled: bool,
     pub federation: FederationRuntime,
+    pub webhooks: WebhookRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
     /// Most recent indexer-side embedding failure, if any.
@@ -103,6 +120,7 @@ impl AppState {
             auth_disabled,
             bootstrap_enabled,
             federation,
+            webhooks: WebhookRuntime::new(None),
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,

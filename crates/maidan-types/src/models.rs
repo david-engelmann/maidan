@@ -534,3 +534,40 @@ pub struct NewAuditEvent {
     pub target_id: Option<uuid::Uuid>,
     pub metadata: serde_json::Value,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WebhookSubscription {
+    pub id: WebhookSubscriptionId,
+    pub workspace_id: WorkspaceId,
+    pub url: String,
+    pub label: Option<String>,
+    pub event_kinds: Vec<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewWebhookSubscription {
+    pub workspace_id: WorkspaceId,
+    pub url: String,
+    pub label: Option<String>,
+    pub event_kinds: Vec<String>,
+    pub secret_ciphertext: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct WebhookSubscriptionDelivery {
+    pub id: i64,
+    pub subscription_id: WebhookSubscriptionId,
+    pub log_id: i64,
+    pub payload: String,
+    pub attempts: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WebhookSubscriptionWithSecret {
+    pub subscription: WebhookSubscription,
+    pub secret_ciphertext: String,
+}

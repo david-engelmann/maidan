@@ -8,7 +8,7 @@ use tower_http::trace::TraceLayer;
 use crate::{
     a2a_agent, auth, bootstrap, dm, federation, health, mcp, mcp_notifications, mcp_stream,
     mcp_streamable, metrics, oidc, openapi, rate_limit, request_id, routes, session,
-    state::AppState, ws,
+    state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -131,6 +131,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/peers/:pid",
             delete(federation::delete_peer),
+        )
+        .route(
+            "/workspaces/:wid/webhooks",
+            post(webhooks::create_webhook).get(webhooks::list_webhooks),
+        )
+        .route(
+            "/workspaces/:wid/webhooks/:whid",
+            delete(webhooks::revoke_webhook),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

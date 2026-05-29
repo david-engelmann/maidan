@@ -23,6 +23,7 @@ mod thread_transitions;
 mod threads;
 mod tokens;
 mod votes;
+mod webhooks;
 mod workspaces;
 
 use async_trait::async_trait;
@@ -434,5 +435,83 @@ impl Store for PostgresStore {
         log_id: i64,
     ) -> Result<i64, StoreError> {
         delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
+    }
+
+    async fn create_webhook_subscription(
+        &self,
+        new: NewWebhookSubscription,
+    ) -> Result<WebhookSubscription, StoreError> {
+        webhooks::create(&self.pool, new).await
+    }
+
+    async fn list_webhook_subscriptions(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WebhookSubscription>, StoreError> {
+        webhooks::list(&self.pool, workspace_id).await
+    }
+
+    async fn revoke_webhook_subscription(
+        &self,
+        id: WebhookSubscriptionId,
+    ) -> Result<WebhookSubscription, StoreError> {
+        webhooks::revoke(&self.pool, id).await
+    }
+
+    async fn list_enabled_webhook_subscriptions(
+        &self,
+    ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError> {
+        let rows = webhooks::list_enabled(&self.pool).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| WebhookSubscriptionWithSecret {
+                subscription: row.subscription,
+                secret_ciphertext: row.secret_ciphertext,
+            })
+            .collect())
+    }
+
+    async fn get_webhook_subscription(
+        &self,
+        id: WebhookSubscriptionId,
+    ) -> Result<WebhookSubscriptionWithSecret, StoreError> {
+        let row = webhooks::get(&self.pool, id).await?;
+        Ok(WebhookSubscriptionWithSecret {
+            subscription: row.subscription,
+            secret_ciphertext: row.secret_ciphertext,
+        })
+    }
+
+    async fn enqueue_webhook_delivery(
+        &self,
+        subscription_id: WebhookSubscriptionId,
+        log_id: i64,
+        payload: &str,
+    ) -> Result<i64, StoreError> {
+        webhooks::enqueue_delivery(&self.pool, subscription_id, log_id, payload).await
+    }
+
+    async fn list_pending_webhook_deliveries(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError> {
+        webhooks::list_pending_deliveries(&self.pool, limit).await
+    }
+
+    async fn mark_webhook_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError> {
+        webhooks::mark_delivered(&self.pool, delivery_id).await
+    }
+
+    async fn record_webhook_delivery_attempt(
+        &self,
+        delivery_id: i64,
+        error: &str,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<i32, StoreError> {
+        webhooks::record_delivery_attempt(&self.pool, delivery_id, error, next_attempt_at).await
+    }
+
+    async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {
+        webhooks::quarantine_delivery(&self.pool, delivery_id).await
     }
 }
