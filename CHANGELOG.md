@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [33.0.0] — 2026-05-29
+
+### Added
+
+- MCP `notifications/resources/updated` fan-out when HTTP tombstones a message or transitions thread FSM state.
+
 ## [32.0.0] — 2026-05-29
 
 ### Added

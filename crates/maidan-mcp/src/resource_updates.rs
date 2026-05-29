@@ -60,6 +60,22 @@ pub async fn uris_for_tool_mutation(
     uris.into_iter().collect()
 }
 
+/// URIs to notify after HTTP message tombstone.
+pub async fn uris_for_message_tombstone(store: &dyn Store, message_id: MessageId) -> Vec<String> {
+    let mut uris = HashSet::new();
+    if let Ok(msg) = store.get_message(message_id).await {
+        push_thread_chain(store, msg.thread_id, &mut uris).await;
+    }
+    uris.into_iter().collect()
+}
+
+/// URIs to notify after thread FSM transition.
+pub async fn uris_for_thread_transition(store: &dyn Store, thread_id: ThreadId) -> Vec<String> {
+    let mut uris = HashSet::new();
+    push_thread_chain(store, thread_id, &mut uris).await;
+    uris.into_iter().collect()
+}
+
 async fn push_thread_chain(store: &dyn Store, thread_id: ThreadId, uris: &mut HashSet<String>) {
     uris.insert(format!("maidan://threads/{}", thread_id.0));
     let Ok(ctx) = resolve_thread_context(store, thread_id).await else {

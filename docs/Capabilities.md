@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v33.0.0 — MCP resource fan-out (HTTP)
+
+| Capability | Surface |
+|------------|---------|
+| Resource notifications on tombstone / FSM | HTTP + `GET /mcp/notifications` |
+
 ## v32.0.0 — Helm umbrella
 
 | Capability | Surface |
