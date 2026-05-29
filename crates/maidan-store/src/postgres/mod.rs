@@ -19,6 +19,7 @@ mod purge_workspace;
 mod reactions;
 mod refs;
 mod sessions;
+mod slash_commands;
 mod thread_transitions;
 mod threads;
 mod tokens;
@@ -513,5 +514,35 @@ impl Store for PostgresStore {
 
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {
         webhooks::quarantine_delivery(&self.pool, delivery_id).await
+    }
+
+    async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {
+        slash_commands::create(&self.pool, new).await
+    }
+
+    async fn list_slash_commands(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SlashCommand>, StoreError> {
+        slash_commands::list(&self.pool, workspace_id).await
+    }
+
+    async fn revoke_slash_command(&self, id: SlashCommandId) -> Result<SlashCommand, StoreError> {
+        slash_commands::revoke(&self.pool, id).await
+    }
+
+    async fn get_slash_command(
+        &self,
+        id: SlashCommandId,
+    ) -> Result<SlashCommandWithSecret, StoreError> {
+        slash_commands::get(&self.pool, id).await
+    }
+
+    async fn get_slash_command_by_name(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<SlashCommandWithSecret, StoreError> {
+        slash_commands::get_by_name(&self.pool, workspace_id, name).await
     }
 }

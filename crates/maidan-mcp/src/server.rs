@@ -75,6 +75,17 @@ impl McpServer {
         self.notification_tx.subscribe()
     }
 
+    /// Invoke a tool by name (used by slash-command dispatch and tests).
+    pub async fn call_tool(
+        &self,
+        auth: &AuthContext,
+        name: &str,
+        args: &Value,
+    ) -> Result<Value, McpError> {
+        let params = json!({ "name": name, "arguments": args });
+        self.tools_call(&params, auth).await
+    }
+
     pub async fn handle(&self, request: JsonRpcRequest, auth: &AuthContext) -> JsonRpcResponse {
         let id = request.id.clone().unwrap_or(Value::Null);
         match self.dispatch(&request, auth).await {

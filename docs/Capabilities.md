@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v51.0.0 — Slash commands
+
+| Capability | Where |
+|------------|-------|
+| `/command` parser | `maidan-router::slash` |
+| Slash command CRUD | `POST/GET/DELETE /workspaces/:wid/slash-commands` |
+| HTTP + MCP tool handlers | `maidan-server::slash_commands` |
+| MCP registration tools | `register_slash_command`, `list_slash_commands` |
+
 ## v50.0.0 — Outbound webhooks
 
 | Capability | Where |

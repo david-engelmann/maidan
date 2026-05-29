@@ -10,7 +10,7 @@ use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store};
 use maidan_auth::capability::{
     ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE,
 };
-use maidan_auth::AuthContext;
+use maidan_auth::{encrypt_peer_secret, AuthContext, TokenSecret};
 use maidan_router::route_mentions_for_message;
 use maidan_store::Store;
 use maidan_types::*;
@@ -39,6 +39,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "complete_artifact_multipart"
         | "abort_artifact_multipart" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
+        "register_slash_command" => Ok(WORKSPACE_WRITE),
+        "list_slash_commands" => Ok(WORKSPACE_READ),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -371,6 +373,32 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["workspace_id", "query"]
             }
         }),
+        json!({
+            "name": "register_slash_command",
+            "description": "Register a workspace slash command handler (http URL or MCP tool name).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "handler_kind": {"type": "string", "enum": ["http", "mcp_tool"]},
+                    "handler_target": {"type": "string"}
+                },
+                "required": ["workspace_id", "name", "handler_kind", "handler_target"]
+            }
+        }),
+        json!({
+            "name": "list_slash_commands",
+            "description": "List registered slash commands in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
     ]
 }
 
@@ -408,6 +436,8 @@ pub async fn dispatch(
         "abort_artifact_multipart" => abort_artifact_multipart(artifacts, args).await,
         "get_artifact_metadata" => get_artifact_metadata(store, args).await,
         "search_messages" => search_messages(search, embedding_provider, args).await,
+        "register_slash_command" => register_slash_command(store, auth, args).await,
+        "list_slash_commands" => list_slash_commands(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -960,6 +990,134 @@ async fn add_reference(store: &Arc<dyn Store>, args: &Value) -> Result<Value, Mc
         })
         .await?;
     Ok(content_json(&r))
+}
+
+#[derive(Deserialize)]
+struct RegisterSlashCommandArgs {
+    workspace_id: uuid::Uuid,
+    name: String,
+    description: Option<String>,
+    handler_kind: String,
+    handler_target: String,
+}
+
+async fn register_slash_command(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_WRITE)
+            .map_err(McpError::from)?;
+    }
+    let a: RegisterSlashCommandArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let name = normalize_slash_name(&a.name)?;
+    let handler_kind = SlashHandlerKind::parse(&a.handler_kind)
+        .ok_or_else(|| McpError::InvalidParams("handler_kind must be http or mcp_tool".into()))?;
+    match handler_kind {
+        SlashHandlerKind::Http => validate_http_target(&a.handler_target)?,
+        SlashHandlerKind::McpTool => {
+            required_capability(&a.handler_target)?;
+        }
+    }
+    let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
+        let key = maidan_auth::encryption_key_from_env().map_err(|_| {
+            McpError::InvalidParams(
+                "FEDERATION_ENCRYPTION_KEY must be set for http slash handlers".into(),
+            )
+        })?;
+        let secret = TokenSecret::generate();
+        let ciphertext = encrypt_peer_secret(secret.as_str(), &key)
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        let command = store
+            .create_slash_command(NewSlashCommand {
+                workspace_id,
+                name,
+                description: a.description,
+                handler_kind,
+                handler_target: a.handler_target.trim().to_string(),
+                secret_ciphertext: ciphertext,
+            })
+            .await
+            .map_err(McpError::from)?;
+        return Ok(content_json(&json!({
+            "command": command,
+            "secret": secret.as_str()
+        })));
+    } else {
+        String::new()
+    };
+    let command = store
+        .create_slash_command(NewSlashCommand {
+            workspace_id,
+            name,
+            description: a.description,
+            handler_kind,
+            handler_target: a.handler_target.trim().to_string(),
+            secret_ciphertext,
+        })
+        .await
+        .map_err(McpError::from)?;
+    Ok(content_json(&command))
+}
+
+#[derive(Deserialize)]
+struct ListSlashCommandsArgs {
+    workspace_id: uuid::Uuid,
+}
+
+async fn list_slash_commands(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_READ)
+            .map_err(McpError::from)?;
+    }
+    let a: ListSlashCommandsArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let commands = store
+        .list_slash_commands(workspace_id)
+        .await
+        .map_err(McpError::from)?;
+    Ok(content_json(&commands))
+}
+
+fn normalize_slash_name(name: &str) -> Result<String, McpError> {
+    let normalized = name.trim().trim_start_matches('/').to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 32 {
+        return Err(McpError::InvalidParams(
+            "slash command name must be 1-32 characters".into(),
+        ));
+    }
+    if !normalized
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+    {
+        return Err(McpError::InvalidParams(
+            "slash command name may only contain a-z, 0-9, _, -".into(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn validate_http_target(url: &str) -> Result<(), McpError> {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return Err(McpError::InvalidParams(
+            "handler_target url must use http or https".into(),
+        ));
+    }
+    if trimmed.len() > 2048 || trimmed.as_bytes().contains(&b' ') {
+        return Err(McpError::InvalidParams("invalid handler url".into()));
+    }
+    Ok(())
 }
 
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec

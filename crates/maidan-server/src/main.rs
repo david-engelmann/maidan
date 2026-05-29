@@ -217,6 +217,7 @@ async fn main() -> anyhow::Result<()> {
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
+    state.slash = maidan_server::SlashRuntime::new(federation_encryption_key);
     let app = router(state.clone());
 
     if outbox_relay {

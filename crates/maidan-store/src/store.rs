@@ -271,4 +271,20 @@ pub trait Store: Send + Sync {
         next_attempt_at: DateTime<Utc>,
     ) -> Result<i32, StoreError>;
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
+
+    async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError>;
+    async fn list_slash_commands(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SlashCommand>, StoreError>;
+    async fn revoke_slash_command(&self, id: SlashCommandId) -> Result<SlashCommand, StoreError>;
+    async fn get_slash_command(
+        &self,
+        id: SlashCommandId,
+    ) -> Result<SlashCommandWithSecret, StoreError>;
+    async fn get_slash_command_by_name(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<SlashCommandWithSecret, StoreError>;
 }

@@ -473,6 +473,7 @@ pub async fn post_message(
     cap(&auth, MESSAGE_POST)?;
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    let parsed_slash = maidan_router::parse_slash_command(&body.body);
     let m = state
         .store
         .post_message(NewMessage {
@@ -482,6 +483,42 @@ pub async fn post_message(
             metadata: body.metadata,
         })
         .await?;
+    let mut message = m;
+    if let Some(ref parsed) = parsed_slash {
+        if state
+            .store
+            .get_slash_command_by_name(ctx.workspace_id, &parsed.name)
+            .await
+            .is_ok()
+        {
+            let slash_result = crate::slash_commands::dispatch_slash_command(
+                &state,
+                &auth,
+                parsed,
+                ctx.workspace_id,
+                ctx.channel_id,
+                ThreadId(thread_id),
+                MemberId(body.author_id),
+                message.id,
+            )
+            .await;
+            let metadata = crate::slash_commands::merge_metadata(
+                message.metadata.clone(),
+                crate::slash_commands::slash_metadata(parsed, &slash_result),
+            );
+            message = state
+                .store
+                .edit_message(
+                    message.id,
+                    MemberId(body.author_id),
+                    EditMessage {
+                        body: message.body.clone(),
+                        metadata,
+                    },
+                )
+                .await?;
+        }
+    }
     publish(
         &state,
         Event::MessagePosted {
@@ -496,12 +533,12 @@ pub async fn post_message(
                 .ok()
                 .flatten()
                 .map(|d| d.id),
-            message: m.clone(),
+            message: message.clone(),
         },
     )
     .await;
-    publish_routed_mentions(&state, ctx.thread_id, ctx.workspace_id, &m).await;
-    Ok((StatusCode::CREATED, Json(m)))
+    publish_routed_mentions(&state, ctx.thread_id, ctx.workspace_id, &message).await;
+    Ok((StatusCode::CREATED, Json(message)))
 }
 
 pub async fn edit_message(

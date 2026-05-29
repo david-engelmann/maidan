@@ -149,6 +149,40 @@ pub fn create_webhook() {}
 )]
 pub fn revoke_webhook() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/slash-commands",
+    tag = "slash",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<SlashCommandResponse>))
+)]
+pub fn list_slash_commands() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/slash-commands",
+    tag = "slash",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateSlashCommand,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = MintSlashCommandResponse))
+)]
+pub fn create_slash_command() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/slash-commands/{cid}",
+    tag = "slash",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("cid" = Uuid, Path, description = "Slash command id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Revoked"))
+)]
+pub fn revoke_slash_command() {}
+
 // --- members ---
 
 #[utoipa::path(get, path = "/members/{id}", tag = "members",

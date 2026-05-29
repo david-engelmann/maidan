@@ -571,3 +571,58 @@ pub struct WebhookSubscriptionWithSecret {
     pub subscription: WebhookSubscription,
     pub secret_ciphertext: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SlashHandlerKind {
+    Http,
+    McpTool,
+}
+
+impl SlashHandlerKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::McpTool => "mcp_tool",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "http" => Some(Self::Http),
+            "mcp_tool" => Some(Self::McpTool),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SlashCommand {
+    pub id: SlashCommandId,
+    pub workspace_id: WorkspaceId,
+    pub name: String,
+    pub description: Option<String>,
+    pub handler_kind: SlashHandlerKind,
+    pub handler_target: String,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewSlashCommand {
+    pub workspace_id: WorkspaceId,
+    pub name: String,
+    pub description: Option<String>,
+    pub handler_kind: SlashHandlerKind,
+    pub handler_target: String,
+    pub secret_ciphertext: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SlashCommandWithSecret {
+    pub command: SlashCommand,
+    pub secret_ciphertext: String,
+}
