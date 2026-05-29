@@ -86,3 +86,11 @@ PR review credit; external contributors.
 - [[Cluster 26.0]] — Product completion gate. Closed at `v26.0.0` (integration PR #198).
 - [[Cluster 27.0]] — MCP streamable HTTP. Closed at **`v27.0.0`** (culminating ladder release).
 - [[Cluster 28.0]] — Privacy complete (deep purge + audit). Closed at **`v28.0.0`**.
+- [[Cluster 29.0]] — Message edit. Closed at **`v29.0.0`**.
+- [[Cluster 30.0]] — HTTP rate limits. Closed at **`v30.0.0`**.
+- [[Cluster 31.0]] — Workspace artifact purge. Closed at **`v31.0.0`**.
+- [[Cluster 32.0]] — Helm umbrella. Closed at **`v32.0.0`**.
+- [[Cluster 33.0]] — MCP HTTP resource fan-out. Closed at **`v33.0.0`**.
+- [[Cluster 34.0]] — MCP streamable session. Closed at **`v34.0.0`**.
+- [[Cluster 35.0]] — MCP streamable bidirectional mux. Closed at **`v35.0.0`**.
+- [[Product Ladder 30-34]] — Ladder close retro (`v30`–`v34`). See [[Clusters/Product Ladder 35+]].

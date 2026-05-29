@@ -41,9 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Post–ladder 30–34 complete — [[Remaining Work]].
+**Active:** **Cluster 36.0** — `mcp-stdio` Postgres ([[Clusters/Product Ladder 35+]] Phase I).
 
-**Recently closed:** **Cluster 34.0** — MCP streamable session at **`v34.0.0`** ([[Retros/Cluster 34.0]]).
+**Recently closed:** **Cluster 35.0** — MCP streamable bidirectional mux at **`v35.0.0`** ([[Retros/Cluster 35.0]]).
+
+**Recently closed:** Product Ladder **30–34** at **`v34.0.0`** ([[Retros/Product Ladder 30-34]], [[Clusters/Product Ladder 30-34]]).
 
 **Recently closed:** **Cluster 32.0** — Helm umbrella at **`v32.0.0`** ([[Retros/Cluster 32.0]]).
 

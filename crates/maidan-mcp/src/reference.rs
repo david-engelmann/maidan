@@ -14,7 +14,7 @@ pub fn markdown() -> String {
          ## Transport\n\n\
          - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)\n\
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
-         - **Streamable HTTP:** `POST /mcp/streamable` (JSON-RPC response + live notifications on one SSE body)\n\
+         - **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: JSON-RPC response returned directly and pushed to the SSE session)\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
          - **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",

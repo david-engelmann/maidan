@@ -19,6 +19,7 @@ pub mod resource_updates;
 pub mod resources;
 pub mod server;
 pub mod stdio;
+pub mod streamable_session;
 pub mod tools;
 
 pub use error::McpError;

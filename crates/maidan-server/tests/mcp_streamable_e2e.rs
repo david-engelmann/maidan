@@ -193,3 +193,56 @@ async fn streamable_response_includes_mcp_session_id_header() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn streamable_follow_up_on_open_session_returns_json() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let init = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    });
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&init)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let session = resp
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let list = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+    });
+    let resp2 = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&list)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let ct = resp2
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("application/json"));
+    let body: Value = resp2.json().await.unwrap();
+    assert_eq!(body["id"], 2);
+    assert!(body["result"].is_object());
+
+    server.abort();
+}
