@@ -33,6 +33,7 @@ pub mod session;
 pub mod state;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
+pub mod thread_context;
 pub mod ws;
 
 pub use app::router;

@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `GET /threads/:id/context` — messages, references, metadata-linked artifacts, FSM history.
+- `Store::list_thread_transitions` for thread lifecycle audit in context export.
+
+## [48.0.0] — 2026-05-29
+
+### Added
+
 - `sqlite-vec` loaded per SQLite connection; SQL-side `vec_distance_cosine` for semantic search.
 - `SearchHit.score` in `[0, 1]` — comparable across Postgres and SQLite within one search mode.
 

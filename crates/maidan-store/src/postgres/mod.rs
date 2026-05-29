@@ -167,6 +167,14 @@ impl Store for PostgresStore {
         thread_transitions::transition(&self.pool, thread_id, actor_id, action).await
     }
 
+    async fn list_thread_transitions(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<ThreadTransition>, StoreError> {
+        thread_transitions::list(&self.pool, thread_id, limit).await
+    }
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await
     }

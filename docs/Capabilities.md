@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v49.0.0 — Agent context export
+
+| Capability | Where |
+|------------|-------|
+| `GET /threads/:id/context` prompt pack | `maidan-server::thread_context` |
+| `Store::list_thread_transitions` | `maidan-store` |
+| Artifact discovery via message metadata | `thread_context::artifact_shas_from_metadata` |
+
 ## v48.0.0 — Search scale & parity
 
 | Capability | Where |

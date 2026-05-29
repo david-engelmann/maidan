@@ -397,6 +397,28 @@ pub async fn get_thread(
     Ok(Json(thread))
 }
 
+pub async fn get_thread_context(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ThreadContextQuery>,
+) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    let packed = crate::thread_context::build_thread_context(
+        state.store.as_ref(),
+        thread_id,
+        crate::thread_context::ThreadContextLimits {
+            message_limit: q.message_limit,
+            transition_limit: q.transition_limit,
+        },
+    )
+    .await?;
+    Ok(Json(packed))
+}
+
 pub async fn transition_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

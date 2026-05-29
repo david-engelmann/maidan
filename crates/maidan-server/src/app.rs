@@ -74,6 +74,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/:id",
             get(routes::get_thread).post(routes::transition_thread),
         )
+        .route("/threads/:id/context", get(routes::get_thread_context))
         .route(
             "/threads/:tid/messages",
             post(routes::post_message).get(routes::list_messages),

@@ -177,6 +177,15 @@ pub fn create_thread() {}
     responses((status = 200, body = Thread)))]
 pub fn get_thread() {}
 
+#[utoipa::path(get, path = "/threads/{id}/context", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ThreadContextQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadContext)))]
+pub fn get_thread_context() {}
+
 #[utoipa::path(post, path = "/threads/{id}", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = TransitionThread,
