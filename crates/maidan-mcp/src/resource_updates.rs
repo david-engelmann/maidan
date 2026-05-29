@@ -44,11 +44,16 @@ pub async fn uris_for_tool_mutation(
                 }
             }
         }
-        "record_mention" | "cast_vote" => {
+        "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction" => {
             if let Some(mid) = uuid_arg(args, "message_id") {
                 if let Ok(msg) = store.get_message(MessageId(mid)).await {
                     push_thread_chain(store, msg.thread_id, &mut uris).await;
                 }
+            }
+        }
+        "pin_message" | "unpin_message" => {
+            if let Some(tid) = uuid_arg(args, "thread_id") {
+                push_thread_chain(store, ThreadId(tid), &mut uris).await;
             }
         }
         "add_reference" => {

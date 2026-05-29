@@ -41,7 +41,7 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 41.0** — Reactions & pins ([[Clusters/Product Ladder 35+]] Phase II).
+**Active:** **Cluster 42.0** — Presence & typing ([[Clusters/Product Ladder 35+]] Phase II).
 
 **Recently closed:** **Cluster 39.0** — Direct messages at **`v39.0.0`** ([[Retros/Cluster 39.0]]).
 

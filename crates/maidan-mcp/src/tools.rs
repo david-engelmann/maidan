@@ -25,11 +25,14 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_threads"
         | "list_messages"
         | "list_dm_conversations"
+        | "list_reactions"
+        | "list_pins"
         | "get_artifact_metadata" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
-        "record_mention" | "cast_vote" | "add_reference" => Ok(WORKSPACE_WRITE),
+        "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction" | "pin_message"
+        | "unpin_message" | "add_reference" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -168,6 +171,80 @@ pub fn catalog() -> Vec<Value> {
                     "kind": {"type": "string"}
                 },
                 "required": ["message_id", "member_id", "kind"]
+            }
+        }),
+        json!({
+            "name": "add_reaction",
+            "description": "Add an emoji reaction to a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "emoji": {"type": "string"}
+                },
+                "required": ["message_id", "member_id", "emoji"]
+            }
+        }),
+        json!({
+            "name": "remove_reaction",
+            "description": "Remove an emoji reaction from a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "emoji": {"type": "string"}
+                },
+                "required": ["message_id", "member_id", "emoji"]
+            }
+        }),
+        json!({
+            "name": "list_reactions",
+            "description": "List emoji reactions on a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "pin_message",
+            "description": "Pin a message to a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "message_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "unpin_message",
+            "description": "Unpin a message from a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "message_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_pins",
+            "description": "List pinned messages in a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
             }
         }),
         json!({
@@ -317,6 +394,12 @@ pub async fn dispatch(
         "edit_message" => edit_message(store, auth, args).await,
         "record_mention" => record_mention(store, args).await,
         "cast_vote" => cast_vote(store, args).await,
+        "add_reaction" => add_reaction(store, args).await,
+        "remove_reaction" => remove_reaction(store, args).await,
+        "list_reactions" => list_reactions(store, args).await,
+        "pin_message" => pin_message(store, args).await,
+        "unpin_message" => unpin_message(store, args).await,
+        "list_pins" => list_pins(store, args).await,
         "add_reference" => add_reference(store, args).await,
         "upload_artifact" => upload_artifact(store, artifacts, args).await,
         "begin_artifact_multipart" => begin_artifact_multipart(artifacts).await,
@@ -775,6 +858,84 @@ async fn cast_vote(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpErr
         })
         .await?;
     Ok(content_json(&json!({"ok": true})))
+}
+
+#[derive(Deserialize)]
+struct ReactionArgs {
+    message_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    emoji: String,
+}
+
+async fn add_reaction(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ReactionArgs = serde_json::from_value(args.clone())?;
+    store
+        .add_reaction(NewReaction {
+            message_id: MessageId(a.message_id),
+            member_id: MemberId(a.member_id),
+            emoji: a.emoji,
+        })
+        .await?;
+    Ok(content_json(&json!({"ok": true})))
+}
+
+async fn remove_reaction(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ReactionArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .remove_reaction(MessageId(a.message_id), MemberId(a.member_id), &a.emoji)
+        .await?;
+    Ok(content_json(&json!({"removed": removed})))
+}
+
+#[derive(Deserialize)]
+struct ListReactionsArgs {
+    message_id: uuid::Uuid,
+}
+
+async fn list_reactions(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ListReactionsArgs = serde_json::from_value(args.clone())?;
+    let list = store
+        .list_reactions_for_message(MessageId(a.message_id))
+        .await?;
+    Ok(content_json(&list))
+}
+
+#[derive(Deserialize)]
+struct PinArgs {
+    thread_id: uuid::Uuid,
+    message_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+async fn pin_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: PinArgs = serde_json::from_value(args.clone())?;
+    store
+        .pin_message(NewPin {
+            thread_id: ThreadId(a.thread_id),
+            message_id: MessageId(a.message_id),
+            member_id: MemberId(a.member_id),
+        })
+        .await?;
+    Ok(content_json(&json!({"ok": true})))
+}
+
+async fn unpin_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: PinArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .unpin_message(ThreadId(a.thread_id), MessageId(a.message_id))
+        .await?;
+    Ok(content_json(&json!({"removed": removed})))
+}
+
+#[derive(Deserialize)]
+struct ListPinsArgs {
+    thread_id: uuid::Uuid,
+}
+
+async fn list_pins(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ListPinsArgs = serde_json::from_value(args.clone())?;
+    let list = store.list_pins_for_thread(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&list))
 }
 
 #[derive(Deserialize)]

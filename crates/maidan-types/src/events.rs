@@ -39,6 +39,10 @@ pub enum EventKind {
     MessageTombstoned,
     MentionRecorded,
     VoteCast,
+    ReactionAdded,
+    ReactionRemoved,
+    MessagePinned,
+    MessageUnpinned,
     ReferenceAdded,
     ArtifactUpserted,
 }
@@ -56,6 +60,10 @@ impl EventKind {
             Self::MessageTombstoned => "message_tombstoned",
             Self::MentionRecorded => "mention_recorded",
             Self::VoteCast => "vote_cast",
+            Self::ReactionAdded => "reaction_added",
+            Self::ReactionRemoved => "reaction_removed",
+            Self::MessagePinned => "message_pinned",
+            Self::MessageUnpinned => "message_unpinned",
             Self::ReferenceAdded => "reference_added",
             Self::ArtifactUpserted => "artifact_upserted",
         }
@@ -138,6 +146,38 @@ pub enum Event {
         member_id: MemberId,
         vote_kind: String,
     },
+    ReactionAdded {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: String,
+    },
+    ReactionRemoved {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: String,
+    },
+    MessagePinned {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+    },
+    MessageUnpinned {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+    },
     ReferenceAdded {
         occurred_at: DateTime<Utc>,
         reference: Reference,
@@ -161,6 +201,10 @@ impl Event {
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
             Self::MentionRecorded { .. } => EventKind::MentionRecorded,
             Self::VoteCast { .. } => EventKind::VoteCast,
+            Self::ReactionAdded { .. } => EventKind::ReactionAdded,
+            Self::ReactionRemoved { .. } => EventKind::ReactionRemoved,
+            Self::MessagePinned { .. } => EventKind::MessagePinned,
+            Self::MessageUnpinned { .. } => EventKind::MessageUnpinned,
             Self::ReferenceAdded { .. } => EventKind::ReferenceAdded,
             Self::ArtifactUpserted { .. } => EventKind::ArtifactUpserted,
         }
@@ -178,6 +222,10 @@ impl Event {
             | Self::MessageTombstoned { occurred_at, .. }
             | Self::MentionRecorded { occurred_at, .. }
             | Self::VoteCast { occurred_at, .. }
+            | Self::ReactionAdded { occurred_at, .. }
+            | Self::ReactionRemoved { occurred_at, .. }
+            | Self::MessagePinned { occurred_at, .. }
+            | Self::MessageUnpinned { occurred_at, .. }
             | Self::ReferenceAdded { occurred_at, .. }
             | Self::ArtifactUpserted { occurred_at, .. } => *occurred_at,
         }
@@ -194,7 +242,11 @@ impl Event {
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
             | Self::MentionRecorded { workspace_id, .. }
-            | Self::VoteCast { workspace_id, .. } => Some(*workspace_id),
+            | Self::VoteCast { workspace_id, .. }
+            | Self::ReactionAdded { workspace_id, .. }
+            | Self::ReactionRemoved { workspace_id, .. }
+            | Self::MessagePinned { workspace_id, .. }
+            | Self::MessageUnpinned { workspace_id, .. } => Some(*workspace_id),
             Self::ReferenceAdded { .. } | Self::ArtifactUpserted { .. } => None,
         }
     }
@@ -206,7 +258,9 @@ impl Event {
             | Self::ThreadStateChanged { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
-            | Self::MessageTombstoned { channel_id, .. } => Some(*channel_id),
+            | Self::MessageTombstoned { channel_id, .. }
+            | Self::MessagePinned { channel_id, .. }
+            | Self::MessageUnpinned { channel_id, .. } => Some(*channel_id),
             _ => None,
         }
     }
@@ -219,7 +273,11 @@ impl Event {
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
             | Self::MentionRecorded { thread_id, .. }
-            | Self::VoteCast { thread_id, .. } => Some(*thread_id),
+            | Self::VoteCast { thread_id, .. }
+            | Self::ReactionAdded { thread_id, .. }
+            | Self::ReactionRemoved { thread_id, .. }
+            | Self::MessagePinned { thread_id, .. }
+            | Self::MessageUnpinned { thread_id, .. } => Some(*thread_id),
             _ => None,
         }
     }
@@ -243,9 +301,12 @@ impl Event {
         match self {
             Self::MemberJoined { member, .. } => Some(member.id),
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
-            Self::MentionRecorded { member_id, .. } | Self::VoteCast { member_id, .. } => {
-                Some(*member_id)
-            }
+            Self::MentionRecorded { member_id, .. }
+            | Self::VoteCast { member_id, .. }
+            | Self::ReactionAdded { member_id, .. }
+            | Self::ReactionRemoved { member_id, .. }
+            | Self::MessagePinned { member_id, .. }
+            | Self::MessageUnpinned { member_id, .. } => Some(*member_id),
             Self::MessageEdited { editor_id, .. } => Some(*editor_id),
             _ => None,
         }

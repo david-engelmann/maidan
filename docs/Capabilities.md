@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v41.0.0 — Reactions & pins
+
+| Capability | Surface |
+|------------|---------|
+| Emoji reactions | `POST/GET/DELETE /messages/:id/reactions` |
+| Thread pins | `POST/GET/DELETE /threads/:id/pins` |
+| MCP reactions & pins | `add_reaction`, `remove_reaction`, `list_reactions`, `pin_message`, `unpin_message`, `list_pins` |
+
 ## v40.0.0 — Mention router & inbox
 
 | Capability | Surface |

@@ -13,7 +13,9 @@ mod messages;
 mod oidc;
 pub mod outbox;
 mod peers;
+mod pins;
 mod purge_workspace;
+mod reactions;
 mod refs;
 mod sessions;
 mod thread_transitions;
@@ -236,6 +238,38 @@ impl Store for PostgresStore {
     }
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError> {
         votes::list(&self.pool, message_id).await
+    }
+
+    async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError> {
+        reactions::add(&self.pool, new).await
+    }
+    async fn remove_reaction(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: &str,
+    ) -> Result<bool, StoreError> {
+        reactions::remove(&self.pool, message_id, member_id, emoji).await
+    }
+    async fn list_reactions_for_message(
+        &self,
+        message_id: MessageId,
+    ) -> Result<Vec<Reaction>, StoreError> {
+        reactions::list(&self.pool, message_id).await
+    }
+
+    async fn pin_message(&self, new: NewPin) -> Result<(), StoreError> {
+        pins::pin(&self.pool, new).await
+    }
+    async fn unpin_message(
+        &self,
+        thread_id: ThreadId,
+        message_id: MessageId,
+    ) -> Result<bool, StoreError> {
+        pins::unpin(&self.pool, thread_id, message_id).await
+    }
+    async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError> {
+        pins::list_for_thread(&self.pool, thread_id).await
     }
 
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError> {
