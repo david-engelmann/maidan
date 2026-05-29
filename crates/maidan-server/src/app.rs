@@ -47,6 +47,11 @@ pub fn router(state: AppState) -> Router {
             "/members/:id/mentions",
             get(routes::list_mentions_for_member),
         )
+        .route("/members/:id/inbox", get(routes::get_member_inbox))
+        .route(
+            "/members/:id/inbox/read",
+            post(routes::mark_member_inbox_read),
+        )
         .route(
             "/workspaces/:wid/dm",
             post(dm::open_dm_conversation).get(dm::list_dm_conversations),

@@ -132,6 +132,22 @@ pub fn get_member() {}
     responses((status = 200, body = Vec<Mention>)))]
 pub fn list_mentions_for_member() {}
 
+#[utoipa::path(get, path = "/members/{id}/inbox", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ListInboxQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberInbox)))]
+pub fn get_member_inbox() {}
+
+#[utoipa::path(post, path = "/members/{id}/inbox/read", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = MarkInboxRead,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberInbox)))]
+pub fn mark_member_inbox_read() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

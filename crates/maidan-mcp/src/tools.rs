@@ -11,6 +11,7 @@ use maidan_auth::capability::{
     ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
+use maidan_router::route_mentions_for_message;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -624,11 +625,12 @@ async fn post_dm_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, 
             "author_id must be a DM participant".into(),
         ));
     }
+    let body = a.body.clone();
     let msg = store
         .post_message(NewMessage {
             thread_id: dm.thread_id,
             author_id: MemberId(a.author_id),
-            body: a.body,
+            body,
             metadata: if a.metadata.is_null() {
                 json!({})
             } else {
@@ -636,6 +638,7 @@ async fn post_dm_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, 
             },
         })
         .await?;
+    let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
     Ok(content_json(&msg))
 }
 
@@ -678,11 +681,12 @@ struct PostMessageArgs {
 
 async fn post_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: PostMessageArgs = serde_json::from_value(args.clone())?;
+    let body = a.body.clone();
     let msg = store
         .post_message(NewMessage {
             thread_id: ThreadId(a.thread_id),
             author_id: MemberId(a.author_id),
-            body: a.body,
+            body,
             metadata: if a.metadata.is_null() {
                 json!({})
             } else {
@@ -690,6 +694,7 @@ async fn post_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, Mcp
             },
         })
         .await?;
+    let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
     Ok(content_json(&msg))
 }
 
