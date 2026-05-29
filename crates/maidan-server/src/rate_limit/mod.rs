@@ -1,19 +1,18 @@
-//! Optional global HTTP rate limiting (Cluster 30).
-//!
-//! Enabled when `MAIDAN_RATE_LIMIT_MAX` is set to a positive integer.
-//! Keys requests by bearer token prefix, else first `X-Forwarded-For` hop,
-//! else `anonymous`. `/health/*` and `/metrics` are exempt.
+//! HTTP rate limiting (Cluster 30) with optional Redis backend (Cluster 54).
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
+mod limiter;
+
+use std::time::Duration;
 
 use axum::{
     body::Body,
+    extract::State,
     http::{header, Request},
     middleware::Next,
     response::{IntoResponse, Response},
 };
+
+pub use limiter::{try_acquire, WindowConfig};
 
 use crate::error::ApiError;
 
@@ -65,48 +64,39 @@ fn client_key(req: &Request<Body>) -> String {
     "anonymous".into()
 }
 
-struct WindowCounter {
-    window_start: Instant,
-    count: u32,
-}
-
-static BUCKETS: LazyLock<Mutex<HashMap<String, WindowCounter>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn check_and_increment(key: &str, cfg: RateLimitConfig) -> bool {
-    let now = Instant::now();
-    let mut buckets = BUCKETS.lock().expect("rate limit buckets");
-    let entry = buckets.entry(key.to_string()).or_insert(WindowCounter {
-        window_start: now,
-        count: 0,
-    });
-    if now.duration_since(entry.window_start) >= cfg.window {
-        entry.window_start = now;
-        entry.count = 0;
-    }
-    if entry.count >= cfg.max {
-        return false;
-    }
-    entry.count += 1;
-    true
-}
-
-pub async fn middleware(req: Request<Body>, next: Next) -> Response {
+pub async fn middleware(
+    State(state): State<crate::state::AppState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
     let Some(cfg) = config_from_env() else {
         return next.run(req).await;
     };
     if exempt_path(req.uri().path()) {
         return next.run(req).await;
     }
-    let key = client_key(&req);
-    if check_and_increment(&key, cfg) {
+    let key = format!("global:{}", client_key(&req));
+    let redis = state.rate_limit_redis.as_ref();
+    if try_acquire(
+        &key,
+        WindowConfig {
+            max: cfg.max,
+            window: cfg.window,
+        },
+        redis,
+    )
+    .await
+    {
         return next.run(req).await;
     }
-    let retry_after = cfg.window.as_secs().max(1);
+    too_many(cfg.window, cfg.max)
+}
+
+pub(crate) fn too_many(window: Duration, max: u32) -> Response {
+    let retry_after = window.as_secs().max(1);
     let err = ApiError::TooManyRequests(format!(
         "rate limit exceeded ({max} requests per {secs}s)",
-        max = cfg.max,
-        secs = cfg.window.as_secs()
+        secs = window.as_secs()
     ));
     let mut response = err.into_response();
     if let Ok(v) = retry_after.to_string().parse() {
@@ -115,21 +105,17 @@ pub async fn middleware(req: Request<Body>, next: Next) -> Response {
     response
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn check_resets_after_window() {
-        let cfg = RateLimitConfig {
-            max: 2,
-            window: Duration::from_millis(50),
-        };
-        let key = "test-key";
-        assert!(check_and_increment(key, cfg));
-        assert!(check_and_increment(key, cfg));
-        assert!(!check_and_increment(key, cfg));
-        std::thread::sleep(Duration::from_millis(60));
-        assert!(check_and_increment(key, cfg));
+/// Connect Redis when `MAIDAN_RATE_LIMIT_REDIS_URL` is set.
+pub async fn connect_redis_from_env() -> Option<redis::aio::ConnectionManager> {
+    let url = std::env::var("MAIDAN_RATE_LIMIT_REDIS_URL")
+        .ok()?
+        .trim()
+        .to_string();
+    if url.is_empty() {
+        return None;
     }
+    let client = redis::Client::open(url.as_str()).ok()?;
+    let conn = redis::aio::ConnectionManager::new(client).await.ok()?;
+    tracing::info!("rate limiter using Redis backend");
+    Some(conn)
 }

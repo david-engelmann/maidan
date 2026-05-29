@@ -1273,6 +1273,7 @@ pub async fn mint_api_token(
         capability::validate_list(&body.capabilities).map_err(ApiError::BadRequest)?;
         body.capabilities
     };
+    crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
     let record = state
@@ -1282,10 +1283,18 @@ pub async fn mint_api_token(
             member_id,
             token_hash: hash_secret(secret.as_str()),
             label: body.label,
-            capabilities,
+            capabilities: capabilities.clone(),
             expires_at: body.expires_at,
         })
         .await?;
+
+    if !body.quotas.is_empty() {
+        state
+            .store
+            .replace_token_quotas(record.id, &body.quotas)
+            .await?;
+    }
+    let quotas = state.store.list_token_quotas(record.id).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -1296,6 +1305,7 @@ pub async fn mint_api_token(
             member_id: record.member_id,
             capabilities: record.capabilities,
             expires_at: record.expires_at,
+            quotas,
         }),
     ))
 }

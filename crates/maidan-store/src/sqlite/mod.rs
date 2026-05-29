@@ -27,6 +27,7 @@ mod sessions;
 mod slash_commands;
 mod thread_transitions;
 mod threads;
+mod token_quotas;
 mod tokens;
 mod votes;
 mod webhooks;
@@ -371,6 +372,18 @@ impl Store for SqliteStore {
 
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
+    }
+
+    async fn replace_token_quotas(
+        &self,
+        token_id: ApiTokenId,
+        quotas: &[TokenQuota],
+    ) -> Result<(), StoreError> {
+        token_quotas::replace(&self.pool, token_id, quotas).await
+    }
+
+    async fn list_token_quotas(&self, token_id: ApiTokenId) -> Result<Vec<TokenQuota>, StoreError> {
+        token_quotas::list(&self.pool, token_id).await
     }
 
     async fn workspace_has_active_capability(

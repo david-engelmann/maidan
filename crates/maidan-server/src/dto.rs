@@ -368,6 +368,8 @@ pub struct MintApiToken {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub quotas: Vec<maidan_types::TokenQuota>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -421,6 +423,7 @@ pub struct MintApiTokenResponse {
     pub member_id: MemberId,
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub quotas: Vec<maidan_types::TokenQuota>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

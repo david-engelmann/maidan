@@ -121,6 +121,8 @@ pub struct AppState {
     pub subscribe_resume_ttl_secs: u64,
     /// Ephemeral presence/typing fan-out for WebSocket subscribers.
     pub presence: Arc<PresenceHub>,
+    /// Optional Redis backend for global and per-token rate limits (Cluster 54).
+    pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
 }
 
 impl AppState {
@@ -167,6 +169,7 @@ impl AppState {
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence: Arc::new(PresenceHub::default()),
+            rate_limit_redis: None,
         }
     }
 

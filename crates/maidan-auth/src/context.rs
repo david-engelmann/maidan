@@ -1,8 +1,9 @@
-use maidan_types::{MemberId, WorkspaceId};
+use maidan_types::{ApiTokenId, MemberId, WorkspaceId};
 
 /// Resolved caller identity after bearer validation.
 #[derive(Debug, Clone)]
 pub struct AuthContext {
+    pub token_id: Option<ApiTokenId>,
     pub member_id: MemberId,
     pub workspace_id: WorkspaceId,
     capabilities: Vec<String>,
@@ -11,11 +12,27 @@ pub struct AuthContext {
 
 impl AuthContext {
     pub fn from_token(
+        token_id: ApiTokenId,
         member_id: MemberId,
         workspace_id: WorkspaceId,
         capabilities: Vec<String>,
     ) -> Self {
         Self {
+            token_id: Some(token_id),
+            member_id,
+            workspace_id,
+            capabilities,
+            bypass: false,
+        }
+    }
+
+    pub fn from_session(
+        member_id: MemberId,
+        workspace_id: WorkspaceId,
+        capabilities: Vec<String>,
+    ) -> Self {
+        Self {
+            token_id: None,
             member_id,
             workspace_id,
             capabilities,
@@ -25,6 +42,7 @@ impl AuthContext {
 
     pub fn bypass() -> Self {
         Self {
+            token_id: None,
             member_id: MemberId(uuid::Uuid::nil()),
             workspace_id: WorkspaceId(uuid::Uuid::nil()),
             capabilities: Vec::new(),
