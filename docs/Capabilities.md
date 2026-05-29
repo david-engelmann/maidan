@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v32.0.0 — Helm umbrella
+
+| Capability | Surface |
+|------------|---------|
+| Stack Helm chart (server + optional Postgres/MinIO) | `helm/maidan-stack/` |
+
 ## v31.0.0 — Workspace artifact purge
 
 | Capability | Surface |

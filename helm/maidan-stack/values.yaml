@@ -1,0 +1,16 @@
+postgresql:
+  enabled: false
+  auth:
+    username: maidan
+    password: maidan
+    database: maidan
+
+minio:
+  enabled: false
+  auth:
+    rootUser: minio
+    rootPassword: minioadmin
+  defaultBuckets: maidan-artifacts
+
+maidan:
+  replicaCount: 1
