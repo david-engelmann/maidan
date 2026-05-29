@@ -5,6 +5,7 @@ mod audit;
 mod channels;
 pub mod delivery_cursor;
 mod dm;
+mod erase_workspace;
 pub mod events;
 mod fsm_hooks;
 mod inbox;
@@ -217,6 +218,12 @@ impl Store for PostgresStore {
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError> {
         purge_workspace::purge(&self.pool, workspace_id).await
+    }
+    async fn erase_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<WorkspaceEraseResult, StoreError> {
+        erase_workspace::erase(&self.pool, workspace_id).await
     }
 
     async fn record_mention(

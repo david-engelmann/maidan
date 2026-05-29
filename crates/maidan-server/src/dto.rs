@@ -15,6 +15,11 @@ pub struct CreateWorkspace {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct EraseWorkspace {
+    pub confirm_workspace_id: uuid::Uuid,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMember {
     pub handle: String,
     pub display_name: Option<String>,

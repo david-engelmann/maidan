@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [53.0.0] — 2026-05-28
+
+### Added
+
+- Workspace full erasure: `DELETE /workspaces/:id` with `confirm_workspace_id` body.
+- `Store::erase_workspace` runs deep purge then deletes the workspace row (CASCADE-owned data).
+
 ## [52.0.0] — 2026-05-28
 
 ### Added

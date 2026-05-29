@@ -34,6 +34,23 @@ pub fn create_member_bootstrap() {}
     ))]
 pub fn get_workspace() {}
 
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{id}",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = EraseWorkspace,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceEraseResult),
+        (status = 400, body = ProblemDetails),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+        (status = 404, body = ProblemDetails),
+    )
+)]
+pub fn erase_workspace() {}
+
 #[utoipa::path(get, path = "/workspaces/{wid}/events", tag = "workspaces",
     params(
         ("wid" = Uuid, Path, description = "Workspace id"),
