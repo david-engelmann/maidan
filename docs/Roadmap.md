@@ -41,7 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Post–Cluster 29 backlog — [[Remaining Work]]; **Cluster 30.0** — rate limits ([[Clusters/Cluster 30.0]]).
+**Active:** Ladder **30–34** — [[Clusters/Product Ladder 30-34]].
+
+**Recently closed:** **Cluster 31.0** — workspace artifact purge at **`v31.0.0`** ([[Retros/Cluster 31.0]]).
+
+**Recently closed:** **Cluster 30.0** — rate limits at **`v30.0.0`** ([[Retros/Cluster 30.0]]).
 
 **Recently closed:** **Cluster 29.0** — message edit at **`v29.0.0`** ([[Retros/Cluster 29.0]]).
 

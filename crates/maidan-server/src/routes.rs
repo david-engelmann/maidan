@@ -105,7 +105,17 @@ pub async fn purge_workspace(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
     state.store.get_workspace(workspace_id).await?;
-    let result = state.store.purge_workspace_messages(workspace_id).await?;
+    let mut result = state.store.purge_workspace_messages(workspace_id).await?;
+    let mut artifact_blobs_deleted = 0u64;
+    for sha_hex in &result.artifact_shas {
+        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
+            continue;
+        };
+        if state.artifacts.delete(&sha).await.is_ok() {
+            artifact_blobs_deleted += 1;
+        }
+    }
+    result.artifact_shas.clear();
     state
         .store
         .append_audit(NewAuditEvent {
@@ -120,6 +130,8 @@ pub async fn purge_workspace(
                 "references_removed": result.references_removed,
                 "api_tokens_revoked": result.api_tokens_revoked,
                 "events_removed": result.events_removed,
+                "artifacts_removed": result.artifacts_removed,
+                "artifact_blobs_deleted": artifact_blobs_deleted,
             }),
         })
         .await?;

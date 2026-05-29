@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v31.0.0 — Workspace artifact purge
+
+| Capability | Surface |
+|------------|---------|
+| Purge artifact metadata + blobs | `POST /workspaces/:id/purge` |
+
+## v30.0.0 — HTTP rate limits
+
+| Capability | Surface |
+|------------|---------|
+| Optional global HTTP rate limit | `MAIDAN_RATE_LIMIT_MAX`, `MAIDAN_RATE_LIMIT_WINDOW_SECS` |
+
 ## v29.0.0 — Message edit
 
 | Capability | Surface |
