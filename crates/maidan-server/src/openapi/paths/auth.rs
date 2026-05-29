@@ -6,7 +6,7 @@ use crate::dto::{
     ListEventsQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
-use maidan_types::StoredEvent;
+use maidan_types::{Channel, StoredEvent};
 
 #[utoipa::path(
     get,
@@ -89,3 +89,19 @@ pub fn mint_auth_session_token() {}
     )
 )]
 pub fn ui_list_events() {}
+
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/channels",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<Channel>),
+        (status = 401, body = ProblemDetails),
+    )
+)]
+pub fn ui_list_channels() {}

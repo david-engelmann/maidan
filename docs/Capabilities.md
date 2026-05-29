@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v43.0.0 — UI v2 shell
+
+| Capability | Surface |
+|------------|---------|
+| Operator UI v2 | `/ui` channel sidebar + WS live feed |
+| Session channel list | `GET /ui/api/workspaces/:wid/channels` |
+
 ## v42.0.0 — Presence & typing
 
 | Capability | Surface |

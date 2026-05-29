@@ -2,97 +2,222 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Maidan</title>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 64rem; }
-      label { display: block; margin-top: 0.75rem; }
-      input, select, textarea { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-      button { margin-top: 0.75rem; padding: 0.5rem 1rem; margin-right: 0.5rem; }
-      pre { background: #f4f4f5; padding: 1rem; overflow: auto; max-height: 20rem; }
-      .err { color: #b91c1c; }
-      .ok { color: #166534; }
-      .muted { color: #52525b; font-size: 0.9rem; }
-      .tabs { display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap; }
-      .tabs button { margin: 0; }
-      .tabs button[aria-selected="true"] { font-weight: 600; text-decoration: underline; }
+      :root {
+        --bg: #fafafa;
+        --panel: #fff;
+        --border: #e4e4e7;
+        --muted: #71717a;
+        --accent: #2563eb;
+        --err: #b91c1c;
+        --ok: #166534;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        background: var(--bg);
+        color: #18181b;
+        min-height: 100vh;
+      }
+      header {
+        padding: 0.75rem 1rem;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      header h1 { font-size: 1.1rem; margin: 0; margin-right: auto; }
+      header label { font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.15rem; }
+      header input {
+        padding: 0.35rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 0.25rem;
+        min-width: 10rem;
+      }
+      header button {
+        padding: 0.4rem 0.75rem;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 0.25rem;
+        cursor: pointer;
+      }
+      #shell {
+        display: grid;
+        grid-template-columns: minmax(12rem, 16rem) 1fr;
+        min-height: calc(100vh - 4rem);
+      }
+      @media (max-width: 720px) {
+        #shell { grid-template-columns: 1fr; }
+      }
+      aside {
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        padding: 0.75rem;
+        overflow: auto;
+      }
+      @media (max-width: 720px) {
+        aside { border-right: none; border-bottom: 1px solid var(--border); max-height: 12rem; }
+      }
+      aside h2 { font-size: 0.85rem; margin: 0 0 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      #channel-list { list-style: none; margin: 0; padding: 0; }
+      #channel-list li {
+        padding: 0.45rem 0.5rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        font-size: 0.95rem;
+      }
+      #channel-list li:hover { background: #f4f4f5; }
+      #channel-list li.selected { background: #dbeafe; font-weight: 600; }
+      #channel-list .private { color: var(--muted); font-size: 0.8rem; }
+      main { display: flex; flex-direction: column; min-height: 0; }
+      #live-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 0.75rem;
+        min-height: 14rem;
+      }
+      #live-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-bottom: 0.5rem;
+      }
+      #ws-status { font-size: 0.85rem; color: var(--muted); }
+      #ws-status.connected { color: var(--ok); }
+      #ws-status.error { color: var(--err); }
+      #live-feed {
+        flex: 1;
+        background: #18181b;
+        color: #e4e4e7;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        padding: 0.75rem;
+        overflow: auto;
+        border-radius: 0.35rem;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #tools {
+        border-top: 1px solid var(--border);
+        background: var(--panel);
+        padding: 0.75rem 1rem 1.5rem;
+      }
+      #tools summary { cursor: pointer; font-weight: 600; }
+      .tabs { display: flex; gap: 0.5rem; margin: 0.75rem 0; flex-wrap: wrap; }
+      .tabs button { margin: 0; padding: 0.35rem 0.6rem; border: 1px solid var(--border); background: #fff; border-radius: 0.25rem; cursor: pointer; }
+      .tabs button[aria-selected="true"] { font-weight: 600; background: #eff6ff; border-color: var(--accent); }
       .panel { display: none; }
       .panel.active { display: block; }
+      label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
+      label input, label select, label textarea { width: 100%; max-width: 32rem; padding: 0.35rem; margin-top: 0.2rem; }
+      .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+      pre#out { background: #f4f4f5; padding: 0.75rem; overflow: auto; max-height: 12rem; font-size: 0.8rem; }
+      .err { color: var(--err); }
+      .ok { color: var(--ok); }
+      .muted { color: var(--muted); font-size: 0.9rem; }
       #mint-banner {
         display: none;
-        margin-top: 1rem;
-        padding: 1rem;
+        margin-top: 0.75rem;
+        padding: 0.75rem;
         background: #fef9c3;
         border: 1px solid #ca8a04;
         border-radius: 0.25rem;
       }
       #mint-banner code { word-break: break-all; }
-      .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     </style>
   </head>
-  <body>
-    <h1>Maidan</h1>
-    <p class="muted">Operator UI: events, search, threads, API tokens.</p>
-    <label>API base URL <input id="base" value="" /></label>
-    <label>Workspace ID <input id="workspace" /></label>
-    <label>Bearer token <input id="token" type="password" /></label>
-    <p id="session-status" class="muted">Checking session…</p>
-    <div class="row">
-      <button id="login" type="button">Sign in with OIDC</button>
-      <button id="mint" type="button" hidden>Mint first admin token</button>
-      <button id="logout" type="button" hidden>Sign out</button>
-    </div>
-    <div id="mint-banner" role="status">
-      <strong>Admin token (shown once)</strong>
-      <p class="muted">Store this secret now; Maidan will not show it again.</p>
+  <body data-ui-version="2">
+    <header>
+      <h1>Maidan</h1>
+      <label>API base <input id="base" /></label>
+      <label>Workspace <input id="workspace" /></label>
+      <label>Token <input id="token" type="password" /></label>
+      <button id="login" type="button">OIDC</button>
+      <button id="mint" type="button" hidden>Mint admin</button>
+      <button id="logout" type="button" hidden>Out</button>
+    </header>
+    <p id="session-status" class="muted" style="margin: 0.25rem 1rem">Checking session…</p>
+    <div id="mint-banner" role="status" style="margin: 0 1rem">
+      <strong>Admin token (once)</strong>
       <code id="mint-secret"></code>
-      <button id="copy-secret" type="button">Copy to clipboard</button>
+      <button id="copy-secret" type="button">Copy</button>
     </div>
 
-    <nav class="tabs" role="tablist">
-      <button type="button" data-tab="events" aria-selected="true">Events</button>
-      <button type="button" data-tab="search">Search</button>
-      <button type="button" data-tab="thread">Thread</button>
-      <button type="button" data-tab="tokens">API tokens</button>
-    </nav>
+    <div id="shell">
+      <aside>
+        <h2>Channels</h2>
+        <button id="refresh-channels" type="button" style="margin-bottom: 0.5rem; width: 100%">Refresh</button>
+        <ul id="channel-list"></ul>
+      </aside>
+      <main>
+        <section id="live-panel">
+          <div id="live-toolbar">
+            <strong>Live</strong>
+            <span id="ws-status">disconnected</span>
+            <button id="ws-connect" type="button">Connect WS</button>
+            <button id="ws-disconnect" type="button" hidden>Disconnect</button>
+            <button id="ws-clear" type="button">Clear</button>
+          </div>
+          <pre id="live-feed"></pre>
+        </section>
+      </main>
+    </div>
 
-    <section id="panel-events" class="panel active">
-      <button id="load-events" type="button">Load events</button>
-    </section>
-    <section id="panel-search" class="panel">
-      <label>Query <input id="search-q" placeholder="keywords" /></label>
-      <label>Mode
-        <select id="search-mode">
-          <option value="lexical">lexical</option>
-          <option value="semantic">semantic</option>
-        </select>
-      </label>
-      <button id="run-search" type="button">Search</button>
-    </section>
-    <section id="panel-thread" class="panel">
-      <label>Channel ID <input id="channel-id" /></label>
-      <label>Thread ID <input id="thread-id" /></label>
-      <label>Actor member ID <input id="actor-id" /></label>
-      <label>FSM action
-        <select id="fsm-action">
-          <option value="start_review">start_review</option>
-          <option value="close">close</option>
-          <option value="archive">archive</option>
-        </select>
-      </label>
-      <div class="row">
-        <button id="load-thread" type="button">Load thread</button>
-        <button id="transition-thread" type="button">Transition</button>
-        <button id="load-messages" type="button">List messages</button>
-      </div>
-    </section>
-    <section id="panel-tokens" class="panel">
-      <label>Member ID <input id="token-member" /></label>
-      <label>Label <input id="token-label" placeholder="optional" /></label>
-      <button id="mint-member-token" type="button">Mint token (token:admin)</button>
-    </section>
+    <details id="tools" open>
+      <summary>Operator tools</summary>
+      <nav class="tabs" role="tablist">
+        <button type="button" data-tab="events" aria-selected="true">Events (HTTP)</button>
+        <button type="button" data-tab="search">Search</button>
+        <button type="button" data-tab="thread">Thread</button>
+        <button type="button" data-tab="tokens">Tokens</button>
+      </nav>
+      <section id="panel-events" class="panel active">
+        <button id="load-events" type="button">Load events</button>
+      </section>
+      <section id="panel-search" class="panel">
+        <label>Query <input id="search-q" placeholder="keywords" /></label>
+        <label>Mode
+          <select id="search-mode">
+            <option value="lexical">lexical</option>
+            <option value="semantic">semantic</option>
+          </select>
+        </label>
+        <button id="run-search" type="button">Search</button>
+      </section>
+      <section id="panel-thread" class="panel">
+        <label>Channel ID <input id="channel-id" /></label>
+        <label>Thread ID <input id="thread-id" /></label>
+        <label>Actor <input id="actor-id" /></label>
+        <label>FSM
+          <select id="fsm-action">
+            <option value="start_review">start_review</option>
+            <option value="close">close</option>
+            <option value="archive">archive</option>
+          </select>
+        </label>
+        <div class="row">
+          <button id="load-thread" type="button">Load thread</button>
+          <button id="transition-thread" type="button">Transition</button>
+          <button id="load-messages" type="button">Messages</button>
+        </div>
+      </section>
+      <section id="panel-tokens" class="panel">
+        <label>Member <input id="token-member" /></label>
+        <label>Label <input id="token-label" /></label>
+        <button id="mint-member-token" type="button">Mint token</button>
+      </section>
+      <p id="status"></p>
+      <pre id="out"></pre>
+    </details>
 
-    <p id="status"></p>
-    <pre id="out"></pre>
     <script>
       const tokenKey = "maidan_token";
       const wsKey = "maidan_workspace";
@@ -101,20 +226,31 @@
       document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
+      let sessionMemberId = null;
+      let wsSocket = null;
+      let wsAfterId = 0;
+      let selectedChannelId = null;
+
       function base() {
         return baseInput.value.replace(/\/$/, "");
+      }
+      function wsUrl() {
+        return base().replace(/^http/, "ws").replace(/^https/, "wss") + "/ws/subscribe";
       }
       function wid() {
         return document.getElementById("workspace").value.trim();
       }
+      function token() {
+        return document.getElementById("token").value.trim();
+      }
       function persist() {
-        localStorage.setItem(tokenKey, document.getElementById("token").value.trim());
+        localStorage.setItem(tokenKey, token());
         localStorage.setItem(wsKey, wid());
       }
       function headers(json) {
         const h = { Accept: "application/json" };
         if (json) h["Content-Type"] = "application/json";
-        const t = document.getElementById("token").value.trim();
+        const t = token();
         if (t) h["Authorization"] = "Bearer " + t;
         return h;
       }
@@ -125,6 +261,16 @@
       function setOut(obj) {
         document.getElementById("out").textContent =
           typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      }
+      function appendLive(line) {
+        const el = document.getElementById("live-feed");
+        el.textContent += line + "\n";
+        el.scrollTop = el.scrollHeight;
+      }
+      function setWsStatus(text, cls) {
+        const el = document.getElementById("ws-status");
+        el.textContent = text;
+        el.className = cls || "";
       }
 
       document.querySelectorAll(".tabs button").forEach((btn) => {
@@ -143,15 +289,16 @@
         try {
           const res = await fetch(`${base()}/auth/session`, { credentials: "include" });
           if (!res.ok) {
-            el.textContent = "Not signed in. Use OIDC or paste a bearer token.";
-            el.className = "muted";
+            el.textContent = "Not signed in — use OIDC or paste a bearer token for WS live tail.";
+            sessionMemberId = null;
             document.getElementById("login").hidden = false;
             document.getElementById("logout").hidden = true;
             document.getElementById("mint").hidden = true;
             return null;
           }
           const body = await res.json();
-          el.textContent = `Signed in as ${body.member_id} (workspace ${body.workspace_id}).`;
+          sessionMemberId = body.member_id;
+          el.textContent = `Signed in · ${body.member_id}`;
           el.className = "ok";
           if (!wid()) document.getElementById("workspace").value = body.workspace_id;
           if (!document.getElementById("actor-id").value) {
@@ -167,8 +314,138 @@
         } catch (e) {
           el.textContent = String(e);
           el.className = "err";
+          sessionMemberId = null;
           return null;
         }
+      }
+
+      async function loadChannels() {
+        const list = document.getElementById("channel-list");
+        list.innerHTML = "";
+        if (!wid()) {
+          list.innerHTML = "<li class='muted'>Set workspace ID</li>";
+          return;
+        }
+        persist();
+        const t = token();
+        const url = t
+          ? `${base()}/workspaces/${wid()}/channels`
+          : `${base()}/ui/api/workspaces/${wid()}/channels`;
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          const body = await res.text();
+          if (!res.ok) {
+            list.innerHTML = `<li class='err'>HTTP ${res.status}</li>`;
+            return;
+          }
+          const channels = JSON.parse(body);
+          if (!channels.length) {
+            list.innerHTML = "<li class='muted'>No channels</li>";
+            return;
+          }
+          channels.forEach((ch) => {
+            const li = document.createElement("li");
+            li.dataset.id = ch.id;
+            li.innerHTML =
+              (ch.private ? "🔒 " : "# ") +
+              escapeHtml(ch.name) +
+              (ch.topic ? `<span class='private'> · ${escapeHtml(ch.topic)}</span>` : "");
+            if (ch.id === selectedChannelId) li.classList.add("selected");
+            li.onclick = () => {
+              selectedChannelId = ch.id;
+              document.getElementById("channel-id").value = ch.id;
+              document.querySelectorAll("#channel-list li").forEach((n) => {
+                n.classList.toggle("selected", n.dataset.id === ch.id);
+              });
+            };
+            list.appendChild(li);
+          });
+        } catch (e) {
+          list.innerHTML = `<li class='err'>${escapeHtml(String(e))}</li>`;
+        }
+      }
+
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function disconnectWs() {
+        if (wsSocket) {
+          wsSocket.close();
+          wsSocket = null;
+        }
+        document.getElementById("ws-connect").hidden = false;
+        document.getElementById("ws-disconnect").hidden = true;
+        setWsStatus("disconnected");
+      }
+
+      function connectWs() {
+        disconnectWs();
+        if (!wid()) return alert("Workspace ID required");
+        const t = token();
+        if (!t) return alert("Bearer token required for WebSocket subscribe");
+        persist();
+        const frame = {
+          token: t,
+          filter: { workspace_id: wid() },
+          after_id: wsAfterId,
+        };
+        if (sessionMemberId) frame.member_id = sessionMemberId;
+
+        setWsStatus("connecting…");
+        wsSocket = new WebSocket(wsUrl());
+        wsSocket.onopen = () => {
+          wsSocket.send(JSON.stringify(frame));
+        };
+        wsSocket.onmessage = (ev) => {
+          let v;
+          try {
+            v = JSON.parse(ev.data);
+          } catch {
+            appendLive(ev.data);
+            return;
+          }
+          const t = v.type;
+          if (t === "subscribe_ack") {
+            setWsStatus("connected", "connected");
+            document.getElementById("ws-connect").hidden = true;
+            document.getElementById("ws-disconnect").hidden = false;
+            if (typeof v.after_id === "number") wsAfterId = v.after_id;
+            appendLive(`[ack] after_id=${v.after_id}`);
+            return;
+          }
+          if (t === "presence_snapshot" || t === "presence" || t === "typing") {
+            appendLive(JSON.stringify(v));
+            return;
+          }
+          if (t === "replay_hint" || t === "replay_truncated") {
+            appendLive(JSON.stringify(v));
+            return;
+          }
+          if (typeof v.log_id === "number") {
+            wsAfterId = Math.max(wsAfterId, v.log_id);
+            const kind = v.kind || "?";
+            appendLive(`[${v.log_id}] ${kind}`);
+            return;
+          }
+          if (v.kind) {
+            appendLive(JSON.stringify(v));
+            return;
+          }
+          appendLive(JSON.stringify(v));
+        };
+        wsSocket.onerror = () => setWsStatus("error", "error");
+        wsSocket.onclose = () => {
+          if (document.getElementById("ws-disconnect").hidden === false) {
+            setWsStatus("closed");
+          }
+          document.getElementById("ws-connect").hidden = false;
+          document.getElementById("ws-disconnect").hidden = true;
+        };
       }
 
       document.getElementById("login").onclick = () => {
@@ -185,33 +462,38 @@
         form.submit();
       };
       document.getElementById("mint").onclick = async () => {
-        setStatus("Minting session admin token…");
         const res = await fetch(`${base()}/auth/session/mint`, {
           method: "POST",
           credentials: "include",
         });
         const body = await res.text();
-        if (!res.ok) {
-          setStatus(`Mint failed (${res.status})`, "err");
-          return setOut(body);
-        }
+        if (!res.ok) return setOut(body);
         const parsed = JSON.parse(body);
         document.getElementById("token").value = parsed.secret;
         persist();
         document.getElementById("mint-banner").style.display = "block";
         document.getElementById("mint-secret").textContent = parsed.secret;
-        setStatus("Admin token minted — store it now.", "ok");
-        setOut(parsed);
+        setStatus("Admin token minted", "ok");
       };
       document.getElementById("copy-secret").onclick = () => {
         const s = document.getElementById("mint-secret").textContent;
         if (s) navigator.clipboard.writeText(s);
       };
+      document.getElementById("refresh-channels").onclick = loadChannels;
+      document.getElementById("ws-connect").onclick = connectWs;
+      document.getElementById("ws-disconnect").onclick = disconnectWs;
+      document.getElementById("ws-clear").onclick = () => {
+        document.getElementById("live-feed").textContent = "";
+      };
+      document.getElementById("workspace").addEventListener("change", () => {
+        persist();
+        loadChannels();
+        disconnectWs();
+      });
 
       document.getElementById("load-events").onclick = async () => {
         persist();
-        setStatus("Loading events…");
-        const t = document.getElementById("token").value.trim();
+        const t = token();
         const url = t
           ? `${base()}/workspaces/${wid()}/events?after_id=0&limit=50`
           : `${base()}/ui/api/workspaces/${wid()}/events?after_id=0&limit=50`;
@@ -224,12 +506,10 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
-
       document.getElementById("run-search").onclick = async () => {
         persist();
         const q = document.getElementById("search-q").value.trim();
         const mode = document.getElementById("search-mode").value;
-        setStatus("Searching…");
         const res = await fetch(
           `${base()}/workspaces/${wid()}/search?q=${encodeURIComponent(q)}&mode=${mode}&limit=20`,
           { headers: headers() }
@@ -242,11 +522,9 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
-
       document.getElementById("load-thread").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();
-        setStatus("Loading thread…");
         const res = await fetch(`${base()}/threads/${id}`, { headers: headers() });
         const body = await res.text();
         if (!res.ok) {
@@ -256,13 +534,11 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
-
       document.getElementById("transition-thread").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();
         const actor = document.getElementById("actor-id").value.trim();
         const action = document.getElementById("fsm-action").value;
-        setStatus("Transitioning…");
         const res = await fetch(`${base()}/threads/${id}`, {
           method: "POST",
           headers: headers(true),
@@ -276,11 +552,9 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
-
       document.getElementById("load-messages").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();
-        setStatus("Loading messages…");
         const res = await fetch(`${base()}/threads/${id}/messages?limit=50`, {
           headers: headers(),
         });
@@ -292,12 +566,10 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
-
       document.getElementById("mint-member-token").onclick = async () => {
         persist();
         const mid = document.getElementById("token-member").value.trim();
         const label = document.getElementById("token-label").value.trim();
-        setStatus("Minting API token…");
         const res = await fetch(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
           method: "POST",
           headers: headers(true),
@@ -311,11 +583,11 @@
         const parsed = JSON.parse(body);
         document.getElementById("token").value = parsed.secret;
         persist();
-        setStatus("Token minted — secret shown once.", "ok");
+        setStatus("Token minted", "ok");
         setOut(parsed);
       };
 
-      refreshSession();
+      refreshSession().then(() => loadChannels());
     </script>
   </body>
 </html>

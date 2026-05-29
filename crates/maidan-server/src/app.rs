@@ -164,6 +164,10 @@ pub fn router(state: AppState) -> Router {
 
     let ui_api = Router::new()
         .route("/ui/api/workspaces/:wid/events", get(routes::list_events))
+        .route(
+            "/ui/api/workspaces/:wid/channels",
+            get(routes::list_channels),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
