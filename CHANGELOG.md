@@ -9,6 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [44.0.0] — 2026-05-29
+
+### Added
+
+- UI v3 collaboration at `/ui`: thread list, post/edit messages, artifact upload, faceted search.
+- Session/bearer read proxies: `GET /ui/api/channels/:cid/threads`,
+  `GET /ui/api/threads/:tid/messages`, `GET /ui/api/workspaces/:wid/search`.
+
 ## [43.0.0] — 2026-05-29
 
 ### Added

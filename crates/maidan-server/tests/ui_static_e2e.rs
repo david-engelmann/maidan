@@ -61,7 +61,7 @@ async fn ui_index_returns_html_shell() {
     let body = resp.text().await.expect("body");
     assert!(body.contains("<!DOCTYPE html>") || body.contains("<html"));
     assert!(body.contains("Maidan") || body.contains("maidan"));
-    assert!(body.contains(r#"data-ui-version="2""#));
+    assert!(body.contains(r#"data-ui-version="3""#));
     assert!(body.contains(r#"id="channel-list""#));
     assert!(body.contains(r#"id="live-feed""#));
 
