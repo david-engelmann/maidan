@@ -278,6 +278,52 @@ pub struct MintSlashCommandResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateFsmHook {
+    pub label: Option<String>,
+    pub from_state: Option<String>,
+    pub to_state: Option<String>,
+    pub handler_kind: String,
+    pub handler_target: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FsmHookResponse {
+    pub id: maidan_types::FsmHookId,
+    pub workspace_id: maidan_types::WorkspaceId,
+    pub label: Option<String>,
+    pub from_state: Option<String>,
+    pub to_state: Option<String>,
+    pub handler_kind: maidan_types::SlashHandlerKind,
+    pub handler_target: String,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<maidan_types::FsmHook> for FsmHookResponse {
+    fn from(h: maidan_types::FsmHook) -> Self {
+        Self {
+            id: h.id,
+            workspace_id: h.workspace_id,
+            label: h.label,
+            from_state: h.from_state.map(|s| s.as_str().to_string()),
+            to_state: h.to_state.map(|s| s.as_str().to_string()),
+            handler_kind: h.handler_kind,
+            handler_target: h.handler_target,
+            enabled: h.enabled,
+            created_at: h.created_at,
+            revoked_at: h.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintFsmHookResponse {
+    pub hook: FsmHookResponse,
+    pub secret: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWebhook {
     pub url: String,
     pub label: Option<String>,

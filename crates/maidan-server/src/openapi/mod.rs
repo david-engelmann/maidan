@@ -72,6 +72,9 @@ impl Modify for SecurityAddon {
         paths::list_slash_commands,
         paths::create_slash_command,
         paths::revoke_slash_command,
+        paths::list_fsm_hooks,
+        paths::create_fsm_hook,
+        paths::revoke_fsm_hook,
         paths::get_member,
         paths::list_mentions_for_member,
         paths::get_member_inbox,
@@ -182,6 +185,9 @@ impl Modify for SecurityAddon {
         CreateSlashCommand,
         SlashCommandResponse,
         MintSlashCommandResponse,
+        CreateFsmHook,
+        FsmHookResponse,
+        MintFsmHookResponse,
         WellKnownMaidan,
         WellKnownA2a,
         IngestSummary,
@@ -203,6 +209,7 @@ impl Modify for SecurityAddon {
         (name = "search", description = "Lexical and semantic search"),
         (name = "tokens", description = "API token mint and revoke"),
         (name = "federation", description = "A2A federation and peers"),
+        (name = "fsm", description = "FSM automation hooks on thread state transitions"),
         (name = "auth", description = "OIDC login and browser session (requires MAIDAN_OIDC_ENABLED)"),
     )
 )]

@@ -6,8 +6,8 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, auth, bootstrap, dm, federation, health, mcp, mcp_notifications, mcp_stream,
-    mcp_streamable, metrics, oidc, openapi, rate_limit, request_id, routes, session,
+    a2a_agent, auth, bootstrap, dm, federation, fsm_hooks, health, mcp, mcp_notifications,
+    mcp_stream, mcp_streamable, metrics, oidc, openapi, rate_limit, request_id, routes, session,
     slash_commands, state::AppState, webhooks, ws,
 };
 
@@ -147,6 +147,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/slash-commands/:cid",
             delete(slash_commands::revoke_slash_command),
+        )
+        .route(
+            "/workspaces/:wid/fsm-hooks",
+            post(fsm_hooks::create_fsm_hook).get(fsm_hooks::list_fsm_hooks),
+        )
+        .route(
+            "/workspaces/:wid/fsm-hooks/:hid",
+            delete(fsm_hooks::revoke_fsm_hook),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

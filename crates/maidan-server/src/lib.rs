@@ -16,6 +16,8 @@ pub mod error;
 pub mod event_stream;
 pub mod federation;
 pub mod federation_worker;
+pub mod fsm_hook_worker;
+pub mod fsm_hooks;
 pub mod health;
 pub mod mcp;
 pub mod mcp_notifications;
@@ -41,7 +43,7 @@ pub mod ws;
 
 pub use app::router;
 pub use config::Config;
-pub use state::{AppState, FederationRuntime, SlashRuntime, WebhookRuntime};
+pub use state::{AppState, FederationRuntime, FsmHookRuntime, SlashRuntime, WebhookRuntime};
 
 /// Build the maidan-server git/build version string. Falls back to the
 /// crate version if no `MAIDAN_VERSION` is baked in at compile time.

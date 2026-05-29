@@ -6,6 +6,7 @@ mod channels;
 pub mod delivery_cursor;
 mod dm;
 pub mod events;
+mod fsm_hooks;
 mod inbox;
 mod members;
 mod mentions;
@@ -544,5 +545,30 @@ impl Store for PostgresStore {
         name: &str,
     ) -> Result<SlashCommandWithSecret, StoreError> {
         slash_commands::get_by_name(&self.pool, workspace_id, name).await
+    }
+
+    async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError> {
+        fsm_hooks::create(&self.pool, new).await
+    }
+
+    async fn list_fsm_hooks(&self, workspace_id: WorkspaceId) -> Result<Vec<FsmHook>, StoreError> {
+        fsm_hooks::list(&self.pool, workspace_id).await
+    }
+
+    async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError> {
+        fsm_hooks::revoke(&self.pool, id).await
+    }
+
+    async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError> {
+        fsm_hooks::get(&self.pool, id).await
+    }
+
+    async fn list_matching_fsm_hooks(
+        &self,
+        workspace_id: WorkspaceId,
+        from_state: ThreadState,
+        to_state: ThreadState,
+    ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
+        fsm_hooks::list_matching(&self.pool, workspace_id, from_state, to_state).await
     }
 }

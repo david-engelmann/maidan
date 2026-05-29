@@ -43,6 +43,16 @@ impl ThreadState {
             Self::Archived => "archived",
         }
     }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "open" => Some(Self::Open),
+            "in_review" => Some(Self::InReview),
+            "closed" => Some(Self::Closed),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -624,5 +634,37 @@ pub struct NewSlashCommand {
 #[derive(Debug, Clone)]
 pub struct SlashCommandWithSecret {
     pub command: SlashCommand,
+    pub secret_ciphertext: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FsmHook {
+    pub id: FsmHookId,
+    pub workspace_id: WorkspaceId,
+    pub label: Option<String>,
+    pub from_state: Option<ThreadState>,
+    pub to_state: Option<ThreadState>,
+    pub handler_kind: SlashHandlerKind,
+    pub handler_target: String,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewFsmHook {
+    pub workspace_id: WorkspaceId,
+    pub label: Option<String>,
+    pub from_state: Option<ThreadState>,
+    pub to_state: Option<ThreadState>,
+    pub handler_kind: SlashHandlerKind,
+    pub handler_target: String,
+    pub secret_ciphertext: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct FsmHookWithSecret {
+    pub hook: FsmHook,
     pub secret_ciphertext: String,
 }

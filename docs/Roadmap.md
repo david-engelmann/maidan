@@ -41,7 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 52.0** — FSM automation hooks ([[Clusters/Product Ladder 35+]] Phase V).
+**Active:** **Cluster 53.0** — Workspace full erasure ([[Clusters/Product Ladder 35+]] Phase VI).
+
+**Recently closed:** **Cluster 52.0** — FSM automation hooks at **`v52.0.0`** ([[Retros/Cluster 52.0]]).
+
+**Recently closed:** **Cluster 51.0** — Slash commands at **`v51.0.0`** ([[Retros/Cluster 51.0]]).
 
 **Recently closed:** **Cluster 49.0** — Agent context export at **`v49.0.0`** ([[Retros/Cluster 49.0]]).
 
