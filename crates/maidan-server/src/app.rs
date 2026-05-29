@@ -174,6 +174,11 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/search",
             get(routes::search_messages),
         )
+        .route(
+            "/ui/api/workspaces/:wid/audit",
+            get(routes::list_workspace_audit),
+        )
+        .route("/ui/api/workspaces/:wid/peers", get(federation::list_peers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,

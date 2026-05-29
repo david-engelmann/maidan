@@ -57,7 +57,7 @@ async fn ui_v2_shell_lists_channels_via_session_api() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-ui-version="3""#));
+    assert!(html.contains(r#"data-ui-version="4""#));
     assert!(html.contains(r#"id="shell""#));
     assert!(html.contains(r#"id="channel-list""#));
     assert!(html.contains(r#"id="live-feed""#));

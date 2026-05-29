@@ -159,9 +159,13 @@
       .inline-form input { flex: 1; min-width: 6rem; }
       #search-results { margin-top: 0.5rem; font-size: 0.85rem; }
       #search-results .hit { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+      #audit-list, #peer-list { font-size: 0.85rem; max-height: 10rem; overflow: auto; margin: 0.5rem 0; }
+      #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+      .admin-danger { border-color: #fca5a5; background: #fef2f2; }
+      .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
     </style>
   </head>
-  <body data-ui-version="3">
+  <body data-ui-version="4">
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -242,12 +246,40 @@
     <details id="tools" open>
       <summary>More tools</summary>
       <nav class="tabs" role="tablist">
-        <button type="button" data-tab="search" aria-selected="true">Search</button>
+        <button type="button" data-tab="admin" aria-selected="true">Admin</button>
+        <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="tokens">Tokens</button>
       </nav>
-      <section id="panel-search" class="panel active">
+      <section id="panel-admin" class="panel active">
+        <details open>
+          <summary>Audit log</summary>
+          <label>Limit <input id="audit-limit" type="number" value="50" min="1" max="500" /></label>
+          <button id="load-audit" type="button">Load audit</button>
+          <div id="audit-list"></div>
+        </details>
+        <details class="admin-danger" style="margin-top: 0.75rem">
+          <summary>Purge workspace messages</summary>
+          <p class="muted">Tombstones/purges messages and revokes API tokens. Type the workspace ID to confirm.</p>
+          <label>Confirm workspace ID
+            <input id="purge-confirm" placeholder="must match workspace field" />
+          </label>
+          <label><input id="purge-understand" type="checkbox" /> I understand this is destructive</label>
+          <button id="purge-workspace" type="button">Purge workspace</button>
+        </details>
+        <details style="margin-top: 0.75rem">
+          <summary>Federation peers</summary>
+          <button id="refresh-peers" type="button">Refresh peers</button>
+          <div id="peer-list"></div>
+          <label>Name <input id="peer-name" placeholder="upstream" /></label>
+          <label>Base URL <input id="peer-base-url" placeholder="https://peer.example" /></label>
+          <button id="create-peer" type="button">Create peer</button>
+          <label>Peer ID to delete <input id="peer-delete-id" /></label>
+          <button id="delete-peer" type="button">Delete peer</button>
+        </details>
+      </section>
+      <section id="panel-search" class="panel">
         <label>Query <input id="search-q" placeholder="keywords" /></label>
         <label>Mode
           <select id="search-mode">
@@ -292,7 +324,12 @@
       <section id="panel-tokens" class="panel">
         <label>Member <input id="token-member" /></label>
         <label>Label <input id="token-label" /></label>
+        <label>Capabilities (comma-separated)
+          <input id="token-caps" value="workspace:read,workspace:write,message:post" />
+        </label>
         <button id="mint-member-token" type="button">Mint token</button>
+        <label>Token ID to revoke <input id="token-revoke-id" /></label>
+        <button id="revoke-token" type="button">Revoke token</button>
       </section>
       <p id="status"></p>
       <pre id="out"></pre>
@@ -902,14 +939,152 @@
         setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
+      function parseCaps(raw) {
+        return raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      document.getElementById("load-audit").onclick = async () => {
+        if (!wid()) return alert("Workspace ID required");
+        persist();
+        const limit = document.getElementById("audit-limit").value || "50";
+        const url = `${uiReadPath(`/workspaces/${wid()}/audit`)}?limit=${encodeURIComponent(limit)}`;
+        const res = await fetch(url, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("audit-list");
+        if (!res.ok) {
+          box.textContent = body;
+          setStatus(`HTTP ${res.status}`, "err");
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No audit rows";
+          setStatus("OK", "ok");
+          return;
+        }
+        rows.forEach((r) => {
+          const div = document.createElement("div");
+          div.className = "row";
+          div.textContent = `${r.occurred_at} · ${r.action} · actor=${r.actor_id || "—"}`;
+          box.appendChild(div);
+        });
+        setStatus("Audit loaded", "ok");
+        setOut(rows);
+      };
+
+      document.getElementById("purge-workspace").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        const w = wid();
+        if (!w) return alert("Workspace ID required");
+        if (document.getElementById("purge-confirm").value.trim() !== w) {
+          return alert("Confirmation must match workspace ID exactly");
+        }
+        if (!document.getElementById("purge-understand").checked) {
+          return alert("Check the confirmation box");
+        }
+        if (!confirm(`Purge all messages in workspace ${w}?`)) return;
+        persist();
+        const res = await fetch(`${base()}/workspaces/${w}/purge`, {
+          method: "POST",
+          headers: headers(true),
+          body: "{}",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Workspace purged", "ok");
+        setOut(JSON.parse(body));
+        document.getElementById("load-audit").click();
+      };
+
+      async function loadPeers() {
+        const box = document.getElementById("peer-list");
+        box.innerHTML = "";
+        if (!wid()) {
+          box.textContent = "Set workspace ID";
+          return;
+        }
+        persist();
+        const res = await fetch(uiReadPath(`/workspaces/${wid()}/peers`), {
+          headers: headers(),
+          credentials: "include",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          box.textContent = body;
+          return;
+        }
+        const peers = JSON.parse(body);
+        if (!peers.length) {
+          box.textContent = "No federation peers";
+          return;
+        }
+        peers.forEach((p) => {
+          const div = document.createElement("div");
+          div.className = "row";
+          div.textContent = `${p.name} · ${p.id} · ${p.base_url} · enabled=${p.enabled}`;
+          box.appendChild(div);
+        });
+      }
+
+      document.getElementById("refresh-peers").onclick = loadPeers;
+      document.getElementById("create-peer").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        if (!wid()) return alert("Workspace ID required");
+        const name = document.getElementById("peer-name").value.trim();
+        const baseUrl = document.getElementById("peer-base-url").value.trim();
+        if (!name || !baseUrl) return alert("Name and base URL required");
+        persist();
+        const res = await fetch(`${base()}/workspaces/${wid()}/peers`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ name, base_url: baseUrl }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        setStatus("Peer created — copy secret now", "ok");
+        setOut(parsed);
+        await loadPeers();
+      };
+      document.getElementById("delete-peer").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        const pid = document.getElementById("peer-delete-id").value.trim();
+        if (!pid || !wid()) return alert("Peer ID and workspace required");
+        persist();
+        const res = await fetch(`${base()}/workspaces/${wid()}/peers/${pid}`, {
+          method: "DELETE",
+          headers: headers(),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Peer deleted", "ok");
+        setOut({ deleted: pid });
+        await loadPeers();
+      };
+
       document.getElementById("mint-member-token").onclick = async () => {
+        if (!requireTokenForWrite()) return;
         persist();
         const mid = document.getElementById("token-member").value.trim();
         const label = document.getElementById("token-label").value.trim();
+        const caps = parseCaps(document.getElementById("token-caps").value);
         const res = await fetch(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
           method: "POST",
           headers: headers(true),
-          body: JSON.stringify({ label: label || null, capabilities: [] }),
+          body: JSON.stringify({ label: label || null, capabilities: caps }),
         });
         const body = await res.text();
         if (!res.ok) {
@@ -918,9 +1093,27 @@
         }
         const parsed = JSON.parse(body);
         document.getElementById("token").value = parsed.secret;
+        document.getElementById("token-revoke-id").value = parsed.id;
         persist();
         setStatus("Token minted", "ok");
         setOut(parsed);
+      };
+      document.getElementById("revoke-token").onclick = async () => {
+        if (!requireTokenForWrite()) return;
+        const id = document.getElementById("token-revoke-id").value.trim();
+        if (!id) return alert("Token ID required");
+        persist();
+        const res = await fetch(`${base()}/tokens/${id}`, {
+          method: "DELETE",
+          headers: headers(),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Token revoked", "ok");
+        setOut(body ? JSON.parse(body) : { revoked: id });
       };
 
       refreshSession().then(() => loadChannels());

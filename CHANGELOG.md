@@ -9,6 +9,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [45.0.0] — 2026-05-29
+
+### Added
+
+- UI v4 admin tab: workspace audit log, purge confirmation, federation peer admin.
+- Token mint with capabilities and revoke by ID in `/ui`.
+- `GET /ui/api/workspaces/:wid/audit` and `GET /ui/api/workspaces/:wid/peers`.
+
 ## [44.0.0] — 2026-05-29
 
 ### Added
