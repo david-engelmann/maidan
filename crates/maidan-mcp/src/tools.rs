@@ -41,6 +41,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "search_messages" => Ok(SEARCH_QUERY),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
+        "register_fsm_hook" => Ok(WORKSPACE_WRITE),
+        "list_fsm_hooks" => Ok(WORKSPACE_READ),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -399,6 +401,33 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["workspace_id"]
             }
         }),
+        json!({
+            "name": "register_fsm_hook",
+            "description": "Register an FSM hook invoked on matching thread state transitions.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "label": {"type": "string"},
+                    "from_state": {"type": "string", "enum": ["open", "in_review", "closed", "archived"]},
+                    "to_state": {"type": "string", "enum": ["open", "in_review", "closed", "archived"]},
+                    "handler_kind": {"type": "string", "enum": ["http", "mcp_tool"]},
+                    "handler_target": {"type": "string"}
+                },
+                "required": ["workspace_id", "handler_kind", "handler_target"]
+            }
+        }),
+        json!({
+            "name": "list_fsm_hooks",
+            "description": "List registered FSM automation hooks in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
     ]
 }
 
@@ -438,6 +467,8 @@ pub async fn dispatch(
         "search_messages" => search_messages(search, embedding_provider, args).await,
         "register_slash_command" => register_slash_command(store, auth, args).await,
         "list_slash_commands" => list_slash_commands(store, auth, args).await,
+        "register_fsm_hook" => register_fsm_hook(store, auth, args).await,
+        "list_fsm_hooks" => list_fsm_hooks(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -1118,6 +1149,125 @@ fn validate_http_target(url: &str) -> Result<(), McpError> {
         return Err(McpError::InvalidParams("invalid handler url".into()));
     }
     Ok(())
+}
+
+fn parse_opt_state_mcp(raw: Option<String>) -> Result<Option<ThreadState>, McpError> {
+    match raw {
+        None => Ok(None),
+        Some(s) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                ThreadState::parse(trimmed)
+                    .ok_or_else(|| {
+                        McpError::InvalidParams(format!("unknown thread state: {trimmed}"))
+                    })
+                    .map(Some)
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RegisterFsmHookArgs {
+    workspace_id: uuid::Uuid,
+    label: Option<String>,
+    from_state: Option<String>,
+    to_state: Option<String>,
+    handler_kind: String,
+    handler_target: String,
+}
+
+async fn register_fsm_hook(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_WRITE)
+            .map_err(McpError::from)?;
+    }
+    let a: RegisterFsmHookArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let from_state = parse_opt_state_mcp(a.from_state)?;
+    let to_state = parse_opt_state_mcp(a.to_state)?;
+    let handler_kind = SlashHandlerKind::parse(&a.handler_kind)
+        .ok_or_else(|| McpError::InvalidParams("handler_kind must be http or mcp_tool".into()))?;
+    match handler_kind {
+        SlashHandlerKind::Http => validate_http_target(&a.handler_target)?,
+        SlashHandlerKind::McpTool => {
+            required_capability(&a.handler_target)?;
+        }
+    }
+    let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
+        let key = maidan_auth::encryption_key_from_env().map_err(|_| {
+            McpError::InvalidParams(
+                "FEDERATION_ENCRYPTION_KEY must be set for http fsm hooks".into(),
+            )
+        })?;
+        let secret = TokenSecret::generate();
+        let ciphertext = encrypt_peer_secret(secret.as_str(), &key)
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        let hook = store
+            .create_fsm_hook(NewFsmHook {
+                workspace_id,
+                label: a.label,
+                from_state,
+                to_state,
+                handler_kind,
+                handler_target: a.handler_target.trim().to_string(),
+                secret_ciphertext: ciphertext,
+            })
+            .await
+            .map_err(McpError::from)?;
+        return Ok(content_json(&json!({
+            "hook": hook,
+            "secret": secret.as_str()
+        })));
+    } else {
+        String::new()
+    };
+    let hook = store
+        .create_fsm_hook(NewFsmHook {
+            workspace_id,
+            label: a.label,
+            from_state,
+            to_state,
+            handler_kind,
+            handler_target: a.handler_target.trim().to_string(),
+            secret_ciphertext,
+        })
+        .await
+        .map_err(McpError::from)?;
+    Ok(content_json(&hook))
+}
+
+#[derive(Deserialize)]
+struct ListFsmHooksArgs {
+    workspace_id: uuid::Uuid,
+}
+
+async fn list_fsm_hooks(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_READ)
+            .map_err(McpError::from)?;
+    }
+    let a: ListFsmHooksArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let hooks = store
+        .list_fsm_hooks(workspace_id)
+        .await
+        .map_err(McpError::from)?;
+    Ok(content_json(&hooks))
 }
 
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec

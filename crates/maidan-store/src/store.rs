@@ -287,4 +287,15 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         name: &str,
     ) -> Result<SlashCommandWithSecret, StoreError>;
+
+    async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError>;
+    async fn list_fsm_hooks(&self, workspace_id: WorkspaceId) -> Result<Vec<FsmHook>, StoreError>;
+    async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError>;
+    async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError>;
+    async fn list_matching_fsm_hooks(
+        &self,
+        workspace_id: WorkspaceId,
+        from_state: ThreadState,
+        to_state: ThreadState,
+    ) -> Result<Vec<FsmHookWithSecret>, StoreError>;
 }

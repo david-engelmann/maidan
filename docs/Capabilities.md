@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v52.0.0 — FSM automation hooks
+
+| Capability | Where |
+|------------|-------|
+| FSM hook CRUD | `POST/GET/DELETE /workspaces/:wid/fsm-hooks` |
+| State-filtered dispatch | `maidan-server::fsm_hooks`, `fsm_hook_worker` |
+| HTTP + MCP tool handlers | Reuses `SlashHandlerKind` + webhook signing |
+| MCP registration tools | `register_fsm_hook`, `list_fsm_hooks` |
+
 ## v51.0.0 — Slash commands
 
 | Capability | Where |

@@ -43,4 +43,5 @@ id_newtype!(PeerId);
 id_newtype!(SessionId);
 id_newtype!(WebhookSubscriptionId);
 id_newtype!(SlashCommandId);
+id_newtype!(FsmHookId);
 id_newtype!(OidcIdentityId);

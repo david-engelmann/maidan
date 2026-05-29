@@ -183,6 +183,40 @@ pub fn create_slash_command() {}
 )]
 pub fn revoke_slash_command() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/fsm-hooks",
+    tag = "fsm",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<FsmHookResponse>))
+)]
+pub fn list_fsm_hooks() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/fsm-hooks",
+    tag = "fsm",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateFsmHook,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = MintFsmHookResponse))
+)]
+pub fn create_fsm_hook() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/fsm-hooks/{hid}",
+    tag = "fsm",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("hid" = Uuid, Path, description = "FSM hook id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Revoked"))
+)]
+pub fn revoke_fsm_hook() {}
+
 // --- members ---
 
 #[utoipa::path(get, path = "/members/{id}", tag = "members",

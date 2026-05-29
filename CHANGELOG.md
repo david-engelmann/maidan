@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [52.0.0] — 2026-05-28
+
+### Added
+
+- FSM automation hooks: register handlers for `ThreadStateChanged` transitions (optional `from_state` / `to_state` filters).
+- `POST/GET/DELETE /workspaces/:wid/fsm-hooks` with `http` or `mcp_tool` handlers and HMAC signing for HTTP.
+- `FsmHookWorker` dispatches on the event bus (covers HTTP transitions and federation-ingested state changes).
+- MCP tools `register_fsm_hook` and `list_fsm_hooks`.
+- `maidan_fsm_hooks` migrations (Postgres v23, SQLite v21).
+
 ## [51.0.0] — 2026-05-29
 
 ### Added

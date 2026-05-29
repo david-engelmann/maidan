@@ -217,7 +217,8 @@ async fn main() -> anyhow::Result<()> {
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
-    state.slash = maidan_server::SlashRuntime::new(federation_encryption_key);
+    state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
+    state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
     let app = router(state.clone());
 
     if outbox_relay {
@@ -253,6 +254,9 @@ async fn main() -> anyhow::Result<()> {
         "webhook worker running"
     );
 
+    let fsm_hook_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
+    tracing::info!("fsm hook worker running");
+
     let federation_worker = if state.federation.disabled {
         None
     } else {
@@ -286,6 +290,7 @@ async fn main() -> anyhow::Result<()> {
 
     indexer.shutdown().await;
     webhook_worker.shutdown().await;
+    fsm_hook_worker.shutdown().await;
     if let Some(worker) = federation_worker {
         worker.shutdown().await;
     }
