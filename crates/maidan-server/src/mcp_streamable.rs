@@ -7,6 +7,7 @@ use std::time::Duration;
 use axum::response::sse::KeepAlive;
 use axum::{
     extract::State,
+    http::HeaderMap,
     response::{sse::Event, IntoResponse, Response, Sse},
     Extension, Json,
 };
@@ -20,6 +21,7 @@ use crate::state::AppState;
 pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
     if !auth.bypass {
@@ -31,6 +33,9 @@ pub async fn streamable(
         Ok(r) => r,
         Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
     };
+
+    let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
+    let session_id = state.mcp.touch_streamable_session(session_header).await;
 
     let mut notify_rx = state.mcp.subscribe_notifications();
     let response = state.mcp.handle(request, &auth).await;
@@ -65,13 +70,18 @@ pub async fn streamable(
     });
 
     let stream = UnboundedReceiverStream::new(rx);
-    Ok(Sse::new(stream)
+    let mut resp = Sse::new(stream)
         .keep_alive(
             KeepAlive::new()
                 .interval(Duration::from_secs(15))
                 .text("ping"),
         )
-        .into_response())
+        .into_response();
+    if let Ok(value) = axum::http::HeaderValue::from_str(&session_id) {
+        resp.headers_mut()
+            .insert(axum::http::HeaderName::from_static("mcp-session-id"), value);
+    }
+    Ok(resp)
 }
 
 fn sse_data(data: String) -> Result<Event, Infallible> {

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v34.0.0 — MCP streamable session
+
+| Capability | Surface |
+|------------|---------|
+| Streamable session correlation | `Mcp-Session-Id` on `POST /mcp/streamable` |
+
 ## v33.0.0 — MCP resource fan-out (HTTP)
 
 | Capability | Surface |

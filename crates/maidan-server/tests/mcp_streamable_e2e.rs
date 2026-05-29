@@ -149,3 +149,47 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn streamable_response_includes_mcp_session_id_header() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    });
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let session = resp
+        .headers()
+        .get("mcp-session-id")
+        .expect("mcp-session-id header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(!session.is_empty());
+
+    let resp2 = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let same = resp2
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(same, session);
+
+    server.abort();
+}

@@ -16,7 +16,7 @@ upstream specs, or Slack-grade product depth.
 
 | Area | Shipped | Gap |
 |------|---------|-----|
-| **MCP streamable HTTP (27)** | `POST /mcp/streamable` returns JSON-RPC response on SSE, then live notifications | Not the full MCP spec **session-scoped bidirectional** JSON-RPC on one HTTP connection (no `Mcp-Session-Id` mux, no client→server frames after open). `GET /mcp/notifications` remains a separate channel. |
+| **MCP streamable HTTP (27→34)** | `POST /mcp/streamable` + SSE + **`Mcp-Session-Id`** at **`v34.0.0`** | Not full spec bidirectional mux on one HTTP connection. |
 | **Web UI (23)** | Vanilla `/ui` tabs: events, search, thread FSM, token mint | No channel list, no create-channel/thread flows, no WS live tail, no artifact upload UI, no federation admin, no purge UI, no faceted search controls, no React/Vite app (deferred since Cluster H). |
 | **Helm (24→32)** | `helm/maidan` + **`helm/maidan-stack`** optional Postgres/MinIO at **`v32.0.0`** | No ingress/cert-manager bundle; no `helm install` CI (template smoke only). |
 | **Workspace purge (25→31)** | Deep purge through **`v31.0.0`**: messages, embeddings, references, tokens, events, artifact metadata + blobs | Does **not** delete members, channels, threads, workspace row, peers, or OIDC identities. |
