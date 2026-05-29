@@ -17,7 +17,9 @@ pub mod indexer;
 pub mod postgres;
 pub mod query;
 pub mod reindex;
+pub mod score;
 pub mod sqlite;
+pub mod sqlite_vec;
 pub mod traits;
 
 pub use embedding_handler::EmbeddingHandler;
@@ -33,5 +35,7 @@ pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
 pub use postgres::PostgresSearch;
 pub use query::use_websearch_to_tsquery;
 pub use reindex::{reindex_postgres, reindex_sqlite, ReindexReport};
+pub use score::{apply_semantic_scores, normalize_lexical_scores, semantic_score};
 pub use sqlite::SqliteSearch;
+pub use sqlite_vec::{ensure_auto_extension, pool_options as sqlite_pool_options, vec_available};
 pub use traits::Search;

@@ -13,6 +13,7 @@ use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
 use crate::query::use_websearch_to_tsquery;
+use crate::score::{apply_semantic_scores, normalize_lexical_scores};
 use crate::traits::Search;
 
 /// Default embedding dimension (`hash-v1`). Per-model tables may use other sizes.
@@ -94,7 +95,9 @@ impl Search for PostgresSearch {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(row_to_lexical_hit).collect())
+        let mut hits: Vec<SearchHit> = rows.iter().map(row_to_lexical_hit).collect();
+        normalize_lexical_scores(&mut hits);
+        Ok(hits)
     }
 
     async fn upsert_embedding(
@@ -182,10 +185,12 @@ impl Search for PostgresSearch {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
+        let mut hits: Vec<SearchHit> = rows
             .iter()
             .map(|row| row_to_semantic_hit(row, model))
-            .collect())
+            .collect();
+        apply_semantic_scores(&mut hits);
+        Ok(hits)
     }
 }
 
@@ -200,6 +205,7 @@ fn row_to_lexical_hit(row: &sqlx::postgres::PgRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f32, _>("rank") as f64,
+        score: 0.0,
         embedding_model: None,
     }
 }
@@ -215,6 +221,7 @@ fn row_to_semantic_hit(row: &sqlx::postgres::PgRow, model: &str) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f64, _>("rank"),
+        score: 0.0,
         embedding_model: Some(model.to_string()),
     }
 }

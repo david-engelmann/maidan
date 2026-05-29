@@ -10,6 +10,8 @@ use crate::embedding_tables;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
+use crate::score::{apply_semantic_scores, normalize_lexical_scores};
+use crate::sqlite_vec;
 use crate::traits::Search;
 
 #[derive(Debug, Clone)]
@@ -19,6 +21,7 @@ pub struct SqliteSearch {
 
 impl SqliteSearch {
     pub fn new(pool: SqlitePool) -> Self {
+        sqlite_vec::ensure_auto_extension();
         Self { pool }
     }
 }
@@ -81,7 +84,9 @@ impl Search for SqliteSearch {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(row_to_hit).collect())
+        let mut hits: Vec<SearchHit> = rows.iter().map(row_to_hit).collect();
+        normalize_lexical_scores(&mut hits);
+        Ok(hits)
     }
 
     async fn upsert_embedding(
@@ -133,6 +138,54 @@ impl Search for SqliteSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
+        if sqlite_vec::vec_available(&self.pool).await {
+            let query_bytes = embedding_bytes(embedding);
+            let rows = sqlx::query(&format!(
+                r#"
+                SELECT
+                    m.id            AS message_id,
+                    m.thread_id     AS thread_id,
+                    t.channel_id    AS channel_id,
+                    c.workspace_id  AS workspace_id,
+                    m.author_id     AS author_id,
+                    m.posted_at     AS posted_at,
+                    m.body          AS body,
+                    1.0 - vec_distance_cosine(e.embedding, ?) AS rank
+                FROM {table} e
+                JOIN maidan_messages m ON m.id = e.message_id
+                JOIN maidan_threads t ON t.id = m.thread_id
+                JOIN maidan_channels c ON c.id = t.channel_id
+                JOIN maidan_members mem ON mem.id = m.author_id
+                WHERE c.workspace_id = ?
+                  AND m.tombstoned_at IS NULL
+                  AND (? IS NULL OR m.author_id = ?)
+                  AND (? IS NULL OR t.channel_id = ?)
+                  AND (? IS NULL OR mem.kind = ?)
+                ORDER BY vec_distance_cosine(e.embedding, ?)
+                LIMIT ?
+                "#
+            ))
+            .bind(&query_bytes)
+            .bind(workspace_id.0)
+            .bind(author_id)
+            .bind(author_id)
+            .bind(channel_id)
+            .bind(channel_id)
+            .bind(author_kind.as_deref())
+            .bind(author_kind.as_deref())
+            .bind(&query_bytes)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let mut hits: Vec<SearchHit> = rows
+                .iter()
+                .map(|row| semantic_row_to_hit(row, model))
+                .collect();
+            apply_semantic_scores(&mut hits);
+            return Ok(hits);
+        }
+
         let rows = sqlx::query(&format!(
             r#"
             SELECT
@@ -182,6 +235,7 @@ impl Search for SqliteSearch {
                     body: row.get("body"),
                     snippet: String::new(),
                     rank: 1.0 - distance,
+                    score: 0.0,
                     embedding_model: Some(model.to_string()),
                 })
             })
@@ -192,6 +246,7 @@ impl Search for SqliteSearch {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         hits.truncate(limit as usize);
+        apply_semantic_scores(&mut hits);
         Ok(hits)
     }
 }
@@ -246,7 +301,24 @@ fn row_to_hit(row: &sqlx::sqlite::SqliteRow) -> SearchHit {
         body: row.get("body"),
         snippet: row.get("snippet"),
         rank: row.get::<f64, _>("rank"),
+        score: 0.0,
         embedding_model: None,
+    }
+}
+
+fn semantic_row_to_hit(row: &sqlx::sqlite::SqliteRow, model: &str) -> SearchHit {
+    SearchHit {
+        message_id: MessageId(row.get::<Uuid, _>("message_id")),
+        thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+        channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
+        workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+        author_id: MemberId(row.get::<Uuid, _>("author_id")),
+        posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
+        body: row.get("body"),
+        snippet: String::new(),
+        rank: row.get::<f64, _>("rank"),
+        score: 0.0,
+        embedding_model: Some(model.to_string()),
     }
 }
 

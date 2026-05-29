@@ -346,11 +346,10 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
 
 #[tokio::test]
 async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
-    use maidan_search::{hash_embedding, model_name, SqliteSearch};
+    use maidan_search::{hash_embedding, model_name, sqlite_pool_options, SqliteSearch};
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use sqlx::sqlite::SqlitePoolOptions;
 
-    let pool = SqlitePoolOptions::new()
+    let pool = sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

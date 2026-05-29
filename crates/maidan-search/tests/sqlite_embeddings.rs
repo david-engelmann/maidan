@@ -4,10 +4,11 @@ mod common;
 
 use std::sync::Arc;
 
-use maidan_search::{postgres::EMBEDDING_DIM, Search, SearchFilters, SqliteSearch};
+use maidan_search::{
+    postgres::EMBEDDING_DIM, sqlite_pool_options, Search, SearchFilters, SqliteSearch,
+};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::MessageId;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn one_hot(index: usize) -> Vec<f32> {
     let mut v = vec![0.0; EMBEDDING_DIM];
@@ -17,7 +18,7 @@ fn one_hot(index: usize) -> Vec<f32> {
 
 #[tokio::test]
 async fn semantic_search_orders_by_cosine_distance_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -59,5 +60,6 @@ async fn semantic_search_orders_by_cosine_distance_on_sqlite() {
         .unwrap();
     assert_eq!(hits.len(), 3);
     assert_eq!(hits[0].message_id, alive_ids[1]);
+    assert!((hits[0].score - 1.0).abs() < 1e-6);
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
 }

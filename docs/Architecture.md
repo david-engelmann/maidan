@@ -151,12 +151,15 @@ See [[Glossary]] for vocabulary.
 - **Hit metadata** — semantic hits include `embedding_model` (lexical hits omit it).
 - **Health** — `/health` includes `embedding: { model, dimension }` from the
   configured provider.
-- **Rank semantics** — `rank` is always “higher is better” but **not comparable**
-  across modes or backends:
-  - Lexical Postgres: `ts_rank_cd` (unbounded positive).
-  - Lexical SQLite: negative `bm25` (more negative = better match).
-  - Semantic Postgres: `1.0 - cosine_distance` in `[0, 1]`.
-  Do not sort or merge lexical and semantic hit lists by `rank` alone.
+- **Rank semantics** — `rank` is always “higher is better” but backend-specific
+  (lexical Postgres `ts_rank_cd`, lexical SQLite negative `bm25`, semantic
+  `1.0 - cosine_distance`). Do not sort or merge lexical and semantic hit lists
+  by `rank` alone.
+- **Score semantics (`v48.0.0`)** — `score` is normalized to `[0, 1]` within each
+  response and comparable across Postgres and SQLite for the same `mode`.
+  Semantic: `score` equals cosine similarity. Lexical: min-max normalized `rank`.
+- **SQLite semantic scale** — Postgres + HNSW for production; SQLite uses
+  `sqlite-vec` SQL distance (dev parity, no HNSW index).
 
 ## Auth at v0.5.0
 

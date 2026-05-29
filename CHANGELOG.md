@@ -7,7 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `sqlite-vec` loaded per SQLite connection; SQL-side `vec_distance_cosine` for semantic search.
+- `SearchHit.score` in `[0, 1]` — comparable across Postgres and SQLite within one search mode.
 
 ## [47.0.0] — 2026-05-29
 

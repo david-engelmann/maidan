@@ -16,6 +16,7 @@ maidan-store = { path = "../maidan-store" }
 sha2.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+libsqlite3-sys = { version = "0.30.1", optional = true, default-features = false, features = ["bundled"] }
 pgvector = { version = "0.4", features = ["sqlx"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -26,6 +27,7 @@ tokio-stream = "0.1"
 tracing.workspace = true
 uuid.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sqlite-vec = { version = "0.1.9", optional = true }
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store" }
@@ -34,3 +36,7 @@ serde_json.workspace = true
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["sqlite-vec"]
+sqlite-vec = ["dep:sqlite-vec", "dep:libsqlite3-sys"]
