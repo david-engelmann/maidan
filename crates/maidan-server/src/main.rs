@@ -163,8 +163,10 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
-    let federation =
-        maidan_server::FederationRuntime::new(federation_disabled, federation_encryption_key);
+    let federation = maidan_server::FederationRuntime::new(
+        federation_disabled,
+        federation_encryption_key.clone(),
+    );
     let oidc_runtime =
         match maidan_server::oidc::OidcSettings::from_env().map_err(anyhow::Error::from)? {
             Some(settings) => {
@@ -214,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
     state.oidc = oidc_runtime.map(Arc::new);
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
+    state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
     let app = router(state.clone());
 
     if outbox_relay {
@@ -238,6 +241,16 @@ async fn main() -> anyhow::Result<()> {
 
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);
     tracing::info!("background indexer running");
+
+    if let Err(err) = maidan_server::webhooks::hydrate_webhook_secrets(&state).await {
+        tracing::warn!(error = %err, "webhook secret hydration failed");
+    }
+    let webhook_worker = maidan_server::webhook_worker::WebhookWorker::spawn(state.clone());
+    tracing::info!(
+        max_attempts = maidan_server::webhooks::max_attempts_from_env(),
+        poll_ms = maidan_server::webhooks::poll_interval_ms_from_env(),
+        "webhook worker running"
+    );
 
     let federation_worker = if state.federation.disabled {
         None
@@ -271,6 +284,7 @@ async fn main() -> anyhow::Result<()> {
         .context("axum serve");
 
     indexer.shutdown().await;
+    webhook_worker.shutdown().await;
     if let Some(worker) = federation_worker {
         worker.shutdown().await;
     }

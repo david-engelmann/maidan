@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v50.0.0 — Outbound webhooks
+
+| Capability | Where |
+|------------|-------|
+| Webhook CRUD | `POST/GET/DELETE /workspaces/:wid/webhooks` |
+| HMAC-SHA256 delivery | `maidan-server::webhooks` |
+| Retry + quarantine queue | `maidan_webhook_deliveries`, `webhook_worker` |
+| `EventKind` subscription filters | `maidan-store::webhooks::kinds_match` |
+
 ## v49.0.0 — Agent context export
 
 | Capability | Where |

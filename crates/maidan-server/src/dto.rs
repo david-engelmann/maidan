@@ -228,6 +228,46 @@ pub struct CompleteMultipartArtifact {
     pub uploaded_by: Option<uuid::Uuid>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintWebhookResponse {
+    pub webhook: WebhookResponse,
+    pub secret: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateWebhook {
+    pub url: String,
+    pub label: Option<String>,
+    pub event_kinds: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WebhookResponse {
+    pub id: maidan_types::WebhookSubscriptionId,
+    pub workspace_id: maidan_types::WorkspaceId,
+    pub url: String,
+    pub label: Option<String>,
+    pub event_kinds: Vec<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<maidan_types::WebhookSubscription> for WebhookResponse {
+    fn from(w: maidan_types::WebhookSubscription) -> Self {
+        Self {
+            id: w.id,
+            workspace_id: w.workspace_id,
+            url: w.url,
+            label: w.label,
+            event_kinds: w.event_kinds,
+            enabled: w.enabled,
+            created_at: w.created_at,
+            revoked_at: w.revoked_at,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MintApiToken {
     pub label: Option<String>,

@@ -233,4 +233,42 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         log_id: i64,
     ) -> Result<i64, StoreError>;
+
+    async fn create_webhook_subscription(
+        &self,
+        new: NewWebhookSubscription,
+    ) -> Result<WebhookSubscription, StoreError>;
+    async fn list_webhook_subscriptions(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WebhookSubscription>, StoreError>;
+    async fn revoke_webhook_subscription(
+        &self,
+        id: WebhookSubscriptionId,
+    ) -> Result<WebhookSubscription, StoreError>;
+    async fn list_enabled_webhook_subscriptions(
+        &self,
+    ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError>;
+    async fn get_webhook_subscription(
+        &self,
+        id: WebhookSubscriptionId,
+    ) -> Result<WebhookSubscriptionWithSecret, StoreError>;
+    async fn enqueue_webhook_delivery(
+        &self,
+        subscription_id: WebhookSubscriptionId,
+        log_id: i64,
+        payload: &str,
+    ) -> Result<i64, StoreError>;
+    async fn list_pending_webhook_deliveries(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError>;
+    async fn mark_webhook_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError>;
+    async fn record_webhook_delivery_attempt(
+        &self,
+        delivery_id: i64,
+        error: &str,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<i32, StoreError>;
+    async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
 }

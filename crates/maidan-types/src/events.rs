@@ -68,6 +68,28 @@ impl EventKind {
             Self::ArtifactUpserted => "artifact_upserted",
         }
     }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "workspace_created" => Some(Self::WorkspaceCreated),
+            "member_joined" => Some(Self::MemberJoined),
+            "channel_created" => Some(Self::ChannelCreated),
+            "thread_created" => Some(Self::ThreadCreated),
+            "thread_state_changed" => Some(Self::ThreadStateChanged),
+            "message_posted" => Some(Self::MessagePosted),
+            "message_edited" => Some(Self::MessageEdited),
+            "message_tombstoned" => Some(Self::MessageTombstoned),
+            "mention_recorded" => Some(Self::MentionRecorded),
+            "vote_cast" => Some(Self::VoteCast),
+            "reaction_added" => Some(Self::ReactionAdded),
+            "reaction_removed" => Some(Self::ReactionRemoved),
+            "message_pinned" => Some(Self::MessagePinned),
+            "message_unpinned" => Some(Self::MessageUnpinned),
+            "reference_added" => Some(Self::ReferenceAdded),
+            "artifact_upserted" => Some(Self::ArtifactUpserted),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
