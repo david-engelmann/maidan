@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [43.0.0] — 2026-05-29
+
+### Added
+
+- UI v2 at `/ui`: responsive shell, workspace channel list, WebSocket live event tail.
+- `GET /ui/api/workspaces/:wid/channels` for browser session or bearer.
+
 ## [42.0.0] — 2026-05-29
 
 ### Added

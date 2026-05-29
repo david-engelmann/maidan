@@ -102,6 +102,7 @@ impl Modify for SecurityAddon {
         paths::get_auth_session,
         paths::mint_auth_session_token,
         paths::ui_list_events,
+        paths::ui_list_channels,
     ),
     components(schemas(
         LivenessOk,
