@@ -233,6 +233,34 @@ Dev parity matters more than SQL-side distance for SQLite.
 
 **To revisit:** wire `sqlite-vec` when sqlx/extension linkage is reliable.
 
+**Superseded by** “sqlite-vec via sqlx `lock_handle`” (`v48.0.0`).
+
+### sqlite-vec via sqlx `lock_handle` (`v48.0.0`)
+
+**Decision.** Load `sqlite-vec` statically on each sqlx SQLite connection via
+`after_connect` + `SqliteConnection::lock_handle`, then rank with
+`vec_distance_cosine()` in SQL. Rust brute-force cosine remains as fallback when
+the extension is unavailable.
+
+**Alternative.** Keep brute-force only; or use `vec0` virtual tables (schema churn).
+
+**Why this:** sqlx 0.8 exposes `lock_handle` for per-connection extension init;
+`sqlite-vec` 0.1.9 links reliably as `sqlite_vec0`. SQL-side distance restores
+`LIMIT` pushdown without fetching all embeddings.
+
+**Production scale:** Postgres + pgvector HNSW remains the production path;
+SQLite is dev parity.
+
+### Unified `SearchHit.score` (`v48.0.0`)
+
+**Decision.** Add `score` in `[0, 1]` alongside backend-specific `rank`.
+Semantic: `score = rank`. Lexical: min-max normalize ranks within the response.
+
+**Alternative.** Normalize ranks globally across backends (needs calibration data).
+
+**Why this:** clients can compare hit quality across Postgres and SQLite within
+one mode without parsing backend-specific `rank` ranges.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)

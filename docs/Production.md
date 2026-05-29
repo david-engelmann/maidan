@@ -217,7 +217,7 @@ Reset a stuck cursor (operator SQL): `UPDATE maidan_delivery_cursor SET last_del
 | Query param | Notes |
 |-------------|-------|
 | `q` | Required search text. |
-| `mode` | `lexical` (default) or `semantic` (Postgres only). |
+| `mode` | `lexical` (default) or `semantic` (Postgres + SQLite). |
 | `author` / `channel` / `kind` | Optional facets (both modes on Postgres). |
 | `limit` | Max hits (default 20). |
 
@@ -225,14 +225,21 @@ Reset a stuck cursor (operator SQL): `UPDATE maidan_delivery_cursor SET last_del
 rows where `maidan_message_embeddings.model` matches the active provider. Each hit
 includes `embedding_model`. `/health` reports `embedding.model` and `embedding.dimension`.
 
-**Rank field:** higher is always better within a single response, but values are **not
-comparable across `mode` or database backend**:
+**Rank field:** higher is always better within a single response. Values are
+backend-specific for lexical search.
 
-| Mode / backend | `rank` meaning |
-|----------------|----------------|
-| Lexical Postgres | `ts_rank_cd` (unbounded) |
-| Lexical SQLite | negative BM25 (more negative = better) |
-| Semantic Postgres | `1.0 - cosine_distance` in `[0, 1]` |
+**Score field (`v48.0.0`):** normalized to `[0, 1]` within each response.
+Comparable across Postgres and SQLite for the same `mode`. Semantic `score`
+is cosine similarity; lexical `score` is min-max normalized `rank`.
+
+| Mode / backend | `rank` meaning | `score` meaning |
+|----------------|----------------|-----------------|
+| Lexical Postgres | `ts_rank_cd` (unbounded) | min-max normalized rank |
+| Lexical SQLite | negative BM25 | min-max normalized rank |
+| Semantic (both) | `1.0 - cosine_distance` | same as rank (in `[0, 1]`) |
+
+**Scale:** use Postgres + pgvector HNSW for production semantic search.
+SQLite loads `sqlite-vec` for dev parity; large workspaces should use Postgres.
 
 After changing embedding providers, re-index or accept that old-model rows are ignored
 until re-upserted under the new model name.

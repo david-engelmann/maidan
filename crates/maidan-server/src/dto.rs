@@ -136,7 +136,7 @@ pub struct ListAuditQuery {
 pub enum SearchMode {
     #[default]
     Lexical,
-    /// Embed `q` with the configured provider and rank by cosine similarity (Postgres only).
+    /// Embed `q` with the configured provider and rank by cosine similarity.
     Semantic,
 }
 

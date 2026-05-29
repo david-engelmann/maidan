@@ -1,9 +1,8 @@
 //! Per-model embedding tables and mixed dimensions.
 
-use maidan_search::{embedding_tables, Search, SearchFilters, SqliteSearch};
+use maidan_search::{embedding_tables, sqlite_pool_options, Search, SearchFilters, SqliteSearch};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 
 fn vec_dim(dim: usize, peak: usize) -> Vec<f32> {
@@ -16,7 +15,7 @@ fn vec_dim(dim: usize, peak: usize) -> Vec<f32> {
 
 #[tokio::test]
 async fn sqlite_mixed_dimension_models_coexist() {
-    let pool = SqlitePoolOptions::new()
+    let pool = sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

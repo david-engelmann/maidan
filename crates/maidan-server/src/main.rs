@@ -14,7 +14,7 @@ use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, OutboxBackend, PostgresStore,
     SqliteStore, Store,
 };
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use tokio::sync::RwLock;
 
 #[tokio::main]
@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
             use_embedding_indexer = true;
         }
         Dialect::Sqlite => {
-            let pool = SqlitePoolOptions::new()
+            let pool = maidan_search::sqlite_pool_options()
                 .max_connections(8)
                 .connect(&config.database_url)
                 .await

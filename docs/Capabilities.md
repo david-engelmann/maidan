@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v48.0.0 — Search scale & parity
+
+| Capability | Where |
+|------------|-------|
+| `sqlite-vec` per-connection load + SQL cosine distance | `maidan-search::sqlite_vec`, `SqliteSearch` |
+| `SearchHit.score` normalized `[0, 1]` across backends | `maidan-search::hit`, OpenAPI `SearchHit` |
+| `maidan_search::sqlite_pool_options()` for vec-enabled pools | `maidan-search`, `maidan-server` SQLite path |
+| Scale guidance (Postgres HNSW prod, SQLite dev) | [[Production]], [[Architecture]] |
+
 ## v47.0.0 — Per-model embedding tables
 
 | Capability | Surface |
