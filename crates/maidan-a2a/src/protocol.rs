@@ -6,8 +6,10 @@ use uuid::Uuid;
 
 pub const JSONRPC_VERSION: &str = "2.0";
 pub const METHOD_SEND_MESSAGE: &str = "SendMessage";
+pub const METHOD_SEND_STREAMING_MESSAGE: &str = "SendStreamingMessage";
 pub const METHOD_GET_TASK: &str = "GetTask";
 
+pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
 pub const TASK_STATE_FAILED: &str = "TASK_STATE_FAILED";
 
@@ -121,6 +123,29 @@ pub struct Task {
 #[serde(rename_all = "camelCase")]
 pub struct SendMessageResponse {
     pub task: Task,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStatusUpdateEvent {
+    pub task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
+    pub status: TaskStatus,
+    #[serde(rename = "final", default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_final: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamResponseTask {
+    pub task: Task,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamResponseStatusUpdate {
+    pub status_update: TaskStatusUpdateEvent,
 }
 
 /// Maidan routing hints carried in A2A `metadata.maidan`.

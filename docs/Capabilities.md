@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v37.0.0 — A2A SendStreamingMessage
+
+| Capability | Surface |
+|------------|---------|
+| A2A streaming task updates | `SendStreamingMessage` on `POST /a2a/v1/rpc` (SSE) |
+
 ## v36.0.0 — `mcp-stdio` Postgres
 
 | Capability | Surface |

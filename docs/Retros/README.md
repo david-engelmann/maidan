@@ -94,4 +94,5 @@ PR review credit; external contributors.
 - [[Cluster 34.0]] — MCP streamable session. Closed at **`v34.0.0`**.
 - [[Cluster 35.0]] — MCP streamable bidirectional mux. Closed at **`v35.0.0`**.
 - [[Cluster 36.0]] — `mcp-stdio` Postgres. Closed at **`v36.0.0`**.
+- [[Cluster 37.0]] — A2A `SendStreamingMessage`. Closed at **`v37.0.0`**.
 - [[Product Ladder 30-34]] — Ladder close retro (`v30`–`v34`). See [[Clusters/Product Ladder 35+]].

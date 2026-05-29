@@ -1,16 +1,23 @@
 //! Google A2A protocol v1.0 JSON-RPC ingress (`POST /a2a/v1/rpc`).
 
+use std::convert::Infallible;
+
+use axum::response::sse::Event as SseEvent;
+use axum::response::{IntoResponse, Response, Sse};
 use axum::{extract::State, Extension, Json};
 use chrono::Utc;
+use futures::StreamExt;
 use maidan_a2a::{
     maidan_context_from_metadata, message_text, GetTaskRequest, JsonRpcId, JsonRpcRequest,
-    JsonRpcResponse, SendMessageRequest, SendMessageResponse, Task, TaskStatus, METHOD_GET_TASK,
-    METHOD_SEND_MESSAGE, TASK_STATE_COMPLETED,
+    JsonRpcResponse, SendMessageRequest, SendMessageResponse, StreamResponseStatusUpdate,
+    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, METHOD_GET_TASK,
+    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::AuthContext;
 use maidan_router::resolve_thread_context;
-use maidan_types::*;
+use maidan_types::{Event, *};
+use uuid::Uuid;
 
 use crate::routes::publish;
 use crate::state::AppState;
@@ -24,36 +31,52 @@ pub async fn json_rpc(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Json(body): Json<JsonRpcRequest>,
-) -> Json<JsonRpcResponse> {
+) -> Response {
     if body.jsonrpc != "2.0" {
         return Json(JsonRpcResponse::error(
             body.id,
             ERR_PARSE,
             "jsonrpc must be \"2.0\"",
-        ));
+        ))
+        .into_response();
     }
     let id = body.id.clone();
-    let result = match body.method.as_str() {
-        METHOD_SEND_MESSAGE => dispatch_send_message(&state, &auth, id.clone(), body.params).await,
-        METHOD_GET_TASK => dispatch_get_task(&state, &auth, id.clone(), body.params).await,
-        other => Ok(JsonRpcResponse::error(
+    match body.method.as_str() {
+        METHOD_SEND_MESSAGE => {
+            json_response(dispatch_send_message(&state, &auth, id, body.params).await)
+        }
+        METHOD_SEND_STREAMING_MESSAGE => {
+            dispatch_send_streaming_message(&state, &auth, id, body.params).await
+        }
+        METHOD_GET_TASK => json_response(dispatch_get_task(&state, &auth, id, body.params).await),
+        other => json_response(Ok(JsonRpcResponse::error(
             id,
             ERR_METHOD,
             format!("method not found: {other}"),
-        )),
-    };
-    match result {
-        Ok(resp) => Json(resp),
-        Err(resp) => Json(resp),
+        ))),
     }
 }
 
-async fn dispatch_send_message(
+fn json_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
+    match result {
+        Ok(resp) => Json(resp).into_response(),
+        Err(resp) => Json(resp).into_response(),
+    }
+}
+
+struct PostedA2a {
+    task_id: String,
+    thread_id: Uuid,
+    message: Message,
+    agent_message: maidan_a2a::A2aMessage,
+}
+
+async fn post_a2a_message(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
     params: serde_json::Value,
-) -> Result<JsonRpcResponse, JsonRpcResponse> {
+) -> Result<PostedA2a, JsonRpcResponse> {
     if let Err(e) = auth.require_capability(MESSAGE_POST) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
@@ -96,16 +119,30 @@ async fn dispatch_send_message(
         },
     )
     .await;
-    let task_id = uuid::Uuid::new_v4().to_string();
+    Ok(PostedA2a {
+        task_id: uuid::Uuid::new_v4().to_string(),
+        thread_id: ctx.thread_id,
+        message: posted,
+        agent_message: req.message,
+    })
+}
+
+async fn dispatch_send_message(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    let posted = post_a2a_message(state, auth, id.clone(), params).await?;
     let task = Task {
-        id: task_id.clone(),
-        context_id: Some(ctx.thread_id.to_string()),
+        id: posted.task_id.clone(),
+        context_id: Some(posted.thread_id.to_string()),
         status: TaskStatus {
             state: TASK_STATE_COMPLETED.to_string(),
-            message: Some(req.message),
+            message: Some(posted.agent_message),
         },
         metadata: Some(serde_json::json!({
-            "maidan": { "messageId": posted.id.0 }
+            "maidan": { "messageId": posted.message.id.0 }
         })),
     };
     state.a2a_tasks.insert(task.clone());
@@ -113,6 +150,66 @@ async fn dispatch_send_message(
     let value = serde_json::to_value(result)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
+}
+
+async fn dispatch_send_streaming_message(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Response {
+    let posted = match post_a2a_message(state, auth, id.clone(), params).await {
+        Ok(p) => p,
+        Err(resp) => return Json(resp).into_response(),
+    };
+
+    let working = Task {
+        id: posted.task_id.clone(),
+        context_id: Some(posted.thread_id.to_string()),
+        status: TaskStatus {
+            state: TASK_STATE_WORKING.to_string(),
+            message: None,
+        },
+        metadata: Some(serde_json::json!({
+            "maidan": { "messageId": posted.message.id.0 }
+        })),
+    };
+    state.a2a_tasks.insert(working.clone());
+
+    let completed = Task {
+        id: posted.task_id.clone(),
+        context_id: Some(posted.thread_id.to_string()),
+        status: TaskStatus {
+            state: TASK_STATE_COMPLETED.to_string(),
+            message: Some(posted.agent_message),
+        },
+        metadata: working.metadata.clone(),
+    };
+    state.a2a_tasks.insert(completed.clone());
+
+    let status_update = TaskStatusUpdateEvent {
+        task_id: posted.task_id,
+        context_id: Some(posted.thread_id.to_string()),
+        status: completed.status.clone(),
+        is_final: true,
+    };
+
+    let frames = [
+        JsonRpcResponse::success(
+            id.clone(),
+            serde_json::to_value(StreamResponseTask { task: working }).unwrap(),
+        ),
+        JsonRpcResponse::success(
+            id,
+            serde_json::to_value(StreamResponseStatusUpdate { status_update }).unwrap(),
+        ),
+    ];
+
+    let stream = futures::stream::iter(frames).map(|frame| {
+        let data = serde_json::to_string(&frame).unwrap_or_default();
+        Ok::<SseEvent, Infallible>(SseEvent::default().data(data))
+    });
+    Sse::new(stream).into_response()
 }
 
 async fn dispatch_get_task(

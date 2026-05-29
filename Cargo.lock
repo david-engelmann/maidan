@@ -2476,6 +2476,7 @@ name = "maidan-a2a"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "futures",
  "maidan-types",
  "proptest",
  "reqwest",

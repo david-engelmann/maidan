@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 37.0** — A2A `SendStreamingMessage` ([[Clusters/Product Ladder 35+]] Phase I).
+**Active:** **Cluster 38.0** — MCP resource fan-out complete ([[Clusters/Product Ladder 35+]] Phase I).
+
+**Recently closed:** **Cluster 37.0** — A2A `SendStreamingMessage` at **`v37.0.0`** ([[Retros/Cluster 37.0]]).
 
 **Recently closed:** **Cluster 36.0** — `mcp-stdio` Postgres at **`v36.0.0`** ([[Retros/Cluster 36.0]]).
 
