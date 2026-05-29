@@ -171,25 +171,48 @@ async fn upsert_replaces_existing_embedding() {
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
     assert_eq!(hits[0].embedding_model.as_deref(), Some("v1"));
 
-    // Replace at axis 1; stale model rows no longer match.
+    // A second model on the same message lands in its own table (Cluster 47).
     search
         .upsert_embedding(msg.id, "v2", &one_hot(1))
         .await
         .unwrap();
-    let stale = search
+    let v1_hits = search
         .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
         .await
         .unwrap();
-    assert!(stale.is_empty(), "v1 filter should not see v2 row");
+    assert_eq!(v1_hits.len(), 1, "v1 table still holds the v1 embedding");
 
+    let v2_hits = search
+        .semantic_search(ws.id, &one_hot(1), 1, &SearchFilters::default(), "v2")
+        .await
+        .unwrap();
+    assert_eq!(v2_hits.len(), 1);
+    assert!(
+        (v2_hits[0].rank - 1.0).abs() < 1e-6,
+        "expected near-perfect rank for v2 query on v2 embedding"
+    );
+
+    // Re-upsert within the same model replaces that table's row.
+    search
+        .upsert_embedding(msg.id, "v1", &one_hot(2))
+        .await
+        .unwrap();
+    let replaced = search
+        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
+        .await
+        .unwrap();
+    assert!(
+        replaced.is_empty() || replaced[0].rank < 0.5,
+        "v1 embedding should no longer align with axis 0"
+    );
     let hits = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v2")
+        .semantic_search(ws.id, &one_hot(2), 1, &SearchFilters::default(), "v1")
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
     assert!(
-        hits[0].rank.abs() < 1e-6,
-        "expected near-zero rank for v2 query on v2 embedding"
+        (hits[0].rank - 1.0).abs() < 1e-6,
+        "expected near-perfect rank after in-model replace"
     );
 }
 

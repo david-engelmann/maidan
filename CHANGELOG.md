@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [47.0.0] — 2026-05-29
+
+### Added
+
+- Per-model embedding tables (`maidan_embedding_models`, `maidan_emb_*`) for mixed dimensions.
+- `maidan reindex-embeddings` CLI to rebuild vectors after provider change.
+
 ## [46.0.0] — 2026-05-29
 
 ### Added

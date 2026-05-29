@@ -2,6 +2,7 @@ use chrono::Utc;
 use maidan_types::{WorkspaceId, WorkspacePurgeResult};
 use sqlx::SqlitePool;
 
+use crate::embeddings_purge;
 use crate::error::StoreError;
 
 pub async fn purge(
@@ -10,18 +11,8 @@ pub async fn purge(
 ) -> Result<WorkspacePurgeResult, StoreError> {
     let now = Utc::now();
 
-    let embeddings_removed: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM maidan_message_embeddings e
-         WHERE e.message_id IN (
-           SELECT m.id FROM maidan_messages m
-           INNER JOIN maidan_threads t ON m.thread_id = t.id
-           INNER JOIN maidan_channels c ON t.channel_id = c.id
-           WHERE c.workspace_id = ?
-         )",
-    )
-    .bind(workspace_id.0)
-    .fetch_one(pool)
-    .await?;
+    let embeddings_removed =
+        embeddings_purge::purge_workspace_embeddings_sqlite(pool, workspace_id).await?;
 
     let references_removed = sqlx::query(
         "DELETE FROM maidan_references

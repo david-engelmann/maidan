@@ -35,6 +35,16 @@ enum Commands {
         )]
         artifact_root: PathBuf,
     },
+    /// Re-embed all live messages for the configured provider model.
+    #[command(name = "reindex-embeddings")]
+    ReindexEmbeddings {
+        #[arg(long, env = "DATABASE_URL", default_value = "sqlite::memory:")]
+        database_url: String,
+        #[arg(long, env = "MAIDAN_EMBEDDING_PROVIDER", default_value = "hash-v1")]
+        embedding_provider: String,
+        #[arg(long)]
+        workspace_id: Option<uuid::Uuid>,
+    },
 }
 
 #[tokio::main]
@@ -50,6 +60,11 @@ async fn main() -> anyhow::Result<()> {
             database_url,
             artifact_root,
         } => run_mcp_stdio(&database_url, &artifact_root).await,
+        Commands::ReindexEmbeddings {
+            database_url,
+            embedding_provider,
+            workspace_id,
+        } => run_reindex_embeddings(&database_url, &embedding_provider, workspace_id).await,
     }
 }
 
@@ -111,5 +126,64 @@ async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Resu
     .await
     .context("stdio task join")?
     .context("mcp stdio")?;
+    Ok(())
+}
+
+async fn run_reindex_embeddings(
+    database_url: &str,
+    provider_name: &str,
+    workspace_id: Option<uuid::Uuid>,
+) -> anyhow::Result<()> {
+    let provider =
+        maidan_search::provider_from_name(provider_name).context("embedding provider")?;
+    let workspace = workspace_id.map(maidan_types::WorkspaceId);
+    let dialect = Dialect::from_url(database_url).context("detect dialect")?;
+    match dialect {
+        Dialect::Sqlite => {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(4)
+                .connect(database_url)
+                .await
+                .context("connect sqlite")?;
+            maidan_store::configure_sqlite_pool(&pool)
+                .await
+                .context("configure sqlite pragmas")?;
+            run_sqlite_migrations(&pool)
+                .await
+                .context("migrate sqlite")?;
+            let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool.clone()));
+            let report =
+                maidan_search::reindex_sqlite(&pool, search.as_ref(), provider.as_ref(), workspace)
+                    .await
+                    .context("reindex")?;
+            println!(
+                "reindex complete: processed={} failed={}",
+                report.processed, report.failed
+            );
+        }
+        Dialect::Postgres => {
+            let pool = PgPoolOptions::new()
+                .max_connections(4)
+                .connect(database_url)
+                .await
+                .context("connect postgres")?;
+            run_postgres_migrations(&pool)
+                .await
+                .context("migrate postgres")?;
+            let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool.clone()));
+            let report = maidan_search::reindex_postgres(
+                &pool,
+                search.as_ref(),
+                provider.as_ref(),
+                workspace,
+            )
+            .await
+            .context("reindex")?;
+            println!(
+                "reindex complete: processed={} failed={}",
+                report.processed, report.failed
+            );
+        }
+    }
     Ok(())
 }

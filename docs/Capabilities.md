@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v47.0.0 — Per-model embedding tables
+
+| Capability | Surface |
+|------------|---------|
+| Embedding model registry | `maidan_embedding_models` + `maidan_emb_*` tables |
+| Reindex CLI | `maidan reindex-embeddings` |
+
 ## v46.0.0 — Edit history & message UX
 
 | Capability | Surface |
