@@ -32,7 +32,9 @@ pub fn ensure_auto_extension() {
                 *mut *mut c_char,
                 *const libsqlite3_sys::sqlite3_api_routines,
             ) -> i32,
-        >(sqlite_vec::sqlite3_vec_init as *const ())));
+        >(
+            sqlite_vec::sqlite3_vec_init as *const ()
+        )));
     });
     #[cfg(not(feature = "sqlite-vec"))]
     let _ = &AUTO_EXT;
