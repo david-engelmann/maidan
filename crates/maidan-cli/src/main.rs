@@ -8,9 +8,11 @@ use clap::{Parser, Subcommand};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{resolve_bearer, AuthContext};
 use maidan_mcp::{run_stdio, McpServer};
-use maidan_search::SqliteSearch;
-use maidan_store::{run_sqlite_migrations, Dialect, SqliteStore, Store};
-use sqlx::sqlite::SqlitePoolOptions;
+use maidan_search::{PostgresSearch, Search, SqliteSearch};
+use maidan_store::{
+    run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
+};
+use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 
 #[derive(Parser)]
 #[command(name = "maidan", version, about = "Maidan operator CLI")]
@@ -53,24 +55,38 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Result<()> {
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
-    if dialect != Dialect::Sqlite {
-        anyhow::bail!("mcp-stdio supports sqlite DATABASE_URL only in v0.7.0");
-    }
+    let (store, search) = match dialect {
+        Dialect::Sqlite => {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(4)
+                .connect(database_url)
+                .await
+                .context("connect sqlite")?;
+            maidan_store::configure_sqlite_pool(&pool)
+                .await
+                .context("configure sqlite pragmas")?;
+            run_sqlite_migrations(&pool)
+                .await
+                .context("migrate sqlite")?;
+            let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+            let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
+            (store, search)
+        }
+        Dialect::Postgres => {
+            let pool = PgPoolOptions::new()
+                .max_connections(4)
+                .connect(database_url)
+                .await
+                .context("connect postgres")?;
+            run_postgres_migrations(&pool)
+                .await
+                .context("migrate postgres")?;
+            let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+            let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
+            (store, search)
+        }
+    };
 
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect(database_url)
-        .await
-        .context("connect sqlite")?;
-    maidan_store::configure_sqlite_pool(&pool)
-        .await
-        .context("configure sqlite pragmas")?;
-    run_sqlite_migrations(&pool)
-        .await
-        .context("migrate sqlite")?;
-
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(artifact_root.to_path_buf()));
 
     let auth = if let Ok(token) = std::env::var("MAIDAN_MCP_TOKEN") {

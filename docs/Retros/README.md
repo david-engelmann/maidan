@@ -93,4 +93,5 @@ PR review credit; external contributors.
 - [[Cluster 33.0]] — MCP HTTP resource fan-out. Closed at **`v33.0.0`**.
 - [[Cluster 34.0]] — MCP streamable session. Closed at **`v34.0.0`**.
 - [[Cluster 35.0]] — MCP streamable bidirectional mux. Closed at **`v35.0.0`**.
+- [[Cluster 36.0]] — `mcp-stdio` Postgres. Closed at **`v36.0.0`**.
 - [[Product Ladder 30-34]] — Ladder close retro (`v30`–`v34`). See [[Clusters/Product Ladder 35+]].
