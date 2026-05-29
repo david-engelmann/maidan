@@ -9,6 +9,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Nothing yet.
 
+## [41.0.0] — 2026-05-29
+
+### Added
+
+- Emoji reactions: `maidan_reactions`, message reaction HTTP API, MCP tools, and bus events.
+- Thread pins: `maidan_pins`, pin/unpin/list HTTP API, MCP tools, and bus events.
+
 ## [40.0.0] — 2026-05-29
 
 ### Added

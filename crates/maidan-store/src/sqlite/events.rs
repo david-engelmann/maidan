@@ -96,6 +96,10 @@ fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
         "message_tombstoned" => Ok(EventKind::MessageTombstoned),
         "mention_recorded" => Ok(EventKind::MentionRecorded),
         "vote_cast" => Ok(EventKind::VoteCast),
+        "reaction_added" => Ok(EventKind::ReactionAdded),
+        "reaction_removed" => Ok(EventKind::ReactionRemoved),
+        "message_pinned" => Ok(EventKind::MessagePinned),
+        "message_unpinned" => Ok(EventKind::MessageUnpinned),
         "reference_added" => Ok(EventKind::ReferenceAdded),
         "artifact_upserted" => Ok(EventKind::ArtifactUpserted),
         other => Err(StoreError::InvalidInput(format!(

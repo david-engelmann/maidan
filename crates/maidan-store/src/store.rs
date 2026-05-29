@@ -122,6 +122,26 @@ pub trait Store: Send + Sync {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;
 
+    async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError>;
+    async fn remove_reaction(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: &str,
+    ) -> Result<bool, StoreError>;
+    async fn list_reactions_for_message(
+        &self,
+        message_id: MessageId,
+    ) -> Result<Vec<Reaction>, StoreError>;
+
+    async fn pin_message(&self, new: NewPin) -> Result<(), StoreError>;
+    async fn unpin_message(
+        &self,
+        thread_id: ThreadId,
+        message_id: MessageId,
+    ) -> Result<bool, StoreError>;
+    async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError>;
+
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError>;
     async fn list_references_from(
         &self,

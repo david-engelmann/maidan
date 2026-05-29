@@ -90,6 +90,18 @@ pub fn router(state: AppState) -> Router {
             "/messages/:id/votes",
             post(routes::cast_vote).get(routes::list_votes),
         )
+        .route(
+            "/messages/:id/reactions",
+            post(routes::add_reaction)
+                .get(routes::list_reactions)
+                .delete(routes::remove_reaction),
+        )
+        .route(
+            "/threads/:id/pins",
+            post(routes::pin_message)
+                .get(routes::list_pins)
+                .delete(routes::unpin_message),
+        )
         .route("/artifacts", post(routes::upload_artifact))
         .route(
             "/artifacts/multipart",

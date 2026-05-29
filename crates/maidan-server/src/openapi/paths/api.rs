@@ -241,6 +241,46 @@ pub fn cast_vote() {}
     responses((status = 200, body = Vec<Vote>)))]
 pub fn list_votes() {}
 
+#[utoipa::path(post, path = "/messages/{id}/reactions", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    request_body = CreateReaction,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn add_reaction() {}
+
+#[utoipa::path(delete, path = "/messages/{id}/reactions", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    request_body = RemoveReaction,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn remove_reaction() {}
+
+#[utoipa::path(get, path = "/messages/{id}/reactions", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Reaction>)))]
+pub fn list_reactions() {}
+
+#[utoipa::path(post, path = "/threads/{id}/pins", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = PinMessage,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn pin_message() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/pins", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = PinMessage,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn unpin_message() {}
+
+#[utoipa::path(get, path = "/threads/{id}/pins", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Pin>)))]
+pub fn list_pins() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",

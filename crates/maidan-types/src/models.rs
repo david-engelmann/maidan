@@ -308,6 +308,38 @@ pub struct NewVote {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Reaction {
+    pub message_id: MessageId,
+    pub member_id: MemberId,
+    pub emoji: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewReaction {
+    pub message_id: MessageId,
+    pub member_id: MemberId,
+    pub emoji: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Pin {
+    pub thread_id: ThreadId,
+    pub message_id: MessageId,
+    pub member_id: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewPin {
+    pub thread_id: ThreadId,
+    pub message_id: MessageId,
+    pub member_id: MemberId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Reference {
     pub id: uuid::Uuid,
     pub src_kind: RefSide,

@@ -69,6 +69,24 @@ pub struct CreateVote {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateReaction {
+    pub member_id: uuid::Uuid,
+    pub emoji: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RemoveReaction {
+    pub member_id: uuid::Uuid,
+    pub emoji: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PinMessage {
+    pub message_id: uuid::Uuid,
+    pub member_id: uuid::Uuid,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReference {
     pub src_kind: RefSide,
     pub src_id: uuid::Uuid,
