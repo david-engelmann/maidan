@@ -6,108 +6,20 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**v28.0.0** — Deep workspace purge + operator audit API. Latest release:
-[`v28.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v28.0.0).
-See [`docs/Production.md`](docs/Production.md) for deployment;
-[`docs/Retros/Cluster 28.0.md`](docs/Retros/Cluster%2028.0.md) for the closing retro;
-[`docs/Remaining Work.md`](docs/Remaining%20Work.md) for what is still open.
+**`v69.0.0`** on `main` — agent substrate Phase XI (automation delivery, MCP
+capability map). Product gate **`maidan-2.0`** shipped at **`v58.0.0`**.
+Next ladder: [**68+**](docs/Clusters/Product%20Ladder%2068+.md) → **`maidan-agent-1.0`** at Cluster **76**.
 
-## What's in `v28.0.0`
+| Doc | Use |
+|-----|-----|
+| [`docs/Agent Integration.md`](docs/Agent%20Integration.md) | How external agents connect |
+| [`docs/Architecture.md`](docs/Architecture.md) | System snapshot (**updated `v69`**) |
+| [`docs/Production.md`](docs/Production.md) | Deploy, env, probes |
+| [`CHANGELOG.md`](CHANGELOG.md) | Full release history |
 
-- Deep `POST /workspaces/:id/purge` (embeddings, references, token revoke, event log).
-- `GET /workspaces/:id/audit` for workspace-scoped audit events.
+**Recent tags:** **`v67`** workspace context · **`v68`** automation HTTP DLQ · **`v69`** capability matrix CI.
 
-## What's in `v27.0.0`
-
-- Everything in **`v22.0.0`** through ladder **23–26** (see [`CHANGELOG.md`](CHANGELOG.md)).
-- `POST /mcp/streamable` — JSON-RPC response + MCP notifications on one SSE stream.
-- Post-ladder backlog: [`docs/Remaining Work.md`](docs/Remaining%20Work.md).
-
-## What's in `v23.0.0`–`v26.0.0` (same integration as v27)
-
-- **v23** — `/ui` product tabs (events, search, thread FSM, API tokens).
-- **v24** — `helm/maidan` chart + template smoke in CI.
-- **v25** — `POST /workspaces/:id/purge` + audit.
-- **v26** — product completion checklist + gate e2e.
-
-## What's in `v1.4.0`
-
-- Bootstrap routes require `MAIDAN_BOOTSTRAP=1` when auth is enabled.
-- Bootstrap workspace creation is one-shot (first workspace only).
-- OIDC human login design spike in `docs/OIDC.md` (runtime deferred to `v2.0.0`).
-
-## What's in `v1.3.0`
-
-- Semantic query mode on HTTP/MCP search (`mode=semantic`, Postgres).
-- OpenAI-compatible embedding provider configuration.
-- `/health/ready` surfacing for embedding indexer failures.
-
-## What's in `v1.2.0`
-
-- Pluggable embedding provider (`MAIDAN_EMBEDDING_PROVIDER`, `hash-v1` default).
-- Faceted lexical search: `author`, `channel`, `kind` on `GET …/search` and MCP.
-- Postgres websearch syntax in `q` (`"phrase"`, `-word`, `or`).
-
-## What's in `v1.1.0`
-
-- Postgres bus listener health on readiness; WS/MCP `replay_hint` and `after_id` resume.
-- Federation outbound secrets encrypted at rest; `remote_workspace_id` + pull compose CI.
-
-## What's in `v1.0.0`
-
-- Semver-stable HTTP + MCP API (breaking changes only in major versions).
-- Production runbook, liveness/readiness probes, `MAIDAN_ENV=production` guard.
-
-## What's in `v0.7.0`
-
-- Everything in `v0.6.0`.
-- `maidan mcp-stdio`, `GET /mcp/stream` (SSE), browser UI at `/ui/`.
-- Graceful shutdown, request IDs, liveness/readiness health probes.
-
-## What's in `v0.6.0`
-
-- Everything in `v0.5.0`.
-- Federation peer registry (migration 0009) and idempotent event ingest.
-- `POST /a2a/v1/events`, background poll worker, peer admin API.
-- `GET /.well-known/maidan.json` agent card.
-
-## What's in `v0.5.0`
-
-- Everything in `v0.4.0`.
-- API tokens with capability lists (migration 0008).
-- Bearer auth on HTTP, WebSocket subscribe frames, and MCP tool calls.
-- Token mint/revoke admin API.
-
-## What's in `v0.4.0`
-
-- Everything in `v0.3.0`.
-- S3-compatible artifact storage (`S3Store`, MinIO in compose).
-- Typed `ArtifactKind` taxonomy.
-- HTTP artifact upload/download.
-- MCP artifact tools + `maidan://artifacts/{sha256}` resource.
-
-## What's in `v0.3.0`
-
-- Everything in `v0.2.0`.
-- FSM-driven thread lifecycle with transition log and `POST /threads/:id`.
-- Nested threads with hierarchical state rules.
-- Postgres indexer generates `hash-v1` embeddings on `MessagePosted`.
-- Persistent event log + `GET /workspaces/:wid/events` replay.
-- MCP `thread_workflow` prompt.
-
-## What's in `v0.2.0`
-
-- Everything in `v0.1.0` (HTTP CRUD, event bus, WebSocket, MCP,
-  Docker + k8s, CI).
-- Lexical search over messages — Postgres `tsvector` + GIN, SQLite
-  FTS5 — both with `<mark>`-wrapped snippets.
-- Semantic search on Postgres via `pgvector` (1024-d HNSW cosine).
-- `GET /workspaces/:wid/search` HTTP route and MCP `search_messages`
-  tool, both backed by the same `Search` impl.
-- Bus-driven background indexer with reconnect backoff and a
-  pluggable `EventHandler` for future embedding generation.
-
-Full capability list: [`docs/Capabilities.md`](docs/Capabilities.md).
+Open backlog: [`docs/Remaining Work.md`](docs/Remaining%20Work.md) · [`docs/Open Work.md`](docs/Open%20Work.md).
 
 ## Quickstart
 

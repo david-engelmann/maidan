@@ -41,8 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 70.0** — Vault truth pass ([[Clusters/Cluster 70.0]],
-[[Clusters/Product Ladder 68+]]).
+**Active:** **Cluster 71.0** — Event & subscribe contract v2 ([[Clusters/Product Ladder 68+]]
+Phase XII).
+
+**Recently closed:** **Cluster 70.0** — Vault truth pass at **`v70.0.0`**
+([[Retros/Cluster 70.0]]).
 
 **Recently closed:** **Cluster 69.0** — Capabilities matrix complete at **`v69.0.0`**
 ([[Retros/Cluster 69.0]]).

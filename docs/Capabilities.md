@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v70.0.0 — Vault truth pass
+
+| Capability | Where |
+|------------|-------|
+| Architecture snapshot `v69` | [[Architecture]] |
+| Reconciled backlog docs | [[Remaining Work]], [[Open Work]] |
+| Agent integration README pitch | Root `README.md`, [[Agent Integration]] |
+
 ## v69.0.0 — Capabilities matrix complete
 
 | Capability | Where |
