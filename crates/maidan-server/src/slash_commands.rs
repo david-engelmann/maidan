@@ -320,22 +320,69 @@ async fn dispatch_http(
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Command", &parsed.name)
-        .body(body)
+        .body(body.clone())
         .send()
         .await
     {
         Ok(r) => r,
-        Err(err) => return json!({ "ok": false, "error": err.to_string() }),
+        Err(err) => {
+            let delivery_id = crate::automation_delivery::enqueue_slash_http(
+                state,
+                workspace_id,
+                registration.command.id,
+                &registration.command.handler_target,
+                &parsed.name,
+                &body,
+            )
+            .await
+            .ok();
+            return json!({
+                "ok": false,
+                "error": err.to_string(),
+                "delivery_id": delivery_id,
+                "retrying": delivery_id.is_some()
+            });
+        }
     };
     if !response.status().is_success() {
+        let err = format!("HTTP {}", response.status());
+        let delivery_id = crate::automation_delivery::enqueue_slash_http(
+            state,
+            workspace_id,
+            registration.command.id,
+            &registration.command.handler_target,
+            &parsed.name,
+            &body,
+        )
+        .await
+        .ok();
         return json!({
             "ok": false,
-            "error": format!("HTTP {}", response.status())
+            "error": err,
+            "delivery_id": delivery_id,
+            "retrying": delivery_id.is_some()
         });
     }
     match response.json::<Value>().await {
         Ok(v) => json!({ "ok": true, "response": v }),
-        Err(err) => json!({ "ok": false, "error": err.to_string() }),
+        Err(err) => {
+            let delivery_id = crate::automation_delivery::enqueue_slash_http(
+                state,
+                workspace_id,
+                registration.command.id,
+                &registration.command.handler_target,
+                &parsed.name,
+                &body,
+            )
+            .await
+            .ok();
+            json!({
+                "ok": false,
+                "error": err.to_string(),
+                "delivery_id": delivery_id,
+                "retrying": delivery_id.is_some()
+            })
+        }
     }
 }
 

@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [68.0.0] — 2026-06-01
+
+### Added
+
+- Durable signed HTTP delivery queue for slash commands and FSM hooks (`maidan_automation_deliveries`).
+- `AutomationDeliveryWorker` with retries, quarantine, and Prometheus metrics.
+- Operator API: `GET /workspaces/:wid/automation/deliveries`, `GET .../automation/dlq`, `GET .../deliveries/:did`, `POST .../deliveries/:did/replay`.
+- Env: `MAIDAN_AUTOMATION_MAX_ATTEMPTS`, `MAIDAN_AUTOMATION_POLL_INTERVAL_MS`.
+
 ## [67.0.0] — 2026-06-01
 
 ### Added

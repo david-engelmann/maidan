@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v68.0.0 — Automation delivery guarantees
+
+| Capability | Where |
+|------------|-------|
+| Automation delivery ledger | `maidan_automation_deliveries` (slash + FSM HTTP) |
+| Retry worker | `maidan-server::automation_worker` |
+| List / replay / DLQ | `GET/POST /workspaces/:wid/automation/*` |
+| Slash sync-then-queue | `maidan-server::slash_commands` |
+| FSM async HTTP dispatch | `maidan-server::fsm_hooks` |
+
 ## v67.0.0 — Workspace context packages
 
 | Capability | Where |

@@ -60,6 +60,13 @@ await retro + tag cut). Highlights:
 
 Before that: **`v22.0.0`** capabilities — [[Retros/Cluster 22.0]].
 
+## Agent substrate (owned ladder)
+
+Post–**`v67.0.0`** deferrals from [[Clusters/Product Ladder 59+]] are scheduled in
+[[Clusters/Product Ladder 68+]] (Clusters **68–76**, product gate **`maidan-agent-1.0`**).
+
+**Recently closed:** **`v68.0.0`** — slash/FSM HTTP delivery ledger, worker, operator replay ([[Retros/Cluster 68.0]]).
+
 ## Still deferred (no owner yet)
 
 | What | Notes |

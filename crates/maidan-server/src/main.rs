@@ -258,6 +258,14 @@ async fn main() -> anyhow::Result<()> {
     let fsm_hook_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
     tracing::info!("fsm hook worker running");
 
+    let automation_worker =
+        maidan_server::automation_worker::AutomationDeliveryWorker::spawn(state.clone());
+    tracing::info!(
+        max_attempts = maidan_server::automation_delivery::max_attempts_from_env(),
+        poll_ms = maidan_server::automation_delivery::poll_interval_ms_from_env(),
+        "automation delivery worker running"
+    );
+
     let federation_worker = if state.federation.disabled {
         None
     } else {
@@ -291,6 +299,7 @@ async fn main() -> anyhow::Result<()> {
 
     indexer.shutdown().await;
     webhook_worker.shutdown().await;
+    automation_worker.shutdown().await;
     fsm_hook_worker.shutdown().await;
     if let Some(worker) = federation_worker {
         worker.shutdown().await;

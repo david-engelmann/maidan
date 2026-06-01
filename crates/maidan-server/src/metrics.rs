@@ -83,7 +83,28 @@ pub fn init() {
             "maidan_outbox_oldest_pending_seconds",
             "Age in seconds of the oldest relayable pending outbox row"
         );
+        describe_counter!(
+            "maidan_automation_delivery_total",
+            "Automation HTTP deliveries (slash/fsm) by outcome"
+        );
+        describe_histogram!(
+            "maidan_automation_delivery_duration_seconds",
+            "Automation HTTP delivery attempt latency"
+        );
     });
+}
+
+pub fn record_automation_delivery(success: bool) {
+    let outcome = if success { "success" } else { "failure" };
+    counter!(
+        "maidan_automation_delivery_total",
+        "outcome" => outcome.to_string()
+    )
+    .increment(1);
+}
+
+pub fn record_automation_delivery_duration(elapsed: std::time::Duration) {
+    histogram!("maidan_automation_delivery_duration_seconds").record(elapsed.as_secs_f64());
 }
 
 fn sync_hydrate_counters(current: HydrateSnapshot) {
