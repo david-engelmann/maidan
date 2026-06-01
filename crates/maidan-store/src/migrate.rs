@@ -34,6 +34,8 @@ const POSTGRES_UP_V24: &str = include_str!("../../../migrations/postgres/0024_to
 const POSTGRES_UP_V25: &str = include_str!("../../../migrations/postgres/0025_agent_apps.sql");
 const POSTGRES_UP_V26: &str =
     include_str!("../../../migrations/postgres/0026_automation_deliveries.sql");
+const POSTGRES_UP_V27: &str =
+    include_str!("../../../migrations/postgres/0027_a2a_push_and_tasks.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -62,6 +64,7 @@ const SQLITE_UP_V23: &str = include_str!("../../../migrations/sqlite/0023_delive
 const SQLITE_UP_V24: &str = include_str!("../../../migrations/sqlite/0024_agent_apps.sql");
 const SQLITE_UP_V25: &str =
     include_str!("../../../migrations/sqlite/0025_automation_deliveries.sql");
+const SQLITE_UP_V26: &str = include_str!("../../../migrations/sqlite/0026_a2a_push_and_tasks.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -104,6 +107,7 @@ pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 24, POSTGRES_UP_V24).await?;
     apply_postgres(pool, 25, POSTGRES_UP_V25).await?;
     apply_postgres(pool, 26, POSTGRES_UP_V26).await?;
+    apply_postgres(pool, 27, POSTGRES_UP_V27).await?;
     Ok(())
 }
 
@@ -143,6 +147,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 23, SQLITE_UP_V23).await?;
     apply_sqlite(pool, 24, SQLITE_UP_V24).await?;
     apply_sqlite(pool, 25, SQLITE_UP_V25).await?;
+    apply_sqlite(pool, 26, SQLITE_UP_V26).await?;
     Ok(())
 }
 

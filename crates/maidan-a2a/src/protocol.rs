@@ -10,10 +10,21 @@ pub const METHOD_SEND_STREAMING_MESSAGE: &str = "SendStreamingMessage";
 pub const METHOD_GET_TASK: &str = "GetTask";
 pub const METHOD_SET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/set";
 pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/get";
+pub const METHOD_SUBSCRIBE_TO_TASK: &str = "SubscribeToTask";
+pub const METHOD_TASKS_RESUBSCRIBE: &str = "tasks/resubscribe";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
 pub const TASK_STATE_FAILED: &str = "TASK_STATE_FAILED";
+pub const TASK_STATE_CANCELED: &str = "TASK_STATE_CANCELED";
+pub const TASK_STATE_REJECTED: &str = "TASK_STATE_REJECTED";
+
+pub fn is_terminal_task_state(state: &str) -> bool {
+    matches!(
+        state,
+        TASK_STATE_COMPLETED | TASK_STATE_FAILED | TASK_STATE_CANCELED | TASK_STATE_REJECTED
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maidan.dev/schemas/ws-subscribe-filter-v1.json",
+  "title": "Maidan WebSocket subscribe filter",
+  "type": "object",
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "When set, enables auto-replay from maidan_events on bus lag."
+    },
+    "channel_id": { "type": "string", "format": "uuid" },
+    "thread_id": { "type": "string", "format": "uuid" },
+    "member_id": { "type": "string", "format": "uuid" },
+    "kinds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "EventKind filter; unknown kinds should be ignored by clients (forward-compat)."
+    }
+  },
+  "additionalProperties": false
+}

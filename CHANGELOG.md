@@ -7,6 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [76.0.0] — 2026-06-01
+
+### Added
+
+- Agent observability runbook and `agent_substrate_gate_e2e` (`maidan-agent-1.0` gate).
+
+## [75.0.0] — 2026-06-01
+
+### Changed
+
+- Production guidance for real embedding providers and `maidan reindex-embeddings`.
+
+## [74.0.0] — 2026-06-01
+
+### Added
+
+- MCP tools `get_thread_context` and `get_workspace_context`.
+
+## [73.0.0] — 2026-06-01
+
+### Added
+
+- MCP streamable session close e2e; documented session lifecycle in [[Agent Integration]].
+
+## [72.0.0] — 2026-06-01
+
+### Added
+
+- Persisted A2A push config and tasks; `SubscribeToTask` / `tasks/resubscribe` SSE.
+- Best-effort HTTP push on task updates.
+
+## [71.0.0] — 2026-06-01
+
+### Added
+
+- `contracts/ws-subscribe-filter.schema.json`; EventKind forward-compat docs.
+- MCP resource-notification parity script in CI.
+
 ## [70.0.0] — 2026-06-01
 
 ### Changed

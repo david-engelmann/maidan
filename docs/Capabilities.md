@@ -3,6 +3,36 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v76.0.0 — Agent observability (`maidan-agent-1.0`)
+
+| Capability | Where |
+|------------|-------|
+| Agent substrate gate e2e | `agent_substrate_gate_e2e.rs` |
+| Ops runbook | [[Production#Agent observability]] |
+
+## v72.0.0 — A2A task streaming
+
+| Capability | Where |
+|------------|-------|
+| Persisted push config | `maidan_a2a_push_configs` |
+| Persisted tasks | `maidan_a2a_tasks` |
+| SubscribeToTask SSE | `POST /a2a/v1/rpc` |
+| Push on task update | Best-effort POST to configured URL |
+
+## v74.0.0 — MCP context export
+
+| Capability | Where |
+|------------|-------|
+| `get_thread_context` | MCP `tools/call` |
+| `get_workspace_context` | MCP `tools/call` |
+
+## v71.0.0 — Subscribe contract v2
+
+| Capability | Where |
+|------------|-------|
+| WS filter schema | `contracts/ws-subscribe-filter.schema.json` |
+| EventKind forward-compat | [[Agent Integration]] |
+
 ## v70.0.0 — Vault truth pass
 
 | Capability | Where |

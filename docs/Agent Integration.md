@@ -23,16 +23,28 @@ Installed apps (Cluster 57/65): register an app, obtain an authorization code vi
 
 ## Event subscription
 
-WebSocket subscribers receive `subscribe_ack` with `schema_version: 1`, a signed `resume_token`, and `after_id`. Replay with `after_id` or `resume_token` before live bus attach. Unknown future `EventKind` values may appear — clients should ignore unrecognized kinds.
+WebSocket subscribers receive `subscribe_ack` with `schema_version: 1`, a signed `resume_token`, and `after_id`. Replay with `after_id` or `resume_token` before live bus attach.
+
+**Forward-compat:** `contracts/event-kinds.json` lists kinds Maidan emits today. The bus may add new kinds in any release; clients **must ignore** unknown `kind` strings (see `contracts/ws-subscribe-filter.schema.json` for the subscribe filter shape).
+
+Filter fields: `workspace_id` (enables auto-replay), optional `channel_id`, `thread_id`, `member_id`, and `kinds[]`.
 
 ## Context export
 
 - `GET /threads/:id/context` — messages, edits, references, artifacts, FSM history.
 - `GET /workspaces/:id/context` — workspace summary plus packed thread contexts (`thread_limit` query param).
 
-## A2A push
+## A2A push and task streaming
 
-Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1/rpc` (requires `workspace:write`). Read back with `tasks/pushNotificationConfig/get`.
+Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1/rpc` (requires `workspace:write`). Config is **persisted per workspace** in the store. Read back with `tasks/pushNotificationConfig/get`.
+
+`SubscribeToTask` (alias `tasks/resubscribe`) returns SSE JSON-RPC frames for non-terminal tasks; the first frame is the current `Task` object. Terminal tasks return error code `-32005`.
+
+## MCP streamable session
+
+1. `POST /mcp/streamable` with `initialize` → capture `Mcp-Session-Id` response header.
+2. Follow-up `POST /mcp/streamable` with the same header for `tools/list`, `tools/call`, etc. (JSON body response).
+3. `DELETE /mcp/streamable` with `Mcp-Session-Id` closes the session (TTL also applies — see `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`).
 
 ## Contract files
 

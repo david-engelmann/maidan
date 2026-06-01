@@ -52,9 +52,9 @@ HTTP targets for slash commands and FSM hooks (Clusters **51**, **52**) now have
 
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
-| **71** | Event & subscribe contract v2 | `v71.0.0` | Documented `EventKind` forward-compat policy; MCP resource-notification parity checklist in CI; WS filter JSON Schema published |
-| **72** | A2A task streaming | `v72.0.0` | `SubscribeToTask` (or spec-equivalent) with persisted push config (not process-local only) |
-| **73** | MCP streamable complete | `v73.0.0` | Remaining 2024-11-05 subset documented + e2e: multi-frame session lifecycle on one `Mcp-Session-Id` including client flow in [[Agent Integration]] |
+| **71** | Event & subscribe contract v2 | `v71.0.0` ✓ | WS filter schema + EventKind forward-compat + MCP notification checklist CI |
+| **72** | A2A task streaming | `v72.0.0` ✓ | Persisted push config + `SubscribeToTask` SSE |
+| **73** | MCP streamable complete | `v73.0.0` ✓ | Session delete e2e + [[Agent Integration]] lifecycle |
 
 **Ordering:** **71** before **72** (shared event semantics). **73** parallelizable after **70**.
 
@@ -64,9 +64,9 @@ HTTP targets for slash commands and FSM hooks (Clusters **51**, **52**) now have
 
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
-| **74** | Context export parity | `v74.0.0` | MCP tool(s) for workspace/thread context bundles; pagination cursors for large transcripts |
-| **75** | Semantic scale | `v75.0.0` | `maidan reindex-embeddings` (or job API); Helm values default to a real embedding provider; score normalization documented across Postgres/SQLite |
-| **76** | Agent observability | `v76.0.0` | OTLP dashboards + runbook for bus lag, indexer age, outbox/automation DLQ, MCP p95; **`maidan-agent-1.0`** gate e2e |
+| **74** | Context export parity | `v74.0.0` ✓ | MCP `get_thread_context` / `get_workspace_context` |
+| **75** | Semantic scale | `v75.0.0` ✓ | `maidan reindex-embeddings` runbook + embedding provider guidance |
+| **76** | Agent observability | `v76.0.0` ✓ | Agent metrics runbook + **`maidan-agent-1.0`** gate e2e |
 
 **Ordering:** **74** after **67** baseline. **75** needs store/search only. **76** last (depends on **68** DLQ metrics).
 

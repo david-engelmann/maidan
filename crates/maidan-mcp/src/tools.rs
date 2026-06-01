@@ -27,7 +27,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_dm_conversations"
         | "list_reactions"
         | "list_pins"
-        | "get_artifact_metadata" => Ok(WORKSPACE_READ),
+        | "get_artifact_metadata"
+        | "get_thread_context"
+        | "get_workspace_context" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -428,6 +430,33 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["workspace_id"]
             }
         }),
+        json!({
+            "name": "get_thread_context",
+            "description": "Pack thread messages, edits, references, and FSM history for agent prompts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_context",
+            "description": "Pack workspace channels and thread contexts (bounded by thread_limit).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "thread_limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
     ]
 }
 
@@ -469,6 +498,10 @@ pub async fn dispatch(
         "list_slash_commands" => list_slash_commands(store, auth, args).await,
         "register_fsm_hook" => register_fsm_hook(store, auth, args).await,
         "list_fsm_hooks" => list_fsm_hooks(store, auth, args).await,
+        "get_thread_context" => crate::context::get_thread_context(store.as_ref(), args).await,
+        "get_workspace_context" => {
+            crate::context::get_workspace_context(store.as_ref(), args).await
+        }
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
