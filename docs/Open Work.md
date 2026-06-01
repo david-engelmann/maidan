@@ -1,103 +1,64 @@
 # Open work
 
-Aggregate of everything deferred across retros plus standing risks.
-The "if I had two hours, what could I work on" backlog.
+Aggregate of deferred items across retros plus standing risks — the
+“if I had two hours” backlog. For exhaustive partials and Slack parity,
+see [[Remaining Work]].
 
-**Post–Product Ladder 17–27:** see [[Remaining Work]] for the exhaustive
-remaining-issues, Slack-parity, and partial-implementation register.
-
-Updated at the close of each cluster or optional minor retro. Items move
-from "open" to "shipped" when the owning release merges its retro PR.
+Updated at each cluster retro. **Baseline:** code on `main` through **`v69.0.0`**.
 
 ## Standing risks (still open)
 
-- **At-most-once delivery on the event bus.** Postgres
-  `LISTEN`/`NOTIFY` is fire-and-forget. **`v10.0.0`** added transactional outbox
-  so commit and enqueue happen together; a relay publishes after commit (relay
-  retries may duplicate NOTIFY). **Cluster 12.0** adds max-attempts quarantine for poison rows. `maidan_events` + replay HTTP API shipped in
-  Cluster D; WS/MCP auto-replay on lag shipped in **`v3.0.0`** when
-  `filter.workspace_id` is set; reconnect uses signed `resume_token`
-  (**`v4.0.0`**); `replay_truncated` signals when one replay window is insufficient.
-- **Bootstrap flags are high-impact.** Bootstrap routes are now gated by
-  `MAIDAN_BOOTSTRAP=1` when auth is enabled (`v1.4.1`), but leaving
-  `AUTH_DISABLED` or bootstrap flags on outside controlled seed windows
-  still creates avoidable exposure.
-- **Indexer staleness is opt-in.** Set `INDEXER_STALE_SECS` to mark
-  `/health/ready` degraded when the indexer has not observed an event
-  recently. Default `0` disables the check.
-- **PostgresBus listener recovery is best-effort.** `/health/ready` reports
-  `bus: error` while the background task is in a retry loop (`v1.1.0`); it
-  clears after the next successful `recv`.
-- **Coverage depth is still modest.** CI enforces an **11.0%** line floor
-  (**`v11.0.0`**); optional Codecov upload when `CODECOV_TOKEN` is set.
-  Further incremental uplift is opportunistic.
-- **SQLite semantic search** ships at `v18.0.0` with brute-force cosine over stored
-  embeddings (no HNSW); `sqlite-vec` SQL functions deferred (sqlx linkage).
-- **`hash-v1` is not semantic.** Real provider support shipped in `v1.3.0`,
-  but default deployments may still run deterministic `hash-v1` if not configured.
+- **At-most-once event bus** — transactional outbox (**10**), quarantine (**12**), HTTP outbox replay (**56**); NOTIFY duplicates still possible.
+- **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration.
+- **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
+- **PostgresBus listener** — best-effort recovery; `/health/ready` reflects errors.
+- **Coverage floor 11%** — incremental uplift opportunistic.
+- **SQLite semantic search** — brute-force cosine; no HNSW on SQLite.
+- **`hash-v1` default** — not semantic until a real provider is configured.
 
-## Shipped post-1.0
+## Shipped (reference)
 
-| Release / area | Highlights |
-|----------------|------------|
-| **Product ladder 17–27** | `v17.0.0`–`v27.0.0` — MCP fan-out, SQLite semantic, multipart S3, router, A2A RPC, capabilities matrix, UI, Helm, workspace purge, completion gate, MCP streamable HTTP subset — see [[CHANGELOG]] and [[Remaining Work]] §1 |
-| Tracks T–X | See [[Post-1.0]] (closure #121) |
-| **`v12.0.0`** | Outbox quarantine + max attempts — [[Retros/Cluster 12.0]] |
-| **`v11.0.0`** | Coverage floor 11%, outbox/relay tests — [[Retros/Cluster 11.0]] |
+| Ladder / tag | Highlights |
+|--------------|------------|
+| **17–27** | MCP fan-out, SQLite semantic, Helm server, purge, streamable subset |
+| **35–58** | `maidan-2.0` product gate — DMs, webhooks, slash, FSM, erase, quotas, completion e2e |
+| **59–67** | [[Agent Integration]], streamable TTL, A2A card, outbox ops, app OAuth, context |
+| **68–69** | Automation delivery DLQ; MCP capability map + matrix e2e |
 
-**Still manual:** Sigstore/cosign of release artifacts (V.3 — [[Operations]]).
+**Still manual:** Sigstore/cosign release artifacts ([[Operations]]).
 
-## Recently closed: Product Ladder 17–27
+## Agent substrate ladder (68+)
 
-Clusters **17–27** merged in PR #198 (code on `main`; tags `v23.0.0`–`v27.0.0`
-await retro + tag cut). Highlights:
+Active plan: [[Clusters/Product Ladder 68+]] → **`maidan-agent-1.0`** at **76**.
 
-- **23** — `/ui` product tabs (events, search, thread FSM, tokens)
-- **24** — `helm/maidan` + template smoke in CI
-- **25** — `POST /workspaces/:id/purge` + audit
-- **26** — [[Product Completion Checklist]] + gate e2e
-- **27** — `POST /mcp/streamable` (response + notifications on one SSE body)
+| Tag | Theme |
+|-----|--------|
+| **`v68.0.0`** | Slash/FSM HTTP delivery ledger — [[Retros/Cluster 68.0]] |
+| **`v69.0.0`** | MCP capability map + CI matrix — [[Retros/Cluster 69.0]] |
+| **`v70.0.0`** | Vault truth — [[Retros/Cluster 70.0]] |
 
-Before that: **`v22.0.0`** capabilities — [[Retros/Cluster 22.0]].
+**Next:** Cluster **71** — event & subscribe contract v2 ([[Clusters/Product Ladder 68+]] § Phase XII).
 
-## Agent substrate (owned ladder)
-
-Post–**`v67.0.0`** deferrals from [[Clusters/Product Ladder 59+]] are scheduled in
-[[Clusters/Product Ladder 68+]] (Clusters **68–76**, product gate **`maidan-agent-1.0`**).
-
-**Recently closed:** **`v68.0.0`** — slash/FSM HTTP delivery ledger, worker, operator replay ([[Retros/Cluster 68.0]]).
-**Recently closed:** **`v69.0.0`** — MCP capability map + table-driven matrix e2e ([[Retros/Cluster 69.0]]).
-
-## Still deferred (no owner yet)
+## Still deferred (no separate owner)
 
 | What | Notes |
 |------|-------|
-| Per-model embedding tables / mixed dimensions | 5.0 filters by model at query time; table split deferred |
-| `sqlite-vec` / HNSW on SQLite | 18.0 brute-force path; extension linkage deferred |
-| Schema parity property test (`information_schema`) | Cluster A retro |
-| Score normalization across Postgres vs SQLite ranks | Documented in 5.0; unification deferred |
-| SQLite file-backed durability tests | Cluster V retro |
-| Full MCP streamable HTTP (bidirectional session) | 27.0 shipped subset; spec session mux still open — [[Remaining Work]] |
-| Full workspace GDPR erasure | 25.0 message purge only — [[Remaining Work]] |
-| Helm umbrella (Postgres + MinIO + server) | 24.0 server chart only |
-| `SendStreamingMessage` (A2A) | Cluster 21.0 retro |
-| Postgres `mcp-stdio` | Cluster H retro |
-| Slack parity gaps (DMs, edit, pins, presence, …) | [[Remaining Work]] §4 |
-| Outbox quarantine replay API | Cluster 12.0 retro |
-| OTLP dashboards / SLOs | Track T |
-| Multi-region active-active | Ladder 17–27 out of scope |
+| Full MCP streamable 2024-11-05 session | **73** |
+| Persisted A2A task push | **72** |
+| MCP context export tools | **74** |
+| OpenAPI ↔ capability CI for all routes | Beyond **69** sample HTTP contract |
+| `sqlite-vec` / per-model embedding tables | **75** / Open Work standing risks |
+| OTLP dashboards + agent gate e2e | **76** |
+| Multi-region active-active | Out of scope |
 
-**Shipped (removed from deferrals):** S3 multipart (`v19.0.0`), MCP HTTP notifications (`v16.0.0`), MCP resource fan-out (`v17.0.0`), Helm server chart (`v24.0.0`), workspace message purge (`v25.0.0`), message router (`v20.0.0`), A2A `SendMessage`/`GetTask` (`v21.0.0`).
+## Known state
 
-## Known state at this handoff
-
-- **Latest tag:** **`v28.0.0`** (privacy complete).
-- **Active cluster:** **none** — pick work from [[Remaining Work]].
-- **Docs site:** mdBook on `main`; enable GitHub Pages in repo settings if not live.
+- **Latest tag on `main`:** **`v69.0.0`** (cut **`v70.0.0`** after Cluster 70 retro merges).
+- **Active cluster:** **71** after **70** closes ([[Clusters/Product Ladder 68+]]).
+- **Integrators:** start at [[Agent Integration]] and `contracts/`.
 
 ## How to read this file
 
-- **[[Remaining Work]]** — exhaustive post-ladder backlog (partials, Slack matrix, suggestions).
-- The "Standing risks" list at the top is the always-on register.
-- [[Post-1.0]] is the live minor-release ladder; this file is the backlog.
-- A retro PR is the legitimate moment to add deferred items.
+- **[[Remaining Work]]** — partial implementations + Slack matrix.
+- **[[Roadmap]]** — cluster pointer and historical closes.
+- Retro PRs are the right time to add or remove deferrals.

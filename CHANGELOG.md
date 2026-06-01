@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [70.0.0] — 2026-06-01
+
+### Changed
+
+- [[Architecture]], [[Remaining Work]], [[Open Work]], and root `README.md` reflect **`v69.0.0`** agent substrate (no stale “pins absent” / pre–2.0 stubs).
+
 ## [69.0.0] — 2026-06-01
 
 ### Added
