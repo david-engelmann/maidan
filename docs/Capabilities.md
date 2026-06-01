@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v58.0.0 — Maidan 2.0 completion gate
+
+| Capability | Where |
+|------------|-------|
+| Product completion checklist (28–57) | [[Product Completion Checklist]] |
+| Expanded completion gate e2e | `product_completion_gate_e2e.rs` |
+
 ## v55.0.0 — Helm production bundle
 
 | Capability | Where |

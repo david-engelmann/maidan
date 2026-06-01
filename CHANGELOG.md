@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [58.0.0] — 2026-06-01
+
+### Added
+
+- Maidan 2.0 product completion checklist refresh (Clusters 28–57 critical path).
+- Expanded `product_completion_gate_e2e`: OpenAPI, metrics, apps, webhooks, app-installations.
+
 ## [57.0.0] — 2026-05-31
 
 ### Added
