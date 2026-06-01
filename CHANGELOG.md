@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## Maidan 2.0 product gate — 2026-06-01
+
+Tag **[`maidan-2.0`](https://github.com/david-engelmann/maidan/releases/tag/maidan-2.0)**
+marks Product Ladder **35–58** completion at the same commit as **`v58.0.0`**.
+Checklist: [`docs/Product Completion Checklist.md`](docs/Product%20Completion%20Checklist.md).
+
+Semver **`v2.0.0`** remains **Cluster 2.0** (OIDC identities and human sessions).
+
 ## [58.0.0] — 2026-06-01
 
 ### Added

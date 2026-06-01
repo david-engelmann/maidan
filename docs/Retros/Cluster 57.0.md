@@ -15,4 +15,4 @@
 
 ## Forward look
 
-Cluster **58**: Maidan 2.0 completion gate → **`v2.0.0`** checklist.
+Cluster **58**: Maidan 2.0 completion gate → **`maidan-2.0`** checklist (see [[Retros/Product Ladder 35+]]).

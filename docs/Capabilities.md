@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## Maidan 2.0 product gate (`maidan-2.0`)
+
+| Capability | Where |
+|------------|-------|
+| Product Ladder 35–58 closed | [[Retros/Product Ladder 35+]] |
+| Checklist sign-off | [[Product Completion Checklist]] at **`v58.0.0`** |
+
 ## v58.0.0 — Maidan 2.0 completion gate
 
 | Capability | Where |
