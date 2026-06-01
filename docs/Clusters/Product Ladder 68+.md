@@ -20,7 +20,7 @@
 | **64** | MCP quotas | Per-token `tools/call` quotas | — (done) |
 | **65–67** | OAuth, well-known, context packages | As tagged | **74** extends context via MCP |
 
-HTTP targets for slash commands and FSM hooks already exist (Clusters **51**, **52**). What is missing is **reliable delivery** (retries, ledger, operator visibility) — not a second URL mechanism.
+HTTP targets for slash commands and FSM hooks (Clusters **51**, **52**) now have **reliable delivery** at **`v68.0.0`** (ledger, retries, DLQ, replay). Webhooks already had `maidan_webhook_deliveries`; cluster **68** did not merge those paths.
 
 ---
 
