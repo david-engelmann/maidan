@@ -6,9 +6,9 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, app_oauth, apps, auth, bootstrap, dm, federation, fsm_hooks, health, mcp,
-    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit,
-    request_id, routes, session, slash_commands, state::AppState, webhooks, ws,
+    a2a_agent, app_oauth, apps, auth, automation_deliveries, bootstrap, dm, federation, fsm_hooks,
+    health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, quota,
+    rate_limit, request_id, routes, session, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -193,6 +193,22 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/fsm-hooks/:hid",
             delete(fsm_hooks::revoke_fsm_hook),
+        )
+        .route(
+            "/workspaces/:wid/automation/dlq",
+            get(automation_deliveries::list_quarantined_automation_deliveries),
+        )
+        .route(
+            "/workspaces/:wid/automation/deliveries",
+            get(automation_deliveries::list_automation_deliveries),
+        )
+        .route(
+            "/workspaces/:wid/automation/deliveries/:did",
+            get(automation_deliveries::get_automation_delivery),
+        )
+        .route(
+            "/workspaces/:wid/automation/deliveries/:did/replay",
+            post(automation_deliveries::replay_automation_delivery),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

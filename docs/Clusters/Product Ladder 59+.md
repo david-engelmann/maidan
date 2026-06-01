@@ -31,3 +31,9 @@
 | **65** | App install OAuth | `v65.0.0` | Authorization code + token exchange |
 | **66** | Discovery | `v66.0.0` | `/.well-known/maidan.json` includes MCP + agent card |
 | **67** | Context packages | `v67.0.0` | Workspace context + message edits in thread context |
+
+---
+
+## Continuation
+
+Deferred kickoff items and transport depth continue in [[Clusters/Product Ladder 68+]] (Clusters **68–76**, gate **`maidan-agent-1.0`**).

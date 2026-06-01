@@ -303,6 +303,39 @@ pub trait Store: Send + Sync {
     ) -> Result<i32, StoreError>;
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
 
+    async fn enqueue_automation_delivery(
+        &self,
+        new: NewAutomationDelivery,
+    ) -> Result<i64, StoreError>;
+    async fn list_pending_automation_deliveries(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<AutomationDeliveryPending>, StoreError>;
+    async fn list_automation_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        filter: crate::AutomationDeliveryFilter,
+        limit: i64,
+    ) -> Result<Vec<AutomationDelivery>, StoreError>;
+    async fn get_automation_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<AutomationDelivery, StoreError>;
+    async fn mark_automation_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError>;
+    async fn record_automation_delivery_attempt(
+        &self,
+        delivery_id: i64,
+        error: &str,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<i32, StoreError>;
+    async fn quarantine_automation_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
+    async fn replay_automation_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<AutomationDelivery, StoreError>;
+
     async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError>;
     async fn list_slash_commands(
         &self,

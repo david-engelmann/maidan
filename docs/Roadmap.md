@@ -41,7 +41,13 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** None — Product Ladder **59+** closed at **`v67.0.0`** ([[Clusters/Product Ladder 59+]],
+**Active:** **Cluster 69.0** — Capabilities matrix complete ([[Clusters/Cluster 69.0]],
+[[Clusters/Product Ladder 68+]]).
+
+**Recently closed:** **Cluster 68.0** — Automation delivery guarantees at **`v68.0.0`**
+([[Retros/Cluster 68.0]]).
+
+**Recently closed:** Product Ladder **59+** at **`v67.0.0`** ([[Clusters/Product Ladder 59+]],
 [[Agent Integration]]).
 
 **Recently closed:** **Cluster 67.0** — Workspace context packages at **`v67.0.0`**.

@@ -214,6 +214,46 @@ Reset a stuck cursor (operator SQL): `UPDATE maidan_delivery_cursor SET last_del
 2. **HTTP (`v56.0.0`):** `POST /workspaces/{wid}/outbox/{id}/replay` with `workspace:write` clears quarantine when the row’s event belongs to that workspace.
 3. **SQL:** `UPDATE maidan_outbox SET quarantined_at = NULL, attempts = 0 WHERE id = $id;` so the relay picks it up again, **or** leave quarantined and rely on clients replaying from `maidan_events` by `log_id`.
 
+### Automation HTTP delivery (`v68.0.0`)
+
+Slash commands and FSM hooks with `handler_kind: http` enqueue signed POSTs in
+`maidan_automation_deliveries`. A background worker retries with exponential backoff;
+exhausted rows are quarantined (dead letter). **Outbound event webhooks** still use
+`maidan_webhook_deliveries` and `WebhookWorker` — same signing headers, separate queue.
+
+| Env | Default | Notes |
+|-----|---------|-------|
+| `MAIDAN_AUTOMATION_MAX_ATTEMPTS` | `16` | After this many failed HTTP attempts, the row is quarantined. |
+| `MAIDAN_AUTOMATION_POLL_INTERVAL_MS` | `50` | Worker poll interval. |
+
+**Dispatch behavior**
+
+| Source | On invoke |
+|--------|-----------|
+| Slash HTTP | Synchronous POST first; on failure, enqueue and return `retrying` + `delivery_id`. |
+| FSM HTTP | Always enqueue; handler returns `{ ok, queued, delivery_id }`. |
+
+**Signing (unchanged from webhooks):** `Content-Type: application/json`, per-registration
+`X-Maidan-Event` (or configured header), `X-Maidan-Signature` (HMAC of body), plus
+`X-Maidan-Delivery-Id` for idempotency. Integrators must treat delivery as **at-least-once**.
+
+**Operator HTTP** (`workspace:read` / `workspace:write`):
+
+| Route | Use |
+|-------|-----|
+| `GET /workspaces/:wid/automation/deliveries` | Pending rows (default). Query `?quarantined=1` or `?delivered=1` when supported. |
+| `GET /workspaces/:wid/automation/dlq` | Quarantined rows (preferred DLQ list). |
+| `GET /workspaces/:wid/automation/deliveries/:did` | Single row. |
+| `POST /workspaces/:wid/automation/deliveries/:did/replay` | Clear quarantine and reset attempts for another worker pass. |
+
+| Metric | Symptom | Suggested action |
+|--------|---------|------------------|
+| `maidan_automation_delivery_total{success="false"}` rising | Targets down or rejecting signatures | Fix endpoint; verify signing secret; inspect `last_error` on row |
+| `maidan_automation_delivery_duration_seconds` p95 high | Slow integrator | Tune timeout at integrator; check network |
+| Pending rows not draining | Worker not running | Confirm `AutomationDeliveryWorker` spawned in `maidan-server` main |
+
+**Manual recovery (SQL):** `UPDATE maidan_automation_deliveries SET quarantined_at = NULL, attempts = 0, next_attempt_at = datetime('now') WHERE id = $id;` (SQLite) or equivalent `now()` on Postgres — prefer HTTP replay when auth is available.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

@@ -6,6 +6,7 @@
 pub mod apps;
 mod artifacts;
 mod audit;
+mod automation_deliveries;
 mod channels;
 pub mod delivery_cursor;
 mod dm;
@@ -582,6 +583,62 @@ impl Store for SqliteStore {
 
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {
         webhooks::quarantine_delivery(&self.pool, delivery_id).await
+    }
+
+    async fn enqueue_automation_delivery(
+        &self,
+        new: NewAutomationDelivery,
+    ) -> Result<i64, StoreError> {
+        automation_deliveries::enqueue(&self.pool, new).await
+    }
+
+    async fn list_pending_automation_deliveries(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<AutomationDeliveryPending>, StoreError> {
+        automation_deliveries::list_pending(&self.pool, limit).await
+    }
+
+    async fn list_automation_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        filter: crate::AutomationDeliveryFilter,
+        limit: i64,
+    ) -> Result<Vec<AutomationDelivery>, StoreError> {
+        automation_deliveries::list_for_workspace(&self.pool, workspace_id, filter, limit).await
+    }
+
+    async fn get_automation_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<AutomationDelivery, StoreError> {
+        automation_deliveries::get(&self.pool, delivery_id, workspace_id).await
+    }
+
+    async fn mark_automation_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError> {
+        automation_deliveries::mark_delivered(&self.pool, delivery_id).await
+    }
+
+    async fn record_automation_delivery_attempt(
+        &self,
+        delivery_id: i64,
+        error: &str,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<i32, StoreError> {
+        automation_deliveries::record_attempt(&self.pool, delivery_id, error, next_attempt_at).await
+    }
+
+    async fn quarantine_automation_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {
+        automation_deliveries::quarantine(&self.pool, delivery_id).await
+    }
+
+    async fn replay_automation_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<AutomationDelivery, StoreError> {
+        automation_deliveries::replay(&self.pool, delivery_id, workspace_id).await
     }
 
     async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {

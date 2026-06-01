@@ -3,6 +3,7 @@
 //! Defines [`Store`], a backend-agnostic async interface, plus Postgres
 //! and SQLite implementations backed by `sqlx`.
 
+pub mod automation_deliveries;
 pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
@@ -13,6 +14,7 @@ pub mod postgres;
 pub mod sqlite;
 pub mod store;
 
+pub use automation_deliveries::AutomationDeliveryFilter;
 pub use dialect::Dialect;
 pub use error::StoreError;
 pub use migrate::{run_postgres_migrations, run_sqlite_migrations};

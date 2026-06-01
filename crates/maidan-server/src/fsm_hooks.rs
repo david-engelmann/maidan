@@ -18,14 +18,12 @@ use maidan_types::{
     ChannelId, FsmHook, FsmHookId, FsmHookWithSecret, MemberId, NewFsmHook, SlashHandlerKind,
     Thread, ThreadId, ThreadState, WorkspaceId,
 };
-use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Value as JsonValue};
 
 use crate::dto::{CreateFsmHook, FsmHookResponse, MintFsmHookResponse};
 use crate::error::{ApiError, ApiJson};
 use crate::state::{AppState, FsmHookRuntime};
-use crate::webhooks::sign_payload;
 
 type ApiResult<T> = Result<T, ApiError>;
 
@@ -296,13 +294,6 @@ async fn dispatch_http(
     ctx: &FsmTransitionCtx,
     thread: Thread,
 ) -> JsonValue {
-    let Some(secret) = resolve_fsm_secret(
-        &state.fsm_hooks,
-        registration.hook.id,
-        &registration.secret_ciphertext,
-    ) else {
-        return json!({ "ok": false, "error": "missing_signing_secret" });
-    };
     let payload = FsmHttpPayload {
         event: "thread_state_changed",
         workspace_id: ctx.workspace_id,
@@ -317,29 +308,17 @@ async fn dispatch_http(
         Ok(s) => s,
         Err(err) => return json!({ "ok": false, "error": err.to_string() }),
     };
-    let signature = sign_payload(&secret, &body);
-    let client = Client::new();
-    let response = match client
-        .post(&registration.hook.handler_target)
-        .header("Content-Type", "application/json")
-        .header("X-Maidan-Signature", signature)
-        .header("X-Maidan-Event", "thread_state_changed")
-        .body(body)
-        .send()
-        .await
+    match crate::automation_delivery::enqueue_fsm_http(
+        state,
+        ctx.workspace_id,
+        registration.hook.id,
+        &registration.hook.handler_target,
+        &body,
+    )
+    .await
     {
-        Ok(r) => r,
-        Err(err) => return json!({ "ok": false, "error": err.to_string() }),
-    };
-    if !response.status().is_success() {
-        return json!({
-            "ok": false,
-            "error": format!("HTTP {}", response.status())
-        });
-    }
-    match response.json::<JsonValue>().await {
-        Ok(v) => json!({ "ok": true, "response": v }),
-        Err(err) => json!({ "ok": false, "error": err.to_string() }),
+        Ok(delivery_id) => json!({ "ok": true, "queued": true, "delivery_id": delivery_id }),
+        Err(err) => json!({ "ok": false, "error": err }),
     }
 }
 

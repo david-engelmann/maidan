@@ -62,6 +62,7 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     handler: tokio::task::JoinHandle<()>,
     fsm_worker: maidan_server::fsm_hook_worker::FsmHookWorker,
+    automation_worker: maidan_server::automation_worker::AutomationDeliveryWorker,
     indexer: maidan_search::IndexerHandle,
     client: reqwest::Client,
     handler_state: HandlerState,
@@ -71,6 +72,7 @@ struct Harness {
 impl Harness {
     async fn shutdown(self) {
         self.fsm_worker.shutdown().await;
+        self.automation_worker.shutdown().await;
         self.indexer.shutdown().await;
         self.server.abort();
         self.handler.abort();
@@ -111,6 +113,8 @@ async fn spawn() -> Harness {
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let fsm_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
+    let automation_worker =
+        maidan_server::automation_worker::AutomationDeliveryWorker::spawn(state.clone());
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -136,6 +140,7 @@ async fn spawn() -> Harness {
         server,
         handler,
         fsm_worker,
+        automation_worker,
         indexer,
         client: reqwest::Client::builder()
             .timeout(Duration::from_secs(10))

@@ -717,3 +717,70 @@ pub struct FsmHookWithSecret {
     pub hook: FsmHook,
     pub secret_ciphertext: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationSourceKind {
+    SlashCommand,
+    FsmHook,
+}
+
+impl AutomationSourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SlashCommand => "slash_command",
+            Self::FsmHook => "fsm_hook",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "slash_command" => Some(Self::SlashCommand),
+            "fsm_hook" => Some(Self::FsmHook),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AutomationDelivery {
+    pub id: i64,
+    pub workspace_id: WorkspaceId,
+    pub source_kind: AutomationSourceKind,
+    pub source_id: uuid::Uuid,
+    pub target_url: String,
+    pub header_name: String,
+    pub header_value: String,
+    pub attempts: i32,
+    pub last_error: Option<String>,
+    pub delivered_at: Option<DateTime<Utc>>,
+    pub quarantined_at: Option<DateTime<Utc>>,
+    pub next_attempt_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutomationDeliveryPending {
+    pub id: i64,
+    pub workspace_id: WorkspaceId,
+    pub source_kind: AutomationSourceKind,
+    pub source_id: uuid::Uuid,
+    pub target_url: String,
+    pub header_name: String,
+    pub header_value: String,
+    pub payload: String,
+    pub attempts: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewAutomationDelivery {
+    pub workspace_id: WorkspaceId,
+    pub source_kind: AutomationSourceKind,
+    pub source_id: uuid::Uuid,
+    pub target_url: String,
+    pub header_name: String,
+    pub header_value: String,
+    pub payload: String,
+}
