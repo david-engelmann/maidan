@@ -6,8 +6,9 @@ Linear, the reach of federated chat (Matrix/Slack Connect), the automation surfa
 Zapier/GitHub Actions, and the tool depth of MCP — while keeping Maidan's load-bearing bets:
 typed events, references, FSM threads, capabilities, and content-addressed artifacts.
 
-**Versioning:** One cluster → one tag (`v35.0.0`, `v36.0.0`, …). Optional **`v2.0.0`**
-product gate after Cluster **58** (see Phase VII).
+**Versioning:** One cluster → one tag (`v35.0.0`, `v36.0.0`, …). Product gate after Cluster
+**58**: tag **`maidan-2.0`** at the same commit as **`v58.0.0`** (see Phase VII). Semver
+**`v2.0.0`** is Cluster **2.0** (OIDC), not the ladder product gate.
 
 **Predecessors:** [[Clusters/Product Ladder 17-27]] · [[Clusters/Product Ladder 30-34]] ·
 retro [[Retros/Product Ladder 30-34]].
@@ -61,7 +62,7 @@ E2E encryption, mobile native apps, SAML inside Maidan (IdP-only via OIDC).
 | **IV — Memory & search** | 47–49 | `v47`–`v49` | Find anything, semantic at scale |
 | **V — Automation fabric** | 50–52 | `v50`–`v52` | Workflows, webhooks, slash commands |
 | **VI — Enterprise & scale** | 53–56 | `v53`–`v56` | Multi-tenant ops, compliance, HA |
-| **VII — Product gate** | 57–58 | `v57`–`v58` | Integration gate → **`v2.0.0`** |
+| **VII — Product gate** | 57–58 | `v57`–`v58` | Integration gate → **`maidan-2.0`** |
 
 ---
 
@@ -158,7 +159,7 @@ E2E encryption, mobile native apps, SAML inside Maidan (IdP-only via OIDC).
 | Cluster | Theme | Target tag | Exit (one line) |
 |---------|--------|------------|-----------------|
 | **57** | Agent app model | `v57.0.0` | OAuth-style installed apps: scoped capabilities separate from member tokens |
-| **58** | Maidan 2.0 completion gate | `v58.0.0` | Matrix e2e: multi-agent MCP, federation, Helm, UI, webhooks; checklist → **`v2.0.0`** tag |
+| **58** | Maidan 2.0 completion gate | `v58.0.0` | Checklist + gate e2e; product marker **`maidan-2.0`** |
 
 **`v2.0.0` definition (draft):** An operator can Helm-install Maidan with Postgres + MinIO; a human uses the UI; an external agent connects via MCP streamable HTTP or A2A; DMs and channels work; search is semantic on Postgres; webhooks fire on thread close; workspace can be fully erased; no known stub on the agent critical path.
 

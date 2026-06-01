@@ -13,7 +13,7 @@ Cluster 58.0 refreshes the product completion checklist for Clusters 28–57 and
 
 | To | What | Why |
 |----|------|-----|
-| Maintainer | **`v2.0.0`** tag | Checklist sign-off separate from `v58.0.0` |
+| — | Semver **`v2.0.0`** name collision | OIDC Cluster 2.0; product gate uses **`maidan-2.0`** |
 | Post-58 | Multi-agent MCP matrix in gate | CI cost / setup |
 | Post-58 | Positive-path federation + Helm inside gate e2e | Covered by dedicated CI jobs |
 
@@ -30,7 +30,7 @@ Cluster 58.0 refreshes the product completion checklist for Clusters 28–57 and
 
 ## Forward look
 
-Maintainer reviews checklist against [[Clusters/Product Ladder 35+]] `v2.0.0` definition and tags **`v2.0.0`** when satisfied.
+Product gate tagged **`maidan-2.0`** at **`v58.0.0`**; see [[Retros/Product Ladder 35+]].
 
 ## Acknowledgements
 

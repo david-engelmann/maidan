@@ -26,8 +26,9 @@ Obsidian for wikilink navigation, graph view, and backlinks.
   risks (short list).
 - [[Remaining Work]] — exhaustive post–ladder backlog, Slack parity
   matrix, and partial implementations.
-- [[Clusters/Product Ladder 35+]] — agent-native collaboration OS plan
-  (Clusters 35–58 → `v2.0.0`).
+- [[Clusters/Product Ladder 35+]] — agent-native collaboration OS (closed;
+  product gate **`maidan-2.0`** at **`v58.0.0`**).
+- [[Retros/Product Ladder 35+]] — ladder 35–58 closing retro.
 - [[Clusters/Product Ladder 30-34]] — closed ladder (v30–v34).
 - [[Retros/Product Ladder 30-34]] — closing retro for ladder 30–34.
 - [[Deploy]] — Docker + Kubernetes deployment.
