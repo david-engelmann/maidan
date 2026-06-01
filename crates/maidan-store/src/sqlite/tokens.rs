@@ -11,14 +11,15 @@ pub async fn create(pool: &SqlitePool, new: NewApiToken) -> Result<ApiToken, Sto
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
         "INSERT INTO maidan_api_tokens
-            (id, workspace_id, member_id, token_hash, label, capabilities, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id, workspace_id, member_id, token_hash, label, capabilities,
+            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
     .bind(id)
     .bind(new.workspace_id.0)
-    .bind(new.member_id.0)
+     .bind(new.member_id.0)
+    .bind(new.app_installation_id.map(|i| i.0))
     .bind(&new.token_hash)
     .bind(new.label.as_deref())
     .bind(&capabilities)
