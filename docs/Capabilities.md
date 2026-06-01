@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v69.0.0 — Capabilities matrix complete
+
+| Capability | Where |
+|------------|-------|
+| MCP tool → capability map | `contracts/mcp-capability-map.json` |
+| MCP matrix e2e | `mcp_capability_matrix_e2e.rs` |
+| HTTP capability contract | `contracts/http-capability-routes.json` |
+| Contract CI | `scripts/check-agent-contract.sh` |
+
 ## v68.0.0 — Automation delivery guarantees
 
 | Capability | Where |

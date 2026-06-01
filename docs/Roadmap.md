@@ -41,8 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 69.0** — Capabilities matrix complete ([[Clusters/Cluster 69.0]],
+**Active:** **Cluster 70.0** — Vault truth pass ([[Clusters/Cluster 70.0]],
 [[Clusters/Product Ladder 68+]]).
+
+**Recently closed:** **Cluster 69.0** — Capabilities matrix complete at **`v69.0.0`**
+([[Retros/Cluster 69.0]]).
 
 **Recently closed:** **Cluster 68.0** — Automation delivery guarantees at **`v68.0.0`**
 ([[Retros/Cluster 68.0]]).

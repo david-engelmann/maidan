@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [69.0.0] — 2026-06-01
+
+### Added
+
+- `contracts/mcp-capability-map.json` and `contracts/http-capability-routes.json`.
+- Table-driven MCP capability matrix e2e (deny + allow gate per tool).
+- HTTP capability contract denials in `capability_matrix_e2e`.
+- CI: `mcp_capability_map_contract` and `http_capability_map_contract` in `check-agent-contract.sh`.
+
 ## [68.0.0] — 2026-06-01
 
 ### Added

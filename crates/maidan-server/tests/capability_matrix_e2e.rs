@@ -2,6 +2,7 @@
 
 use std::{
     net::SocketAddr,
+    path::PathBuf,
     sync::{atomic::AtomicI64, Arc},
     time::Duration,
 };
@@ -300,5 +301,93 @@ async fn ws_subscribe_without_event_subscribe_closes_with_policy_violation() {
         Ok(Message::Close(Some(frame))) => assert_eq!(frame.code, CloseCode::Policy),
         other => panic!("expected close 1008, got {other:?}"),
     }
+    h.shutdown().await;
+}
+
+#[derive(serde::Deserialize)]
+struct HttpRouteCase {
+    method: String,
+    path: String,
+    capability: String,
+    #[serde(default)]
+    query: Vec<(String, String)>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    json: Option<Value>,
+}
+
+fn http_deny_caps(required: &str) -> Vec<String> {
+    match required {
+        capability::WORKSPACE_READ => vec![],
+        capability::WORKSPACE_WRITE => vec![capability::WORKSPACE_READ.into()],
+        capability::MESSAGE_POST => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
+        capability::ARTIFACT_UPLOAD => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
+        capability::SEARCH_QUERY => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
+        other => panic!("unsupported http contract capability: {other}"),
+    }
+}
+
+fn substitute_path(path: &str, workspace_id: &str) -> String {
+    path.replace("{workspace_id}", workspace_id)
+}
+
+#[tokio::test]
+async fn http_routes_in_contract_deny_without_required_capability() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/http-capability-routes.json");
+    let routes: Vec<HttpRouteCase> = serde_json::from_slice(
+        &std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
+    )
+    .expect("http routes json");
+
+    let h = spawn().await;
+    let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
+    let ws = workspace_id.0.to_string();
+
+    for route in routes {
+        let bearer = mint_token(
+            h.store.as_ref(),
+            workspace_id,
+            member_id,
+            http_deny_caps(&route.capability),
+        )
+        .await;
+        let url = format!("{}{}", h.base(), substitute_path(&route.path, &ws));
+        let mut req = match route.method.as_str() {
+            "GET" => h.client.get(&url),
+            "POST" => h.client.post(&url),
+            other => panic!("unsupported method {other}"),
+        };
+        req = req.header("Authorization", format!("Bearer {bearer}"));
+        if !route.query.is_empty() {
+            req = req.query(&route.query);
+        }
+        if let Some(body) = &route.body {
+            req = req.body(body.clone());
+        }
+        if let Some(json_body) = &route.json {
+            req = req.json(json_body);
+        }
+        let resp = req.send().await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "{} {} ({})",
+            route.method,
+            route.path,
+            route.capability
+        );
+    }
+
     h.shutdown().await;
 }
