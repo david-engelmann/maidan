@@ -6,6 +6,7 @@
 
 pub mod a2a_agent;
 pub mod app;
+pub mod apps;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;

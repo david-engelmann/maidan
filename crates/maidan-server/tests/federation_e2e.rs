@@ -146,6 +146,7 @@ async fn mint_admin_token(store: &dyn Store, workspace_id: WorkspaceId) -> Strin
         .create_api_token(NewApiToken {
             workspace_id,
             member_id: member.id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
             capabilities: vec![FEDERATION_ADMIN.into(), WORKSPACE_READ.into()],

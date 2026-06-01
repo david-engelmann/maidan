@@ -1,5 +1,6 @@
 //! Postgres implementation of [`crate::store::Store`].
 
+mod apps;
 mod artifacts;
 mod audit;
 mod channels;
@@ -351,6 +352,46 @@ impl Store for PostgresStore {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
         events::list_after(&self.pool, workspace_id, after_id, limit).await
+    }
+
+    async fn create_app(&self, new: NewApp) -> Result<App, StoreError> {
+        apps::create_app(&self.pool, new).await
+    }
+
+    async fn get_app(&self, id: AppId) -> Result<App, StoreError> {
+        apps::get_app(&self.pool, id).await
+    }
+
+    async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError> {
+        apps::list_apps(&self.pool, workspace_id).await
+    }
+
+    async fn create_app_installation(
+        &self,
+        new: NewAppInstallation,
+    ) -> Result<AppInstallation, StoreError> {
+        apps::create_installation(&self.pool, new).await
+    }
+
+    async fn get_app_installation(
+        &self,
+        id: AppInstallationId,
+    ) -> Result<AppInstallation, StoreError> {
+        apps::get_installation(&self.pool, id).await
+    }
+
+    async fn list_app_installations(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<AppInstallation>, StoreError> {
+        apps::list_installations(&self.pool, workspace_id).await
+    }
+
+    async fn revoke_app_installation(
+        &self,
+        id: AppInstallationId,
+    ) -> Result<AppInstallation, StoreError> {
+        apps::revoke_installation(&self.pool, id).await
     }
 
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {

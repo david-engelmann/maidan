@@ -35,11 +35,11 @@ use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
 
-fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
+pub(crate) fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
     auth.require_capability(capability).map_err(Into::into)
 }
 
-fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
+pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
@@ -1314,6 +1314,7 @@ pub async fn mint_api_token(
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: body.label,
             capabilities: capabilities.clone(),

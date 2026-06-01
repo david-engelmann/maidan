@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [57.0.0] — 2026-05-31
+
+### Added
+
+- Workspace installed apps: `maidan_apps`, `maidan_app_installations`, bot `MemberKind::Agent` per install.
+- App tokens via `api_tokens.app_installation_id`; capabilities must be a subset of the installation grant.
+- HTTP: register/list apps, install, list/revoke installations, `POST .../app-installations/:iid/tokens`.
+
 ## [56.0.0] — 2026-05-31
 
 ### Added

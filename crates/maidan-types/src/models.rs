@@ -426,10 +426,50 @@ pub struct AuditEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct App {
+    pub id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_by: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewApp {
+    pub workspace_id: WorkspaceId,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_by: MemberId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInstallation {
+    pub id: AppInstallationId,
+    pub app_id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub bot_member_id: MemberId,
+    pub granted_capabilities: Vec<String>,
+    pub installed_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewAppInstallation {
+    pub app_id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub bot_member_id: MemberId,
+    pub granted_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiToken {
     pub id: ApiTokenId,
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
+    pub app_installation_id: Option<AppInstallationId>,
     pub token_hash: String,
     pub label: Option<String>,
     pub capabilities: Vec<String>,
@@ -442,6 +482,7 @@ pub struct ApiToken {
 pub struct NewApiToken {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
+    pub app_installation_id: Option<AppInstallationId>,
     pub token_hash: String,
     pub label: Option<String>,
     pub capabilities: Vec<String>,

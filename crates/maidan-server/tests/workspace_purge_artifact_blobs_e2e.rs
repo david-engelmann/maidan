@@ -84,6 +84,7 @@ async fn purge_workspace_deletes_uploaded_artifact_blob() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
             capabilities: vec![capability::WORKSPACE_WRITE.into()],

@@ -5,7 +5,9 @@
 //! a nested route in favor of the path parameter).
 
 use chrono::{DateTime, Utc};
-use maidan_types::{ApiTokenId, ArtifactKind, MemberId, MemberKind, RefSide, WorkspaceId};
+use maidan_types::{
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, MemberId, MemberKind, RefSide, WorkspaceId,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -360,6 +362,91 @@ impl From<maidan_types::WebhookSubscription> for WebhookResponse {
             revoked_at: w.revoked_at,
         }
     }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegisterApp {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AppResponse {
+    pub id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_by: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<maidan_types::App> for AppResponse {
+    fn from(a: maidan_types::App) -> Self {
+        Self {
+            id: a.id,
+            workspace_id: a.workspace_id,
+            slug: a.slug,
+            name: a.name,
+            description: a.description,
+            created_by: a.created_by,
+            created_at: a.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct InstallApp {
+    #[serde(default)]
+    pub granted_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AppInstallationResponse {
+    pub id: AppInstallationId,
+    pub app_id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub bot_member_id: MemberId,
+    pub granted_capabilities: Vec<String>,
+    pub installed_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<maidan_types::AppInstallation> for AppInstallationResponse {
+    fn from(i: maidan_types::AppInstallation) -> Self {
+        Self {
+            id: i.id,
+            app_id: i.app_id,
+            workspace_id: i.workspace_id,
+            bot_member_id: i.bot_member_id,
+            granted_capabilities: i.granted_capabilities,
+            installed_at: i.installed_at,
+            revoked_at: i.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MintAppToken {
+    pub label: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub quotas: Vec<maidan_types::TokenQuota>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintAppTokenResponse {
+    pub id: ApiTokenId,
+    pub secret: String,
+    pub workspace_id: WorkspaceId,
+    pub app_installation_id: AppInstallationId,
+    pub bot_member_id: MemberId,
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub quotas: Vec<maidan_types::TokenQuota>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

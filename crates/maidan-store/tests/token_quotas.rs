@@ -35,6 +35,7 @@ async fn replace_and_list_token_quotas() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: member.id,
+            app_installation_id: None,
             token_hash: hash_secret("tok"),
             label: None,
             capabilities: vec!["workspace:read".into(), "message:post".into()],

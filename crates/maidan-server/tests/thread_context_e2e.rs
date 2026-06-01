@@ -86,6 +86,7 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: member.id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: Some("ctx".into()),
             capabilities: vec!["workspace:read".into(), "thread:transition".into()],

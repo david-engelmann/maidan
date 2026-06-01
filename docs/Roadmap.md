@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 56.0** — Delivery guarantees ([[Clusters/Product Ladder 35+]] Phase VI).
+**Active:** **Cluster 57.0** — Agent app model ([[Clusters/Product Ladder 35+]] Phase VII).
+
+**Recently closed:** **Cluster 56.0** — Delivery guarantees at **`v56.0.0`** ([[Retros/Cluster 56.0]]).
 
 **Recently closed:** **Cluster 55.0** — Helm production bundle at **`v55.0.0`** ([[Retros/Cluster 55.0]]).
 

@@ -70,6 +70,7 @@ async fn seed_workspace(
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
+            app_installation_id: None,
             token_hash: hash_secret(TokenSecret::generate().as_str()),
             label: Some("purge-me".into()),
             capabilities: vec!["workspace:read".into()],

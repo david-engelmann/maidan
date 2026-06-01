@@ -89,6 +89,7 @@ async fn list_workspace_audit_requires_read_and_returns_scoped_rows() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
+            app_installation_id: None,
             token_hash: hash_secret(read_secret.as_str()),
             label: None,
             capabilities: vec![capability::WORKSPACE_READ.into()],

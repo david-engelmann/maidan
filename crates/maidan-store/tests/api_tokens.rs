@@ -44,6 +44,7 @@ async fn api_token_create_lookup_and_revoke() {
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
+            app_installation_id: None,
             token_hash: "a".repeat(64),
             label: Some("ci-bot".to_string()),
             capabilities: vec!["workspace:read".to_string(), "message:post".to_string()],
@@ -88,6 +89,7 @@ async fn expired_api_token_is_not_active() {
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
+            app_installation_id: None,
             token_hash: "b".repeat(64),
             label: None,
             capabilities: vec!["workspace:read".to_string()],
@@ -122,6 +124,7 @@ async fn api_token_hash_is_unique() {
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
+            app_installation_id: None,
             token_hash: hash.clone(),
             label: None,
             capabilities: vec!["workspace:read".to_string()],
@@ -152,6 +155,7 @@ async fn api_token_hash_is_unique() {
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
+            app_installation_id: None,
             token_hash: hash,
             label: None,
             capabilities: vec![],

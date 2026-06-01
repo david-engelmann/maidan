@@ -98,6 +98,7 @@ async fn postgres_deep_purge_removes_related_rows() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
+            app_installation_id: None,
             token_hash: hash_secret(TokenSecret::generate().as_str()),
             label: None,
             capabilities: vec!["workspace:read".into()],

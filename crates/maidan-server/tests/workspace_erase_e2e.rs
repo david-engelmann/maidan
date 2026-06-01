@@ -75,6 +75,7 @@ async fn erase_workspace_requires_confirm_and_removes_workspace() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
+            app_installation_id: None,
             token_hash: hash_secret(write_secret.as_str()),
             label: None,
             capabilities: vec![
