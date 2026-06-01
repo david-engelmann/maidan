@@ -309,7 +309,8 @@ Clusters **23â€“26** in the same release integration ([[Retros/Cluster 23.0]] â€
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
-| Per-consumer delivery cursor (Postgres)                   | `maidan_delivery_cursor`, `Store::advance_delivery_cursor` |
+| Per-consumer delivery cursor (Postgres + SQLite)          | `maidan_delivery_cursor`, `Store::advance_delivery_cursor` |
+| Outbox quarantine replay API                              | `POST /workspaces/:wid/outbox/:oid/replay`                   |
 | Optional `consumer_id` on subscribe                       | `/ws/subscribe`, `/mcp/stream` |
 | Federation delivery cursor per peer                       | `federation:{peer_id}`        |
 

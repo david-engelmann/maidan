@@ -99,6 +99,39 @@ pub async fn get_workspace(
     Ok(Json(state.store.get_workspace(workspace_id).await?))
 }
 
+pub async fn replay_quarantined_outbox(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((wid, outbox_id)): Path<(uuid::Uuid, i64)>,
+) -> ApiResult<StatusCode> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let backend = state.outbox_backend.as_ref().ok_or_else(|| {
+        ApiError::BadRequest("outbox relay is not enabled for this deployment".into())
+    })?;
+    backend.replay_quarantined(outbox_id, workspace_id).await?;
+    let actor_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
+    state
+        .store
+        .append_audit(NewAuditEvent {
+            actor_id,
+            action: "outbox.replay".into(),
+            target_kind: Some("outbox".into()),
+            target_id: None,
+            metadata: serde_json::json!({
+                "outbox_id": outbox_id,
+                "workspace_id": workspace_id.0,
+            }),
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn purge_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

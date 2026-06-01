@@ -1,5 +1,6 @@
 //! Dialect-neutral outbox access for relay and metrics.
 
+use maidan_types::WorkspaceId;
 use sqlx::{PgPool, SqlitePool};
 
 use crate::error::StoreError;
@@ -37,6 +38,21 @@ impl OutboxBackend {
         match self {
             Self::Postgres(pool) => crate::postgres::outbox::quarantine(pool, outbox_id).await,
             Self::Sqlite(pool) => crate::sqlite::outbox::quarantine(pool, outbox_id).await,
+        }
+    }
+
+    pub async fn replay_quarantined(
+        &self,
+        outbox_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<(), StoreError> {
+        match self {
+            Self::Postgres(pool) => {
+                crate::postgres::outbox::replay_quarantined(pool, outbox_id, workspace_id).await
+            }
+            Self::Sqlite(pool) => {
+                crate::sqlite::outbox::replay_quarantined(pool, outbox_id, workspace_id).await
+            }
         }
     }
 

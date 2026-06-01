@@ -1,5 +1,6 @@
 //! SQLite transactional outbox rows relayed to the in-process bus after commit.
 
+use maidan_types::WorkspaceId;
 use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
@@ -69,6 +70,33 @@ pub async fn quarantine(pool: &SqlitePool, outbox_id: i64) -> Result<(), StoreEr
     .bind(outbox_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Clears quarantine so the relay can retry; row must belong to `workspace_id`.
+pub async fn replay_quarantined(
+    pool: &SqlitePool,
+    outbox_id: i64,
+    workspace_id: WorkspaceId,
+) -> Result<(), StoreError> {
+    let updated = sqlx::query(
+        "UPDATE maidan_outbox
+         SET quarantined_at = NULL, attempts = 0
+         WHERE id = ?
+           AND published_at IS NULL
+           AND quarantined_at IS NOT NULL
+           AND log_id IN (
+             SELECT id FROM maidan_events WHERE workspace_id = ?
+           )",
+    )
+    .bind(outbox_id)
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if updated == 0 {
+        return Err(StoreError::NotFound);
+    }
     Ok(())
 }
 

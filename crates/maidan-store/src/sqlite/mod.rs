@@ -6,6 +6,7 @@
 mod artifacts;
 mod audit;
 mod channels;
+pub mod delivery_cursor;
 mod dm;
 mod erase_workspace;
 pub mod events;
@@ -449,19 +450,19 @@ impl Store for SqliteStore {
 
     async fn get_delivery_cursor(
         &self,
-        _consumer_id: &str,
-        _workspace_id: WorkspaceId,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
     ) -> Result<i64, StoreError> {
-        Ok(0)
+        delivery_cursor::get_cursor(&self.pool, consumer_id, workspace_id).await
     }
 
     async fn advance_delivery_cursor(
         &self,
-        _consumer_id: &str,
-        _workspace_id: WorkspaceId,
+        consumer_id: &str,
+        workspace_id: WorkspaceId,
         log_id: i64,
     ) -> Result<i64, StoreError> {
-        Ok(log_id)
+        delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
     }
 
     async fn create_webhook_subscription(
