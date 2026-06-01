@@ -74,6 +74,7 @@ async fn workspace_read_quota_returns_429_on_burst() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: member.id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
             capabilities: vec![capability::WORKSPACE_READ.into()],
@@ -139,6 +140,7 @@ async fn mint_api_token_accepts_quotas() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: admin.id,
+            app_installation_id: None,
             token_hash: hash_secret(admin_secret.as_str()),
             label: None,
             capabilities: vec![

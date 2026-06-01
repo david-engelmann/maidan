@@ -40,6 +40,7 @@ async fn erase_workspace_removes_row_and_peers() {
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: member.id,
+            app_installation_id: None,
             label: None,
             token_hash: hash_secret("test-token"),
             capabilities: vec!["workspace:read".into()],
