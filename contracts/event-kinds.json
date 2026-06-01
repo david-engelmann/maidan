@@ -1,0 +1,18 @@
+[
+  "artifact_upserted",
+  "channel_created",
+  "member_joined",
+  "mention_recorded",
+  "message_edited",
+  "message_pinned",
+  "message_posted",
+  "message_tombstoned",
+  "message_unpinned",
+  "reaction_added",
+  "reaction_removed",
+  "reference_added",
+  "thread_created",
+  "thread_state_changed",
+  "vote_cast",
+  "workspace_created"
+]

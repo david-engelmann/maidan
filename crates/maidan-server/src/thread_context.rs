@@ -19,9 +19,17 @@ pub struct ThreadContext {
     pub channel_id: ChannelId,
     pub thread: Thread,
     pub messages: Vec<Message>,
+    pub message_edits: Vec<MessageEdit>,
     pub references: Vec<Reference>,
     pub artifacts: Vec<Artifact>,
     pub fsm: ThreadFsmContext,
+}
+
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct WorkspaceContext {
+    pub workspace: Workspace,
+    pub channels: Vec<Channel>,
+    pub threads: Vec<ThreadContext>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,17 +93,55 @@ pub async fn build_thread_context(
     }
     artifacts.sort_by_key(|a| a.created_at);
 
+    let mut message_edits = Vec::new();
+    for message in &messages {
+        let mut edits = store.list_message_edits(message.id, 20).await?;
+        message_edits.append(&mut edits);
+    }
+
     Ok(ThreadContext {
         workspace_id,
         channel_id: thread.channel_id,
         thread: thread.clone(),
         messages,
+        message_edits,
         references,
         artifacts,
         fsm: ThreadFsmContext {
             state: thread.state,
             transitions,
         },
+    })
+}
+
+pub async fn build_workspace_context(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    thread_limit: i64,
+    limits: ThreadContextLimits,
+) -> Result<WorkspaceContext, ApiError> {
+    let workspace = store.get_workspace(workspace_id).await?;
+    let channels = store.list_channels(workspace_id).await?;
+    let mut threads = Vec::new();
+    for channel in &channels {
+        if threads.len() as i64 >= thread_limit {
+            break;
+        }
+        let channel_threads = store.list_threads(channel.id).await?;
+        for thread in channel_threads {
+            if threads.len() as i64 >= thread_limit {
+                break;
+            }
+            if thread.tombstoned_at.is_some() {
+                continue;
+            }
+            threads.push(build_thread_context(store, thread.id, limits).await?);
+        }
+    }
+    Ok(WorkspaceContext {
+        workspace,
+        channels,
+        threads,
     })
 }
 

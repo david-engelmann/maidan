@@ -490,10 +490,21 @@ pub async fn delete_peer(
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct WellKnownMcp {
+    pub http: String,
+    pub streamable: String,
+    pub notifications: String,
+    pub stream: String,
+    pub protocol_version: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WellKnownMaidan {
     pub name: String,
     pub version: String,
+    pub mcp: WellKnownMcp,
     pub a2a: WellKnownA2a,
+    pub agent_card: String,
     pub capabilities: Vec<String>,
 }
 
@@ -508,11 +519,19 @@ pub async fn well_known() -> impl IntoResponse {
     Json(WellKnownMaidan {
         name: "maidan".to_string(),
         version: crate::version().to_string(),
+        mcp: WellKnownMcp {
+            http: "/mcp".to_string(),
+            streamable: "/mcp/streamable".to_string(),
+            notifications: "/mcp/notifications".to_string(),
+            stream: "/mcp/stream".to_string(),
+            protocol_version: "2024-11-05".to_string(),
+        },
         a2a: WellKnownA2a {
             ingress: "/a2a/v1/events".to_string(),
             protocol_rpc: "/a2a/v1/rpc".to_string(),
             protocol_version: "1.0".to_string(),
         },
+        agent_card: "/.well-known/agent-card.json".to_string(),
         capabilities: vec![FEDERATION_INGEST.to_string(), FEDERATION_ADMIN.to_string()],
     })
 }

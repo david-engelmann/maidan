@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::response::sse::{Event, KeepAlive};
 use axum::{
     extract::State,
-    http::{HeaderMap, HeaderName, HeaderValue},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response, Sse},
     Extension, Json,
 };
@@ -32,6 +32,9 @@ pub async fn streamable(
         Ok(r) => r,
         Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
     };
+    if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
+        return Ok(Json(resp).into_response());
+    }
 
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
     let registry = state.mcp.streamable_sessions();
@@ -135,6 +138,27 @@ async fn push_response_and_notifications(
         }
     }
     Ok(())
+}
+
+/// Close an open streamable session (`DELETE /mcp/streamable`, Cluster 60).
+pub async fn close_session(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_READ)
+            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
+    }
+    let Some(session_id) = headers
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.is_empty())
+    else {
+        return Err(ApiError::BadRequest("missing Mcp-Session-Id header".into()));
+    };
+    state.mcp.streamable_sessions().close(session_id).await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn attach_session_header(resp: &mut Response, session_id: &str) {

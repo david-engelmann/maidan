@@ -132,6 +132,80 @@ pub async fn replay_quarantined_outbox(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct QuarantinedOutboxQuery {
+    #[serde(default = "default_outbox_list_limit")]
+    pub limit: i64,
+}
+
+fn default_outbox_list_limit() -> i64 {
+    50
+}
+
+pub async fn list_quarantined_outbox(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+    Query(q): Query<QuarantinedOutboxQuery>,
+) -> ApiResult<Json<Vec<maidan_store::QuarantinedOutboxRow>>> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let backend = state.outbox_backend.as_ref().ok_or_else(|| {
+        ApiError::BadRequest("outbox relay is not enabled for this deployment".into())
+    })?;
+    let limit = q.limit.clamp(1, 500);
+    let rows = backend
+        .list_quarantined_for_workspace(workspace_id, limit)
+        .await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct WorkspaceContextQuery {
+    #[serde(default = "default_workspace_thread_limit")]
+    pub thread_limit: i64,
+    #[serde(default)]
+    pub message_limit: i64,
+    #[serde(default)]
+    pub transition_limit: i64,
+}
+
+fn default_workspace_thread_limit() -> i64 {
+    10
+}
+
+pub async fn get_workspace_context(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+    Query(q): Query<WorkspaceContextQuery>,
+) -> ApiResult<Json<crate::thread_context::WorkspaceContext>> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let limits = crate::thread_context::ThreadContextLimits {
+        message_limit: if q.message_limit > 0 {
+            q.message_limit
+        } else {
+            100
+        },
+        transition_limit: if q.transition_limit > 0 {
+            q.transition_limit
+        } else {
+            50
+        },
+    };
+    let packed = crate::thread_context::build_workspace_context(
+        state.store.as_ref(),
+        workspace_id,
+        q.thread_limit.clamp(1, 50),
+        limits,
+    )
+    .await?;
+    Ok(Json(packed))
+}
+
 pub async fn purge_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

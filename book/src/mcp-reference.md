@@ -6,9 +6,9 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
-- **Streamable HTTP:** `POST /mcp/streamable` (JSON-RPC response + live notifications on one SSE body)
+- **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: JSON-RPC response returned directly and pushed to the SSE session)
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
-- **stdio:** `maidan mcp-stdio` for desktop clients (`resources/subscribe` notifications)
+- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)
 
 Bearer token required unless `AUTH_DISABLED=1`.
 
@@ -22,6 +22,96 @@ Bearer token required unless `AUTH_DISABLED=1`.
 **Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }` (stdio after each response; HTTP via `GET /mcp/notifications` or `POST /mcp/streamable`). Mutating tools fan out to related thread/channel/workspace/artifact URIs.
 
 ## Tools
+
+### `open_dm_conversation`
+
+Open or fetch a 1:1 DM conversation between two workspace members.
+
+**Capability:** `message:post`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "other_member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "member_id",
+    "other_member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_dm_conversations`
+
+List DM conversations for a member in a workspace.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `post_dm_message`
+
+Post a message in a DM conversation.
+
+**Capability:** `message:post`
+
+```json
+{
+  "properties": {
+    "author_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "dm_conversation_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "dm_conversation_id",
+    "author_id",
+    "body"
+  ],
+  "type": "object"
+}
+```
 
 ### `list_channels`
 
@@ -207,6 +297,170 @@ Cast a vote on a message (e.g. approve, request-changes, emoji).
     "message_id",
     "member_id",
     "kind"
+  ],
+  "type": "object"
+}
+```
+
+### `add_reaction`
+
+Add an emoji reaction to a message.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "emoji": {
+      "type": "string"
+    },
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id",
+    "member_id",
+    "emoji"
+  ],
+  "type": "object"
+}
+```
+
+### `remove_reaction`
+
+Remove an emoji reaction from a message.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "emoji": {
+      "type": "string"
+    },
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id",
+    "member_id",
+    "emoji"
+  ],
+  "type": "object"
+}
+```
+
+### `list_reactions`
+
+List emoji reactions on a message.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "type": "object"
+}
+```
+
+### `pin_message`
+
+Pin a message to a thread.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "message_id",
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `unpin_message`
+
+Unpin a message from a thread.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "message_id",
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_pins`
+
+List pinned messages in a thread.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
   ],
   "type": "object"
 }
@@ -497,6 +751,142 @@ Lexical full-text search over a workspace's messages. Returns ranked hits with h
   "required": [
     "workspace_id",
     "query"
+  ],
+  "type": "object"
+}
+```
+
+### `register_slash_command`
+
+Register a workspace slash command handler (http URL or MCP tool name).
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "handler_kind": {
+      "enum": [
+        "http",
+        "mcp_tool"
+      ],
+      "type": "string"
+    },
+    "handler_target": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "name",
+    "handler_kind",
+    "handler_target"
+  ],
+  "type": "object"
+}
+```
+
+### `list_slash_commands`
+
+List registered slash commands in a workspace.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `register_fsm_hook`
+
+Register an FSM hook invoked on matching thread state transitions.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "from_state": {
+      "enum": [
+        "open",
+        "in_review",
+        "closed",
+        "archived"
+      ],
+      "type": "string"
+    },
+    "handler_kind": {
+      "enum": [
+        "http",
+        "mcp_tool"
+      ],
+      "type": "string"
+    },
+    "handler_target": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    },
+    "to_state": {
+      "enum": [
+        "open",
+        "in_review",
+        "closed",
+        "archived"
+      ],
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "handler_kind",
+    "handler_target"
+  ],
+  "type": "object"
+}
+```
+
+### `list_fsm_hooks`
+
+List registered FSM automation hooks in a workspace.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
   ],
   "type": "object"
 }

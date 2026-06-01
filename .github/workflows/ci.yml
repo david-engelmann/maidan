@@ -43,6 +43,8 @@ jobs:
         run: cargo deny check
       - name: helm template smoke
         run: ./scripts/helm-template-smoke.sh
+      - name: agent contract golden files
+        run: ./scripts/check-agent-contract.sh
 
   helm-kind:
     name: helm install (kind)

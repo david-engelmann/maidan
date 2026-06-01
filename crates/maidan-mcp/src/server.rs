@@ -64,10 +64,14 @@ impl McpServer {
 
     /// Register a new streamable HTTP session id, or validate an existing open session.
     pub async fn touch_streamable_session(&self, existing: Option<&str>) -> String {
-        existing
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+        let registry = self.streamable_sessions();
+        if let Some(id) = existing.filter(|s| !s.is_empty()) {
+            if registry.is_open(id).await {
+                registry.touch(id).await;
+                return id.to_string();
+            }
+        }
+        uuid::Uuid::new_v4().to_string()
     }
 
     /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport).

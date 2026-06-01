@@ -17,7 +17,7 @@ pub use dialect::Dialect;
 pub use error::StoreError;
 pub use migrate::{run_postgres_migrations, run_sqlite_migrations};
 pub use outbox::OutboxBackend;
-pub use postgres::outbox::OutboxRow;
+pub use postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
 

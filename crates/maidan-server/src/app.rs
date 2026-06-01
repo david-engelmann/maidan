@@ -6,9 +6,9 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, apps, auth, bootstrap, dm, federation, fsm_hooks, health, mcp, mcp_notifications,
-    mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, request_id, routes,
-    session, slash_commands, state::AppState, webhooks, ws,
+    a2a_agent, app_oauth, apps, auth, bootstrap, dm, federation, fsm_hooks, health, mcp,
+    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit,
+    request_id, routes, session, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -29,6 +29,7 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/mcp", post(mcp::handler))
         .route("/mcp/streamable", post(mcp_streamable::streamable))
+        .route("/mcp/streamable", delete(mcp_streamable::close_session))
         .route("/a2a/v1/rpc", post(a2a_agent::json_rpc))
         .route("/mcp/notifications", get(mcp_notifications::stream))
         .route("/mcp/stream", get(mcp_stream::stream))
@@ -40,6 +41,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/outbox/:oid/replay",
             post(routes::replay_quarantined_outbox),
+        )
+        .route(
+            "/workspaces/:wid/outbox/quarantined",
+            get(routes::list_quarantined_outbox),
+        )
+        .route(
+            "/workspaces/:wid/context",
+            get(routes::get_workspace_context),
         )
         .route("/workspaces/:wid/search", get(routes::search_messages))
         .route("/workspaces/:wid/members", get(routes::list_members))
@@ -54,6 +63,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/apps/:app_id/install",
             post(apps::install_app),
+        )
+        .route(
+            "/workspaces/:wid/apps/:app_id/oauth/authorize",
+            post(app_oauth::authorize_app_install),
         )
         .route(
             "/workspaces/:wid/app-installations",
@@ -248,6 +261,8 @@ pub fn router(state: AppState) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/.well-known/maidan.json", get(federation::well_known))
+        .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
+        .route("/oauth/app/token", post(app_oauth::exchange_app_code))
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))

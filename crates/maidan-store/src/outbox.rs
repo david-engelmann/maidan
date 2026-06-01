@@ -4,7 +4,7 @@ use maidan_types::WorkspaceId;
 use sqlx::{PgPool, SqlitePool};
 
 use crate::error::StoreError;
-use crate::postgres::outbox::OutboxRow;
+use crate::postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 
 #[derive(Clone)]
 pub enum OutboxBackend {
@@ -60,6 +60,23 @@ impl OutboxBackend {
         match self {
             Self::Postgres(pool) => crate::postgres::outbox::count_pending(pool).await,
             Self::Sqlite(pool) => crate::sqlite::outbox::count_pending(pool).await,
+        }
+    }
+
+    pub async fn list_quarantined_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<QuarantinedOutboxRow>, StoreError> {
+        match self {
+            Self::Postgres(pool) => {
+                crate::postgres::outbox::list_quarantined_for_workspace(pool, workspace_id, limit)
+                    .await
+            }
+            Self::Sqlite(pool) => {
+                crate::sqlite::outbox::list_quarantined_for_workspace(pool, workspace_id, limit)
+                    .await
+            }
         }
     }
 

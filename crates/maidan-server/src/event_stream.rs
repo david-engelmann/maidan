@@ -136,10 +136,14 @@ pub async fn replay_matching_events(
     })
 }
 
+/// Wire protocol version for WebSocket / MCP SSE subscribe (Cluster 62).
+pub const SUBSCRIBE_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Serialize)]
 pub struct SubscribeAck {
     #[serde(rename = "type")]
     pub frame_type: &'static str,
+    pub schema_version: u32,
     pub resume_token: String,
     pub after_id: i64,
 }
@@ -147,6 +151,7 @@ pub struct SubscribeAck {
 pub fn subscribe_ack_payload(resume_token: &str, after_id: i64) -> Option<String> {
     let ack = SubscribeAck {
         frame_type: "subscribe_ack",
+        schema_version: SUBSCRIBE_SCHEMA_VERSION,
         resume_token: resume_token.to_string(),
         after_id,
     };

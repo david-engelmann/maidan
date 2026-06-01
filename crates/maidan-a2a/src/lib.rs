@@ -19,10 +19,12 @@ pub use error::{A2aClientError, FederationError};
 pub use outbound::Outbound;
 pub use peer::{validate_base_url, validate_peer_name, NewPeer, Peer};
 pub use protocol::{
-    maidan_context_from_metadata, message_text, A2aMessage, GetTaskRequest, JsonRpcId,
-    JsonRpcRequest, JsonRpcResponse, MaidanA2aContext, SendMessageRequest, SendMessageResponse,
-    StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
-    TextPart, METHOD_GET_TASK, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
-    TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    maidan_context_from_metadata, message_text, A2aMessage, GetPushNotificationConfigResponse,
+    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, MaidanA2aContext,
+    PushNotificationConfig, SendMessageRequest, SendMessageResponse,
+    SetPushNotificationConfigRequest, StreamResponseStatusUpdate, StreamResponseTask, Task,
+    TaskStatus, TaskStatusUpdateEvent, TextPart, METHOD_GET_PUSH_NOTIFICATION_CONFIG,
+    METHOD_GET_TASK, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
+    METHOD_SET_PUSH_NOTIFICATION_CONFIG, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 pub use tasks::TaskRegistry;

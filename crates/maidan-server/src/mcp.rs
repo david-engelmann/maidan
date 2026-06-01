@@ -17,5 +17,8 @@ pub async fn handler(
         Ok(r) => r,
         Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
     };
+    if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
+        return Json(resp).into_response();
+    }
     Json(state.mcp.handle(request, &auth).await).into_response()
 }
