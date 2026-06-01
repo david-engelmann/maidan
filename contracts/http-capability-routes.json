@@ -1,0 +1,36 @@
+[
+  {
+    "method": "GET",
+    "path": "/workspaces/{workspace_id}/search",
+    "capability": "search:query",
+    "query": [["q", "hello"]]
+  },
+  {
+    "method": "POST",
+    "path": "/artifacts",
+    "capability": "artifact:upload",
+    "query": [["kind", "attachment"]],
+    "body": "bytes"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{workspace_id}/automation/dlq",
+    "capability": "workspace:read"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{workspace_id}/automation/deliveries/1/replay",
+    "capability": "workspace:write"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{workspace_id}/context",
+    "capability": "workspace:read"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{workspace_id}/channels",
+    "capability": "workspace:write",
+    "json": { "name": "general" }
+  }
+]

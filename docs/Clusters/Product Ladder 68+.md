@@ -39,7 +39,7 @@ HTTP targets for slash commands and FSM hooks (Clusters **51**, **52**) now have
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
 | **68** | Automation delivery guarantees | `v68.0.0` ✓ | Slash + FSM HTTP use **`maidan_automation_deliveries`** (retries, DLQ, replay); webhooks unchanged on **`maidan_webhook_deliveries`** |
-| **69** | Capabilities matrix complete | `v69.0.0` | Table-driven e2e: **every** MCP tool and documented HTTP route has positive + negative capability cases; `docs/Capability Map.md` generated or checked in CI |
+| **69** | Capabilities matrix complete | `v69.0.0` ✓ | MCP catalog + capability map in CI; table-driven deny/allow gate per tool; HTTP sample contract |
 | **70** | Vault truth pass | `v70.0.0` | [[Architecture]], [[Remaining Work]], [[Open Work]], root `README.md` reflect **`v67.0.0`** reality; stale “not implemented” rows removed |
 
 **Ordering:** **70** can start in parallel with **68** (docs-only PRs). **69** should follow **70** so the capability map lists routes that exist. **68** is independent of **69**.

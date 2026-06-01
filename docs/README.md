@@ -41,7 +41,8 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Query-Tuning]] — Postgres `EXPLAIN` playbook (Track U).
 - [[Glossary]] — domain vocabulary.
 - [[Clusters/Cluster 68.0]] — closed at `v68.0.0` (automation delivery guarantees).
-- [[Clusters/Cluster 69.0]] — **active** cluster (capabilities matrix complete).
+- [[Clusters/Cluster 69.0]] — closed at `v69.0.0` (capabilities matrix complete).
+- [[Clusters/Cluster 70.0]] — **active** cluster (vault truth pass).
 - [[Clusters/Cluster 13.0]] — delivery contract & subscriber ledger (historical).
 - [[Clusters/Cluster 12.0]] — closed at `v12.0.0` (outbox relay hardening).
 - [[Clusters/Cluster 11.0]] — closed at `v11.0.0` (coverage 11%).
