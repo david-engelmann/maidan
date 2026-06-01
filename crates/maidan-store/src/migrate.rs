@@ -55,6 +55,7 @@ const SQLITE_UP_V19: &str = include_str!("../../../migrations/sqlite/0019_webhoo
 const SQLITE_UP_V20: &str = include_str!("../../../migrations/sqlite/0020_slash_commands.sql");
 const SQLITE_UP_V21: &str = include_str!("../../../migrations/sqlite/0021_fsm_hooks.sql");
 const SQLITE_UP_V22: &str = include_str!("../../../migrations/sqlite/0022_token_quotas.sql");
+const SQLITE_UP_V23: &str = include_str!("../../../migrations/sqlite/0023_delivery_cursor.sql");
 
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
@@ -131,6 +132,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 20, SQLITE_UP_V20).await?;
     apply_sqlite(pool, 21, SQLITE_UP_V21).await?;
     apply_sqlite(pool, 22, SQLITE_UP_V22).await?;
+    apply_sqlite(pool, 23, SQLITE_UP_V23).await?;
     Ok(())
 }
 

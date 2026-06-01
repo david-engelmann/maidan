@@ -209,3 +209,75 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
     server.abort();
     drop(container);
 }
+
+#[tokio::test]
+async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
+    let (container, pool) = match common::postgres_pool().await {
+        Some(p) => p,
+        None => return,
+    };
+    let bus = Arc::new(FailingBus::new("replay-once"));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::PostgresSearch::new(pool.clone()));
+    let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
+
+    let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
+    state.outbox_relay = true;
+    state.outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
+
+    maidan_server::metrics::init();
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let ws_id = maidan_types::WorkspaceId(uuid::Uuid::new_v4());
+    store
+        .append_event(&maidan_types::Event::WorkspaceCreated {
+            occurred_at: chrono::Utc::now(),
+            workspace: maidan_types::Workspace {
+                id: ws_id,
+                name: "replay-outbox".into(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                tombstoned_at: None,
+            },
+        })
+        .await
+        .unwrap();
+
+    let relay = OutboxRelay::with_max_attempts(OutboxBackend::Postgres(pool.clone()), bus, 2);
+    relay.run_once().await.unwrap();
+    relay.run_once().await.unwrap();
+    assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
+
+    let row = sqlx::query_as::<_, (i64,)>("SELECT id FROM maidan_outbox LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let resp = client
+        .post(format!(
+            "http://{addr}/workspaces/{}/outbox/{}/replay",
+            ws_id.0, row.0
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 0);
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
+
+    let ok_bus = Arc::new(PostgresBus::connect(pool.clone()).await.unwrap());
+    let relay2 = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), ok_bus);
+    relay2.run_once().await.unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+
+    server.abort();
+    drop(container);
+}

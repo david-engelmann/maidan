@@ -1,10 +1,14 @@
-//! Postgres delivery cursor integration tests.
+//! Delivery cursor integration tests (Postgres + SQLite).
 
 use std::time::Duration;
 
-use maidan_store::{postgres::delivery_cursor, run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{
+    postgres::delivery_cursor as pg_cursor, run_postgres_migrations, run_sqlite_migrations,
+    sqlite::delivery_cursor as sqlite_cursor, PostgresStore, SqliteStore, Store,
+};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -52,26 +56,26 @@ async fn advance_cursor_is_monotonic_and_get_returns_watermark() {
         .unwrap();
 
     assert_eq!(
-        delivery_cursor::get_cursor(&pool, "agent-a", ws.id)
+        pg_cursor::get_cursor(&pool, "agent-a", ws.id)
             .await
             .unwrap(),
         0
     );
 
     assert_eq!(
-        delivery_cursor::advance_cursor(&pool, "agent-a", ws.id, 10)
+        pg_cursor::advance_cursor(&pool, "agent-a", ws.id, 10)
             .await
             .unwrap(),
         10
     );
     assert_eq!(
-        delivery_cursor::advance_cursor(&pool, "agent-a", ws.id, 5)
+        pg_cursor::advance_cursor(&pool, "agent-a", ws.id, 5)
             .await
             .unwrap(),
         10
     );
     assert_eq!(
-        delivery_cursor::advance_cursor(&pool, "agent-a", ws.id, 42)
+        pg_cursor::advance_cursor(&pool, "agent-a", ws.id, 42)
             .await
             .unwrap(),
         42
@@ -101,23 +105,61 @@ async fn federation_style_consumer_ids_are_scoped_per_peer() {
     let id_a = format!("federation:{peer_a}");
     let id_b = format!("federation:{peer_b}");
 
-    delivery_cursor::advance_cursor(&pool, &id_a, ws.id, 7)
+    pg_cursor::advance_cursor(&pool, &id_a, ws.id, 7)
         .await
         .unwrap();
-    delivery_cursor::advance_cursor(&pool, &id_b, ws.id, 3)
+    pg_cursor::advance_cursor(&pool, &id_b, ws.id, 3)
+        .await
+        .unwrap();
+
+    assert_eq!(pg_cursor::get_cursor(&pool, &id_a, ws.id).await.unwrap(), 7);
+    assert_eq!(pg_cursor::get_cursor(&pool, &id_b, ws.id).await.unwrap(), 3);
+}
+
+async fn sqlite_pool() -> sqlx::SqlitePool {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect sqlite");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("foreign_keys");
+    run_sqlite_migrations(&pool).await.expect("sqlite migrate");
+    pool
+}
+
+#[tokio::test]
+async fn sqlite_advance_cursor_is_monotonic_and_get_returns_watermark() {
+    let pool = sqlite_pool().await;
+    let store = SqliteStore::new(pool.clone());
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "sqlite-cursor-ws".into(),
+        })
         .await
         .unwrap();
 
     assert_eq!(
-        delivery_cursor::get_cursor(&pool, &id_a, ws.id)
+        sqlite_cursor::get_cursor(&pool, "agent-a", ws.id)
             .await
             .unwrap(),
-        7
+        0
     );
     assert_eq!(
-        delivery_cursor::get_cursor(&pool, &id_b, ws.id)
+        sqlite_cursor::advance_cursor(&pool, "agent-a", ws.id, 10)
             .await
             .unwrap(),
-        3
+        10
+    );
+    assert_eq!(
+        sqlite_cursor::advance_cursor(&pool, "agent-a", ws.id, 5)
+            .await
+            .unwrap(),
+        10
+    );
+    assert_eq!(
+        store.get_delivery_cursor("agent-a", ws.id).await.unwrap(),
+        10
     );
 }

@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [56.0.0] — 2026-05-31
+
+### Added
+
+- SQLite `maidan_delivery_cursor` (migration 0023) with real `get` / `advance` store methods.
+- `POST /workspaces/:wid/outbox/:outbox_id/replay` clears quarantine for operator recovery (`workspace:write`).
+
 ## [55.0.0] — 2026-05-28
 
 ### Added

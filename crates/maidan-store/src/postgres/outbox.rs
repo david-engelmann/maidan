@@ -1,5 +1,6 @@
 //! Postgres transactional outbox rows relayed to `PostgresBus` after commit.
 
+use maidan_types::WorkspaceId;
 use sqlx::{PgPool, Row};
 
 use crate::error::StoreError;
@@ -76,6 +77,33 @@ pub async fn quarantine(pool: &PgPool, outbox_id: i64) -> Result<(), StoreError>
     .bind(outbox_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Clears quarantine so the relay can retry; row must belong to `workspace_id`.
+pub async fn replay_quarantined(
+    pool: &PgPool,
+    outbox_id: i64,
+    workspace_id: WorkspaceId,
+) -> Result<(), StoreError> {
+    let updated = sqlx::query(
+        "UPDATE maidan_outbox o
+         SET quarantined_at = NULL, attempts = 0
+         FROM maidan_events e
+         WHERE o.log_id = e.id
+           AND o.id = $1
+           AND e.workspace_id = $2
+           AND o.published_at IS NULL
+           AND o.quarantined_at IS NOT NULL",
+    )
+    .bind(outbox_id)
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if updated == 0 {
+        return Err(StoreError::NotFound);
+    }
     Ok(())
 }
 
