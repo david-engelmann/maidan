@@ -1,0 +1,28 @@
+# Kind / CI smoke: local image, SQLite on PVC, auth off for health-only gate.
+replicaCount: 1
+
+image:
+  repository: maidan-server
+  tag: dev
+  pullPolicy: Never
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+config:
+  MAIDAN_BIND: "0.0.0.0:8080"
+  MAIDAN_LOG: "info,sqlx=warn"
+  AUTH_DISABLED: "1"
+  MAIDAN_BOOTSTRAP: "1"
+  ARTIFACT_BACKEND: localfs
+  ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
+
+secrets:
+  DATABASE_URL: "sqlite:///data/maidan.db?mode=rwc"

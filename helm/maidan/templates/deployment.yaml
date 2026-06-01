@@ -20,7 +20,7 @@ spec:
         {{- include "maidan.selectorLabels" . | nindent 8 }}
     spec:
       securityContext:
-        runAsNonRoot: true
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
         seccompProfile:
           type: RuntimeDefault
       containers:

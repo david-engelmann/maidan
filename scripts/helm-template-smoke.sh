@@ -9,10 +9,15 @@ if ! command -v helm >/dev/null 2>&1; then
 fi
 helm template maidan "${chart}" -f "${chart}/values.yaml" >/dev/null
 helm template maidan "${chart}" -f "${chart}/values-prod.yaml" >/dev/null
+helm template maidan "${chart}" -f "${chart}/values-cert-manager.yaml" >/dev/null
+helm template maidan "${chart}" -f "${chart}/values-ci.yaml" >/dev/null
 if [[ -f "${stack}/Chart.lock" ]]; then
   helm template maidan-stack "${stack}" >/dev/null
   helm template maidan-stack "${stack}" \
     --set postgresql.enabled=true \
     --set minio.enabled=true >/dev/null
+  if [[ -f "${stack}/values-prod.yaml" ]]; then
+    helm template maidan-stack "${stack}" -f "${stack}/values-prod.yaml" >/dev/null
+  fi
 fi
 echo "helm template smoke OK"

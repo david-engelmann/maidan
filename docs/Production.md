@@ -254,6 +254,27 @@ until re-upserted under the new model name.
 Import into Swagger UI, Redoc, or your client generator. The document
 version tracks the server release (`info.version`).
 
+## Helm (production)
+
+Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres + MinIO).
+
+| Values file | Use |
+|-------------|-----|
+| `values.yaml` | Dev defaults |
+| `values-prod.yaml` | HPA + ingress (manual TLS secret) |
+| `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation |
+| `values-ci.yaml` | kind smoke (SQLite, auth off) |
+
+**cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`, then:
+
+```bash
+helm install maidan ./helm/maidan -f ./helm/maidan/values-cert-manager.yaml -n maidan --create-namespace
+```
+
+**CI validation:** `./scripts/helm-template-smoke.sh` and `./scripts/helm-install-kind-smoke.sh` (kind + Docker).
+
+Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix). For the umbrella chart, substitute `RELEASE-postgresql` / `RELEASE-minio` hostnames in `maidan-stack/values-prod.yaml` with your Helm release name.
+
 ## API stability
 
 From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases
