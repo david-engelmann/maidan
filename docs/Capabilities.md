@@ -3,6 +3,41 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v67.0.0 — Workspace context packages
+
+| Capability | Where |
+|------------|-------|
+| Workspace context export | `GET /workspaces/:id/context` |
+| Message edits in thread context | `GET /threads/:id/context` |
+
+## v65.0.0 — App install OAuth
+
+| Capability | Where |
+|------------|-------|
+| OAuth authorization code | `POST .../apps/:app_id/oauth/authorize` |
+| Token exchange | `POST /oauth/app/token` |
+
+## v62.0.0 — Subscribe schema + outbox list
+
+| Capability | Where |
+|------------|-------|
+| WS subscribe schema version | `subscribe_ack.schema_version` |
+| List quarantined outbox | `GET /workspaces/:wid/outbox/quarantined` |
+
+## v60.0.0 — MCP streamable session lifecycle
+
+| Capability | Where |
+|------------|-------|
+| Streamable session TTL | `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS` |
+| Close streamable session | `DELETE /mcp/streamable` |
+
+## v59.0.0 — Agent integration charter
+
+| Capability | Where |
+|------------|-------|
+| Agent integration guide | [[Agent Integration]] |
+| Event/tool contract CI | `scripts/check-agent-contract.sh` |
+
 ## Maidan 2.0 product gate (`maidan-2.0`)
 
 | Capability | Where |

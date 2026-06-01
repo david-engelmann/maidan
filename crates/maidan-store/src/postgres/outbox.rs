@@ -14,6 +14,14 @@ pub struct OutboxRow {
     pub attempts: i32,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QuarantinedOutboxRow {
+    pub id: i64,
+    pub log_id: i64,
+    pub attempts: i32,
+    pub quarantined_at: chrono::DateTime<chrono::Utc>,
+}
+
 pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
         "SELECT id, log_id, attempts
@@ -114,6 +122,36 @@ pub async fn count_pending(pool: &PgPool) -> Result<i64, StoreError> {
     .fetch_one(pool)
     .await?;
     Ok(row.get("n"))
+}
+
+pub async fn list_quarantined_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<QuarantinedOutboxRow>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT o.id, o.log_id, o.attempts, o.quarantined_at
+         FROM maidan_outbox o
+         INNER JOIN maidan_events e ON e.id = o.log_id
+         WHERE e.workspace_id = $1
+           AND o.published_at IS NULL
+           AND o.quarantined_at IS NOT NULL
+         ORDER BY o.id DESC
+         LIMIT $2",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| QuarantinedOutboxRow {
+            id: row.get("id"),
+            log_id: row.get("log_id"),
+            attempts: row.get("attempts"),
+            quarantined_at: row.get("quarantined_at"),
+        })
+        .collect())
 }
 
 pub async fn count_quarantined(pool: &PgPool) -> Result<i64, StoreError> {

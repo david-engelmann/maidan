@@ -8,6 +8,8 @@ pub const JSONRPC_VERSION: &str = "2.0";
 pub const METHOD_SEND_MESSAGE: &str = "SendMessage";
 pub const METHOD_SEND_STREAMING_MESSAGE: &str = "SendStreamingMessage";
 pub const METHOD_GET_TASK: &str = "GetTask";
+pub const METHOD_SET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/set";
+pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/get";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
@@ -168,6 +170,25 @@ pub fn message_text(message: &A2aMessage) -> Option<String> {
     } else {
         Some(lines.join("\n"))
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushNotificationConfig {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPushNotificationConfigRequest {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPushNotificationConfigResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<PushNotificationConfig>,
 }
 
 pub fn maidan_context_from_metadata(metadata: &Option<Value>) -> Result<MaidanA2aContext, String> {

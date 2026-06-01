@@ -7,6 +7,66 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [67.0.0] — 2026-06-01
+
+### Added
+
+- `GET /workspaces/:id/context` packs channels and thread contexts (with message edit history).
+- Thread context responses include `message_edits`.
+
+## [66.0.0] — 2026-06-01
+
+### Added
+
+- `/.well-known/maidan.json` documents MCP endpoints and agent card URL.
+
+## [65.0.0] — 2026-06-01
+
+### Added
+
+- App OAuth: `POST .../apps/:app_id/oauth/authorize` and `POST /oauth/app/token` exchange.
+
+## [64.0.0] — 2026-06-01
+
+### Added
+
+- Per-token capability quotas enforced on MCP `tools/call`.
+
+## [63.0.0] — 2026-06-01
+
+### Added
+
+- MCP capability denial covered in `agent_surfaces_e2e`.
+
+## [62.0.0] — 2026-06-01
+
+### Added
+
+- WebSocket `subscribe_ack` includes `schema_version: 1`.
+- `GET /workspaces/:wid/outbox/quarantined` lists poison outbox rows.
+
+## [61.0.0] — 2026-06-01
+
+### Added
+
+- `GET /.well-known/agent-card.json` for A2A discovery.
+- A2A `tasks/pushNotificationConfig/set` and `/get` for workspace webhooks.
+
+## [60.0.0] — 2026-06-01
+
+### Added
+
+- MCP streamable session TTL (`MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`, default 3600s).
+- `DELETE /mcp/streamable` closes a session (`Mcp-Session-Id` header).
+
+## [59.0.0] — 2026-06-01
+
+### Added
+
+- [[Agent Integration]] guide for external agents.
+- Contract golden files: `contracts/event-kinds.json`, `contracts/mcp-tool-names.json`.
+- `scripts/check-agent-contract.sh` in CI.
+
 ## Maidan 2.0 product gate — 2026-06-01
 
 Tag **[`maidan-2.0`](https://github.com/david-engelmann/maidan/releases/tag/maidan-2.0)**

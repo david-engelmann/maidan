@@ -6,6 +6,7 @@
 
 pub mod a2a_agent;
 pub mod app;
+pub mod app_oauth;
 pub mod apps;
 pub mod auth;
 pub mod bootstrap;
@@ -22,6 +23,7 @@ pub mod fsm_hooks;
 pub mod health;
 pub mod mcp;
 pub mod mcp_notifications;
+pub mod mcp_quota;
 pub mod mcp_stream;
 pub mod mcp_streamable;
 pub mod metrics;

@@ -12,6 +12,8 @@ use maidan_auth::{
 };
 use maidan_types::TokenQuota;
 
+use maidan_types::ApiTokenId;
+
 use crate::error::ApiError;
 use crate::rate_limit::{too_many, try_acquire, WindowConfig};
 use crate::state::AppState;
@@ -60,6 +62,31 @@ pub fn validate_token_quotas(quotas: &[TokenQuota], token_caps: &[String]) -> Re
                 q.capability
             )));
         }
+    }
+    Ok(())
+}
+
+/// Enforce per-token quota for a capability (HTTP routes and MCP `tools/call`, Cluster 64).
+pub async fn enforce_token_quota(
+    state: &AppState,
+    token_id: ApiTokenId,
+    cap: &str,
+) -> Result<(), ApiError> {
+    let quotas = state.store.list_token_quotas(token_id).await?;
+    let Some(q) = quotas.iter().find(|q| q.capability == cap) else {
+        return Ok(());
+    };
+    let key = format!("quota:{}:{cap}", token_id.0);
+    let cfg = WindowConfig {
+        max: q.max_per_window,
+        window: Duration::from_secs(q.window_secs),
+    };
+    if !try_acquire(&key, cfg, state.rate_limit_redis.as_ref()).await {
+        return Err(ApiError::TooManyRequests(format!(
+            "capability quota exceeded for {cap} ({max} per {secs}s)",
+            max = cfg.max,
+            secs = cfg.window.as_secs()
+        )));
     }
     Ok(())
 }

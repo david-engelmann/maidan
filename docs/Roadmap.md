@@ -41,8 +41,10 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** None — Product Ladder **35+** closed at **`maidan-2.0`** / **`v58.0.0`**
-([[Retros/Product Ladder 35+]], [[Product Completion Checklist]]).
+**Active:** None — Product Ladder **59+** closed at **`v67.0.0`** ([[Clusters/Product Ladder 59+]],
+[[Agent Integration]]).
+
+**Recently closed:** **Cluster 67.0** — Workspace context packages at **`v67.0.0`**.
 
 **Recently closed:** **Cluster 58.0** — Maidan 2.0 completion gate at **`v58.0.0`**
 ([[Retros/Cluster 58.0]]).

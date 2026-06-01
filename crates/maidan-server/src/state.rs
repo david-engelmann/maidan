@@ -7,9 +7,10 @@ use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
-use maidan_types::{FsmHookId, PeerId, SlashCommandId, WebhookSubscriptionId};
+use maidan_types::{FsmHookId, PeerId, SlashCommandId, WebhookSubscriptionId, WorkspaceId};
 use tokio::sync::RwLock as AsyncRwLock;
 
+use crate::app_oauth::AppOAuthRuntime;
 use crate::oidc::OidcRuntime;
 use crate::presence::PresenceHub;
 use crate::subscribe_resume;
@@ -123,6 +124,10 @@ pub struct AppState {
     pub presence: Arc<PresenceHub>,
     /// Optional Redis backend for global and per-token rate limits (Cluster 54).
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
+    /// In-memory app OAuth authorization codes (Cluster 65).
+    pub app_oauth: Option<AppOAuthRuntime>,
+    /// Per-workspace A2A push notification webhook URLs (Cluster 61).
+    pub a2a_push: Arc<RwLock<HashMap<WorkspaceId, String>>>,
 }
 
 impl AppState {
@@ -170,6 +175,8 @@ impl AppState {
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
+            app_oauth: Some(AppOAuthRuntime::new()),
+            a2a_push: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

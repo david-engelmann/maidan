@@ -8,15 +8,19 @@ use axum::{extract::State, Extension, Json};
 use chrono::Utc;
 use futures::StreamExt;
 use maidan_a2a::{
-    maidan_context_from_metadata, message_text, GetTaskRequest, JsonRpcId, JsonRpcRequest,
-    JsonRpcResponse, SendMessageRequest, SendMessageResponse, StreamResponseStatusUpdate,
-    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, METHOD_GET_TASK,
-    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    maidan_context_from_metadata, message_text, GetPushNotificationConfigResponse, GetTaskRequest,
+    JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest, SendMessageResponse,
+    SetPushNotificationConfigRequest, StreamResponseStatusUpdate, StreamResponseTask, Task,
+    TaskStatus, TaskStatusUpdateEvent, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
+    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG,
+    TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
+use maidan_auth::capability::WORKSPACE_WRITE;
 use maidan_auth::AuthContext;
 use maidan_router::resolve_thread_context;
 use maidan_types::{Event, *};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::routes::publish;
@@ -49,6 +53,12 @@ pub async fn json_rpc(
             dispatch_send_streaming_message(&state, &auth, id, body.params).await
         }
         METHOD_GET_TASK => json_response(dispatch_get_task(&state, &auth, id, body.params).await),
+        METHOD_SET_PUSH_NOTIFICATION_CONFIG => {
+            json_response(dispatch_set_push_config(&state, &auth, id, body.params).await)
+        }
+        METHOD_GET_PUSH_NOTIFICATION_CONFIG => {
+            json_response(dispatch_get_push_config(&state, &auth, id).await)
+        }
         other => json_response(Ok(JsonRpcResponse::error(
             id,
             ERR_METHOD,
@@ -247,4 +257,94 @@ async fn dispatch_get_task(
     let value = serde_json::to_value(task)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
+}
+
+async fn dispatch_set_push_config(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    let req: SetPushNotificationConfigRequest = serde_json::from_value(params).map_err(|e| {
+        JsonRpcResponse::error(
+            id.clone(),
+            ERR_PARAMS,
+            format!("invalid push config params: {e}"),
+        )
+    })?;
+    if req.url.trim().is_empty() {
+        return Err(JsonRpcResponse::error(id, ERR_PARAMS, "url is required"));
+    }
+    if auth.bypass {
+        return Err(JsonRpcResponse::error(
+            id,
+            ERR_PARAMS,
+            "push config requires a workspace-scoped bearer token",
+        ));
+    }
+    if let Ok(mut guard) = state.a2a_push.write() {
+        guard.insert(auth.workspace_id, req.url);
+    }
+    Ok(JsonRpcResponse::success(
+        id,
+        serde_json::json!({ "ok": true }),
+    ))
+}
+
+async fn dispatch_get_push_config(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    if auth.bypass {
+        return Err(JsonRpcResponse::error(
+            id,
+            ERR_PARAMS,
+            "push config requires a workspace-scoped bearer token",
+        ));
+    }
+    let url = state
+        .a2a_push
+        .read()
+        .ok()
+        .and_then(|guard| guard.get(&auth.workspace_id).cloned());
+    let resp = GetPushNotificationConfigResponse {
+        config: url.map(|url| maidan_a2a::PushNotificationConfig { url }),
+    };
+    let value = serde_json::to_value(resp)
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgentCard {
+    pub name: String,
+    pub version: String,
+    pub protocol_version: String,
+    pub rpc_url: String,
+    pub ingress_url: String,
+    pub capabilities: Vec<String>,
+}
+
+pub async fn agent_card() -> impl IntoResponse {
+    Json(AgentCard {
+        name: "maidan".into(),
+        version: crate::version().to_string(),
+        protocol_version: "1.0".into(),
+        rpc_url: "/a2a/v1/rpc".into(),
+        ingress_url: "/a2a/v1/events".into(),
+        capabilities: vec![
+            METHOD_SEND_MESSAGE.into(),
+            METHOD_SEND_STREAMING_MESSAGE.into(),
+            METHOD_GET_TASK.into(),
+            METHOD_SET_PUSH_NOTIFICATION_CONFIG.into(),
+            METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
+        ],
+    })
 }
