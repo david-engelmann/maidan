@@ -1,0 +1,55 @@
+# Umbrella production bundle: Postgres + MinIO + Maidan with TLS ingress.
+postgresql:
+  enabled: true
+  auth:
+    username: maidan
+    password: "" # set via --set or external secret
+    database: maidan
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+minio:
+  enabled: true
+  auth:
+    rootUser: minio
+    rootPassword: "" # set via --set or external secret
+  defaultBuckets: maidan-artifacts
+  persistence:
+    enabled: true
+    size: 50Gi
+
+maidan:
+  replicaCount: 2
+  image:
+    pullPolicy: Always
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: maidan.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: maidan-tls
+        hosts:
+          - maidan.example.com
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+  config:
+    MAIDAN_BIND: "0.0.0.0:8080"
+    ARTIFACT_BACKEND: s3
+    S3_ENDPOINT: "http://RELEASE-minio:9000"
+    S3_BUCKET: maidan-artifacts
+    S3_REGION: us-east-1
+  secrets:
+    DATABASE_URL: "postgres://maidan:CHANGE_ME@RELEASE-postgresql:5432/maidan"
+    S3_ACCESS_KEY_ID: minio
+    S3_SECRET_ACCESS_KEY: "CHANGE_ME"

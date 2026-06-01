@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [55.0.0] — 2026-05-28
+
+### Added
+
+- Helm production bundle: `ingress.annotations`, `values-cert-manager.yaml`, `maidan-stack/values-prod.yaml`.
+- `values-ci.yaml` and `scripts/helm-install-kind-smoke.sh` with CI job `helm install (kind)`.
+- Helm secrets use `DATABASE_URL` (matches server config).
+
 ## [54.0.0] — 2026-05-28
 
 ### Added

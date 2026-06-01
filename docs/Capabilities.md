@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v55.0.0 — Helm production bundle
+
+| Capability | Where |
+|------------|-------|
+| cert-manager ingress values | `helm/maidan/values-cert-manager.yaml` |
+| Stack prod bundle | `helm/maidan-stack/values-prod.yaml` |
+| kind `helm install` CI | `scripts/helm-install-kind-smoke.sh` |
+
 ## v54.0.0 — Capability quotas & distributed limits
 
 | Capability | Where |

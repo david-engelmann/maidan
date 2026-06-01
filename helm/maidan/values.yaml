@@ -1,5 +1,13 @@
 replicaCount: 1
 
+# Distroless `nonroot` image (UID/GID 65532). Numeric IDs are required when
+# `runAsNonRoot` is set — named users in the image cannot be verified.
+podSecurityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  runAsNonRoot: true
+
 image:
   repository: maidan-server
   tag: dev
@@ -12,6 +20,7 @@ service:
 ingress:
   enabled: false
   className: ""
+  annotations: {}
   hosts:
     - host: maidan.local
       paths:
@@ -40,7 +49,7 @@ config:
   ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
 
 secrets:
-  MAIDAN_DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
+  DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
 
 persistence:
   enabled: true

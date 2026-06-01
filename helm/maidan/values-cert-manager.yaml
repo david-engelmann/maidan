@@ -1,12 +1,14 @@
+# Production ingress with cert-manager (Cluster 55).
+# Requires cert-manager + a ClusterIssuer named below.
 replicaCount: 2
-
-image:
-  pullPolicy: Always
 
 ingress:
   enabled: true
   className: nginx
-  annotations: {}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
   hosts:
     - host: maidan.example.com
       paths:
