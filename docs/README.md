@@ -43,7 +43,7 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Clusters/Cluster 68.0]] — closed at `v68.0.0` (automation delivery guarantees).
 - [[Clusters/Cluster 69.0]] — closed at `v69.0.0` (capabilities matrix complete).
 - [[Clusters/Cluster 70.0]] — closed at `v70.0.0` (vault truth pass).
-- [[Clusters/Cluster 71.0]] — **active** cluster (event & subscribe contract v2) — see [[Clusters/Product Ladder 68+]].
+- [[Clusters/Product Ladder 68+]] — closed at **`v76.0.0`** / **`maidan-agent-1.0`**.
 - [[Clusters/Cluster 13.0]] — delivery contract & subscriber ledger (historical).
 - [[Clusters/Cluster 12.0]] — closed at `v12.0.0` (outbox relay hardening).
 - [[Clusters/Cluster 11.0]] — closed at `v11.0.0` (coverage 11%).

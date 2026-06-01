@@ -23,7 +23,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 | **MCP tools** | 28 tools in `contracts/mcp-tool-names.json` | Per-tool caps in `contracts/mcp-capability-map.json`; CI matrix (**69**) |
 | **MCP streamable** | `POST/DELETE /mcp/streamable`, session TTL (**60**) | Subset of 2024-11-05; full mux deferred (**73**) |
 | **Subscribe** | WS + MCP SSE, `schema_version`, resume tokens | Outbox list/replay (**62**); quarantine replay HTTP (**56**) |
-| **A2A** | `SendMessage`, `GetTask`, `SendStreamingMessage` (**37**) | In-memory push config RPC; persisted push (**72**) |
+| **A2A** | `SendMessage`, `GetTask`, `SendStreamingMessage`, `SubscribeToTask` (**72**) | Persisted push config + tasks; outbound push on update |
 | **Apps** | Installed apps + OAuth code exchange (**57**, **65**) | App-scoped bearer secrets |
 | **Quotas** | Per-token capability quotas on MCP `tools/call` (**64**) | Redis optional for distributed windows (**54**) |
 | **Automation** | Webhooks (**50**), slash (**51**), FSM hooks (**52**) | Slash/FSM HTTP uses `maidan_automation_deliveries` + worker (**68**) |
