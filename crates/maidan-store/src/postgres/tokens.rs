@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ApiToken, ApiTokenId, MemberId, NewApiToken, WorkspaceId};
+use maidan_types::{ApiToken, ApiTokenId, AppInstallationId, MemberId, NewApiToken, WorkspaceId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -10,14 +10,15 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
         "INSERT INTO maidan_api_tokens
-            (id, workspace_id, member_id, token_hash, label, capabilities, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, workspace_id, member_id, token_hash, label, capabilities,
+            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
     .bind(id)
     .bind(new.workspace_id.0)
     .bind(new.member_id.0)
+    .bind(new.app_installation_id.map(|i| i.0))
     .bind(&new.token_hash)
     .bind(new.label.as_deref())
     .bind(&capabilities)
@@ -30,7 +31,7 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
 
 pub async fn get_by_id(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
-        "SELECT id, workspace_id, member_id, token_hash, label, capabilities,
+        "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                 created_at, expires_at, revoked_at
          FROM maidan_api_tokens
          WHERE id = $1",
@@ -44,12 +45,19 @@ pub async fn get_by_id(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreE
 
 pub async fn get_active_by_hash(pool: &PgPool, token_hash: &str) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
-        "SELECT id, workspace_id, member_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+        "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label,
+                capabilities, created_at, expires_at, revoked_at
          FROM maidan_api_tokens
          WHERE token_hash = $1
            AND revoked_at IS NULL
-           AND (expires_at IS NULL OR expires_at > NOW())",
+           AND (expires_at IS NULL OR expires_at > NOW())
+           AND (
+             app_installation_id IS NULL
+             OR EXISTS (
+               SELECT 1 FROM maidan_app_installations i
+               WHERE i.id = maidan_api_tokens.app_installation_id AND i.revoked_at IS NULL
+             )
+           )",
     )
     .bind(token_hash)
     .fetch_optional(pool)
@@ -84,7 +92,7 @@ pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreErro
         "UPDATE maidan_api_tokens
          SET revoked_at = $2
          WHERE id = $1 AND revoked_at IS NULL
-         RETURNING id, workspace_id, member_id, token_hash, label, capabilities,
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
     .bind(id.0)
@@ -113,6 +121,9 @@ fn row_to_token(row: &sqlx::postgres::PgRow) -> Result<ApiToken, StoreError> {
         id: ApiTokenId(row.get::<Uuid, _>("id")),
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         member_id: MemberId(row.get::<Uuid, _>("member_id")),
+        app_installation_id: row
+            .get::<Option<Uuid>, _>("app_installation_id")
+            .map(AppInstallationId),
         token_hash: row.get("token_hash"),
         label: row.get("label"),
         capabilities,

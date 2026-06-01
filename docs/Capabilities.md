@@ -311,6 +311,7 @@ Clusters **23â€“26** in the same release integration ([[Retros/Cluster 23.0]] â€
 |---------------------------------------------------------|-------------------------------|
 | Per-consumer delivery cursor (Postgres + SQLite)          | `maidan_delivery_cursor`, `Store::advance_delivery_cursor` |
 | Outbox quarantine replay API                              | `POST /workspaces/:wid/outbox/:oid/replay`                   |
+| Installed apps + app-scoped tokens                        | `maidan_apps`, `POST /workspaces/:wid/app-installations/:iid/tokens` |
 | Optional `consumer_id` on subscribe                       | `/ws/subscribe`, `/mcp/stream` |
 | Federation delivery cursor per peer                       | `federation:{peer_id}`        |
 

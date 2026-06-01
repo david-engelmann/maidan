@@ -46,3 +46,14 @@ pub fn validate_list(caps: &[String]) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Ensures every requested capability is included in the installation grant.
+pub fn validate_subset(granted: &[String], requested: &[String]) -> Result<(), String> {
+    validate_list(requested)?;
+    for cap in requested {
+        if !granted.iter().any(|g| g == cap) {
+            return Err(format!("capability {cap} exceeds app installation grant"));
+        }
+    }
+    Ok(())
+}

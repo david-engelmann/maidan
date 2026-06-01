@@ -39,6 +39,7 @@ pub async fn mint_first_admin_token(
         .create_api_token(NewApiToken {
             workspace_id: ctx.workspace_id,
             member_id: ctx.member_id,
+            app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: Some("oidc-first-admin".into()),
             capabilities,

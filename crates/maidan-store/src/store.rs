@@ -190,6 +190,26 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    async fn create_app(&self, new: NewApp) -> Result<App, StoreError>;
+    async fn get_app(&self, id: AppId) -> Result<App, StoreError>;
+    async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError>;
+    async fn create_app_installation(
+        &self,
+        new: NewAppInstallation,
+    ) -> Result<AppInstallation, StoreError>;
+    async fn get_app_installation(
+        &self,
+        id: AppInstallationId,
+    ) -> Result<AppInstallation, StoreError>;
+    async fn list_app_installations(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<AppInstallation>, StoreError>;
+    async fn revoke_app_installation(
+        &self,
+        id: AppInstallationId,
+    ) -> Result<AppInstallation, StoreError>;
+
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;

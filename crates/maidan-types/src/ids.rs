@@ -38,6 +38,8 @@ id_newtype!(ThreadId);
 id_newtype!(MessageId);
 id_newtype!(ArtifactId);
 id_newtype!(WorkspaceId);
+id_newtype!(AppId);
+id_newtype!(AppInstallationId);
 id_newtype!(ApiTokenId);
 id_newtype!(PeerId);
 id_newtype!(SessionId);

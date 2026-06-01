@@ -6,7 +6,7 @@ use axum::{
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    a2a_agent, auth, bootstrap, dm, federation, fsm_hooks, health, mcp, mcp_notifications,
+    a2a_agent, apps, auth, bootstrap, dm, federation, fsm_hooks, health, mcp, mcp_notifications,
     mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, request_id, routes,
     session, slash_commands, state::AppState, webhooks, ws,
 };
@@ -46,6 +46,26 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/members/:mid/tokens",
             post(routes::mint_api_token),
+        )
+        .route(
+            "/workspaces/:wid/apps",
+            post(apps::register_app).get(apps::list_apps),
+        )
+        .route(
+            "/workspaces/:wid/apps/:app_id/install",
+            post(apps::install_app),
+        )
+        .route(
+            "/workspaces/:wid/app-installations",
+            get(apps::list_app_installations),
+        )
+        .route(
+            "/workspaces/:wid/app-installations/:iid",
+            delete(apps::revoke_app_installation),
+        )
+        .route(
+            "/workspaces/:wid/app-installations/:iid/tokens",
+            post(apps::mint_app_token),
         )
         .route("/members/:id", get(routes::get_member))
         .route(

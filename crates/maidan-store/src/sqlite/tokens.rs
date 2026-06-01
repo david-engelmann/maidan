@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ApiToken, ApiTokenId, MemberId, NewApiToken, WorkspaceId};
+use maidan_types::{ApiToken, ApiTokenId, AppInstallationId, MemberId, NewApiToken, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -32,7 +32,7 @@ pub async fn create(pool: &SqlitePool, new: NewApiToken) -> Result<ApiToken, Sto
 
 pub async fn get_by_id(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
-        "SELECT id, workspace_id, member_id, token_hash, label, capabilities,
+        "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                 created_at, expires_at, revoked_at
          FROM maidan_api_tokens
          WHERE id = ?",
@@ -50,12 +50,19 @@ pub async fn get_active_by_hash(
 ) -> Result<ApiToken, StoreError> {
     let now = Utc::now();
     let row = sqlx::query(
-        "SELECT id, workspace_id, member_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+        "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label,
+                capabilities, created_at, expires_at, revoked_at
          FROM maidan_api_tokens
          WHERE token_hash = ?
            AND revoked_at IS NULL
-           AND (expires_at IS NULL OR expires_at > ?)",
+           AND (expires_at IS NULL OR expires_at > ?)
+           AND (
+             app_installation_id IS NULL
+             OR EXISTS (
+               SELECT 1 FROM maidan_app_installations i
+               WHERE i.id = maidan_api_tokens.app_installation_id AND i.revoked_at IS NULL
+             )
+           )",
     )
     .bind(token_hash)
     .bind(now)
@@ -91,7 +98,7 @@ pub async fn revoke(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, Store
         "UPDATE maidan_api_tokens
          SET revoked_at = ?
          WHERE id = ? AND revoked_at IS NULL
-         RETURNING id, workspace_id, member_id, token_hash, label, capabilities,
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
     .bind(now)
@@ -120,6 +127,9 @@ fn row_to_token(row: &sqlx::sqlite::SqliteRow) -> Result<ApiToken, StoreError> {
         id: ApiTokenId(row.get::<Uuid, _>("id")),
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         member_id: MemberId(row.get::<Uuid, _>("member_id")),
+        app_installation_id: row
+            .get::<Option<Uuid>, _>("app_installation_id")
+            .map(AppInstallationId),
         token_hash: row.get("token_hash"),
         label: row.get("label"),
         capabilities,
