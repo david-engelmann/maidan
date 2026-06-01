@@ -211,7 +211,8 @@ Reset a stuck cursor (operator SQL): `UPDATE maidan_delivery_cursor SET last_del
 **Manual recovery for a quarantined row** (operator SQL, not exposed over HTTP in 12.0):
 
 1. Fix the underlying bus/hydrate issue.
-2. `UPDATE maidan_outbox SET quarantined_at = NULL, attempts = 0 WHERE id = $id;` so the relay picks it up again, **or** leave quarantined and rely on clients replaying from `maidan_events` by `log_id`.
+2. **HTTP (`v56.0.0`):** `POST /workspaces/{wid}/outbox/{id}/replay` with `workspace:write` clears quarantine when the row’s event belongs to that workspace.
+3. **SQL:** `UPDATE maidan_outbox SET quarantined_at = NULL, attempts = 0 WHERE id = $id;` so the relay picks it up again, **or** leave quarantined and rely on clients replaying from `maidan_events` by `log_id`.
 
 ## Search (`GET /workspaces/:wid/search`)
 
