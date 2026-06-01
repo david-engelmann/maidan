@@ -41,7 +41,9 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** **Cluster 57.0** — Agent app model ([[Clusters/Product Ladder 35+]] Phase VII).
+**Active:** **Cluster 58.0** — Maidan 2.0 completion gate ([[Clusters/Product Ladder 35+]] Phase VII).
+
+**Recently closed:** **Cluster 57.0** — Agent app model at **`v57.0.0`** ([[Retros/Cluster 57.0]]).
 
 **Recently closed:** **Cluster 56.0** — Delivery guarantees at **`v56.0.0`** ([[Retros/Cluster 56.0]]).
 
