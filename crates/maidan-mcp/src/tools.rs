@@ -498,9 +498,13 @@ pub async fn dispatch(
         "list_slash_commands" => list_slash_commands(store, auth, args).await,
         "register_fsm_hook" => register_fsm_hook(store, auth, args).await,
         "list_fsm_hooks" => list_fsm_hooks(store, auth, args).await,
-        "get_thread_context" => crate::context::get_thread_context(store.as_ref(), args).await,
+        "get_thread_context" => {
+            let v = crate::context::get_thread_context(store.as_ref(), args).await?;
+            Ok(content_json(&v))
+        }
         "get_workspace_context" => {
-            crate::context::get_workspace_context(store.as_ref(), args).await
+            let v = crate::context::get_workspace_context(store.as_ref(), args).await?;
+            Ok(content_json(&v))
         }
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }

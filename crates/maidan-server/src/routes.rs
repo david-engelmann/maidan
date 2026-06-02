@@ -181,11 +181,13 @@ pub async fn get_workspace_context(
         } else {
             50
         },
+        message_cursor: None,
     };
     let packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
         workspace_id,
         q.thread_limit.clamp(1, 50),
+        q.thread_cursor.map(ThreadId),
         limits,
     )
     .await?;
@@ -546,8 +548,17 @@ pub async fn get_thread_context(
         state.store.as_ref(),
         thread_id,
         crate::thread_context::ThreadContextLimits {
-            message_limit: q.message_limit,
-            transition_limit: q.transition_limit,
+            message_limit: if q.message_limit > 0 {
+                q.message_limit
+            } else {
+                100
+            },
+            transition_limit: if q.transition_limit > 0 {
+                q.transition_limit
+            } else {
+                50
+            },
+            message_cursor: q.message_cursor.map(MessageId),
         },
     )
     .await?;

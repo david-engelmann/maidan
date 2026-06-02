@@ -34,6 +34,17 @@ Filter fields: `workspace_id` (enables auto-replay), optional `channel_id`, `thr
 - `GET /threads/:id/context` — messages, edits, references, artifacts, FSM history.
 - `GET /workspaces/:id/context` — workspace summary plus packed thread contexts (`thread_limit` query param).
 
+Pagination (Cluster 82): messages are ordered **`posted_at ASC`, `id ASC`**; threads in workspace context are ordered **`created_at ASC`, `id ASC`**. Query params:
+
+| Param | Endpoint | Meaning |
+|-------|----------|---------|
+| `message_limit` | thread context | Max messages per page (default 100, max 500) |
+| `message_cursor` | thread context | UUID of last message from previous page |
+| `thread_limit` | workspace context | Max threads per page (default 10, max 50) |
+| `thread_cursor` | workspace context | UUID of last thread from previous page |
+
+Responses include `next_message_cursor` / `next_thread_cursor` when another page exists. MCP tools `get_thread_context` and `get_workspace_context` accept the same fields in `arguments`.
+
 ## A2A push and task streaming
 
 Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1/rpc` (requires `workspace:write`). Config is **persisted per workspace** in the store. Read back with `tasks/pushNotificationConfig/get`.

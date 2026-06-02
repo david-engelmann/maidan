@@ -98,6 +98,13 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<Message>, StoreError>;
+    /// Messages after `after` (exclusive), ordered by `posted_at ASC` then `id ASC`.
+    async fn list_messages_after(
+        &self,
+        thread_id: ThreadId,
+        after: Option<MessageId>,
+        limit: i64,
+    ) -> Result<Vec<Message>, StoreError>;
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError>;
     /// Hard-delete a tombstoned message (GDPR erasure). Fails if not tombstoned.
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;

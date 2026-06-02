@@ -431,7 +431,9 @@ impl EventFilter {
             }
         }
         if let Event::ChannelCreated { channel, .. } = event {
-            if channel.private && self.workspace_id.is_some() && !self.channel_is_granted(channel.id)
+            if channel.private
+                && self.workspace_id.is_some()
+                && !self.channel_is_granted(channel.id)
             {
                 return false;
             }
