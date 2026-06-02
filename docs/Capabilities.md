@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v77.0.0 — HTTP capability map complete
+
+| Capability | Where |
+|------------|-------|
+| Full HTTP capability map | `contracts/http-capability-map.json` |
+| OpenAPI ↔ map CI | `http_openapi_capability_map_contract.rs` |
+| HTTP deny matrix e2e | `http_capability_matrix_e2e.rs` |
+| OpenAPI route parity | `openapi/paths/extensions.rs`, multipart stubs |
+
 ## v76.0.0 — Agent observability (`maidan-agent-1.0`)
 
 | Capability | Where |

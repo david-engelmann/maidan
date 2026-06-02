@@ -6,7 +6,7 @@ use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
-use maidan_types::{FsmHookId, PeerId, SlashCommandId, WebhookSubscriptionId, WorkspaceId};
+use maidan_types::{FsmHookId, PeerId, SlashCommandId, WebhookSubscriptionId};
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::app_oauth::AppOAuthRuntime;

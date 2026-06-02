@@ -3,8 +3,8 @@
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
-use uuid::Uuid;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 use crate::error::McpError;
 
@@ -46,7 +46,7 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     if thread.tombstoned_at.is_some() {
         return Err(McpError::InvalidParams("thread is tombstoned".into()));
     }
-    let thread_state = thread.state;
+    let _thread_state = thread.state;
     let channel = store.get_channel(thread.channel_id).await?;
     let messages = store
         .list_messages(thread_id, a.message_limit.clamp(1, 500))

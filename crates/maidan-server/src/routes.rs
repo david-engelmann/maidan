@@ -161,20 +161,6 @@ pub async fn list_quarantined_outbox(
     Ok(Json(rows))
 }
 
-#[derive(Debug, serde::Deserialize)]
-pub struct WorkspaceContextQuery {
-    #[serde(default = "default_workspace_thread_limit")]
-    pub thread_limit: i64,
-    #[serde(default)]
-    pub message_limit: i64,
-    #[serde(default)]
-    pub transition_limit: i64,
-}
-
-fn default_workspace_thread_limit() -> i64 {
-    10
-}
-
 pub async fn get_workspace_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

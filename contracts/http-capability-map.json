@@ -1,0 +1,560 @@
+[
+  {
+    "method": "POST",
+    "path": "/a2a/v1/events",
+    "capability": "federation:ingest",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/a2a/v1/rpc",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
+    "path": "/artifacts",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/artifacts/multipart",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/artifacts/multipart",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/artifacts/multipart/{upload_id}/complete",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/artifacts/multipart/{upload_id}/parts/{part_number}",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/artifacts/{sha}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/artifacts/{sha}/meta",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/channels/{cid}/threads",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/channels/{cid}/threads",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/channels/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/dm/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/dm/{id}/messages",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/dm/{id}/messages",
+    "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/inbox",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/members/{id}/inbox/read",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/mentions",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/messages/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/messages/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PATCH",
+    "path": "/messages/{id}",
+    "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/messages/{id}/edits",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/messages/{id}/mentions",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/messages/{id}/purge",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/messages/{id}/reactions",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/messages/{id}/reactions",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/messages/{id}/reactions",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/messages/{id}/votes",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/messages/{id}/votes",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/references",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/references",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/context",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/pins",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/pins",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/pins",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{tid}/messages",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{tid}/messages",
+    "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/tokens/{id}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/channels/{cid}/threads",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/messages/{mid}/edits",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/threads/{tid}/messages",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/audit",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/channels",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/events",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/peers",
+    "capability": "federation:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/search",
+    "capability": "search:query",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{id}/purge",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/app-installations",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/app-installations/{iid}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/app-installations/{iid}/tokens",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/apps",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/apps",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/apps/{app_id}/install",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/audit",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/automation/deliveries",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/automation/deliveries/{did}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/automation/deliveries/{did}/replay",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/automation/dlq",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/channels",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/channels",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/context",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/dm",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/dm",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/events",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/fsm-hooks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/fsm-hooks",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/fsm-hooks/{hid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/members",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/members/{mid}/tokens",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/outbox/quarantined",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/outbox/{oid}/replay",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/peers",
+    "capability": "federation:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/peers",
+    "capability": "federation:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/peers/{pid}",
+    "capability": "federation:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/search",
+    "capability": "search:query",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/slash-commands",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/slash-commands",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/slash-commands/{cid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/webhooks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/webhooks",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/webhooks/{whid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/mcp",
+    "capability": "per-tool",
+    "surface": "mcp"
+  },
+  {
+    "method": "GET",
+    "path": "/mcp/notifications",
+    "capability": "workspace:read",
+    "surface": "mcp"
+  },
+  {
+    "method": "GET",
+    "path": "/mcp/stream",
+    "capability": "event:subscribe",
+    "surface": "mcp"
+  },
+  {
+    "method": "DELETE",
+    "path": "/mcp/streamable",
+    "capability": "workspace:read",
+    "surface": "mcp"
+  },
+  {
+    "method": "POST",
+    "path": "/mcp/streamable",
+    "capability": "workspace:read",
+    "surface": "mcp"
+  },
+  {
+    "method": "GET",
+    "path": "/ws/subscribe",
+    "capability": "event:subscribe",
+    "surface": "websocket"
+  }
+]

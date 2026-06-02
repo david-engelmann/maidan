@@ -6,7 +6,7 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**`v76.0.0`** on `main` — agent substrate ladder **68+** complete (**`maidan-agent-1.0`** gate).
+**`v77.0.0`** on `main` — Product Ladder **77+** active (Cluster **78** next). Agent gate **`maidan-agent-1.0`** at **`v76.0.0`**.
 Product gate **`maidan-2.0`** shipped at **`v58.0.0`**.
 
 | Doc | Use |

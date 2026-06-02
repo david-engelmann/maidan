@@ -12,7 +12,7 @@ use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::openapi::schemas::{LivenessOk, SearchHit};
-use crate::thread_context::{ThreadContext, ThreadFsmContext};
+use crate::thread_context::{ThreadContext, ThreadFsmContext, WorkspaceContext};
 use maidan_types::*;
 
 struct SecurityAddon;
@@ -57,11 +57,28 @@ impl Modify for SecurityAddon {
         paths::create_workspace,
         paths::create_member_bootstrap,
         paths::get_workspace,
+        paths::purge_workspace,
         paths::erase_workspace,
+        paths::list_workspace_audit,
+        paths::get_workspace_context,
+        paths::list_quarantined_outbox,
+        paths::replay_quarantined_outbox,
         paths::list_events,
         paths::search_messages,
         paths::list_members,
         paths::mint_api_token,
+        paths::register_app,
+        paths::list_apps,
+        paths::install_app,
+        paths::authorize_app_install,
+        paths::list_app_installations,
+        paths::revoke_app_installation,
+        paths::mint_app_token,
+        paths::open_dm_conversation,
+        paths::list_dm_conversations,
+        paths::get_dm_conversation,
+        paths::post_dm_message,
+        paths::list_dm_messages,
         paths::list_channels,
         paths::create_channel,
         paths::list_peers,
@@ -76,6 +93,10 @@ impl Modify for SecurityAddon {
         paths::list_fsm_hooks,
         paths::create_fsm_hook,
         paths::revoke_fsm_hook,
+        paths::list_automation_dlq,
+        paths::list_automation_deliveries,
+        paths::get_automation_delivery,
+        paths::replay_automation_delivery,
         paths::get_member,
         paths::list_mentions_for_member,
         paths::get_member_inbox,
@@ -92,6 +113,7 @@ impl Modify for SecurityAddon {
         paths::edit_message,
         paths::list_message_edits,
         paths::tombstone_message,
+        paths::purge_message,
         paths::create_mention,
         paths::cast_vote,
         paths::list_votes,
@@ -104,6 +126,10 @@ impl Modify for SecurityAddon {
         paths::upload_artifact,
         paths::get_artifact,
         paths::get_artifact_metadata,
+        paths::begin_multipart_artifact_doc,
+        paths::abort_multipart_artifact_doc,
+        paths::complete_multipart_artifact_doc,
+        paths::upload_multipart_artifact_part_doc,
         paths::create_reference,
         paths::list_references,
         paths::revoke_api_token,
@@ -154,7 +180,9 @@ impl Modify for SecurityAddon {
         ThreadTransition,
         ThreadContext,
         ThreadFsmContext,
+        WorkspaceContext,
         ThreadContextQuery,
+        WorkspaceContextQuery,
         TransitionThread,
         CreateMessage,
         EditMessageRequest,
@@ -213,6 +241,9 @@ impl Modify for SecurityAddon {
         (name = "tokens", description = "API token mint and revoke"),
         (name = "federation", description = "A2A federation and peers"),
         (name = "fsm", description = "FSM automation hooks on thread state transitions"),
+        (name = "apps", description = "Agent app registration and installations"),
+        (name = "dm", description = "Direct message conversations"),
+        (name = "automation", description = "Automation delivery operator API"),
         (name = "auth", description = "OIDC login and browser session (requires MAIDAN_OIDC_ENABLED)"),
     )
 )]

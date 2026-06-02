@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [77.0.0] — 2026-06-02
+
+### Added
+
+- `contracts/http-capability-map.json` and OpenAPI parity CI.
+- `http_capability_matrix_e2e` table-driven HTTP capability denial.
+- OpenAPI documentation for automation, apps, DMs, workspace context, multipart.
+
 ## [76.0.0] — 2026-06-01
 
 ### Added

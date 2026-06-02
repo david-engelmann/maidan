@@ -115,6 +115,20 @@ fn default_transition_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct WorkspaceContextQuery {
+    #[serde(default = "default_workspace_thread_limit")]
+    pub thread_limit: i64,
+    #[serde(default)]
+    pub message_limit: i64,
+    #[serde(default)]
+    pub transition_limit: i64,
+}
+
+fn default_workspace_thread_limit() -> i64 {
+    10
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListMessagesQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,

@@ -19,7 +19,7 @@
   },
   {
     "method": "POST",
-    "path": "/workspaces/{workspace_id}/automation/deliveries/1/replay",
+    "path": "/workspaces/{wid}/automation/deliveries/1/replay",
     "capability": "workspace:write"
   },
   {
