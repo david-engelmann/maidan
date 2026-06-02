@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [83.0.0] — 2026-06-02
+
+### Added
+
+- Product Ladder closure for SQLite `maidan_delivery_cursor` parity (store impl since `v56.0.0`).
+- `delivery_cursor` integration tests for Postgres and in-memory SQLite watermarks.
+
 ## [82.0.0] — 2026-06-02
 
 ### Added

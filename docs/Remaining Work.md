@@ -4,7 +4,7 @@ Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`)
 Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and
 [[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
 
-**Latest closes:** **`v82.0.0`** context pagination · **`v81.0.0`** subscribe grants · **`v80.0.0`** delivery ops · **`v79.0.0`** A2A long tasks · **`v77.0.0`** HTTP capability map.
+**Latest closes:** **`v83.0.0`** SQLite delivery cursor (ladder) · **`v82.0.0`** context pagination · **`v81.0.0`** subscribe grants · **`v79.0.0`** A2A long tasks.
 
 ---
 
@@ -19,7 +19,7 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Capabilities (69)** | Full MCP matrix + sample HTTP contract | Every OpenAPI path in CI (**77**) |
 | **A2A (72)** | Persisted tasks + cancel/progress (**79**) | Task marketplace UI |
 | **Context (74)** | HTTP + MCP context + cursors (**82**) | Store-level workspace thread cursor |
-| **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, ladder **83**) | — |
+| **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, **83**) | — |
 | **Outbox** | Relay + quarantine + HTTP replay (**56**) | Polled relay / NOTIFY upgrade (**84**) |
 | **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
 | **Semantic (75)** | CLI reindex + runbook; Postgres HNSW | `sqlite-vec` (**85**); operator job API (**87**) |
