@@ -246,3 +246,54 @@ async fn streamable_follow_up_on_open_session_returns_json() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn streamable_delete_closes_session() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let init = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    });
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&init)
+        .send()
+        .await
+        .unwrap();
+    let session = resp
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let del = client
+        .delete(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+
+    let resp2 = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&init)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let new_session = resp2
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_ne!(new_session, session.as_str());
+
+    server.abort();
+}

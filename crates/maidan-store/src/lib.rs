@@ -3,6 +3,7 @@
 //! Defines [`Store`], a backend-agnostic async interface, plus Postgres
 //! and SQLite implementations backed by `sqlx`.
 
+pub mod a2a;
 pub mod automation_deliveries;
 pub mod dialect;
 pub mod dm;

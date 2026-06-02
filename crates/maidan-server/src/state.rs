@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
-use maidan_a2a::TaskRegistry;
 use maidan_artifacts::ArtifactStore;
 use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
 use maidan_mcp::McpServer;
@@ -92,8 +91,6 @@ pub struct AppState {
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// Shared MCP dispatcher (subscriptions + notification fan-out).
     pub mcp: Arc<McpServer>,
-    /// In-memory A2A protocol tasks (`GetTask` / `SendMessage`).
-    pub a2a_tasks: Arc<TaskRegistry>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
@@ -126,8 +123,6 @@ pub struct AppState {
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// In-memory app OAuth authorization codes (Cluster 65).
     pub app_oauth: Option<AppOAuthRuntime>,
-    /// Per-workspace A2A push notification webhook URLs (Cluster 61).
-    pub a2a_push: Arc<RwLock<HashMap<WorkspaceId, String>>>,
 }
 
 impl AppState {
@@ -157,7 +152,6 @@ impl AppState {
             search,
             embedding_provider,
             mcp,
-            a2a_tasks: Arc::new(TaskRegistry::new()),
             auth_disabled,
             bootstrap_enabled,
             federation,
@@ -176,7 +170,6 @@ impl AppState {
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
             app_oauth: Some(AppOAuthRuntime::new()),
-            a2a_push: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

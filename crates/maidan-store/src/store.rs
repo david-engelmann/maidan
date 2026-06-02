@@ -362,4 +362,26 @@ pub trait Store: Send + Sync {
         from_state: ThreadState,
         to_state: ThreadState,
     ) -> Result<Vec<FsmHookWithSecret>, StoreError>;
+
+    async fn upsert_a2a_push_config(
+        &self,
+        workspace_id: WorkspaceId,
+        push_url: &str,
+    ) -> Result<(), StoreError>;
+    async fn get_a2a_push_config(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<String>, StoreError>;
+
+    async fn upsert_a2a_task(
+        &self,
+        workspace_id: WorkspaceId,
+        task_id: &str,
+        task_json: serde_json::Value,
+    ) -> Result<(), StoreError>;
+    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError>;
+    async fn get_a2a_task_workspace(
+        &self,
+        task_id: &str,
+    ) -> Result<Option<WorkspaceId>, StoreError>;
 }

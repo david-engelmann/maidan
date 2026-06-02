@@ -7,6 +7,8 @@
   "complete_artifact_multipart": "artifact:upload",
   "edit_message": "message:post",
   "get_artifact_metadata": "workspace:read",
+  "get_thread_context": "workspace:read",
+  "get_workspace_context": "workspace:read",
   "list_channels": "workspace:read",
   "list_dm_conversations": "workspace:read",
   "list_fsm_hooks": "workspace:read",

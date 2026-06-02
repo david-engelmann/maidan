@@ -37,7 +37,7 @@ Active plan: [[Clusters/Product Ladder 68+]] → **`maidan-agent-1.0`** at **76*
 | **`v69.0.0`** | MCP capability map + CI matrix — [[Retros/Cluster 69.0]] |
 | **`v70.0.0`** | Vault truth — [[Retros/Cluster 70.0]] |
 
-**Next:** Cluster **71** — event & subscribe contract v2 ([[Clusters/Product Ladder 68+]] § Phase XII).
+**Ladder 68–76 closed** at **`v76.0.0`** ([[Retros/Cluster 76.0]]). Next work: human-product backlog ([[Remaining Work]]) or external integrator deployments.
 
 ## Still deferred (no separate owner)
 

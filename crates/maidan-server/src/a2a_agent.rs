@@ -8,12 +8,13 @@ use axum::{extract::State, Extension, Json};
 use chrono::Utc;
 use futures::StreamExt;
 use maidan_a2a::{
-    maidan_context_from_metadata, message_text, GetPushNotificationConfigResponse, GetTaskRequest,
-    JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest, SendMessageResponse,
-    SetPushNotificationConfigRequest, StreamResponseStatusUpdate, StreamResponseTask, Task,
-    TaskStatus, TaskStatusUpdateEvent, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
-    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG,
-    TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    is_terminal_task_state, maidan_context_from_metadata, message_text,
+    GetPushNotificationConfigResponse, GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse,
+    SendMessageRequest, SendMessageResponse, SetPushNotificationConfigRequest,
+    StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
+    METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK, METHOD_SEND_MESSAGE,
+    METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG, METHOD_SUBSCRIBE_TO_TASK,
+    METHOD_TASKS_RESUBSCRIBE, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -30,6 +31,7 @@ const ERR_PARSE: i32 = -32700;
 const ERR_METHOD: i32 = -32601;
 const ERR_PARAMS: i32 = -32602;
 const ERR_INTERNAL: i32 = -32603;
+const ERR_UNSUPPORTED: i32 = -32005;
 
 pub async fn json_rpc(
     State(state): State<AppState>,
@@ -59,6 +61,9 @@ pub async fn json_rpc(
         METHOD_GET_PUSH_NOTIFICATION_CONFIG => {
             json_response(dispatch_get_push_config(&state, &auth, id).await)
         }
+        METHOD_SUBSCRIBE_TO_TASK | METHOD_TASKS_RESUBSCRIBE => {
+            dispatch_subscribe_to_task(&state, &auth, id, body.params).await
+        }
         other => json_response(Ok(JsonRpcResponse::error(
             id,
             ERR_METHOD,
@@ -74,8 +79,46 @@ fn json_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
     }
 }
 
+async fn persist_task(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
+    let Ok(value) = serde_json::to_value(task) else {
+        return;
+    };
+    if state
+        .store
+        .upsert_a2a_task(workspace_id, &task.id, value.clone())
+        .await
+        .is_err()
+    {
+        return;
+    }
+    if let Ok(Some(url)) = state.store.get_a2a_push_config(workspace_id).await {
+        let url = url.clone();
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            let _ = client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .json(&value)
+                .timeout(std::time::Duration::from_secs(10))
+                .send()
+                .await;
+        });
+    }
+}
+
+async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
+    let value = state
+        .store
+        .get_a2a_task(task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "task not found".to_string())?;
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
 struct PostedA2a {
     task_id: String,
+    workspace_id: WorkspaceId,
     thread_id: Uuid,
     message: Message,
     agent_message: maidan_a2a::A2aMessage,
@@ -132,6 +175,7 @@ async fn post_a2a_message(
     .await;
     Ok(PostedA2a {
         task_id: uuid::Uuid::new_v4().to_string(),
+        workspace_id: thread_ctx.workspace_id,
         thread_id: ctx.thread_id,
         message: posted,
         agent_message: req.message,
@@ -156,7 +200,7 @@ async fn dispatch_send_message(
             "maidan": { "messageId": posted.message.id.0 }
         })),
     };
-    state.a2a_tasks.insert(task.clone());
+    persist_task(state, posted.workspace_id, &task).await;
     let result = SendMessageResponse { task };
     let value = serde_json::to_value(result)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
@@ -185,7 +229,7 @@ async fn dispatch_send_streaming_message(
             "maidan": { "messageId": posted.message.id.0 }
         })),
     };
-    state.a2a_tasks.insert(working.clone());
+    persist_task(state, posted.workspace_id, &working).await;
 
     let completed = Task {
         id: posted.task_id.clone(),
@@ -196,7 +240,7 @@ async fn dispatch_send_streaming_message(
         },
         metadata: working.metadata.clone(),
     };
-    state.a2a_tasks.insert(completed.clone());
+    persist_task(state, posted.workspace_id, &completed).await;
 
     let status_update = TaskStatusUpdateEvent {
         task_id: posted.task_id,
@@ -239,11 +283,19 @@ async fn dispatch_get_task(
             format!("invalid GetTask params: {e}"),
         )
     })?;
-    let task = state
-        .a2a_tasks
-        .get(&req.id)
-        .ok_or_else(|| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
-    if let Some(context_id) = &task.context_id {
+    let task = load_task(state, &req.id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    if let Some(ws) = state
+        .store
+        .get_a2a_task_workspace(&req.id)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?
+    {
+        if let Err(e) = auth.ensure_workspace(ws) {
+            return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+        }
+    } else if let Some(context_id) = &task.context_id {
         if let Ok(thread_id) = uuid::Uuid::parse_str(context_id) {
             if let Ok(thread_ctx) =
                 resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await
@@ -285,9 +337,11 @@ async fn dispatch_set_push_config(
             "push config requires a workspace-scoped bearer token",
         ));
     }
-    if let Ok(mut guard) = state.a2a_push.write() {
-        guard.insert(auth.workspace_id, req.url);
-    }
+    state
+        .store
+        .upsert_a2a_push_config(auth.workspace_id, &req.url)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(
         id,
         serde_json::json!({ "ok": true }),
@@ -310,16 +364,67 @@ async fn dispatch_get_push_config(
         ));
     }
     let url = state
-        .a2a_push
-        .read()
-        .ok()
-        .and_then(|guard| guard.get(&auth.workspace_id).cloned());
+        .store
+        .get_a2a_push_config(auth.workspace_id)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     let resp = GetPushNotificationConfigResponse {
         config: url.map(|url| maidan_a2a::PushNotificationConfig { url }),
     };
     let value = serde_json::to_value(resp)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
+}
+
+async fn dispatch_subscribe_to_task(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Response {
+    if let Err(e) = auth.require_capability(MESSAGE_POST) {
+        return Json(JsonRpcResponse::error(id, -32001, e.to_string())).into_response();
+    }
+    let req: GetTaskRequest = match serde_json::from_value(params) {
+        Ok(r) => r,
+        Err(e) => {
+            return Json(JsonRpcResponse::error(
+                id.clone(),
+                ERR_PARAMS,
+                format!("invalid SubscribeToTask params: {e}"),
+            ))
+            .into_response();
+        }
+    };
+    let task = match load_task(state, &req.id).await {
+        Ok(t) => t,
+        Err(_) => {
+            return Json(JsonRpcResponse::error(id, ERR_PARAMS, "task not found")).into_response();
+        }
+    };
+    if let Ok(Some(ws)) = state.store.get_a2a_task_workspace(&req.id).await {
+        if let Err(e) = auth.ensure_workspace(ws) {
+            return Json(JsonRpcResponse::error(id, -32001, e.to_string())).into_response();
+        }
+    }
+    if is_terminal_task_state(&task.status.state) {
+        return Json(JsonRpcResponse::error(
+            id,
+            ERR_UNSUPPORTED,
+            "task is in a terminal state",
+        ))
+        .into_response();
+    }
+
+    let frames = vec![JsonRpcResponse::success(
+        id.clone(),
+        serde_json::to_value(StreamResponseTask { task: task.clone() }).unwrap(),
+    )];
+    let stream = futures::stream::iter(frames).map(|frame| {
+        let data = serde_json::to_string(&frame).unwrap_or_default();
+        Ok::<SseEvent, Infallible>(SseEvent::default().data(data))
+    });
+    Sse::new(stream).into_response()
 }
 
 #[derive(Debug, Serialize)]
@@ -345,6 +450,8 @@ pub async fn agent_card() -> impl IntoResponse {
             METHOD_GET_TASK.into(),
             METHOD_SET_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
+            METHOD_SUBSCRIBE_TO_TASK.into(),
+            METHOD_TASKS_RESUBSCRIBE.into(),
         ],
     })
 }

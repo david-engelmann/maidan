@@ -6,9 +6,8 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**`v69.0.0`** on `main` — agent substrate Phase XI (automation delivery, MCP
-capability map). Product gate **`maidan-2.0`** shipped at **`v58.0.0`**.
-Next ladder: [**68+**](docs/Clusters/Product%20Ladder%2068+.md) → **`maidan-agent-1.0`** at Cluster **76**.
+**`v76.0.0`** on `main` — agent substrate ladder **68+** complete (**`maidan-agent-1.0`** gate).
+Product gate **`maidan-2.0`** shipped at **`v58.0.0`**.
 
 | Doc | Use |
 |-----|-----|
@@ -17,7 +16,7 @@ Next ladder: [**68+**](docs/Clusters/Product%20Ladder%2068+.md) → **`maidan-ag
 | [`docs/Production.md`](docs/Production.md) | Deploy, env, probes |
 | [`CHANGELOG.md`](CHANGELOG.md) | Full release history |
 
-**Recent tags:** **`v67`** workspace context · **`v68`** automation HTTP DLQ · **`v69`** capability matrix CI.
+**Recent tags:** **`v72`** A2A `SubscribeToTask` · **`v74`** MCP context tools · **`v76`** agent gate.
 
 Open backlog: [`docs/Remaining Work.md`](docs/Remaining%20Work.md) · [`docs/Open Work.md`](docs/Open%20Work.md).
 

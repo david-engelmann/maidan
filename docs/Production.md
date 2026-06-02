@@ -254,6 +254,20 @@ exhausted rows are quarantined (dead letter). **Outbound event webhooks** still 
 
 **Manual recovery (SQL):** `UPDATE maidan_automation_deliveries SET quarantined_at = NULL, attempts = 0, next_attempt_at = datetime('now') WHERE id = $id;` (SQLite) or equivalent `now()` on Postgres — prefer HTTP replay when auth is available.
 
+### Agent observability (`v76.0.0`)
+
+Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Gate e2e: `agent_substrate_gate_e2e.rs`.
+
+| Metric / signal | Symptom | Suggested action |
+|-----------------|---------|------------------|
+| `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
+| `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
+| `maidan_outbox_pending` / quarantined | Relay stuck | [[Production#Outbox relay]] |
+| `maidan_automation_delivery_total{success="false"}` | Slash/FSM HTTP failing | [[Production#Automation HTTP delivery]] |
+| MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs until OTLP dashboards land |
+
+**Semantic scale:** set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` in Helm prod values; run `maidan reindex-embeddings --database-url $DATABASE_URL` after provider changes.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

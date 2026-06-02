@@ -3,6 +3,7 @@
 //! UUIDs and timestamps, no `RETURNING` for the audit table's
 //! AUTOINCREMENT id — we read it back via `last_insert_rowid()`).
 
+mod a2a;
 pub mod apps;
 mod artifacts;
 mod audit;
@@ -694,5 +695,40 @@ impl Store for SqliteStore {
         to_state: ThreadState,
     ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
         fsm_hooks::list_matching(&self.pool, workspace_id, from_state, to_state).await
+    }
+
+    async fn upsert_a2a_push_config(
+        &self,
+        workspace_id: WorkspaceId,
+        push_url: &str,
+    ) -> Result<(), StoreError> {
+        a2a::upsert_push_config(&self.pool, workspace_id, push_url).await
+    }
+
+    async fn get_a2a_push_config(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<String>, StoreError> {
+        a2a::get_push_config(&self.pool, workspace_id).await
+    }
+
+    async fn upsert_a2a_task(
+        &self,
+        workspace_id: WorkspaceId,
+        task_id: &str,
+        task_json: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        a2a::upsert_task(&self.pool, workspace_id, task_id, task_json).await
+    }
+
+    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
+        a2a::get_task(&self.pool, task_id).await
+    }
+
+    async fn get_a2a_task_workspace(
+        &self,
+        task_id: &str,
+    ) -> Result<Option<WorkspaceId>, StoreError> {
+        a2a::get_task_workspace(&self.pool, task_id).await
     }
 }
