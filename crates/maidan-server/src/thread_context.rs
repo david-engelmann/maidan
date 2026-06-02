@@ -23,6 +23,9 @@ pub struct ThreadContext {
     pub references: Vec<Reference>,
     pub artifacts: Vec<Artifact>,
     pub fsm: ThreadFsmContext,
+    /// Present when more messages exist (`message_id` cursor for the next page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_message_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
@@ -30,12 +33,16 @@ pub struct WorkspaceContext {
     pub workspace: Workspace,
     pub channels: Vec<Channel>,
     pub threads: Vec<ThreadContext>,
+    /// Present when more threads exist (`thread_id` cursor for the next page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_thread_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ThreadContextLimits {
     pub message_limit: i64,
     pub transition_limit: i64,
+    pub message_cursor: Option<MessageId>,
 }
 
 impl Default for ThreadContextLimits {
@@ -43,6 +50,7 @@ impl Default for ThreadContextLimits {
         Self {
             message_limit: 100,
             transition_limit: 50,
+            message_cursor: None,
         }
     }
 }
@@ -59,7 +67,18 @@ pub async fn build_thread_context(
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
 
-    let messages = store.list_messages(thread_id, limits.message_limit).await?;
+    let page_limit = limits.message_limit.clamp(1, 500);
+    let messages = store
+        .list_messages_after(thread_id, limits.message_cursor, page_limit + 1)
+        .await?;
+    let next_message_cursor = if messages.len() as i64 > page_limit {
+        messages
+            .get(page_limit as usize - 1)
+            .map(|m| m.id.0.to_string())
+    } else {
+        None
+    };
+    let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
     let transitions = store
         .list_thread_transitions(thread_id, limits.transition_limit)
         .await?;
@@ -111,6 +130,7 @@ pub async fn build_thread_context(
             state: thread.state,
             transitions,
         },
+        next_message_cursor,
     })
 }
 
@@ -118,30 +138,55 @@ pub async fn build_workspace_context(
     store: &dyn Store,
     workspace_id: WorkspaceId,
     thread_limit: i64,
+    thread_cursor: Option<ThreadId>,
     limits: ThreadContextLimits,
 ) -> Result<WorkspaceContext, ApiError> {
     let workspace = store.get_workspace(workspace_id).await?;
     let channels = store.list_channels(workspace_id).await?;
-    let mut threads = Vec::new();
+    let page_limit = thread_limit.clamp(1, 50);
+    let mut ordered_threads = Vec::new();
     for channel in &channels {
-        if threads.len() as i64 >= thread_limit {
-            break;
-        }
         let channel_threads = store.list_threads(channel.id).await?;
         for thread in channel_threads {
-            if threads.len() as i64 >= thread_limit {
-                break;
-            }
             if thread.tombstoned_at.is_some() {
                 continue;
             }
-            threads.push(build_thread_context(store, thread.id, limits).await?);
+            ordered_threads.push(thread);
         }
+    }
+    ordered_threads.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then_with(|| a.id.0.cmp(&b.id.0))
+    });
+    let start = thread_cursor.map_or(0, |cursor| {
+        ordered_threads
+            .iter()
+            .position(|t| t.id == cursor)
+            .map(|i| i + 1)
+            .unwrap_or(ordered_threads.len())
+    });
+    let slice = ordered_threads
+        .into_iter()
+        .skip(start)
+        .take(page_limit as usize + 1)
+        .collect::<Vec<_>>();
+    let next_thread_cursor = if slice.len() > page_limit as usize {
+        slice
+            .get(page_limit as usize - 1)
+            .map(|t| t.id.0.to_string())
+    } else {
+        None
+    };
+    let mut threads = Vec::new();
+    for thread in slice.into_iter().take(page_limit as usize) {
+        threads.push(build_thread_context(store, thread.id, limits).await?);
     }
     Ok(WorkspaceContext {
         workspace,
         channels,
         threads,
+        next_thread_cursor,
     })
 }
 

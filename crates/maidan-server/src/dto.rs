@@ -108,6 +108,7 @@ pub struct ThreadContextQuery {
     pub message_limit: i64,
     #[serde(default = "default_transition_limit")]
     pub transition_limit: i64,
+    pub message_cursor: Option<uuid::Uuid>,
 }
 
 fn default_transition_limit() -> i64 {
@@ -122,6 +123,7 @@ pub struct WorkspaceContextQuery {
     pub message_limit: i64,
     #[serde(default)]
     pub transition_limit: i64,
+    pub thread_cursor: Option<uuid::Uuid>,
 }
 
 fn default_workspace_thread_limit() -> i64 {

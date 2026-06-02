@@ -46,13 +46,54 @@ pub async fn list(
         "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
          FROM maidan_messages
          WHERE thread_id = ? AND tombstoned_at IS NULL
-         ORDER BY posted_at ASC
+         ORDER BY posted_at ASC, id ASC
          LIMIT ?",
     )
     .bind(thread_id.0)
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    rows.iter().map(row_to_message).collect()
+}
+
+pub async fn list_after(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    after: Option<MessageId>,
+    limit: i64,
+) -> Result<Vec<Message>, StoreError> {
+    let rows = match after {
+        None => {
+            sqlx::query(
+                "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+                 FROM maidan_messages
+                 WHERE thread_id = ? AND tombstoned_at IS NULL
+                 ORDER BY posted_at ASC, id ASC
+                 LIMIT ?",
+            )
+            .bind(thread_id.0)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
+        }
+        Some(after_id) => {
+            sqlx::query(
+                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.posted_at, m.edited_at, m.tombstoned_at
+                 FROM maidan_messages m
+                 JOIN maidan_messages anchor ON anchor.id = ?
+                 WHERE m.thread_id = ? AND m.tombstoned_at IS NULL
+                   AND (m.posted_at > anchor.posted_at
+                        OR (m.posted_at = anchor.posted_at AND m.id > anchor.id))
+                 ORDER BY m.posted_at ASC, m.id ASC
+                 LIMIT ?",
+            )
+            .bind(after_id.0)
+            .bind(thread_id.0)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
+        }
+    };
     rows.iter().map(row_to_message).collect()
 }
 

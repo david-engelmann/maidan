@@ -211,6 +211,16 @@ impl Store for PostgresStore {
     ) -> Result<Vec<Message>, StoreError> {
         messages::list(&self.pool, thread_id, limit).await
     }
+
+    async fn list_messages_after(
+        &self,
+        thread_id: ThreadId,
+        after: Option<MessageId>,
+        limit: i64,
+    ) -> Result<Vec<Message>, StoreError> {
+        messages::list_after(&self.pool, thread_id, after, limit).await
+    }
+
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError> {
         messages::tombstone(&self.pool, id).await
     }

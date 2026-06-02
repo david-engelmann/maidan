@@ -1,4 +1,4 @@
-//! MCP context export (Cluster 74) — mirrors HTTP context packs.
+//! MCP context export (Cluster 74) — mirrors HTTP context packs; pagination Cluster 82.
 
 use maidan_store::Store;
 use maidan_types::*;
@@ -15,6 +15,7 @@ struct ThreadContextArgs {
     message_limit: i64,
     #[serde(default = "default_transition_limit")]
     transition_limit: i64,
+    message_cursor: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +27,7 @@ struct WorkspaceContextArgs {
     message_limit: i64,
     #[serde(default = "default_transition_limit")]
     transition_limit: i64,
+    thread_cursor: Option<Uuid>,
 }
 
 fn default_message_limit() -> i64 {
@@ -46,11 +48,19 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     if thread.tombstoned_at.is_some() {
         return Err(McpError::InvalidParams("thread is tombstoned".into()));
     }
-    let _thread_state = thread.state;
     let channel = store.get_channel(thread.channel_id).await?;
+    let page_limit = a.message_limit.clamp(1, 500);
     let messages = store
-        .list_messages(thread_id, a.message_limit.clamp(1, 500))
+        .list_messages_after(thread_id, a.message_cursor.map(MessageId), page_limit + 1)
         .await?;
+    let next_message_cursor = if messages.len() as i64 > page_limit {
+        messages
+            .get(page_limit as usize - 1)
+            .map(|m| m.id.0.to_string())
+    } else {
+        None
+    };
+    let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
     let transitions = store
         .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
         .await?;
@@ -82,7 +92,8 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         "fsm": {
             "state": thread.state,
             "transitions": transitions,
-        }
+        },
+        "next_message_cursor": next_message_cursor,
     }))
 }
 
@@ -92,34 +103,59 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
     let workspace_id = WorkspaceId(a.workspace_id);
     let workspace = store.get_workspace(workspace_id).await?;
     let channels = store.list_channels(workspace_id).await?;
-    let thread_limit = a.thread_limit.clamp(1, 50);
-    let mut threads = Vec::new();
+    let page_limit = a.thread_limit.clamp(1, 50);
+    let mut ordered = Vec::new();
     for channel in &channels {
-        if threads.len() as i64 >= thread_limit {
-            break;
-        }
         for thread in store.list_threads(channel.id).await? {
-            if threads.len() as i64 >= thread_limit {
-                break;
+            if thread.tombstoned_at.is_none() {
+                ordered.push(thread);
             }
-            if thread.tombstoned_at.is_some() {
-                continue;
-            }
-            let packed = get_thread_context(
-                store,
-                &json!({
-                    "thread_id": thread.id.0,
-                    "message_limit": a.message_limit,
-                    "transition_limit": a.transition_limit,
-                }),
-            )
-            .await?;
-            threads.push(packed);
         }
+    }
+    ordered.sort_by(|x, y| {
+        x.created_at
+            .cmp(&y.created_at)
+            .then_with(|| x.id.0.cmp(&y.id.0))
+    });
+    let start = a
+        .thread_cursor
+        .map(|cursor| {
+            ordered
+                .iter()
+                .position(|t| t.id.0 == cursor)
+                .map(|i| i + 1)
+                .unwrap_or(ordered.len())
+        })
+        .unwrap_or(0);
+    let slice: Vec<Thread> = ordered
+        .into_iter()
+        .skip(start)
+        .take(page_limit as usize + 1)
+        .collect();
+    let next_thread_cursor = if slice.len() > page_limit as usize {
+        slice
+            .get(page_limit as usize - 1)
+            .map(|t| t.id.0.to_string())
+    } else {
+        None
+    };
+    let mut threads = Vec::new();
+    for thread in slice.into_iter().take(page_limit as usize) {
+        let packed = get_thread_context(
+            store,
+            &json!({
+                "thread_id": thread.id.0,
+                "message_limit": a.message_limit,
+                "transition_limit": a.transition_limit,
+            }),
+        )
+        .await?;
+        threads.push(packed);
     }
     Ok(json!({
         "workspace": workspace,
         "channels": channels,
         "threads": threads,
+        "next_thread_cursor": next_thread_cursor,
     }))
 }
