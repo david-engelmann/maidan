@@ -164,6 +164,11 @@ fn load_http_map() -> Vec<MapEntry> {
 
 fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/workspaces/") {
+        let delivery_id = if template.contains("/deliveries/{did}") {
+            "1"
+        } else {
+            f.workspace.as_str()
+        };
         return template
             .replace("{wid}", &f.workspace)
             .replace("{id}", &f.workspace)
@@ -175,7 +180,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
-            .replace("{did}", &f.workspace);
+            .replace("{did}", delivery_id);
     }
     if template.starts_with("/ui/api/workspaces/") {
         return template
@@ -257,6 +262,9 @@ fn apply_route_defaults(
     }
     if path.contains("/inbox/read") {
         return b.json(&json!({ "read_through": "2026-01-01T00:00:00Z" }));
+    }
+    if path.contains("/deliveries/{did}") {
+        b = b.query(&[("kind", "automation")]);
     }
     if path.contains("/members/") && path.ends_with("/tokens") {
         return b.json(&json!({

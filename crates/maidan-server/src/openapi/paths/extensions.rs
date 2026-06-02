@@ -218,3 +218,30 @@ pub fn get_automation_delivery() {}
     responses((status = 200, description = "Replay enqueued"))
 )]
 pub fn replay_automation_delivery() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/deliveries",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, description = "Webhook + automation deliveries"))
+)]
+pub fn list_unified_deliveries() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/deliveries/{did}",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, description = "Delivery row"))
+)]
+pub fn get_unified_delivery() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/deliveries/{did}/replay",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, description = "Replay enqueued"))
+)]
+pub fn replay_unified_delivery() {}

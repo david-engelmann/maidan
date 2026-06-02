@@ -302,6 +302,22 @@ pub trait Store: Send + Sync {
         next_attempt_at: DateTime<Utc>,
     ) -> Result<i32, StoreError>;
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
+    async fn list_webhook_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        filter: crate::AutomationDeliveryFilter,
+        limit: i64,
+    ) -> Result<Vec<WebhookDelivery>, StoreError>;
+    async fn get_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<WebhookDelivery, StoreError>;
+    async fn replay_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<WebhookDelivery, StoreError>;
 
     async fn enqueue_automation_delivery(
         &self,
