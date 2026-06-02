@@ -761,6 +761,30 @@ pub struct AutomationDelivery {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WebhookDelivery {
+    pub id: i64,
+    pub workspace_id: WorkspaceId,
+    pub subscription_id: WebhookSubscriptionId,
+    pub log_id: i64,
+    pub target_url: String,
+    pub attempts: i32,
+    pub last_error: Option<String>,
+    pub delivered_at: Option<DateTime<Utc>>,
+    pub quarantined_at: Option<DateTime<Utc>>,
+    pub next_attempt_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OperatorDelivery {
+    Automation(AutomationDelivery),
+    Webhook(WebhookDelivery),
+}
+
 #[derive(Debug, Clone)]
 pub struct AutomationDeliveryPending {
     pub id: i64,

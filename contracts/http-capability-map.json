@@ -361,6 +361,24 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{wid}/deliveries",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/deliveries/{did}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/deliveries/{did}/replay",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/automation/deliveries",
     "capability": "workspace:read",
     "surface": "http"

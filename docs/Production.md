@@ -241,6 +241,9 @@ exhausted rows are quarantined (dead letter). **Outbound event webhooks** still 
 
 | Route | Use |
 |-------|-----|
+| `GET /workspaces/:wid/deliveries` | Unified list (`kind=webhook\|automation\|all`, same `quarantined` / `delivered` / `limit` query shape). |
+| `GET /workspaces/:wid/deliveries/:did?kind=…` | Single row (`kind` required). |
+| `POST /workspaces/:wid/deliveries/:did/replay?kind=…` | Replay webhook or automation DLQ row. |
 | `GET /workspaces/:wid/automation/deliveries` | Pending rows (default). Query `?quarantined=1` or `?delivered=1` when supported. |
 | `GET /workspaces/:wid/automation/dlq` | Quarantined rows (preferred DLQ list). |
 | `GET /workspaces/:wid/automation/deliveries/:did` | Single row. |

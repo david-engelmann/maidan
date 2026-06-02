@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewWebhookSubscription, WebhookSubscription, WebhookSubscriptionDelivery,
+    NewWebhookSubscription, WebhookDelivery, WebhookSubscription, WebhookSubscriptionDelivery,
     WebhookSubscriptionId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::automation_deliveries::AutomationDeliveryFilter;
 use crate::error::StoreError;
 
 const SUB_COLS: &str =
@@ -208,6 +209,97 @@ pub async fn quarantine_delivery(pool: &PgPool, delivery_id: i64) -> Result<(), 
     .execute(pool)
     .await?;
     Ok(())
+}
+
+pub async fn list_deliveries_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    filter: AutomationDeliveryFilter,
+    limit: i64,
+) -> Result<Vec<WebhookDelivery>, StoreError> {
+    let predicate = match filter {
+        AutomationDeliveryFilter::Pending => PENDING,
+        AutomationDeliveryFilter::DeadLetter => "d.quarantined_at IS NOT NULL",
+        AutomationDeliveryFilter::Delivered => "d.delivered_at IS NOT NULL",
+    };
+    let rows = sqlx::query(&format!(
+        "SELECT d.id, s.workspace_id, d.subscription_id, d.log_id, s.url AS target_url,
+                d.attempts, d.last_error, d.delivered_at, d.quarantined_at, d.next_attempt_at, d.created_at
+         FROM maidan_webhook_deliveries d
+         JOIN maidan_webhook_subscriptions s ON s.id = d.subscription_id
+         WHERE s.workspace_id = $1 AND {predicate}
+         ORDER BY d.id DESC
+         LIMIT $2"
+    ))
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_webhook_delivery).collect()
+}
+
+pub async fn get_delivery(
+    pool: &PgPool,
+    delivery_id: i64,
+    workspace_id: WorkspaceId,
+) -> Result<WebhookDelivery, StoreError> {
+    let row = sqlx::query(
+        "SELECT d.id, s.workspace_id, d.subscription_id, d.log_id, s.url AS target_url,
+                d.attempts, d.last_error, d.delivered_at, d.quarantined_at, d.next_attempt_at, d.created_at
+         FROM maidan_webhook_deliveries d
+         JOIN maidan_webhook_subscriptions s ON s.id = d.subscription_id
+         WHERE d.id = $1 AND s.workspace_id = $2",
+    )
+    .bind(delivery_id)
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_webhook_delivery(&row)
+}
+
+pub async fn replay_delivery(
+    pool: &PgPool,
+    delivery_id: i64,
+    workspace_id: WorkspaceId,
+) -> Result<WebhookDelivery, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_webhook_deliveries d
+         SET quarantined_at = NULL,
+             delivered_at = NULL,
+             next_attempt_at = NOW(),
+             attempts = 0,
+             last_error = NULL
+         FROM maidan_webhook_subscriptions s
+         WHERE d.subscription_id = s.id
+           AND d.id = $1
+           AND s.workspace_id = $2
+           AND d.quarantined_at IS NOT NULL
+         RETURNING d.id, s.workspace_id, d.subscription_id, d.log_id, s.url AS target_url,
+                   d.attempts, d.last_error, d.delivered_at, d.quarantined_at, d.next_attempt_at, d.created_at",
+    )
+    .bind(delivery_id)
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_webhook_delivery(&row)
+}
+
+fn row_to_webhook_delivery(row: &sqlx::postgres::PgRow) -> Result<WebhookDelivery, StoreError> {
+    Ok(WebhookDelivery {
+        id: row.get("id"),
+        workspace_id: WorkspaceId(row.get("workspace_id")),
+        subscription_id: WebhookSubscriptionId(row.get("subscription_id")),
+        log_id: row.get("log_id"),
+        target_url: row.get("target_url"),
+        attempts: row.get("attempts"),
+        last_error: row.get("last_error"),
+        delivered_at: row.get("delivered_at"),
+        quarantined_at: row.get("quarantined_at"),
+        next_attempt_at: row.get::<DateTime<Utc>, _>("next_attempt_at"),
+        created_at: row.get::<DateTime<Utc>, _>("created_at"),
+    })
 }
 
 fn row_to_subscription(row: &sqlx::postgres::PgRow) -> Result<WebhookSubscription, StoreError> {

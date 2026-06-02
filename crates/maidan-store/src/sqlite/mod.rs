@@ -586,6 +586,31 @@ impl Store for SqliteStore {
         webhooks::quarantine_delivery(&self.pool, delivery_id).await
     }
 
+    async fn list_webhook_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        filter: crate::AutomationDeliveryFilter,
+        limit: i64,
+    ) -> Result<Vec<WebhookDelivery>, StoreError> {
+        webhooks::list_deliveries_for_workspace(&self.pool, workspace_id, filter, limit).await
+    }
+
+    async fn get_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<WebhookDelivery, StoreError> {
+        webhooks::get_delivery(&self.pool, delivery_id, workspace_id).await
+    }
+
+    async fn replay_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<WebhookDelivery, StoreError> {
+        webhooks::replay_delivery(&self.pool, delivery_id, workspace_id).await
+    }
+
     async fn enqueue_automation_delivery(
         &self,
         new: NewAutomationDelivery,
