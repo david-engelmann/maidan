@@ -9,36 +9,36 @@ ROUTES="crates/maidan-server/src/routes.rs"
 TOOLS="crates/maidan-mcp/src/tools.rs"
 SERVER="crates/maidan-mcp/src/server.rs"
 
-if ! rg -q "queue_resource_updates" "$SERVER"; then
+if ! grep -qF "queue_resource_updates" "$SERVER"; then
   echo "missing queue_resource_updates in $SERVER"
   exit 1
 fi
 
-if ! rg -q "publish_resource_uris" "$ROUTES"; then
+if ! grep -qF "publish_resource_uris" "$ROUTES"; then
   echo "missing publish_resource_uris in $ROUTES"
   exit 1
 fi
 
 for sym in post_message edit_message pin_message unpin_message add_reference; do
-  if ! rg -q "\"$sym\"" "$TOOLS"; then
+  if ! grep -qF "\"$sym\"" "$TOOLS"; then
     echo "missing MCP tool $sym in $TOOLS"
     exit 1
   fi
 done
 
 for handler in post_message edit_message pin_message unpin_message create_reference; do
-  if ! rg -q "fn $handler" "$ROUTES"; then
+  if ! grep -qF "fn $handler" "$ROUTES"; then
     echo "missing HTTP handler $handler in $ROUTES"
     exit 1
   fi
 done
 
-if ! rg -q 'resources/subscribe' "$SERVER"; then
+if ! grep -qF "resources/subscribe" "$SERVER"; then
   echo "MCP resources/subscribe not found in $SERVER"
   exit 1
 fi
 
-if ! rg -q 'mcp/notifications' crates/maidan-server/src/app.rs; then
+if ! grep -qF "mcp/notifications" crates/maidan-server/src/app.rs; then
   echo "GET /mcp/notifications route missing"
   exit 1
 fi
