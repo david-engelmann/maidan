@@ -6,7 +6,7 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
-- **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: JSON-RPC response returned directly and pushed to the SSE session)
+- **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: `202 Accepted`, response multiplexed on the same SSE session)
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
 - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)
 

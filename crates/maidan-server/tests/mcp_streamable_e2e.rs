@@ -195,7 +195,7 @@ async fn streamable_response_includes_mcp_session_id_header() {
 }
 
 #[tokio::test]
-async fn streamable_follow_up_on_open_session_returns_json() {
+async fn streamable_follow_up_multiplexes_response_on_open_sse_session() {
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");
     let init = json!({
@@ -225,24 +225,48 @@ async fn streamable_follow_up_on_open_session_returns_json() {
         "method": "tools/list",
         "params": {}
     });
-    let resp2 = client
-        .post(format!("{base}/mcp/streamable"))
-        .header("mcp-session-id", &session)
-        .json(&list)
+
+    let mut sse_buf = String::new();
+    let mut stream = resp.bytes_stream();
+    let list_clone = list.clone();
+    let client2 = client.clone();
+    let base2 = base.clone();
+    let session2 = session.clone();
+    let reader = tokio::spawn(async move {
+        while let Some(chunk) = stream.next().await {
+            sse_buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+            if sse_buf.contains("\"id\":2") && sse_buf.contains("tools") {
+                break;
+            }
+        }
+        sse_buf
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let resp2 = client2
+        .post(format!("{base2}/mcp/streamable"))
+        .header("mcp-session-id", &session2)
+        .json(&list_clone)
         .send()
         .await
         .unwrap();
-    assert_eq!(resp2.status(), StatusCode::OK);
-    let ct = resp2
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(ct.contains("application/json"));
-    let body: Value = resp2.json().await.unwrap();
-    assert_eq!(body["id"], 2);
-    assert!(body["result"].is_object());
+    assert_eq!(resp2.status(), StatusCode::ACCEPTED);
+    assert!(
+        resp2
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_none_or(|ct| !ct.contains("application/json")),
+        "follow-up should not return JSON body"
+    );
+
+    let buf = tokio::time::timeout(Duration::from_secs(5), reader)
+        .await
+        .expect("timed out waiting for SSE mux")
+        .expect("reader task");
+    assert!(buf.contains("\"id\":2"));
+    assert!(buf.contains("result"));
 
     server.abort();
 }

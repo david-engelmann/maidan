@@ -40,11 +40,13 @@ Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1
 
 `SubscribeToTask` (alias `tasks/resubscribe`) returns SSE JSON-RPC frames for non-terminal tasks; the first frame is the current `Task` object. Terminal tasks return error code `-32005`.
 
-## MCP streamable session
+## MCP streamable session (2024-11-05 subset)
 
-1. `POST /mcp/streamable` with `initialize` → capture `Mcp-Session-Id` response header.
-2. Follow-up `POST /mcp/streamable` with the same header for `tools/list`, `tools/call`, etc. (JSON body response).
+1. `POST /mcp/streamable` with `initialize` → response opens **SSE**; capture `Mcp-Session-Id` from the response header. The `initialize` result arrives on the SSE stream.
+2. While the SSE connection stays open, send follow-up `POST /mcp/streamable` requests with the same `Mcp-Session-Id`. The server returns **`202 Accepted`** with an empty body; JSON-RPC **results** for those requests are pushed on the **same SSE stream** (multiplexed responses).
 3. `DELETE /mcp/streamable` with `Mcp-Session-Id` closes the session (TTL also applies — see `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`).
+
+For a single request without holding SSE open, use `POST /mcp` (JSON response) instead.
 
 ## Contract files
 
