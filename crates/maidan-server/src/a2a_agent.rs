@@ -1,6 +1,7 @@
 //! Google A2A protocol v1.0 JSON-RPC ingress (`POST /a2a/v1/rpc`).
 
 use std::convert::Infallible;
+use std::time::Duration;
 
 use axum::response::sse::Event as SseEvent;
 use axum::response::{IntoResponse, Response, Sse};
@@ -14,7 +15,8 @@ use maidan_a2a::{
     StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
     METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK, METHOD_SEND_MESSAGE,
     METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG, METHOD_SUBSCRIBE_TO_TASK,
-    METHOD_TASKS_RESUBSCRIBE, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    METHOD_TASKS_CANCEL, METHOD_TASKS_RESUBSCRIBE, TASK_STATE_CANCELED, TASK_STATE_COMPLETED,
+    TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -32,6 +34,8 @@ const ERR_METHOD: i32 = -32601;
 const ERR_PARAMS: i32 = -32602;
 const ERR_INTERNAL: i32 = -32603;
 const ERR_UNSUPPORTED: i32 = -32005;
+const SUBSCRIBE_POLL_MS: u64 = 100;
+const SUBSCRIBE_MAX_POLLS: u32 = 300;
 
 pub async fn json_rpc(
     State(state): State<AppState>,
@@ -55,6 +59,9 @@ pub async fn json_rpc(
             dispatch_send_streaming_message(&state, &auth, id, body.params).await
         }
         METHOD_GET_TASK => json_response(dispatch_get_task(&state, &auth, id, body.params).await),
+        METHOD_TASKS_CANCEL => {
+            json_response(dispatch_tasks_cancel(&state, &auth, id, body.params).await)
+        }
         METHOD_SET_PUSH_NOTIFICATION_CONFIG => {
             json_response(dispatch_set_push_config(&state, &auth, id, body.params).await)
         }
@@ -114,6 +121,39 @@ async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "task not found".to_string())?;
     serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+fn sse_json_rpc_frame(frame: JsonRpcResponse) -> SseEvent {
+    let data = serde_json::to_string(&frame).unwrap_or_default();
+    SseEvent::default().data(data)
+}
+
+async fn ensure_task_workspace_access(
+    state: &AppState,
+    auth: &AuthContext,
+    id: &JsonRpcId,
+    task_id: &str,
+    task: &Task,
+) -> Result<Option<WorkspaceId>, JsonRpcResponse> {
+    if let Ok(Some(ws)) = state.store.get_a2a_task_workspace(task_id).await {
+        if let Err(e) = auth.ensure_workspace(ws) {
+            return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
+        }
+        return Ok(Some(ws));
+    }
+    if let Some(context_id) = &task.context_id {
+        if let Ok(thread_id) = uuid::Uuid::parse_str(context_id) {
+            if let Ok(thread_ctx) =
+                resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await
+            {
+                if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
+                    return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
+                }
+                return Ok(Some(thread_ctx.workspace_id));
+            }
+        }
+    }
+    Ok(None)
 }
 
 struct PostedA2a {
@@ -286,26 +326,7 @@ async fn dispatch_get_task(
     let task = load_task(state, &req.id)
         .await
         .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
-    if let Some(ws) = state
-        .store
-        .get_a2a_task_workspace(&req.id)
-        .await
-        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?
-    {
-        if let Err(e) = auth.ensure_workspace(ws) {
-            return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
-        }
-    } else if let Some(context_id) = &task.context_id {
-        if let Ok(thread_id) = uuid::Uuid::parse_str(context_id) {
-            if let Ok(thread_ctx) =
-                resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await
-            {
-                if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
-                    return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
-                }
-            }
-        }
-    }
+    ensure_task_workspace_access(state, auth, &id, &req.id, &task).await?;
     let value = serde_json::to_value(task)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
@@ -376,6 +397,43 @@ async fn dispatch_get_push_config(
     Ok(JsonRpcResponse::success(id, value))
 }
 
+async fn dispatch_tasks_cancel(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(MESSAGE_POST) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    let req: GetTaskRequest = serde_json::from_value(params).map_err(|e| {
+        JsonRpcResponse::error(
+            id.clone(),
+            ERR_PARAMS,
+            format!("invalid tasks/cancel params: {e}"),
+        )
+    })?;
+    let mut task = load_task(state, &req.id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    let workspace_id = ensure_task_workspace_access(state, auth, &id, &req.id, &task).await?;
+    if is_terminal_task_state(&task.status.state) {
+        return Err(JsonRpcResponse::error(
+            id,
+            ERR_UNSUPPORTED,
+            "task is in a terminal state",
+        ));
+    }
+    task.status.state = TASK_STATE_CANCELED.to_string();
+    task.status.message = None;
+    if let Some(ws) = workspace_id {
+        persist_task(state, ws, &task).await;
+    }
+    let value = serde_json::to_value(task)
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
+}
+
 async fn dispatch_subscribe_to_task(
     state: &AppState,
     auth: &AuthContext,
@@ -402,10 +460,8 @@ async fn dispatch_subscribe_to_task(
             return Json(JsonRpcResponse::error(id, ERR_PARAMS, "task not found")).into_response();
         }
     };
-    if let Ok(Some(ws)) = state.store.get_a2a_task_workspace(&req.id).await {
-        if let Err(e) = auth.ensure_workspace(ws) {
-            return Json(JsonRpcResponse::error(id, -32001, e.to_string())).into_response();
-        }
+    if let Err(resp) = ensure_task_workspace_access(state, auth, &id, &req.id, &task).await {
+        return Json(resp).into_response();
     }
     if is_terminal_task_state(&task.status.state) {
         return Json(JsonRpcResponse::error(
@@ -416,14 +472,56 @@ async fn dispatch_subscribe_to_task(
         .into_response();
     }
 
-    let frames = vec![JsonRpcResponse::success(
-        id.clone(),
-        serde_json::to_value(StreamResponseTask { task: task.clone() }).unwrap(),
-    )];
-    let stream = futures::stream::iter(frames).map(|frame| {
-        let data = serde_json::to_string(&frame).unwrap_or_default();
-        Ok::<SseEvent, Infallible>(SseEvent::default().data(data))
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    let state_bg = state.clone();
+    let task_id = req.id.clone();
+    let rpc_id = id.clone();
+    let initial = task.clone();
+    tokio::spawn(async move {
+        let first = JsonRpcResponse::success(
+            rpc_id.clone(),
+            serde_json::to_value(StreamResponseTask {
+                task: initial.clone(),
+            })
+            .unwrap_or_default(),
+        );
+        if tx.send(first).await.is_err() {
+            return;
+        }
+        let mut last_state = initial.status.state.clone();
+        for _ in 0..SUBSCRIBE_MAX_POLLS {
+            if is_terminal_task_state(&last_state) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(SUBSCRIBE_POLL_MS)).await;
+            let Ok(current) = load_task(&state_bg, &task_id).await else {
+                return;
+            };
+            if current.status.state == last_state {
+                continue;
+            }
+            last_state = current.status.state.clone();
+            let update = TaskStatusUpdateEvent {
+                task_id: task_id.clone(),
+                context_id: current.context_id.clone(),
+                status: current.status.clone(),
+                is_final: is_terminal_task_state(&last_state),
+            };
+            let frame = JsonRpcResponse::success(
+                rpc_id.clone(),
+                serde_json::to_value(StreamResponseStatusUpdate {
+                    status_update: update,
+                })
+                .unwrap_or_default(),
+            );
+            if tx.send(frame).await.is_err() {
+                return;
+            }
+        }
     });
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|frame| Ok::<SseEvent, Infallible>(sse_json_rpc_frame(frame)));
     Sse::new(stream).into_response()
 }
 
@@ -452,6 +550,7 @@ pub async fn agent_card() -> impl IntoResponse {
             METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_SUBSCRIBE_TO_TASK.into(),
             METHOD_TASKS_RESUBSCRIBE.into(),
+            METHOD_TASKS_CANCEL.into(),
         ],
     })
 }

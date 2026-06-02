@@ -38,7 +38,9 @@ Filter fields: `workspace_id` (enables auto-replay), optional `channel_id`, `thr
 
 Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1/rpc` (requires `workspace:write`). Config is **persisted per workspace** in the store. Read back with `tasks/pushNotificationConfig/get`.
 
-`SubscribeToTask` (alias `tasks/resubscribe`) returns SSE JSON-RPC frames for non-terminal tasks; the first frame is the current `Task` object. Terminal tasks return error code `-32005`.
+`SubscribeToTask` (alias `tasks/resubscribe`) returns SSE JSON-RPC frames for non-terminal tasks. The first frame is the current `Task` object; subsequent frames are `statusUpdate` events while the task stays non-terminal (polled from the persisted task row). Terminal tasks return error code `-32005`.
+
+Cancel a non-terminal task with `tasks/cancel` (same params shape as `GetTask`: `{ "id": "<taskId>" }`). The server persists `TASK_STATE_CANCELED` and returns the updated task JSON.
 
 ## MCP streamable session (2024-11-05 subset)
 
