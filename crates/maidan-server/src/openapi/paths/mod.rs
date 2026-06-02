@@ -4,8 +4,10 @@
 
 mod api;
 mod auth;
+mod extensions;
 mod health;
 
 pub use api::*;
 pub use auth::*;
+pub use extensions::*;
 pub use health::*;

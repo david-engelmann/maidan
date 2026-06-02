@@ -339,6 +339,7 @@ fn http_deny_caps(required: &str) -> Vec<String> {
 
 fn substitute_path(path: &str, workspace_id: &str) -> String {
     path.replace("{workspace_id}", workspace_id)
+        .replace("{wid}", workspace_id)
 }
 
 #[tokio::test]

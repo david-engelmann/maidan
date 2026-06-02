@@ -6,9 +6,10 @@ check the required capability before handling the request.
 Canonical machine-readable maps:
 
 - MCP tools: [`contracts/mcp-capability-map.json`](../contracts/mcp-capability-map.json) (keys ⊆ [`contracts/mcp-tool-names.json`](../contracts/mcp-tool-names.json))
-- HTTP samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json)
+- HTTP full map: [`contracts/http-capability-map.json`](../contracts/http-capability-map.json) (every OpenAPI bearer operation + transport appendix)
+- HTTP denial samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json) (table-driven e2e)
 
-CI enforces map ↔ code parity via `scripts/check-agent-contract.sh`.
+CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract` and `scripts/check-agent-contract.sh`.
 
 ## HTTP (member bearer)
 

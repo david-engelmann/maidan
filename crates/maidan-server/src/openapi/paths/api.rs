@@ -439,6 +439,42 @@ pub fn get_artifact() {}
     responses((status = 200, body = Artifact)))]
 pub fn get_artifact_metadata() {}
 
+#[utoipa::path(
+    post,
+    path = "/artifacts/multipart",
+    tag = "artifacts",
+    security(("bearerAuth" = [])),
+    responses((status = 201, description = "Multipart upload started"))
+)]
+pub fn begin_multipart_artifact_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/artifacts/multipart",
+    tag = "artifacts",
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Aborted"))
+)]
+pub fn abort_multipart_artifact_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/artifacts/multipart/{upload_id}/complete",
+    tag = "artifacts",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Artifact))
+)]
+pub fn complete_multipart_artifact_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/artifacts/multipart/{upload_id}/parts/{part_number}",
+    tag = "artifacts",
+    security(("bearerAuth" = [])),
+    responses((status = 200, description = "Part stored"))
+)]
+pub fn upload_multipart_artifact_part_doc() {}
+
 // --- references ---
 
 #[utoipa::path(post, path = "/references", tag = "references",
