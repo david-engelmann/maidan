@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [80.0.0] — 2026-06-02
+
+### Added
+
+- Unified operator delivery API at `/workspaces/:wid/deliveries` (webhook + automation via `kind`).
+- Webhook delivery list/get/replay in store (per workspace).
+
 ## [77.0.0] — 2026-06-02
 
 ### Added
