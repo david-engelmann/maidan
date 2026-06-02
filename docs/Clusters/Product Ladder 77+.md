@@ -135,7 +135,12 @@
 
 ## Per-cluster kickoff docs
 
-Create `docs/Clusters/Cluster N.0.md` when starting each cluster (copy [[Clusters/Cluster 76.0]] retro’s predecessor kickoff style). This file is the **epic map** only.
+Create `docs/Clusters/Cluster N.0.md` when starting each cluster (copy [[Clusters/Cluster 68.0]] template). This file is the **epic map** only.
+
+| Cluster | Kickoff doc |
+|---------|-------------|
+| **77** | [[Clusters/Cluster 77.0]] |
+| **78–101** | Create at kickoff |
 
 ---
 
