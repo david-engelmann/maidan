@@ -29,7 +29,8 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Clusters/Product Ladder 35+]] — agent-native collaboration OS (closed;
   product gate **`maidan-2.0`** at **`v58.0.0`**).
 - [[Clusters/Product Ladder 59+]] — agent substrate hardening (closed at **`v67.0.0`**).
-- [[Clusters/Product Ladder 68+]] — agent substrate completion (**68–76**; Phase XI **68–70** closed).
+- [[Clusters/Product Ladder 68+]] — agent substrate completion (closed **`v76.0.0`** / **`maidan-agent-1.0`**).
+- [[Clusters/Product Ladder 77+]] — operator production & UI v1 (**77–101**; active).
 - [[Agent Integration]] — how external agents connect (post–`v59.0.0`).
 - [[Retros/Product Ladder 35+]] — ladder 35–58 closing retro.
 - [[Clusters/Product Ladder 30-34]] — closed ladder (v30–v34).
@@ -43,7 +44,8 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Clusters/Cluster 68.0]] — closed at `v68.0.0` (automation delivery guarantees).
 - [[Clusters/Cluster 69.0]] — closed at `v69.0.0` (capabilities matrix complete).
 - [[Clusters/Cluster 70.0]] — closed at `v70.0.0` (vault truth pass).
-- [[Clusters/Product Ladder 68+]] — closed at **`v76.0.0`** / **`maidan-agent-1.0`**.
+- [[Clusters/Product Ladder 68+]] — closed at **`v76.0.0`** / **`maidan-agent-1.0`**
+- [[Clusters/Product Ladder 77+]] — **active** (Clusters **77–101**)
 - [[Clusters/Cluster 13.0]] — delivery contract & subscriber ledger (historical).
 - [[Clusters/Cluster 12.0]] — closed at `v12.0.0` (outbox relay hardening).
 - [[Clusters/Cluster 11.0]] — closed at `v11.0.0` (coverage 11%).

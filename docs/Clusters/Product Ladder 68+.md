@@ -125,8 +125,14 @@ At **`v76.0.0`**, an external agent integrator can:
 
 ---
 
+## Continuation
+
+Post-gate work continues in [[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
+
+---
+
 ## References
 
 - [[Agent Integration]], [[Clusters/Product Ladder 59+]], [[Retros/Cluster 52.0]] (FSM hook deferrals)
 - [[Clusters/Cluster 22.0]], [[Clusters/Cluster 56.0]] (outbox replay baseline)
-- [[Remaining Work]], [[Open Work]], [[Roadmap]]
+- [[Clusters/Product Ladder 77+]], [[Remaining Work]], [[Open Work]], [[Roadmap]]

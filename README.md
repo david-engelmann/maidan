@@ -12,11 +12,13 @@ Product gate **`maidan-2.0`** shipped at **`v58.0.0`**.
 | Doc | Use |
 |-----|-----|
 | [`docs/Agent Integration.md`](docs/Agent%20Integration.md) | How external agents connect |
-| [`docs/Architecture.md`](docs/Architecture.md) | System snapshot (**updated `v69`**) |
+| [`docs/Architecture.md`](docs/Architecture.md) | System snapshot (**`v76`** / **`maidan-agent-1.0`**) |
 | [`docs/Production.md`](docs/Production.md) | Deploy, env, probes |
 | [`CHANGELOG.md`](CHANGELOG.md) | Full release history |
 
 **Recent tags:** **`v72`** A2A `SubscribeToTask` · **`v74`** MCP context tools · **`v76`** agent gate.
+
+Next ladder: [`docs/Clusters/Product Ladder 77+.md`](docs/Clusters/Product%20Ladder%2077+.md) (**77–101**).
 
 Open backlog: [`docs/Remaining Work.md`](docs/Remaining%20Work.md) · [`docs/Open Work.md`](docs/Open%20Work.md).
 
