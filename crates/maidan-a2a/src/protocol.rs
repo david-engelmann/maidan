@@ -12,6 +12,7 @@ pub const METHOD_SET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationCon
 pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/get";
 pub const METHOD_SUBSCRIBE_TO_TASK: &str = "SubscribeToTask";
 pub const METHOD_TASKS_RESUBSCRIBE: &str = "tasks/resubscribe";
+pub const METHOD_TASKS_CANCEL: &str = "tasks/cancel";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
