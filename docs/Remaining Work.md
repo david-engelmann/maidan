@@ -4,7 +4,7 @@ Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`)
 Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and
 [[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
 
-**Latest closes:** **`v76.0.0`** agent gate · **`v74.0.0`** MCP context · **`v72.0.0`** A2A subscribe · **`v69.0.0`** capability map · **`v58.0.0`** maidan-2.0 gate.
+**Latest closes:** **`v82.0.0`** context pagination · **`v81.0.0`** subscribe grants · **`v80.0.0`** delivery ops · **`v79.0.0`** A2A long tasks · **`v77.0.0`** HTTP capability map.
 
 ---
 
@@ -12,21 +12,21 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 
 | Area | Shipped | Gap |
 |------|---------|-----|
-| **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL, delete e2e | Bidirectional mux (**78**) |
+| **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL, mux (**78**) | — |
 | **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | Channel browser, WS tail, artifacts (**92–96**); no React SPA in ladder **77+** |
 | **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) |
 | **Workspace erasure (53)** | `DELETE /workspaces/:id` full erase | Does not cover org-level IdP user deletion (use IdP) |
 | **Capabilities (69)** | Full MCP matrix + sample HTTP contract | Every OpenAPI path in CI (**77**) |
-| **A2A (72)** | Persisted tasks + `SubscribeToTask` SSE | Cancel/progress/long-run (**79**) |
-| **Context (74)** | HTTP + MCP context tools | Pagination cursors (**82**) |
-| **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl (**83**) |
+| **A2A (72)** | Persisted tasks + cancel/progress (**79**) | Task marketplace UI |
+| **Context (74)** | HTTP + MCP context + cursors (**82**) | Store-level workspace thread cursor |
+| **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, ladder **83**) | — |
 | **Outbox** | Relay + quarantine + HTTP replay (**56**) | Polled relay / NOTIFY upgrade (**84**) |
 | **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
 | **Semantic (75)** | CLI reindex + runbook; Postgres HNSW | `sqlite-vec` (**85**); operator job API (**87**) |
 | **Embeddings** | Pluggable provider | Default **`hash-v1`**; per-model tables (**86**) |
 | **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
 | **Observability (76)** | Agent metrics runbook + gate e2e | OTLP export + dashboards (**89–90**) |
-| **Delivery ops (68)** | Automation DLQ + replay | Unified operator surface (**80**) |
+| **Delivery ops (68)** | Unified operator deliveries API (**80**) | — |
 
 **Closed since older drafts of this file:** pins API (**40**), slash commands (**51**), FSM hooks (**52**), DMs (**39**), message edit (**29**), outbox HTTP replay (**56**), Helm stack (**32**/**55**), workspace full erase (**53**), A2A `SendStreamingMessage` (**37**), MCP resource fan-out (**38**), capability matrix for all MCP tools (**69**).
 

@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v82.0.0 — Context pagination
+
+| Capability | Where |
+|------------|-------|
+| Paginated thread context | `GET /threads/:id/context` (`message_cursor`, `next_message_cursor`) |
+| Paginated workspace context | `GET /workspaces/:id/context` (`thread_cursor`, `next_thread_cursor`) |
+| MCP context cursors | `get_thread_context` / `get_workspace_context` tool args |
+
 ## v81.0.0 — Subscribe grants v3
 
 | Capability | Where |
@@ -10,6 +18,14 @@ PR prepends a new section so the latest is always at the top.
 | WS `channel_grants` | Subscribe frame filter; schema v3 |
 | Private channel enforcement | `subscribe_grants`, `EventFilter::matches` |
 | MCP stream grants | `GET /mcp/stream?channel_grants=…` |
+
+## v79.0.0 — A2A long-running tasks
+
+| Capability | Where |
+|------------|-------|
+| Task cancel | `tasks/cancel` on `POST /a2a/v1/rpc` |
+| Subscribe progress | `SubscribeToTask` `statusUpdate` SSE frames |
+| Terminal subscribe guard | JSON-RPC `-32005` |
 
 ## v80.0.0 — Delivery ops unified
 

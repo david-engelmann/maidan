@@ -1,7 +1,7 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v76.0.0`** / **`maidan-agent-1.0`** (Product Ladder **68+** complete).
+**Current baseline:** **`v82.0.0`** (Product Ladder **77+** through cluster **82**).
 Older versioned sections below record how capabilities accrued; see
 [[Capabilities]] and [[CHANGELOG]] for the authoritative release list.
 
@@ -21,13 +21,13 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 |------|---------|-------|
 | **Discovery** | `/.well-known/maidan.json`, agent card | MCP + A2A entry points |
 | **MCP tools** | 30 tools in `contracts/mcp-tool-names.json` | Per-tool caps in `contracts/mcp-capability-map.json`; CI matrix (**69**) |
-| **MCP streamable** | `POST/DELETE /mcp/streamable`, session TTL (**60**, **73**) | Subset of 2024-11-05; bidirectional mux deferred (**78**) |
-| **Subscribe** | WS filter schema + MCP SSE, `schema_version`, resume (**71**, **62**) | Outbox list/replay (**56**); grant-scoped lists deferred (**81**) |
-| **A2A** | RPC + `SubscribeToTask` SSE (**72**) | Persisted push + tasks; cancel/long-run deferred (**79**) |
+| **MCP streamable** | `POST/DELETE /mcp/streamable`, mux on SSE (**78**, **73**) | Subset of 2024-11-05; see [[Agent Integration]] |
+| **Subscribe** | WS filter schema + MCP SSE, `channel_grants` (**81**, **71**) | Hot-updating grants without resubscribe deferred |
+| **A2A** | RPC + `SubscribeToTask` + cancel/progress (**72**, **79**) | Task marketplace UI deferred |
 | **Apps** | Installed apps + OAuth code exchange (**57**, **65**) | App-scoped bearer secrets |
 | **Quotas** | Per-token capability quotas on MCP `tools/call` (**64**) | Redis optional for distributed windows (**54**) |
 | **Automation** | Webhooks (**50**), slash (**51**), FSM hooks (**52**) | Slash/FSM on `maidan_automation_deliveries` + DLQ (**68**) |
-| **Context** | HTTP + MCP `get_*_context` (**67**, **74**) | Pagination cursors deferred (**82**) |
+| **Context** | HTTP + MCP `get_*_context` with cursors (**74**, **82**) | Workspace thread list still in-memory slice |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
 | **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**) | Production profiles deferred (**88**) |
 | **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** | Operator gate **`maidan-operator-1.0`** targets **101** ([[Clusters/Product Ladder 77+]]) |
