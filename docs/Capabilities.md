@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v81.0.0 — Subscribe grants v3
+
+| Capability | Where |
+|------------|-------|
+| WS `channel_grants` | Subscribe frame filter; schema v3 |
+| Private channel enforcement | `subscribe_grants`, `EventFilter::matches` |
+| MCP stream grants | `GET /mcp/stream?channel_grants=…` |
+
 ## v80.0.0 — Delivery ops unified
 
 | Capability | Where |

@@ -53,7 +53,7 @@
 | **78** | MCP streamable bidirectional | `v78.0.0` ✓ | Multiplexed JSON-RPC over streamable session per documented 2024-11-05 subset; client example in [[Agent Integration]] |
 | **79** | A2A long-running tasks | `v79.0.0` ✓ | `tasks/cancel`, progress events on `SubscribeToTask`, terminal semantics tested |
 | **80** | Delivery ops unified | `v80.0.0` ✓ | Single operator API shape to list/replay webhook + automation deliveries (tables may stay separate) |
-| **81** | Subscribe grants v3 | `v81.0.0` | WS filter schema requires explicit channel grants; private-channel deny e2e |
+| **81** | Subscribe grants v3 | `v81.0.0` ✓ | WS filter schema requires explicit channel grants; private-channel deny e2e |
 
 **Ordering:** **77** before **81** (capabilities reference routes). **78** parallel after **77**. **79** after **72** baseline. **80** after **68**.
 
