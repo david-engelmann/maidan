@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [81.0.0] — 2026-06-02
+
+### Added
+
+- WS/MCP subscribe `channel_grants` for private channel access control.
+- DM subscribe auto-grants the backing private DM channel.
+
 ## [80.0.0] — 2026-06-02
 
 ### Added

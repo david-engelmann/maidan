@@ -41,7 +41,7 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Cluster **81.0** — Subscribe grants v3
+**Active:** Cluster **82.0** — Context pagination
 ([[Clusters/Product Ladder 77+]]). Predecessor **`v77.0.0`** ([[Retros/Cluster 77.0]]).
 
 **Recently closed:** Cluster **77.0** — HTTP capability map at **`v77.0.0`**
