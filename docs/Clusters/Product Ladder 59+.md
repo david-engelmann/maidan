@@ -36,4 +36,4 @@
 
 ## Continuation
 
-Deferred kickoff items and transport depth continue in [[Clusters/Product Ladder 68+]] (Clusters **68–76**, gate **`maidan-agent-1.0`**).
+Ladder **68+** closed at **`v76.0.0`** / **`maidan-agent-1.0`**. Next: [[Clusters/Product Ladder 77+]].

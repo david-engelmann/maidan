@@ -1,10 +1,10 @@
-# Remaining work (post–`v69.0.0`)
+# Remaining work (post–`maidan-agent-1.0`)
 
-Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`), and **59–69** (agent substrate Phase XI).
+Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`), **59–67**, and **68–76** (agent substrate completion).
 Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and
-[[Clusters/Product Ladder 68+]] (Clusters **71–76**, gate **`maidan-agent-1.0`**).
+[[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
 
-**Latest closes:** **`v69.0.0`** capability map CI · **`v68.0.0`** automation delivery · **`v67.0.0`** context packages · **`v58.0.0`** maidan-2.0 gate.
+**Latest closes:** **`v76.0.0`** agent gate · **`v74.0.0`** MCP context · **`v72.0.0`** A2A subscribe · **`v69.0.0`** capability map · **`v58.0.0`** maidan-2.0 gate.
 
 ---
 
@@ -12,19 +12,21 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 
 | Area | Shipped | Gap |
 |------|---------|-----|
-| **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL (**60**) | Not full MCP 2024-11-05 bidirectional mux + documented client flow |
-| **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | No channel browser, WS live tail, artifact upload UI, React SPA |
-| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, cert-manager values, kind install CI | Production tuning left to operators; not a hosted SaaS |
+| **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL, delete e2e | Bidirectional mux (**78**) |
+| **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | Channel browser, WS tail, artifacts (**92–96**); no React SPA in ladder **77+** |
+| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) |
 | **Workspace erasure (53)** | `DELETE /workspaces/:id` full erase | Does not cover org-level IdP user deletion (use IdP) |
-| **Capabilities (69)** | MCP tool deny + allow gate; sample HTTP contract | Not every OpenAPI path in CI |
-| **A2A (72)** | RPC + streaming message + in-memory push config | Persisted push / `SubscribeToTask` |
-| **Context (74)** | HTTP workspace/thread context (**67**) | MCP tools + pagination cursors |
-| **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl is no-op |
-| **Outbox** | Relay + quarantine + HTTP replay (**56**) | NOTIFY still at-most-once |
-| **mcp-stdio (36)** | Postgres-backed | No bundled bus/indexer in stdio mode |
-| **Semantic (75)** | SQLite brute-force + Postgres HNSW | No `sqlite-vec` HNSW; reindex job API open |
-| **Embeddings** | Pluggable provider | Default **`hash-v1`**; per-model table split deferred |
-| **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip not implemented |
+| **Capabilities (69)** | Full MCP matrix + sample HTTP contract | Every OpenAPI path in CI (**77**) |
+| **A2A (72)** | Persisted tasks + `SubscribeToTask` SSE | Cancel/progress/long-run (**79**) |
+| **Context (74)** | HTTP + MCP context tools | Pagination cursors (**82**) |
+| **Delivery cursors (13)** | Postgres `maidan_delivery_cursor` | SQLite impl (**83**) |
+| **Outbox** | Relay + quarantine + HTTP replay (**56**) | Polled relay / NOTIFY upgrade (**84**) |
+| **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
+| **Semantic (75)** | CLI reindex + runbook; Postgres HNSW | `sqlite-vec` (**85**); operator job API (**87**) |
+| **Embeddings** | Pluggable provider | Default **`hash-v1`**; per-model tables (**86**) |
+| **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
+| **Observability (76)** | Agent metrics runbook + gate e2e | OTLP export + dashboards (**89–90**) |
+| **Delivery ops (68)** | Automation DLQ + replay | Unified operator surface (**80**) |
 
 **Closed since older drafts of this file:** pins API (**40**), slash commands (**51**), FSM hooks (**52**), DMs (**39**), message edit (**29**), outbox HTTP replay (**56**), Helm stack (**32**/**55**), workspace full erase (**53**), A2A `SendStreamingMessage` (**37**), MCP resource fan-out (**38**), capability matrix for all MCP tools (**69**).
 
@@ -51,7 +53,7 @@ From [[Open Work]] — unchanged except where a release mitigated.
 | `sqlite-vec` / HNSW on SQLite | Extension linkage deferred |
 | Schema parity property test | Cluster A retro |
 | Sigstore/cosign release artifacts | Manual (**Operations**) |
-| OTLP dashboards / SLO wiring | Cluster **76** |
+| OTLP dashboards / SLO wiring | **89–90** ([[Clusters/Product Ladder 77+]]) |
 | Multi-region active-active | Out of scope |
 | OpenAPI-wide capability map | Cluster **69** shipped MCP + samples only |
 | Unified webhook + automation delivery tables | **68** kept separate queues |
@@ -100,7 +102,7 @@ See [[Clusters/Product Ladder 68+]] for the committed ladder (**71–76**). Oppo
 
 | Item | Status |
 |------|--------|
-| Vault snapshot vs **`v69`** | Addressed by Cluster **70** retro |
+| Vault snapshot vs **`v76`** | Cluster **70** + ongoing retro discipline |
 | Per-cluster retros **23–27** | Historical; capabilities in [[CHANGELOG]] |
 | mdBook vs vault drift | Prefer vault + [[Agent Integration]]; mdBook follows on merge |
 
@@ -115,7 +117,7 @@ See [[Clusters/Product Ladder 68+]] for the committed ladder (**71–76**). Oppo
 
 ## 8. How to use this file
 
-1. Pick a row from §1, §3, or [[Clusters/Product Ladder 68+]].
+1. Pick a row from §1, §3, or [[Clusters/Product Ladder 77+]].
 2. Open a cluster issue per [[Operations]].
 3. On ship: update [[Capabilities]], [[CHANGELOG]], trim via retro PR.
 

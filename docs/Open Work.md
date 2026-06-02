@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` through **`v69.0.0`**.
+Updated at each cluster retro. **Baseline:** code on `main` at **`v76.0.0`** / **`maidan-agent-1.0`**.
 
 ## Standing risks (still open)
 
@@ -23,38 +23,31 @@ Updated at each cluster retro. **Baseline:** code on `main` through **`v69.0.0`*
 | **17–27** | MCP fan-out, SQLite semantic, Helm server, purge, streamable subset |
 | **35–58** | `maidan-2.0` product gate — DMs, webhooks, slash, FSM, erase, quotas, completion e2e |
 | **59–67** | [[Agent Integration]], streamable TTL, A2A card, outbox ops, app OAuth, context |
-| **68–69** | Automation delivery DLQ; MCP capability map + matrix e2e |
+| **68–76** | Automation DLQ, capability map, vault truth, A2A subscribe, MCP context, agent gate — [[Retros/Cluster 76.0]] |
 
 **Still manual:** Sigstore/cosign release artifacts ([[Operations]]).
 
 ## Agent substrate ladder (68+)
 
-Active plan: [[Clusters/Product Ladder 68+]] → **`maidan-agent-1.0`** at **76**.
+**Closed** at **`v76.0.0`** and **`maidan-agent-1.0`**.
 
-| Tag | Theme |
-|-----|--------|
-| **`v68.0.0`** | Slash/FSM HTTP delivery ledger — [[Retros/Cluster 68.0]] |
-| **`v69.0.0`** | MCP capability map + CI matrix — [[Retros/Cluster 69.0]] |
-| **`v70.0.0`** | Vault truth — [[Retros/Cluster 70.0]] |
-
-**Ladder 68–76 closed** at **`v76.0.0`** ([[Retros/Cluster 76.0]]). Next work: human-product backlog ([[Remaining Work]]) or external integrator deployments.
+**Next ladder:** [[Clusters/Product Ladder 77+]] (**77–101**, gate **`maidan-operator-1.0`**). Opportunistic human-product items remain in [[Remaining Work]] §4.
 
 ## Still deferred (no separate owner)
 
 | What | Notes |
 |------|-------|
-| Full MCP streamable 2024-11-05 session | **73** |
-| Persisted A2A task push | **72** |
-| MCP context export tools | **74** |
-| OpenAPI ↔ capability CI for all routes | Beyond **69** sample HTTP contract |
-| `sqlite-vec` / per-model embedding tables | **75** / Open Work standing risks |
-| OTLP dashboards + agent gate e2e | **76** |
+| Full MCP streamable 2024-11-05 bidirectional mux | Subset shipped in **73**; spec-complete session still open |
+| OpenAPI ↔ capability map for every HTTP route | **69** shipped sample contract + full MCP matrix |
+| Hosted OTLP / Grafana dashboards | **76** shipped metrics runbook only |
+| `sqlite-vec` / per-model embedding tables | Standing risk |
 | Multi-region active-active | Out of scope |
+| Unify webhooks + automation delivery queues | **68** retro deferral |
 
 ## Known state
 
-- **Latest tag on `main`:** **`v69.0.0`** (cut **`v70.0.0`** after Cluster 70 retro merges).
-- **Active cluster:** **71** after **70** closes ([[Clusters/Product Ladder 68+]]).
+- **Latest tag:** **`v76.0.0`** / **`maidan-agent-1.0`**.
+- **Active cluster:** **77** ([[Clusters/Product Ladder 77+]]).
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 
 ## How to read this file

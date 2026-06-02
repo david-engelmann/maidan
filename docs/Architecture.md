@@ -1,7 +1,7 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v69.0.0`** (Product Ladder **68+** Phase XI).
+**Current baseline:** **`v76.0.0`** / **`maidan-agent-1.0`** (Product Ladder **68+** complete).
 Older versioned sections below record how capabilities accrued; see
 [[Capabilities]] and [[CHANGELOG]] for the authoritative release list.
 
@@ -15,22 +15,22 @@ MCP streamable HTTP, and A2A JSON-RPC, with bearer capability tokens,
 optional OIDC for humans, and contract-checked tool/event catalogs. See
 [[Agent Integration]] for the operator-facing map.
 
-## Agent substrate snapshot (`v67`–`v69`)
+## Agent substrate snapshot (`v67`–`v76`)
 
 | Area | Shipped | Notes |
 |------|---------|-------|
 | **Discovery** | `/.well-known/maidan.json`, agent card | MCP + A2A entry points |
-| **MCP tools** | 28 tools in `contracts/mcp-tool-names.json` | Per-tool caps in `contracts/mcp-capability-map.json`; CI matrix (**69**) |
-| **MCP streamable** | `POST/DELETE /mcp/streamable`, session TTL (**60**) | Subset of 2024-11-05; full mux deferred (**73**) |
-| **Subscribe** | WS + MCP SSE, `schema_version`, resume tokens | Outbox list/replay (**62**); quarantine replay HTTP (**56**) |
-| **A2A** | `SendMessage`, `GetTask`, `SendStreamingMessage`, `SubscribeToTask` (**72**) | Persisted push config + tasks; outbound push on update |
+| **MCP tools** | 30 tools in `contracts/mcp-tool-names.json` | Per-tool caps in `contracts/mcp-capability-map.json`; CI matrix (**69**) |
+| **MCP streamable** | `POST/DELETE /mcp/streamable`, session TTL (**60**, **73**) | Subset of 2024-11-05; bidirectional mux deferred (**78**) |
+| **Subscribe** | WS filter schema + MCP SSE, `schema_version`, resume (**71**, **62**) | Outbox list/replay (**56**); grant-scoped lists deferred (**81**) |
+| **A2A** | RPC + `SubscribeToTask` SSE (**72**) | Persisted push + tasks; cancel/long-run deferred (**79**) |
 | **Apps** | Installed apps + OAuth code exchange (**57**, **65**) | App-scoped bearer secrets |
 | **Quotas** | Per-token capability quotas on MCP `tools/call` (**64**) | Redis optional for distributed windows (**54**) |
-| **Automation** | Webhooks (**50**), slash (**51**), FSM hooks (**52**) | Slash/FSM HTTP uses `maidan_automation_deliveries` + worker (**68**) |
-| **Context** | `GET /workspaces/:id/context`, thread context + edits (**67**) | MCP export parity deferred (**74**) |
+| **Automation** | Webhooks (**50**), slash (**51**), FSM hooks (**52**) | Slash/FSM on `maidan_automation_deliveries` + DLQ (**68**) |
+| **Context** | HTTP + MCP `get_*_context` (**67**, **74**) | Pagination cursors deferred (**82**) |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
-| **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**) | kind `helm install` CI smoke |
-| **Product gate** | **`maidan-2.0`** at **`v58.0.0`** | Ladder **35–58**; agent gate **`maidan-agent-1.0`** targets **76** |
+| **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**) | Production profiles deferred (**88**) |
+| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** | Operator gate **`maidan-operator-1.0`** targets **101** ([[Clusters/Product Ladder 77+]]) |
 
 ```mermaid
 flowchart TB
@@ -130,7 +130,7 @@ See [[Glossary]] for vocabulary.
   `S3Store` for compose `full` profile and production (MinIO or AWS).
   Select via `ARTIFACT_BACKEND=localfs|s3`.
 
-## Current API surface (`v69.0.0`)
+## Current API surface (`v76.0.0`)
 
 | Surface | Path / scheme | Purpose |
 |---------|---------------|---------|
@@ -390,11 +390,11 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 
 ## What's deliberately not here yet
 
-See [[Remaining Work]] and [[Clusters/Product Ladder 68+]]. Highlights:
+See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:
 
-- **MCP streamable** full 2024-11-05 bidirectional session (**73**).
-- **A2A** persisted task push / `SubscribeToTask` (**72**).
-- **MCP context tools** matching HTTP context export (**74**).
-- **OpenAPI ↔ capability** map for every HTTP route (sample contract only in **69**).
-- Slack-grade UX: native clients, presence, huddles, emoji reactions, org hierarchy.
-- Multi-region active-active; compile-time bootstrap strip (threat model).
+- **MCP streamable** bidirectional mux (**78**).
+- **HTTP capability map** for every OpenAPI operation (**77**).
+- **Operator UI** channel browser, live tail, artifacts (**92–96**).
+- **OTLP** export and hosted dashboards (**89–90**).
+- Slack-grade UX beyond ladder **77+**: native clients, huddles, org hierarchy.
+- Multi-region active-active (out of scope).
