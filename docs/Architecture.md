@@ -1,7 +1,7 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v82.0.0`** (Product Ladder **77+** through cluster **82**).
+**Current baseline:** **`v83.0.0`** (Product Ladder **77+** through cluster **83**).
 Older versioned sections below record how capabilities accrued; see
 [[Capabilities]] and [[CHANGELOG]] for the authoritative release list.
 

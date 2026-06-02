@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v83.0.0 — SQLite delivery cursor (ladder close)
+
+| Capability | Where |
+|------------|-------|
+| SQLite delivery cursor | `maidan_delivery_cursor` migration `0023`, `SqliteStore::get/advance_delivery_cursor` |
+| Cursor parity tests | `maidan-store/tests/delivery_cursor.rs` |
+
 ## v82.0.0 — Context pagination
 
 | Capability | Where |
