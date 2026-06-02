@@ -1,5 +1,5 @@
 //! MCP streamable HTTP: JSON-RPC response plus live notifications on one SSE stream
-//! (`POST /mcp/streamable`). Cluster 27; session mux Cluster 35.
+//! (`POST /mcp/streamable`). Cluster 27; follow-up mux on open session Cluster 78.
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -56,7 +56,7 @@ async fn follow_up_on_open_session(
 ) -> Result<Response, ApiError> {
     let response = state.mcp.handle(request, auth).await;
     push_response_and_notifications(state, session_id, &response).await?;
-    let mut resp = Json(response).into_response();
+    let mut resp = StatusCode::ACCEPTED.into_response();
     attach_session_header(&mut resp, session_id);
     Ok(resp)
 }
