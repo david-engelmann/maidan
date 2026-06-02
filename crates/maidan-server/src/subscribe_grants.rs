@@ -19,11 +19,19 @@ pub async fn apply_subscribe_grants(
         .list_channels(ws)
         .await
         .map_err(|e| format!("list channels: {e}"))?;
-    let grants: HashSet<ChannelId> = filter
+    let mut grants: HashSet<ChannelId> = filter
         .channel_grants
         .as_ref()
         .map(|v| v.iter().copied().collect())
         .unwrap_or_default();
+    if filter.dm_conversation_id.is_some() {
+        if let Some(th) = filter.thread_id {
+            let ctx = resolve_thread_context(state.store.as_ref(), th)
+                .await
+                .map_err(|e| format!("{e:?}"))?;
+            grants.insert(ctx.channel_id);
+        }
+    }
     if let Some(ch) = filter.channel_id {
         let channel = channels
             .iter()
