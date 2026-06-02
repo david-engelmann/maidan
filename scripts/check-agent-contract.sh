@@ -8,3 +8,4 @@ cargo test -p maidan-mcp --test tools_catalog_contract
 cargo test -p maidan-mcp --test mcp_capability_map_contract
 cargo test -p maidan-server --test http_capability_map_contract
 cargo test -p maidan-server --test http_openapi_capability_map_contract
+cargo test -p maidan-server --test http_capability_matrix_e2e

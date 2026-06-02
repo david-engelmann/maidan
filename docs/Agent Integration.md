@@ -49,3 +49,12 @@ Configure a workspace webhook via `tasks/pushNotificationConfig/set` on `/a2a/v1
 ## Contract files
 
 Golden lists in `contracts/` are checked in CI via `scripts/check-agent-contract.sh`.
+
+| File | Role |
+|------|------|
+| `mcp-capability-map.json` | Every MCP tool → required capability |
+| `http-capability-map.json` | Every OpenAPI bearer operation + transport appendix |
+| `http-capability-routes.json` | Sample HTTP bodies for denial e2e |
+
+`http_openapi_capability_map_contract` enforces OpenAPI ↔ `http-capability-map.json` parity.
+`http_capability_matrix_e2e` denies each map row (except peer ingest, multipart/S3, and admin routes that need seeded fixtures).

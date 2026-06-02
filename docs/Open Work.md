@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v76.0.0`** / **`maidan-agent-1.0`**.
+Updated at each cluster retro. **Baseline:** code on `main` at **`v77.0.0`**.
 
 ## Standing risks (still open)
 
@@ -47,7 +47,7 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v76.0.0`** / *
 ## Known state
 
 - **Latest tag:** **`v76.0.0`** / **`maidan-agent-1.0`**.
-- **Active cluster:** **77** ([[Clusters/Product Ladder 77+]]).
+- **Active cluster:** **78** ([[Clusters/Product Ladder 77+]]).
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 
 ## How to read this file

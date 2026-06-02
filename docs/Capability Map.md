@@ -9,7 +9,7 @@ Canonical machine-readable maps:
 - HTTP full map: [`contracts/http-capability-map.json`](../contracts/http-capability-map.json) (every OpenAPI bearer operation + transport appendix)
 - HTTP denial samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json) (table-driven e2e)
 
-CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract` and `scripts/check-agent-contract.sh`.
+CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, table-driven HTTP denial via `http_capability_matrix_e2e`, and `scripts/check-agent-contract.sh`.
 
 ## HTTP (member bearer)
 
