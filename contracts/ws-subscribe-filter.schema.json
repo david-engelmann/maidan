@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://maidan.dev/schemas/ws-subscribe-filter-v1.json",
+  "$id": "https://maidan.dev/schemas/ws-subscribe-filter-v3.json",
   "title": "Maidan WebSocket subscribe filter",
   "type": "object",
   "properties": {
@@ -12,6 +12,11 @@
     "channel_id": { "type": "string", "format": "uuid" },
     "thread_id": { "type": "string", "format": "uuid" },
     "member_id": { "type": "string", "format": "uuid" },
+    "channel_grants": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "description": "Allow-list for channel-scoped events; required to receive private channel traffic."
+    },
     "kinds": {
       "type": "array",
       "items": { "type": "string" },

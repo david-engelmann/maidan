@@ -318,6 +318,9 @@ async fn read_subscribe(
     crate::dm::expand_event_filter(state, &mut filter)
         .await
         .map_err(|e| (1008u16, format!("{e:?}")))?;
+    crate::subscribe_grants::apply_subscribe_grants(state, &mut filter)
+        .await
+        .map_err(|e| (1008u16, e))?;
     if let Some(ref consumer_id) = sub.consumer_id {
         crate::delivery::validate_consumer_id(consumer_id).map_err(|e| (1008u16, e))?;
         after_id = crate::delivery::effective_subscribe_after_id(

@@ -42,6 +42,7 @@ pub mod routes;
 pub mod session;
 pub mod slash_commands;
 pub mod state;
+pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
 pub mod thread_context;
