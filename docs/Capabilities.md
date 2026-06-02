@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v80.0.0 — Delivery ops unified
+
+| Capability | Where |
+|------------|-------|
+| Unified delivery list/get/replay | `GET/POST /workspaces/:wid/deliveries` |
+| Webhook delivery operator store API | `list_webhook_deliveries`, `replay_webhook_delivery` |
+| Automation routes (legacy) | `/workspaces/:wid/automation/deliveries` |
+
 ## v77.0.0 — HTTP capability map complete
 
 | Capability | Where |
