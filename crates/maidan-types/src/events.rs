@@ -358,6 +358,15 @@ pub struct EventFilter {
     pub dm_conversation_id: Option<DmConversationId>,
     pub member_id: Option<MemberId>,
     pub kinds: Option<HashSet<EventKind>>,
+    /// Explicit channel allow-list; when set, only listed channels receive channel-scoped events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_grants: Option<Vec<ChannelId>>,
+    /// Populated at subscribe time: private channels in the workspace not granted.
+    #[serde(skip, default)]
+    pub private_channel_deny: HashSet<ChannelId>,
+    /// Populated when `channel_grants` is non-empty.
+    #[serde(skip, default)]
+    pub channel_event_allow: Option<HashSet<ChannelId>>,
 }
 
 impl EventFilter {
@@ -409,15 +418,37 @@ impl EventFilter {
         self.matches(&envelope.event)
     }
 
+    fn channel_is_granted(&self, channel_id: ChannelId) -> bool {
+        self.channel_grants
+            .as_ref()
+            .is_some_and(|grants| grants.contains(&channel_id))
+    }
+
     pub fn matches(&self, event: &Event) -> bool {
         if let Some(ws) = self.workspace_id {
             if event.workspace_id() != Some(ws) {
                 return false;
             }
         }
+        if let Event::ChannelCreated { channel, .. } = event {
+            if channel.private && self.workspace_id.is_some() && !self.channel_is_granted(channel.id)
+            {
+                return false;
+            }
+        }
         if let Some(ch) = self.channel_id {
             if event.channel_id() != Some(ch) {
                 return false;
+            }
+        }
+        if let Some(ch) = event.channel_id() {
+            if self.private_channel_deny.contains(&ch) {
+                return false;
+            }
+            if let Some(ref allow) = self.channel_event_allow {
+                if !allow.contains(&ch) {
+                    return false;
+                }
             }
         }
         if let Some(th) = self.thread_id {

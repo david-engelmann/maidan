@@ -27,7 +27,7 @@ WebSocket subscribers receive `subscribe_ack` with `schema_version: 1`, a signed
 
 **Forward-compat:** `contracts/event-kinds.json` lists kinds Maidan emits today. The bus may add new kinds in any release; clients **must ignore** unknown `kind` strings (see `contracts/ws-subscribe-filter.schema.json` for the subscribe filter shape).
 
-Filter fields: `workspace_id` (enables auto-replay), optional `channel_id`, `thread_id`, `member_id`, and `kinds[]`.
+Filter fields: `workspace_id` (enables auto-replay), optional `channel_id`, `thread_id`, `member_id`, `kinds[]`, and `channel_grants[]` (UUID allow-list for channel-scoped events). Private channels require an explicit grant; workspace-wide subscribe without a grant does not deliver private-channel events. `GET /mcp/stream` accepts repeated `channel_grants` query parameters for the same allow-list.
 
 ## Context export
 
