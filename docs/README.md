@@ -45,6 +45,7 @@ Obsidian for wikilink navigation, graph view, and backlinks.
 - [[Clusters/Cluster 69.0]] — closed at `v69.0.0` (capabilities matrix complete).
 - [[Clusters/Cluster 70.0]] — closed at `v70.0.0` (vault truth pass).
 - [[Clusters/Cluster 77.0]] — closed at `v77.0.0` (HTTP capability map complete).
+- [[Clusters/Cluster 78.0]] — active (MCP streamable bidirectional); kickoff docs **79–101** in `docs/Clusters/`.
 - [[Clusters/Cluster 13.0]] — delivery contract & subscriber ledger (historical).
 - [[Clusters/Cluster 12.0]] — closed at `v12.0.0` (outbox relay hardening).
 - [[Clusters/Cluster 11.0]] — closed at `v11.0.0` (coverage 11%).

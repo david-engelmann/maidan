@@ -140,7 +140,30 @@ Create `docs/Clusters/Cluster N.0.md` when starting each cluster (copy [[Cluster
 | Cluster | Kickoff doc |
 |---------|-------------|
 | **77** | [[Clusters/Cluster 77.0]] |
-| **78–101** | Create at kickoff |
+| **78** | [[Clusters/Cluster 78.0]] |
+| **79** | [[Clusters/Cluster 79.0]] |
+| **80** | [[Clusters/Cluster 80.0]] |
+| **81** | [[Clusters/Cluster 81.0]] |
+| **82** | [[Clusters/Cluster 82.0]] |
+| **83** | [[Clusters/Cluster 83.0]] |
+| **84** | [[Clusters/Cluster 84.0]] |
+| **85** | [[Clusters/Cluster 85.0]] |
+| **86** | [[Clusters/Cluster 86.0]] |
+| **87** | [[Clusters/Cluster 87.0]] |
+| **88** | [[Clusters/Cluster 88.0]] |
+| **89** | [[Clusters/Cluster 89.0]] |
+| **90** | [[Clusters/Cluster 90.0]] |
+| **91** | [[Clusters/Cluster 91.0]] |
+| **92** | [[Clusters/Cluster 92.0]] |
+| **93** | [[Clusters/Cluster 93.0]] |
+| **94** | [[Clusters/Cluster 94.0]] |
+| **95** | [[Clusters/Cluster 95.0]] |
+| **96** | [[Clusters/Cluster 96.0]] |
+| **97** | [[Clusters/Cluster 97.0]] |
+| **98** | [[Clusters/Cluster 98.0]] |
+| **99** | [[Clusters/Cluster 99.0]] |
+| **100** | [[Clusters/Cluster 100.0]] |
+| **101** | [[Clusters/Cluster 101.0]] |
 
 ---
 
