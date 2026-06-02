@@ -109,7 +109,7 @@ pub async fn list_deliveries(
             .await?;
         rows.extend(automation.into_iter().map(OperatorDelivery::Automation));
     }
-    rows.sort_by(|a, b| delivery_sort_key(b).cmp(&delivery_sort_key(a)));
+    rows.sort_by_key(|row| std::cmp::Reverse(delivery_sort_key(row)));
     rows.truncate(limit as usize);
     Ok(Json(rows))
 }
