@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [82.0.0] — 2026-06-02
+
+### Added
+
+- Context export pagination: `message_cursor` / `thread_cursor` on HTTP and MCP tools.
+- `Store::list_messages_after` with stable message ordering (`posted_at`, `id`).
+
 ## [81.0.0] — 2026-06-02
 
 ### Added
@@ -20,6 +27,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Unified operator delivery API at `/workspaces/:wid/deliveries` (webhook + automation via `kind`).
 - Webhook delivery list/get/replay in store (per workspace).
+
+## [79.0.0] — 2026-06-02
+
+### Added
+
+- A2A `tasks/cancel` RPC and `SubscribeToTask` `statusUpdate` progress frames for non-terminal tasks.
+- Terminal subscribe error `-32005`; cancel/progress e2e in `a2a_protocol_e2e`.
 
 ## [77.0.0] — 2026-06-02
 
