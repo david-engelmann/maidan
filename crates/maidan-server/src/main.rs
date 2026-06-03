@@ -5,7 +5,7 @@ use std::sync::{atomic::AtomicI64, Arc};
 
 use anyhow::Context;
 use maidan_artifacts::{LocalFsStore, S3Config, S3Store};
-use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
+use maidan_bus::{EventBus, InMemoryBus, PostgresBus, PostgresBusOptions};
 use maidan_search::{
     EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
 };
@@ -42,8 +42,16 @@ async fn main() -> anyhow::Result<()> {
     let use_embedding_indexer: bool;
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
     let bus_hydrate_stats: Option<Arc<maidan_bus::HydrateStats>>;
-    let mut outbox_relay = false;
-    let mut outbox_backend: Option<OutboxBackend> = None;
+    let outbox_relay_enabled = maidan_server::outbox_relay::relay_enabled_from_env();
+    let outbox_relay_mode = maidan_server::outbox_relay::relay_mode_from_env();
+    maidan_server::outbox_relay::validate_startup(
+        maidan_server::config::is_production(),
+        outbox_relay_enabled,
+    )
+    .map_err(anyhow::Error::msg)?;
+
+    let outbox_relay;
+    let outbox_backend: Option<OutboxBackend>;
 
     match dialect {
         Dialect::Postgres => {
@@ -55,15 +63,24 @@ async fn main() -> anyhow::Result<()> {
             run_postgres_migrations(&pool)
                 .await
                 .context("apply postgres migrations")?;
-            let pg_bus = PostgresBus::connect(pool.clone())
-                .await
-                .context("connect postgres bus")?;
+            let notify_on_publish =
+                outbox_relay_mode == maidan_server::outbox_relay::OutboxRelayMode::Notify;
+            let pg_bus =
+                PostgresBus::connect_with(pool.clone(), PostgresBusOptions { notify_on_publish })
+                    .await
+                    .context("connect postgres bus")?;
             bus_listener_health = Some(pg_bus.listener_health());
             bus_hydrate_stats = Some(pg_bus.hydrate_stats());
-            tracing::info!("event bus: postgres LISTEN/NOTIFY");
+            if notify_on_publish {
+                tracing::info!("event bus: postgres LISTEN/NOTIFY");
+            } else {
+                tracing::warn!(
+                    "event bus: postgres polled relay mode (pg_notify disabled; single-process fan-out)"
+                );
+            }
             tracing::info!("search: postgres tsvector");
             outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
-            outbox_relay = true;
+            outbox_relay = outbox_relay_enabled;
             store = Arc::new(PostgresStore::new(pool.clone()));
             bus = Arc::new(pg_bus);
             search = Arc::new(PostgresSearch::new(pool));
@@ -83,6 +100,8 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply sqlite migrations")?;
             tracing::info!("event bus: in-memory");
             tracing::info!("search: sqlite fts5");
+            outbox_backend = Some(OutboxBackend::Sqlite(pool.clone()));
+            outbox_relay = outbox_relay_enabled;
             store = Arc::new(SqliteStore::new(pool.clone()));
             bus = Arc::new(InMemoryBus::new());
             search = Arc::new(SqliteSearch::new(pool));
@@ -225,21 +244,27 @@ async fn main() -> anyhow::Result<()> {
     if outbox_relay {
         if let Some(backend) = outbox_backend {
             let relay_bus = bus.clone();
+            let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
+            let poll_interval = maidan_server::outbox_relay::poll_interval_from_env();
             tokio::spawn(async move {
-                let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
-                maidan_server::outbox_relay::OutboxRelay::with_max_attempts(
+                maidan_server::outbox_relay::OutboxRelay::with_options(
                     backend,
                     relay_bus,
                     max_attempts,
+                    poll_interval,
                 )
                 .run()
                 .await;
             });
             tracing::info!(
-                max_attempts = maidan_server::outbox_relay::max_attempts_from_env(),
+                mode = outbox_relay_mode.as_str(),
+                max_attempts,
+                poll_ms = poll_interval.as_millis(),
                 "outbox relay running"
             );
         }
+    } else {
+        tracing::warn!("outbox relay disabled; HTTP handlers publish directly to the bus");
     }
 
     let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);

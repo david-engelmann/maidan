@@ -39,6 +39,10 @@ pub struct Config {
     pub log_filter: String,
 }
 
+pub fn is_production() -> bool {
+    std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
+}
+
 impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
