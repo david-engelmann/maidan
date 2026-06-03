@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v89.0.0 — OTLP metrics export
+
+| Capability | Where |
+|------------|-------|
+| OTLP metrics push (fanout with Prometheus) | `OTLP_METRICS`, `maidan-server::metrics`, `maidan-observability::metrics` |
+| Example Grafana dashboard | `docs/dashboards/maidan-operator.json` |
+| Helm otel profile enables metrics | `values-profile-otel.yaml` |
+
 ## v87.0.0 — Reindex job API
 
 | Capability | Where |

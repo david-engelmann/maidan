@@ -15,21 +15,60 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
+use maidan_observability::{
+    build_otlp_metrics_recorder, otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env,
+    MeterGuard, MetricsPushConfig,
+};
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use metrics_util::layers::FanoutBuilder;
 
 use crate::state::AppState;
 
 static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
+static OTLP_METER: OnceLock<MeterGuard> = OnceLock::new();
 static INIT: Once = Once::new();
 static LAST_HYDRATE: Mutex<Option<HydrateSnapshot>> = Mutex::new(None);
+
+fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        handle.run_upkeep();
+    });
+}
 
 /// Install the global metrics recorder (idempotent).
 pub fn init() {
     INIT.call_once(|| {
-        let handle = PrometheusBuilder::new()
-            .install_recorder()
-            .expect("prometheus recorder");
+        let prom_recorder = PrometheusBuilder::new().build_recorder();
+        let handle = prom_recorder.handle();
+
+        if let Some(endpoint) = otlp_metrics_endpoint_from_env() {
+            let service_name =
+                std::env::var("OTLP_SERVICE_NAME").unwrap_or_else(|_| "maidan-server".to_string());
+            let push_config = MetricsPushConfig {
+                service_name,
+                endpoint,
+                interval: otlp_metrics_interval_from_env(),
+            };
+            let (meter_guard, otel_recorder) =
+                build_otlp_metrics_recorder(&push_config).expect("otlp metrics recorder");
+            let fanout = FanoutBuilder::default()
+                .add_recorder(prom_recorder)
+                .add_recorder(otel_recorder)
+                .build();
+            metrics::set_global_recorder(fanout).expect("metrics fanout recorder");
+            let _ = OTLP_METER.set(meter_guard);
+            tracing::info!(
+                endpoint = %push_config.endpoint,
+                interval_secs = push_config.interval.as_secs(),
+                "OTLP metrics push enabled (Prometheus scrape unchanged)"
+            );
+        } else {
+            metrics::set_global_recorder(prom_recorder).expect("prometheus recorder");
+        }
+
+        spawn_prometheus_upkeep(handle.clone());
         let _ = PROMETHEUS.set(handle);
         describe_counter!(
             "http.server.request_total",
