@@ -70,7 +70,7 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-ui-version="6""#));
+    assert!(html.contains(r#"data-ui-version="7""#));
     assert!(html.contains(r#"data-tab="admin""#));
     assert!(html.contains("load-audit"));
     assert!(html.contains("purge-workspace"));
