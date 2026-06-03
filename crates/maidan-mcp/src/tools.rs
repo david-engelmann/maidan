@@ -372,7 +372,11 @@ pub fn catalog() -> Vec<Value> {
                     "limit": {"type": "integer", "default": 25},
                     "author_id": {"type": "string", "format": "uuid"},
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "kind": {"type": "string", "enum": ["human", "agent"]}
+                    "kind": {"type": "string", "enum": ["human", "agent"]},
+                    "embedding_model": {
+                        "type": "string",
+                        "description": "Semantic only: registered model name (default: active provider)."
+                    }
                 },
                 "required": ["workspace_id", "query"]
             }
@@ -529,6 +533,7 @@ struct SearchMessagesArgs {
     author_id: Option<uuid::Uuid>,
     channel_id: Option<uuid::Uuid>,
     kind: Option<maidan_types::MemberKind>,
+    embedding_model: Option<String>,
 }
 
 fn default_search_limit() -> i64 {
@@ -729,14 +734,12 @@ async fn search_messages(
             let embedding = embedding_provider
                 .embed(&a.query)
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
+            let model = a
+                .embedding_model
+                .as_deref()
+                .unwrap_or_else(|| embedding_provider.model_name());
             search
-                .semantic_search(
-                    workspace_id,
-                    &embedding,
-                    a.limit,
-                    &filters,
-                    embedding_provider.model_name(),
-                )
+                .semantic_search(workspace_id, &embedding, a.limit, &filters, model)
                 .await?
         }
     };

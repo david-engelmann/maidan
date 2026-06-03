@@ -1341,7 +1341,10 @@ pub async fn search_messages(
                 .embedding_provider
                 .embed(&q.q)
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
-            let model = state.embedding_provider.model_name();
+            let model = q
+                .embedding_model
+                .as_deref()
+                .unwrap_or_else(|| state.embedding_provider.model_name());
             state
                 .search
                 .semantic_search(workspace_id, &embedding, q.limit, &filters, model)

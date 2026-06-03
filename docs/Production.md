@@ -291,10 +291,12 @@ Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Ga
 | `mode` | `lexical` (default) or `semantic` (Postgres + SQLite). |
 | `author` / `channel` / `kind` | Optional facets (both modes on Postgres). |
 | `limit` | Max hits (default 20). |
+| `embedding_model` | Semantic only: registered model name (default: active provider). |
 
-**Semantic mode (`v5.0.0`):** embeds `q` with `MAIDAN_EMBEDDING_PROVIDER`, queries only
-rows where `maidan_message_embeddings.model` matches the active provider. Each hit
-includes `embedding_model`. `/health` reports `embedding.model` and `embedding.dimension`.
+**Semantic mode (`v5.0.0`):** embeds `q` with `MAIDAN_EMBEDDING_PROVIDER`, then queries
+the per-model embedding table named by `embedding_model` (default: provider
+`model_name()`). Each hit includes `embedding_model`. `/health` reports
+`embedding.model` and `embedding.dimension`.
 
 **Rank field:** higher is always better within a single response. Values are
 backend-specific for lexical search.

@@ -469,3 +469,171 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn sqlite_http_semantic_search_honors_embedding_model_param() {
+    use maidan_search::{hash_embedding, model_name, sqlite_pool_options, SqliteSearch};
+    use maidan_store::{run_sqlite_migrations, SqliteStore};
+
+    const LEGACY_MODEL: &str = "legacy-v1";
+
+    let pool = sqlite_pool_options()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
+    let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
+        Arc::new(maidan_search::HashV1Provider);
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "per-model-ws".into(),
+        })
+        .await
+        .unwrap();
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let th = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap();
+    let default_body = "indexed under hash-v1 only";
+    let legacy_body = "indexed under legacy-v1 only";
+    let default_msg = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: alice.id,
+            body: default_body.into(),
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let legacy_msg = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: alice.id,
+            body: legacy_body.into(),
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+
+    search
+        .upsert_embedding(default_msg.id, model_name(), &hash_embedding(default_body))
+        .await
+        .unwrap();
+    search
+        .upsert_embedding(legacy_msg.id, LEGACY_MODEL, &hash_embedding(legacy_body))
+        .await
+        .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let app = router(AppState::new(
+        store,
+        artifacts,
+        bus,
+        search,
+        embedding_provider,
+        true,
+        false,
+        maidan_server::FederationRuntime::new(true, None),
+        Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        None,
+    ));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+    let search_url = format!("{base}/workspaces/{}/search", ws.id.0);
+
+    let default_hits: Vec<serde_json::Value> = client
+        .get(&search_url)
+        .query(&[("q", legacy_body), ("mode", "semantic")])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        !default_hits
+            .iter()
+            .any(|h| h["message_id"].as_str() == Some(legacy_msg.id.0.to_string().as_str())),
+        "legacy-only row must not appear when querying the default model table"
+    );
+
+    let legacy_hits: Vec<serde_json::Value> = client
+        .get(&search_url)
+        .query(&[
+            ("q", legacy_body),
+            ("mode", "semantic"),
+            ("embedding_model", LEGACY_MODEL),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(legacy_hits.len(), 1);
+    assert_eq!(
+        legacy_hits[0]["message_id"].as_str().unwrap(),
+        legacy_msg.id.0.to_string()
+    );
+    assert_eq!(
+        legacy_hits[0]["embedding_model"].as_str(),
+        Some(LEGACY_MODEL)
+    );
+
+    let default_only: Vec<serde_json::Value> = client
+        .get(&search_url)
+        .query(&[("q", default_body), ("mode", "semantic")])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(default_only.len(), 1);
+    assert_eq!(
+        default_only[0]["message_id"].as_str().unwrap(),
+        default_msg.id.0.to_string()
+    );
+
+    server.abort();
+}

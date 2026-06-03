@@ -188,6 +188,8 @@ pub struct SearchQuery {
     pub channel: Option<uuid::Uuid>,
     /// Restrict hits to messages whose author has this kind (`human` / `agent`).
     pub kind: Option<MemberKind>,
+    /// Semantic only: query this model's embedding table (default: active provider).
+    pub embedding_model: Option<String>,
 }
 
 fn default_search_limit() -> i64 {
