@@ -327,6 +327,13 @@ CI job `sqlite-vec (optional feature)` proves linkage when the feature is on.
 After changing embedding providers, re-index or accept that old-model rows are ignored
 until re-upserted under the new model name.
 
+**Operator reindex (`v87.0.0`):** `POST /operator/reindex-embeddings` enqueues a
+background job (202 + `job_id`). Poll `GET /operator/reindex-embeddings/:job_id` for
+`running` / `completed` / `failed` and `processed` / `failed` counts. Optional JSON
+body `{ "workspace_id": "<uuid>" }` scopes to one workspace (`workspace:write`);
+omit `workspace_id` for all workspaces (`token:admin`). CLI `maidan reindex-embeddings`
+remains for shell/CI. Jobs are in-process (not durable across restarts).
+
 | `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
 | `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |

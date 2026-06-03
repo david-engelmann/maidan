@@ -105,7 +105,7 @@ async fn fetch_messages_sqlite(
     pool: &SqlitePool,
     workspace_id: Option<WorkspaceId>,
 ) -> Result<Vec<MessageRow>, SearchError> {
-    let wid = workspace_id.map(|w| w.0.to_string());
+    let wid = workspace_id.map(|w| w.0);
     let rows = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         SELECT m.id, m.body
@@ -117,8 +117,8 @@ async fn fetch_messages_sqlite(
         ORDER BY m.posted_at
         "#,
     )
-    .bind(wid.as_deref())
-    .bind(wid.as_deref())
+    .bind(wid)
+    .bind(wid)
     .fetch_all(pool)
     .await?;
     Ok(rows

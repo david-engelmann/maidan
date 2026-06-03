@@ -8,8 +8,8 @@ use tower_http::trace::TraceLayer;
 use crate::{
     a2a_agent, app_oauth, apps, auth, automation_deliveries, bootstrap, delivery_ops, dm,
     federation, fsm_hooks, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics,
-    oidc, openapi, quota, rate_limit, request_id, routes, session, slash_commands, state::AppState,
-    webhooks, ws,
+    oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands,
+    state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -206,6 +206,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/:wid/deliveries/:did/replay",
             post(delivery_ops::replay_delivery),
+        )
+        .route(
+            "/operator/reindex-embeddings",
+            post(reindex_ops::start_reindex_embeddings),
+        )
+        .route(
+            "/operator/reindex-embeddings/:job_id",
+            get(reindex_ops::get_reindex_embeddings_job),
         )
         .route(
             "/workspaces/:wid/automation/dlq",

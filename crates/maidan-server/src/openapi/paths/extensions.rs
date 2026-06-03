@@ -245,3 +245,28 @@ pub fn get_unified_delivery() {}
     responses((status = 200, description = "Replay enqueued"))
 )]
 pub fn replay_unified_delivery() {}
+
+#[utoipa::path(
+    post,
+    path = "/operator/reindex-embeddings",
+    tag = "operator",
+    request_body = crate::reindex_ops::StartReindexEmbeddings,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 202, description = "Reindex job accepted", body = crate::reindex_ops::ReindexJob),
+    )
+)]
+pub fn start_reindex_embeddings() {}
+
+#[utoipa::path(
+    get,
+    path = "/operator/reindex-embeddings/{job_id}",
+    tag = "operator",
+    params(("job_id" = Uuid, Path, description = "Reindex job id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Job status", body = crate::reindex_ops::ReindexJob),
+        (status = 404, description = "Unknown job"),
+    )
+)]
+pub fn get_reindex_embeddings_job() {}

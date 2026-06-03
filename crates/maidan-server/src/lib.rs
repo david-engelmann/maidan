@@ -37,6 +37,7 @@ pub mod outbox_relay;
 pub mod presence;
 pub mod quota;
 pub mod rate_limit;
+pub mod reindex_ops;
 pub mod request_id;
 pub mod routes;
 pub mod session;

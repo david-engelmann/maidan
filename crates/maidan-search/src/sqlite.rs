@@ -6,10 +6,12 @@ use maidan_types::*;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::embedding_provider::EmbeddingProvider;
 use crate::embedding_tables;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
+use crate::reindex::reindex_sqlite;
 use crate::score::{apply_semantic_scores, normalize_lexical_scores};
 use crate::sqlite_vec;
 use crate::traits::Search;
@@ -248,6 +250,14 @@ impl Search for SqliteSearch {
         hits.truncate(limit as usize);
         apply_semantic_scores(&mut hits);
         Ok(hits)
+    }
+
+    async fn reindex_embeddings(
+        &self,
+        provider: &dyn EmbeddingProvider,
+        workspace_id: Option<WorkspaceId>,
+    ) -> Result<crate::reindex::ReindexReport, SearchError> {
+        reindex_sqlite(&self.pool, self, provider, workspace_id).await
     }
 }
 
