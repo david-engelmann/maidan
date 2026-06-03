@@ -179,7 +179,10 @@ pub async fn get_reindex_embeddings_job(
     Extension(auth): Extension<AuthContext>,
     Path(job_id): Path<Uuid>,
 ) -> ApiResult<Json<ReindexJob>> {
-    let job = state.reindex_jobs.get(job_id).ok_or(ApiError::NotFound)?;
+    let Some(job) = state.reindex_jobs.get(job_id) else {
+        cap(&auth, TOKEN_ADMIN)?;
+        return Err(ApiError::NotFound);
+    };
     match job.workspace_id.map(WorkspaceId) {
         Some(wid) => {
             cap(&auth, WORKSPACE_WRITE)?;

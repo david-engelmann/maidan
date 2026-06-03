@@ -229,6 +229,9 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/references") {
         return template.to_string();
     }
+    if template.starts_with("/operator/") {
+        return template.replace("{job_id}", &f.workspace);
+    }
     template.to_string()
 }
 
@@ -348,6 +351,9 @@ fn apply_route_defaults(
             "handler_kind": "http",
             "handler_target": "https://example.com/fsm"
         }));
+    }
+    if path == "/operator/reindex-embeddings" && method == "POST" {
+        return b.json(&json!({}));
     }
     if path.contains("/channels") && method == "POST" && path.contains("/workspaces/") {
         return b.json(&json!({ "name": "cap-matrix" }));
