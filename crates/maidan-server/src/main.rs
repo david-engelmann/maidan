@@ -65,12 +65,10 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply postgres migrations")?;
             let notify_on_publish =
                 outbox_relay_mode == maidan_server::outbox_relay::OutboxRelayMode::Notify;
-            let pg_bus = PostgresBus::connect_with(
-                pool.clone(),
-                PostgresBusOptions { notify_on_publish },
-            )
-            .await
-            .context("connect postgres bus")?;
+            let pg_bus =
+                PostgresBus::connect_with(pool.clone(), PostgresBusOptions { notify_on_publish })
+                    .await
+                    .context("connect postgres bus")?;
             bus_listener_health = Some(pg_bus.listener_health());
             bus_hydrate_stats = Some(pg_bus.hydrate_stats());
             if notify_on_publish {
