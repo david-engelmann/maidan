@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v90.0.0 — SLO alert templates
+
+| Capability | Where |
+|------------|-------|
+| Prometheus SLO rules + Alertmanager example | `docs/alerts/` |
+| Rules validation script | `scripts/validate-prometheus-rules.sh` |
+| Alert/metric contract test | `maidan-server/tests/alert_templates_contract.rs` |
+
 ## v89.0.0 — OTLP metrics export
 
 | Capability | Where |
