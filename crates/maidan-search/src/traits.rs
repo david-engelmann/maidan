@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use maidan_types::{MessageId, WorkspaceId};
 
+use crate::embedding_provider::EmbeddingProvider;
 use crate::error::SearchError;
 use crate::filters::SearchFilters;
 use crate::hit::SearchHit;
+use crate::reindex::ReindexReport;
 
 /// Backend-agnostic search interface.
 ///
@@ -48,4 +50,14 @@ pub trait Search: Send + Sync {
         filters: &SearchFilters,
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError>;
+
+    /// Re-embed all live messages for the provider's model (optional workspace scope).
+    async fn reindex_embeddings(
+        &self,
+        provider: &dyn EmbeddingProvider,
+        workspace_id: Option<WorkspaceId>,
+    ) -> Result<ReindexReport, SearchError> {
+        let _ = (provider, workspace_id);
+        Err(SearchError::Unsupported("reindex_embeddings"))
+    }
 }

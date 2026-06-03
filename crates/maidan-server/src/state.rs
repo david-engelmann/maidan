@@ -12,6 +12,7 @@ use tokio::sync::RwLock as AsyncRwLock;
 use crate::app_oauth::AppOAuthRuntime;
 use crate::oidc::OidcRuntime;
 use crate::presence::PresenceHub;
+use crate::reindex_ops::ReindexJobRegistry;
 use crate::subscribe_resume;
 
 /// Webhook signing secrets: encryption key + in-memory cache after mint.
@@ -123,6 +124,8 @@ pub struct AppState {
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// In-memory app OAuth authorization codes (Cluster 65).
     pub app_oauth: Option<AppOAuthRuntime>,
+    /// In-process embedding reindex jobs (Cluster 87).
+    pub reindex_jobs: Arc<ReindexJobRegistry>,
 }
 
 impl AppState {
@@ -170,6 +173,7 @@ impl AppState {
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
             app_oauth: Some(AppOAuthRuntime::new()),
+            reindex_jobs: ReindexJobRegistry::new(),
         }
     }
 

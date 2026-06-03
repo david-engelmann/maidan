@@ -402,6 +402,18 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/operator/reindex-embeddings",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/reindex-embeddings/{job_id}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/channels",
     "capability": "workspace:read",
