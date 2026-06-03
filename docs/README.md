@@ -1,113 +1,96 @@
 # Maidan documentation
 
-An [Obsidian](https://obsidian.md/) vault holding the design, roadmap,
-and operating conventions for Maidan. Open this folder as a vault in
-Obsidian for wikilink navigation, graph view, and backlinks.
+Documentation for Maidan is **GitHub-native Markdown**: standard links, headings, and
+Mermaid fenced blocks. It renders correctly on GitHub, in mdBook, and in editors.
 
-> **Agents:** start at [`../CLAUDE.md`](../CLAUDE.md). It's the
-> operating manual; this vault is the reference.
+**Published site (recommended for reading):** [https://david-engelmann.github.io/maidan/](https://david-engelmann.github.io/maidan/)
+
+> **External integrators:** [Integration.md](Integration.md) — do not start with cluster plans.
 >
-> **Published site:** [mdBook](https://david-engelmann.github.io/maidan/)
-> (built from `book/` + this vault on every merge to `main`).
+> **Repo contributors:** [CLAUDE.md](../CLAUDE.md) — operating manual, then this index.
+>
+> **Obsidian (optional, local only):** open `docs/` as a vault for graph view. Some
+> historical notes still contain `[[wikilinks]]`; prefer the published site or
+> [Integration.md](Integration.md) for links that must work on GitHub.
 
-## Index
+## Integrate with Maidan
 
-- [[Architecture]] — what the system is and how the pieces connect.
-- [[Roadmap]] — clusters from foundation to v1.0.
-- [[Post-1.0]] — tracks + optional minors after v1.0.0.
-- [[Tracks/README]] — cross-cutting tracks T–X.
-- [[Capabilities]] — running list of what Maidan can do, by release.
-- [[Conventions]] — branch, commit, and PR conventions.
-- [[Operations]] — daily commands, PR flow, cluster kickoff + close,
-  CI debugging, release workflow troubleshooting.
-- [[Decisions]] — every load-bearing architectural decision with
-  rationale and the alternative that was rejected.
-- [[Open Work]] — every deferred item across retros + standing
-  risks (short list).
-- [[Remaining Work]] — exhaustive post–ladder backlog, Slack parity
-  matrix, and partial implementations.
-- [[Clusters/Product Ladder 35+]] — agent-native collaboration OS (closed;
-  product gate **`maidan-2.0`** at **`v58.0.0`**).
-- [[Clusters/Product Ladder 59+]] — agent substrate hardening (closed at **`v67.0.0`**).
-- [[Clusters/Product Ladder 68+]] — agent substrate completion (closed **`v76.0.0`** / **`maidan-agent-1.0`**).
-- [[Clusters/Product Ladder 77+]] — operator production & UI v1 (**77–101**; active).
-- [[Agent Integration]] — how external agents connect (post–`v59.0.0`).
-- [[Retros/Product Ladder 35+]] — ladder 35–58 closing retro.
-- [[Clusters/Product Ladder 30-34]] — closed ladder (v30–v34).
-- [[Retros/Product Ladder 30-34]] — closing retro for ladder 30–34.
-- [[Deploy]] — Docker + Kubernetes deployment.
-- [[Production]] — probes, env, bootstrap; links `GET /openapi.json`.
-- [[Threat-Model]] — assets, threats, bootstrap hardening (Track V).
-- [[OIDC]] — human login design spike (implementation deferred to `v2.0.0`).
-- [[Query-Tuning]] — Postgres `EXPLAIN` playbook (Track U).
-- [[Glossary]] — domain vocabulary.
-- [[Clusters/Cluster 68.0]] — closed at `v68.0.0` (automation delivery guarantees).
-- [[Clusters/Cluster 69.0]] — closed at `v69.0.0` (capabilities matrix complete).
-- [[Clusters/Cluster 70.0]] — closed at `v70.0.0` (vault truth pass).
-- [[Clusters/Cluster 77.0]] — closed at `v77.0.0` (HTTP capability map complete).
-- [[Clusters/Cluster 78.0]] — active (MCP streamable bidirectional); kickoff docs **79–101** in `docs/Clusters/`.
-- [[Clusters/Cluster 13.0]] — delivery contract & subscriber ledger (historical).
-- [[Clusters/Cluster 12.0]] — closed at `v12.0.0` (outbox relay hardening).
-- [[Clusters/Cluster 11.0]] — closed at `v11.0.0` (coverage 11%).
-- [[Clusters/Cluster 10.0]] — closed at `v10.0.0` (Postgres transactional outbox).
-- [[Clusters/Cluster 9.0]] — closed at `v9.0.0` (coverage depth).
-- [[Clusters/Cluster 8.0]] — closed at `v8.0.0` (bus hydrate observability).
-- [[Clusters/Cluster 7.0]] — closed at `v7.0.0` (bus pointer delivery).
-- [[Clusters/Cluster 6.0]] — closed at `v6.0.0` (delivery reliability).
-- [[Clusters/Cluster 5.0]] — closed at `v5.0.0` (coverage & search quality).
-- [[Clusters/Cluster 4.0]] — subscriber continuity (`v4.0.0`, closed).
-- [[Clusters/Cluster 3.0]] — search & subscriber depth (`v3.0.0`, closed).
-- [[Clusters/Cluster 2.0]], [[Clusters/Cluster 2.1]] — recent OIDC waves.
-- [[Clusters/Cluster A]], [[Clusters/Cluster B]], [[Clusters/Cluster C]]
-  — per-cluster plan docs with PR ladder + risks.
-- [[Retros/README]] — closing-wave retrospectives, one per cluster.
-  Index lists all completed retros.
+| Doc | Audience |
+|-----|----------|
+| [Integration.md](Integration.md) | Agents, bots, client apps — **start here** |
+| [Capability Map.md](Capability%20Map.md) | Capability strings + `contracts/*.json` |
+| [Production.md](Production.md) | Probes, env vars, bootstrap, metrics |
+| [Deploy.md](Deploy.md) | Docker Compose, Kubernetes, Helm |
+| [Threat-Model.md](Threat-Model.md) | Security assets and controls |
+| [Glossary.md](Glossary.md) | Domain vocabulary |
+
+Generated on each merge: [MCP tool reference](https://david-engelmann.github.io/maidan/mcp-reference.html) (from `book/src/mcp-reference.md`).
+
+Live API: `GET /openapi.json` on your server.
+
+## Design and operations (maintainers)
+
+| Doc | Purpose |
+|-----|---------|
+| [Architecture.md](Architecture.md) | Components and data flow |
+| [Capabilities.md](Capabilities.md) | What shipped in each release (append-only) |
+| [Decisions.md](Decisions.md) | Architectural decisions (ADRs) |
+| [Conventions.md](Conventions.md) | Branch, commit, PR conventions |
+| [Operations.md](Operations.md) | PR flow, CI, releases |
+| [Open Work.md](Open%20Work.md) | Short backlog + risks |
+| [Remaining Work.md](Remaining%20Work.md) | Exhaustive backlog matrix |
+| [Roadmap.md](Roadmap.md) | Cluster ladder history |
+| [Post-1.0.md](Post-1.0.md) | Tracks after v1.0.0 |
+
+## Historical planning (not required for integration)
+
+Cluster kickoff docs and retros document **how the repo was built**, not the runtime contract.
+
+| Path | Contents |
+|------|----------|
+| [Clusters/](Clusters/) | Per-cluster PR ladders (may use Obsidian wikilinks) |
+| [Retros/](Retros/) | Closing retrospectives |
+| [Tracks/](Tracks/) | Cross-cutting tracks T–X |
+| [Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md) | Operator ladder 77–101 (closed on `main`) |
+
+## Suggested read order
+
+### Integrating with a running server
+
+1. [Integration.md](Integration.md)
+2. [Capability Map.md](Capability%20Map.md) + `contracts/`
+3. [Production.md](Production.md) / [Deploy.md](Deploy.md) as needed
+
+### Contributing to the repository
+
+1. [CLAUDE.md](../CLAUDE.md)
+2. [Architecture.md](Architecture.md)
+3. [Operations.md](Operations.md)
+4. [Decisions.md](Decisions.md)
+5. [Open Work.md](Open%20Work.md)
 
 ## Layout
 
 ```
 docs/
-├── README.md              this file (vault index)
-├── Architecture.md        what the system does
-├── Roadmap.md             cluster ladder
-├── Capabilities.md        what ships in which release
-├── Conventions.md         branch + commit + PR conventions
-├── Operations.md          daily ops + PR flow + release runbook
-├── Decisions.md           load-bearing ADRs
-├── Open Work.md           backlog + open risks
-├── Deploy.md              Docker + k8s
-├── Glossary.md            domain vocabulary
-├── Clusters/
-│   ├── Cluster A.md
-│   ├── Cluster B.md
-│   └── Cluster C.md
-└── Retros/
-    ├── README.md          retro template + index
-    ├── Cluster A.md
-    ├── Cluster B.md
-    └── Cluster C.md
+├── README.md              this index
+├── Integration.md         canonical external integrator guide
+├── Architecture.md
+├── Roadmap.md
+├── Capabilities.md
+├── Capability Map.md
+├── Conventions.md
+├── Operations.md
+├── Decisions.md
+├── Production.md
+├── Deploy.md
+├── Clusters/              historical planning
+└── Retros/                historical retros
 ```
 
-## Read order for a new agent
+## Conventions
 
-1. [`../CLAUDE.md`](../CLAUDE.md) — operating manual.
-2. This file.
-3. [[Architecture]] — what's connected to what.
-4. [[Roadmap]] — where we are in the cluster ladder.
-5. [[Capabilities]] — what already ships.
-6. [[Decisions]] — why things are the way they are.
-7. [[Operations]] — how to do the next thing.
-8. [[Open Work]] — what to do next.
-9. Most recent [[Retros/README|cluster retro]] — freshest tensions
-   and surprises.
-
-## Conventions inside the vault
-
-- Wikilinks (`[[Note Name]]`) for internal references.
-- Filenames use Title Case with spaces; Obsidian resolves them.
-- Diagrams use [Mermaid](https://mermaid.js.org/) inside fenced code
-  blocks.
-- Each note begins with a one-paragraph summary so the Obsidian graph
-  hover surfaces the right context.
-- Append-only-ish: when a decision reverses, the original entry
-  stays + a new entry records the reversal. See [[Decisions]].
+- **Prefer relative Markdown links** (`[Title](File.md)`) in new and integrator-facing docs.
+- **Mermaid** in fenced ` ```mermaid ` blocks (GitHub + mdBook).
+- **Filenames** may contain spaces; URL-encode in links (`%20`) when required.
+- Older vault notes may use `[[wikilinks]]` for Obsidian only — do not add new wikilinks to integrator-facing pages.

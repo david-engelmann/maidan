@@ -2,50 +2,33 @@
 
 [Introduction](./introduction.md)
 
+# Integrate
+
+- [Integrating with Maidan](../docs/Integration.md)
+- [Capability map](../docs/Capability%20Map.md)
+- [Agent integration (alias)](../docs/Agent%20Integration.md)
+
 # Reference
 
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
-- [Threat model](../docs/Threat-Model.md)
-- [OIDC human login (design)](../docs/OIDC.md)
-- [Query tuning](../docs/Query-Tuning.md)
-
-# Vault (Obsidian source)
-
-- [Vault index](../docs/README.md)
-- [Architecture](../docs/Architecture.md)
-- [Roadmap](../docs/Roadmap.md)
-- [Post-1.0 tracks](../docs/Post-1.0.md)
-- [Capabilities](../docs/Capabilities.md)
-- [Conventions](../docs/Conventions.md)
-- [Operations](../docs/Operations.md)
-- [Decisions](../docs/Decisions.md)
-- [Open Work](../docs/Open%20Work.md)
 - [Production](../docs/Production.md)
 - [Deploy](../docs/Deploy.md)
+- [Threat model](../docs/Threat-Model.md)
 - [Glossary](../docs/Glossary.md)
 
-# Tracks
+# Design (maintainers)
 
-- [Tracks index](../docs/Tracks/README.md)
-- [Track T — Observability](../docs/Tracks/Track%20T.md)
-- [Track U — Performance](../docs/Tracks/Track%20U.md)
-- [Track V — Security](../docs/Tracks/Track%20V.md)
-- [Track W — Documentation](../docs/Tracks/Track%20W.md)
-- [Track X — Release hygiene](../docs/Tracks/Track%20X.md)
+- [Architecture](../docs/Architecture.md)
+- [Capabilities by release](../docs/Capabilities.md)
+- [Decisions](../docs/Decisions.md)
+- [Conventions](../docs/Conventions.md)
+- [Operations](../docs/Operations.md)
+- [Open Work](../docs/Open%20Work.md)
+- [Roadmap](../docs/Roadmap.md)
 
-# Clusters (historical)
+# Historical (optional)
 
-- [Cluster A](../docs/Clusters/Cluster%20A.md)
-- [Cluster B](../docs/Clusters/Cluster%20B.md)
-- [Cluster C](../docs/Clusters/Cluster%20C.md)
-- [Cluster D](../docs/Clusters/Cluster%20D.md)
-- [Cluster E](../docs/Clusters/Cluster%20E.md)
-- [Cluster F](../docs/Clusters/Cluster%20F.md)
-- [Cluster G](../docs/Clusters/Cluster%20G.md)
-- [Cluster H](../docs/Clusters/Cluster%20H.md)
-- [Cluster 1.0](../docs/Clusters/Cluster%201.0.md)
-
-# Retrospectives
-
-- [Retro index](../docs/Retros/README.md)
+- [Vault index](../docs/README.md)
+- [Cluster plans](../docs/Clusters/Cluster%20A.md) — see `docs/Clusters/` in the repo
+- [Retrospectives](../docs/Retros/README.md)

@@ -3,8 +3,9 @@
 If you are an AI agent or human dev landing in this repo for the first
 time, read this file end-to-end before doing anything else. It is the
 single source of truth for *how* to operate in this codebase. The
-*what* lives in [`docs/`](docs/) — start at
-[`docs/README.md`](docs/README.md) once you finish this page.
+*what* lives in [`docs/`](docs/) — integrators use
+[`docs/Integration.md`](docs/Integration.md); contributors use
+[`docs/README.md`](docs/README.md) after this page.
 
 ## 30-second orientation
 
@@ -27,23 +28,20 @@ single source of truth for *how* to operate in this codebase. The
 
 ## Read order
 
+**External integrators (not editing this repo):** [`AGENTS.md`](AGENTS.md) →
+[`docs/Integration.md`](docs/Integration.md) → published
+[mdBook](https://david-engelmann.github.io/maidan/) — skip `docs/Clusters/`.
+
+**Repo contributors:**
+
 1. **This file** — operating manual.
-2. [`docs/README.md`](docs/README.md) — vault index.
-3. [`docs/Architecture.md`](docs/Architecture.md) — what the system
-   does and what's connected to what.
-4. [`docs/Roadmap.md`](docs/Roadmap.md) — cluster ladder.
-5. [`docs/Capabilities.md`](docs/Capabilities.md) — what ships in
-   which release.
-6. [`docs/Decisions.md`](docs/Decisions.md) — every load-bearing
-   architectural decision with the rationale + the alternative that
-   was rejected.
-7. [`docs/Operations.md`](docs/Operations.md) — how to ship a PR, how
-   to cut a release, how to debug CI.
-8. [`docs/Open Work.md`](docs/Open%20Work.md) — every deferred item
-   from every retro, plus standing risks. The "if I had two hours, what
-   could I work on" backlog.
-9. Most recent [`docs/Retros/`](docs/Retros/) entry — what just shipped
-   and what surprised the previous agent.
+2. [`docs/README.md`](docs/README.md) — doc index.
+3. [`docs/Architecture.md`](docs/Architecture.md) — components and data flow.
+4. [`docs/Capabilities.md`](docs/Capabilities.md) — what ships in which release.
+5. [`docs/Decisions.md`](docs/Decisions.md) — load-bearing ADRs.
+6. [`docs/Operations.md`](docs/Operations.md) — PR flow, CI, releases.
+7. [`docs/Open Work.md`](docs/Open%20Work.md) — backlog and risks.
+8. [`docs/Roadmap.md`](docs/Roadmap.md) / [`docs/Retros/`](docs/Retros/) — when doing cluster work.
 
 ## The cluster model in one paragraph
 
@@ -193,7 +191,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Project state at this handoff
 
-- Latest tag: `v0.4.0` (cut after Cluster E retro merges).
-- Latest cluster retro merged: Cluster E (artifact substrate).
-- Open backlog: see [`docs/Open Work.md`](docs/Open%20Work.md).
-- Next cluster: F (auth + capabilities).
+- **Integrator docs:** [`docs/Integration.md`](docs/Integration.md) + [mdBook](https://david-engelmann.github.io/maidan/) (GitHub Pages).
+- **Ladder 77–101:** merged on `main`; operator gate **`maidan-operator-1.0`** at **`v101.0.0`** (tags **`v93`–`v101`** may be pending maintainer cut).
+- **Agent / product gates:** **`maidan-agent-1.0`** `v76`, **`maidan-2.0`** `v58`.
+- Open backlog: [`docs/Open Work.md`](docs/Open%20Work.md).
