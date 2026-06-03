@@ -54,8 +54,6 @@ impl Modify for SecurityAddon {
         paths::health_live,
         paths::health_ready,
         paths::health,
-        paths::create_workspace,
-        paths::create_member_bootstrap,
         paths::get_workspace,
         paths::purge_workspace,
         paths::erase_workspace,
@@ -237,7 +235,6 @@ impl Modify for SecurityAddon {
     modifiers(&SecurityAddon),
     tags(
         (name = "health", description = "Liveness and readiness"),
-        (name = "bootstrap", description = "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)"),
         (name = "workspaces", description = "Workspaces and event log"),
         (name = "members", description = "Members and mentions"),
         (name = "channels", description = "Channels"),
@@ -257,7 +254,29 @@ impl Modify for SecurityAddon {
 )]
 pub struct ApiDoc;
 
+#[cfg(feature = "bootstrap")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        paths::create_workspace,
+        paths::create_member_bootstrap,
+    ),
+    tags(
+        (name = "bootstrap", description = "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)"),
+    )
+)]
+pub struct BootstrapApiDoc;
+
 /// `GET /openapi.json`
 pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
+    #[cfg(feature = "bootstrap")]
+    {
+        let mut doc = ApiDoc::openapi();
+        doc.merge(BootstrapApiDoc::openapi());
+        Json(doc)
+    }
+    #[cfg(not(feature = "bootstrap"))]
+    {
+        Json(ApiDoc::openapi())
+    }
 }

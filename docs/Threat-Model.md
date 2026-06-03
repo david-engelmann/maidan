@@ -30,7 +30,7 @@ integrator document, not a formal audit.
 |----|--------|------------------|----------|
 | T1 | Stolen API token | Capability-scoped tokens; revoke via `DELETE /tokens/:id` | Token usable until revoked |
 | T2 | `AUTH_DISABLED` left on in prod | `MAIDAN_ENV=production` refuses boot with auth disabled | Misconfiguration before guard added |
-| T3 | Bootstrap routes create admin without auth | `MAIDAN_BOOTSTRAP=1` when auth is on; one workspace via bootstrap | Open `/workspaces` if `AUTH_DISABLED` or bootstrap left on |
+| T3 | Bootstrap routes create admin without auth | `MAIDAN_BOOTSTRAP=1` when auth is on; one workspace via bootstrap; production Docker image built **without** `bootstrap` feature (`v91.0.0`) | Open `/workspaces` if dev binary with `AUTH_DISABLED` or bootstrap left on |
 | T4 | Federation peer impersonation | Peer bearer + idempotent ingest | Compromised peer can push events |
 | T5 | Artifact exfiltration | Bearer on download; SHA-256 addressing | Guessable SHA if leaked elsewhere |
 | T6 | SQL injection | `sqlx` parameterized queries | ORM bypass bugs |
@@ -40,9 +40,9 @@ integrator document, not a formal audit.
 
 1. **One-shot seed flag** — `MAIDAN_BOOTSTRAP=1` required for bootstrap routes when auth is enabled (`v1.4.0`); only the first workspace may be created via bootstrap.
 2. **IP allowlist** — reverse proxy restricts bootstrap paths to admin CIDR.
-3. **Disable after seed** — deployment removes bootstrap routes via feature flag build (not implemented).
+3. **Compile-time strip** — production release builds omit bootstrap routes via Cargo feature `bootstrap` (default on for dev/tests; Docker image uses `--no-default-features`) (`v91.0.0`).
 
-Recommended production flow: seed with `AUTH_DISABLED=1` on a private network, mint tokens, disable bootstrap exposure via network policy, set `MAIDAN_ENV=production`, restart.
+Recommended production flow: seed on a private network (dev binary with `bootstrap` feature or `AUTH_DISABLED=1`), mint tokens, deploy the production image (no bootstrap routes), set `MAIDAN_ENV=production`, restart.
 
 ## Related docs
 

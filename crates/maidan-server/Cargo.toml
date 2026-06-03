@@ -62,7 +62,8 @@ hex = "0.4"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 [features]
-default = []
+default = ["bootstrap"]
+bootstrap = []
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]

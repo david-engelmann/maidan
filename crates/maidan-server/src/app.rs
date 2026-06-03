@@ -5,11 +5,13 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
+#[cfg(feature = "bootstrap")]
+use crate::bootstrap;
 use crate::{
-    a2a_agent, app_oauth, apps, auth, automation_deliveries, bootstrap, delivery_ops, dm,
-    federation, fsm_hooks, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics,
-    oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands,
-    state::AppState, webhooks, ws,
+    a2a_agent, app_oauth, apps, auth, automation_deliveries, delivery_ops, dm, federation,
+    fsm_hooks, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi,
+    quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands, state::AppState,
+    webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -17,6 +19,7 @@ use crate::{
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
 /// and curling it; the binary's `main.rs` uses the same router.
 pub fn router(state: AppState) -> Router {
+    #[cfg(feature = "bootstrap")]
     let bootstrap = Router::new()
         .route("/workspaces", post(routes::create_workspace))
         .route("/workspaces/:wid/members", post(routes::create_member))
@@ -304,7 +307,16 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
-        .merge(bootstrap)
+        .merge({
+            #[cfg(feature = "bootstrap")]
+            {
+                bootstrap
+            }
+            #[cfg(not(feature = "bootstrap"))]
+            {
+                Router::new()
+            }
+        })
         .merge(auth_routes)
         .merge(ui_api)
         .merge(ws_only)

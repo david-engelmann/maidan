@@ -60,6 +60,7 @@ fn ensure_message_edit(
 
 // --- workspaces ---
 
+#[cfg(feature = "bootstrap")]
 pub async fn create_workspace(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CreateWorkspace>,
@@ -330,6 +331,7 @@ pub async fn list_events(
 
 // --- members ---
 
+#[cfg(feature = "bootstrap")]
 pub async fn create_member(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,

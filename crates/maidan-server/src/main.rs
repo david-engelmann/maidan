@@ -162,7 +162,11 @@ async fn main() -> anyhow::Result<()> {
     if auth_disabled {
         tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
     }
+    #[cfg(feature = "bootstrap")]
     let bootstrap_enabled = maidan_server::bootstrap::bootstrap_enabled_from_env();
+    #[cfg(not(feature = "bootstrap"))]
+    let bootstrap_enabled = false;
+    #[cfg(feature = "bootstrap")]
     if bootstrap_enabled {
         tracing::warn!("MAIDAN_BOOTSTRAP is set; unauthenticated bootstrap routes are enabled");
     }
