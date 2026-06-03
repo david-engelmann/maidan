@@ -24,7 +24,7 @@ maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
 maidan-auth = { path = "../maidan-auth" }
 maidan-mcp = { path = "../maidan-mcp" }
-maidan-search = { path = "../maidan-search" }
+maidan-search = { path = "../maidan-search", default-features = false }
 maidan-router = { path = "../maidan-router" }
 maidan-a2a = { path = "../maidan-a2a" }
 maidan-observability = { path = "../maidan-observability" }
@@ -59,6 +59,10 @@ subtle = "2"
 hex = "0.4"
 
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+[features]
+default = []
+sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
 base64 = "0.22"

@@ -1,11 +1,14 @@
 //! Load the statically linked `sqlite-vec` extension into sqlx SQLite connections.
 
-use std::ffi::c_void;
-use std::os::raw::c_char;
 use std::sync::Once;
 
-use libsqlite3_sys::{sqlite3, SQLITE_OK};
 use sqlx::sqlite::{SqliteConnection, SqlitePoolOptions};
+
+#[cfg(feature = "sqlite-vec")]
+use std::{ffi::c_void, os::raw::c_char};
+
+#[cfg(feature = "sqlite-vec")]
+use libsqlite3_sys::{sqlite3, SQLITE_OK};
 
 static AUTO_EXT: Once = Once::new();
 

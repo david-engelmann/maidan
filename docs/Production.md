@@ -310,7 +310,17 @@ is cosine similarity; lexical `score` is min-max normalized `rank`.
 | Semantic (both) | `1.0 - cosine_distance` | same as rank (in `[0, 1]`) |
 
 **Scale:** use Postgres + pgvector HNSW for production semantic search.
-SQLite loads `sqlite-vec` for dev parity; large workspaces should use Postgres.
+Large workspaces should use Postgres.
+
+**SQLite `sqlite-vec` (optional, `v85.0.0`):** `maidan-search` builds without the
+extension by default; semantic search on SQLite uses in-process cosine ranking.
+Enable SQL `vec_distance_cosine` for dev parity:
+
+```bash
+cargo build -p maidan-server --features sqlite-vec
+```
+
+CI job `sqlite-vec (optional feature)` proves linkage when the feature is on.
 
 After changing embedding providers, re-index or accept that old-model rows are ignored
 until re-upserted under the new model name.
