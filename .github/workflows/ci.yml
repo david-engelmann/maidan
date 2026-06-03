@@ -134,6 +134,21 @@ jobs:
           cargo test -p maidan-search --features sqlite-vec
           cargo test -p maidan-server --features sqlite-vec --test search_semantic_e2e -- sqlite_http_semantic
 
+  bootstrap-strip:
+    name: bootstrap compile-time strip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: release build and e2e without bootstrap feature
+        run: |
+          cargo build -p maidan-server --release --no-default-features
+          cargo test -p maidan-server --no-default-features --test bootstrap_absent_e2e
+
   coverage:
     name: coverage (llvm-cov)
     runs-on: ubuntu-latest

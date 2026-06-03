@@ -12,6 +12,7 @@ pub mod auth;
 pub mod automation_deliveries;
 pub mod automation_delivery;
 pub mod automation_worker;
+#[cfg(feature = "bootstrap")]
 pub mod bootstrap;
 pub mod config;
 pub mod delivery;

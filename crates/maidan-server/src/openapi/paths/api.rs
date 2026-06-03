@@ -10,11 +10,13 @@ use maidan_types::*;
 
 // --- bootstrap (no bearer) ---
 
+#[cfg(feature = "bootstrap")]
 #[utoipa::path(post, path = "/workspaces", tag = "bootstrap",
     request_body = CreateWorkspace,
     responses((status = 201, description = "Created", body = Workspace)))]
 pub fn create_workspace() {}
 
+#[cfg(feature = "bootstrap")]
 #[utoipa::path(post, path = "/workspaces/{wid}/members", tag = "bootstrap",
     params(("wid" = Uuid, Path, description = "Workspace id")),
     request_body = CreateMember,

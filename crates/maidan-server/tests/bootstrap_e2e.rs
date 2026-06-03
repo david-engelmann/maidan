@@ -1,4 +1,5 @@
 //! Bootstrap route gating when bearer auth is enabled.
+#![cfg(feature = "bootstrap")]
 
 use std::{
     net::SocketAddr,

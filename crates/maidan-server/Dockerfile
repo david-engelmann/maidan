@@ -25,7 +25,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN cargo chef cook --release --recipe-path recipe.json --bin maidan-server
+RUN cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features
 
 FROM chef AS builder
 COPY --from=cacher /app/target target
@@ -34,7 +34,7 @@ COPY . .
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN cargo build --release --bin maidan-server
+RUN cargo build --release --bin maidan-server --no-default-features
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /
