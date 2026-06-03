@@ -29,7 +29,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 | **Automation** | Webhooks (**50**), slash (**51**), FSM hooks (**52**) | Slash/FSM on `maidan_automation_deliveries` + DLQ (**68**) |
 | **Context** | HTTP + MCP `get_*_context` with cursors (**74**, **82**) | Workspace thread list still in-memory slice |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
-| **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**) | Production profiles deferred (**88**) |
+| **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**), profile overlays (**88**) | Bootstrap compile-time strip (**91**) |
 | **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** | Operator gate **`maidan-operator-1.0`** targets **101** ([[Clusters/Product Ladder 77+]]) |
 
 ```mermaid
@@ -395,6 +395,6 @@ See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:
 - **MCP streamable** bidirectional mux (**78**).
 - **HTTP capability map** for every OpenAPI operation (**77**).
 - **Operator UI** channel browser, live tail, artifacts (**92–96**).
-- **OTLP** export and hosted dashboards (**89–90**).
+- **OTLP** metrics push + SLO alert templates (**89–90**); bootstrap compile-time strip (**91**).
 - Slack-grade UX beyond ladder **77+**: native clients, huddles, org hierarchy.
 - Multi-region active-active (out of scope).

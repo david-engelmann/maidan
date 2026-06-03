@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [90.0.0] — 2026-06-03
+
+### Added
+
+- SLO alert templates: `docs/alerts/prometheus-rules-maidan-slo.yaml`, Alertmanager route example, validation script.
+- Contract test tying alert rules to exported `/metrics` names.
+
+## [89.0.0] — 2026-06-03
+
+### Added
+
+- OTLP metrics push (`OTLP_METRICS`, `OTLP_METRICS_ENDPOINT`) with Prometheus scrape fanout.
+- Example Grafana dashboard `docs/dashboards/maidan-operator.json`.
+- OpenTelemetry SDK bumped to 0.31 for traces and metrics.
+
+## [88.0.0] — 2026-06-03
+
+### Added
+
+- Helm production profile overlays (OTel, Redis rate limits, S3) and `helm/maidan/PROFILES.md`.
+- Helm template smoke coverage for profile combinations.
+
 ## [87.0.0] — 2026-06-03
 
 ### Added
