@@ -16,9 +16,11 @@ maidan-router = { path = "../maidan-router" }
 maidan-store = { path = "../maidan-store" }
 maidan-search = { path = "../maidan-search", default-features = false }
 maidan-artifacts = { path = "../maidan-artifacts" }
+maidan-bus = { path = "../maidan-bus" }
 async-trait.workspace = true
 base64 = "0.22"
 bytes.workspace = true
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -20,6 +20,7 @@ maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-search = { path = "../maidan-search", default-features = false }
 maidan-auth = { path = "../maidan-auth" }
 maidan-mcp = { path = "../maidan-mcp" }
+maidan-bus = { path = "../maidan-bus" }
 clap = { version = "4", features = ["derive", "env"] }
 sqlx.workspace = true
 tokio.workspace = true

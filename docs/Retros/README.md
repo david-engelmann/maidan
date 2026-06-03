@@ -101,3 +101,12 @@ PR review credit; external contributors.
 - [[Product Ladder 35+]] — Ladder close retro (`v35`–`v58`, product gate **`maidan-2.0`**).
 - [[Cluster 57.0]] — Installed agent apps. Closed at **`v57.0.0`**.
 - [[Cluster 58.0]] — Maidan 2.0 completion gate. Closed at **`v58.0.0`**.
+- [[Cluster 93.0]] — /ui live events. Closed at **`v93.0.0`**.
+- [[Cluster 94.0]] — /ui artifacts. Closed at **`v94.0.0`**.
+- [[Cluster 95.0]] — /ui search. Closed at **`v95.0.0`**.
+- [[Cluster 96.0]] — /ui tokens & apps. Closed at **`v96.0.0`**.
+- [[Cluster 97.0]] — Group DMs. Closed at **`v97.0.0`**.
+- [[Cluster 98.0]] — Mention webhooks. Closed at **`v98.0.0`**.
+- [[Cluster 99.0]] — Presence v2. Closed at **`v99.0.0`**.
+- [[Cluster 100.0]] — mcp-stdio embedded. Closed at **`v100.0.0`**.
+- [[Cluster 101.0]] — Operator product gate. Closed at **`v101.0.0`**.

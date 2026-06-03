@@ -7,6 +7,61 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [101.0.0] — 2026-06-03
+
+### Added
+
+- `maidan_operator_gate_e2e` — operator product gate (UI, health, metrics, OpenAPI).
+
+## [100.0.0] — 2026-06-03
+
+### Added
+
+- `maidan mcp-stdio` in-process bus + indexer; `McpServer::with_event_bus` for demo indexing.
+
+## [99.0.0] — 2026-06-03
+
+### Added
+
+- [[Presence and Roster]] documentation; `/ui/api/.../members` roster reads.
+
+## [98.0.0] — 2026-06-03
+
+### Added
+
+- Per-workspace mention webhook route (`GET/PUT /workspaces/:wid/mention-webhook`).
+
+## [97.0.0] — 2026-06-03
+
+### Added
+
+- Multi-member group DM conversations and HTTP API.
+
+## [96.0.0] — 2026-06-03
+
+### Added
+
+- List member API tokens (no secret); `/ui` token list and read-only app installations.
+
+## [95.0.0] — 2026-06-03
+
+### Added
+
+- Faceted search UI aligned with HTTP search API (operator UI v7).
+
+## [94.0.0] — 2026-06-03
+
+### Added
+
+- Artifact cards in `/ui` thread view; upload with optional thread attachment metadata.
+
+## [93.0.0] — 2026-06-03
+
+### Added
+
+- `/ui` WS presets, auto-reconnect, resume tokens; session cookie on `/ws/subscribe`.
+- `ui_ws_tail_e2e`.
+
 ## [92.0.0] — 2026-06-03
 
 ### Added

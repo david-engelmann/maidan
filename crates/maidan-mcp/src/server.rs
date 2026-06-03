@@ -6,8 +6,10 @@ use std::sync::Arc;
 
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
+use maidan_bus::EventBus;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
+use maidan_types::{BusEnvelope, Event};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, Mutex};
 
@@ -24,16 +26,17 @@ const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
 
 #[derive(Clone)]
 pub struct McpServer {
-    store: Arc<dyn Store>,
-    artifacts: Arc<dyn ArtifactStore>,
-    search: Arc<dyn Search>,
-    embedding_provider: Arc<dyn EmbeddingProvider>,
+    pub(crate) store: Arc<dyn Store>,
+    pub(crate) artifacts: Arc<dyn ArtifactStore>,
+    pub(crate) search: Arc<dyn Search>,
+    pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     server_name: String,
     server_version: String,
     subscriptions: Arc<Mutex<HashSet<String>>>,
     pending_notifications: Arc<Mutex<Vec<JsonRpcNotification>>>,
     notification_tx: broadcast::Sender<JsonRpcNotification>,
     streamable_sessions: Arc<StreamableSessionRegistry>,
+    pub(crate) event_bus: Option<Arc<dyn EventBus>>,
 }
 
 impl McpServer {
@@ -55,7 +58,25 @@ impl McpServer {
             pending_notifications: Arc::new(Mutex::new(Vec::new())),
             notification_tx,
             streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
+            event_bus: None,
         }
+    }
+
+    /// When set, message mutations append to the event log and publish for an in-process indexer.
+    pub fn with_event_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
+    }
+
+    pub(crate) async fn publish_event(&self, event: Event) -> Option<i64> {
+        let bus = self.event_bus.as_ref()?;
+        let stored = self.store.append_event(&event).await.ok()?;
+        let envelope = BusEnvelope {
+            log_id: stored.id,
+            event,
+        };
+        let _ = bus.publish(envelope).await;
+        Some(stored.id)
     }
 
     pub fn streamable_sessions(&self) -> Arc<StreamableSessionRegistry> {
@@ -145,16 +166,7 @@ impl McpServer {
             auth.require_capability(cap).map_err(McpError::from)?;
         }
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let result = tools::dispatch(
-            &self.store,
-            &self.artifacts,
-            &self.search,
-            &self.embedding_provider,
-            auth,
-            name,
-            &args,
-        )
-        .await?;
+        let result = tools::dispatch(self, auth, name, &args).await?;
         self.queue_resource_updates(name, &args, &result).await;
         Ok(result)
     }

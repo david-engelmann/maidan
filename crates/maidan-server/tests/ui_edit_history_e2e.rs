@@ -55,7 +55,7 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-ui-version="6""#));
+    assert!(html.contains(r#"data-ui-version="7""#));
     assert!(html.contains("load-edit-history"));
     assert!(html.contains("edit-history-list"));
 

@@ -14,6 +14,7 @@ mod dm;
 mod erase_workspace;
 pub mod events;
 mod fsm_hooks;
+mod group_dm;
 mod inbox;
 mod members;
 mod mentions;
@@ -160,6 +161,41 @@ impl Store for SqliteStore {
         thread_id: ThreadId,
     ) -> Result<Option<DmConversation>, StoreError> {
         dm::get_for_thread(&self.pool, thread_id).await
+    }
+
+    async fn open_group_dm_conversation(
+        &self,
+        workspace_id: WorkspaceId,
+        member_ids: &[MemberId],
+        title: Option<String>,
+    ) -> Result<GroupDmConversation, StoreError> {
+        group_dm::open(&self.pool, workspace_id, member_ids, title).await
+    }
+    async fn get_group_dm_conversation(
+        &self,
+        id: GroupDmConversationId,
+    ) -> Result<GroupDmConversation, StoreError> {
+        group_dm::get(&self.pool, id).await
+    }
+    async fn list_group_dm_conversations_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<GroupDmConversation>, StoreError> {
+        group_dm::list_for_member(&self.pool, workspace_id, member_id).await
+    }
+    async fn group_dm_conversation_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<GroupDmConversation>, StoreError> {
+        group_dm::get_for_thread(&self.pool, thread_id).await
+    }
+    async fn group_dm_has_member(
+        &self,
+        id: GroupDmConversationId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        group_dm::is_member(&self.pool, id, member_id).await
     }
 
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError> {
@@ -426,6 +462,26 @@ impl Store for SqliteStore {
 
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
+    }
+    async fn list_api_tokens_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<ApiToken>, StoreError> {
+        tokens::list_for_member(&self.pool, workspace_id, member_id).await
+    }
+    async fn get_workspace_mention_webhook_id(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<WebhookSubscriptionId>, StoreError> {
+        workspaces::get_mention_webhook_id(&self.pool, workspace_id).await
+    }
+    async fn set_workspace_mention_webhook_id(
+        &self,
+        workspace_id: WorkspaceId,
+        webhook_id: Option<WebhookSubscriptionId>,
+    ) -> Result<(), StoreError> {
+        workspaces::set_mention_webhook_id(&self.pool, workspace_id, webhook_id).await
     }
 
     async fn replace_token_quotas(

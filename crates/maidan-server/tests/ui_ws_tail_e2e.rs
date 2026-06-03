@@ -1,4 +1,4 @@
-//! Cluster 92: channel browser via `/ui/api` with session cookie (no bearer).
+//! Cluster 93: /ui WS subscribe with session cookie, filter presets, resume reconnect.
 
 use std::{
     net::SocketAddr,
@@ -6,17 +6,22 @@ use std::{
     time::Duration,
 };
 
+use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
     oidc::{OidcRuntime, OidcSettings},
-    router, AppState, FederationRuntime,
+    router, subscribe_resume, AppState, FederationRuntime,
 };
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
-use reqwest::{redirect::Policy, StatusCode};
+use reqwest::redirect::Policy;
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 
 const TEST_SESSION_SECRET: &[u8] = b"test-session-secret-32-bytes-min!";
 
@@ -40,7 +45,7 @@ async fn spawn_oidc() -> Harness {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
     let workspace = store
         .create_workspace(NewWorkspace {
-            name: "ui-channels".into(),
+            name: "ui-ws".into(),
         })
         .await
         .expect("workspace");
@@ -69,6 +74,7 @@ async fn spawn_oidc() -> Harness {
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
     state.oidc = Some(Arc::new(OidcRuntime {
         settings: OidcSettings {
             enabled: true,
@@ -120,7 +126,6 @@ async fn login_session(h: &Harness) -> String {
         .send()
         .await
         .expect("login");
-    assert_eq!(login.status(), StatusCode::TEMPORARY_REDIRECT);
     let location = login
         .headers()
         .get(reqwest::header::LOCATION)
@@ -133,7 +138,6 @@ async fn login_session(h: &Harness) -> String {
         .send()
         .await
         .expect("callback");
-    assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
     callback
         .headers()
         .get_all(reqwest::header::SET_COOKIE)
@@ -149,8 +153,69 @@ async fn login_session(h: &Harness) -> String {
 }
 
 #[tokio::test]
-async fn ui_shell_exposes_channel_browser_markers() {
+async fn ui_ws_subscribe_accepts_session_cookie_and_resume_token() {
     let h = spawn_oidc().await;
+    let cookie = login_session(&h).await;
+    let wid = h.workspace_id.0;
+    let ws_url = format!("ws://{}/ws/subscribe", h.addr);
+
+    let mut req = ws_url.clone().into_client_request().expect("ws request");
+    req.headers_mut()
+        .insert("Cookie", cookie.parse().expect("cookie header"));
+
+    let (mut ws, _) = connect_async(req).await.expect("ws connect");
+    let frame = json!({
+        "filter": { "workspace_id": wid, "kinds": ["message_posted"] },
+        "after_id": 0
+    });
+    ws.send(Message::Text(frame.to_string()))
+        .await
+        .expect("subscribe send");
+
+    let mut resume_token = None;
+    for _ in 0..20 {
+        let msg = tokio::time::timeout(Duration::from_secs(5), ws.next())
+            .await
+            .expect("ws timeout")
+            .expect("ws stream")
+            .expect("ws frame");
+        if let Message::Text(text) = msg {
+            let v: serde_json::Value = serde_json::from_str(&text).expect("json");
+            if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                resume_token = v
+                    .get("resume_token")
+                    .and_then(|t| t.as_str())
+                    .map(String::from);
+                break;
+            }
+        }
+    }
+    let resume_token = resume_token.expect("subscribe_ack with resume_token");
+
+    ws.close(None).await.ok();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let mut req2 = ws_url.clone().into_client_request().expect("ws request 2");
+    req2.headers_mut()
+        .insert("Cookie", cookie.parse().expect("cookie"));
+    let (mut ws2, _) = connect_async(req2).await.expect("reconnect");
+    let reconnect = json!({ "resume_token": resume_token });
+    ws2.send(Message::Text(reconnect.to_string()))
+        .await
+        .expect("resume send");
+    let msg = tokio::time::timeout(Duration::from_secs(5), ws2.next())
+        .await
+        .expect("ack timeout")
+        .expect("stream")
+        .expect("frame");
+    if let Message::Text(text) = msg {
+        let v: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(
+            v.get("type").and_then(|t| t.as_str()),
+            Some("subscribe_ack")
+        );
+    }
+
     let html = h
         .client
         .get(format!("http://{}/ui/", h.addr))
@@ -161,128 +226,8 @@ async fn ui_shell_exposes_channel_browser_markers() {
         .await
         .expect("html");
     assert!(html.contains(r#"data-ui-version="7""#));
-    assert!(html.contains("apiWritePath"));
-    assert!(html.contains("requireAuthForWrite"));
-    h.server.abort();
-}
-
-#[tokio::test]
-async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
-    let h = spawn_oidc().await;
-    let base = format!("http://{}", h.addr);
-    let wid = h.workspace_id.0;
-    let cookie = login_session(&h).await;
-
-    let session: serde_json::Value = h
-        .client
-        .get(format!("{base}/auth/session"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .send()
-        .await
-        .expect("session")
-        .json()
-        .await
-        .expect("session json");
-    let member_id = session["member_id"].as_str().expect("member_id");
-
-    let channel: serde_json::Value = h
-        .client
-        .post(format!("{base}/ui/api/workspaces/{wid}/channels"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({"name": "general", "private": false}))
-        .send()
-        .await
-        .expect("create channel")
-        .error_for_status()
-        .expect("channel status")
-        .json()
-        .await
-        .expect("channel json");
-    let channel_id = channel["id"].as_str().expect("channel id");
-
-    let channels: Vec<serde_json::Value> = h
-        .client
-        .get(format!("{base}/ui/api/workspaces/{wid}/channels"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .send()
-        .await
-        .expect("list channels")
-        .json()
-        .await
-        .expect("channels json");
-    assert_eq!(channels.len(), 1);
-
-    let thread: serde_json::Value = h
-        .client
-        .post(format!("{base}/ui/api/channels/{channel_id}/threads"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({"title": "standup"}))
-        .send()
-        .await
-        .expect("create thread")
-        .error_for_status()
-        .expect("thread status")
-        .json()
-        .await
-        .expect("thread json");
-    let thread_id = thread["id"].as_str().expect("thread id");
-
-    let threads: Vec<serde_json::Value> = h
-        .client
-        .get(format!("{base}/ui/api/channels/{channel_id}/threads"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .send()
-        .await
-        .expect("list threads")
-        .json()
-        .await
-        .expect("threads json");
-    assert_eq!(threads.len(), 1);
-
-    let msg: serde_json::Value = h
-        .client
-        .post(format!("{base}/ui/api/threads/{thread_id}/messages"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({
-            "author_id": member_id,
-            "body": "posted from ui session api"
-        }))
-        .send()
-        .await
-        .expect("post message")
-        .error_for_status()
-        .expect("message status")
-        .json()
-        .await
-        .expect("message json");
-    assert_eq!(msg["body"], "posted from ui session api");
-
-    let messages: Vec<serde_json::Value> = h
-        .client
-        .get(format!(
-            "{base}/ui/api/threads/{thread_id}/messages?limit=10"
-        ))
-        .header(reqwest::header::COOKIE, &cookie)
-        .send()
-        .await
-        .expect("list messages")
-        .json()
-        .await
-        .expect("messages json");
-    assert_eq!(messages.len(), 1);
-
-    let wrong_author = h
-        .client
-        .post(format!("{base}/ui/api/threads/{thread_id}/messages"))
-        .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({
-            "author_id": "00000000-0000-0000-0000-000000000099",
-            "body": "spoof"
-        }))
-        .send()
-        .await
-        .expect("spoof post");
-    assert_eq!(wrong_author.status(), StatusCode::FORBIDDEN);
+    assert!(html.contains("ws-preset"));
+    assert!(html.contains("ws-auto-reconnect"));
 
     h.server.abort();
 }

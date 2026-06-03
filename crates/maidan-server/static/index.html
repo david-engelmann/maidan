@@ -159,6 +159,15 @@
       .inline-form input { flex: 1; min-width: 6rem; }
       #search-results { margin-top: 0.5rem; font-size: 0.85rem; }
       #search-results .hit { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+      .artifact-card {
+        margin-top: 0.35rem;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-size: 0.8rem;
+        background: var(--bg);
+      }
+      .artifact-card a { color: var(--accent); }
       #audit-list, #peer-list, #edit-history-list {
         font-size: 0.85rem;
         max-height: 10rem;
@@ -171,7 +180,7 @@
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
     </style>
   </head>
-  <body data-ui-version="6">
+  <body data-ui-version="7">
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -209,6 +218,15 @@
           <div id="live-toolbar">
             <strong>Live</strong>
             <span id="ws-status">disconnected</span>
+            <label>Preset
+              <select id="ws-preset">
+                <option value="workspace">Workspace (all)</option>
+                <option value="channel">Selected channel</option>
+                <option value="thread">Selected thread</option>
+                <option value="messages">Messages + mentions</option>
+              </select>
+            </label>
+            <label><input id="ws-auto-reconnect" type="checkbox" checked /> Auto-reconnect</label>
             <button id="ws-connect" type="button">Connect WS</button>
             <button id="ws-disconnect" type="button" hidden>Disconnect</button>
             <button id="ws-clear" type="button">Clear</button>
@@ -248,6 +266,7 @@
               </select>
             </label>
             <label>File <input id="artifact-file" type="file" /></label>
+            <label><input id="attach-artifact-next" type="checkbox" checked /> Post to selected thread after upload</label>
             <button id="upload-artifact" type="button">Upload</button>
           </details>
         </section>
@@ -341,6 +360,11 @@
         <button id="mint-member-token" type="button">Mint token</button>
         <label>Token ID to revoke <input id="token-revoke-id" /></label>
         <button id="revoke-token" type="button">Revoke token</button>
+        <button id="list-member-tokens" type="button">List tokens</button>
+        <div id="token-list" class="muted" style="margin-top: 0.5rem"></div>
+        <h3 style="margin-top: 1rem; font-size: 0.95rem">Installed apps (read-only)</h3>
+        <button id="list-app-installations" type="button">Refresh apps</button>
+        <div id="app-install-list" class="muted" style="margin-top: 0.5rem"></div>
       </section>
       <p id="status"></p>
       <pre id="out"></pre>
@@ -349,6 +373,7 @@
     <script>
       const tokenKey = "maidan_token";
       const wsKey = "maidan_workspace";
+      const wsResumeKey = "maidan_ws_resume";
       const baseInput = document.getElementById("base");
       baseInput.value = window.location.origin;
       document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
@@ -357,6 +382,8 @@
       let sessionMemberId = null;
       let wsSocket = null;
       let wsAfterId = 0;
+      let wsResumeToken = localStorage.getItem(wsResumeKey) || null;
+      let wsUserDisconnect = false;
       let selectedChannelId = null;
       let selectedThreadId = null;
 
@@ -508,6 +535,14 @@
           body.textContent = m.body;
           div.appendChild(meta);
           div.appendChild(body);
+          artifactShasFromMetadata(m.metadata).forEach((sha) => {
+            const card = document.createElement("div");
+            card.className = "artifact-card";
+            card.innerHTML =
+              `📎 <a href="${base()}/artifacts/${encodeURIComponent(sha)}" target="_blank" rel="noopener">` +
+              `${escapeHtml(sha.slice(0, 16))}…</a>`;
+            div.appendChild(card);
+          });
           div.onclick = () => {
             document.getElementById("edit-message-id").value = m.id;
             document.getElementById("edit-message-body").value = m.body;
@@ -657,7 +692,35 @@
           .replace(/"/g, "&quot;");
       }
 
+      function artifactShasFromMetadata(meta) {
+        const out = [];
+        if (!meta || typeof meta !== "object") return out;
+        if (typeof meta.artifact_sha256 === "string") out.push(meta.artifact_sha256);
+        if (typeof meta.sha256 === "string") out.push(meta.sha256);
+        if (Array.isArray(meta.artifacts)) {
+          meta.artifacts.forEach((item) => {
+            if (typeof item === "string") out.push(item);
+            else if (item && typeof item.sha256 === "string") out.push(item.sha256);
+          });
+        }
+        return [...new Set(out)];
+      }
+
+      function buildWsFilter() {
+        const preset = document.getElementById("ws-preset").value;
+        const filter = { workspace_id: wid() };
+        if (preset === "channel" && selectedChannelId) {
+          filter.channel_id = selectedChannelId;
+        } else if (preset === "thread" && selectedThreadId) {
+          filter.thread_id = selectedThreadId;
+        } else if (preset === "messages") {
+          filter.kinds = ["message_posted", "mention_recorded"];
+        }
+        return filter;
+      }
+
       function disconnectWs() {
+        wsUserDisconnect = true;
         if (wsSocket) {
           wsSocket.close();
           wsSocket = null;
@@ -668,16 +731,32 @@
       }
 
       function connectWs() {
-        disconnectWs();
+        if (wsSocket) {
+          wsUserDisconnect = true;
+          wsSocket.close();
+          wsSocket = null;
+        }
+        wsUserDisconnect = false;
         if (!wid()) return alert("Workspace ID required");
-        const t = token();
-        if (!t) return alert("Bearer token required for WebSocket subscribe");
+        const preset = document.getElementById("ws-preset").value;
+        if (preset === "channel" && !selectedChannelId) {
+          return alert("Select a channel for the channel preset");
+        }
+        if (preset === "thread" && !selectedThreadId) {
+          return alert("Select a thread for the thread preset");
+        }
+        if (!token() && !sessionMemberId) {
+          return alert("Bearer token or OIDC session required for WebSocket subscribe");
+        }
         persist();
-        const frame = {
-          token: t,
-          filter: { workspace_id: wid() },
-          after_id: wsAfterId,
-        };
+        const frame = { filter: buildWsFilter() };
+        const t = token();
+        if (t) frame.token = t;
+        if (wsResumeToken) {
+          frame.resume_token = wsResumeToken;
+        } else {
+          frame.after_id = wsAfterId;
+        }
         if (sessionMemberId) frame.member_id = sessionMemberId;
 
         setWsStatus("connecting…");
@@ -699,6 +778,10 @@
             document.getElementById("ws-connect").hidden = true;
             document.getElementById("ws-disconnect").hidden = false;
             if (typeof v.after_id === "number") wsAfterId = v.after_id;
+            if (v.resume_token) {
+              wsResumeToken = v.resume_token;
+              localStorage.setItem(wsResumeKey, wsResumeToken);
+            }
             appendLive(`[ack] after_id=${v.after_id}`);
             return;
           }
@@ -724,11 +807,19 @@
         };
         wsSocket.onerror = () => setWsStatus("error", "error");
         wsSocket.onclose = () => {
-          if (document.getElementById("ws-disconnect").hidden === false) {
-            setWsStatus("closed");
-          }
+          const wasConnected = document.getElementById("ws-disconnect").hidden === false;
           document.getElementById("ws-connect").hidden = false;
           document.getElementById("ws-disconnect").hidden = true;
+          if (wasConnected) setWsStatus("closed");
+          wsSocket = null;
+          if (
+            wasConnected &&
+            !wsUserDisconnect &&
+            document.getElementById("ws-auto-reconnect").checked
+          ) {
+            setWsStatus("reconnecting…");
+            setTimeout(() => connectWs(), 1500);
+          }
         };
       }
 
@@ -956,8 +1047,30 @@
           setStatus(`HTTP ${res.status}`, "err");
           return setOut(body);
         }
+        const artifact = JSON.parse(body);
         setStatus("Artifact uploaded", "ok");
-        setOut(JSON.parse(body));
+        setOut(artifact);
+        const attach = document.getElementById("attach-artifact-next");
+        if (attach && attach.checked && selectedThreadId) {
+          const aid = authorId();
+          if (!aid) return alert("Author required to attach artifact to thread");
+          const meta = { artifacts: [artifact.sha256] };
+          const postPath = uiWritePath(`/threads/${selectedThreadId}/messages`);
+          const pres = await fetch(postPath, {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({
+              author_id: aid,
+              body: `Attached artifact ${artifact.sha256.slice(0, 12)}…`,
+              metadata: meta,
+            }),
+          });
+          if (pres.ok) {
+            setStatus("Artifact attached in thread", "ok");
+            await loadMessages();
+          }
+        }
       };
       document.getElementById("load-thread").onclick = async () => {
         persist();
@@ -1161,6 +1274,63 @@
         persist();
         setStatus("Token minted", "ok");
         setOut(parsed);
+      };
+      document.getElementById("list-member-tokens").onclick = async () => {
+        if (!wid()) return alert("Workspace ID required");
+        const mid =
+          document.getElementById("token-member").value.trim() || sessionMemberId;
+        if (!mid) return alert("Member ID required");
+        persist();
+        const path = token()
+          ? `${base()}/workspaces/${wid()}/members/${mid}/tokens`
+          : `${uiReadPath(`/workspaces/${wid()}/members/${mid}/tokens`)}`;
+        const res = await fetch(path, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("token-list");
+        if (!res.ok) {
+          box.textContent = body;
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No tokens for this member";
+          return;
+        }
+        rows.forEach((t) => {
+          const li = document.createElement("div");
+          const revoked = t.revoked_at ? " (revoked)" : "";
+          li.textContent = `${t.id} · ${(t.label || "—")}${revoked} · ${t.capabilities.join(", ")}`;
+          li.style.cursor = "pointer";
+          li.onclick = () => {
+            document.getElementById("token-revoke-id").value = t.id;
+          };
+          box.appendChild(li);
+        });
+      };
+      document.getElementById("list-app-installations").onclick = async () => {
+        if (!wid()) return alert("Workspace ID required");
+        persist();
+        const path = uiReadPath(`/workspaces/${wid()}/app-installations`);
+        const res = await fetch(path, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("app-install-list");
+        if (!res.ok) {
+          box.textContent = body;
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No app installations";
+          return;
+        }
+        rows.forEach((row) => {
+          const div = document.createElement("div");
+          const revoked = row.revoked_at ? " (revoked)" : "";
+          div.textContent = `${row.app_id} · install ${row.id}${revoked}`;
+          box.appendChild(div);
+        });
       };
       document.getElementById("revoke-token").onclick = async () => {
         if (!requireTokenForWrite()) return;

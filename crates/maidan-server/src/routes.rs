@@ -1425,6 +1425,42 @@ pub async fn mint_api_token(
     ))
 }
 
+pub async fn list_api_tokens(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((workspace_id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<Json<Vec<crate::dto::ApiTokenSummary>>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    let member_id = MemberId(member_id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let member = state.store.get_member(member_id).await?;
+    if member.workspace_id != workspace_id {
+        return Err(ApiError::BadRequest(
+            "member does not belong to workspace".into(),
+        ));
+    }
+    let tokens = state
+        .store
+        .list_api_tokens_for_member(workspace_id, member_id)
+        .await?;
+    Ok(Json(
+        tokens
+            .into_iter()
+            .map(|t| crate::dto::ApiTokenSummary {
+                id: t.id,
+                workspace_id: t.workspace_id,
+                member_id: t.member_id,
+                label: t.label,
+                capabilities: t.capabilities,
+                created_at: t.created_at,
+                expires_at: t.expires_at,
+                revoked_at: t.revoked_at,
+            })
+            .collect(),
+    ))
+}
+
 pub async fn revoke_api_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
