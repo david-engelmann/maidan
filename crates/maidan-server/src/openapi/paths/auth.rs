@@ -110,6 +110,60 @@ pub fn ui_list_events() {}
 pub fn ui_list_channels() {}
 
 #[utoipa::path(
+    post,
+    path = "/ui/api/workspaces/{wid}/channels",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateChannel,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = Channel),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+    )
+)]
+pub fn ui_create_channel() {}
+
+#[utoipa::path(
+    post,
+    path = "/ui/api/channels/{cid}/threads",
+    tag = "auth",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    request_body = CreateThread,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = Thread),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+    )
+)]
+pub fn ui_create_thread() {}
+
+#[utoipa::path(
+    post,
+    path = "/ui/api/threads/{tid}/messages",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    request_body = CreateMessage,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = Message),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+    )
+)]
+pub fn ui_post_message() {}
+
+#[utoipa::path(
     get,
     path = "/ui/api/channels/{cid}/threads",
     tag = "auth",

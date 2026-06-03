@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use maidan_auth::{
-    capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
+    capability::{EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE},
     resolve_bearer, resolve_peer_bearer, AuthContext,
 };
 
@@ -96,6 +96,45 @@ pub async fn session_or_bearer_middleware(
                 session.workspace_id,
                 vec![
                     WORKSPACE_READ.into(),
+                    EVENT_SUBSCRIBE.into(),
+                    SEARCH_QUERY.into(),
+                ],
+            );
+            req.extensions_mut().insert(session);
+            req.extensions_mut().insert(ctx);
+            next.run(req).await
+        }
+        Err(err) => err.into_response(),
+    }
+}
+
+/// Browser session or bearer for `/ui/api` writes (channel browser).
+pub async fn ui_session_or_bearer_middleware(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    if state.auth_disabled {
+        req.extensions_mut().insert(AuthContext::bypass());
+        return next.run(req).await;
+    }
+
+    if let Some(secret) = bearer_from_headers(req.headers()) {
+        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
+            req.extensions_mut().insert(ctx);
+            return next.run(req).await;
+        }
+    }
+
+    match load_session(&state, req.headers()).await {
+        Ok(session) => {
+            let ctx = AuthContext::from_session(
+                session.member_id,
+                session.workspace_id,
+                vec![
+                    WORKSPACE_READ.into(),
+                    WORKSPACE_WRITE.into(),
+                    MESSAGE_POST.into(),
                     EVENT_SUBSCRIBE.into(),
                     SEARCH_QUERY.into(),
                 ],

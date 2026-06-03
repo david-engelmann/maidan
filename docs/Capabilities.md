@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v92.0.0 — /ui channel browser
+
+| Capability | Where |
+|------------|-------|
+| Session cookie writes on `/ui/api` | `POST` channels, threads, messages |
+| Channel browser in static UI | `static/index.html` (`data-ui-version="6"`) |
+| E2e | `ui_channels_e2e.rs` |
+
 ## v88.0.0 — Helm production profiles
 
 | Capability | Where |
