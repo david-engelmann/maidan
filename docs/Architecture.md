@@ -1,7 +1,7 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v84.0.0`** (Product Ladder **77+** through cluster **84**).
+**Current baseline:** **`v85.0.0`** (Product Ladder **77+** through cluster **85**).
 Older versioned sections below record how capabilities accrued; see
 [[Capabilities]] and [[CHANGELOG]] for the authoritative release list.
 
@@ -205,7 +205,7 @@ See [[Glossary]] for vocabulary.
   response and comparable across Postgres and SQLite for the same `mode`.
   Semantic: `score` equals cosine similarity. Lexical: min-max normalized `rank`.
 - **SQLite semantic scale** — Postgres + HNSW for production; SQLite uses
-  `sqlite-vec` SQL distance (dev parity, no HNSW index).
+  optional `sqlite-vec` SQL distance when feature enabled (**85**); default brute-force cosine on SQLite.
 
 ## Auth at v0.5.0
 

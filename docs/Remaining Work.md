@@ -22,7 +22,7 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, **83**) | — |
 | **Outbox** | Relay modes + quarantine + HTTP replay (**56**, **84**) | — |
 | **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
-| **Semantic (75)** | CLI reindex + runbook; Postgres HNSW | `sqlite-vec` (**85**); operator job API (**87**) |
+| **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | Per-model tables filter at query time (**86**); operator job API (**87**) |
 | **Embeddings** | Pluggable provider | Default **`hash-v1`**; per-model tables (**86**) |
 | **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
 | **Observability (76)** | Agent metrics runbook + gate e2e | OTLP export + dashboards (**89–90**) |
