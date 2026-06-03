@@ -352,7 +352,12 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 | `values.yaml` | Dev defaults |
 | `values-prod.yaml` | HPA + ingress (manual TLS secret) |
 | `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation |
+| `values-profile-otel.yaml` | JSON logs + external `OTLP_ENDPOINT` |
+| `values-profile-redis.yaml` | `MAIDAN_RATE_LIMIT_REDIS_URL` (multi-replica quotas) |
+| `values-profile-s3.yaml` | S3-compatible `ARTIFACT_BACKEND` |
 | `values-ci.yaml` | kind smoke (SQLite, auth off) |
+
+Layer profiles as needed; see `helm/maidan/PROFILES.md` for example `helm upgrade` commands (`v88.0.0`).
 
 **cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`, then:
 

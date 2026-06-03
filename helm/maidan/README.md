@@ -12,6 +12,8 @@ helm install maidan ./helm/maidan -f ./helm/maidan/values-prod.yaml -n maidan --
 
 Set `secrets.DATABASE_URL` and image coordinates before production install.
 
+Production overlays (OTel, Redis quotas, S3) are documented in [PROFILES.md](PROFILES.md).
+
 ## Validation
 
 ```bash

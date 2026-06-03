@@ -1,0 +1,10 @@
+# Overlay: S3-compatible artifact backend (Cluster 88).
+# For in-cluster MinIO use maidan-stack/values-prod.yaml instead of external endpoints.
+config:
+  ARTIFACT_BACKEND: s3
+  S3_ENDPOINT: "https://s3.amazonaws.com"
+  S3_BUCKET: maidan-artifacts
+  S3_REGION: us-east-1
+secrets:
+  S3_ACCESS_KEY_ID: "CHANGE_ME"
+  S3_SECRET_ACCESS_KEY: "CHANGE_ME"
