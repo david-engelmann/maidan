@@ -25,6 +25,6 @@ pub use hydrate_stats::{HydrateResult, HydrateSnapshot, HydrateStats};
 pub use inmem::InMemoryBus;
 pub use item::BusItem;
 pub use listener_health::ListenerHealth;
-pub use postgres::PostgresBus;
+pub use postgres::{PostgresBus, PostgresBusOptions};
 pub use stream::EventStream;
 pub use traits::EventBus;

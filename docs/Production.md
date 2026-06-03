@@ -185,6 +185,18 @@ when relay is enabled.
 | Env | Default | Notes |
 |-----|---------|-------|
 | `MAIDAN_OUTBOX_MAX_ATTEMPTS` | `16` | After this many failed relay publishes, the row is quarantined (`quarantined_at` set). |
+| `MAIDAN_OUTBOX_RELAY_MODE` | `notify` | `notify` = `pg_notify` + LISTEN hydrate (multi-instance). `polled` = relay fans out on the process-local bus only (no `pg_notify`). |
+| `MAIDAN_OUTBOX_POLL_INTERVAL_MS` | `50` | Outbox relay poll interval. |
+| `MAIDAN_OUTBOX_RELAY` | `1` (enabled) | Set `0` to disable relay (append-then-publish in-process). **`MAIDAN_ENV=production` rejects `MAIDAN_OUTBOX_RELAY=0`.** |
+
+#### NOTIFY loss / listener unhealthy (`v84.0.0`)
+
+When `maidan_bus_listener_ok` is **0** or `maidan_bus_notify_hydrate_total{result="failed"}` rises but `maidan_outbox_pending` stays high:
+
+1. Confirm the outbox relay task is running (`outbox relay running` in logs; `maidan_outbox_relay_total` incrementing).
+2. **Single-process mitigation:** set `MAIDAN_OUTBOX_RELAY_MODE=polled` and restart. Relay publishes to the in-process bus without `pg_notify`. Subscribers on **other** pods still need NOTIFY or WS replay — polled mode is not a multi-instance fan-out replacement.
+3. **Multi-instance:** fix LISTEN connectivity (pooler must not pin LISTEN connections; use direct Postgres or a pooler that supports `LISTEN`). Do not disable outbox relay in production.
+4. Clients can recover via subscribe replay (`after_id` / `resume_token`) from `maidan_events` while relay catches up.
 
 | Metric | Symptom | Suggested action |
 |--------|---------|------------------|

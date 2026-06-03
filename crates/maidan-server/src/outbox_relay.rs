@@ -10,13 +10,32 @@ use metrics::counter;
 use tracing::warn;
 
 const BATCH: i64 = 64;
-const POLL_INTERVAL: Duration = Duration::from_millis(50);
+const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub const DEFAULT_MAX_ATTEMPTS: u32 = 16;
+
+/// Postgres bus + outbox relay delivery strategy (Cluster 84).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutboxRelayMode {
+    /// `pg_notify` + LISTEN hydrate (default; multi-instance fan-out).
+    Notify,
+    /// Outbox relay publishes to the process-local bus only (no `pg_notify`).
+    Polled,
+}
+
+impl OutboxRelayMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Notify => "notify",
+            Self::Polled => "polled",
+        }
+    }
+}
 
 pub struct OutboxRelay {
     backend: OutboxBackend,
     bus: Arc<dyn EventBus>,
     max_attempts: u32,
+    poll_interval: Duration,
 }
 
 impl OutboxRelay {
@@ -29,10 +48,20 @@ impl OutboxRelay {
         bus: Arc<dyn EventBus>,
         max_attempts: u32,
     ) -> Self {
+        Self::with_options(backend, bus, max_attempts, poll_interval_from_env())
+    }
+
+    pub fn with_options(
+        backend: OutboxBackend,
+        bus: Arc<dyn EventBus>,
+        max_attempts: u32,
+        poll_interval: Duration,
+    ) -> Self {
         Self {
             backend,
             bus,
             max_attempts: max_attempts.max(1),
+            poll_interval,
         }
     }
 
@@ -41,7 +70,7 @@ impl OutboxRelay {
             if let Err(err) = self.run_once().await {
                 warn!(error = %err, "outbox relay tick failed");
             }
-            tokio::time::sleep(POLL_INTERVAL).await;
+            tokio::time::sleep(self.poll_interval).await;
         }
     }
 
@@ -104,6 +133,64 @@ pub fn max_attempts_from_env() -> u32 {
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
         .unwrap_or(DEFAULT_MAX_ATTEMPTS)
+}
+
+pub fn poll_interval_from_env() -> Duration {
+    std::env::var("MAIDAN_OUTBOX_POLL_INTERVAL_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&ms| ms > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_POLL_INTERVAL)
+}
+
+/// When false, HTTP handlers publish directly to the bus (dev/test only).
+pub fn relay_enabled_from_env() -> bool {
+    !matches!(
+        std::env::var("MAIDAN_OUTBOX_RELAY").ok().as_deref(),
+        Some("0") | Some("false") | Some("FALSE")
+    )
+}
+
+pub fn relay_mode_from_env() -> OutboxRelayMode {
+    match std::env::var("MAIDAN_OUTBOX_RELAY_MODE")
+        .ok()
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("polled") => OutboxRelayMode::Polled,
+        Some("notify") => OutboxRelayMode::Notify,
+        Some(other) => {
+            warn!(
+                mode = other,
+                "unknown MAIDAN_OUTBOX_RELAY_MODE; using notify"
+            );
+            OutboxRelayMode::Notify
+        }
+        None => OutboxRelayMode::Notify,
+    }
+}
+
+/// Refuses disabling outbox relay in production (no silent append-then-publish downgrade).
+pub fn validate_startup(production: bool, relay_enabled: bool) -> Result<(), String> {
+    if production && !relay_enabled {
+        return Err(
+            "MAIDAN_ENV=production requires outbox relay; do not set MAIDAN_OUTBOX_RELAY=0".into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn production_requires_outbox_relay() {
+        assert!(validate_startup(true, false).is_err());
+        assert!(validate_startup(true, true).is_ok());
+        assert!(validate_startup(false, false).is_ok());
+    }
 }
 
 pub async fn pending_count(backend: &OutboxBackend) -> Result<i64, maidan_store::StoreError> {
