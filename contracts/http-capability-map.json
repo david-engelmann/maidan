@@ -499,6 +499,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{wid}/members/{mid}/tokens",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/outbox/quarantined",
     "capability": "workspace:read",
     "surface": "http"
@@ -566,6 +572,18 @@
   {
     "method": "DELETE",
     "path": "/workspaces/{wid}/webhooks/{whid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/mention-webhook",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{wid}/mention-webhook",
     "capability": "workspace:write",
     "surface": "http"
   },

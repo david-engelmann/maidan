@@ -192,6 +192,10 @@ pub fn router(state: AppState) -> Router {
             delete(webhooks::revoke_webhook),
         )
         .route(
+            "/workspaces/:wid/mention-webhook",
+            get(webhooks::get_mention_webhook).put(webhooks::set_mention_webhook),
+        )
+        .route(
             "/workspaces/:wid/slash-commands",
             post(slash_commands::create_slash_command).get(slash_commands::list_slash_commands),
         )

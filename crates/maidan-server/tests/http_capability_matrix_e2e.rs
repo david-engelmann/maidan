@@ -269,11 +269,14 @@ fn apply_route_defaults(
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
     }
-    if path.contains("/members/") && path.ends_with("/tokens") {
+    if path.contains("/members/") && path.ends_with("/tokens") && method == "POST" {
         return b.json(&json!({
             "capabilities": [capability::WORKSPACE_READ],
             "label": "deny-matrix"
         }));
+    }
+    if path.ends_with("/mention-webhook") && method == "PUT" {
+        return b.json(&json!({ "webhook_id": null }));
     }
     if path.contains("/reactions") && method == "DELETE" {
         return b.json(&json!({
