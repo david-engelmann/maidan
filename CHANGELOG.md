@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [85.0.0] — 2026-06-02
+
+### Changed
+
+- `sqlite-vec` is an optional Cargo feature on `maidan-search` (default off).
+- CI job verifies linkage with `--features sqlite-vec`; SQLite semantic search without the feature uses in-process cosine ranking.
+
 ## [84.0.0] — 2026-06-02
 
 ### Added

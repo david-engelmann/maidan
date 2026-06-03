@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v85.0.0 — sqlite-vec optional
+
+| Capability | Where |
+|------------|-------|
+| Optional `sqlite-vec` feature | `maidan-search/Cargo.toml`, `maidan-server` feature `sqlite-vec` |
+| CI linkage proof | `.github/workflows/ci.yml` job `sqlite-vec (optional feature)` |
+| Brute-force SQLite semantic (default) | `SqliteSearch::semantic_search` without feature |
+
 ## v84.0.0 — Outbox relay modes
 
 | Capability | Where |
