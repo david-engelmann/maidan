@@ -151,11 +151,15 @@ async fn bootstrap_member(h: &Harness, wid: &str, handle: &str) -> String {
     member["id"].as_str().unwrap().to_string()
 }
 
-async fn wait_for_received(state: &ReceiverState, timeout: Duration) -> bool {
+async fn wait_for_event_kind(state: &ReceiverState, kind: &str, timeout: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
-        if state.received.load(Ordering::SeqCst) {
-            return true;
+        if let Some(body) = state.last_body.lock().await.clone() {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) {
+                if parsed["kind"] == kind {
+                    return true;
+                }
+            }
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
@@ -187,7 +191,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .json(&json!({
             "url": hook_url,
             "label": "mention-only",
-            "event_kinds": ["thread_created"]
+            "event_kinds": ["vote_cast"]
         }))
         .send()
         .await
@@ -267,8 +271,13 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
     assert_eq!(mention.status(), StatusCode::NO_CONTENT);
 
     assert!(
-        wait_for_received(&h.receiver_state, Duration::from_secs(5)).await,
-        "mention webhook receiver did not get POST"
+        wait_for_event_kind(
+            &h.receiver_state,
+            "mention_recorded",
+            Duration::from_secs(10)
+        )
+        .await,
+        "mention webhook receiver did not get mention_recorded POST"
     );
     let body = h.receiver_state.last_body.lock().await.clone().unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
