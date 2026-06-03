@@ -11,6 +11,14 @@ helm template maidan "${chart}" -f "${chart}/values.yaml" >/dev/null
 helm template maidan "${chart}" -f "${chart}/values-prod.yaml" >/dev/null
 helm template maidan "${chart}" -f "${chart}/values-cert-manager.yaml" >/dev/null
 helm template maidan "${chart}" -f "${chart}/values-ci.yaml" >/dev/null
+helm template maidan "${chart}" \
+  -f "${chart}/values-prod.yaml" \
+  -f "${chart}/values-cert-manager.yaml" \
+  -f "${chart}/values-profile-otel.yaml" \
+  -f "${chart}/values-profile-redis.yaml" >/dev/null
+helm template maidan "${chart}" \
+  -f "${chart}/values-prod.yaml" \
+  -f "${chart}/values-profile-s3.yaml" >/dev/null
 if [[ -f "${stack}/Chart.lock" ]]; then
   helm template maidan-stack "${stack}" >/dev/null
   helm template maidan-stack "${stack}" \

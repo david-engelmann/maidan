@@ -1,0 +1,4 @@
+# Overlay: multi-replica rate limits + per-token quotas via Redis (Cluster 54 + 88).
+# Point at your Redis/Valkey service; omit to use in-memory limits (single replica).
+secrets:
+  MAIDAN_RATE_LIMIT_REDIS_URL: "redis://redis:6379"
