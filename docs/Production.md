@@ -268,7 +268,7 @@ exhausted rows are quarantined (dead letter). **Outbound event webhooks** still 
 
 | Metric | Symptom | Suggested action |
 |--------|---------|------------------|
-| `maidan_automation_delivery_total{success="false"}` rising | Targets down or rejecting signatures | Fix endpoint; verify signing secret; inspect `last_error` on row |
+| `maidan_automation_delivery_total{outcome="failure"}` rising | Targets down or rejecting signatures | Fix endpoint; verify signing secret; inspect `last_error` on row |
 | `maidan_automation_delivery_duration_seconds` p95 high | Slow integrator | Tune timeout at integrator; check network |
 | Pending rows not draining | Worker not running | Confirm `AutomationDeliveryWorker` spawned in `maidan-server` main |
 
@@ -283,10 +283,12 @@ Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Ga
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
 | `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
 | `maidan_outbox_pending` / quarantined | Relay stuck | [[Production#Outbox relay]] |
-| `maidan_automation_delivery_total{success="false"}` | Slash/FSM HTTP failing | [[Production#Automation HTTP delivery]] |
+| `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [[Production#Automation HTTP delivery]] |
 | MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs |
 
 Example Grafana dashboard (Prometheus datasource): `docs/dashboards/maidan-operator.json` (`v89.0.0`).
+
+SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). Validate with `./scripts/validate-prometheus-rules.sh`.
 
 **Semantic scale:** set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` in Helm prod values; run `maidan reindex-embeddings --database-url $DATABASE_URL` after provider changes.
 

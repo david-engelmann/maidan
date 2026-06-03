@@ -1,0 +1,32 @@
+# Example Alertmanager route tree for Maidan SLO alerts (Cluster 90).
+# Merge into your alertmanager.yml; replace receiver names with your on-call targets.
+route:
+  receiver: default
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - slo=~"outbox_.*"
+      receiver: platform-oncall
+      continue: true
+    - matchers:
+        - severity=critical
+      receiver: platform-oncall
+    - matchers:
+        - severity=warning
+      receiver: platform-slack
+
+receivers:
+  - name: default
+    # webhook_configs: ...
+  - name: platform-oncall
+    # pagerduty_configs: ...
+  - name: platform-slack
+    # slack_configs: ...
+
+inhibit_rules:
+  - source_matchers: [alertname=MaidanBusListenerDown]
+    target_matchers: [slo=outbox_lag]
+    equal: []

@@ -1,0 +1,121 @@
+# Prometheus / Grafana Mimir ruler groups for Maidan SLOs (Cluster 90).
+# Apply with Prometheus Operator or paste groups into your ruler config.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: maidan-slo
+  labels:
+    app: maidan-server
+spec:
+  groups:
+    - name: maidan_slo_recording
+      interval: 30s
+      rules:
+        - record: maidan_slo:http_p99_seconds
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le)
+            )
+        - record: maidan_slo:automation_failure_rate5m
+          expr: |
+            sum(rate(maidan_automation_delivery_total{outcome="failure"}[5m]))
+        - record: maidan_slo:outbox_pending
+          expr: maidan_outbox_pending
+        - record: maidan_slo:outbox_oldest_pending_seconds
+          expr: maidan_outbox_oldest_pending_seconds
+
+    - name: maidan_slo_alerts
+      rules:
+        - alert: MaidanHttpLatencyP99High
+          expr: maidan_slo:http_p99_seconds > 2
+          for: 10m
+          labels:
+            severity: warning
+            slo: agent_http_latency
+          annotations:
+            summary: Maidan HTTP p99 latency above 2s
+            description: |
+              p99 request latency is {{ $value | humanizeDuration }} (threshold 2s).
+              Agent/MCP traffic shares this series; check slow integrators and DB.
+
+        - alert: MaidanAutomationDeliveryFailures
+          expr: maidan_slo:automation_failure_rate5m > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            slo: automation_dlq_pressure
+          annotations:
+            summary: Automation HTTP delivery failures elevated
+            description: |
+              Failure rate {{ $value | humanize }}/s over 5m.
+              Inspect GET /workspaces/:wid/automation/dlq and delivery logs.
+
+        - alert: MaidanOutboxPendingHigh
+          expr: maidan_slo:outbox_pending > 100
+          for: 5m
+          labels:
+            severity: warning
+            slo: outbox_lag
+          annotations:
+            summary: Outbox relay backlog
+            description: |
+              {{ $value }} unpublished outbox rows. See Production outbox relay runbook.
+
+        - alert: MaidanOutboxOldestPendingStale
+          expr: maidan_slo:outbox_oldest_pending_seconds > 300
+          for: 5m
+          labels:
+            severity: critical
+            slo: outbox_lag
+          annotations:
+            summary: Oldest outbox row pending over 5 minutes
+            description: |
+              Oldest relayable row age {{ $value | humanizeDuration }}.
+              Check relay task, LISTEN health, and maidan_outbox_relay_total.
+
+        - alert: MaidanOutboxQuarantined
+          expr: maidan_outbox_quarantined > 0
+          for: 1m
+          labels:
+            severity: critical
+            slo: outbox_dlq
+          annotations:
+            summary: Outbox rows quarantined
+            description: |
+              {{ $value }} quarantined outbox row(s). Replay or fix poison payloads.
+
+        - alert: MaidanBusListenerDown
+          expr: maidan_bus_listener_ok == 0
+          for: 2m
+          labels:
+            severity: critical
+            slo: bus_delivery
+          annotations:
+            summary: Postgres LISTEN listener unhealthy
+            description: |
+              maidan_bus_listener_ok is 0. Subscribers may rely on replay; fix DB/LISTEN.
+
+        - alert: MaidanIndexerStale
+          expr: maidan_indexer_last_event_age_seconds > 600
+          for: 5m
+          labels:
+            severity: warning
+            slo: search_index
+          annotations:
+            summary: Embedding indexer silent
+            description: |
+              No indexer events for {{ $value | humanizeDuration }}.
+              Set INDEXER_STALE_SECS in readiness; check embedding provider.
+
+        - alert: MaidanSubscribeReplayTruncatedSustained
+          expr: |
+            sum(rate(maidan_subscribe_replay_total{outcome="replay_truncated"}[15m])) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            slo: subscribe_recovery
+          annotations:
+            summary: Subscribe replay truncation sustained
+            description: |
+              Clients hitting 500-row replay windows. Ensure after_id / resume_token loops.
