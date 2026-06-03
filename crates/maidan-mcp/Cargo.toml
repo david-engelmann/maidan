@@ -14,7 +14,7 @@ maidan-auth = { path = "../maidan-auth" }
 maidan-types = { path = "../maidan-types" }
 maidan-router = { path = "../maidan-router" }
 maidan-store = { path = "../maidan-store" }
-maidan-search = { path = "../maidan-search" }
+maidan-search = { path = "../maidan-search", default-features = false }
 maidan-artifacts = { path = "../maidan-artifacts" }
 async-trait.workspace = true
 base64 = "0.22"

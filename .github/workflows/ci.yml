@@ -111,6 +111,29 @@ jobs:
       - name: integration tests
         run: cargo nextest run --workspace --tests --no-fail-fast
 
+  sqlite-vec:
+    name: sqlite-vec (optional feature)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: default build omits sqlite-vec
+        run: |
+          cargo build -p maidan-search -p maidan-server --all-targets
+          if cargo tree -p maidan-search -e normal -i sqlite-vec 2>/dev/null | grep -q .; then
+            echo "::error::sqlite-vec must not be in the normal dependency tree without --features"
+            cargo tree -p maidan-search -e normal -i sqlite-vec
+            exit 1
+          fi
+      - name: test with sqlite-vec feature
+        run: |
+          cargo test -p maidan-search --features sqlite-vec
+          cargo test -p maidan-server --features sqlite-vec --test search_semantic_e2e -- sqlite_http_semantic
+
   coverage:
     name: coverage (llvm-cov)
     runs-on: ubuntu-latest
