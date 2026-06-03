@@ -280,3 +280,51 @@ async fn mint_and_revoke_token_roundtrip() {
     assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
     h.shutdown().await;
 }
+
+#[tokio::test]
+async fn list_api_tokens_returns_metadata_without_secret() {
+    let h = spawn().await;
+    let (workspace_id, member_id) = seed_workspace(h.store.as_ref()).await;
+    let admin = mint_token(
+        h.store.as_ref(),
+        workspace_id,
+        member_id,
+        vec![capability::TOKEN_ADMIN.to_string()],
+    )
+    .await;
+    let ws = workspace_id.0.to_string();
+    let mid = member_id.0.to_string();
+
+    let minted: serde_json::Value = h
+        .client
+        .post(format!("{}/workspaces/{ws}/members/{mid}/tokens", h.base()))
+        .header("Authorization", format!("Bearer {admin}"))
+        .json(&json!({"label": "listed"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let token_id = minted["id"].as_str().unwrap();
+
+    let listed: Vec<serde_json::Value> = h
+        .client
+        .get(format!("{}/workspaces/{ws}/members/{mid}/tokens", h.base()))
+        .header("Authorization", format!("Bearer {admin}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let row = listed
+        .iter()
+        .find(|t| t["id"].as_str() == Some(token_id))
+        .expect("minted token in list response");
+    assert_eq!(row["label"].as_str().unwrap(), "listed");
+    for t in &listed {
+        assert!(t.get("secret").is_none());
+    }
+    h.shutdown().await;
+}

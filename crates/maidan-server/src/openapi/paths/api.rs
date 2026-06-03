@@ -87,6 +87,19 @@ pub fn list_members() {}
     responses((status = 201, body = MintApiTokenResponse)))]
 pub fn mint_api_token() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/members/{mid}/tokens",
+    tag = "tokens",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("mid" = Uuid, Path, description = "Member id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ApiTokenSummary>))
+)]
+pub fn list_api_tokens() {}
+
 #[utoipa::path(get, path = "/workspaces/{wid}/channels", tag = "channels",
     params(("wid" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
@@ -167,6 +180,27 @@ pub fn create_webhook() {}
     responses((status = 204, description = "Revoked"))
 )]
 pub fn revoke_webhook() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/mention-webhook",
+    tag = "webhooks",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MentionWebhookConfig))
+)]
+pub fn get_mention_webhook() {}
+
+#[utoipa::path(
+    put,
+    path = "/workspaces/{wid}/mention-webhook",
+    tag = "webhooks",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = SetMentionWebhook,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MentionWebhookConfig))
+)]
+pub fn set_mention_webhook() {}
 
 #[utoipa::path(
     get,
