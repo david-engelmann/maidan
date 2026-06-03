@@ -65,7 +65,7 @@
 |---------|--------|-----|-----------------|
 | **82** | Context pagination | `v82.0.0` ✓ | HTTP + MCP context tools accept cursor/limit; stable ordering documented |
 | **83** | SQLite delivery cursor | `v83.0.0` ✓ | `maidan_delivery_cursor` implemented for SQLite; shared store tests |
-| **84** | Outbox relay modes | `v84.0.0` | Configurable polled relay + runbook for NOTIFY loss; no silent downgrade in prod |
+| **84** | Outbox relay modes | `v84.0.0` ✓ | Configurable polled relay + runbook for NOTIFY loss; no silent downgrade in prod |
 | **85** | sqlite-vec optional | `v85.0.0` | Feature-gated HNSW on SQLite; CI job proves linkage or documents opt-out |
 | **86** | Per-model embeddings | `v86.0.0` | Schema split by `embedding_model`; queries filter by model at index time |
 
