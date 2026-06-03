@@ -31,9 +31,9 @@ static INIT: Once = Once::new();
 static LAST_HYDRATE: Mutex<Option<HydrateSnapshot>> = Mutex::new(None);
 
 fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
-    tokio::spawn(async move {
+    std::thread::spawn(move || {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            std::thread::sleep(std::time::Duration::from_secs(5));
             handle.run_upkeep();
         }
     });
