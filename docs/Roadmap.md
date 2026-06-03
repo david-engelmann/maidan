@@ -41,8 +41,11 @@ Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
 
 Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
 
-**Active:** Cluster **91.0** — bootstrap compile-time strip
-([[Clusters/Product Ladder 77+]]). Predecessor **`v90.0.0`** ([[Retros/Cluster 90.0]]).
+**Active:** Clusters **93.0**–**101.0** — Operator UI v1 + collaboration + **`maidan-operator-1.0`**
+([[Clusters/Product Ladder 77+]]). Predecessor **`v92.0.0`** ([[Retros/Cluster 92.0]]).
+
+**Recently closed:** Clusters **91.0**–**92.0** — bootstrap strip + `/ui` channel browser at **`v91.0.0`** / **`v92.0.0`**
+([[Retros/Cluster 91.0]], [[Retros/Cluster 92.0]]).
 
 **Recently closed:** Clusters **88.0**–**90.0** — Helm profiles, OTLP metrics, SLO alerts at **`v88.0.0`**–**`v90.0.0`**
 ([[Retros/Cluster 88.0]], [[Retros/Cluster 89.0]], [[Retros/Cluster 90.0]]).
