@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [92.0.0] — 2026-06-03
+
+### Added
+
+- `/ui` channel browser: list channels/threads, post messages via session `POST /ui/api/...`.
+- `ui_channels_e2e` OIDC session flow without bearer.
+
+## [91.0.0] — 2026-06-03
+
+### Added
+
+- `bootstrap` Cargo feature; production Docker image omits unauthenticated seed routes.
+- `bootstrap_absent_e2e` and CI `bootstrap compile-time strip` job.
+
 ## [90.0.0] — 2026-06-03
 
 ### Added
