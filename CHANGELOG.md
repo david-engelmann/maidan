@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [84.0.0] — 2026-06-02
+
+### Added
+
+- `MAIDAN_OUTBOX_RELAY_MODE` (`notify` | `polled`) and `MAIDAN_OUTBOX_POLL_INTERVAL_MS`.
+- Production guard: `MAIDAN_ENV=production` rejects `MAIDAN_OUTBOX_RELAY=0`.
+- SQLite deployments enable outbox relay by default; NOTIFY-loss runbook in [[Production]].
+
 ## [83.0.0] — 2026-06-02
 
 ### Added
