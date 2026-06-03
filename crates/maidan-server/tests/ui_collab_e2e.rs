@@ -53,7 +53,7 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-ui-version="5""#));
+    assert!(html.contains(r#"data-ui-version="6""#));
     assert!(html.contains(r#"id="thread-list""#));
     assert!(html.contains(r#"id="collab-panel""#));
     assert!(html.contains("create-channel"));

@@ -621,6 +621,11 @@ pub async fn post_message(
     cap(&auth, MESSAGE_POST)?;
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    if !auth.bypass && auth.token_id.is_none() && MemberId(body.author_id) != auth.member_id {
+        return Err(ApiError::Forbidden(
+            "author_id must match the signed-in session member".into(),
+        ));
+    }
     let parsed_slash = maidan_router::parse_slash_command(&body.body);
     let m = state
         .store

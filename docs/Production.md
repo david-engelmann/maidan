@@ -84,6 +84,10 @@ detail. Summary:
 | `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | no | Resume token lifetime in seconds (default `3600`). |
 
 After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
+
+**Channel browser (`v92.0.0`):** From `/ui/`, list channels and threads, then post
+messages via `POST /ui/api/...` using the session cookie — no bearer or curl required.
+Bearer tokens still work for the same flows when pasted in the header field.
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 ## API discovery

@@ -270,7 +270,7 @@ pub fn router(state: AppState) -> Router {
             post(session::mint_first_admin_token).layer(session_auth),
         );
 
-    let ui_api = Router::new()
+    let ui_api_read = Router::new()
         .route("/ui/api/workspaces/:wid/events", get(routes::list_events))
         .route(
             "/ui/api/workspaces/:wid/channels",
@@ -295,6 +295,20 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             auth::session_or_bearer_middleware,
         ));
+
+    let ui_api_write = Router::new()
+        .route(
+            "/ui/api/workspaces/:wid/channels",
+            post(routes::create_channel),
+        )
+        .route("/ui/api/channels/:cid/threads", post(routes::create_thread))
+        .route("/ui/api/threads/:tid/messages", post(routes::post_message))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::ui_session_or_bearer_middleware,
+        ));
+
+    let ui_api = ui_api_read.merge(ui_api_write);
 
     Router::new()
         .route("/health", get(health::handler))

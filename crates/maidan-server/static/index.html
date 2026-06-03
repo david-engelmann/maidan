@@ -171,7 +171,7 @@
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
     </style>
   </head>
-  <body data-ui-version="5">
+  <body data-ui-version="6">
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -606,9 +606,10 @@
         }
         persist();
         const t = token();
-        const url = t
-          ? `${base()}/workspaces/${wid()}/channels`
-          : `${base()}/ui/api/workspaces/${wid()}/channels`;
+        const url =
+          t && !sessionMemberId
+            ? `${base()}/workspaces/${wid()}/channels`
+            : uiApiPath(`/workspaces/${wid()}/channels`);
         try {
           const res = await fetch(url, { headers: headers(), credentials: "include" });
           const body = await res.text();
@@ -832,14 +833,15 @@
         setOut(hits);
       };
       document.getElementById("create-channel").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         if (!wid()) return alert("Workspace ID required");
         const name = document.getElementById("new-channel-name").value.trim();
         if (!name) return alert("Channel name required");
         persist();
-        const res = await fetch(`${base()}/workspaces/${wid()}/channels`, {
+        const res = await fetch(apiWritePath(`/workspaces/${wid()}/channels`), {
           method: "POST",
           headers: headers(true),
+          credentials: "include",
           body: JSON.stringify({ name, private: false }),
         });
         const body = await res.text();
@@ -853,15 +855,19 @@
         await loadChannels();
       };
       document.getElementById("create-thread").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         if (!selectedChannelId) return alert("Select a channel first");
         const title = document.getElementById("new-thread-title").value.trim();
         persist();
-        const res = await fetch(`${base()}/channels/${selectedChannelId}/threads`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify({ title: title || null }),
-        });
+        const res = await fetch(
+          apiWritePath(`/channels/${selectedChannelId}/threads`),
+          {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ title: title || null }),
+          }
+        );
         const body = await res.text();
         if (!res.ok) {
           setStatus(`HTTP ${res.status}`, "err");
@@ -875,18 +881,22 @@
         selectThread(parsed.id, parsed.title || parsed.id);
       };
       document.getElementById("post-message").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         if (!selectedThreadId) return alert("Select a thread first");
         const author = authorId();
         if (!author) return alert("Sign in or set Actor ID");
         const text = document.getElementById("compose-body").value.trim();
         if (!text) return alert("Message body required");
         persist();
-        const res = await fetch(`${base()}/threads/${selectedThreadId}/messages`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify({ author_id: author, body: text }),
-        });
+        const res = await fetch(
+          apiWritePath(`/threads/${selectedThreadId}/messages`),
+          {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ author_id: author, body: text }),
+          }
+        );
         const body = await res.text();
         if (!res.ok) {
           setStatus(`HTTP ${res.status}`, "err");
