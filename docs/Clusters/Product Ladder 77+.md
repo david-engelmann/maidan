@@ -21,8 +21,8 @@
 | SQLite parity | Delivery cursor no-op | **83** |
 | Outbox | Relay + quarantine; NOTIFY at-most-once | **84** — polled relay mode or documented upgrade |
 | Semantic SQLite | Brute-force cosine (**75**) | **85** — optional `sqlite-vec` |
-| Embeddings | Single table + `hash-v1` default | **86** — per-model tables |
-| Reindex | CLI `maidan reindex-embeddings` (**75**) | **87** — operator HTTP job API |
+| Embeddings | Single table + `hash-v1` default | **86** ✓ — per-model query param |
+| Reindex | CLI `maidan reindex-embeddings` (**75**) | **87** ✓ — operator HTTP job API |
 | Helm | Stack + kind CI (**55**) | **88** — production values profiles |
 | Metrics | Runbook + gate e2e (**76**) | **89–90** — OTLP export + alert templates |
 | Bootstrap | Runtime `MAIDAN_BOOTSTRAP` gate | **91** — compile-time strip |
@@ -77,7 +77,7 @@
 
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
-| **87** | Reindex job API | `v87.0.0` | `POST /operator/.../reindex-embeddings` + job status; complements CLI |
+| **87** | Reindex job API | `v87.0.0` ✓ | `POST/GET /operator/reindex-embeddings` + in-process jobs |
 | **88** | Helm production profiles | `v88.0.0` | Documented values overlays: external OTel, Redis quotas, S3, ingress TLS |
 | **89** | OTLP metrics export | `v89.0.0` | Prometheus scrape or OTLP push from server; example dashboard JSON in repo |
 | **90** | SLO alert templates | `v90.0.0` | Grafana/Alertmanager YAML for agent latency, DLQ depth, outbox lag |
