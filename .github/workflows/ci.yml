@@ -192,7 +192,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: build images
         run: |
-          docker build -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+          docker build \
+            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
+            -t maidan-server:dev \
+            -f crates/maidan-server/Dockerfile .
           docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       - name: compose up
         run: docker compose --profile full up -d

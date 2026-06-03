@@ -8,9 +8,14 @@
 #   2. `cacher` builds all the dependencies. Cached across source edits.
 #   3. `builder` compiles maidan-server in release mode.
 #   4. `runtime` is a distroless image holding only the binary.
+#
+# Bootstrap seed routes (`POST /workspaces`) are omitted unless
+# `MAIDAN_ENABLE_BOOTSTRAP=1` (CI smoke / local seed). Production deploys
+# should leave the build arg at 0.
 
 ARG RUST_VERSION=1.91
 ARG DEBIAN_CODENAME=bookworm
+ARG MAIDAN_ENABLE_BOOTSTRAP=0
 
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODENAME} AS chef
 WORKDIR /app
@@ -21,20 +26,30 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS cacher
+ARG MAIDAN_ENABLE_BOOTSTRAP=0
 COPY --from=planner /app/recipe.json recipe.json
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features
+RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
+      cargo chef cook --release --recipe-path recipe.json --bin maidan-server; \
+    else \
+      cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features; \
+    fi
 
 FROM chef AS builder
+ARG MAIDAN_ENABLE_BOOTSTRAP=0
 COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
 COPY . .
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN cargo build --release --bin maidan-server --no-default-features
+RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
+      cargo build --release --bin maidan-server; \
+    else \
+      cargo build --release --bin maidan-server --no-default-features; \
+    fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /
