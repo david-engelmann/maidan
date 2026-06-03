@@ -1,7 +1,7 @@
 # Production deployment
 
 Guidance for running Maidan at `v1.0.0` and later. Security overview:
-[[Threat-Model]].
+[Threat-Model.md](Threat-Model.md).
 
 ## Probes
 
@@ -63,7 +63,7 @@ Typical production seed (private network):
 
 Integration tests use `AUTH_DISABLED=1` (bootstrap flag not required).
 
-Human browser login via OIDC ships in **`v2.0.0`**. See [[OIDC]] for design
+Human browser login via OIDC ships in **`v2.0.0`**. See [OIDC.md](OIDC.md) for design
 detail. Summary:
 
 | Variable | Required | Notes |

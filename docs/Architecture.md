@@ -1,9 +1,10 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v85.0.0`** (Product Ladder **77+** through cluster **85**).
+**Current baseline:** **`v101.0.0`** (Product Ladder **77+** through cluster **101**,
+operator gate **`maidan-operator-1.0`**).
 Older versioned sections below record how capabilities accrued; see
-[[Capabilities]] and [[CHANGELOG]] for the authoritative release list.
+[Capabilities.md](Capabilities.md) and [CHANGELOG.md](../CHANGELOG.md) for the authoritative release list.
 
 ## One-paragraph summary
 
@@ -13,7 +14,7 @@ and FSM hooks — backed by Postgres (or SQLite) and a content-addressed
 artifact store. External agents integrate via HTTP, WebSocket, MCP JSON-RPC,
 MCP streamable HTTP, and A2A JSON-RPC, with bearer capability tokens,
 optional OIDC for humans, and contract-checked tool/event catalogs. See
-[[Agent Integration]] for the operator-facing map.
+[Integration.md](Integration.md) for the external integrator map.
 
 ## Agent substrate snapshot (`v67`–`v76`)
 
@@ -21,7 +22,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 |------|---------|-------|
 | **Discovery** | `/.well-known/maidan.json`, agent card | MCP + A2A entry points |
 | **MCP tools** | 30 tools in `contracts/mcp-tool-names.json` | Per-tool caps in `contracts/mcp-capability-map.json`; CI matrix (**69**) |
-| **MCP streamable** | `POST/DELETE /mcp/streamable`, mux on SSE (**78**, **73**) | Subset of 2024-11-05; see [[Agent Integration]] |
+| **MCP streamable** | `POST/DELETE /mcp/streamable`, mux on SSE (**78**, **73**) | Subset of 2024-11-05; see [Integration.md](Integration.md) |
 | **Subscribe** | WS filter schema + MCP SSE, `channel_grants` (**81**, **71**) | Hot-updating grants without resubscribe deferred |
 | **A2A** | RPC + `SubscribeToTask` + cancel/progress (**72**, **79**) | Task marketplace UI deferred |
 | **Apps** | Installed apps + OAuth code exchange (**57**, **65**) | App-scoped bearer secrets |
@@ -30,7 +31,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 | **Context** | HTTP + MCP `get_*_context` with cursors (**74**, **82**) | Workspace thread list still in-memory slice |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
 | **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**), profile overlays (**88**) | Bootstrap compile-time strip (**91**) |
-| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** | Operator gate **`maidan-operator-1.0`** targets **101** ([[Clusters/Product Ladder 77+]]) |
+| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** · **`maidan-operator-1.0`** **`v101`** | Ladder **77–101** closed on `main` ([Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md)) |
 
 ```mermaid
 flowchart TB

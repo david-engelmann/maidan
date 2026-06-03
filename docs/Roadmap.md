@@ -33,18 +33,18 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
-Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**,
-**`v1.2.0`**, **`v1.3.0`**, and **`v1.4.0`** are complete — see corresponding
-minor retros.
+Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 
-Post-1.0 work is organized in [[Post-1.0]] and [[Tracks/README]].
+Post-1.0 work is organized in [Post-1.0.md](Post-1.0.md) and [Tracks/README.md](Tracks/README.md).
 
-Cross-cutting tracks **T, U, V, W, X** are complete (see [[Post-1.0]]).
+Cross-cutting tracks **T, U, V, W, X** are complete.
 
-**Active:** Post–ladder **77–101** maintenance and edge deploys (e.g. pi projects). Tags **`v93.0.0`**–**`v101.0.0`** pending maintainer cut after retro merge.
+**Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Tags **`v93.0.0`**–**`v101.0.0`** may trail merges until the maintainer cuts them.
 
-**Recently closed:** Clusters **93.0**–**101.0** — Operator UI v1, collaboration, **`maidan-operator-1.0`** gate
-([[Clusters/Product Ladder 77+]], [[Retros/Cluster 93.0]] … [[Retros/Cluster 101.0]]).
+**Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Clusters **93.0**–**101.0** — Operator UI v1, collaboration, operator gate e2e
+([Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md), retros under `docs/Retros/Cluster 93.0.md` … `101.0.md`).
 
 **Recently closed:** Clusters **91.0**–**92.0** — bootstrap strip + `/ui` channel browser at **`v91.0.0`** / **`v92.0.0`**
 ([[Retros/Cluster 91.0]], [[Retros/Cluster 92.0]]).

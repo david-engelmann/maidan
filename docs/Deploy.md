@@ -1,7 +1,7 @@
 # Deploy
 
 How to run Maidan locally and in a Kubernetes cluster. Refer to
-[[Architecture]] for what each component does.
+[Architecture.md](Architecture.md) for what each component does.
 
 ## Local: Docker Compose
 
