@@ -9,9 +9,9 @@ use tower_http::trace::TraceLayer;
 use crate::bootstrap;
 use crate::{
     a2a_agent, app_oauth, apps, auth, automation_deliveries, delivery_ops, dm, federation,
-    fsm_hooks, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi,
-    quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands, state::AppState,
-    webhooks, ws,
+    fsm_hooks, group_dm, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc,
+    openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands,
+    state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -58,7 +58,7 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/:wid/members", get(routes::list_members))
         .route(
             "/workspaces/:wid/members/:mid/tokens",
-            post(routes::mint_api_token),
+            post(routes::mint_api_token).get(routes::list_api_tokens),
         )
         .route(
             "/workspaces/:wid/apps",
@@ -102,6 +102,15 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/dm/:id/messages",
             post(dm::post_dm_message).get(dm::list_dm_messages),
+        )
+        .route(
+            "/workspaces/:wid/group-dms",
+            post(group_dm::open_group_dm).get(group_dm::list_group_dms),
+        )
+        .route("/group-dms/:id", get(group_dm::get_group_dm))
+        .route(
+            "/group-dms/:id/messages",
+            post(group_dm::post_group_dm_message),
         )
         .route(
             "/workspaces/:wid/channels",
@@ -290,6 +299,15 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/messages/:mid/edits",
             get(routes::list_message_edits),
+        )
+        .route("/ui/api/workspaces/:wid/members", get(routes::list_members))
+        .route(
+            "/ui/api/workspaces/:wid/members/:mid/tokens",
+            get(routes::list_api_tokens),
+        )
+        .route(
+            "/ui/api/workspaces/:wid/app-installations",
+            get(apps::list_app_installations),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

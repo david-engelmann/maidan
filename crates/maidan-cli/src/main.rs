@@ -7,8 +7,11 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{resolve_bearer, AuthContext};
+use maidan_bus::InMemoryBus;
 use maidan_mcp::{run_stdio, McpServer};
-use maidan_search::{PostgresSearch, Search, SqliteSearch};
+use maidan_search::{
+    EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
+};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
 };
@@ -114,7 +117,17 @@ async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Resu
 
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
-    let server = McpServer::new(store, artifacts, search, embedding_provider);
+    let bus = Arc::new(InMemoryBus::with_capacity(256));
+    let indexer_handler: Arc<dyn maidan_search::EventHandler> = match dialect {
+        Dialect::Sqlite => Arc::new(LoggingHandler::default()),
+        Dialect::Postgres => Arc::new(EmbeddingHandler::new(
+            store.clone(),
+            search.clone(),
+            embedding_provider.clone(),
+        )),
+    };
+    let _indexer = Indexer::new(bus.clone(), indexer_handler).spawn();
+    let server = McpServer::new(store, artifacts, search, embedding_provider).with_event_bus(bus);
     tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

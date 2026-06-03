@@ -194,6 +194,25 @@ pub struct OpenDmConversation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GroupDmConversation {
+    pub id: GroupDmConversationId,
+    pub workspace_id: WorkspaceId,
+    pub thread_id: ThreadId,
+    pub title: Option<String>,
+    pub member_ids: Vec<MemberId>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenGroupDmBody {
+    pub member_ids: Vec<uuid::Uuid>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PostDmMessage {
     pub author_id: uuid::Uuid,
     pub body: String,

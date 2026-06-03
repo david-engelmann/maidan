@@ -23,7 +23,9 @@ use serde::Serialize;
 use sha2::Sha256;
 use utoipa::ToSchema;
 
-use crate::dto::{CreateWebhook, MintWebhookResponse, WebhookResponse};
+use crate::dto::{
+    CreateWebhook, MentionWebhookConfig, MintWebhookResponse, SetMentionWebhook, WebhookResponse,
+};
 use crate::error::{ApiError, ApiJson};
 use crate::state::{AppState, WebhookRuntime};
 
@@ -186,6 +188,46 @@ pub async fn list_webhooks(
     ensure_workspace(&auth, workspace_id)?;
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
     Ok(Json(subs.into_iter().map(WebhookResponse::from).collect()))
+}
+
+pub async fn get_mention_webhook(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(workspace_id): Path<uuid::Uuid>,
+) -> ApiResult<Json<MentionWebhookConfig>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let webhook_id = state
+        .store
+        .get_workspace_mention_webhook_id(workspace_id)
+        .await?;
+    Ok(Json(MentionWebhookConfig { webhook_id }))
+}
+
+pub async fn set_mention_webhook(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetMentionWebhook>,
+) -> ApiResult<Json<MentionWebhookConfig>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let webhook_id = body.webhook_id.map(WebhookSubscriptionId);
+    if let Some(id) = webhook_id {
+        let sub = state.store.get_webhook_subscription(id).await?;
+        if sub.subscription.workspace_id != workspace_id || sub.subscription.revoked_at.is_some() {
+            return Err(ApiError::BadRequest(
+                "webhook must be an active subscription in this workspace".into(),
+            ));
+        }
+    }
+    state
+        .store
+        .set_workspace_mention_webhook_id(workspace_id, webhook_id)
+        .await?;
+    Ok(Json(MentionWebhookConfig { webhook_id }))
 }
 
 pub async fn revoke_webhook(

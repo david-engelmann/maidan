@@ -3,6 +3,62 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v101.0.0 — Operator product gate
+
+| Capability | Where |
+|------------|-------|
+| Operator gate e2e | `maidan_operator_gate_e2e.rs` |
+
+## v100.0.0 — mcp-stdio embedded indexer
+
+| Capability | Where |
+|------------|-------|
+| Stdio + in-process indexer | `maidan-cli` `mcp-stdio`, `McpServer::with_event_bus` |
+
+## v99.0.0 — Presence v2 docs
+
+| Capability | Where |
+|------------|-------|
+| Roster + WS presence guide | `docs/Presence and Roster.md` |
+
+## v98.0.0 — Mention webhook router
+
+| Capability | Where |
+|------------|-------|
+| Workspace mention webhook config | `mention_webhook_id`, `webhooks.rs` |
+
+## v97.0.0 — Group DMs
+
+| Capability | Where |
+|------------|-------|
+| Group DM (≥3 members) | migrations 0027/0028, `group_dm.rs` |
+
+## v96.0.0 — /ui tokens & apps
+
+| Capability | Where |
+|------------|-------|
+| List API tokens | `GET .../members/:mid/tokens` |
+| UI token + app install list | `static/index.html` |
+
+## v95.0.0 — /ui search
+
+| Capability | Where |
+|------------|-------|
+| Faceted search tab | `/ui` search panel + `/ui/api/.../search` |
+
+## v94.0.0 — /ui artifacts
+
+| Capability | Where |
+|------------|-------|
+| Artifact cards + attach | `renderMessages`, upload flow |
+
+## v93.0.0 — /ui live events
+
+| Capability | Where |
+|------------|-------|
+| WS presets + reconnect + session subscribe | `index.html`, `ws.rs` |
+| E2e | `ui_ws_tail_e2e.rs` |
+
 ## v92.0.0 — /ui channel browser
 
 | Capability | Where |

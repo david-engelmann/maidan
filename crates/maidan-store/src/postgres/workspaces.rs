@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{NewWorkspace, Workspace, WorkspaceId};
+use maidan_types::{NewWorkspace, WebhookSubscriptionId, Workspace, WorkspaceId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -36,6 +36,36 @@ pub async fn get(pool: &PgPool, id: WorkspaceId) -> Result<Workspace, StoreError
     .await?
     .ok_or(StoreError::NotFound)?;
     Ok(row_to_workspace(&row))
+}
+
+pub async fn get_mention_webhook_id(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<WebhookSubscriptionId>, StoreError> {
+    let id: Option<Uuid> =
+        sqlx::query_scalar("SELECT mention_webhook_id FROM maidan_workspaces WHERE id = $1")
+            .bind(workspace_id.0)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(StoreError::NotFound)?;
+    Ok(id.map(WebhookSubscriptionId))
+}
+
+pub async fn set_mention_webhook_id(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    webhook_id: Option<WebhookSubscriptionId>,
+) -> Result<(), StoreError> {
+    let updated = sqlx::query("UPDATE maidan_workspaces SET mention_webhook_id = $2 WHERE id = $1")
+        .bind(workspace_id.0)
+        .bind(webhook_id.map(|w| w.0))
+        .execute(pool)
+        .await?
+        .rows_affected();
+    if updated == 0 {
+        return Err(StoreError::NotFound);
+    }
+    Ok(())
 }
 
 fn row_to_workspace(row: &sqlx::postgres::PgRow) -> Workspace {

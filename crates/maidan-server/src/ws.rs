@@ -23,10 +23,14 @@ use axum::{
         ws::{CloseFrame, Message as WsMessage, WebSocket},
         State, WebSocketUpgrade,
     },
+    http::HeaderMap,
     response::IntoResponse,
 };
 use futures::StreamExt;
-use maidan_auth::{capability::EVENT_SUBSCRIBE, resolve_bearer};
+use maidan_auth::{
+    capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
+    resolve_bearer, AuthContext,
+};
 use maidan_types::{EventFilter, MemberId, ThreadId, WorkspaceId};
 use serde::Deserialize;
 use tokio::{
@@ -38,6 +42,7 @@ use uuid::Uuid;
 use crate::event_stream::{
     self, emit_replay_truncated_if_needed, replay_matching_events, subscribe_ack_payload,
 };
+use crate::session::load_session;
 use crate::state::AppState;
 use crate::subscribe_resume;
 
@@ -80,12 +85,16 @@ enum ClientWsFrame {
     Typing { thread_id: Uuid, active: bool },
 }
 
-pub async fn subscribe(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| run(socket, state))
+pub async fn subscribe(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| run(socket, state, headers))
 }
 
-async fn run(mut socket: WebSocket, state: AppState) {
-    let request = match read_subscribe(&mut socket, &state).await {
+async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
+    let request = match read_subscribe(&mut socket, &state, &headers).await {
         Ok(r) => r,
         Err((code, reason)) => {
             let _ = socket
@@ -298,6 +307,7 @@ async fn send_subscribe_ack(
 async fn read_subscribe(
     socket: &mut WebSocket,
     state: &AppState,
+    headers: &HeaderMap,
 ) -> Result<SubscribeRequest, (u16, String)> {
     let frame = timeout(FIRST_FRAME_TIMEOUT, socket.next())
         .await
@@ -334,14 +344,26 @@ async fn read_subscribe(
     }
 
     if !state.auth_disabled {
-        let secret = sub
-            .token
-            .as_deref()
-            .filter(|t| !t.is_empty())
-            .ok_or_else(|| (1008u16, "missing token in subscribe frame".to_string()))?;
-        let ctx = resolve_bearer(state.store.as_ref(), secret)
-            .await
-            .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
+        let ctx = if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
+            resolve_bearer(state.store.as_ref(), secret)
+                .await
+                .map_err(|_| (1008u16, "invalid or expired token".to_string()))?
+        } else if let Ok(session) = load_session(state, headers).await {
+            AuthContext::from_session(
+                session.member_id,
+                session.workspace_id,
+                vec![
+                    WORKSPACE_READ.into(),
+                    EVENT_SUBSCRIBE.into(),
+                    SEARCH_QUERY.into(),
+                ],
+            )
+        } else {
+            return Err((
+                1008u16,
+                "missing token in subscribe frame or browser session".into(),
+            ));
+        };
         ctx.require_capability(EVENT_SUBSCRIBE)
             .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
         if let Some(ws) = filter.workspace_id {

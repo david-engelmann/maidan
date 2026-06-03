@@ -86,6 +86,25 @@ pub async fn workspace_has_active_capability(
     Ok(found.is_some())
 }
 
+pub async fn list_for_member(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<ApiToken>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
+                created_at, expires_at, revoked_at
+         FROM maidan_api_tokens
+         WHERE workspace_id = $1 AND member_id = $2
+         ORDER BY created_at DESC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_token).collect()
+}
+
 pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let now = Utc::now();
     let row = sqlx::query(

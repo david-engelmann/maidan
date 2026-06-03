@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
-use maidan_types::EventFilter;
+use maidan_types::{EventFilter, EventKind};
 use reqwest::Client;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
@@ -126,7 +126,8 @@ async fn enqueue_matches(
         .await
         .map_err(|e| e.to_string())?;
     let payload = build_payload(log_id, event).map_err(|e| e.to_string())?;
-    for sub in subs {
+    let mut enqueued = std::collections::HashSet::new();
+    for sub in &subs {
         let subscription = &sub.subscription;
         if subscription.workspace_id != workspace_id {
             continue;
@@ -139,6 +140,28 @@ async fn enqueue_matches(
             .enqueue_webhook_delivery(subscription.id, log_id, &payload)
             .await
             .map_err(|e| e.to_string())?;
+        enqueued.insert(subscription.id);
+    }
+    if kind == EventKind::MentionRecorded {
+        if let Ok(Some(mention_webhook_id)) = state
+            .store
+            .get_workspace_mention_webhook_id(workspace_id)
+            .await
+        {
+            if !enqueued.contains(&mention_webhook_id)
+                && subs.iter().any(|s| {
+                    s.subscription.id == mention_webhook_id
+                        && s.subscription.workspace_id == workspace_id
+                        && s.subscription.revoked_at.is_none()
+                })
+            {
+                state
+                    .store
+                    .enqueue_webhook_delivery(mention_webhook_id, log_id, &payload)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     }
     Ok(())
 }

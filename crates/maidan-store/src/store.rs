@@ -63,6 +63,31 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<DmConversation>, StoreError>;
 
+    async fn open_group_dm_conversation(
+        &self,
+        workspace_id: WorkspaceId,
+        member_ids: &[MemberId],
+        title: Option<String>,
+    ) -> Result<GroupDmConversation, StoreError>;
+    async fn get_group_dm_conversation(
+        &self,
+        id: GroupDmConversationId,
+    ) -> Result<GroupDmConversation, StoreError>;
+    async fn list_group_dm_conversations_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<GroupDmConversation>, StoreError>;
+    async fn group_dm_conversation_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<GroupDmConversation>, StoreError>;
+    async fn group_dm_has_member(
+        &self,
+        id: GroupDmConversationId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError>;
+
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
@@ -221,6 +246,21 @@ pub trait Store: Send + Sync {
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
+    async fn list_api_tokens_for_member(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<ApiToken>, StoreError>;
+
+    async fn get_workspace_mention_webhook_id(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<WebhookSubscriptionId>, StoreError>;
+    async fn set_workspace_mention_webhook_id(
+        &self,
+        workspace_id: WorkspaceId,
+        webhook_id: Option<WebhookSubscriptionId>,
+    ) -> Result<(), StoreError>;
     async fn replace_token_quotas(
         &self,
         token_id: ApiTokenId,

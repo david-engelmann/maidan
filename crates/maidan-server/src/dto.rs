@@ -6,7 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, MemberId, MemberKind, RefSide, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, MemberId, MemberKind, RefSide,
+    WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -518,6 +519,28 @@ impl From<maidan_types::Peer> for PeerResponse {
 pub struct MintPeerResponse {
     pub peer: PeerResponse,
     pub secret: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApiTokenSummary {
+    pub id: ApiTokenId,
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub label: Option<String>,
+    pub capabilities: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetMentionWebhook {
+    pub webhook_id: Option<uuid::Uuid>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MentionWebhookConfig {
+    pub webhook_id: Option<WebhookSubscriptionId>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

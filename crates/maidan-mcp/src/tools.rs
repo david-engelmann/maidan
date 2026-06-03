@@ -6,12 +6,13 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
+use chrono::Utc;
 use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store};
 use maidan_auth::capability::{
     ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::{encrypt_peer_secret, AuthContext, TokenSecret};
-use maidan_router::route_mentions_for_message;
+use maidan_router::{resolve_thread_context, route_mentions_for_message};
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -465,22 +466,23 @@ pub fn catalog() -> Vec<Value> {
 }
 
 pub async fn dispatch(
-    store: &Arc<dyn Store>,
-    artifacts: &Arc<dyn ArtifactStore>,
-    search: &Arc<dyn maidan_search::Search>,
-    embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
+    let store = &server.store;
+    let artifacts = &server.artifacts;
+    let search = &server.search;
+    let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => list_channels(store, args).await,
         "open_dm_conversation" => open_dm_conversation(store, args).await,
         "list_dm_conversations" => list_dm_conversations(store, args).await,
-        "post_dm_message" => post_dm_message(store, args).await,
+        "post_dm_message" => post_dm_message(server, args).await,
         "list_threads" => list_threads(store, args).await,
         "list_messages" => list_messages(store, args).await,
-        "post_message" => post_message(store, args).await,
+        "post_message" => post_message(server, args).await,
         "edit_message" => edit_message(store, auth, args).await,
         "record_mention" => record_mention(store, args).await,
         "cast_vote" => cast_vote(store, args).await,
@@ -799,7 +801,11 @@ struct PostDmMessageArgs {
     metadata: Value,
 }
 
-async fn post_dm_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+async fn post_dm_message(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: PostDmMessageArgs = serde_json::from_value(args.clone())?;
     let dm = store
         .get_dm_conversation(DmConversationId(a.dm_conversation_id))
@@ -823,6 +829,21 @@ async fn post_dm_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, 
         })
         .await?;
     let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
+    if server.event_bus.is_some() {
+        let ctx = resolve_thread_context(store.as_ref(), dm.thread_id)
+            .await
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        server
+            .publish_event(Event::MessagePosted {
+                occurred_at: Utc::now(),
+                workspace_id: dm.workspace_id,
+                channel_id: ctx.channel_id,
+                thread_id: dm.thread_id,
+                dm_conversation_id: Some(dm.id),
+                message: msg.clone(),
+            })
+            .await;
+    }
     Ok(content_json(&msg))
 }
 
@@ -863,12 +884,14 @@ struct PostMessageArgs {
     metadata: Value,
 }
 
-async fn post_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+async fn post_message(server: &crate::server::McpServer, args: &Value) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: PostMessageArgs = serde_json::from_value(args.clone())?;
     let body = a.body.clone();
+    let thread_id = ThreadId(a.thread_id);
     let msg = store
         .post_message(NewMessage {
-            thread_id: ThreadId(a.thread_id),
+            thread_id,
             author_id: MemberId(a.author_id),
             body,
             metadata: if a.metadata.is_null() {
@@ -879,6 +902,27 @@ async fn post_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, Mcp
         })
         .await?;
     let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
+    if server.event_bus.is_some() {
+        let ctx = resolve_thread_context(store.as_ref(), thread_id)
+            .await
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        let dm_id = store
+            .dm_conversation_for_thread(thread_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|d| d.id);
+        server
+            .publish_event(Event::MessagePosted {
+                occurred_at: Utc::now(),
+                workspace_id: ctx.workspace_id,
+                channel_id: ctx.channel_id,
+                thread_id,
+                dm_conversation_id: dm_id,
+                message: msg.clone(),
+            })
+            .await;
+    }
     Ok(content_json(&msg))
 }
 

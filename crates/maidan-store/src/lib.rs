@@ -9,6 +9,7 @@ pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
 pub mod error;
+pub mod group_dm;
 pub mod migrate;
 pub mod outbox;
 pub mod postgres;
