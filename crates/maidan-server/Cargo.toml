@@ -48,6 +48,7 @@ tracing-subscriber.workspace = true
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
+metrics-util = { version = "0.20", default-features = false, features = ["layers"] }
 openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rand = "0.8"

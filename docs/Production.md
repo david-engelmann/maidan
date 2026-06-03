@@ -31,6 +31,11 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
 | `INDEXER_STALE_SECS` | no | When **> 0**, `/health/ready` is degraded if the embedding indexer has not observed an event for this many seconds. Default `0` (disabled). **Recommended `300`** on Postgres deployments with embeddings enabled. |
 | `GET /metrics` | no | Prometheus text exposition (HTTP + subscribe recovery + indexer/bus gauges). Label cardinality is fixed (no workspace UUIDs). |
+| `OTLP_ENDPOINT` | no | gRPC OTLP collector URL for **traces** (and metrics when `OTLP_METRICS=1`). |
+| `OTLP_SERVICE_NAME` | no | Resource `service.name` for OTLP (default `maidan-server`). |
+| `OTLP_METRICS` | no | Set to `1` to push the same `metrics` crate instruments to OTLP (fanout with Prometheus scrape). Requires `OTLP_ENDPOINT` unless `OTLP_METRICS_ENDPOINT` is set. |
+| `OTLP_METRICS_ENDPOINT` | no | Override OTLP gRPC URL for metrics only. |
+| `OTLP_METRICS_INTERVAL_SECS` | no | Periodic push interval (default `15`). |
 | `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or `X-Forwarded-For` / `anonymous`). Default off. `/health/*` and `/metrics` exempt. |
 | `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
@@ -279,7 +284,9 @@ Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Ga
 | `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
 | `maidan_outbox_pending` / quarantined | Relay stuck | [[Production#Outbox relay]] |
 | `maidan_automation_delivery_total{success="false"}` | Slash/FSM HTTP failing | [[Production#Automation HTTP delivery]] |
-| MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs until OTLP dashboards land |
+| MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs |
+
+Example Grafana dashboard (Prometheus datasource): `docs/dashboards/maidan-operator.json` (`v89.0.0`).
 
 **Semantic scale:** set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` in Helm prod values; run `maidan reindex-embeddings --database-url $DATABASE_URL` after provider changes.
 
@@ -352,7 +359,7 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 | `values.yaml` | Dev defaults |
 | `values-prod.yaml` | HPA + ingress (manual TLS secret) |
 | `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation |
-| `values-profile-otel.yaml` | JSON logs + external `OTLP_ENDPOINT` |
+| `values-profile-otel.yaml` | JSON logs + OTLP traces/metrics (`OTLP_ENDPOINT`, `OTLP_METRICS=1`) |
 | `values-profile-redis.yaml` | `MAIDAN_RATE_LIMIT_REDIS_URL` (multi-replica quotas) |
 | `values-profile-s3.yaml` | S3-compatible `ARTIFACT_BACKEND` |
 | `values-ci.yaml` | kind smoke (SQLite, auth off) |

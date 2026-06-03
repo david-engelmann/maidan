@@ -3,14 +3,22 @@
 //! Call [`init`] once at process startup; keep the returned [`Guard`] alive
 //! until shutdown, then call [`Guard::shutdown`].
 
+mod metrics;
+
 use std::time::Duration;
 
 use opentelemetry::trace::TracerProvider as OtelTracerProvider;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{runtime::Tokio, trace::TracerProvider, Resource};
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::Resource;
 use thiserror::Error;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer as _};
+
+pub use metrics::{
+    build_otlp_metrics_recorder, otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env,
+    MeterGuard, MetricsPushConfig,
+};
 
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,22 +71,26 @@ pub enum InitError {
     AlreadyInitialized,
 }
 
-/// Handle keeping the OTel provider alive until [`Guard::shutdown`].
+/// Handle keeping OTel providers alive until [`Guard::shutdown`].
 pub struct Guard {
-    provider: Option<TracerProvider>,
+    tracer_provider: Option<SdkTracerProvider>,
+    meter_provider: Option<metrics::MeterGuard>,
 }
 
 impl Guard {
     pub fn shutdown(mut self) {
-        if let Some(provider) = self.provider.take() {
+        if let Some(provider) = self.meter_provider.take() {
+            provider.shutdown();
+        }
+        if let Some(provider) = self.tracer_provider.take() {
             if let Err(err) = provider.shutdown() {
-                eprintln!("opentelemetry shutdown error: {err}");
+                eprintln!("opentelemetry trace shutdown error: {err}");
             }
         }
     }
 }
 
-/// Initialize global `tracing` + optional OTLP export.
+/// Initialize global `tracing` + optional OTLP trace export.
 pub fn init(config: Config) -> Result<Guard, InitError> {
     let filter = EnvFilter::try_new(&config.log_filter).unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -90,7 +102,7 @@ pub fn init(config: Config) -> Result<Guard, InitError> {
             .boxed(),
     };
 
-    let mut provider = None;
+    let mut tracer_provider = None;
 
     let registry = tracing_subscriber::registry().with(filter).with(fmt_layer);
 
@@ -102,25 +114,30 @@ pub fn init(config: Config) -> Result<Guard, InitError> {
             .build()
             .map_err(|e| InitError::Otlp(e.to_string()))?;
 
-        let resource = Resource::new([KeyValue::new("service.name", config.service_name.clone())]);
+        let resource = Resource::builder()
+            .with_attributes([KeyValue::new("service.name", config.service_name.clone())])
+            .build();
 
-        let tracer_provider = TracerProvider::builder()
-            .with_batch_exporter(exporter, Tokio)
+        let provider = SdkTracerProvider::builder()
+            .with_batch_exporter(exporter)
             .with_resource(resource)
             .build();
 
-        let tracer = OtelTracerProvider::tracer(&tracer_provider, "maidan");
+        let tracer = OtelTracerProvider::tracer(&provider, "maidan");
         let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
         registry
             .with(otel_layer)
             .try_init()
             .map_err(|_| InitError::AlreadyInitialized)?;
-        provider = Some(tracer_provider);
+        tracer_provider = Some(provider);
     } else {
         registry
             .try_init()
             .map_err(|_| InitError::AlreadyInitialized)?;
     }
 
-    Ok(Guard { provider })
+    Ok(Guard {
+        tracer_provider,
+        meter_provider: None,
+    })
 }

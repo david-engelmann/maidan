@@ -106,7 +106,8 @@ The `prod` overlay is a template. Before applying:
 | `S3_REGION`          | only if S3 backend   |                                        |
 | `S3_ACCESS_KEY_ID`   | only if S3 backend   |                                        |
 | `S3_SECRET_ACCESS_KEY` | only if S3 backend |                                        |
-| `OTLP_ENDPOINT`      | optional             | OTLP exporter target; Cluster T.       |
+| `OTLP_ENDPOINT`      | optional             | OTLP gRPC for traces; metrics when `OTLP_METRICS=1`. |
+| `OTLP_METRICS`       | optional             | Set `1` to push `/metrics` instruments via OTLP.   |
 
 `base/secret.example.yaml` documents the contract but contains no real
 values.

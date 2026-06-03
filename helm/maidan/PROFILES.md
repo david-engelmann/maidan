@@ -10,7 +10,7 @@ Composable values overlays for `helm/maidan`. Layer on `values-prod.yaml` and
 | `values-cert-manager.yaml` | Ingress TLS via cert-manager `ClusterIssuer` |
 | `values-profile-s3.yaml` | External S3-compatible artifacts |
 | `values-profile-redis.yaml` | `MAIDAN_RATE_LIMIT_REDIS_URL` for multi-replica quotas |
-| `values-profile-otel.yaml` | JSON logs + `OTLP_ENDPOINT` to external collector |
+| `values-profile-otel.yaml` | JSON logs + OTLP traces/metrics (`OTLP_ENDPOINT`, `OTLP_METRICS`) |
 | `values-ci.yaml` | kind smoke (SQLite, auth off) |
 
 ## Example installs
