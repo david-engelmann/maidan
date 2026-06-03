@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [87.0.0] — 2026-06-03
+
+### Added
+
+- Operator reindex job API: `POST /operator/reindex-embeddings`, `GET /operator/reindex-embeddings/:job_id`.
+- `Search::reindex_embeddings` for Postgres and SQLite backends.
+
+### Fixed
+
+- SQLite workspace-scoped `maidan reindex-embeddings` / job reindex UUID filter binding.
+
+## [86.0.0] — 2026-06-03
+
+### Added
+
+- Optional `embedding_model` query param on semantic HTTP search and MCP `search_messages`.
+
 ## [85.0.0] — 2026-06-02
 
 ### Changed

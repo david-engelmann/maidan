@@ -3,6 +3,21 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v87.0.0 — Reindex job API
+
+| Capability | Where |
+|------------|-------|
+| Operator reindex enqueue + poll | `POST/GET /operator/reindex-embeddings` |
+| `Search::reindex_embeddings` | `maidan-search` Postgres + SQLite |
+| Reindex job e2e | `maidan-server/tests/reindex_job_e2e.rs` |
+
+## v86.0.0 — Per-model embedding query
+
+| Capability | Where |
+|------------|-------|
+| `embedding_model` search param | `SearchQuery`, MCP `search_messages`, [[Production]] |
+| Model-scoped semantic HTTP e2e | `search_semantic_e2e.rs` |
+
 ## v85.0.0 — sqlite-vec optional
 
 | Capability | Where |

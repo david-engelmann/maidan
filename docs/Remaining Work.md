@@ -4,7 +4,7 @@ Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`)
 Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and
 [[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
 
-**Latest closes:** **`v84.0.0`** outbox relay modes · **`v83.0.0`** SQLite delivery cursor · **`v82.0.0`** context pagination.
+**Latest closes:** **`v87.0.0`** reindex job API · **`v86.0.0`** per-model search param · **`v85.0.0`** sqlite-vec optional.
 
 ---
 
@@ -14,7 +14,7 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 |------|---------|-----|
 | **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL, mux (**78**) | — |
 | **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | Channel browser, WS tail, artifacts (**92–96**); no React SPA in ladder **77+** |
-| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) |
+| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) — in progress |
 | **Workspace erasure (53)** | `DELETE /workspaces/:id` full erase | Does not cover org-level IdP user deletion (use IdP) |
 | **Capabilities (69)** | Full MCP matrix + sample HTTP contract | Every OpenAPI path in CI (**77**) |
 | **A2A (72)** | Persisted tasks + cancel/progress (**79**) | Task marketplace UI |
@@ -22,8 +22,8 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, **83**) | — |
 | **Outbox** | Relay modes + quarantine + HTTP replay (**56**, **84**) | — |
 | **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
-| **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | Per-model tables filter at query time (**86**); operator job API (**87**) |
-| **Embeddings** | Pluggable provider | Default **`hash-v1`**; per-model tables (**86**) |
+| **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | — |
+| **Embeddings** | Pluggable provider; per-model tables + `embedding_model` query (**86**); operator reindex jobs (**87**) | Durable job store |
 | **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
 | **Observability (76)** | Agent metrics runbook + gate e2e | OTLP export + dashboards (**89–90**) |
 | **Delivery ops (68)** | Unified operator deliveries API (**80**) | — |

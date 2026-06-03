@@ -16,4 +16,4 @@
 
 ## Next
 
-Cluster **86** — per-model embeddings ([[Clusters/Product Ladder 77+]]).
+Clusters **86–87** shipped; next **88** Helm profiles ([[Clusters/Product Ladder 77+]]).
