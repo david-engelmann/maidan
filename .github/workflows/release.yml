@@ -111,7 +111,7 @@ jobs:
   docker-server:
     name: docker push maidan-server (${{ matrix.arch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -261,9 +261,17 @@ jobs:
         with:
           tool: cargo-cyclonedx
       - name: generate SBOM
+        continue-on-error: true
         run: |
-          cargo cyclonedx --format json --override-filename sbom -qq
-          mv sbom.cdx.json dist/sbom.json
+          cargo cyclonedx --format json --override-filename sbom -q
+          shopt -s nullglob
+          for f in sbom.cdx sbom.cdx.json sbom.json; do
+            if [[ -f "$f" ]]; then
+              mv "$f" dist/sbom.json
+              exit 0
+            fi
+          done
+          echo "SBOM not produced; publishing tarballs only"
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
