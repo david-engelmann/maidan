@@ -386,12 +386,19 @@ If the release workflow runs but doesn't produce a GitHub Release:
    gh run view <run-id> --repo david-engelmann/maidan --log-failed | tail -40
    ```
 
-2. The `github release` job is gated on `needs: [build, docker]`.
-   If either is red, the release job is skipped.
+2. The `github release` job runs when the **`build`** matrix succeeds
+   (Linux aarch64/x86_64 + macOS arm64 tarballs). **Docker push is
+   separate** — a slow or failed image build no longer blocks the
+   GitHub Release assets.
 
 3. Common failures:
+   - **`build + push docker images` exceeded 45m** (historical): multi-arch
+     `maidan-server` + `maidan-postgres` in one job under QEMU. The workflow
+     now splits images, uses GHA layer cache, and allows 120m for server.
+   - **Workflow stuck ~24h then cancelled**: optional `macos-13` x86_64 job
+     waiting for a runner; it no longer gates `github release`.
    - macOS x86_64 build red on `macos-latest`: the runner is arm64
-     now. Fix is `macos-13`. See PR #36.
+     now. Optional job uses `macos-13`. See PR #36.
    - Docker push fails on auth: check that the runner has
      `packages: write` permission in `release.yml`.
    - `softprops/action-gh-release` fails on

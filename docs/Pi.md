@@ -4,13 +4,14 @@ Run Maidan on a Pi or any **aarch64** Linux host using release **`v101.0.0`**
 (`maidan-operator-1.0`). Integrate agents against this instance with
 [Integration.md](Integration.md).
 
-**Release assets** (created when the tag is pushed):
+**Release assets** (from the [v101.0.0](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0)
+GitHub Release workflow):
 
 | Asset | Use on Pi |
 |-------|-----------|
-| `ghcr.io/david-engelmann/maidan-server:v101.0.0` | Multi-arch image (`linux/arm64`) |
-| `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` + `maidan` binaries |
-| [GitHub Release](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0) | Notes + SBOM |
+| `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` + `maidan` binaries (always published when `build` succeeds) |
+| `ghcr.io/david-engelmann/maidan-server:v101.0.0` | Multi-arch image (`linux/arm64`) — separate docker job; retry with `gh workflow run release.yml -f tag=v101.0.0` if push lagged |
+| [GitHub Release](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0) | Tarballs + SBOM |
 
 ---
 
