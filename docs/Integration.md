@@ -306,6 +306,7 @@ In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilit
 
 ## Related docs
 
+- [Pi.md](Pi.md) — ARM64 / Raspberry Pi install from release **`v101.0.0`**
 - [Architecture.md](Architecture.md) — component diagram (maintainer snapshot)
 - [Glossary.md](Glossary.md) — domain terms
 - [Presence and Roster.md](Presence%20and%20Roster.md) — WS presence notes

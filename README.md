@@ -6,9 +6,9 @@ content-addressed object store. Written in Rust.
 
 ## Status
 
-**`main`** includes Product Ladder **77–101** (operator UI v1, **`maidan-operator-1.0`** at **`v101.0.0`**).
+**Latest release:** [`v101.0.0`](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0) — operator UI v1, **`maidan-operator-1.0`** (ARM64 binaries + `ghcr.io` images).
 Agent gate **`maidan-agent-1.0`** at **`v76.0.0`**; product gate **`maidan-2.0`** at **`v58.0.0`**.
-Release tags **`v93`–`v101`** may trail merges — see [CHANGELOG.md](CHANGELOG.md).
+**Pi / edge:** [docs/Pi.md](docs/Pi.md).
 
 | Doc | Use |
 |-----|-----|

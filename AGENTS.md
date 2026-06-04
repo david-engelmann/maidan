@@ -7,6 +7,8 @@ If you are connecting **to** a Maidan server (not hacking on this Rust repo), st
 3. **`GET /openapi.json`** on your deployment — OpenAPI 3.0 for REST.
 4. **[docs/Capability Map.md](docs/Capability%20Map.md)** — capability strings and contract file index.
 
+**Edge / Raspberry Pi:** [docs/Pi.md](docs/Pi.md) — install **`v101.0.0`** (ARM64 binary or container).
+
 Do **not** start with `docs/Clusters/` or `docs/Retros/`; those are maintainer planning notes and often use Obsidian `[[wikilinks]]` that GitHub does not render as links.
 
 To contribute to the codebase, read [CLAUDE.md](CLAUDE.md) instead.
