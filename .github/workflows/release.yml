@@ -14,6 +14,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -39,6 +43,8 @@ jobs:
             archive: tar.gz
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -67,8 +73,7 @@ jobs:
           name: maidan-${{ matrix.target }}
           path: dist/
 
-  # Optional: macos-13 runners can queue for hours and previously blocked the
-  # whole workflow until GitHub's 24h run cap. Failure does not block release.
+  # Optional: does not gate GitHub Release (macos-13 can queue for hours).
   build-darwin-x86:
     name: build release binaries (darwin x86_64, optional)
     runs-on: macos-13
@@ -76,6 +81,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -94,15 +101,17 @@ jobs:
           name: maidan-x86_64-apple-darwin
           path: dist/
 
-  docker:
-    name: build + push docker images
+  docker-server:
+    name: docker push maidan-server
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: set up qemu
         uses: docker/setup-qemu-action@v3
       - name: set up buildx
@@ -131,6 +140,38 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/maidan-server:latest
+          cache-from: type=gha,scope=maidan-server
+          cache-to: type=gha,mode=max,scope=maidan-server
+
+  docker-postgres:
+    name: docker push maidan-postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+      - name: set up qemu
+        uses: docker/setup-qemu-action@v3
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v3
+      - name: login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
       - name: build + push maidan-postgres
         uses: docker/build-push-action@v6
         with:
@@ -141,21 +182,25 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/maidan-postgres:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/maidan-postgres:latest
+          cache-from: type=gha,scope=maidan-postgres
+          cache-to: type=gha,mode=max,scope=maidan-postgres
 
   release:
     name: github release
-    needs: [build, build-darwin-x86, docker]
-    if: ${{ always() && needs.build.result == 'success' && needs.docker.result == 'success' }}
+    needs: [build]
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - name: list artifacts
-        run: ls -la dist
+        run: ls -laR dist
       - name: install cyclonedx
         uses: taiki-e/install-action@v2
         with:
