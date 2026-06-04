@@ -254,12 +254,16 @@ jobs:
           path: dist
       - name: list artifacts
         run: ls -la dist
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
       - name: install cyclonedx
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-cyclonedx
       - name: generate SBOM
-        run: cargo cyclonedx --format json --output-file dist/sbom.json
+        run: |
+          cargo cyclonedx --format json --override-filename sbom -qq
+          mv sbom.cdx.json dist/sbom.json
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
