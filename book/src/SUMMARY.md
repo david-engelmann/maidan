@@ -14,6 +14,7 @@
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](../docs/Production.md)
 - [Deploy](../docs/Deploy.md)
+- [Raspberry Pi / ARM64](../docs/Pi.md)
 - [Threat model](../docs/Threat-Model.md)
 - [Glossary](../docs/Glossary.md)
 

@@ -39,7 +39,7 @@ Post-1.0 work is organized in [Post-1.0.md](Post-1.0.md) and [Tracks/README.md](
 
 Cross-cutting tracks **T, U, V, W, X** are complete.
 
-**Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Tags **`v93.0.0`**–**`v101.0.0`** may trail merges until the maintainer cuts them.
+**Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
