@@ -1,0 +1,45 @@
+name: release-darwin-x86
+
+# Optional Intel Mac binary — not part of the tag release workflow because
+# macos-13 runners can sit queued for hours and block workflow completion.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (checkout ref)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-darwin-x86:
+    name: build x86_64-apple-darwin tarball
+    runs-on: macos-13
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: build
+        run: cargo build --release --bin maidan-server --bin maidan --target x86_64-apple-darwin
+      - name: package
+        run: |
+          mkdir -p dist
+          tar -czf dist/maidan-x86_64-apple-darwin.tar.gz \
+            -C target/x86_64-apple-darwin/release maidan-server maidan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maidan-x86_64-apple-darwin
+          path: dist/
+          retention-days: 7

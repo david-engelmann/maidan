@@ -15,7 +15,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -73,38 +73,53 @@ jobs:
           name: maidan-${{ matrix.target }}
           path: dist/
 
-  # Optional: does not gate GitHub Release (macos-13 can queue for hours).
-  build-darwin-x86:
-    name: build release binaries (darwin x86_64, optional)
-    runs-on: macos-13
-    timeout-minutes: 90
-    continue-on-error: true
+  bundle:
+    name: bundle release assets
+    needs: [build]
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
     steps:
-      - uses: actions/checkout@v4
+      - name: download linux x86_64
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+          name: maidan-x86_64-unknown-linux-gnu
+          path: incoming
+      - name: download linux aarch64
+        uses: actions/download-artifact@v4
         with:
-          targets: x86_64-apple-darwin
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-      - name: build
-        run: cargo build --release --bin maidan-server --bin maidan --target x86_64-apple-darwin
-      - name: package
+          name: maidan-aarch64-unknown-linux-gnu
+          path: incoming
+      - name: download macos arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: maidan-aarch64-apple-darwin
+          path: incoming
+      - name: flatten tarballs
         run: |
           mkdir -p dist
-          tar -czf dist/maidan-x86_64-apple-darwin.tar.gz \
-            -C target/x86_64-apple-darwin/release maidan-server maidan
+          find incoming -name '*.tar.gz' -exec mv -t dist {} +
+          ls -la dist
       - uses: actions/upload-artifact@v4
         with:
-          name: maidan-x86_64-apple-darwin
+          name: release-assets
           path: dist/
+          retention-days: 1
 
   docker-server:
-    name: docker push maidan-server
+    name: docker push maidan-server (${{ matrix.arch }})
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
     permissions:
       contents: read
       packages: write
@@ -135,13 +150,48 @@ jobs:
         with:
           context: .
           file: crates/maidan-server/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/maidan-server:latest
-          cache-from: type=gha,scope=maidan-server
-          cache-to: type=gha,mode=max,scope=maidan-server
+          tags: ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=maidan-server-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=maidan-server-${{ matrix.arch }}
+
+  docker-server-manifest:
+    name: docker manifest maidan-server
+    needs: [docker-server]
+    if: needs.docker-server.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v3
+      - name: login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: publish multi-arch tag
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          IMAGE="ghcr.io/${OWNER}/maidan-server"
+          docker buildx imagetools create \
+            -t "${IMAGE}:${TAG}" \
+            -t "${IMAGE}:latest" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
 
   docker-postgres:
     name: docker push maidan-postgres
@@ -187,20 +237,23 @@ jobs:
 
   release:
     name: github release
-    needs: [build]
-    if: needs.build.result == 'success'
+    needs: [bundle]
+    if: needs.bundle.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - uses: actions/download-artifact@v4
         with:
+          name: release-assets
           path: dist
-          merge-multiple: true
       - name: list artifacts
-        run: ls -laR dist
+        run: ls -la dist
       - name: install cyclonedx
         uses: taiki-e/install-action@v2
         with:
@@ -210,6 +263,7 @@ jobs:
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true
