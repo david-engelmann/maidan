@@ -21,31 +21,33 @@ Expect index range scan on `(workspace_id, id)` if migration indexes are present
 ```sql
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT m.id, m.thread_id, m.body,
-       ts_rank(m.search_vector, plainto_tsquery('english', $2)) AS rank
+       ts_rank_cd(m.search_vec, plainto_tsquery('english', $2)) AS rank
 FROM maidan_messages m
 JOIN maidan_threads t ON t.id = m.thread_id
 JOIN maidan_channels c ON c.id = t.channel_id
 WHERE c.workspace_id = $1
   AND m.tombstoned_at IS NULL
-  AND m.search_vector @@ plainto_tsquery('english', $2)
+  AND m.search_vec @@ plainto_tsquery('english', $2)
 ORDER BY rank DESC
 LIMIT 25;
 ```
 
-If seq scans appear at scale, verify GIN index on `search_vector` and run
-`ANALYZE maidan_messages`.
+If seq scans appear at scale, verify the GIN index `idx_messages_search_vec` on
+`search_vec` and run `ANALYZE maidan_messages`.
 
 ## Semantic search (pgvector)
 
 ```sql
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT message_id, embedding <=> $2::vector AS distance
-FROM maidan_message_embeddings
+FROM maidan_emb_hash_v1
 ORDER BY distance
 LIMIT 25;
 ```
 
-HNSW index should appear for cosine distance. Rebuild or tune `ef_search` if
+Embedding storage is per-model (registry `maidan_embedding_models`, one table per
+model — `maidan_emb_hash_v1` for the default provider); query the table for the
+active model. HNSW index should appear for cosine distance. Rebuild or tune `ef_search` if
 recall drops after bulk ingest.
 
 ## When to escalate

@@ -303,7 +303,7 @@ SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). Val
 | `q` | Required search text. |
 | `mode` | `lexical` (default) or `semantic` (Postgres + SQLite). |
 | `author` / `channel` / `kind` | Optional facets (both modes on Postgres). |
-| `limit` | Max hits (default 20). |
+| `limit` | Max hits (default 25). |
 | `embedding_model` | Semantic only: registered model name (default: active provider). |
 
 **Semantic mode (`v5.0.0`):** embeds `q` with `MAIDAN_EMBEDDING_PROVIDER`, then queries

@@ -28,7 +28,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 
 | Capability | Tools |
 |------------|-------|
-| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks` |
+| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context` |
 | `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook` |
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |

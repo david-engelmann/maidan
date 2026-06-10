@@ -195,6 +195,9 @@ See [[Glossary]] for vocabulary.
 - **Model binding** — Postgres `semantic_search` filters
   `maidan_message_embeddings.model` to the active provider's
   `model_name()`. Stale vectors from a prior provider are ignored.
+  *(Superseded at `v47.0.0`: the single `maidan_message_embeddings`
+  table was replaced by per-model tables — see [Per-model embeddings at
+  v47.0.0](#per-model-embeddings-at-v4700) below.)*
 - **Hit metadata** — semantic hits include `embedding_model` (lexical hits omit it).
 - **Health** — `/health` includes `embedding: { model, dimension }` from the
   configured provider.
@@ -381,6 +384,7 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 
 - **SQLite semantic search** — `maidan_message_embeddings` (float32 BLOBs) with
   cosine ranking in `maidan-search`; HTTP/MCP `mode=semantic` on SQLite deployments.
+  *(Restructured into per-model tables at `v47.0.0` — see below.)*
 
 ## At v23.0.0–v27.0.0 (Product Ladder close)
 
@@ -388,6 +392,27 @@ Counters are cumulative atomics in `maidan-bus`, exported on `/metrics` scrape
 - **Helm** — `helm/maidan` primary server chart (HPA in prod values).
 - **Privacy** — `POST /workspaces/:id/purge` (messages only) + audit.
 - **MCP streamable HTTP (subset)** — `POST /mcp/streamable` SSE after JSON-RPC POST body.
+
+## Per-model embeddings at v47.0.0
+
+The single `maidan_message_embeddings` table (one row per message, with a `model`
+column) was replaced by a registry plus one vector table per embedding model
+(migration `0020_embedding_models.sql`; SQLite `0018`):
+
+- **Registry** — `maidan_embedding_models (model, dimension, table_name)` maps an
+  embedding model name to its dedicated vector table.
+- **Per-model tables** — e.g. `maidan_emb_hash_v1 (message_id, embedding, …)`;
+  Postgres tables carry the `pgvector` `vector(1024)` column + HNSW index, SQLite
+  tables store float32 embeddings. The old single-table rows were migrated into
+  `maidan_emb_hash_v1` and `maidan_message_embeddings` was dropped.
+- **Why** — swapping or adding an embedding provider no longer means filtering a
+  shared table by `model`; each model is isolated in its own table (clean reindex,
+  no stale-vector cross-talk, per-model dimension). The reindex job API rebuilds a
+  model's table from scratch.
+
+`maidan-search` resolves the active provider's table via the registry; semantic
+hits still carry `embedding_model`. See [Decisions](Decisions.md) and
+[Query-Tuning](Query-Tuning.md).
 
 ## What's deliberately not here yet
 

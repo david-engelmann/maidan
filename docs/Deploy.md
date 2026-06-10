@@ -8,11 +8,12 @@ How to run Maidan locally and in a Kubernetes cluster. Refer to
 ### Prod-style stack
 
 Builds the production image from `crates/maidan-server/Dockerfile` and a
-custom Postgres image with pgvector + schema 0001 baked in.
+custom Postgres image (pgvector base; schema is applied at runtime by
+`maidan-server`, not baked into the image).
 
 ```sh
-docker compose up                  # postgres + minio
-docker compose --profile full up   # + maidan-server
+docker compose up                  # postgres only
+docker compose --profile full up   # + minio + maidan-server
 curl http://localhost:8080/health  # after maidan-server lands /health
 ```
 

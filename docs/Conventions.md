@@ -64,13 +64,13 @@ commit body so each merged commit carries its own retro.
 
 ## Code
 
-- Rust 2021; toolchain pinned in `rust-toolchain.toml`.
-- `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
+- Rust 2021; toolchain pinned in `rust-toolchain.toml` (currently 1.91).
+- `cargo fmt --check` and `cargo clippy --all-targets --workspace -- -D warnings`
   must pass.
 - `thiserror` in libraries; `anyhow` only at binary boundaries.
 - `tracing` for logging — no `println!` in library code.
 - Tests next to the code (`#[cfg(test)]`); integration tests in
-  `tests/`; property tests via `proptest`; snapshot tests via `insta`.
+  `tests/`; property tests via `proptest`.
 - testcontainers for DB integration tests.
 
 ## Secrets
@@ -82,14 +82,14 @@ commit body so each merged commit carries its own retro.
 
 ## CI matrix
 
-| Job                  | Tool                       | Required | First required in |
-|----------------------|----------------------------|----------|-------------------|
-| `lint`               | fmt + clippy + deny        | yes      | PR #2             |
-| `secrets`            | trufflehog                 | yes      | PR #2             |
-| `test`               | cargo test                 | yes      | PR #2             |
-| `integration`        | nextest + testcontainers   | yes      | PR #3             |
-| `integration-sqlite` | nextest + sqlite           | yes      | PR #6             |
-| `coverage`           | cargo-llvm-cov             | yes      | PR #3             |
-| `e2e-smoke`          | docker compose + curl      | yes      | PR #5             |
-| `mutation` (nightly) | cargo-mutants              | no       | —                 |
-| `bench` (nightly)    | criterion                  | no       | —                 |
+| Job                            | Tool                       | Required |
+|--------------------------------|----------------------------|----------|
+| `lint (fmt + clippy + deny)`   | fmt + clippy + deny        | yes      |
+| `secrets scan`                 | trufflehog                 | yes      |
+| `unit tests`                   | cargo test                 | yes      |
+| `integration (testcontainers)` | nextest + testcontainers   | yes      |
+| `docker compose smoke`         | docker compose + curl      | yes      |
+| `helm install (kind)`          | kind + helm                | no       |
+| `sqlite-vec (optional feature)`| cargo test + feature flag  | no       |
+| `bootstrap compile-time strip` | cargo build/test           | no       |
+| `coverage (llvm-cov)`          | cargo-llvm-cov             | no       |
