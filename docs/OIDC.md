@@ -132,6 +132,7 @@ Optional `maidan_sessions` for server-side session rows:
 | GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. |
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
+| POST | `/auth/session/mint` | session | Mint the first `token:admin` for the session's member (gated by `MAIDAN_OIDC_FIRST_ADMIN`). |
 
 Existing bearer routes unchanged. Session middleware runs **only** on routes
 explicitly marked `session_or_bearer` (UI + operator helpers), not on MCP/A2A.

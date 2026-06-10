@@ -2,7 +2,8 @@ name: maidan
 
 # Default compose stack — builds the production image from
 # `crates/maidan-server/Dockerfile` and a custom Postgres image with the
-# pgvector extension + schema 0001 baked in.
+# pgvector extension. Schema is applied at runtime by maidan-server's
+# migration runner, not baked into the image (see docker/Dockerfile.db).
 #
 # Usage:
 #   docker compose up                    # postgres only

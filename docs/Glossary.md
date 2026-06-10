@@ -57,12 +57,14 @@ MCP surface so agents can act on the workspace.
 ## A2A
 
 Agent-to-Agent transport. Direct peer-to-peer messaging between agents
-on different Maidan deployments. Planned for Cluster G.
+on different Maidan deployments. Shipped in Cluster G (`maidan-a2a`,
+`POST /a2a/v1/rpc` + `/a2a/v1/events`); see [[Capability Map]].
 
 ## Capability
 
 A scoped permission token. Grants the bearer the right to perform a
-specific set of actions for a bounded time. See [[Roadmap]] Cluster F.
+specific set of actions for a bounded time. Shipped since Cluster F
+(`maidan-auth`); the live vocabulary and route map are in [[Capability Map]].
 
 ## Tombstone
 

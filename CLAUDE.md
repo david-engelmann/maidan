@@ -14,14 +14,17 @@ single source of truth for *how* to operate in this codebase. The
   artifacts). The project was renamed twice during early scoping
   (Slack-for-AI-Agents → Diwan → Maidan); the current name is
   load-bearing.
-- **Language:** Rust 2021, edition pinned via `rust-toolchain.toml`
-  (currently 1.88). Workspace with 13 member crates.
+- **Language:** Rust 2021, toolchain pinned via `rust-toolchain.toml`
+  (currently 1.91). Workspace with 13 member crates.
 - **Owner:** `david-engelmann`. Solo maintainer. Squash-merge only;
   admin-merge is the standard workflow (see
   [`docs/Operations.md`](docs/Operations.md)).
-- **Release cadence:** clusters A–H, each closing with a retro PR and
-  a tag (`v0.X.Y`). Current state: A–E complete (`v0.4.0`
-  tag pending retro merge — see Open Work).
+- **Release cadence:** work ships in clusters — the initial A–H + 1.0
+  arc (`v0.X.Y` → `v1.0.0`), then a numbered product ladder (1–101,
+  tagged `vX.0.0`). Every cluster closes with a mandatory retro PR and
+  a tag. Current state: ladder **1–101 closed on `main`**; operator
+  gate `maidan-operator-1.0` at **`v101.0.0`** (see "Project state at
+  this handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
 - **CI:** GitHub Actions, 5 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
   (testcontainers)`, `docker compose smoke`). Every PR runs all 5.
@@ -166,9 +169,10 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 - **Do not commit secrets.** `.env`, `*.pem`, `*.key`, `maidan.toml`
   are git-ignored. CI runs `trufflehog`.
-- **Do not bypass GPG signing** unless explicitly authorized. The
-  user has not configured signing as of `v0.1.0`; annotated unsigned
-  tags are acceptable until a key is set up.
+- **Do not bypass GPG signing** unless explicitly authorized. No
+  signing key is configured (tags through `v101.0.0` are annotated but
+  unsigned); annotated unsigned tags are acceptable until a key is set
+  up.
 - **Do not push to `main` directly.** Branch protection blocks it;
   even admins must PR.
 - **Do not skip required CI checks** without explicit user
@@ -192,6 +196,6 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 ## Project state at this handoff
 
 - **Integrator docs:** [`docs/Integration.md`](docs/Integration.md) + [mdBook](https://david-engelmann.github.io/maidan/) (GitHub Pages).
-- **Ladder 77–101:** merged on `main`; operator gate **`maidan-operator-1.0`** at **`v101.0.0`** (tags **`v93`–`v101`** may be pending maintainer cut).
-- **Agent / product gates:** **`maidan-agent-1.0`** `v76`, **`maidan-2.0`** `v58`.
+- **Ladder 77–101:** merged on `main`; operator gate reached at **`v101.0.0`** (which **is** tagged). Maintainer cut of the intermediate tags **`v93`–`v100`** and the **`maidan-operator-1.0`** gate tag is still pending.
+- **Agent / product gates:** **`maidan-agent-1.0`** (`v76`) and **`maidan-2.0`** (`v58`) gate tags are cut.
 - Open backlog: [`docs/Open Work.md`](docs/Open%20Work.md).

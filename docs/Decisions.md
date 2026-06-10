@@ -117,8 +117,12 @@ not exactly-once guarantees.
 
 ### Triggers maintain the lexical index; the indexer is for embeddings
 
-**Decision.** Lexical (`tsvector` / FTS5) indexes are maintained by
-DB triggers — synchronous on every write. The `maidan-search::Indexer`
+**Decision.** Lexical (`tsvector` / FTS5) indexes are maintained by the
+DB synchronously on every write. The exact mechanism is dialect-specific:
+Postgres uses a `GENERATED ALWAYS … STORED` `search_vec` column (GIN-indexed),
+SQLite uses FTS5 triggers (`maidan_messages_fts_insert/_update/_tombstone`).
+(The title says "triggers" as shorthand for "the DB keeps it current, not the
+indexer"; on Postgres it is a generated column.) The `maidan-search::Indexer`
 task subscribes to the bus and is reserved for side effects that
 shouldn't block the writer (embedding generation, mirror indexes).
 
@@ -174,8 +178,9 @@ operational shapes (e.g., remote KV stores) and the matching balloons.
 
 **Decision.** `McpServer::handle(JsonRpcRequest) -> JsonRpcResponse`
 is a pure function (modulo the Arc handles). The HTTP wrapper in
-`maidan-server/src/mcp.rs` is 8 lines; a future stdio loop will be
-the same shape.
+`maidan-server/src/mcp.rs` is a thin shim (~two dozen lines, after later
+capability/quota plumbing); the stdio loop added in `Cluster H`
+(`maidan mcp-stdio`) is the same shape.
 
 **Alternative.** Couple `McpServer` to axum's `Request`/`Response`
 types.
@@ -234,6 +239,11 @@ Dev parity matters more than SQL-side distance for SQLite.
 **To revisit:** wire `sqlite-vec` when sqlx/extension linkage is reliable.
 
 **Superseded by** “sqlite-vec via sqlx `lock_handle`” (`v48.0.0`).
+
+**Storage restructured** at `v47.0.0`: the single `maidan_message_embeddings`
+table became a registry (`maidan_embedding_models`) plus one table per model
+(`maidan_emb_hash_v1`, …); see
+[Architecture](Architecture.md#per-model-embeddings-at-v4700).
 
 ### sqlite-vec via sqlx `lock_handle` (`v48.0.0`)
 

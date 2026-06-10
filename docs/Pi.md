@@ -73,7 +73,7 @@ Open `http://<pi-ip>:8080/ui/` for the operator shell, or use bearer tokens per
 
 ## Option C — Build on the Pi
 
-Rust toolchain from [rust-toolchain.toml](../rust-toolchain.toml) (1.88). Build
+Rust toolchain from [rust-toolchain.toml](../rust-toolchain.toml) (1.91). Build
 can take 30+ minutes on a Pi 4/5.
 
 ```sh
