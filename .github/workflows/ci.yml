@@ -15,7 +15,11 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
-  RUSTFLAGS: -D warnings
+  # `-C debuginfo=line-tables-only` keeps file:line for panics/coverage but
+  # drops the bulk of debug info, which otherwise bloats the large e2e test
+  # binaries and exhausts the runner's linker (recurring `ld` SIGBUS / core
+  # dump while linking maidan-server test targets).
+  RUSTFLAGS: -D warnings -C debuginfo=line-tables-only
   COVERAGE_MIN_LINES: "11.0"
 
 jobs:
@@ -86,7 +90,11 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
       - name: build
-        run: cargo build --workspace --all-targets
+        # Only lib+bin targets: the test/bench binaries are compiled by the
+        # `lint` (clippy --all-targets) and `integration` (nextest --tests)
+        # jobs, so linking them here too is redundant and a needless source of
+        # linker pressure.
+        run: cargo build --workspace --lib --bins
       - name: test (unit only)
         run: cargo test --workspace --lib --bins
 
