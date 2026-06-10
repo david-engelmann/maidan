@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
-use maidan_bus::{EventBus, HydrateStats, ListenerHealth};
+use maidan_bus::{EventBus, HydrateStats, ListenerHealth, ResourceNotifier};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
@@ -175,6 +175,24 @@ impl AppState {
             app_oauth: Some(AppOAuthRuntime::new()),
             reindex_jobs: ReindexJobRegistry::new(),
         }
+    }
+
+    /// Wire cross-replica MCP resource-update notifications (Cluster 102).
+    ///
+    /// Rebuilds the MCP dispatcher with `notifier` so `resources/subscribe`
+    /// SSE updates reach subscribers on any replica. The caller must then call
+    /// `state.mcp.spawn_resource_notify_listener()` (from an async context) so
+    /// this process delivers cross-replica updates to its own SSE subscribers.
+    pub fn attach_resource_notifier(&mut self, notifier: Arc<dyn ResourceNotifier>) {
+        self.mcp = Arc::new(
+            McpServer::new(
+                self.store.clone(),
+                self.artifacts.clone(),
+                self.search.clone(),
+                self.embedding_provider.clone(),
+            )
+            .with_resource_notifier(notifier),
+        );
     }
 
     pub fn subscribe_resume_secret(&self) -> &[u8] {
