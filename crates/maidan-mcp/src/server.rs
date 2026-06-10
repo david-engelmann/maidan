@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
-use maidan_bus::EventBus;
+use maidan_bus::{EventBus, ResourceNotifier};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use maidan_types::{BusEnvelope, Event};
@@ -37,6 +37,7 @@ pub struct McpServer {
     notification_tx: broadcast::Sender<JsonRpcNotification>,
     streamable_sessions: Arc<StreamableSessionRegistry>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
+    resource_notifier: Option<Arc<dyn ResourceNotifier>>,
 }
 
 impl McpServer {
@@ -59,12 +60,22 @@ impl McpServer {
             notification_tx,
             streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
             event_bus: None,
+            resource_notifier: None,
         }
     }
 
     /// When set, message mutations append to the event log and publish for an in-process indexer.
     pub fn with_event_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
         self.event_bus = Some(bus);
+        self
+    }
+
+    /// When set, MCP resource-update notifications fan out to every server
+    /// replica (Cluster 102). Call [`McpServer::spawn_resource_notify_listener`]
+    /// after wrapping the server in an `Arc` so this process delivers
+    /// cross-replica updates to its own SSE subscribers.
+    pub fn with_resource_notifier(mut self, notifier: Arc<dyn ResourceNotifier>) -> Self {
+        self.resource_notifier = Some(notifier);
         self
     }
 
@@ -252,27 +263,84 @@ impl McpServer {
         self.publish_resource_uris(uris).await;
     }
 
-    /// Fan-out `notifications/resources/updated` for HTTP and tool mutations (Cluster 33).
+    /// Fan-out `notifications/resources/updated` for HTTP and tool mutations.
+    ///
+    /// Two delivery surfaces:
+    /// 1. **Inline** — matching URIs are queued for the current request's caller
+    ///    ([`McpServer::take_pending_notifications`]); local and synchronous.
+    /// 2. **Live SSE** — when a [`ResourceNotifier`] is wired (Cluster 102), the
+    ///    *unfiltered* URI set is published cluster-wide and each replica's
+    ///    listener ([`McpServer::spawn_resource_notify_listener`]) delivers to
+    ///    its own SSE subscribers. Without a notifier, SSE delivery happens
+    ///    locally (legacy single-process path).
     pub async fn publish_resource_uris(&self, uris: Vec<String>) {
         if uris.is_empty() {
             return;
         }
+        self.queue_pending_for_subscriptions(&uris).await;
+        match &self.resource_notifier {
+            Some(notifier) => {
+                let _ = notifier.publish_uris(uris).await;
+            }
+            None => {
+                self.broadcast_to_subscribed_sse(&uris).await;
+            }
+        }
+    }
+
+    /// Queue matching URIs for the current request's caller (inline response).
+    async fn queue_pending_for_subscriptions(&self, uris: &[String]) {
         let subscriptions = self.subscriptions.lock().await;
-        let matching: Vec<String> = uris
-            .into_iter()
-            .filter(|uri| subscriptions.contains(uri))
-            .collect();
-        drop(subscriptions);
+        let matching: Vec<&String> = uris.iter().filter(|u| subscriptions.contains(*u)).collect();
         if matching.is_empty() {
             return;
         }
         let mut pending = self.pending_notifications.lock().await;
         for uri in matching {
-            let notification =
-                JsonRpcNotification::new(NOTIFY_RESOURCE_UPDATED, json!({ "uri": uri }));
-            pending.push(notification.clone());
-            let _ = self.notification_tx.send(notification);
+            pending.push(JsonRpcNotification::new(
+                NOTIFY_RESOURCE_UPDATED,
+                json!({ "uri": uri }),
+            ));
         }
+    }
+
+    /// Deliver matching URIs to this process's live SSE subscribers
+    /// ([`McpServer::subscribe_notifications`]). Used directly in the
+    /// no-notifier path and by the cross-replica listener loop.
+    pub(crate) async fn broadcast_to_subscribed_sse(&self, uris: &[String]) {
+        let subscriptions = self.subscriptions.lock().await;
+        let matching: Vec<&String> = uris.iter().filter(|u| subscriptions.contains(*u)).collect();
+        if matching.is_empty() {
+            return;
+        }
+        for uri in matching {
+            let _ = self.notification_tx.send(JsonRpcNotification::new(
+                NOTIFY_RESOURCE_UPDATED,
+                json!({ "uri": uri }),
+            ));
+        }
+    }
+
+    /// Spawn the loop delivering cross-replica resource URIs to this process's
+    /// SSE subscribers. No-op when no [`ResourceNotifier`] is wired. Call once
+    /// at startup after wrapping the server in an `Arc`.
+    pub fn spawn_resource_notify_listener(self: &Arc<Self>) {
+        let Some(notifier) = self.resource_notifier.clone() else {
+            return;
+        };
+        let mut rx = notifier.subscribe();
+        let server = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(uris) => server.broadcast_to_subscribed_sse(&uris).await,
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!(skipped, "mcp resource-notify listener lagged");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
     }
 
     pub async fn take_pending_notifications(&self) -> Vec<JsonRpcNotification> {
@@ -435,5 +503,41 @@ mod tests {
             .await;
 
         assert!(server.take_pending_notifications().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_notifier_delivers_to_local_sse_subscribers_via_listener() {
+        use maidan_bus::InMemoryResourceNotifier;
+
+        let (server, thread_id, _member_id) = mk_server().await;
+        let notifier = Arc::new(InMemoryResourceNotifier::new());
+        let server = Arc::new(server.with_resource_notifier(notifier));
+        server.spawn_resource_notify_listener();
+
+        let auth = AuthContext::bypass();
+        let uri = format!("maidan://threads/{}", thread_id.0);
+        let _ = server
+            .handle(
+                request(1, "resources/subscribe", json!({ "uri": uri.clone() })),
+                &auth,
+            )
+            .await;
+
+        // SSE subscriber registers before the mutation publishes.
+        let mut sse = server.subscribe_notifications();
+        server.publish_resource_uris(vec![uri.clone()]).await;
+
+        // Delivery routes through the notifier and the listener loop.
+        let got = tokio::time::timeout(std::time::Duration::from_secs(2), sse.recv())
+            .await
+            .expect("timed out waiting for SSE notification")
+            .expect("notification channel closed");
+        assert_eq!(got.method, NOTIFY_RESOURCE_UPDATED);
+        assert_eq!(got.params["uri"], uri);
+
+        // Inline pending delivery still works (local, synchronous).
+        let pending = server.take_pending_notifications().await;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].params["uri"], uri);
     }
 }
