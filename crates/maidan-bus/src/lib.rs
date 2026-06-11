@@ -15,6 +15,7 @@ pub mod inmem;
 pub mod item;
 pub mod listener_health;
 pub mod postgres;
+pub mod presence_notify;
 pub mod resource_notify;
 pub mod stream;
 /// Test doubles for integration tests in downstream crates.
@@ -27,6 +28,10 @@ pub use inmem::InMemoryBus;
 pub use item::BusItem;
 pub use listener_health::ListenerHealth;
 pub use postgres::{PostgresBus, PostgresBusOptions};
+pub use presence_notify::{
+    InMemoryPresenceNotifier, PostgresPresenceNotifier, PresenceEvent, PresenceEventKind,
+    PresenceNotifier,
+};
 pub use resource_notify::{InMemoryResourceNotifier, PostgresResourceNotifier, ResourceNotifier};
 pub use stream::EventStream;
 pub use traits::EventBus;
