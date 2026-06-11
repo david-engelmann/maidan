@@ -1,8 +1,8 @@
 //! OAuth-style authorization code flow for installed apps (Cluster 65).
-
-use std::collections::HashMap;
-use std::sync::RwLock;
-use std::time::{Duration, Instant};
+//!
+//! Codes are persisted in the store (Cluster 104), not held per-replica, so a
+//! code minted on one replica can be exchanged on any replica and survives
+//! restart. Only the SHA-256 hash of the plaintext code is stored.
 
 use axum::{
     extract::{Path, State},
@@ -10,6 +10,7 @@ use axum::{
     Extension, Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use chrono::Utc;
 use maidan_auth::{capability, hash_secret, AuthContext, TokenSecret};
 use maidan_types::*;
 use serde::{Deserialize, Serialize};
@@ -23,39 +24,8 @@ use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
 
-#[derive(Clone)]
-pub struct AppOAuthRuntime {
-    codes: std::sync::Arc<RwLock<HashMap<String, PendingAppCode>>>,
-}
-
-#[derive(Clone)]
-struct PendingAppCode {
-    app_id: AppId,
-    workspace_id: WorkspaceId,
-    redirect_uri: String,
-    code_challenge: Option<String>,
-    expires_at: Instant,
-}
-
-impl Default for AppOAuthRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AppOAuthRuntime {
-    pub fn new() -> Self {
-        Self {
-            codes: std::sync::Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    fn prune(&self) {
-        if let Ok(mut guard) = self.codes.write() {
-            guard.retain(|_, row| row.expires_at > Instant::now());
-        }
-    }
-}
+/// One-time authorization codes live this long before the store rejects them.
+const CODE_TTL_SECS: i64 = 600;
 
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeAppInstall {
@@ -103,31 +73,25 @@ pub async fn authorize_app_install(
         return Err(ApiError::BadRequest("app is not in this workspace".into()));
     }
 
-    let oauth = state
-        .app_oauth
-        .as_ref()
-        .ok_or_else(|| ApiError::Internal("app oauth runtime not configured".into()))?;
-    oauth.prune();
-
     let code = Uuid::new_v4().to_string();
-    let expires_in_secs = 600;
-    let row = PendingAppCode {
-        app_id,
-        workspace_id,
-        redirect_uri: body.redirect_uri.clone(),
-        code_challenge: body.code_challenge.clone(),
-        expires_at: Instant::now() + Duration::from_secs(expires_in_secs),
-    };
-    if let Ok(mut guard) = oauth.codes.write() {
-        guard.insert(code.clone(), row);
-    }
+    state
+        .store
+        .insert_oauth_code(NewOAuthCode {
+            code_hash: hash_code(&code),
+            app_id,
+            workspace_id,
+            redirect_uri: body.redirect_uri.clone(),
+            code_challenge: body.code_challenge.clone(),
+            expires_at: Utc::now() + chrono::Duration::seconds(CODE_TTL_SECS),
+        })
+        .await?;
 
     Ok((
         StatusCode::CREATED,
         Json(AuthorizeAppInstallResponse {
             authorization_code: code,
             state: body.state,
-            expires_in_secs,
+            expires_in_secs: CODE_TTL_SECS as u64,
         }),
     ))
 }
@@ -137,23 +101,15 @@ pub async fn exchange_app_code(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<ExchangeAppCode>,
 ) -> ApiResult<(StatusCode, Json<MintAppTokenResponse>)> {
-    let oauth = state
-        .app_oauth
-        .as_ref()
-        .ok_or_else(|| ApiError::Internal("app oauth runtime not configured".into()))?;
+    // Atomic single-use consume: the store deletes the row and returns it only
+    // if it is still live, so a second exchange (or an expired code) finds
+    // nothing. TTL is enforced store-side.
+    let pending = state
+        .store
+        .consume_oauth_code(&hash_code(&body.code))
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
 
-    let pending = {
-        oauth.prune();
-        let mut guard = oauth
-            .codes
-            .write()
-            .map_err(|_| ApiError::Internal("oauth lock poisoned".into()))?;
-        guard.remove(&body.code).ok_or(ApiError::Unauthorized)?
-    };
-
-    if pending.expires_at <= Instant::now() {
-        return Err(ApiError::Unauthorized);
-    }
     if pending.redirect_uri != body.redirect_uri {
         return Err(ApiError::BadRequest("redirect_uri mismatch".into()));
     }
@@ -230,4 +186,9 @@ pub async fn exchange_app_code(
 fn s256_challenge(verifier: &str) -> String {
     let hash = Sha256::digest(verifier.as_bytes());
     URL_SAFE_NO_PAD.encode(hash)
+}
+
+/// Storage key for an authorization code — the plaintext is never persisted.
+fn hash_code(code: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(code.as_bytes()))
 }
