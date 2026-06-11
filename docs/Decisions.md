@@ -249,6 +249,31 @@ a dropped notification is reconciled by the client re-reading the resource.
 pod-pinned); collapsing the two NOTIFY channels if the URI set ever becomes a
 strict function of events.
 
+### Distributed presence: heartbeat + TTL over NOTIFY (`v103.0.0`)
+
+**Decision.** Presence/typing/roster cross replicas via a **dedicated**
+`maidan-bus::PresenceNotifier` channel (`maidan_presence`) carrying a typed
+`PresenceEvent`. Each replica keeps a **merged, TTL-expiring** remote view; a
+periodic **heartbeat** re-announces local members (refreshing remote TTLs) and a
+sweep expires stale ones. TTL is **receiver-stamped** (each replica uses its own
+clock on receipt — no cross-pod wall-clock). Heartbeats refresh `last_seen`
+silently; only genuine changes fan out to subscribers (`PresenceEvent.heartbeat`
++ dedupe). Wired only in **Postgres NOTIFY mode**; single-process keeps the
+legacy local-only hub.
+
+**Alternative.** A shared `maidan_presence` table upserted on every heartbeat
+(durable, queryable), or Redis TTL keys + pub/sub.
+
+**Why this:** a presence table would mean a DB write per member per heartbeat
+(write amplification); Redis would be a new hard dependency for multi-replica
+presence. The NOTIFY + per-replica TTL view reuses Cluster 102's substrate with
+no new infra. Unlike the resource notifier (attached in-memory everywhere),
+presence is gated to Postgres+NOTIFY: its heartbeat task is pure overhead in a
+single process, where the legacy local broadcast is already correct.
+
+**To revisit:** Redis-backed presence if heartbeat NOTIFY volume becomes a
+bottleneck at high replica/member counts; persistent "last seen".
+
 ### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
 
 **Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`

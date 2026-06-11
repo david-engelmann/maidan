@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v103.0.0 — Distributed presence & roster
+
+| Capability | Where |
+|------------|-------|
+| Cross-replica presence/typing fan-out | `maidan-bus::PresenceNotifier`, `PostgresPresenceNotifier` (`maidan_presence`) |
+| Merged TTL roster across replicas | `PresenceHub` heartbeat + sweep, `AppState::attach_presence_notifier` |
+
 ## v102.0.0 — Cross-replica MCP resource notifications
 
 | Capability | Where |

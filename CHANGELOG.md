@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [103.0.0] — 2026-06-11
+
+### Added
+
+- Cross-replica presence & roster: `maidan-bus::PresenceNotifier` (`maidan_presence` LISTEN/NOTIFY) so presence, typing, and the workspace roster stay consistent across server replicas. `PresenceHub` keeps a merged, TTL-expiring view with a heartbeat; wired via `AppState::attach_presence_notifier` + `PresenceHub::spawn_tasks` (Postgres NOTIFY mode). `MAIDAN_PRESENCE_HEARTBEAT_SECS` / `MAIDAN_PRESENCE_TTL_SECS` tune it (defaults 10s / 30s). `two_replica_presence_e2e` proves it.
+
 ## [102.0.0] — 2026-06-11
 
 ### Added

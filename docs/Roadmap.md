@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Cluster **102** is **closed** at **`v102.0.0`**; Phase **XIX** continues with **103–105**. Phase **XX** (106–110) kickoff docs are drafted; Phases **XXI–XXIII** (111–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Clusters **102** and **103** are **closed** (`v102.0.0`, `v103.0.0`); Phase **XIX** continues with **104–105**. Phase **XX** (106–110) kickoff docs are drafted; Phases **XXI–XXIII** (111–120) are mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **103.0** — distributed presence & roster at **`v103.0.0`**
+([[Retros/Cluster 103.0]]).
 
 **Recently closed:** Cluster **102.0** — cross-replica MCP resource notifications at **`v102.0.0`**
 ([[Retros/Cluster 102.0]]); first cluster of [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md).
