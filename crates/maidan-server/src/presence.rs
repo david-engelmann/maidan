@@ -333,6 +333,7 @@ impl PresenceHub {
                     origin: self.origin,
                     workspace_id: workspace_id.0,
                     member_id: member_id.0,
+                    heartbeat: false,
                     kind,
                 };
                 if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -365,30 +366,41 @@ impl PresenceHub {
             }
         };
 
-        if !from_self {
+        // Fan out to local subscribers only on an actual change. Heartbeats
+        // refresh the remote TTL silently; a status that genuinely changed (or a
+        // newly-seen member) still propagates.
+        let changed = if from_self {
+            // Own members: deliver real local changes; suppress heartbeats.
+            !event.heartbeat
+        } else {
             let mut inner = self.inner.write().expect("presence lock");
             match &event.kind {
-                PresenceEventKind::Offline => {
-                    if let Some(members) = inner.remote.get_mut(&workspace_id) {
-                        members.remove(&member_id);
-                    }
-                }
-                PresenceEventKind::Typing { .. } => {}
+                PresenceEventKind::Typing { .. } => true,
+                PresenceEventKind::Offline => inner
+                    .remote
+                    .get_mut(&workspace_id)
+                    .map(|members| members.remove(&member_id).is_some())
+                    .unwrap_or(false),
                 kind => {
                     let status =
                         PresenceStatus::from_event_kind(kind).unwrap_or(PresenceStatus::Online);
-                    inner.remote.entry(workspace_id).or_default().insert(
+                    let members = inner.remote.entry(workspace_id).or_default();
+                    let changed = members.get(&member_id).map(|rm| rm.status) != Some(status);
+                    members.insert(
                         member_id,
                         RemoteMember {
                             status,
                             last_seen: Instant::now(),
                         },
                     );
+                    changed
                 }
             }
-        }
+        };
 
-        self.broadcast_local(workspace_id, frame);
+        if changed {
+            self.broadcast_local(workspace_id, frame);
+        }
     }
 
     /// Re-announce this replica's locally-connected members so other replicas
@@ -420,6 +432,7 @@ impl PresenceHub {
                         origin,
                         workspace_id: ws.0,
                         member_id: mid.0,
+                        heartbeat: true,
                         kind: status.event_kind(),
                     })
                     .await;
@@ -671,5 +684,46 @@ mod tests {
             .expect("timed out")
             .expect("closed");
         assert!(frame.contains("typing"));
+    }
+
+    #[tokio::test]
+    async fn heartbeat_with_unchanged_status_refreshes_ttl_without_refiring() {
+        let hub =
+            PresenceHub::new().with_presence_notifier(Arc::new(InMemoryPresenceNotifier::new()));
+        let ws = WorkspaceId(Uuid::new_v4());
+        let member = MemberId(Uuid::new_v4());
+        let other_origin = Uuid::new_v4(); // a different replica
+
+        // A local subscriber gives us a room to receive on. No listener is
+        // spawned; we drive `apply_remote_event` directly to simulate one.
+        let (mut rx, _reg, _snap) = hub.register(ws, MemberId(Uuid::new_v4()));
+
+        // First sighting of the remote member is a change → fans out.
+        hub.apply_remote_event(PresenceEvent {
+            origin: other_origin,
+            workspace_id: ws.0,
+            member_id: member.0,
+            heartbeat: false,
+            kind: PresenceEventKind::Online,
+        });
+        let first = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("timed out")
+            .expect("closed");
+        assert!(first.contains(&member.0.to_string()));
+
+        // A heartbeat with the same status must refresh TTL but not re-fire.
+        hub.apply_remote_event(PresenceEvent {
+            origin: other_origin,
+            workspace_id: ws.0,
+            member_id: member.0,
+            heartbeat: true,
+            kind: PresenceEventKind::Online,
+        });
+        let dup = tokio::time::timeout(Duration::from_millis(300), rx.recv()).await;
+        assert!(
+            dup.is_err(),
+            "heartbeat should not re-fire presence, got {dup:?}"
+        );
     }
 }

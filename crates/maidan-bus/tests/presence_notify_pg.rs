@@ -56,6 +56,7 @@ async fn presence_events_fan_out_across_replicas() {
         origin: Uuid::new_v4(),
         workspace_id: Uuid::new_v4(),
         member_id: Uuid::new_v4(),
+        heartbeat: false,
         kind: PresenceEventKind::Typing {
             thread_id: Uuid::new_v4(),
             active: true,
