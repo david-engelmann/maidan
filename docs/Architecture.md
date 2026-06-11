@@ -448,6 +448,40 @@ cross replicas. SQLite and the polled-relay mode use the in-memory notifier
 (single process). Wired in `maidan-server` via `AppState::attach_resource_notifier`.
 See [Decisions](Decisions.md).
 
+## Distributed presence at v103.0.0
+
+Presence, typing, and the workspace roster are now consistent across replicas.
+A sibling of the resource channel — `maidan-bus::PresenceNotifier` (Postgres
+`LISTEN`/`NOTIFY` on `maidan_presence`) — carries a typed `PresenceEvent`
+(`Online`/`Away`/`Offline`/`Typing`). On every local change the `PresenceHub`
+publishes an event; each replica's listener folds presence into a merged,
+TTL-expiring remote view and fans the frame to its own WebSocket subscribers.
+A heartbeat re-announces locally-connected members (refreshing remote TTLs) and
+a sweep expires stale ones; heartbeats refresh `last_seen` silently — only
+genuine changes fan out (`PresenceEvent.heartbeat` + dedupe). `presence_snapshot`
+merges local + non-expired remote members, so a subscriber on any replica sees
+the whole workspace.
+
+```mermaid
+sequenceDiagram
+    participant A as Replica A (member online)
+    participant PG as Postgres NOTIFY (maidan_presence)
+    participant B as Replica B
+    participant Cli as Subscriber on B
+
+    A->>PG: PresenceEvent { member, Online }
+    PG-->>B: deliver
+    B->>B: fold into merged roster (TTL)
+    B-->>Cli: presence online (+ in snapshot)
+    Note over A,B: heartbeat every ~10s refreshes TTLs silently
+```
+
+TTL/heartbeat are env-tunable (`MAIDAN_PRESENCE_TTL_SECS` / `_HEARTBEAT_SECS`,
+defaults 30s / 10s); TTL is receiver-stamped (skew-safe). Gated to Postgres+NOTIFY
+— single-process deployments keep the legacy local-only hub. Wired via
+`AppState::attach_presence_notifier` + `PresenceHub::spawn_tasks`. See
+[Decisions](Decisions.md).
+
 ## What's deliberately not here yet
 
 See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:
