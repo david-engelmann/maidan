@@ -251,6 +251,14 @@ pub trait Store: Send + Sync {
     /// guaranteeing single use across replicas.
     async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
 
+    /// Insert or update an embedding reindex job (Cluster 104). Keyed by
+    /// `job_id`, so the start record and later status updates upsert the row,
+    /// making job status visible on any replica.
+    async fn upsert_reindex_job(&self, job: ReindexJob) -> Result<(), StoreError>;
+
+    /// Fetch a reindex job by id, or `None` if unknown.
+    async fn get_reindex_job(&self, job_id: uuid::Uuid) -> Result<Option<ReindexJob>, StoreError>;
+
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
