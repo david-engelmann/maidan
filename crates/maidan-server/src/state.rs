@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{atomic::AtomicI64, Arc, RwLock};
 
 use maidan_artifacts::ArtifactStore;
-use maidan_bus::{EventBus, HydrateStats, ListenerHealth, ResourceNotifier};
+use maidan_bus::{EventBus, HydrateStats, ListenerHealth, PresenceNotifier, ResourceNotifier};
 use maidan_mcp::McpServer;
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::{OutboxBackend, Store};
@@ -193,6 +193,16 @@ impl AppState {
             )
             .with_resource_notifier(notifier),
         );
+    }
+
+    /// Wire cross-replica presence/typing fan-out (Cluster 103).
+    ///
+    /// Rebuilds the presence hub with `notifier` so presence, typing, and the
+    /// roster stay consistent across replicas. The caller must then call
+    /// `state.presence.spawn_tasks()` (from an async context) to start the
+    /// listener + heartbeat.
+    pub fn attach_presence_notifier(&mut self, notifier: Arc<dyn PresenceNotifier>) {
+        self.presence = Arc::new(PresenceHub::default().with_presence_notifier(notifier));
     }
 
     pub fn subscribe_resume_secret(&self) -> &[u8] {
