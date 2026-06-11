@@ -110,3 +110,6 @@ PR review credit; external contributors.
 - [[Cluster 99.0]] — Presence v2. Closed at **`v99.0.0`**.
 - [[Cluster 100.0]] — mcp-stdio embedded. Closed at **`v100.0.0`**.
 - [[Cluster 101.0]] — Operator product gate. Closed at **`v101.0.0`**.
+- [[Cluster 102.0]] — Cross-replica MCP resource notifications. Closed at **`v102.0.0`** (first of Product Ladder 102+).
+- [[Cluster 103.0]] — Distributed presence & roster. Closed at **`v103.0.0`**.
+- [[Cluster 104.0]] — Durable ephemeral state (OAuth codes + reindex jobs). Closed at **`v104.0.0`**.

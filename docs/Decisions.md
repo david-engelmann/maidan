@@ -274,6 +274,30 @@ single process, where the legacy local broadcast is already correct.
 **To revisit:** Redis-backed presence if heartbeat NOTIFY volume becomes a
 bottleneck at high replica/member counts; persistent "last seen".
 
+### Durable ephemeral state: persist, don't replicate (`v104.0.0`)
+
+**Decision.** App OAuth authorization codes and reindex job status move from
+per-replica memory into the store (`maidan_oauth_codes`, `maidan_reindex_jobs`),
+not onto a NOTIFY channel or a cache. Codes are stored as a SHA-256 hash with a
+short TTL; single-use is enforced atomically by
+`DELETE … WHERE code_hash = ? AND expires_at > ? RETURNING …` (no read-then-delete
+race). The reindex `ReindexJob` model moves to `maidan-types` so store and server
+share one definition.
+
+**Alternative.** Fan the state over NOTIFY like Clusters 102/103, or keep an
+in-memory map plus sticky-session load balancing.
+
+**Why this:** unlike presence/resource updates — *ephemeral signals* with nothing
+to read back, which is exactly what NOTIFY is for — codes and job status are
+values a later request must *read*. Durability and any-replica visibility then
+fall out of a single store write; a NOTIFY channel would still need a backing
+store for the read, and sticky sessions don't survive a pod restart. Atomic
+`DELETE … RETURNING` makes single-use a property of the database, not the handler.
+
+**To revisit:** distributed reindex *execution* (a job whose owner dies stays
+`Running`) — deferred to the Phase XXII work-scheduling cluster; a periodic
+purge of expired/idle rows if volume grows.
+
 ### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
 
 **Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`
