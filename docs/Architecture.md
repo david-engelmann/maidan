@@ -482,6 +482,29 @@ defaults 30s / 10s); TTL is receiver-stamped (skew-safe). Gated to Postgres+NOTI
 `AppState::attach_presence_notifier` + `PresenceHub::spawn_tasks`. See
 [Decisions](Decisions.md).
 
+## Durable ephemeral state at v104.0.0
+
+Two pieces of short-lived, request-path-critical state that used to live only in
+process memory now live in the store, so they work across replicas and survive
+restart — no NOTIFY needed, because both are plain store-reads rather than
+ephemeral signals.
+
+- **App OAuth authorization codes** — `maidan_oauth_codes` holds only the
+  SHA-256 `code_hash`; `Store::insert_oauth_code` mints, `consume_oauth_code`
+  redeems atomically (`DELETE … WHERE code_hash = ? AND expires_at > ? RETURNING …`),
+  guaranteeing single-use + TTL with no read-then-delete race. `app_oauth.rs` no
+  longer keeps an `AppOAuthRuntime` map, so a code minted on replica A is
+  exchangeable exactly once on replica B.
+- **Reindex job status** — `maidan_reindex_jobs` (upsert keyed by `job_id`) holds
+  the `ReindexJob` record (now in `maidan-types`). `start_reindex_embeddings`
+  upserts `Running`, the worker upserts the terminal state, and
+  `get_reindex_embeddings_job` reads from the store, so an operator polling on any
+  replica sees live status. The job still *runs* on the replica that started it
+  (distributed execution is deferred); only its status is durable/shared.
+
+`two_replica_durable_state_e2e` exercises both across two servers on one database.
+See [Decisions](Decisions.md).
+
 ## What's deliberately not here yet
 
 See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:

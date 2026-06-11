@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [104.0.0] — 2026-06-11
+
+### Added
+
+- Durable ephemeral state: OAuth authorization codes and embedding reindex job status now persist in the store instead of per-replica memory, so both work across replicas and survive restart. `maidan_oauth_codes` + `Store::{insert,consume}_oauth_code` (SHA-256 hash only, single-use + TTL enforced atomically via `DELETE … RETURNING`); `maidan_reindex_jobs` + `Store::{upsert,get}_reindex_job` (`ReindexJob`/`ReindexJobStatus` moved to `maidan-types`). `app_oauth.rs` and `reindex_ops.rs` drop their in-memory maps (`AppOAuthRuntime`, `ReindexJobRegistry`) and the `AppState.app_oauth` / `AppState.reindex_jobs` fields. `two_replica_durable_state_e2e` proves a code minted on one replica exchanges on another and a reindex job started on one is observable on another.
+
+### Fixed
+
+- SQLite `apps::parse_ts` now accepts SQLite's `CURRENT_TIMESTAMP` format (naive `YYYY-MM-DD HH:MM:SS`), not just RFC3339 — a latent bug on every SQLite `get_app`, previously masked by Postgres-only app tests.
+
 ## [103.0.0] — 2026-06-11
 
 ### Added

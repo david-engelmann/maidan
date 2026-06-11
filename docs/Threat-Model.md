@@ -9,6 +9,7 @@ integrator document, not a formal audit.
 |-------|----------|-------------|
 | Workspace data | Postgres / SQLite | Messages, threads, votes, search index |
 | API tokens | DB (`maidan_api_tokens`) | Bearer secrets (hashed at rest) |
+| App OAuth codes | DB (`maidan_oauth_codes`) | SHA-256 hash only, single-use, short TTL — never the plaintext code |
 | Federation peer secrets | DB (encrypted with `FEDERATION_ENCRYPTION_KEY`) | Outbound poll credentials |
 | Artifacts | Local FS or S3 | User/agent uploads |
 | Audit log | DB | Security-relevant actions |

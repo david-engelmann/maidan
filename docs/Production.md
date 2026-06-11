@@ -298,6 +298,8 @@ SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). Val
 
 **Semantic scale:** set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` in Helm prod values; run `maidan reindex-embeddings --database-url $DATABASE_URL` after provider changes.
 
+**Reindex jobs are durable (`v104.0.0`):** `POST /operator/reindex-embeddings` records job status in `maidan_reindex_jobs`, so `GET /operator/reindex-embeddings/:job_id` resolves on any replica and survives restart. The job still *runs* on the replica that started it; if that pod dies mid-run the row stays `Running` — re-issue the (idempotent) reindex. App OAuth codes are likewise durable (`maidan_oauth_codes`): a code minted on one replica is exchangeable exactly once on any replica.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |
