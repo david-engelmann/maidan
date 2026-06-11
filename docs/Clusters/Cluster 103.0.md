@@ -29,14 +29,30 @@ This cluster moves presence/typing onto the cross-pod channel from [[Clusters/Cl
 - Rich status/DND UX (Slack-grade) — out of scope for this ladder ([[Remaining Work]] §4).
 - Exact global ordering of presence transitions — eventually-consistent merged view is sufficient.
 
-## PR ladder (suggested)
+## Design (locked)
+
+- **Dedicated channel, not the resource channel.** Presence carries *state*, not a
+  URI list, so it gets its own `maidan-bus::PresenceNotifier` (NOTIFY
+  `maidan_presence`), a sibling of [[Clusters/Cluster 102.0]]'s `ResourceNotifier`
+  — same in-memory/Postgres shape, different payload.
+- **Typed `PresenceEvent`** on the wire: `{ origin: replica_uuid, workspace_id,
+  member_id, kind: Online | Away | Offline | Typing { thread_id, active } }`.
+  `origin` lets a receiver skip its own members in the merged remote view while
+  still fanning out to local subscribers (single delivery path → no dedup).
+- **Receiver-stamped TTL** (skew-safe): the receiver records `last_seen` with its
+  own clock on each event; no sender timestamp is trusted. Heartbeats refresh it.
+- **Defaults:** heartbeat **10s** (`MAIDAN_PRESENCE_HEARTBEAT_SECS`), TTL **30s**
+  (`MAIDAN_PRESENCE_TTL_SECS`). Explicit `Offline` on disconnect removes promptly;
+  absence of heartbeat past TTL expires the member.
+
+## PR ladder
 
 | # | Title |
 |---|--------|
-| 103.0.1 | `feat(server): publish presence + typing over the cross-pod channel` |
-| 103.0.2 | `feat(server): merged TTL roster view across replicas` |
-| 103.0.3 | `test(server): two_replica_presence_e2e` |
-| 103.0.4 | `docs(presence): multi-replica presence semantics` |
+| 103.0.1 | `feat(bus): cross-process presence channel (PresenceNotifier + PresenceEvent)` |
+| 103.0.2 | `feat(server): distributed PresenceHub (publish + merged TTL view + heartbeat)` |
+| 103.0.3 | `feat(server): wire presence notifier in maidan-server` |
+| 103.0.4 | `test(server): two_replica_presence_e2e` |
 | 103.0.retro | `docs(retro): Cluster 103.0 + v103.0.0 tag prep` |
 
 ## Exit criteria
