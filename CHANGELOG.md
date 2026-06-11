@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [102.0.0] — 2026-06-11
+
+### Added
+
+- Cross-replica MCP resource notifications: `maidan-bus::ResourceNotifier` with a Postgres `LISTEN`/`NOTIFY` channel (`maidan_resource_updated`) so `resources/subscribe` SSE updates (`notifications/resources/updated`) reach subscribers on any server replica. Wired via `AppState::attach_resource_notifier` + `McpServer::spawn_resource_notify_listener`; `two_replica_resource_notification_e2e` proves it.
+
+### Changed
+
+- CI: set `RUSTFLAGS=-C debuginfo=line-tables-only` and trimmed the `unit tests` job to `--lib --bins`, stopping recurring `ld` SIGBUS link failures on the runners (and cutting CI time).
+
 ## [101.0.0] — 2026-06-03
 
 ### Added

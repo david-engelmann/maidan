@@ -224,6 +224,31 @@ replacing `/mcp/stream` or implementing the full transport spec.
 **To revisit:** session-scoped MCP servers per bearer token; broader resource
 fan-out beyond `post_message`.
 
+### Resource notifications ride a dedicated NOTIFY channel (`v102.0.0`)
+
+**Decision.** MCP resource-update notifications fan out across replicas on a
+**dedicated** `maidan-bus::ResourceNotifier` channel (Postgres `LISTEN`/`NOTIFY`
+on `maidan_resource_updated`), carrying the `maidan://` URIs a mutation touched.
+The originating replica publishes the *unfiltered* URI set; every replica's
+listener applies its own local subscription filter and delivers to its SSE
+subscribers. The inline tool-call response (`take_pending_notifications`) stays
+local and synchronous.
+
+**Alternative.** Re-derive resource URIs from the existing domain `Event` stream
+on each replica (the event bus already crosses processes), avoiding a second
+NOTIFY channel.
+
+**Why this:** not every resource fan-out maps 1:1 to a domain `Event`
+(`pin_message`, `cast_vote`, reactions, references), so event-inference would
+miss notifications. Publishing the URIs the existing `uris_for_*` logic already
+produces is exact. A single delivery path (the originator also delivers via its
+listener loop) means no de-duplication. At-most-once delivery matches the bus;
+a dropped notification is reconciled by the client re-reading the resource.
+
+**To revisit:** cross-pod migration of in-flight streamable sessions (currently
+pod-pinned); collapsing the two NOTIFY channels if the URI set ever becomes a
+strict function of events.
+
 ### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
 
 **Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`
