@@ -17,6 +17,7 @@ mod members;
 mod mentions;
 mod message_edits;
 mod messages;
+mod oauth_codes;
 mod oidc;
 pub mod outbox;
 mod peers;
@@ -440,6 +441,14 @@ impl Store for PostgresStore {
         id: AppInstallationId,
     ) -> Result<AppInstallation, StoreError> {
         apps::revoke_installation(&self.pool, id).await
+    }
+
+    async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError> {
+        oauth_codes::insert(&self.pool, new).await
+    }
+
+    async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError> {
+        oauth_codes::consume(&self.pool, code_hash).await
     }
 
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {
