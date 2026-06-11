@@ -9,7 +9,6 @@ use maidan_store::{OutboxBackend, Store};
 use maidan_types::{FsmHookId, PeerId, SlashCommandId, WebhookSubscriptionId};
 use tokio::sync::RwLock as AsyncRwLock;
 
-use crate::app_oauth::AppOAuthRuntime;
 use crate::oidc::OidcRuntime;
 use crate::presence::PresenceHub;
 use crate::reindex_ops::ReindexJobRegistry;
@@ -122,8 +121,6 @@ pub struct AppState {
     pub presence: Arc<PresenceHub>,
     /// Optional Redis backend for global and per-token rate limits (Cluster 54).
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
-    /// In-memory app OAuth authorization codes (Cluster 65).
-    pub app_oauth: Option<AppOAuthRuntime>,
     /// In-process embedding reindex jobs (Cluster 87).
     pub reindex_jobs: Arc<ReindexJobRegistry>,
 }
@@ -172,7 +169,6 @@ impl AppState {
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
-            app_oauth: Some(AppOAuthRuntime::new()),
             reindex_jobs: ReindexJobRegistry::new(),
         }
     }
