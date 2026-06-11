@@ -214,14 +214,13 @@ impl PresenceHub {
         let (rx, snapshot, first_conn) = {
             let mut inner = self.inner.write().expect("presence lock");
             let first_conn = {
-                let room =
-                    inner
-                        .workspaces
-                        .entry(workspace_id)
-                        .or_insert_with(|| WorkspaceRoom {
-                            tx: broadcast::channel(EPHEMERAL_CAPACITY).0,
-                            members: HashMap::new(),
-                        });
+                let room = inner
+                    .workspaces
+                    .entry(workspace_id)
+                    .or_insert_with(|| WorkspaceRoom {
+                        tx: broadcast::channel(EPHEMERAL_CAPACITY).0,
+                        members: HashMap::new(),
+                    });
                 let entry = room.members.entry(member_id).or_insert(MemberState {
                     status: PresenceStatus::Online,
                     connections: 0,
