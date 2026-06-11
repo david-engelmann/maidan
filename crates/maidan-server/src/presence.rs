@@ -210,33 +210,49 @@ impl PresenceHub {
         member_id: MemberId,
     ) -> (broadcast::Receiver<String>, PresenceRegistration, String) {
         let conn_id = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
+        let distributed = self.notifier.is_some();
         let (rx, snapshot, first_conn) = {
             let mut inner = self.inner.write().expect("presence lock");
-            let room = inner
-                .workspaces
-                .entry(workspace_id)
-                .or_insert_with(|| WorkspaceRoom {
-                    tx: broadcast::channel(EPHEMERAL_CAPACITY).0,
-                    members: HashMap::new(),
+            let first_conn = {
+                let room =
+                    inner
+                        .workspaces
+                        .entry(workspace_id)
+                        .or_insert_with(|| WorkspaceRoom {
+                            tx: broadcast::channel(EPHEMERAL_CAPACITY).0,
+                            members: HashMap::new(),
+                        });
+                let entry = room.members.entry(member_id).or_insert(MemberState {
+                    status: PresenceStatus::Online,
+                    connections: 0,
                 });
-            let entry = room.members.entry(member_id).or_insert(MemberState {
-                status: PresenceStatus::Online,
-                connections: 0,
-            });
-            let first_conn = entry.connections == 0;
-            entry.connections += 1;
-            entry.status = PresenceStatus::Online;
-            let rx = room.tx.subscribe();
+                let first_conn = entry.connections == 0;
+                entry.connections += 1;
+                entry.status = PresenceStatus::Online;
+                // Single-process: announce arrival to existing subscribers
+                // *before* this connection's own receiver exists, so a
+                // registrant never receives its own online frame. The
+                // distributed path publishes after the lock (below).
+                if first_conn && !distributed {
+                    let _ = room.tx.send(presence_payload(
+                        workspace_id,
+                        member_id,
+                        PresenceStatus::Online,
+                    ));
+                }
+                first_conn
+            };
+            let rx = inner
+                .workspaces
+                .get(&workspace_id)
+                .expect("room just inserted")
+                .tx
+                .subscribe();
             let snapshot = build_snapshot(workspace_id, &inner, self.ttl, Instant::now());
             (rx, snapshot, first_conn)
         };
-        if first_conn {
-            self.announce(
-                workspace_id,
-                member_id,
-                PresenceStatus::Online.event_kind(),
-                || presence_payload(workspace_id, member_id, PresenceStatus::Online),
-            );
+        if first_conn && distributed {
+            self.publish_to_notifier(workspace_id, member_id, PresenceStatus::Online.event_kind());
         }
         let reg = PresenceRegistration {
             conn_id,
@@ -327,23 +343,36 @@ impl PresenceHub {
         kind: PresenceEventKind,
         local_frame: impl FnOnce() -> String,
     ) {
-        match &self.notifier {
-            Some(notifier) => {
-                let event = PresenceEvent {
-                    origin: self.origin,
-                    workspace_id: workspace_id.0,
-                    member_id: member_id.0,
-                    heartbeat: false,
-                    kind,
-                };
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    let notifier = notifier.clone();
-                    handle.spawn(async move {
-                        let _ = notifier.publish_presence(event).await;
-                    });
-                }
-            }
-            None => self.broadcast_local(workspace_id, local_frame()),
+        if self.notifier.is_some() {
+            self.publish_to_notifier(workspace_id, member_id, kind);
+        } else {
+            self.broadcast_local(workspace_id, local_frame());
+        }
+    }
+
+    /// Publish a (non-heartbeat) change to the cross-replica notifier. No-op
+    /// without a notifier. Fire-and-forget: the async publish runs on the
+    /// current runtime; the listener handles delivery (incl. this replica).
+    fn publish_to_notifier(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        kind: PresenceEventKind,
+    ) {
+        let Some(notifier) = self.notifier.clone() else {
+            return;
+        };
+        let event = PresenceEvent {
+            origin: self.origin,
+            workspace_id: workspace_id.0,
+            member_id: member_id.0,
+            heartbeat: false,
+            kind,
+        };
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = notifier.publish_presence(event).await;
+            });
         }
     }
 
