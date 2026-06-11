@@ -7,7 +7,7 @@ use anyhow::Context;
 use maidan_artifacts::{LocalFsStore, S3Config, S3Store};
 use maidan_bus::{
     EventBus, InMemoryBus, InMemoryResourceNotifier, PostgresBus, PostgresBusOptions,
-    PostgresResourceNotifier, ResourceNotifier,
+    PostgresPresenceNotifier, PostgresResourceNotifier, PresenceNotifier, ResourceNotifier,
 };
 use maidan_search::{
     EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
@@ -42,6 +42,9 @@ async fn main() -> anyhow::Result<()> {
     let store: Arc<dyn Store>;
     let bus: Arc<dyn EventBus>;
     let resource_notifier: Arc<dyn ResourceNotifier>;
+    // Cross-replica presence only applies in Postgres NOTIFY mode; single-process
+    // (SQLite / polled relay) keeps the legacy local-only hub (no heartbeat).
+    let presence_notifier: Option<Arc<dyn PresenceNotifier>>;
     let search: Arc<dyn Search>;
     let use_embedding_indexer: bool;
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
@@ -98,6 +101,15 @@ async fn main() -> anyhow::Result<()> {
                 // is unavailable, so fall back to single-process local delivery.
                 Arc::new(InMemoryResourceNotifier::new())
             };
+            presence_notifier = if notify_on_publish {
+                Some(Arc::new(
+                    PostgresPresenceNotifier::connect(pool.clone())
+                        .await
+                        .context("connect postgres presence notifier")?,
+                ))
+            } else {
+                None
+            };
             search = Arc::new(PostgresSearch::new(pool));
             use_embedding_indexer = true;
         }
@@ -120,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
             store = Arc::new(SqliteStore::new(pool.clone()));
             bus = Arc::new(InMemoryBus::new());
             resource_notifier = Arc::new(InMemoryResourceNotifier::new());
+            presence_notifier = None; // single process: legacy local-only presence
             search = Arc::new(SqliteSearch::new(pool));
             use_embedding_indexer = false;
             bus_listener_health = None;
@@ -251,6 +264,11 @@ async fn main() -> anyhow::Result<()> {
     // Cluster 102: MCP resource-update notifications fan out across replicas.
     state.attach_resource_notifier(resource_notifier);
     state.mcp.spawn_resource_notify_listener();
+    // Cluster 103: presence/typing/roster fan out across replicas (Postgres NOTIFY).
+    if let Some(presence_notifier) = presence_notifier {
+        state.attach_presence_notifier(presence_notifier);
+    }
+    state.presence.spawn_tasks();
     state.indexer_last_error = indexer_last_error;
     state.bus_hydrate_stats = bus_hydrate_stats;
     state.outbox_relay = outbox_relay;
