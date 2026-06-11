@@ -508,6 +508,28 @@ pub struct NewApiToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+/// A one-time OAuth authorization code persisted for cross-replica exchange
+/// (Cluster 104). Only the SHA-256 hash of the code is stored.
+#[derive(Debug, Clone)]
+pub struct NewOAuthCode {
+    pub code_hash: String,
+    pub app_id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A consumed OAuth authorization code's payload (see [`NewOAuthCode`]).
+#[derive(Debug, Clone)]
+pub struct OAuthCode {
+    pub app_id: AppId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TokenQuota {

@@ -242,6 +242,15 @@ pub trait Store: Send + Sync {
         id: AppInstallationId,
     ) -> Result<AppInstallation, StoreError>;
 
+    /// Persist a one-time OAuth authorization code (Cluster 104). The plaintext
+    /// code is never stored — `code_hash` is its SHA-256 digest.
+    async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError>;
+
+    /// Atomically consume (delete) a non-expired authorization code by hash.
+    /// Returns `None` if the code is unknown, already consumed, or expired —
+    /// guaranteeing single use across replicas.
+    async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
+
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;

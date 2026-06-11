@@ -11,9 +11,17 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 fn parse_ts(s: &str) -> Result<DateTime<Utc>, StoreError> {
-    DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .map_err(|e| StoreError::InvalidInput(format!("bad timestamp: {e}")))
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // `maidan_apps.created_at` defaults to SQLite `CURRENT_TIMESTAMP`, which
+    // emits a naive `YYYY-MM-DD HH:MM:SS` string (no zone) — accept it as UTC.
+    for fmt in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
+            return Ok(DateTime::from_naive_utc_and_offset(naive, Utc));
+        }
+    }
+    Err(StoreError::InvalidInput(format!("bad timestamp: {s}")))
 }
 
 pub async fn create_app(pool: &SqlitePool, new: NewApp) -> Result<App, StoreError> {
