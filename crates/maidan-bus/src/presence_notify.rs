@@ -52,6 +52,11 @@ pub struct PresenceEvent {
     pub origin: Uuid,
     pub workspace_id: Uuid,
     pub member_id: Uuid,
+    /// A periodic re-announcement (not a state change): receivers refresh the
+    /// member's TTL but suppress live fan-out unless the status actually
+    /// changed. `false` for genuine register/status/typing transitions.
+    #[serde(default)]
+    pub heartbeat: bool,
     #[serde(flatten)]
     pub kind: PresenceEventKind,
 }
@@ -180,6 +185,7 @@ mod tests {
             origin: Uuid::new_v4(),
             workspace_id: Uuid::new_v4(),
             member_id: Uuid::new_v4(),
+            heartbeat: false,
             kind,
         }
     }
