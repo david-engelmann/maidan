@@ -849,3 +849,34 @@ pub struct NewAutomationDelivery {
     pub header_value: String,
     pub payload: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ReindexJobStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+/// An embedding reindex job, persisted so its status is visible on any replica
+/// and survives restart (Cluster 104). `job_id`/`workspace_id` are raw UUIDs to
+/// match the operator HTTP shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReindexJob {
+    pub job_id: uuid::Uuid,
+    pub status: ReindexJobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<uuid::Uuid>,
+    pub embedding_model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub started_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<DateTime<Utc>>,
+}

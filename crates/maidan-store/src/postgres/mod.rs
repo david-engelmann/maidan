@@ -25,6 +25,7 @@ mod pins;
 mod purge_workspace;
 mod reactions;
 mod refs;
+mod reindex_jobs;
 mod sessions;
 mod slash_commands;
 mod thread_transitions;
@@ -449,6 +450,14 @@ impl Store for PostgresStore {
 
     async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError> {
         oauth_codes::consume(&self.pool, code_hash).await
+    }
+
+    async fn upsert_reindex_job(&self, job: ReindexJob) -> Result<(), StoreError> {
+        reindex_jobs::upsert(&self.pool, job).await
+    }
+
+    async fn get_reindex_job(&self, job_id: uuid::Uuid) -> Result<Option<ReindexJob>, StoreError> {
+        reindex_jobs::get(&self.pool, job_id).await
     }
 
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {

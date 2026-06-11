@@ -253,7 +253,7 @@ pub fn replay_unified_delivery() {}
     request_body = crate::reindex_ops::StartReindexEmbeddings,
     security(("bearerAuth" = [])),
     responses(
-        (status = 202, description = "Reindex job accepted", body = crate::reindex_ops::ReindexJob),
+        (status = 202, description = "Reindex job accepted", body = maidan_types::ReindexJob),
     )
 )]
 pub fn start_reindex_embeddings() {}
@@ -265,7 +265,7 @@ pub fn start_reindex_embeddings() {}
     params(("job_id" = Uuid, Path, description = "Reindex job id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Job status", body = crate::reindex_ops::ReindexJob),
+        (status = 200, description = "Job status", body = maidan_types::ReindexJob),
         (status = 404, description = "Unknown job"),
     )
 )]
