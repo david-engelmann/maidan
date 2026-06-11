@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v102.0.0 — Cross-replica MCP resource notifications
+
+| Capability | Where |
+|------------|-------|
+| Cross-process resource-update fan-out | `maidan-bus::ResourceNotifier`, `PostgresResourceNotifier` (`maidan_resource_updated`) |
+| Per-replica notification delivery | `McpServer::spawn_resource_notify_listener`, `AppState::attach_resource_notifier` |
+
 ## v101.0.0 — Operator product gate
 
 | Capability | Where |

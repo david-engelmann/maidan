@@ -414,6 +414,40 @@ column) was replaced by a registry plus one vector table per embedding model
 hits still carry `embedding_model`. See [Decisions](Decisions.md) and
 [Query-Tuning](Query-Tuning.md).
 
+## Cross-replica resource notifications at v102.0.0
+
+MCP `resources/subscribe` notifications (`notifications/resources/updated`) now
+fan out across server replicas. The `maidan://` URIs touched by a mutation are
+published — *unfiltered* — on a dedicated Postgres `LISTEN`/`NOTIFY` channel
+(`maidan_resource_updated`) via `maidan-bus::ResourceNotifier`. Each replica's
+listener (`McpServer::spawn_resource_notify_listener`) applies its **own** local
+subscription filter and delivers to its SSE subscribers (`/mcp/notifications`,
+streamable). There is a single delivery path — the originating replica also
+delivers via its listener loop — so no de-duplication is needed.
+
+```mermaid
+sequenceDiagram
+    participant Cli as Client (subscribed on Replica A)
+    participant A as Replica A
+    participant PG as Postgres NOTIFY
+    participant B as Replica B
+
+    Cli->>A: resources/subscribe maidan://threads/T
+    Note over B: mutation touches thread T
+    B->>PG: NOTIFY maidan_resource_updated [uris]
+    PG-->>A: LISTEN delivers [uris]
+    PG-->>B: LISTEN delivers [uris]
+    A->>A: filter by local subscriptions (T matches)
+    A-->>Cli: notifications/resources/updated {uri: T}
+    Note over B: no local subscriber for T → no-op
+```
+
+The inline tool-call response path (`take_pending_notifications`) stays local and
+synchronous. In-flight streamable sessions remain pod-pinned; only notifications
+cross replicas. SQLite and the polled-relay mode use the in-memory notifier
+(single process). Wired in `maidan-server` via `AppState::attach_resource_notifier`.
+See [Decisions](Decisions.md).
+
 ## What's deliberately not here yet
 
 See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:
