@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ChannelId, NewThread, Thread, ThreadId, ThreadState};
+use maidan_types::{ChannelId, NewThread, Thread, ThreadId, ThreadState, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -43,6 +43,24 @@ pub async fn list(pool: &SqlitePool, channel_id: ChannelId) -> Result<Vec<Thread
          FROM maidan_threads WHERE channel_id = ? ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
+pub async fn list_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ?
+         ORDER BY t.created_at DESC",
+    )
+    .bind(workspace_id.0)
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_thread).collect()

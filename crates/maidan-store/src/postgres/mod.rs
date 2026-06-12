@@ -203,6 +203,12 @@ impl Store for PostgresStore {
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
         threads::list(&self.pool, channel_id).await
     }
+    async fn list_threads_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::list_for_workspace(&self.pool, workspace_id).await
+    }
 
     async fn transition_thread(
         &self,
@@ -238,6 +244,13 @@ impl Store for PostgresStore {
         limit: i64,
     ) -> Result<Vec<MessageEdit>, StoreError> {
         message_edits::list(&self.pool, message_id, limit).await
+    }
+    async fn list_message_edits_for_messages(
+        &self,
+        message_ids: &[MessageId],
+        limit_per: i64,
+    ) -> Result<Vec<MessageEdit>, StoreError> {
+        message_edits::list_for_messages(&self.pool, message_ids, limit_per).await
     }
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
         messages::get(&self.pool, id).await
@@ -364,6 +377,13 @@ impl Store for PostgresStore {
         src_id: uuid::Uuid,
     ) -> Result<Vec<Reference>, StoreError> {
         refs::list_from(&self.pool, src_kind, src_id).await
+    }
+    async fn list_references_from_many(
+        &self,
+        src_kind: RefSide,
+        src_ids: &[uuid::Uuid],
+    ) -> Result<Vec<Reference>, StoreError> {
+        refs::list_from_many(&self.pool, src_kind, src_ids).await
     }
 
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError> {

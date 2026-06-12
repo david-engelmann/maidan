@@ -45,6 +45,35 @@ pub async fn list(
     Ok(rows.iter().map(row_to_edit).collect())
 }
 
+pub async fn list_for_messages(
+    pool: &PgPool,
+    message_ids: &[MessageId],
+    limit_per: i64,
+) -> Result<Vec<MessageEdit>, StoreError> {
+    if message_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<uuid::Uuid> = message_ids.iter().map(|m| m.0).collect();
+    let rows = sqlx::query(
+        "SELECT id, message_id, editor_id, body_before, body_after, edited_at
+         FROM (
+             SELECT id, message_id, editor_id, body_before, body_after, edited_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY message_id ORDER BY edited_at ASC, id ASC
+                    ) AS rn
+             FROM maidan_message_edits
+             WHERE message_id = ANY($1)
+         ) windowed
+         WHERE rn <= $2
+         ORDER BY message_id, edited_at ASC, id ASC",
+    )
+    .bind(&ids)
+    .bind(limit_per)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_edit).collect())
+}
+
 fn row_to_edit(row: &sqlx::postgres::PgRow) -> MessageEdit {
     MessageEdit {
         id: row.get("id"),

@@ -92,6 +92,14 @@ pub trait Store: Send + Sync {
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
+    /// All threads across a workspace's channels, in one query (Cluster 106).
+    /// Avoids the per-channel `list_threads` N+1 when assembling workspace
+    /// context. Ordered by `created_at DESC`.
+    async fn list_threads_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<Thread>, StoreError>;
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,
@@ -116,6 +124,16 @@ pub trait Store: Send + Sync {
         &self,
         message_id: MessageId,
         limit: i64,
+    ) -> Result<Vec<MessageEdit>, StoreError>;
+
+    /// Edits for many messages in one windowed query (Cluster 106), at most
+    /// `limit_per` per message (newest-last, like `list_message_edits`). Avoids
+    /// the per-message edit N+1 in thread-context assembly. Returns a flat list
+    /// the caller groups by `message_id`.
+    async fn list_message_edits_for_messages(
+        &self,
+        message_ids: &[MessageId],
+        limit_per: i64,
     ) -> Result<Vec<MessageEdit>, StoreError>;
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError>;
     async fn list_messages(
@@ -200,6 +218,15 @@ pub trait Store: Send + Sync {
         &self,
         src_kind: RefSide,
         src_id: uuid::Uuid,
+    ) -> Result<Vec<Reference>, StoreError>;
+
+    /// References from many sources of one kind in a single query (Cluster 106).
+    /// Avoids the per-message `list_references_from` N+1. Returns a flat list the
+    /// caller groups by `src_id`; ordered by `src_id` then `created_at ASC`.
+    async fn list_references_from_many(
+        &self,
+        src_kind: RefSide,
+        src_ids: &[uuid::Uuid],
     ) -> Result<Vec<Reference>, StoreError>;
 
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
