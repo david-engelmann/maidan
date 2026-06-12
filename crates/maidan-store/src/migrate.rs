@@ -74,12 +74,42 @@ const SQLITE_UP_V27: &str =
 const SQLITE_UP_V28: &str = include_str!("../../../migrations/sqlite/0028_oauth_codes.sql");
 const SQLITE_UP_V29: &str = include_str!("../../../migrations/sqlite/0029_reindex_jobs.sql");
 
+/// Session advisory-lock key guarding boot-time migrations. Any constant works
+/// as long as it is stable across replicas; this is the ASCII for `"migr"`,
+/// chosen to be readable and unlikely to collide with application locks.
+const MIGRATION_LOCK_KEY: i64 = 0x6D69_6772_i64;
+
 /// Apply all Postgres migrations to the pool, in order, idempotently.
 ///
 /// Tracks applied migrations in a `maidan_migrations` table. Calling
 /// this repeatedly is safe; a migration only runs the first time it is
 /// seen.
+///
+/// Boot-time migration is serialized across replicas by a Postgres session
+/// advisory lock: when several replicas start against a fresh database they
+/// would otherwise race on non-transactional DDL (e.g. concurrent
+/// `CREATE EXTENSION`, which fails with a `pg_extension` unique violation). The
+/// first replica holds the lock and migrates; the rest block, then observe the
+/// migrations already applied and no-op.
 pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
+    let mut lock_conn = pool.acquire().await?;
+    sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(MIGRATION_LOCK_KEY)
+        .execute(&mut *lock_conn)
+        .await?;
+
+    let result = apply_all_postgres(pool).await;
+
+    // Release explicitly; dropping the connection would also release it, but an
+    // explicit unlock returns the slot to the pool promptly.
+    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(MIGRATION_LOCK_KEY)
+        .execute(&mut *lock_conn)
+        .await;
+    result
+}
+
+async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS maidan_migrations (
             version BIGINT PRIMARY KEY,
