@@ -298,6 +298,30 @@ store for the read, and sticky sessions don't survive a pod restart. Atomic
 `Running`) — deferred to the Phase XXII work-scheduling cluster; a periodic
 purge of expired/idle rows if volume grows.
 
+### Serialize boot migrations with an advisory lock (`v105.0.0`)
+
+**Decision.** `run_postgres_migrations` holds a Postgres **session advisory
+lock** (`pg_advisory_lock`) while applying. When several replicas boot against a
+fresh or upgrading database they would otherwise run non-transactional DDL
+concurrently — notably `CREATE EXTENSION`, which fails with a `pg_extension`
+unique violation even with `IF NOT EXISTS` (the existence check is not atomic
+against a concurrent create). The first replica migrates; the rest block, then
+observe the migrations applied and no-op.
+
+**Alternative.** A dedicated migration `Job`/init-container that runs before
+replicas start (Helm pre-install hook); or `pg_advisory_xact_lock` with all
+migrations in one transaction.
+
+**Why this:** keeps the simple "migrate on boot" operational model (no extra
+deploy step) while making it correct under N replicas. The distroless runtime
+image has no shell, so gating replica start order on an HTTP healthcheck via
+`depends_on` wasn't available; the advisory lock needs nothing but the database.
+One giant transaction would change the per-migration commit semantics and breaks
+on any future non-transactional step (e.g. `CREATE INDEX CONCURRENTLY`).
+
+**To revisit:** a pre-deploy migration Job if/when migrations grow long enough
+that holding the lock during a rollout meaningfully delays replica readiness.
+
 ### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
 
 **Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`

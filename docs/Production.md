@@ -386,6 +386,40 @@ helm install maidan ./helm/maidan -f ./helm/maidan/values-cert-manager.yaml -n m
 
 Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix). For the umbrella chart, substitute `RELEASE-postgresql` / `RELEASE-minio` hostnames in `maidan-stack/values-prod.yaml` with your Helm release name.
 
+## Horizontal scaling (`v105.0.0`)
+
+Maidan runs as **N stateless replicas behind a load balancer** with **no session
+affinity** — a request may land on any replica. The `scale` compose profile
+(`docker compose --profile scale up`) and the `scale-out smoke` CI job exercise
+this with two replicas + an nginx round-robin LB; `scripts/scale-out-smoke.sh`
+drives the cross-replica REST paths.
+
+**Shared across replicas (one of each):**
+
+| Resource | Why it must be shared |
+|----------|----------------------|
+| Postgres (`DATABASE_URL`) | System of record + the `LISTEN`/`NOTIFY` fabric for cross-replica events, presence, and resource notifications. Durable ephemeral state (OAuth codes, reindex job status — `v104.0.0`) lives here too. |
+| Object store (`ARTIFACT_BACKEND=s3`) | Artifacts written on one replica must be readable on another. Do **not** use `localfs` with multiple replicas. |
+| `MAIDAN_SESSION_SECRET` | Must be **identical** on every replica so subscribe-resume tokens (and session signing) validate regardless of which replica issued them. |
+
+**Still pod-local (do not assume cross-replica):**
+
+- In-flight **MCP streamable sessions** and open WebSocket/SSE subscriptions live on the replica that holds the connection; a reconnect may land elsewhere and resumes from the durable cursor, not in-memory buffer.
+- A **running reindex job** executes on the replica that started it; only its *status* is durable and queryable from any replica. If that replica dies mid-run the row stays `Running` — re-issue the (idempotent) reindex.
+
+**Rolling updates / boot:** every replica runs migrations on boot, serialized by
+a Postgres advisory lock (`v105.0.0`) so concurrent starts against a fresh or
+upgrading database don't race on DDL. Because pre-`v1.0.0` migrations are not
+guaranteed backward-compatible with the previous binary, prefer
+`maxUnavailable: 0` (surge) rolling updates, or run migrations as a pre-deploy
+step; from `v1.0.0` the API is stable but treat schema changes as
+expand-then-contract. `/health/ready` gates traffic on DB + object store +
+indexer + the `LISTEN` bus, so an LB honoring readiness won't route to a replica
+mid-migration.
+
+**Not covered:** load/throughput benchmarking (bench harness, Cluster 109),
+autoscaling/HPA tuning, multi-region active-active (out of scope).
+
 ## API stability
 
 From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases
