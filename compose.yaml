@@ -9,6 +9,7 @@ name: maidan
 #   docker compose up                    # postgres only
 #   docker compose --profile full up     # + maidan-server
 #   docker compose --profile federation up  # postgres + maidan-a + maidan-b
+#   docker compose --profile scale up    # postgres + minio + 2 replicas + LB
 #
 # For hot-reload dev, see `compose.dev.yaml`.
 
@@ -155,9 +156,124 @@ services:
     profiles:
       - federation
 
+  # --- scale-out smoke (Cluster 105): two replicas behind a round-robin LB ---
+  # Both share one Postgres (NOTIFY fabric + durable state) and one object store
+  # (S3/MinIO), so any request can land on either replica. Identical
+  # MAIDAN_SESSION_SECRET so subscribe-resume tokens validate cross-replica.
+  #
+  # Its own MinIO with NO published host ports — replicas reach it over the
+  # compose network, so the harness never collides with host ports (locally or
+  # in CI) and is fully isolated from the `full` profile's minio.
+  minio-scale:
+    image: minio/minio:latest
+    container_name: maidan-minio-scale
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: maidan
+      MINIO_ROOT_PASSWORD: maidanmaidan
+    volumes:
+      - minio_scale_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - scale
+
+  minio-scale-init:
+    image: minio/mc:latest
+    container_name: maidan-minio-scale-init
+    depends_on:
+      minio-scale:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio-scale:9000 maidan maidanmaidan &&
+      mc mb --ignore-existing local/maidan
+      "
+    profiles:
+      - scale
+
+  maidan-r1:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    image: maidan-server:dev
+    container_name: maidan-r1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-scale:
+        condition: service_healthy
+      minio-scale-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: s3
+      S3_ENDPOINT: http://minio-scale:9000
+      S3_BUCKET: maidan
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: maidan
+      S3_SECRET_ACCESS_KEY: maidanmaidan
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
+      AUTH_DISABLED: "1"
+      INDEXER_STALE_SECS: "300"
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    restart: on-failure:5
+    profiles:
+      - scale
+
+  maidan-r2:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    image: maidan-server:dev
+    container_name: maidan-r2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-scale:
+        condition: service_healthy
+      minio-scale-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: s3
+      S3_ENDPOINT: http://minio-scale:9000
+      S3_BUCKET: maidan
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: maidan
+      S3_SECRET_ACCESS_KEY: maidanmaidan
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
+      AUTH_DISABLED: "1"
+      INDEXER_STALE_SECS: "300"
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    restart: on-failure:5
+    profiles:
+      - scale
+
+  lb:
+    image: nginx:1.27-alpine
+    container_name: maidan-lb
+    depends_on:
+      - maidan-r1
+      - maidan-r2
+    # Host port is overridable (MAIDAN_SCALE_LB_PORT) so the harness survives a
+    # local collision; CI uses the 8090 default.
+    ports:
+      - "${MAIDAN_SCALE_LB_PORT:-8090}:8080"
+    volumes:
+      - ./docker/nginx-scale.conf:/etc/nginx/nginx.conf:ro
+    profiles:
+      - scale
+
 volumes:
   postgres_data:
   minio_data:
+  minio_scale_data:
   maidan_data:
   maidan_a_data:
   maidan_b_data:
