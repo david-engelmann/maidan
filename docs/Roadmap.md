@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Clusters **102**, **103**, and **104** are **closed** (`v102.0.0`, `v103.0.0`, `v104.0.0`); Phase **XIX** finishes with **105** (multi-replica scale-out smoke). Phase **XX** (106–110) kickoff docs are drafted; Phases **XXI–XXIII** (111–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105) is closed** (`v102.0.0`–`v105.0.0`). Phase **XX** (106–110, hardening) is next; its kickoff docs are drafted. Phases **XXI–XXIII** (111–120) are mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **105.0** — multi-replica scale-out smoke at **`v105.0.0`**, closing Phase XIX
+([[Retros/Cluster 105.0]]).
 
 **Recently closed:** Cluster **104.0** — durable ephemeral state (OAuth codes + reindex jobs) at **`v104.0.0`**
 ([[Retros/Cluster 104.0]]).

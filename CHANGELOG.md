@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [105.0.0] — 2026-06-12
+
+### Added
+
+- Multi-replica scale-out smoke: a `scale` compose profile (two `maidan-server` replicas on one Postgres + a shared object store behind an nginx round-robin LB), `scripts/scale-out-smoke.sh` exercising REST cross-replica paths, and a non-required CI `scale-out smoke` job. `docs/Production.md` documents the supported horizontal-scaling topology (shared vs pod-local state, rolling-update/boot story).
+
+### Fixed
+
+- Boot migrations are serialized across replicas with a Postgres session advisory lock in `run_postgres_migrations`. Concurrent replica starts against a fresh database previously raced on non-transactional DDL (`CREATE EXTENSION` → `pg_extension` unique violation), crashing a replica on startup. `concurrent_migrations` test covers it.
+
 ## [104.0.0] — 2026-06-11
 
 ### Added

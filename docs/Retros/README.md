@@ -113,3 +113,4 @@ PR review credit; external contributors.
 - [[Cluster 102.0]] — Cross-replica MCP resource notifications. Closed at **`v102.0.0`** (first of Product Ladder 102+).
 - [[Cluster 103.0]] — Distributed presence & roster. Closed at **`v103.0.0`**.
 - [[Cluster 104.0]] — Durable ephemeral state (OAuth codes + reindex jobs). Closed at **`v104.0.0`**.
+- [[Cluster 105.0]] — Multi-replica scale-out smoke. Closed at **`v105.0.0`** (closes Phase XIX).

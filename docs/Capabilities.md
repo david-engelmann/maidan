@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v105.0.0 — Multi-replica scale-out smoke
+
+| Capability | Where |
+|------------|-------|
+| Race-free boot migrations under N replicas | `run_postgres_migrations` advisory lock, `concurrent_migrations` test |
+| Tested two-replica topology (shared PG + object store + LB) | `compose.yaml` `scale` profile, `scripts/scale-out-smoke.sh`, CI `scale-out smoke` |
+
 ## v104.0.0 — Durable ephemeral state
 
 | Capability | Where |
