@@ -1,6 +1,6 @@
 //! Assemble agent-ready thread context for prompt packing.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use maidan_store::Store;
 use maidan_types::*;
@@ -83,15 +83,16 @@ pub async fn build_thread_context(
         .list_thread_transitions(thread_id, limits.transition_limit)
         .await?;
 
+    // One reference read for the thread + one batched read across all messages,
+    // replacing the per-message N+1. Ordering (created_at) is unchanged.
+    let message_src_ids: Vec<uuid::Uuid> = messages.iter().map(|m| m.id.0).collect();
     let mut references = store
         .list_references_from(RefSide::Thread, thread_id.0)
         .await?;
-    for message in &messages {
-        let mut from_message = store
-            .list_references_from(RefSide::Message, message.id.0)
-            .await?;
-        references.append(&mut from_message);
-    }
+    let mut from_messages = store
+        .list_references_from_many(RefSide::Message, &message_src_ids)
+        .await?;
+    references.append(&mut from_messages);
     references.sort_by_key(|r| r.created_at);
     references.dedup_by_key(|r| r.id);
 
@@ -112,11 +113,27 @@ pub async fn build_thread_context(
     }
     artifacts.sort_by_key(|a| a.created_at);
 
-    let mut message_edits = Vec::new();
-    for message in &messages {
-        let mut edits = store.list_message_edits(message.id, 20).await?;
-        message_edits.append(&mut edits);
-    }
+    // Batched edit read (≤20 per message), then re-grouped into the original
+    // per-message order so the response ordering contract is unchanged.
+    let message_ids: Vec<MessageId> = messages.iter().map(|m| m.id).collect();
+    let message_pos: HashMap<MessageId, usize> = message_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i))
+        .collect();
+    let mut message_edits = store
+        .list_message_edits_for_messages(&message_ids, 20)
+        .await?;
+    message_edits.sort_by_key(|e| {
+        (
+            message_pos
+                .get(&e.message_id)
+                .copied()
+                .unwrap_or(usize::MAX),
+            e.edited_at,
+            e.id,
+        )
+    });
 
     Ok(ThreadContext {
         workspace_id,
@@ -144,16 +161,13 @@ pub async fn build_workspace_context(
     let workspace = store.get_workspace(workspace_id).await?;
     let channels = store.list_channels(workspace_id).await?;
     let page_limit = thread_limit.clamp(1, 50);
-    let mut ordered_threads = Vec::new();
-    for channel in &channels {
-        let channel_threads = store.list_threads(channel.id).await?;
-        for thread in channel_threads {
-            if thread.tombstoned_at.is_some() {
-                continue;
-            }
-            ordered_threads.push(thread);
-        }
-    }
+    // All workspace threads in one read, replacing the per-channel N+1.
+    let mut ordered_threads: Vec<Thread> = store
+        .list_threads_for_workspace(workspace_id)
+        .await?
+        .into_iter()
+        .filter(|t| t.tombstoned_at.is_none())
+        .collect();
     ordered_threads.sort_by(|a, b| {
         a.created_at
             .cmp(&b.created_at)
