@@ -47,6 +47,27 @@ pub async fn list_from(
     rows.iter().map(row_to_reference).collect()
 }
 
+pub async fn list_from_many(
+    pool: &PgPool,
+    src_kind: RefSide,
+    src_ids: &[Uuid],
+) -> Result<Vec<Reference>, StoreError> {
+    if src_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
+         FROM maidan_references
+         WHERE src_kind = $1 AND src_id = ANY($2)
+         ORDER BY src_id, created_at ASC",
+    )
+    .bind(src_kind.as_str())
+    .bind(src_ids)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_reference).collect()
+}
+
 fn parse_side(s: &str) -> Result<RefSide, StoreError> {
     match s {
         "thread" => Ok(RefSide::Thread),

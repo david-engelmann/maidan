@@ -49,6 +49,36 @@ pub async fn list_from(
     rows.iter().map(row_to_reference).collect()
 }
 
+/// SQLite has no array binding, so expand `IN (?, …)` and chunk the id set well
+/// under the variable limit (one slot is reserved for `src_kind`).
+const SQLITE_IN_CHUNK: usize = 400;
+
+pub async fn list_from_many(
+    pool: &SqlitePool,
+    src_kind: RefSide,
+    src_ids: &[Uuid],
+) -> Result<Vec<Reference>, StoreError> {
+    let mut out = Vec::new();
+    for chunk in src_ids.chunks(SQLITE_IN_CHUNK) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let sql = format!(
+            "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
+             FROM maidan_references
+             WHERE src_kind = ? AND src_id IN ({placeholders})
+             ORDER BY src_id, created_at ASC"
+        );
+        let mut q = sqlx::query(&sql).bind(src_kind.as_str());
+        for id in chunk {
+            q = q.bind(*id);
+        }
+        let rows = q.fetch_all(pool).await?;
+        for row in &rows {
+            out.push(row_to_reference(row)?);
+        }
+    }
+    Ok(out)
+}
+
 fn parse_side(s: &str) -> Result<RefSide, StoreError> {
     match s {
         "thread" => Ok(RefSide::Thread),
