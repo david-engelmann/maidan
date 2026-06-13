@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105) is closed** (`v102.0.0`–`v105.0.0`). Phase **XX (hot-path hardening, 106–110)** is underway: Clusters **106** (bulk context reads) and **107** (configurable DB pool & timeouts) are **closed** (`v106.0.0`, `v107.0.0`); next is **108** (adaptive outbox relay). Phases **XXI–XXIII** (111–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105) is closed** (`v102.0.0`–`v105.0.0`). Phase **XX (hot-path hardening, 106–110)** is underway: Clusters **106** (bulk context reads), **107** (configurable DB pool & timeouts), and **108** (adaptive outbox relay) are **closed** (`v106.0.0`–`v108.0.0`); next is **109** (ANN index tuning + bench). Phases **XXI–XXIII** (111–120) are mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **108.0** — adaptive outbox relay (drain-until-empty + idle backoff + enqueue nudge) at **`v108.0.0`**
+([[Retros/Cluster 108.0]]).
 
 **Recently closed:** Cluster **107.0** — configurable DB pool & timeouts at **`v107.0.0`**
 ([[Retros/Cluster 107.0]]).
