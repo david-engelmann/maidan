@@ -47,6 +47,9 @@ pub struct OutboxRelay {
     max_attempts: u32,
     poll_interval: Duration,
     max_poll_interval: Duration,
+    /// Optional wake signal: a freshly enqueued outbox row pings this so an idle
+    /// relay drains it without waiting out the backoff (Cluster 108.0.2).
+    nudge: Option<tokio::sync::mpsc::Receiver<()>>,
 }
 
 impl OutboxRelay {
@@ -75,29 +78,44 @@ impl OutboxRelay {
             poll_interval,
             // Idle cap is never below the base interval.
             max_poll_interval: max_poll_interval_from_env().max(poll_interval),
+            nudge: None,
         }
+    }
+
+    /// Attach an enqueue-nudge receiver (Cluster 108.0.2). The matching
+    /// [`tokio::sync::mpsc::Sender`] lives in `AppState`; `publish` pings it
+    /// after enqueuing a row so an idle relay wakes immediately.
+    pub fn with_nudge(mut self, rx: tokio::sync::mpsc::Receiver<()>) -> Self {
+        self.nudge = Some(rx);
+        self
     }
 
     /// Adaptive cadence (Cluster 108): drain back-to-back while a tick fully
     /// relays a batch (more rows likely pending), then sleep when caught up —
     /// growing the idle sleep up to the cap and resetting it on any activity.
     /// Delivery semantics, metrics, and quarantine behavior are unchanged.
-    pub async fn run(self) {
+    pub async fn run(mut self) {
         let base = self.poll_interval;
         let cap = self.max_poll_interval;
         let mut idle = base;
         loop {
-            match self.run_once().await {
+            let tick = self.run_once().await;
+            match tick {
                 // Full batch, all published → backlog likely continues; drain
                 // immediately with no inter-batch sleep, and reset the cadence.
                 Ok(tick) if tick.relayed as i64 == BATCH => {
                     idle = base;
                     continue;
                 }
-                // Nothing pending → caught up; sleep and grow the idle interval.
+                // Nothing pending → caught up; sleep until the idle interval
+                // elapses *or* an enqueue nudge arrives. A nudge resets the
+                // cadence to base; a timeout grows it toward the cap.
                 Ok(tick) if tick.fetched == 0 => {
-                    tokio::time::sleep(idle).await;
-                    idle = backoff_step(idle, base, cap);
+                    if wait_idle_or_nudge(idle, &mut self.nudge).await {
+                        idle = base;
+                    } else {
+                        idle = backoff_step(idle, base, cap);
+                    }
                 }
                 // Partial progress (some rows failed, or < BATCH pending) →
                 // sleep at the base interval and reset.
@@ -203,6 +221,28 @@ fn backoff_step(current: Duration, base: Duration, cap: Duration) -> Duration {
     current.checked_mul(2).unwrap_or(cap).clamp(base, cap)
 }
 
+/// Sleep up to `dur`, returning `true` early if an enqueue nudge arrives.
+/// `mpsc::recv` is cancel-safe, so losing the race to the timer is fine. If the
+/// channel has closed (sender dropped), the receiver is taken so a dead channel
+/// can't spin the loop (a closed `recv()` resolves instantly forever).
+async fn wait_idle_or_nudge(
+    dur: Duration,
+    nudge: &mut Option<tokio::sync::mpsc::Receiver<()>>,
+) -> bool {
+    let Some(rx) = nudge.as_mut() else {
+        tokio::time::sleep(dur).await;
+        return false;
+    };
+    let woke = tokio::select! {
+        _ = tokio::time::sleep(dur) => false,
+        msg = rx.recv() => msg.is_some(),
+    };
+    if !woke && rx.is_closed() {
+        *nudge = None;
+    }
+    woke
+}
+
 /// When false, HTTP handlers publish directly to the bus (dev/test only).
 pub fn relay_enabled_from_env() -> bool {
     !matches!(
@@ -262,6 +302,41 @@ mod config_tests {
         }
         // Resetting to base (the loop's action on activity) then steps again.
         assert_eq!(backoff_step(base, base, cap), Duration::from_millis(100));
+    }
+
+    #[tokio::test]
+    async fn nudge_wakes_before_idle_elapses() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<()>(1);
+        let mut nudge = Some(rx);
+        tx.try_send(()).unwrap();
+        // A 10 s idle would block; the queued nudge returns immediately as true.
+        let woke = tokio::time::timeout(
+            Duration::from_secs(1),
+            wait_idle_or_nudge(Duration::from_secs(10), &mut nudge),
+        )
+        .await
+        .expect("nudge should wake well within the timeout");
+        assert!(woke);
+    }
+
+    #[tokio::test]
+    async fn idle_timeout_without_nudge_returns_false() {
+        let (_tx, rx) = tokio::sync::mpsc::channel::<()>(1);
+        let mut nudge = Some(rx);
+        assert!(!wait_idle_or_nudge(Duration::from_millis(5), &mut nudge).await);
+        // Sender still alive → receiver retained for the next wait.
+        assert!(nudge.is_some());
+    }
+
+    #[tokio::test]
+    async fn closed_nudge_channel_is_dropped() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<()>(1);
+        let mut nudge = Some(rx);
+        drop(tx);
+        // recv resolves instantly (closed); must not be counted as a wake, and
+        // the dead receiver is dropped so it can't spin the loop.
+        assert!(!wait_idle_or_nudge(Duration::from_secs(10), &mut nudge).await);
+        assert!(nudge.is_none());
     }
 }
 
