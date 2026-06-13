@@ -62,8 +62,26 @@ async fn main() -> anyhow::Result<()> {
 
     match dialect {
         Dialect::Postgres => {
-            let pool = PgPoolOptions::new()
-                .max_connections(16)
+            let mut pg_opts = PgPoolOptions::new()
+                .max_connections(config.db.max_connections.unwrap_or(16))
+                .acquire_timeout(std::time::Duration::from_secs(
+                    config.db.acquire_timeout_secs,
+                ));
+            let statement_timeout_ms = config.db.statement_timeout_ms;
+            if statement_timeout_ms > 0 {
+                // Cap every pooled connection's queries. Boot migrations exempt
+                // their own connection (they reset statement_timeout under the
+                // advisory lock); large reindexes should use the CLI's own pool.
+                pg_opts = pg_opts.after_connect(move |conn, _meta| {
+                    Box::pin(async move {
+                        sqlx::query(&format!("SET statement_timeout = {statement_timeout_ms}"))
+                            .execute(conn)
+                            .await?;
+                        Ok(())
+                    })
+                });
+            }
+            let pool = pg_opts
                 .connect(&config.database_url)
                 .await
                 .context("connect to postgres")?;
@@ -115,11 +133,14 @@ async fn main() -> anyhow::Result<()> {
         }
         Dialect::Sqlite => {
             let pool = maidan_search::sqlite_pool_options()
-                .max_connections(8)
+                .max_connections(config.db.max_connections.unwrap_or(8))
+                .acquire_timeout(std::time::Duration::from_secs(
+                    config.db.acquire_timeout_secs,
+                ))
                 .connect(&config.database_url)
                 .await
                 .context("connect to sqlite")?;
-            maidan_store::configure_sqlite_pool(&pool)
+            maidan_store::configure_sqlite_pool_with(&pool, config.db.busy_timeout_ms)
                 .await
                 .context("configure sqlite pragmas")?;
             run_sqlite_migrations(&pool)

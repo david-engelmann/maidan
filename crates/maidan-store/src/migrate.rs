@@ -93,6 +93,12 @@ const MIGRATION_LOCK_KEY: i64 = 0x6D69_6772_i64;
 /// migrations already applied and no-op.
 pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
     let mut lock_conn = pool.acquire().await?;
+    // Exempt the migration session from any configured `statement_timeout`
+    // (Cluster 107): the advisory-lock wait below can legitimately block while
+    // another replica migrates, and DDL must not be capped.
+    sqlx::query("SET statement_timeout = 0")
+        .execute(&mut *lock_conn)
+        .await?;
     sqlx::query("SELECT pg_advisory_lock($1)")
         .bind(MIGRATION_LOCK_KEY)
         .execute(&mut *lock_conn)

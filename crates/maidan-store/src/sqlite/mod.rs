@@ -48,7 +48,7 @@ use sqlx::SqlitePool;
 use crate::error::StoreError;
 use crate::store::Store;
 
-pub use pragmas::configure_pool;
+pub use pragmas::{configure_pool, configure_pool_with};
 
 #[derive(Debug, Clone)]
 pub struct SqliteStore {

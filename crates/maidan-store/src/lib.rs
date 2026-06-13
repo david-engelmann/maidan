@@ -25,8 +25,16 @@ pub use postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
 
-/// Applies SQLite PRAGMAs (`foreign_keys`, WAL, `busy_timeout`).
+/// Applies SQLite PRAGMAs (`foreign_keys`, WAL, 5000 ms `busy_timeout`).
 pub async fn configure_sqlite_pool(pool: &sqlx::SqlitePool) -> Result<(), StoreError> {
     sqlite::configure_pool(pool).await
+}
+
+/// As [`configure_sqlite_pool`], with a configurable `busy_timeout` in ms.
+pub async fn configure_sqlite_pool_with(
+    pool: &sqlx::SqlitePool,
+    busy_timeout_ms: u64,
+) -> Result<(), StoreError> {
+    sqlite::configure_pool_with(pool, busy_timeout_ms).await
 }
 pub use store::Store;
