@@ -11,7 +11,17 @@ use tracing::warn;
 
 const BATCH: i64 = 64;
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Idle backoff cap: an idle relay polls at most this often (Cluster 108).
+const DEFAULT_MAX_POLL_INTERVAL: Duration = Duration::from_millis(1000);
 pub const DEFAULT_MAX_ATTEMPTS: u32 = 16;
+
+/// Outcome of one relay tick (Cluster 108): how many pending rows were fetched
+/// and how many were successfully published. Drives the adaptive cadence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RelayTick {
+    pub fetched: usize,
+    pub relayed: usize,
+}
 
 /// Postgres bus + outbox relay delivery strategy (Cluster 84).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +46,7 @@ pub struct OutboxRelay {
     bus: Arc<dyn EventBus>,
     max_attempts: u32,
     poll_interval: Duration,
+    max_poll_interval: Duration,
 }
 
 impl OutboxRelay {
@@ -62,23 +73,55 @@ impl OutboxRelay {
             bus,
             max_attempts: max_attempts.max(1),
             poll_interval,
+            // Idle cap is never below the base interval.
+            max_poll_interval: max_poll_interval_from_env().max(poll_interval),
         }
     }
 
+    /// Adaptive cadence (Cluster 108): drain back-to-back while a tick fully
+    /// relays a batch (more rows likely pending), then sleep when caught up —
+    /// growing the idle sleep up to the cap and resetting it on any activity.
+    /// Delivery semantics, metrics, and quarantine behavior are unchanged.
     pub async fn run(self) {
+        let base = self.poll_interval;
+        let cap = self.max_poll_interval;
+        let mut idle = base;
         loop {
-            if let Err(err) = self.run_once().await {
-                warn!(error = %err, "outbox relay tick failed");
+            match self.run_once().await {
+                // Full batch, all published → backlog likely continues; drain
+                // immediately with no inter-batch sleep, and reset the cadence.
+                Ok(tick) if tick.relayed as i64 == BATCH => {
+                    idle = base;
+                    continue;
+                }
+                // Nothing pending → caught up; sleep and grow the idle interval.
+                Ok(tick) if tick.fetched == 0 => {
+                    tokio::time::sleep(idle).await;
+                    idle = backoff_step(idle, base, cap);
+                }
+                // Partial progress (some rows failed, or < BATCH pending) →
+                // sleep at the base interval and reset.
+                Ok(_) => {
+                    idle = base;
+                    tokio::time::sleep(base).await;
+                }
+                Err(err) => {
+                    warn!(error = %err, "outbox relay tick failed");
+                    idle = base;
+                    tokio::time::sleep(base).await;
+                }
             }
-            tokio::time::sleep(self.poll_interval).await;
         }
     }
 
-    pub async fn run_once(&self) -> Result<(), maidan_store::StoreError> {
+    pub async fn run_once(&self) -> Result<RelayTick, maidan_store::StoreError> {
         let pending = self.backend.list_pending(BATCH).await?;
+        let fetched = pending.len();
+        let mut relayed = 0usize;
         for row in pending {
             match self.relay_one(row.id, row.log_id).await {
                 Ok(()) => {
+                    relayed += 1;
                     counter!("maidan_outbox_relay_total", "result" => "ok").increment(1);
                 }
                 Err(err) => {
@@ -108,7 +151,7 @@ impl OutboxRelay {
                 }
             }
         }
-        Ok(())
+        Ok(RelayTick { fetched, relayed })
     }
 
     async fn relay_one(&self, outbox_id: i64, log_id: i64) -> Result<(), maidan_store::StoreError> {
@@ -142,6 +185,22 @@ pub fn poll_interval_from_env() -> Duration {
         .filter(|&ms| ms > 0)
         .map(Duration::from_millis)
         .unwrap_or(DEFAULT_POLL_INTERVAL)
+}
+
+/// Idle-backoff ceiling for the adaptive relay loop (Cluster 108).
+pub fn max_poll_interval_from_env() -> Duration {
+    std::env::var("MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&ms| ms > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_MAX_POLL_INTERVAL)
+}
+
+/// Double the current idle interval, clamped to `[base, cap]`. A no-op once at
+/// the cap; saturates instead of overflowing.
+fn backoff_step(current: Duration, base: Duration, cap: Duration) -> Duration {
+    current.checked_mul(2).unwrap_or(cap).clamp(base, cap)
 }
 
 /// When false, HTTP handlers publish directly to the bus (dev/test only).
@@ -190,6 +249,19 @@ mod config_tests {
         assert!(validate_startup(true, false).is_err());
         assert!(validate_startup(true, true).is_ok());
         assert!(validate_startup(false, false).is_ok());
+    }
+
+    #[test]
+    fn idle_backoff_doubles_to_cap() {
+        let base = Duration::from_millis(50);
+        let cap = Duration::from_millis(1000);
+        let mut idle = base;
+        for expected in [100, 200, 400, 800, 1000, 1000] {
+            idle = backoff_step(idle, base, cap);
+            assert_eq!(idle, Duration::from_millis(expected));
+        }
+        // Resetting to base (the loop's action on activity) then steps again.
+        assert_eq!(backoff_step(base, base, cap), Duration::from_millis(100));
     }
 }
 
@@ -281,6 +353,49 @@ mod tests {
         assert_eq!(after[0].id, row.id);
         assert_eq!(after[0].log_id, stored.id);
         assert_eq!(after[0].attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn backlog_drains_in_bounded_batches_then_idles() {
+        let Some((_container, pool)) = postgres_pool().await else {
+            return;
+        };
+
+        // Seed two full batches plus a remainder.
+        let remainder = 2usize;
+        let n = 2 * BATCH as usize + remainder;
+        for i in 0..n {
+            let event = Event::WorkspaceCreated {
+                occurred_at: Utc::now(),
+                workspace: Workspace {
+                    id: WorkspaceId(uuid::Uuid::new_v4()),
+                    name: format!("backlog-{i}"),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    tombstoned_at: None,
+                },
+            };
+            events::append(&pool, &event).await.unwrap();
+        }
+
+        let backend = OutboxBackend::Postgres(pool.clone());
+        let relay =
+            OutboxRelay::with_max_attempts(backend, Arc::new(maidan_bus::InMemoryBus::new()), 16);
+
+        // Two full-batch ticks (each signals "drain immediately" via relayed == BATCH)…
+        let t1 = relay.run_once().await.unwrap();
+        assert_eq!(t1.relayed as i64, BATCH);
+        let t2 = relay.run_once().await.unwrap();
+        assert_eq!(t2.relayed as i64, BATCH);
+        // …then the remainder, signalling "caught up" (< BATCH)…
+        let t3 = relay.run_once().await.unwrap();
+        assert_eq!(t3.fetched, remainder);
+        assert_eq!(t3.relayed, remainder);
+        assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+        // …and an idle tick fetches nothing (so the loop backs off).
+        let t4 = relay.run_once().await.unwrap();
+        assert_eq!(t4.fetched, 0);
+        assert_eq!(t4.relayed, 0);
     }
 
     #[tokio::test]
