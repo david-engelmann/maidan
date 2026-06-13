@@ -21,7 +21,7 @@ Mermaid fenced blocks. It renders correctly on GitHub, in mdBook, and in editors
 | [Capability Map.md](Capability%20Map.md) | Capability strings + `contracts/*.json` |
 | [Production.md](Production.md) | Probes, env vars, bootstrap, metrics |
 | [Deploy.md](Deploy.md) | Docker Compose, Kubernetes, Helm |
-| [Pi.md](Pi.md) | Raspberry Pi / ARM64 Linux (`v101.0.0`) |
+| [Pi.md](Pi.md) | Raspberry Pi / ARM64 Linux |
 | [Threat-Model.md](Threat-Model.md) | Security assets and controls |
 | [Glossary.md](Glossary.md) | Domain vocabulary |
 

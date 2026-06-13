@@ -1,17 +1,17 @@
 # Maidan on Raspberry Pi (ARM64 Linux)
 
-Run Maidan on a Pi or any **aarch64** Linux host using release **`v101.0.0`**
-(`maidan-operator-1.0`). Integrate agents against this instance with
+Run Maidan on a Pi or any **aarch64** Linux host. Use the latest release from
+the [Releases page](https://github.com/david-engelmann/maidan/releases) (pick the
+newest tag, shown below as `<tag>`); integrate agents against this instance with
 [Integration.md](Integration.md).
 
-**Release assets** (from the [v101.0.0](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0)
-GitHub Release workflow):
+**Release assets** (each tagged release publishes these):
 
 | Asset | Use on Pi |
 |-------|-----------|
 | `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` + `maidan` binaries (always published when `build` succeeds) |
-| `ghcr.io/david-engelmann/maidan-server:v101.0.0` | Multi-arch image (`linux/arm64`) — separate docker job; retry with `gh workflow run release.yml -f tag=v101.0.0` if push lagged |
-| [GitHub Release](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0) | Tarballs + SBOM |
+| `ghcr.io/david-engelmann/maidan-server:latest` | Multi-arch image (`linux/arm64`); pin to a specific `:<tag>` for reproducible deploys |
+| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs + SBOM |
 
 ---
 
@@ -20,7 +20,7 @@ GitHub Release workflow):
 Requires Docker on Pi OS / aarch64 Linux.
 
 ```sh
-docker pull ghcr.io/david-engelmann/maidan-server:v101.0.0
+docker pull ghcr.io/david-engelmann/maidan-server:latest
 ```
 
 Minimal SQLite-backed server (no Postgres container):
@@ -33,7 +33,7 @@ docker run --rm -d \
   -e DATABASE_URL=sqlite:///data/maidan.db \
   -e AUTH_DISABLED=1 \
   -v ~/maidan-data:/data \
-  ghcr.io/david-engelmann/maidan-server:v101.0.0
+  ghcr.io/david-engelmann/maidan-server:latest
 
 curl -s http://127.0.0.1:8080/health
 ```
@@ -50,7 +50,7 @@ Full stack (Postgres + MinIO) via compose works on Pi if you have RAM; see [Depl
 ## Option B — Native binary from GitHub Releases
 
 1. Download `maidan-aarch64-unknown-linux-gnu.tar.gz` from the
-   [v101.0.0 release](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0).
+   [latest release](https://github.com/david-engelmann/maidan/releases/latest).
 2. Extract and install on `PATH`:
 
 ```sh
@@ -115,6 +115,7 @@ Published reference: [mdBook site](https://david-engelmann.github.io/maidan/).
 
 ## Tags and versions
 
-CHANGELOG entries **`v93.0.0`–`v101.0.0`** describe the operator UI ladder; **`v101.0.0`**
-is the integration point for Pi deployments. Older ladder tags (e.g. **`v77.0.0`**) exist
-for earlier gates; use **`v101.0.0`** for new Pi work unless you depend on a specific older API.
+For new Pi work, use the **latest** release (`:latest` image or the newest tag on
+the [Releases page](https://github.com/david-engelmann/maidan/releases)). Pin to a
+specific `:<tag>` when you need a reproducible deploy. [CHANGELOG.md](../CHANGELOG.md)
+records what each tag added if you must match a specific API.
