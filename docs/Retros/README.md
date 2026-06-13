@@ -115,3 +115,4 @@ PR review credit; external contributors.
 - [[Cluster 104.0]] — Durable ephemeral state (OAuth codes + reindex jobs). Closed at **`v104.0.0`**.
 - [[Cluster 105.0]] — Multi-replica scale-out smoke. Closed at **`v105.0.0`** (closes Phase XIX).
 - [[Cluster 106.0]] — Bulk context reads (N+1 elimination). Closed at **`v106.0.0`** (opens Phase XX).
+- [[Cluster 107.0]] — Configurable DB pool & timeouts. Closed at **`v107.0.0`**.
