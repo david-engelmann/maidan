@@ -108,6 +108,9 @@ pub struct AppState {
     pub bus_hydrate_stats: Option<Arc<HydrateStats>>,
     /// When true, `publish` enqueues outbox only; [`crate::outbox_relay`] calls `bus.publish`.
     pub outbox_relay: bool,
+    /// Capacity-1 nudge to the outbox relay: a freshly enqueued row wakes an
+    /// idle relay promptly (Cluster 108). `None` when relay/nudge isn't wired.
+    pub outbox_nudge: Option<tokio::sync::mpsc::Sender<()>>,
     /// Outbox backend for relay metrics; `None` when outbox relay is disabled.
     pub outbox_backend: Option<OutboxBackend>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
@@ -160,6 +163,7 @@ impl AppState {
             bus_listener_health,
             bus_hydrate_stats: None,
             outbox_relay: false,
+            outbox_nudge: None,
             outbox_backend: None,
             oidc: None,
             subscribe_resume_secret: None,

@@ -294,6 +294,15 @@ async fn main() -> anyhow::Result<()> {
     state.bus_hydrate_stats = bus_hydrate_stats;
     state.outbox_relay = outbox_relay;
     state.outbox_backend = outbox_backend.clone();
+    // Capacity-1 enqueue nudge: `publish` pings the relay so it wakes from idle
+    // backoff promptly (Cluster 108.0.2). Only wired when the relay runs.
+    let outbox_nudge_rx = if outbox_relay {
+        let (tx, rx) = tokio::sync::mpsc::channel::<()>(1);
+        state.outbox_nudge = Some(tx);
+        Some(rx)
+    } else {
+        None
+    };
     state.oidc = oidc_runtime.map(Arc::new);
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
@@ -309,14 +318,16 @@ async fn main() -> anyhow::Result<()> {
             let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
             let poll_interval = maidan_server::outbox_relay::poll_interval_from_env();
             tokio::spawn(async move {
-                maidan_server::outbox_relay::OutboxRelay::with_options(
+                let mut relay = maidan_server::outbox_relay::OutboxRelay::with_options(
                     backend,
                     relay_bus,
                     max_attempts,
                     poll_interval,
-                )
-                .run()
-                .await;
+                );
+                if let Some(rx) = outbox_nudge_rx {
+                    relay = relay.with_nudge(rx);
+                }
+                relay.run().await;
             });
             tracing::info!(
                 mode = outbox_relay_mode.as_str(),

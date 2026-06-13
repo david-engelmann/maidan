@@ -1523,6 +1523,11 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
         }
     };
     if state.outbox_relay {
+        // Wake an idle relay promptly (Cluster 108). Capacity-1 channel: a
+        // `Full` error means a nudge is already queued, which is enough.
+        if let Some(nudge) = &state.outbox_nudge {
+            let _ = nudge.try_send(());
+        }
         return Some(stored.id);
     }
     let envelope = BusEnvelope {
