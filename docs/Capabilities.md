@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v107.0.0 — Configurable DB pool & timeouts
+
+| Capability | Where |
+|------------|-------|
+| Env-tunable pool size + acquire timeout | `config::DbConfig`, `main.rs` |
+| Postgres `statement_timeout` (migration-exempt) / SQLite `busy_timeout` | `after_connect` cap, `configure_sqlite_pool_with` |
+
 ## v106.0.0 — Bulk context reads
 
 | Capability | Where |

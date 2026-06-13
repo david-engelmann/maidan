@@ -41,6 +41,25 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
 | `MAIDAN_PRESENCE_HEARTBEAT_SECS` | no | Interval at which each replica re-announces its locally-connected members over `maidan_presence` (default `10`). Cross-replica presence is active only in Postgres NOTIFY mode. |
 | `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
+| `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default preserves the dialect default (**Postgres 16**, **SQLite 8**). See the replica caveat below. |
+| `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` | no | How long a request waits for a free pooled connection before erroring instead of hanging (default `30`). Under saturation this surfaces a clean `500`/timeout rather than blocking indefinitely. |
+| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. Default `0` = **disabled** (prior behavior). See the caveat below before enabling. |
+| `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
+
+### Database tuning (`v107.0.0`)
+
+- **Total connections = replicas × `MAIDAN_DB_MAX_CONNECTIONS`.** Behind a load
+  balancer this must stay under Postgres `max_connections` (default 100) with
+  headroom for migrations, the bus `LISTEN` connections, and admin tools. E.g.
+  4 replicas × 16 = 64. Raise the pool only after confirming the server is
+  connection-starved (acquire timeouts), not query-bound.
+- **`MAIDAN_DB_STATEMENT_TIMEOUT_MS` applies to every server query**, including
+  the in-server operator reindex (`POST /operator/reindex-embeddings`). Set it
+  comfortably above your longest expected query, or trigger large reindexes via
+  the `maidan reindex-embeddings` CLI, which uses its own pool with no cap. Boot
+  migrations are already exempt (the migration session resets the timeout under
+  the advisory lock), so enabling this will not break startup or a rolling
+  update.
 
 ### Local embedding servers (e.g. LM Studio)
 

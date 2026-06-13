@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [107.0.0] — 2026-06-12
+
+### Added
+
+- Database connection pool and timeouts are env-configurable with defaults that reproduce prior behavior: `MAIDAN_DB_MAX_CONNECTIONS` (default: dialect — Postgres 16 / SQLite 8), `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` (default 30; surfaces a clean error instead of an implicit hang under saturation), `MAIDAN_DB_STATEMENT_TIMEOUT_MS` (Postgres per-connection cap, default 0 = disabled), `MAIDAN_DB_BUSY_TIMEOUT_MS` (SQLite, default 5000). Boot migrations reset `statement_timeout` on their session so a configured cap can't kill the cross-replica advisory-lock wait. Documented in `docs/Production.md` with the `replicas × max_connections` caveat.
+
 ## [106.0.0] — 2026-06-12
 
 ### Changed

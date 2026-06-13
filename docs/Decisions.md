@@ -322,6 +322,13 @@ on any future non-transactional step (e.g. `CREATE INDEX CONCURRENTLY`).
 **To revisit:** a pre-deploy migration Job if/when migrations grow long enough
 that holding the lock during a rollout meaningfully delays replica readiness.
 
+**Updated (`v107.0.0`):** when `MAIDAN_DB_STATEMENT_TIMEOUT_MS` is set, the cap
+is applied to every pooled connection via `after_connect` — which would
+otherwise kill the advisory-lock *wait* a booting replica performs while another
+replica migrates. The migration session now resets `statement_timeout = 0` on
+its own connection before acquiring the lock (unconditional; a no-op when no cap
+is configured), so pool tuning and boot-migration serialization compose cleanly.
+
 ### Bulk reads for context assembly; the store grows batched accessors as call sites need them (`v106.0.0`)
 
 **Decision.** Context builders read in batches, not one query per row. The
