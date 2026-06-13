@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v106.0.0 — Bulk context reads
+
+| Capability | Where |
+|------------|-------|
+| O(1)-query context assembly (no per-row N+1) | `thread_context.rs`, `Store::{list_threads_for_workspace, list_references_from_many, list_message_edits_for_messages}` |
+| Query-count regression guard | `context_query_count_e2e` |
+
 ## v105.0.0 — Multi-replica scale-out smoke
 
 | Capability | Where |

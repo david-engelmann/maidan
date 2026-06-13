@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [106.0.0] — 2026-06-12
+
+### Changed
+
+- Context assembly (thread + workspace) now issues a bounded number of store queries independent of message/channel count, eliminating three N+1 patterns. New batched `Store` accessors — `list_threads_for_workspace`, `list_references_from_many`, `list_message_edits_for_messages` (Postgres `= ANY($1)`; SQLite chunked `IN (?, …)`; edits windowed per message) — replace the per-row reads in `thread_context.rs`. Response content and ordering are unchanged. `context_query_count_e2e` guards the bound; `bulk_reads` covers the accessors on both backends.
+
 ## [105.0.0] — 2026-06-12
 
 ### Added

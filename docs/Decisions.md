@@ -322,6 +322,27 @@ on any future non-transactional step (e.g. `CREATE INDEX CONCURRENTLY`).
 **To revisit:** a pre-deploy migration Job if/when migrations grow long enough
 that holding the lock during a rollout meaningfully delays replica readiness.
 
+### Bulk reads for context assembly; the store grows batched accessors as call sites need them (`v106.0.0`)
+
+**Decision.** Context builders read in batches, not one query per row. The
+`Store` trait gains concrete `…_many` / `…_for_workspace` accessors
+(`list_threads_for_workspace`, `list_references_from_many`,
+`list_message_edits_for_messages`) as specific N+1 call sites demand them —
+Postgres binds id arrays (`= ANY($1)`), SQLite expands chunked `IN (?, …)`. New
+batched methods are added only when a hot path needs one, not speculatively.
+
+**Alternative.** A generic query-builder / DataLoader-style abstraction over the
+store; or a request-scoped cache.
+
+**Why this:** concrete accessors keep the store's runtime-checked-SQL model
+(no query-builder indirection, both dialects explicit and testable) and stay
+honest about cost — each method is one statement with a known plan. A caching
+layer trades correctness for speed and is a separate, later concern. A 40-message
+thread now issues the same query count as a 3-message one (`context_query_count_e2e`).
+
+**To revisit:** if the number of batched accessors grows unwieldy, reconsider a
+narrow loader abstraction; batch artifact-metadata reads if they become hot.
+
 ### SQLite semantic search without `sqlite-vec` SQL (`v18.0.0`)
 
 **Decision.** Store 1024-dim float32 embeddings in `maidan_message_embeddings`

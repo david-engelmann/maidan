@@ -50,6 +50,39 @@ model — `maidan_emb_hash_v1` for the default provider); query the table for th
 active model. HNSW index should appear for cosine distance. Rebuild or tune `ef_search` if
 recall drops after bulk ingest.
 
+## Context assembly (bulk reads, `v106.0.0`)
+
+Thread and workspace context are assembled with **batched** store reads, not one
+query per row. Each `build_thread_context` issues a fixed set of queries
+regardless of how many messages the thread has:
+
+- threads for a workspace: one `list_threads_for_workspace` (a `threads ⋈
+  channels` join on `workspace_id`) instead of one `list_threads` per channel;
+- references: one `list_references_from_many(Message, ids)` (`src_id = ANY($1)`
+  on Postgres; chunked `IN (?, …)` on SQLite) instead of one read per message;
+- edits: one windowed `list_message_edits_for_messages(ids, 20)`
+  (`ROW_NUMBER() OVER (PARTITION BY message_id …)`, capped per message) instead
+  of one read per message.
+
+`context_query_count_e2e` guards this: it counts `sqlx::query` tracing events and
+asserts a 40-message thread issues the same query count as a 3-message one. If
+you add a call site that reads per-row in a loop, batch it the same way (add a
+concrete `…_many` accessor) rather than looping — the test will flag the
+regression.
+
+```sql
+-- Verify the workspace-threads join uses the channel index, not a seq scan.
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT t.id FROM maidan_threads t
+JOIN maidan_channels c ON c.id = t.channel_id
+WHERE c.workspace_id = $1
+ORDER BY t.created_at DESC;
+```
+
+Note: per-thread sub-context in workspace context is still O(threads) (each
+thread is its own bounded context), and artifact metadata reads are still
+per-distinct-sha — both are out of the `v106.0.0` scope.
+
 ## When to escalate
 
 - p95 search latency grows after indexer backlog — check `/health/ready`
