@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v109.0.0 — ANN index tuning + search bench
+
+| Capability | Where |
+|------------|-------|
+| Tunable HNSW build + query params | `hnsw::HnswParams`, `ensure_model_postgres`, `PostgresSearch::semantic_search` |
+| Lexical + semantic latency bench + baseline | `maidan-search/benches/search_hot.rs`, `SEARCH_BASELINE.md` |
+
 ## v108.0.0 — Adaptive outbox relay
 
 | Capability | Where |

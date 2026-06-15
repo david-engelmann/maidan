@@ -47,8 +47,36 @@ LIMIT 25;
 
 Embedding storage is per-model (registry `maidan_embedding_models`, one table per
 model — `maidan_emb_hash_v1` for the default provider); query the table for the
-active model. HNSW index should appear for cosine distance. Rebuild or tune `ef_search` if
-recall drops after bulk ingest.
+active model. An HNSW index (`idx_<table>_hnsw`, `vector_cosine_ops`) should
+appear in the plan for the cosine ordering.
+
+### HNSW tuning (`v109.0.0`)
+
+Three knobs trade recall against latency/build cost. Defaults are unset, i.e.
+pgvector's own defaults (`m=16`, `ef_construction=64`, `ef_search=40`), so they
+preserve current behavior until you opt in.
+
+| Env | Stage | Effect |
+|-----|-------|--------|
+| `MAIDAN_HNSW_M` | build | Max edges/node. Higher → better recall, larger/slower-to-build index. |
+| `MAIDAN_HNSW_EF_CONSTRUCTION` | build | Candidate list at build. Higher → better recall, slower build. Must be ≥ `2*m`. |
+| `MAIDAN_HNSW_EF_SEARCH` | query | Candidate list at query (`SET LOCAL` per query). Higher → better recall, slower query. |
+
+Inspect what an index was actually built with:
+
+```sql
+SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_maidan_emb_hash_v1_hnsw';
+-- … USING hnsw (embedding vector_cosine_ops) WITH (m='32', ef_construction='128')
+```
+
+**Build params apply only to indexes created afterward.** Changing `m` /
+`ef_construction` does **not** rebuild existing indexes — set the env vars, then
+rebuild that model's index (drop it and re-run the reindex job, or recreate the
+model). `ef_search` is per-query and takes effect immediately. `ef_search` is the
+cheapest knob to raise first if recall drops after bulk ingest; raise `m` /
+`ef_construction` (and rebuild) only if query-time tuning isn't enough. Measure
+with the `maidan-search` bench (`cargo bench -p maidan-search`; see
+`crates/maidan-search/benches/SEARCH_BASELINE.md`).
 
 ## Context assembly (bulk reads, `v106.0.0`)
 
