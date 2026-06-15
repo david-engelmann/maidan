@@ -23,11 +23,25 @@ struct RateLimitConfig {
 }
 
 fn config_from_env() -> Option<RateLimitConfig> {
-    let max: u32 = std::env::var("MAIDAN_RATE_LIMIT_MAX").ok()?.parse().ok()?;
+    config_from_env_named("MAIDAN_RATE_LIMIT_MAX", "MAIDAN_RATE_LIMIT_WINDOW_SECS")
+}
+
+/// Per-workspace fairness limit (Cluster 110): caps total request rate for a
+/// single workspace across *all* its tokens, so one tenant's heavy loop can't
+/// monopolize the shared instance. Independently opt-in from the global limit.
+fn workspace_config_from_env() -> Option<RateLimitConfig> {
+    config_from_env_named(
+        "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
+        "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
+    )
+}
+
+fn config_from_env_named(max_var: &str, window_var: &str) -> Option<RateLimitConfig> {
+    let max: u32 = std::env::var(max_var).ok()?.parse().ok()?;
     if max == 0 {
         return None;
     }
-    let secs: u64 = std::env::var("MAIDAN_RATE_LIMIT_WINDOW_SECS")
+    let secs: u64 = std::env::var(window_var)
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60)
@@ -40,6 +54,14 @@ fn config_from_env() -> Option<RateLimitConfig> {
 
 fn exempt_path(path: &str) -> bool {
     path.starts_with("/health") || path == "/metrics"
+}
+
+/// The workspace id segment of a `/workspaces/{wid}/…` path (or a bare
+/// `/workspaces/{wid}`), for per-workspace fairness keying. `None` for
+/// non-workspace-scoped paths (e.g. `/workspaces` itself, `/channels/...`).
+fn workspace_id_from_path(path: &str) -> Option<&str> {
+    let seg = path.strip_prefix("/workspaces/")?.split('/').next()?;
+    (!seg.is_empty()).then_some(seg)
 }
 
 fn client_key(req: &Request<Body>) -> String {
@@ -69,27 +91,39 @@ pub async fn middleware(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    let Some(cfg) = config_from_env() else {
-        return next.run(req).await;
-    };
-    if exempt_path(req.uri().path()) {
+    let global = config_from_env();
+    let workspace = workspace_config_from_env();
+    if (global.is_none() && workspace.is_none()) || exempt_path(req.uri().path()) {
         return next.run(req).await;
     }
-    let key = format!("global:{}", client_key(&req));
     let redis = state.rate_limit_redis.as_ref();
-    if try_acquire(
-        &key,
-        WindowConfig {
-            max: cfg.max,
-            window: cfg.window,
-        },
-        redis,
-    )
-    .await
-    {
-        return next.run(req).await;
+
+    // Global per-client (bearer/IP) limit.
+    if let Some(cfg) = global {
+        let key = format!("global:{}", client_key(&req));
+        if !try_acquire(&key, cfg.into(), redis).await {
+            return too_many(cfg.window, cfg.max);
+        }
     }
-    too_many(cfg.window, cfg.max)
+    // Per-workspace fairness on workspace-scoped routes (Cluster 110).
+    if let Some(cfg) = workspace {
+        if let Some(wid) = workspace_id_from_path(req.uri().path()) {
+            let key = format!("ws:{wid}");
+            if !try_acquire(&key, cfg.into(), redis).await {
+                return too_many(cfg.window, cfg.max);
+            }
+        }
+    }
+    next.run(req).await
+}
+
+impl From<RateLimitConfig> for WindowConfig {
+    fn from(c: RateLimitConfig) -> Self {
+        WindowConfig {
+            max: c.max,
+            window: c.window,
+        }
+    }
 }
 
 pub(crate) fn too_many(window: Duration, max: u32) -> Response {
@@ -118,4 +152,35 @@ pub async fn connect_redis_from_env() -> Option<redis::aio::ConnectionManager> {
     let conn = redis::aio::ConnectionManager::new(client).await.ok()?;
     tracing::info!("rate limiter using Redis backend");
     Some(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_id_extracted_only_from_scoped_paths() {
+        assert_eq!(
+            workspace_id_from_path("/workspaces/abc/search"),
+            Some("abc")
+        );
+        assert_eq!(workspace_id_from_path("/workspaces/abc"), Some("abc"));
+        assert_eq!(
+            workspace_id_from_path("/workspaces/abc/channels"),
+            Some("abc")
+        );
+        // Not workspace-scoped → no per-workspace key.
+        assert_eq!(workspace_id_from_path("/workspaces"), None);
+        assert_eq!(workspace_id_from_path("/workspaces/"), None);
+        assert_eq!(workspace_id_from_path("/channels/xyz/threads"), None);
+        assert_eq!(workspace_id_from_path("/health"), None);
+    }
+
+    #[test]
+    fn health_and_metrics_are_exempt() {
+        assert!(exempt_path("/health"));
+        assert!(exempt_path("/health/ready"));
+        assert!(exempt_path("/metrics"));
+        assert!(!exempt_path("/workspaces/abc/search"));
+    }
 }
