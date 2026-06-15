@@ -2627,6 +2627,7 @@ name = "maidan-fsm"
 version = "0.0.0"
 dependencies = [
  "maidan-types",
+ "proptest",
  "serde",
  "thiserror 1.0.69",
  "tracing",
