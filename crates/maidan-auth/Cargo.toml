@@ -21,4 +21,6 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+sqlx.workspace = true
+chrono.workspace = true
