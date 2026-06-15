@@ -118,3 +118,4 @@ PR review credit; external contributors.
 - [[Cluster 107.0]] — Configurable DB pool & timeouts. Closed at **`v107.0.0`**.
 - [[Cluster 108.0]] — Adaptive outbox relay (drain-until-empty + idle backoff + nudge). Closed at **`v108.0.0`**.
 - [[Cluster 109.0]] — ANN index tuning + search bench. Closed at **`v109.0.0`**.
+- [[Cluster 110.0]] — Per-workspace fairness. Closed at **`v110.0.0`** (closes Phase XX).

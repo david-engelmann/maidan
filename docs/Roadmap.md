@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105) is closed** (`v102.0.0`–`v105.0.0`). Phase **XX (hot-path hardening, 106–110)** is underway: Clusters **106** (bulk context reads), **107** (configurable DB pool & timeouts), **108** (adaptive outbox relay), and **109** (ANN index tuning + search bench) are **closed** (`v106.0.0`–`v109.0.0`); **110** (per-workspace fairness) closes the phase. Phases **XXI–XXIII** (111–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)** and Phase **XX (hot-path hardening, 106–110)** are **closed** (`v102.0.0`–`v110.0.0`). Phase **XXI — correctness & coverage** (Clusters 111–115) is next, opening with the `maidan-auth` test suite (111). Phases **XXII–XXIII** (116–120) are mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **110.0** — per-workspace fairness at **`v110.0.0`**, closing Phase XX
+([[Retros/Cluster 110.0]]).
 
 **Recently closed:** Cluster **109.0** — ANN index tuning + search bench at **`v109.0.0`**
 ([[Retros/Cluster 109.0]]).

@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [110.0.0] — 2026-06-12
+
+### Added
+
+- Per-workspace fairness: `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` / `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` cap the total request rate for one workspace across all its tokens on `/workspaces/{wid}/…` routes (including search), so a single tenant's heavy loop can't starve others. Independent of the per-client `MAIDAN_RATE_LIMIT_MAX`; both default off and reuse the Redis-optional fixed-window limiter. `tenant_fairness_e2e` proves a capped workspace doesn't degrade another's requests. Documented in `docs/Production.md` (Tenant fairness) and `docs/Threat-Model.md` (T8). Closes Phase XX.
+
 ## [109.0.0] — 2026-06-12
 
 ### Added
