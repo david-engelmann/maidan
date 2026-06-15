@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [109.0.0] — 2026-06-12
+
+### Added
+
+- Configurable pgvector HNSW tuning: `MAIDAN_HNSW_M` and `MAIDAN_HNSW_EF_CONSTRUCTION` set index build params (`CREATE INDEX … WITH (…)`); `MAIDAN_HNSW_EF_SEARCH` sets the per-query candidate list via a transaction-scoped `SET LOCAL hnsw.ef_search`. All optional — defaults are pgvector's own (`m=16`, `ef_construction=64`, `ef_search=40`), preserving current behavior. Build params apply only to indexes created afterward (rebuild via the reindex job to change an existing index). Documented in `docs/Query-Tuning.md`.
+- `maidan-search` `criterion` bench (`benches/search_hot.rs`) for lexical (FTS5) and semantic (cosine) latency, with a committed `SEARCH_BASELINE.md` reference for the Cluster 120 perf budgets.
+
 ## [108.0.0] — 2026-06-12
 
 ### Changed
