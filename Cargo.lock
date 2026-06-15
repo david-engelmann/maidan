@@ -2690,6 +2690,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "criterion",
  "libsqlite3-sys",
  "maidan-bus",
  "maidan-store",
