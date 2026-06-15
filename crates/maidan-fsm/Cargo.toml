@@ -14,3 +14,6 @@ maidan-types = { path = "../maidan-types" }
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+proptest = "1"
