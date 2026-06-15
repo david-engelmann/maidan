@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v113.0.0 — Backend parity harness
+
+| Capability | Where |
+|------------|-------|
+| Migration + store-module lockstep guard (allowlisted) | `maidan-store/tests/backend_parity.rs` |
+| Cross-dialect identity over FSM / edit / reaction surface | `maidan-store/tests/{common/mod.rs,dialect_parity.rs}` |
+
 ## v112.0.0 — FSM property tests
 
 | Capability | Where |
