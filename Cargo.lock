@@ -2565,9 +2565,11 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
+ "chrono",
  "maidan-store",
  "maidan-types",
  "sha2 0.10.9",
+ "sqlx",
  "subtle",
  "thiserror 1.0.69",
  "tokio",
