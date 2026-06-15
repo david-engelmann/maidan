@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v108.0.0 — Adaptive outbox relay
+
+| Capability | Where |
+|------------|-------|
+| Drain-until-empty + idle backoff relay cadence | `OutboxRelay::run`, `RelayTick`, `backoff_step` |
+| Prompt wake on enqueue (polling-safe mpsc nudge) | `AppState.outbox_nudge`, `OutboxRelay::with_nudge`, `wait_idle_or_nudge` |
+
 ## v107.0.0 — Configurable DB pool & timeouts
 
 | Capability | Where |

@@ -116,3 +116,4 @@ PR review credit; external contributors.
 - [[Cluster 105.0]] — Multi-replica scale-out smoke. Closed at **`v105.0.0`** (closes Phase XIX).
 - [[Cluster 106.0]] — Bulk context reads (N+1 elimination). Closed at **`v106.0.0`** (opens Phase XX).
 - [[Cluster 107.0]] — Configurable DB pool & timeouts. Closed at **`v107.0.0`**.
+- [[Cluster 108.0]] — Adaptive outbox relay (drain-until-empty + idle backoff + nudge). Closed at **`v108.0.0`**.

@@ -216,8 +216,22 @@ when relay is enabled.
 |-----|---------|-------|
 | `MAIDAN_OUTBOX_MAX_ATTEMPTS` | `16` | After this many failed relay publishes, the row is quarantined (`quarantined_at` set). |
 | `MAIDAN_OUTBOX_RELAY_MODE` | `notify` | `notify` = `pg_notify` + LISTEN hydrate (multi-instance). `polled` = relay fans out on the process-local bus only (no `pg_notify`). |
-| `MAIDAN_OUTBOX_POLL_INTERVAL_MS` | `50` | Outbox relay poll interval. |
+| `MAIDAN_OUTBOX_POLL_INTERVAL_MS` | `50` | Base relay poll interval (the **fast** cadence used while draining and right after activity). |
+| `MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS` | `1000` | Idle-backoff ceiling (`v108.0.0`). When caught up, the relay grows its sleep (×2) up to this cap, then resets to the base interval on the next pending row. |
 | `MAIDAN_OUTBOX_RELAY` | `1` (enabled) | Set `0` to disable relay (append-then-publish in-process). **`MAIDAN_ENV=production` rejects `MAIDAN_OUTBOX_RELAY=0`.** |
+
+#### Adaptive cadence (`v108.0.0`)
+
+The relay is adaptive: it **drains back-to-back** (no inter-batch sleep) while a
+tick fully relays a batch, so a backlog of N rows clears in ≈⌈N/batch⌉ ticks
+instead of N/batch × interval. When caught up it sleeps the base interval and
+**backs off** toward `MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS` while idle — so a quiet
+deployment isn't polling 20×/s for nothing. An **in-process enqueue nudge** wakes
+the relay the moment a row is written, so the backoff costs no added latency on a
+fresh event (the cap only bounds the worst case if the nudge is ever missed).
+Tuning: lower the base interval for snappier single-process fan-out; raise the
+cap to poll less when idle. Delivery semantics (at-most-once NOTIFY, quarantine,
+replay) are unchanged by cadence.
 
 #### NOTIFY loss / listener unhealthy (`v84.0.0`)
 

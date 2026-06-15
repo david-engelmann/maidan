@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [108.0.0] — 2026-06-12
+
+### Changed
+
+- Outbox relay cadence is adaptive: it drains pending rows back-to-back (no inter-batch sleep) so a backlog of N rows clears in ≈⌈N/batch⌉ ticks, and backs off its poll interval toward `MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS` (default 1000 ms) while idle, resetting on the next pending row. A capacity-1 in-process enqueue nudge wakes an idle relay the instant a row is written (polling-safe mpsc; resets the cadence), so the backoff adds no latency to fresh events. At-most-once NOTIFY semantics, metrics, and quarantine are unchanged.
+
 ## [107.0.0] — 2026-06-12
 
 ### Added
