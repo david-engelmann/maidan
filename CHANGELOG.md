@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [112.0.0] — 2026-06-15
+
+### Added
+
+- `maidan-fsm` property-test suite (`tests/fsm_properties.rs`, 8 `proptest` properties): `apply` succeeds on exactly the legal `(state, action)` edges (cross-checked against an independent spec table), every legal transition advances the lifecycle rank by exactly one, `Archived` is terminal, rank is monotonic under arbitrary action sequences, the HSM rank ceiling holds for every `(parent, child_to)`, and for an arbitrary rooted thread tree locally-valid edges compose into a tree-wide guarantee (no descendant outruns any ancestor; no internal node archived). Adds `proptest` as a dev-dep. Tests only — no `src/` changes.
+
 ## [111.0.0] — 2026-06-15
 
 ### Added
