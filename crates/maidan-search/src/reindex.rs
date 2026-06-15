@@ -26,8 +26,13 @@ pub async fn reindex_postgres(
     provider: &dyn EmbeddingProvider,
     workspace_id: Option<WorkspaceId>,
 ) -> Result<ReindexReport, SearchError> {
-    embedding_tables::ensure_model_postgres(pool, provider.model_name(), provider.dimension())
-        .await?;
+    embedding_tables::ensure_model_postgres(
+        pool,
+        provider.model_name(),
+        provider.dimension(),
+        crate::hnsw::HnswParams::from_env(),
+    )
+    .await?;
 
     let rows = fetch_messages_postgres(pool, workspace_id).await?;
     reindex_rows(search, provider, rows).await

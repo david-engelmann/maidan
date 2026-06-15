@@ -70,6 +70,7 @@ pub async fn ensure_model_postgres(
     pool: &PgPool,
     model: &str,
     dimension: usize,
+    hnsw: crate::hnsw::HnswParams,
 ) -> Result<String, EmbeddingTableError> {
     let table = table_name_for_model(model)?;
     assert_safe_table_name(&table)?;
@@ -103,8 +104,11 @@ pub async fn ensure_model_postgres(
     sqlx::raw_sql(&ddl).execute(pool).await?;
 
     let idx = format!("idx_{table}_hnsw");
+    // Build params (`m` / `ef_construction`) only affect indexes created here;
+    // changing them later requires a rebuild (see the reindex job + docs).
     let idx_ddl = format!(
-        "CREATE INDEX IF NOT EXISTS {idx} ON {table} USING hnsw (embedding vector_cosine_ops)"
+        "CREATE INDEX IF NOT EXISTS {idx} ON {table} USING hnsw (embedding vector_cosine_ops){}",
+        hnsw.build_with_clause()
     );
     sqlx::raw_sql(&idx_ddl).execute(pool).await?;
 
