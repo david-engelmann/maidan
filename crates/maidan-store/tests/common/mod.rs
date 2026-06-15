@@ -4,6 +4,7 @@
 //! these helpers with their respective concrete stores so the same
 //! assertions run against both dialects.
 
+use maidan_fsm::ThreadAction;
 use maidan_store::{Store, StoreError};
 use maidan_types::*;
 
@@ -293,6 +294,48 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
         .expect("m2");
     let listed = store.list_messages(t.id, 10).await.expect("list");
 
+    // FSM transition: Open -> InReview, recorded through the store.
+    let transition = store
+        .transition_thread(t.id, m.id, ThreadAction::StartReview)
+        .await
+        .expect("transition");
+
+    // Edit m1's body and count the recorded edits.
+    let edited = store
+        .edit_message(
+            m1.id,
+            m.id,
+            EditMessage {
+                body: "one-edited".to_string(),
+                metadata: serde_json::json!({"i": 1, "edited": true}),
+            },
+        )
+        .await
+        .expect("edit");
+    let edit_count = store
+        .list_message_edits(m1.id, 10)
+        .await
+        .expect("list edits")
+        .len();
+
+    // React to m1 and read the emoji back.
+    store
+        .add_reaction(NewReaction {
+            message_id: m1.id,
+            member_id: m.id,
+            emoji: "👍".to_string(),
+        })
+        .await
+        .expect("react");
+    let mut reaction_emojis: Vec<String> = store
+        .list_reactions_for_message(m1.id)
+        .await
+        .expect("list reactions")
+        .into_iter()
+        .map(|r| r.emoji)
+        .collect();
+    reaction_emojis.sort();
+
     ParitySnapshot {
         workspace_name: ws.name,
         member_handle: m.handle,
@@ -303,6 +346,10 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
         message_bodies: listed.iter().map(|m| m.body.clone()).collect(),
         message_metadata: listed.iter().map(|m| m.metadata.clone()).collect(),
         message_ids: vec![m1.id.0, m2.id.0],
+        thread_state_after_review: transition.to_state,
+        edited_body: edited.body,
+        edit_count,
+        reaction_emojis,
     }
 }
 
@@ -318,4 +365,8 @@ pub struct ParitySnapshot {
     pub message_bodies: Vec<String>,
     pub message_metadata: Vec<serde_json::Value>,
     pub message_ids: Vec<uuid::Uuid>,
+    pub thread_state_after_review: ThreadState,
+    pub edited_body: String,
+    pub edit_count: usize,
+    pub reaction_emojis: Vec<String>,
 }
