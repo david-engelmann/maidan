@@ -80,7 +80,7 @@
 
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
-| **111** | Auth test suite | `v111.0.0` | `maidan-auth/tests/`: capability resolution matrix, token lifecycle/revocation, peer-secret AEAD round-trip + tamper, constant-time paths |
+| **111** ✓ | Auth test suite | `v111.0.0` ✓ | `maidan-auth/tests/`: capability resolution matrix, token lifecycle/revocation, peer-secret AEAD round-trip + tamper, constant-time paths |
 | **112** | FSM property tests | `v112.0.0` | `proptest` proving only legal `(state, action)` edges succeed, `archived` terminal, and the HSM child-rank ≤ parent invariant holds for arbitrary trees |
 | **113** | Backend parity harness | `v113.0.0` | Shared assertion suite both backends must pass + CI guard that `migrations/postgres` ↔ `migrations/sqlite` and store modules stay in lockstep |
 | **114** | Coverage uplift + fuzz | `v114.0.0` | `COVERAGE_MIN_LINES` raised in steps (11 → 25 → 40); fuzz/round-trip tests on the JSON-RPC / MCP envelope surface |

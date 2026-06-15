@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [111.0.0] — 2026-06-15
+
+### Added
+
+- `maidan-auth` integration test suite (26 tests): capability vocabulary + `AuthContext` authorization matrix across token / app-token / session / bypass contexts incl. cross-workspace scoping and constant-time `hashes_equal` edge cases (`capability_matrix.rs`); ChaCha20-Poly1305 peer-secret round-trip, ciphertext/nonce **tamper detection**, truncation/non-base64 rejection, and the `FEDERATION_ENCRYPTION_KEY` parse matrix (`peer_secret_aead.rs`); and store-backed `resolve_bearer` lifecycle — capability propagation, forged-secret rejection, post-revocation and post-expiry failure, plus `resolve_peer_bearer` (`token_lifecycle.rs`). Tests only — no `src/` or production-dependency changes. Opens Phase XXI (correctness & coverage).
+
 ## [110.0.0] — 2026-06-12
 
 ### Added

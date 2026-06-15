@@ -119,3 +119,4 @@ PR review credit; external contributors.
 - [[Cluster 108.0]] — Adaptive outbox relay (drain-until-empty + idle backoff + nudge). Closed at **`v108.0.0`**.
 - [[Cluster 109.0]] — ANN index tuning + search bench. Closed at **`v109.0.0`**.
 - [[Cluster 110.0]] — Per-workspace fairness. Closed at **`v110.0.0`** (closes Phase XX).
+- [[Cluster 111.0]] — `maidan-auth` test suite. Closed at **`v111.0.0`** (opens Phase XXI).
