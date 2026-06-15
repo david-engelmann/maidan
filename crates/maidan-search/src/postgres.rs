@@ -24,11 +24,21 @@ pub use crate::embedding_tables::DEFAULT_EMBEDDING_DIM as EMBEDDING_DIM;
 #[derive(Debug, Clone)]
 pub struct PostgresSearch {
     pool: PgPool,
+    hnsw: crate::hnsw::HnswParams,
 }
 
 impl PostgresSearch {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            hnsw: crate::hnsw::HnswParams::from_env(),
+        }
+    }
+
+    /// Override the HNSW tuning params (otherwise read from the environment).
+    pub fn with_hnsw(mut self, hnsw: crate::hnsw::HnswParams) -> Self {
+        self.hnsw = hnsw;
+        self
     }
 }
 
@@ -109,7 +119,8 @@ impl Search for PostgresSearch {
         embedding: &[f32],
     ) -> Result<(), SearchError> {
         let table =
-            embedding_tables::ensure_model_postgres(&self.pool, model, embedding.len()).await?;
+            embedding_tables::ensure_model_postgres(&self.pool, model, embedding.len(), self.hnsw)
+                .await?;
         let vector = Vector::from(embedding.to_vec());
         let sql = format!(
             r#"
@@ -152,7 +163,7 @@ impl Search for PostgresSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
-        let rows = sqlx::query(&format!(
+        let sql = format!(
             r#"
             SELECT
                 m.id            AS message_id,
@@ -177,15 +188,28 @@ impl Search for PostgresSearch {
             ORDER BY e.embedding <=> $2
             LIMIT $3
             "#
-        ))
-        .bind(workspace_id.0)
-        .bind(vector)
-        .bind(limit)
-        .bind(author_id)
-        .bind(channel_id)
-        .bind(author_kind)
-        .fetch_all(&self.pool)
-        .await?;
+        );
+        let query = sqlx::query(&sql)
+            .bind(workspace_id.0)
+            .bind(vector)
+            .bind(limit)
+            .bind(author_id)
+            .bind(channel_id)
+            .bind(author_kind);
+        // When `ef_search` is configured, set it for this query only via a
+        // transaction-scoped `SET LOCAL` (pooled connections are reused, so a
+        // session-level SET would leak to other queries).
+        let rows = if let Some(ef) = self.hnsw.ef_search {
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(&format!("SET LOCAL hnsw.ef_search = {ef}"))
+                .execute(&mut *tx)
+                .await?;
+            let rows = query.fetch_all(&mut *tx).await?;
+            tx.commit().await?;
+            rows
+        } else {
+            query.fetch_all(&self.pool).await?
+        };
 
         let mut hits: Vec<SearchHit> = rows
             .iter()
