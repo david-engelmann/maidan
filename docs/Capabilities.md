@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v110.0.0 — Per-workspace fairness
+
+| Capability | Where |
+|------------|-------|
+| Per-workspace request-rate fairness | `rate_limit::middleware`, `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` (key `ws:{wid}`) |
+| Noisy-neighbor regression guard | `tenant_fairness_e2e` |
+
 ## v109.0.0 — ANN index tuning + search bench
 
 | Capability | Where |

@@ -39,6 +39,8 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or `X-Forwarded-For` / `anonymous`). Default off. `/health/*` and `/metrics` exempt. |
 | `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | When **> 0**, per-workspace fairness limit (`v110.0.0`): caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). Default off. Independent of the global limit; reuses the Redis backend when set. |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` | no | Per-workspace fixed window in seconds (default `60`). |
 | `MAIDAN_PRESENCE_HEARTBEAT_SECS` | no | Interval at which each replica re-announces its locally-connected members over `maidan_presence` (default `10`). Cross-replica presence is active only in Postgres NOTIFY mode. |
 | `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
 | `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default preserves the dialect default (**Postgres 16**, **SQLite 8**). See the replica caveat below. |
@@ -60,6 +62,19 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
   migrations are already exempt (the migration session resets the timeout under
   the advisory lock), so enabling this will not break startup or a rolling
   update.
+
+### Tenant fairness (`v110.0.0`)
+
+On a shared instance, `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` bounds the total request
+rate for any single workspace (across all its tokens) on `/workspaces/{wid}/…`
+routes — so one tenant's heavy loop (a tight semantic-search poll, a backfill)
+can't monopolize the connection pool and degrade search/write latency for
+others. It is **independent** of the per-client `MAIDAN_RATE_LIMIT_MAX`: enable
+either or both. With `MAIDAN_RATE_LIMIT_REDIS_URL` set, the per-workspace counter
+is shared across replicas; otherwise it is per-process. Start generous (a
+legitimate large workspace shouldn't hit it in normal use) and tighten only if a
+noisy tenant is observed. Not a substitute for hard CPU/IO isolation — that is
+infra-level (separate instances / Postgres resource groups).
 
 ### Local embedding servers (e.g. LM Studio)
 
