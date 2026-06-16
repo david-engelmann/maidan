@@ -2,7 +2,7 @@
 
 use std::{env, fs, path::PathBuf};
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let path = env::args()
         .nth(1)
         .map(PathBuf::from)
@@ -10,8 +10,9 @@ fn main() {
 
     let markdown = maidan_mcp::reference::markdown();
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("create parent dirs");
+        fs::create_dir_all(parent)?;
     }
-    fs::write(&path, markdown).expect("write mcp reference");
+    fs::write(&path, markdown)?;
     eprintln!("wrote {}", path.display());
+    Ok(())
 }

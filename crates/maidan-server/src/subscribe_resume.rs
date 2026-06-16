@@ -122,8 +122,8 @@ pub fn verify_resume_token(
 }
 
 fn mac_for_payload(encoded: &[u8], secret: &[u8]) -> Vec<u8> {
-    let mut mac =
-        HmacSha256::new_from_slice(secret).expect("subscribe resume secret length checked at init");
+    let mut mac = HmacSha256::new_from_slice(secret)
+        .unwrap_or_else(|_| unreachable!("HMAC-SHA256 accepts any key length"));
     mac.update(encoded);
     mac.finalize().into_bytes().to_vec()
 }

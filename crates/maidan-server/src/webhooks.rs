@@ -266,8 +266,8 @@ pub fn build_payload(log_id: i64, event: &Event) -> Result<String, serde_json::E
 }
 
 pub fn sign_payload(secret: &str, body: &str) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .unwrap_or_else(|_| unreachable!("HMAC-SHA256 accepts any key length"));
     mac.update(body.as_bytes());
     format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
 }

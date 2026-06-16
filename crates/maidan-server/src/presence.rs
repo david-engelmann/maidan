@@ -12,7 +12,7 @@ use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, RwLock,
+        Arc, PoisonError, RwLock,
     },
     time::{Duration, Instant},
 };
@@ -212,8 +212,10 @@ impl PresenceHub {
         let conn_id = NEXT_CONN.fetch_add(1, Ordering::Relaxed);
         let distributed = self.notifier.is_some();
         let (rx, snapshot, first_conn) = {
-            let mut inner = self.inner.write().expect("presence lock");
-            let first_conn = {
+            let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+            // Subscribe to the room's channel while we still hold the room we
+            // just inserted, avoiding a fallible re-lookup afterward.
+            let (first_conn, rx) = {
                 let room = inner
                     .workspaces
                     .entry(workspace_id)
@@ -239,14 +241,8 @@ impl PresenceHub {
                         PresenceStatus::Online,
                     ));
                 }
-                first_conn
+                (first_conn, room.tx.subscribe())
             };
-            let rx = inner
-                .workspaces
-                .get(&workspace_id)
-                .expect("room just inserted")
-                .tx
-                .subscribe();
             let snapshot = build_snapshot(workspace_id, &inner, self.ttl, Instant::now());
             (rx, snapshot, first_conn)
         };
@@ -264,7 +260,7 @@ impl PresenceHub {
 
     fn unregister(&self, _conn_id: u64, workspace_id: WorkspaceId, member_id: MemberId) {
         let last_conn = {
-            let mut inner = self.inner.write().expect("presence lock");
+            let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
             let Some(room) = inner.workspaces.get_mut(&workspace_id) else {
                 return;
             };
@@ -296,7 +292,7 @@ impl PresenceHub {
         status: PresenceStatus,
     ) -> bool {
         {
-            let mut inner = self.inner.write().expect("presence lock");
+            let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
             let Some(room) = inner.workspaces.get_mut(&workspace_id) else {
                 return false;
             };
@@ -401,7 +397,7 @@ impl PresenceHub {
             // Own members: deliver real local changes; suppress heartbeats.
             !event.heartbeat
         } else {
-            let mut inner = self.inner.write().expect("presence lock");
+            let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
             match &event.kind {
                 PresenceEventKind::Typing { .. } => true,
                 PresenceEventKind::Offline => inner
@@ -435,7 +431,7 @@ impl PresenceHub {
     /// refresh their TTL for them.
     fn heartbeat_local_members(&self) {
         let beats: Vec<(WorkspaceId, MemberId, PresenceStatus)> = {
-            let inner = self.inner.read().expect("presence lock");
+            let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
             inner
                 .workspaces
                 .iter()
@@ -474,7 +470,7 @@ impl PresenceHub {
         let now = Instant::now();
         let ttl = self.ttl;
         let expired: Vec<(WorkspaceId, MemberId)> = {
-            let mut inner = self.inner.write().expect("presence lock");
+            let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
             let mut expired = Vec::new();
             for (ws, members) in inner.remote.iter_mut() {
                 members.retain(|mid, rm| {
@@ -497,7 +493,7 @@ impl PresenceHub {
         if let Some(room) = self
             .inner
             .read()
-            .expect("presence lock")
+            .unwrap_or_else(PoisonError::into_inner)
             .workspaces
             .get(&workspace_id)
         {

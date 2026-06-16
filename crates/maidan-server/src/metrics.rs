@@ -1,7 +1,7 @@
 //! Prometheus metrics (Track T.4).
 
 use std::{
-    sync::{atomic::Ordering, Mutex, Once, OnceLock},
+    sync::{atomic::Ordering, Mutex, Once, OnceLock, PoisonError},
     time::Instant,
 };
 
@@ -51,21 +51,31 @@ pub fn init() {
                 endpoint,
                 interval: otlp_metrics_interval_from_env(),
             };
-            let (meter_guard, otel_recorder) =
-                build_otlp_metrics_recorder(&push_config).expect("otlp metrics recorder");
-            let fanout = FanoutBuilder::default()
-                .add_recorder(prom_recorder)
-                .add_recorder(otel_recorder)
-                .build();
-            metrics::set_global_recorder(fanout).expect("metrics fanout recorder");
-            let _ = OTLP_METER.set(meter_guard);
-            tracing::info!(
-                endpoint = %push_config.endpoint,
-                interval_secs = push_config.interval.as_secs(),
-                "OTLP metrics push enabled (Prometheus scrape unchanged)"
-            );
-        } else {
-            metrics::set_global_recorder(prom_recorder).expect("prometheus recorder");
+            match build_otlp_metrics_recorder(&push_config) {
+                Ok((meter_guard, otel_recorder)) => {
+                    let fanout = FanoutBuilder::default()
+                        .add_recorder(prom_recorder)
+                        .add_recorder(otel_recorder)
+                        .build();
+                    if let Err(err) = metrics::set_global_recorder(fanout) {
+                        tracing::error!(%err, "failed to install metrics recorder");
+                    }
+                    let _ = OTLP_METER.set(meter_guard);
+                    tracing::info!(
+                        endpoint = %push_config.endpoint,
+                        interval_secs = push_config.interval.as_secs(),
+                        "OTLP metrics push enabled (Prometheus scrape unchanged)"
+                    );
+                }
+                Err(err) => {
+                    tracing::error!(%err, "OTLP metrics recorder init failed; Prometheus only");
+                    if let Err(err) = metrics::set_global_recorder(prom_recorder) {
+                        tracing::error!(%err, "failed to install metrics recorder");
+                    }
+                }
+            }
+        } else if let Err(err) = metrics::set_global_recorder(prom_recorder) {
+            tracing::error!(%err, "failed to install metrics recorder");
         }
 
         spawn_prometheus_upkeep(handle.clone());
@@ -147,7 +157,7 @@ pub fn record_automation_delivery_duration(elapsed: std::time::Duration) {
 }
 
 fn sync_hydrate_counters(current: HydrateSnapshot) {
-    let mut guard = LAST_HYDRATE.lock().expect("hydrate metrics lock poisoned");
+    let mut guard = LAST_HYDRATE.lock().unwrap_or_else(PoisonError::into_inner);
     let last = guard.unwrap_or_default();
     increment_hydrate_delta("ok", current.ok, last.ok);
     increment_hydrate_delta("not_found", current.not_found, last.not_found);

@@ -1,7 +1,7 @@
 //! Shared fixed-window rate limiter (in-memory or Redis).
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug)]
@@ -20,7 +20,9 @@ static MEMORY_BUCKETS: LazyLock<Mutex<HashMap<String, MemoryCounter>>> =
 
 fn memory_try_acquire(key: &str, cfg: WindowConfig) -> bool {
     let now = Instant::now();
-    let mut buckets = MEMORY_BUCKETS.lock().expect("rate limit buckets");
+    let mut buckets = MEMORY_BUCKETS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     let entry = buckets.entry(key.to_string()).or_insert(MemoryCounter {
         window_start: now,
         count: 0,
