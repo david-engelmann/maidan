@@ -173,9 +173,10 @@ fn chunk_within_limit(uris: Vec<String>, limit: usize) -> Vec<Vec<String>> {
             .map(|s| s.len())
             .unwrap_or(0);
         if len > limit && current.len() > 1 {
-            let last = current.pop().expect("len > 1");
-            batches.push(std::mem::take(&mut current));
-            current.push(last);
+            if let Some(last) = current.pop() {
+                batches.push(std::mem::take(&mut current));
+                current.push(last);
+            }
         }
     }
     if !current.is_empty() {

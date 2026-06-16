@@ -205,9 +205,11 @@ impl AppState {
         if let Some(oidc) = &self.oidc {
             return oidc.session_secret.as_ref();
         }
-        self.subscribe_resume_secret
-            .as_deref()
-            .expect("subscribe resume secret must be configured")
+        match self.subscribe_resume_secret.as_deref() {
+            Some(secret) => secret,
+            // Invariant established at construction; no Result to thread here.
+            None => panic!("subscribe resume secret must be configured"),
+        }
     }
 
     /// E2E harness: auth and federation disabled, fresh indexer heartbeat.

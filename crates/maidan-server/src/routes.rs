@@ -1260,10 +1260,9 @@ pub async fn get_artifact(
             headers.insert(header::CONTENT_TYPE, value);
         }
     }
-    headers.insert(
-        header::HeaderName::from_static("x-artifact-kind"),
-        meta.kind.as_str().parse().unwrap(),
-    );
+    if let Ok(kind) = meta.kind.as_str().parse() {
+        headers.insert(header::HeaderName::from_static("x-artifact-kind"), kind);
+    }
     Ok((headers, bytes).into_response())
 }
 

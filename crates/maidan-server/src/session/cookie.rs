@@ -44,8 +44,8 @@ pub fn verify_session_value(raw: &str, secret: &[u8]) -> Option<SessionId> {
 }
 
 fn mac_for_session(session_id: Uuid, secret: &[u8]) -> Vec<u8> {
-    let mut mac =
-        HmacSha256::new_from_slice(secret).expect("session secret length checked at init");
+    let mut mac = HmacSha256::new_from_slice(secret)
+        .unwrap_or_else(|_| unreachable!("HMAC-SHA256 accepts any key length"));
     mac.update(session_id.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }

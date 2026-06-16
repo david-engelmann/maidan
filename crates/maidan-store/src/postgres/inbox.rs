@@ -20,7 +20,7 @@ pub async fn get_last_read_at(
             .await?;
     Ok(row.map(|r| r.0).unwrap_or_else(|| {
         DateTime::parse_from_rfc3339(EPOCH)
-            .expect("epoch")
+            .unwrap_or_else(|_| unreachable!("EPOCH is a valid RFC3339 constant"))
             .with_timezone(&Utc)
     }))
 }

@@ -39,6 +39,10 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
+      - name: no unwrap/expect in library/binary code
+        # Scoped to --lib --bins so it covers crates/*/src only; test modules
+        # (#[cfg(test)]) aren't compiled here, and tests/ + benches are excluded.
+        run: cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used
       - name: install cargo-deny
         uses: taiki-e/install-action@v2
         with:

@@ -128,7 +128,7 @@ impl IntoResponse for ApiError {
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(
             header::CONTENT_TYPE,
-            "application/problem+json".parse().unwrap(),
+            header::HeaderValue::from_static("application/problem+json"),
         );
         response
     }

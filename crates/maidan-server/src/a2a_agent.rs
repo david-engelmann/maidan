@@ -292,11 +292,13 @@ async fn dispatch_send_streaming_message(
     let frames = [
         JsonRpcResponse::success(
             id.clone(),
-            serde_json::to_value(StreamResponseTask { task: working }).unwrap(),
+            serde_json::to_value(StreamResponseTask { task: working })
+                .unwrap_or(serde_json::Value::Null),
         ),
         JsonRpcResponse::success(
             id,
-            serde_json::to_value(StreamResponseStatusUpdate { status_update }).unwrap(),
+            serde_json::to_value(StreamResponseStatusUpdate { status_update })
+                .unwrap_or(serde_json::Value::Null),
         ),
     ];
 
