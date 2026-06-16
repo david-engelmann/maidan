@@ -122,3 +122,4 @@ PR review credit; external contributors.
 - [[Cluster 111.0]] — `maidan-auth` test suite. Closed at **`v111.0.0`** (opens Phase XXI).
 - [[Cluster 112.0]] — FSM property tests. Closed at **`v112.0.0`**.
 - [[Cluster 113.0]] — Backend parity harness. Closed at **`v113.0.0`**.
+- [[Cluster 114.0]] — Coverage uplift + envelope fuzz. Closed at **`v114.0.0`**.

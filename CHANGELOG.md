@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [114.0.0] — 2026-06-16
+
+### Added
+
+- Round-trip + `proptest` fuzz tests for the JSON-RPC / MCP / A2A envelope surface: `maidan-mcp` request/response/notification shapes and the full `McpError` → JSON-RPC code mapping + `From` conversions; `maidan-a2a` terminal-state classification, `JsonRpcId`, message round-trip / `message_text`, `Task` round-trip, and `maidan_context_from_metadata`.
+
+### Changed
+
+- Coverage gate now measures the **whole test suite** (`cargo llvm-cov nextest --workspace` with a `docker:dind` service) instead of `--lib --bins` only, so the number reflects code exercised by integration tests too (~60% lines vs the old ~16%). `COVERAGE_MIN_LINES` raised **11.0 → 40.0**; coverage-job timeout 45 → 75 min.
+
 ## [113.0.0] — 2026-06-15
 
 ### Added
