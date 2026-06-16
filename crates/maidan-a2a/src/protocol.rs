@@ -210,3 +210,178 @@ pub fn maidan_context_from_metadata(metadata: &Option<Value>) -> Result<MaidanA2
         .ok_or_else(|| "metadata.maidan with thread_id and author_id is required".to_string())?;
     serde_json::from_value(root.clone()).map_err(|e| format!("invalid metadata.maidan: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use serde_json::json;
+
+    #[test]
+    fn terminal_states_are_exactly_the_four_finished_states() {
+        for s in [
+            TASK_STATE_COMPLETED,
+            TASK_STATE_FAILED,
+            TASK_STATE_CANCELED,
+            TASK_STATE_REJECTED,
+        ] {
+            assert!(is_terminal_task_state(s), "{s} should be terminal");
+        }
+        assert!(!is_terminal_task_state(TASK_STATE_WORKING));
+        assert!(!is_terminal_task_state("TASK_STATE_UNKNOWN"));
+        assert!(!is_terminal_task_state(""));
+    }
+
+    #[test]
+    fn json_rpc_id_is_untagged_number_or_string() {
+        assert_eq!(
+            serde_json::to_value(JsonRpcId::Number(7)).unwrap(),
+            json!(7)
+        );
+        assert_eq!(
+            serde_json::to_value(JsonRpcId::Str("abc".into())).unwrap(),
+            json!("abc")
+        );
+        // Deserializes back from each JSON scalar shape.
+        assert!(matches!(
+            serde_json::from_value::<JsonRpcId>(json!(9)).unwrap(),
+            JsonRpcId::Number(9)
+        ));
+        assert!(matches!(
+            serde_json::from_value::<JsonRpcId>(json!("x")).unwrap(),
+            JsonRpcId::Str(_)
+        ));
+    }
+
+    #[test]
+    fn response_constructors_set_result_xor_error() {
+        let ok = JsonRpcResponse::success(JsonRpcId::Number(1), json!({"x": 1}));
+        assert!(ok.result.is_some() && ok.error.is_none());
+
+        let err = JsonRpcResponse::error(JsonRpcId::Number(1), -32000, "boom");
+        assert!(err.result.is_none());
+        let e = err.error.expect("error");
+        assert_eq!(e.code, -32000);
+        assert_eq!(e.message, "boom");
+    }
+
+    #[test]
+    fn message_round_trips_and_message_text_joins_text_parts() {
+        let msg = A2aMessage {
+            role: "agent".into(),
+            parts: vec![
+                TextPart {
+                    kind: "text".into(),
+                    text: "line one".into(),
+                },
+                TextPart {
+                    kind: "image".into(),
+                    text: "ignored".into(),
+                },
+                TextPart {
+                    kind: "text".into(),
+                    text: "line two".into(),
+                },
+            ],
+            metadata: None,
+        };
+        let back: A2aMessage =
+            serde_json::from_value(serde_json::to_value(&msg).unwrap()).expect("round trip");
+        assert_eq!(back.parts.len(), 3);
+        assert_eq!(message_text(&msg).as_deref(), Some("line one\nline two"));
+    }
+
+    #[test]
+    fn message_text_is_none_without_text_parts() {
+        let msg = A2aMessage {
+            role: "agent".into(),
+            parts: vec![TextPart {
+                kind: "image".into(),
+                text: "x".into(),
+            }],
+            metadata: None,
+        };
+        assert_eq!(message_text(&msg), None);
+    }
+
+    #[test]
+    fn task_round_trips_through_camel_case_json() {
+        let task = Task {
+            id: "t1".into(),
+            context_id: Some("c1".into()),
+            status: TaskStatus {
+                state: TASK_STATE_WORKING.into(),
+                message: None,
+            },
+            metadata: None,
+        };
+        let v = serde_json::to_value(&task).unwrap();
+        assert_eq!(v["contextId"], "c1", "context_id renders camelCase");
+        let back: Task = serde_json::from_value(v).expect("round trip");
+        assert_eq!(back.id, "t1");
+        assert_eq!(back.status.state, TASK_STATE_WORKING);
+    }
+
+    #[test]
+    fn context_from_metadata_requires_the_maidan_block() {
+        let thread = uuid::Uuid::new_v4();
+        let author = uuid::Uuid::new_v4();
+        let ok = maidan_context_from_metadata(&Some(json!({
+            "maidan": {"threadId": thread, "authorId": author}
+        })))
+        .expect("valid context");
+        assert_eq!(ok.thread_id, thread);
+        assert_eq!(ok.author_id, author);
+
+        assert!(maidan_context_from_metadata(&None).is_err());
+        assert!(maidan_context_from_metadata(&Some(json!({"other": 1}))).is_err());
+        // Present but malformed maidan block.
+        assert!(
+            maidan_context_from_metadata(&Some(json!({"maidan": {"threadId": "nope"}}))).is_err()
+        );
+    }
+
+    proptest! {
+        /// Fuzz terminal-state classification: true iff the string is one of the
+        /// four finished states.
+        #[test]
+        fn is_terminal_matches_the_finished_set(s in "[A-Z_]{0,32}") {
+            let expected = matches!(
+                s.as_str(),
+                "TASK_STATE_COMPLETED"
+                    | "TASK_STATE_FAILED"
+                    | "TASK_STATE_CANCELED"
+                    | "TASK_STATE_REJECTED"
+            );
+            prop_assert_eq!(is_terminal_task_state(&s), expected);
+        }
+
+        /// Fuzz message_text: the result is `Some` iff at least one part has
+        /// kind "text", and it joins exactly those parts' text with newlines.
+        #[test]
+        fn message_text_joins_only_text_parts(
+            parts in prop::collection::vec(("(text|image|file)", "[a-z ]{0,12}"), 0..6)
+        ) {
+            let message = A2aMessage {
+                role: "agent".into(),
+                parts: parts
+                    .iter()
+                    .map(|(kind, text)| TextPart { kind: kind.clone(), text: text.clone() })
+                    .collect(),
+                metadata: None,
+            };
+            let expected: Vec<&str> = parts
+                .iter()
+                .filter(|(k, _)| k == "text")
+                .map(|(_, t)| t.as_str())
+                .collect();
+            let got = message_text(&message);
+            if expected.is_empty() {
+                prop_assert!(got.is_none());
+            } else {
+                let joined = expected.join("\n");
+                prop_assert_eq!(got.as_deref(), Some(joined.as_str()));
+            }
+        }
+    }
+}
