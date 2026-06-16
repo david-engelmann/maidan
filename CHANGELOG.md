@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [113.0.0] — 2026-06-15
+
+### Added
+
+- Backend parity guard (`maidan-store/tests/backend_parity.rs`, runs in the required `unit tests` job): asserts every migration *slug* and every `src/{postgres,sqlite}/*.rs` store module exists for both backends, modulo a rationale-documented allowlist (Postgres-only `outbox_quarantine`, folded into `0013_outbox` on SQLite; SQLite-only `pragmas`, no Postgres equivalent). A migration or module added to one backend and forgotten on the other now fails CI. Slug-based (not index-based) because the two migration trees' numbering legitimately diverged.
+- Broadened cross-dialect identity test: `run_parity_scenario` / `ParitySnapshot` now also exercise an FSM transition (`Open → InReview`), a message edit (+ edit count), and a reaction, so `dialect_parity` holds both backends to identical results across that wider surface.
+
 ## [112.0.0] — 2026-06-15
 
 ### Added

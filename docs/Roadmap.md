@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)** and Phase **XX (hot-path hardening, 106–110)** are **closed** (`v102.0.0`–`v110.0.0`). Phase **XXI — correctness & coverage** (Clusters 111–115) is **in progress**: the `maidan-auth` test suite (111, **`v111.0.0`**) and FSM property tests (112, **`v112.0.0`**) are closed; backend parity harness (113) is next. Phases **XXII–XXIII** (116–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)** and Phase **XX (hot-path hardening, 106–110)** are **closed** (`v102.0.0`–`v110.0.0`). Phase **XXI — correctness & coverage** (Clusters 111–115) is **in progress**: the `maidan-auth` test suite (111, **`v111.0.0`**), FSM property tests (112, **`v112.0.0`**), and the backend parity harness (113, **`v113.0.0`**) are closed; coverage uplift + fuzz (114) is next. Phases **XXII–XXIII** (116–120) are mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **113.0** — backend parity harness at **`v113.0.0`**
+([[Retros/Cluster 113.0]]).
 
 **Recently closed:** Cluster **112.0** — FSM property tests at **`v112.0.0`**
 ([[Retros/Cluster 112.0]]).
