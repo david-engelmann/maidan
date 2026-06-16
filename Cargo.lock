@@ -2648,6 +2648,7 @@ dependencies = [
  "maidan-search",
  "maidan-store",
  "maidan-types",
+ "proptest",
  "serde",
  "serde_json",
  "sqlx",

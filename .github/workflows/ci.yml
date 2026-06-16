@@ -20,7 +20,7 @@ env:
   # binaries and exhausts the runner's linker (recurring `ld` SIGBUS / core
   # dump while linking maidan-server test targets).
   RUSTFLAGS: -D warnings -C debuginfo=line-tables-only
-  COVERAGE_MIN_LINES: "11.0"
+  COVERAGE_MIN_LINES: "40.0"
 
 jobs:
   lint:
@@ -160,7 +160,15 @@ jobs:
   coverage:
     name: coverage (llvm-cov)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    # Coverage gates on the WHOLE test suite (unit + integration), so the
+    # number reflects code actually exercised — most store/server logic is
+    # covered by integration tests, not inline units. Postgres-backed tests
+    # need a Docker daemon (testcontainers), same as the `integration` job.
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
     steps:
       - uses: actions/checkout@v4
       - name: install rust
@@ -169,14 +177,16 @@ jobs:
           components: llvm-tools-preview
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: install cargo-llvm-cov
+      - name: install nextest + cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
-      - name: coverage report + line gate
+          tool: cargo-nextest,cargo-llvm-cov
+      - name: run instrumented test suite
+        run: cargo llvm-cov nextest --workspace --no-fail-fast --no-report
+      - name: line gate + lcov + html
         run: |
-          cargo llvm-cov --workspace --lib --bins --fail-under-lines "$COVERAGE_MIN_LINES" --lcov --output-path lcov.info
-          cargo llvm-cov --workspace --lib --bins --html --output-dir coverage-html
+          cargo llvm-cov report --fail-under-lines "$COVERAGE_MIN_LINES" --lcov --output-path lcov.info
+          cargo llvm-cov report --html --output-dir coverage-html
       - uses: actions/upload-artifact@v4
         with:
           name: coverage

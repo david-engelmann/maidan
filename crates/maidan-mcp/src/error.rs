@@ -102,3 +102,80 @@ impl From<maidan_search::SearchError> for McpError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_variant_maps_to_its_jsonrpc_code() {
+        let cases = [
+            (McpError::MethodNotFound("m".into()), -32601),
+            (McpError::InvalidParams("p".into()), -32602),
+            (McpError::Internal("i".into()), -32603),
+            (McpError::NotFound, -32004),
+            (McpError::Unauthorized, -32001),
+            (McpError::Forbidden("f".into()), -32003),
+        ];
+        for (err, expected_code) in cases {
+            assert_eq!(err.to_jsonrpc().code, expected_code, "{err:?}");
+        }
+    }
+
+    #[test]
+    fn parameterized_variants_carry_their_message() {
+        assert!(McpError::MethodNotFound("tools/x".into())
+            .to_jsonrpc()
+            .message
+            .contains("tools/x"));
+        assert!(McpError::Forbidden("no write".into())
+            .to_jsonrpc()
+            .message
+            .contains("no write"));
+        // Unit variants use a fixed message and never expose internals.
+        assert_eq!(McpError::Unauthorized.to_jsonrpc().message, "unauthorized");
+    }
+
+    #[test]
+    fn auth_errors_map_to_unauthorized_forbidden_and_internal() {
+        assert!(matches!(
+            McpError::from(maidan_auth::AuthError::Unauthorized),
+            McpError::Unauthorized
+        ));
+        assert!(matches!(
+            McpError::from(maidan_auth::AuthError::Forbidden("x".into())),
+            McpError::Forbidden(_)
+        ));
+        assert!(matches!(
+            McpError::from(maidan_auth::AuthError::Store(
+                maidan_store::StoreError::NotFound
+            )),
+            McpError::Internal(_)
+        ));
+    }
+
+    #[test]
+    fn store_not_found_and_invalid_input_map_distinctly() {
+        assert!(matches!(
+            McpError::from(maidan_store::StoreError::NotFound),
+            McpError::NotFound
+        ));
+        assert!(matches!(
+            McpError::from(maidan_store::StoreError::InvalidInput("bad".into())),
+            McpError::InvalidParams(_)
+        ));
+        assert!(matches!(
+            McpError::from(maidan_store::StoreError::Conflict("dup".into())),
+            McpError::Internal(_)
+        ));
+    }
+
+    #[test]
+    fn serde_error_becomes_invalid_params() {
+        let serde_err = serde_json::from_str::<serde_json::Value>("{ not json").unwrap_err();
+        assert!(matches!(
+            McpError::from(serde_err),
+            McpError::InvalidParams(_)
+        ));
+    }
+}
