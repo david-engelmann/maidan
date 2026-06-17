@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [115.0.0] — 2026-06-17
+
+### Changed
+
+- Non-test `unwrap()`/`expect()` removed from `crates/*/src` (25 sites), each fixed by its nature: lock-poison recovery (`PoisonError::into_inner`), `unreachable!` for infallible constructors (HMAC any-key-length, `EPOCH` constant), `HeaderValue::from_static` for the const problem+json type, `if let` for guarded `pop`/dynamic header parse, `unwrap_or(Value::Null)` for infallible serialize, graceful `tracing::error!` fallback for best-effort metrics init, an explicit `panic!` for the one genuine construction invariant, and `io::Result` + `?` for the codegen bin. A clippy gate (`-D clippy::unwrap_used -D clippy::expect_used` on `--lib --bins`) keeps it at zero; tests may still `unwrap()`.
+- `routes.rs` (1617 lines) split into `routes/` domain submodules (workspace, member, channel, thread, message, social, artifact, reference, search, token) and `tools.rs` (1368 lines) into `tools/` (catalog, channel, message, social, artifact, thread, reference, search, automation). Public paths preserved via `mod.rs` re-exports; pure reorganization.
+
 ## [114.0.0] — 2026-06-16
 
 ### Added

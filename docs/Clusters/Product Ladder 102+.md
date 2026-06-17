@@ -84,7 +84,7 @@
 | **112** ✓ | FSM property tests | `v112.0.0` ✓ | `proptest` proving only legal `(state, action)` edges succeed, `archived` terminal, and the HSM child-rank ≤ parent invariant holds for arbitrary trees |
 | **113** ✓ | Backend parity harness | `v113.0.0` ✓ | Shared assertion suite both backends must pass + CI guard that `migrations/postgres` ↔ `migrations/sqlite` and store modules stay in lockstep |
 | **114** ✓ | Coverage uplift + fuzz | `v114.0.0` ✓ | `COVERAGE_MIN_LINES` raised in steps (11 → 25 → 40); fuzz/round-trip tests on the JSON-RPC / MCP envelope surface |
-| **115** | Module split + `unwrap()` purge | `v115.0.0` | `routes.rs` and `tools.rs` split by domain; zero non-test `unwrap()`/`expect()` in `crates/*/src/`; clippy lint added to enforce |
+| **115** ✓ | Module split + `unwrap()` purge | `v115.0.0` ✓ | `routes.rs` and `tools.rs` split by domain; zero non-test `unwrap()`/`expect()` in `crates/*/src/`; clippy lint added to enforce |
 
 **Ordering:** **111** + **112** independent (start immediately — both are pure-logic crates). **113** before/with **114**. **115** can interleave (mechanical).
 
