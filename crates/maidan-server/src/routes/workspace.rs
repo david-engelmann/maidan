@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
+#[cfg(feature = "bootstrap")]
 use chrono::Utc;
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
@@ -13,7 +14,9 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish, ApiResult};
+use super::{cap, ensure_workspace, ApiResult};
+#[cfg(feature = "bootstrap")]
+use super::publish;
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::federation::PeerContext;

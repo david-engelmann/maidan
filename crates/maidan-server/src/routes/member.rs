@@ -2,9 +2,11 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     Extension, Json,
 };
+#[cfg(feature = "bootstrap")]
+use axum::http::StatusCode;
+#[cfg(feature = "bootstrap")]
 use chrono::Utc;
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_types::*;
