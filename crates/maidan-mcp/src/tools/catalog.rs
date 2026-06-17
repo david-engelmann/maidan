@@ -1,0 +1,417 @@
+//! Catalog of every tool the MCP server exposes. The JSON-RPC client
+//! receives this verbatim in the `tools/list` response.
+
+use serde_json::{json, Value};
+
+pub fn catalog() -> Vec<Value> {
+    vec![
+        json!({
+            "name": "open_dm_conversation",
+            "description": "Open or fetch a 1:1 DM conversation between two workspace members.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "other_member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "member_id", "other_member_id"]
+            }
+        }),
+        json!({
+            "name": "list_dm_conversations",
+            "description": "List DM conversations for a member in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "post_dm_message",
+            "description": "Post a message in a DM conversation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dm_conversation_id": {"type": "string", "format": "uuid"},
+                    "author_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["dm_conversation_id", "author_id", "body"]
+            }
+        }),
+        json!({
+            "name": "list_channels",
+            "description": "List channels in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "list_threads",
+            "description": "List threads in a channel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "list_messages",
+            "description": "List messages in a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 100}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "post_message",
+            "description": "Post a message to a thread on behalf of a member.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "author_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["thread_id", "author_id", "body"]
+            }
+        }),
+        json!({
+            "name": "edit_message",
+            "description": "Edit a message body (author needs message:post; others need workspace:write).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "editor_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["message_id", "editor_id", "body"]
+            }
+        }),
+        json!({
+            "name": "record_mention",
+            "description": "Mark a member as mentioned in a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "cast_vote",
+            "description": "Cast a vote on a message (e.g. approve, request-changes, emoji).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string"}
+                },
+                "required": ["message_id", "member_id", "kind"]
+            }
+        }),
+        json!({
+            "name": "add_reaction",
+            "description": "Add an emoji reaction to a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "emoji": {"type": "string"}
+                },
+                "required": ["message_id", "member_id", "emoji"]
+            }
+        }),
+        json!({
+            "name": "remove_reaction",
+            "description": "Remove an emoji reaction from a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "emoji": {"type": "string"}
+                },
+                "required": ["message_id", "member_id", "emoji"]
+            }
+        }),
+        json!({
+            "name": "list_reactions",
+            "description": "List emoji reactions on a message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "pin_message",
+            "description": "Pin a message to a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "message_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "unpin_message",
+            "description": "Unpin a message from a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "message_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_pins",
+            "description": "List pinned messages in a thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "add_reference",
+            "description": "Add a typed reference between two threads or messages.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "src_kind": {"type": "string", "enum": ["thread", "message"]},
+                    "src_id": {"type": "string", "format": "uuid"},
+                    "dst_kind": {"type": "string", "enum": ["thread", "message"]},
+                    "dst_id": {"type": "string", "format": "uuid"},
+                    "relation": {"type": "string"}
+                },
+                "required": ["src_kind", "src_id", "dst_kind", "dst_id", "relation"]
+            }
+        }),
+        json!({
+            "name": "upload_artifact",
+            "description": "Store bytes in the artifact substrate and register metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
+                    },
+                    "content_base64": {"type": "string"},
+                    "mime_type": {"type": "string"},
+                    "uploaded_by": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "content_base64"]
+            }
+        }),
+        json!({
+            "name": "begin_artifact_multipart",
+            "description": "Start an S3 multipart upload for a large artifact (requires S3 backend).",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
+            "name": "upload_artifact_multipart_part",
+            "description": "Upload one part of an in-progress multipart artifact.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"},
+                    "part_number": {"type": "integer", "minimum": 1},
+                    "content_base64": {"type": "string"}
+                },
+                "required": ["upload_id", "object_key", "part_number", "content_base64"]
+            }
+        }),
+        json!({
+            "name": "complete_artifact_multipart",
+            "description": "Finish multipart upload, content-address bytes, and register artifact metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"},
+                    "parts": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "part_number": {"type": "integer"},
+                                "etag": {"type": "string"}
+                            },
+                            "required": ["part_number", "etag"]
+                        }
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
+                    },
+                    "mime_type": {"type": "string"},
+                    "uploaded_by": {"type": "string", "format": "uuid"}
+                },
+                "required": ["upload_id", "object_key", "parts", "kind"]
+            }
+        }),
+        json!({
+            "name": "abort_artifact_multipart",
+            "description": "Abort a failed multipart upload.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "upload_id": {"type": "string"},
+                    "object_key": {"type": "string"}
+                },
+                "required": ["upload_id", "object_key"]
+            }
+        }),
+        json!({
+            "name": "get_artifact_metadata",
+            "description": "Fetch artifact metadata by sha256 hex digest.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sha256": {"type": "string", "minLength": 64, "maxLength": 64}
+                },
+                "required": ["sha256"]
+            }
+        }),
+        json!({
+            "name": "search_messages",
+            "description": "Lexical full-text search over a workspace's messages. Returns ranked hits with highlighted snippets.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "query": {"type": "string", "minLength": 1},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["lexical", "semantic"],
+                        "default": "lexical"
+                    },
+                    "limit": {"type": "integer", "default": 25},
+                    "author_id": {"type": "string", "format": "uuid"},
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "enum": ["human", "agent"]},
+                    "embedding_model": {
+                        "type": "string",
+                        "description": "Semantic only: registered model name (default: active provider)."
+                    }
+                },
+                "required": ["workspace_id", "query"]
+            }
+        }),
+        json!({
+            "name": "register_slash_command",
+            "description": "Register a workspace slash command handler (http URL or MCP tool name).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "handler_kind": {"type": "string", "enum": ["http", "mcp_tool"]},
+                    "handler_target": {"type": "string"}
+                },
+                "required": ["workspace_id", "name", "handler_kind", "handler_target"]
+            }
+        }),
+        json!({
+            "name": "list_slash_commands",
+            "description": "List registered slash commands in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "register_fsm_hook",
+            "description": "Register an FSM hook invoked on matching thread state transitions.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "label": {"type": "string"},
+                    "from_state": {"type": "string", "enum": ["open", "in_review", "closed", "archived"]},
+                    "to_state": {"type": "string", "enum": ["open", "in_review", "closed", "archived"]},
+                    "handler_kind": {"type": "string", "enum": ["http", "mcp_tool"]},
+                    "handler_target": {"type": "string"}
+                },
+                "required": ["workspace_id", "handler_kind", "handler_target"]
+            }
+        }),
+        json!({
+            "name": "list_fsm_hooks",
+            "description": "List registered FSM automation hooks in a workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "get_thread_context",
+            "description": "Pack thread messages, edits, references, and FSM history for agent prompts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_context",
+            "description": "Pack workspace channels and thread contexts (bounded by thread_limit).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "thread_limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+    ]
+}

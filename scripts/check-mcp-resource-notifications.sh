@@ -5,8 +5,10 @@ cd "$(dirname "$0")/.."
 # Cluster 71: HTTP mutations fan out via publish_resource_uris; MCP tools/call via
 # queue_resource_updates on McpServer (grep parity checklist).
 
-ROUTES="crates/maidan-server/src/routes.rs"
-TOOLS="crates/maidan-mcp/src/tools.rs"
+# routes.rs and tools.rs were split into domain module directories
+# (Cluster 115); grep the directories recursively.
+ROUTES="crates/maidan-server/src/routes"
+TOOLS="crates/maidan-mcp/src/tools"
 SERVER="crates/maidan-mcp/src/server.rs"
 
 if ! grep -qF "queue_resource_updates" "$SERVER"; then
@@ -14,20 +16,20 @@ if ! grep -qF "queue_resource_updates" "$SERVER"; then
   exit 1
 fi
 
-if ! grep -qF "publish_resource_uris" "$ROUTES"; then
+if ! grep -qrF "publish_resource_uris" "$ROUTES"; then
   echo "missing publish_resource_uris in $ROUTES"
   exit 1
 fi
 
 for sym in post_message edit_message pin_message unpin_message add_reference; do
-  if ! grep -qF "\"$sym\"" "$TOOLS"; then
+  if ! grep -qrF "\"$sym\"" "$TOOLS"; then
     echo "missing MCP tool $sym in $TOOLS"
     exit 1
   fi
 done
 
 for handler in post_message edit_message pin_message unpin_message create_reference; do
-  if ! grep -qF "fn $handler" "$ROUTES"; then
+  if ! grep -qrF "fn $handler" "$ROUTES"; then
     echo "missing HTTP handler $handler in $ROUTES"
     exit 1
   fi
