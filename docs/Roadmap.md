@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)** and Phase **XX (hot-path hardening, 106–110)** are **closed** (`v102.0.0`–`v110.0.0`). Phase **XXI — correctness & coverage** (Clusters 111–115) is **in progress**: the `maidan-auth` test suite (111, **`v111.0.0`**), FSM property tests (112, **`v112.0.0`**), the backend parity harness (113, **`v113.0.0`**), and coverage uplift + fuzz (114, **`v114.0.0`**) are closed; module split + `unwrap()` purge (115) closes the phase. Phases **XXII–XXIII** (116–120) are mapped in the ladder.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)**, Phase **XX (hot-path hardening, 106–110)**, and Phase **XXI — correctness & coverage (111–115)** are **closed** (`v102.0.0`–`v115.0.0`): the `maidan-auth` test suite (111), FSM property tests (112), the backend parity harness (113), coverage uplift + fuzz (114), and the module split + `unwrap()` purge (115). Next: Phase **XXII — Search & indexer at scale** (Clusters 116–118), opening with the batch embedding pipeline (116). Phase **XXIII** (119–120) is mapped in the ladder.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **115.0** — module split + `unwrap()` purge at **`v115.0.0`**, closing Phase XXI
+([[Retros/Cluster 115.0]]).
 
 **Recently closed:** Cluster **114.0** — coverage uplift + envelope fuzz (full-suite gate at 40%) at **`v114.0.0`**
 ([[Retros/Cluster 114.0]]).

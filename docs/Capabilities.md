@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v115.0.0 — Module split + `unwrap()` purge
+
+| Capability | Where |
+|------------|-------|
+| No non-test `unwrap()`/`expect()` in `crates/*/src` (clippy-enforced) | `.github/workflows/ci.yml` (lint job) |
+| Domain-organized HTTP route modules | `crates/maidan-server/src/routes/` |
+| Domain-organized MCP tool modules | `crates/maidan-mcp/src/tools/` |
+
 ## v114.0.0 — Coverage uplift + envelope fuzz
 
 | Capability | Where |
