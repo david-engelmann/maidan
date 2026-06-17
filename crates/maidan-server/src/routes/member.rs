@@ -1,11 +1,11 @@
 //! Member handlers: list/get members, mentions-for-member, and inbox.
 
+#[cfg(feature = "bootstrap")]
+use axum::http::StatusCode;
 use axum::{
     extract::{Path, Query, State},
     Extension, Json,
 };
-#[cfg(feature = "bootstrap")]
-use axum::http::StatusCode;
 #[cfg(feature = "bootstrap")]
 use chrono::Utc;
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};

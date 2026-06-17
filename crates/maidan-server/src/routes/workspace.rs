@@ -14,9 +14,9 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, ApiResult};
 #[cfg(feature = "bootstrap")]
 use super::publish;
+use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::federation::PeerContext;
