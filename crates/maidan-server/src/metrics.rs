@@ -190,6 +190,16 @@ async fn refresh_runtime_gauges(state: &AppState) {
     };
     gauge!("maidan_indexer_last_event_age_seconds").set(age_secs);
 
+    // Live embedding pipeline (Cluster 116): queue depth is hard-capped by
+    // capacity, so the lag this gauge reports is bounded.
+    let im = &state.indexer_metrics;
+    gauge!("maidan_indexer_queue_depth").set(im.queue_depth.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_indexer_queue_capacity").set(im.queue_capacity as f64);
+    gauge!("maidan_indexer_embedded_total").set(im.embedded_total.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_indexer_embed_failed_total").set(im.failed_total.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_indexer_embed_batches_total")
+        .set(im.batches_total.load(Ordering::Relaxed) as f64);
+
     if let Some(health) = state.bus_listener_health.as_ref() {
         let ok = health.check().is_ok();
         gauge!("maidan_bus_listener_ok").set(if ok { 1.0 } else { 0.0 });

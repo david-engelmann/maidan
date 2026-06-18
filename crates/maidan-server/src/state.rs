@@ -123,6 +123,9 @@ pub struct AppState {
     pub presence: Arc<PresenceHub>,
     /// Optional Redis backend for global and per-token rate limits (Cluster 54).
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
+    /// Live embedding-indexer counters (queue depth, throughput) for metrics
+    /// (Cluster 116). Default-zeroed unless the batching indexer is wired.
+    pub indexer_metrics: Arc<maidan_search::IndexerMetrics>,
 }
 
 impl AppState {
@@ -170,6 +173,7 @@ impl AppState {
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
+            indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
         }
     }
 
