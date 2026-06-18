@@ -226,6 +226,17 @@ impl Search for PostgresSearch {
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
         reindex_postgres(&self.pool, self, provider, workspace_id).await
     }
+
+    async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {
+        embedding_tables::ensure_model_postgres(
+            &self.pool,
+            provider.model_name(),
+            provider.dimension(),
+            self.hnsw,
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 fn row_to_lexical_hit(row: &sqlx::postgres::PgRow) -> SearchHit {

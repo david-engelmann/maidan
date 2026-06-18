@@ -259,6 +259,16 @@ impl Search for SqliteSearch {
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
         reindex_sqlite(&self.pool, self, provider, workspace_id).await
     }
+
+    async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {
+        embedding_tables::ensure_model_sqlite(
+            &self.pool,
+            provider.model_name(),
+            provider.dimension(),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 fn parse_embedding_bytes(bytes: &[u8], dimension: usize) -> Result<Vec<f32>, SearchError> {

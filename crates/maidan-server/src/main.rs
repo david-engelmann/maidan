@@ -196,6 +196,23 @@ async fn main() -> anyhow::Result<()> {
         "embedding provider configured"
     );
 
+    // Register the active model in the per-model table scheme at boot (Cluster
+    // 117) so it's queryable before the first write and a dimension mismatch
+    // surfaces now. Non-fatal: embeddings are best-effort and the per-message
+    // path re-attempts; the server must still serve messaging.
+    match search.ensure_model(embedding_provider.as_ref()).await {
+        Ok(()) => tracing::info!(
+            model = embedding_provider.model_name(),
+            dimension = embedding_provider.dimension(),
+            "embedding model registered"
+        ),
+        Err(err) => tracing::warn!(
+            error = %err,
+            model = embedding_provider.model_name(),
+            "embedding model registration at startup failed; will retry on first write"
+        ),
+    }
+
     let indexer_last_error = Arc::new(RwLock::new(None));
 
     let (indexer_handler, indexer_metrics): (

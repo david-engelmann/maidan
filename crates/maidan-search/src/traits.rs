@@ -60,4 +60,13 @@ pub trait Search: Send + Sync {
         let _ = (provider, workspace_id);
         Err(SearchError::Unsupported("reindex_embeddings"))
     }
+
+    /// Ensure the per-model embedding table + registry row for the active
+    /// `provider` model exist (Cluster 117). Called at startup so a newly
+    /// configured model is registered before the first write and a dimension
+    /// mismatch surfaces immediately. Backends without vectors no-op.
+    async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {
+        let _ = provider;
+        Ok(())
+    }
 }
