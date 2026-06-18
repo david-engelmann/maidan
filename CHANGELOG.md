@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [117.0.0] — 2026-06-18
+
+### Added
+
+- `Search::ensure_model(provider)` registers the active embedding model's per-model table + registry row at server boot, so a freshly-configured model is queryable before the first write and a dimension mismatch surfaces in startup logs (non-fatal).
+- `docs/Embeddings.md` — embedding providers, the per-model table scheme, and the switch-models / reindex workflow.
+
+### Changed
+
+- The `openai-compatible` embedding provider auto-detects its output dimension by probing the endpoint once at boot when `MAIDAN_EMBEDDING_DIM` is unset (instead of defaulting to 1024). A wrong model id or unreachable endpoint now fails at boot with a clear error rather than on every message; set `MAIDAN_EMBEDDING_DIM` explicitly to skip the probe.
+
 ## [116.0.0] — 2026-06-17
 
 ### Added
