@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v117.0.0 — Pluggable production provider
+
+| Capability | Where |
+|------------|-------|
+| Production `openai-compatible` embeddings with auto-detected dimension | `crates/maidan-search/src/embedding_provider.rs` |
+| Boot-time per-model registration (`Search::ensure_model`) | `crates/maidan-search/src/traits.rs`, `postgres.rs`, `sqlite.rs` |
+| Embedding provider + model-migration guide | `docs/Embeddings.md` |
+
 ## v116.0.0 — Batch embedding pipeline
 
 | Capability | Where |
