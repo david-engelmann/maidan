@@ -310,7 +310,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "search_messages",
-            "description": "Lexical full-text search over a workspace's messages. Returns ranked hits with highlighted snippets.",
+            "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -318,7 +318,7 @@ pub fn catalog() -> Vec<Value> {
                     "query": {"type": "string", "minLength": 1},
                     "mode": {
                         "type": "string",
-                        "enum": ["lexical", "semantic"],
+                        "enum": ["lexical", "semantic", "hybrid"],
                         "default": "lexical"
                     },
                     "limit": {"type": "integer", "default": 25},
@@ -327,7 +327,11 @@ pub fn catalog() -> Vec<Value> {
                     "kind": {"type": "string", "enum": ["human", "agent"]},
                     "embedding_model": {
                         "type": "string",
-                        "description": "Semantic only: registered model name (default: active provider)."
+                        "description": "Semantic/hybrid only: registered model name (default: active provider)."
+                    },
+                    "hybrid_weight": {
+                        "type": "number",
+                        "description": "Hybrid only: semantic weight in [0,1] (default 0.5). combined = w*semantic + (1-w)*lexical over normalized scores."
                     }
                 },
                 "required": ["workspace_id", "query"]

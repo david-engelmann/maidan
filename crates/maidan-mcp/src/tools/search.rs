@@ -16,6 +16,7 @@ enum SearchMessagesMode {
     #[default]
     Lexical,
     Semantic,
+    Hybrid,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +31,7 @@ struct SearchMessagesArgs {
     channel_id: Option<uuid::Uuid>,
     kind: Option<maidan_types::MemberKind>,
     embedding_model: Option<String>,
+    hybrid_weight: Option<f64>,
 }
 
 fn default_search_limit() -> i64 {
@@ -64,6 +66,29 @@ pub(super) async fn search_messages(
                 .unwrap_or_else(|| embedding_provider.model_name());
             search
                 .semantic_search(workspace_id, &embedding, a.limit, &filters, model)
+                .await?
+        }
+        SearchMessagesMode::Hybrid => {
+            let embedding = embedding_provider
+                .embed(&a.query)
+                .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
+            let model = a
+                .embedding_model
+                .as_deref()
+                .unwrap_or_else(|| embedding_provider.model_name());
+            let weight = a
+                .hybrid_weight
+                .unwrap_or(maidan_search::DEFAULT_HYBRID_WEIGHT);
+            search
+                .hybrid_search(
+                    workspace_id,
+                    &a.query,
+                    &embedding,
+                    a.limit,
+                    &filters,
+                    model,
+                    weight,
+                )
                 .await?
         }
     };

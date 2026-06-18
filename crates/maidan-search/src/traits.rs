@@ -69,4 +69,34 @@ pub trait Search: Send + Sync {
         let _ = provider;
         Ok(())
     }
+
+    /// Hybrid lexical+semantic ranking (Cluster 118): run both surfaces and fuse
+    /// their normalized `[0, 1]` scores via [`crate::score::fuse_hybrid`].
+    /// `weight` is the semantic weight in `[0, 1]`; the caller supplies the
+    /// query's `embedding` (the provider does the embedding). The default
+    /// composes the existing `search_messages` + `semantic_search`, so both
+    /// backends inherit it.
+    async fn hybrid_search(
+        &self,
+        workspace_id: WorkspaceId,
+        query: &str,
+        embedding: &[f32],
+        limit: i64,
+        filters: &SearchFilters,
+        model: &str,
+        weight: f64,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let lexical = self
+            .search_messages(workspace_id, query, limit, filters)
+            .await?;
+        let semantic = self
+            .semantic_search(workspace_id, embedding, limit, filters, model)
+            .await?;
+        Ok(crate::score::fuse_hybrid(
+            lexical,
+            semantic,
+            weight,
+            limit.max(0) as usize,
+        ))
+    }
 }
