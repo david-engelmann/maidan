@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v118.0.0 — Hybrid relevance
+
+| Capability | Where |
+|------------|-------|
+| Hybrid lexical+semantic search (HTTP + MCP) | `crates/maidan-server/src/routes/search.rs`, `crates/maidan-mcp/src/tools/search.rs` |
+| Score fusion (`fuse_hybrid`, `DEFAULT_HYBRID_WEIGHT`) | `crates/maidan-search/src/score.rs`, `traits.rs` |
+| Relevance eval harness | `crates/maidan-search/tests/relevance_eval.rs` |
+
 ## v117.0.0 — Pluggable production provider
 
 | Capability | Where |
