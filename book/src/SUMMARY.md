@@ -13,6 +13,7 @@
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](../docs/Production.md)
+- [Embeddings & semantic search](../docs/Embeddings.md)
 - [Deploy](../docs/Deploy.md)
 - [Raspberry Pi / ARM64](../docs/Pi.md)
 - [Threat model](../docs/Threat-Model.md)
