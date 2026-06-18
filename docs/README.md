@@ -20,6 +20,7 @@ Mermaid fenced blocks. It renders correctly on GitHub, in mdBook, and in editors
 | [Integration.md](Integration.md) | Agents, bots, client apps — **start here** |
 | [Capability Map.md](Capability%20Map.md) | Capability strings + `contracts/*.json` |
 | [Production.md](Production.md) | Probes, env vars, bootstrap, metrics |
+| [Embeddings.md](Embeddings.md) | Embedding providers, per-model tables, switching models (reindex) |
 | [Deploy.md](Deploy.md) | Docker Compose, Kubernetes, Helm |
 | [Pi.md](Pi.md) | Raspberry Pi / ARM64 Linux |
 | [Threat-Model.md](Threat-Model.md) | Security assets and controls |

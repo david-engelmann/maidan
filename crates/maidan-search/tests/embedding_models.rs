@@ -1,9 +1,63 @@
 //! Per-model embedding tables and mixed dimensions.
 
-use maidan_search::{embedding_tables, sqlite_pool_options, Search, SearchFilters, SqliteSearch};
+use maidan_search::{
+    embedding_provider::{EmbeddingProvider, EmbeddingProviderError},
+    embedding_tables, sqlite_pool_options, Search, SearchFilters, SqliteSearch,
+};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use std::sync::Arc;
+
+/// Stands in for a freshly-configured production provider with a model name
+/// not pre-seeded by migrations.
+struct FakeProvider;
+impl EmbeddingProvider for FakeProvider {
+    fn model_name(&self) -> &str {
+        "prod-embed-117"
+    }
+    fn dimension(&self) -> usize {
+        256
+    }
+    fn embed(&self, _body: &str) -> Result<Vec<f32>, EmbeddingProviderError> {
+        Ok(vec![0.0; 256])
+    }
+}
+
+#[tokio::test]
+async fn ensure_model_registers_active_model_at_startup() {
+    let pool = sqlite_pool_options()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let search = SqliteSearch::new(pool.clone());
+
+    // A newly-configured model is not registered until ensure_model runs.
+    assert!(
+        embedding_tables::resolve_table_sqlite(&pool, "prod-embed-117")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    search.ensure_model(&FakeProvider).await.expect("register");
+
+    let (_table, dim) = embedding_tables::resolve_table_sqlite(&pool, "prod-embed-117")
+        .await
+        .unwrap()
+        .expect("model registered after ensure_model");
+    assert_eq!(dim, FakeProvider.dimension());
+
+    // Idempotent: a second call with the same model/dimension is a no-op.
+    search
+        .ensure_model(&FakeProvider)
+        .await
+        .expect("idempotent");
+}
 
 fn vec_dim(dim: usize, peak: usize) -> Vec<f32> {
     let mut v = vec![0.0; dim];
