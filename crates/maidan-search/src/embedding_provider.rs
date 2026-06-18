@@ -82,14 +82,13 @@ impl OpenAiCompatibleProvider {
             }
         })?;
         let api_key = std::env::var("MAIDAN_EMBEDDING_API_KEY").ok();
-        let dimension = std::env::var("MAIDAN_EMBEDDING_DIM")
+        let configured_dim = std::env::var("MAIDAN_EMBEDDING_DIM")
             .ok()
             .map(|v| {
                 v.parse::<usize>()
                     .map_err(|e| EmbeddingProviderError::InvalidConfig(e.to_string()))
             })
-            .transpose()?
-            .unwrap_or(EMBEDDING_DIM);
+            .transpose()?;
         let timeout_secs = std::env::var("MAIDAN_EMBEDDING_TIMEOUT_SECS")
             .ok()
             .map(|v| {
@@ -102,13 +101,77 @@ impl OpenAiCompatibleProvider {
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| EmbeddingProviderError::InvalidConfig(e.to_string()))?;
-        Ok(Self {
+        // Dimension is set explicitly via MAIDAN_EMBEDDING_DIM, or auto-detected
+        // by a one-shot probe against the endpoint. Probing here means a
+        // mis-configured model or unreachable endpoint fails at boot, not on
+        // every message. `provider` carries a placeholder dim only for the probe.
+        let provider = Self {
             endpoint,
             model,
             api_key,
-            dimension,
+            dimension: configured_dim.unwrap_or(0),
             client,
+        };
+        let dimension = resolve_dimension(configured_dim, || provider.probe_dimension())?;
+        Ok(Self {
+            dimension,
+            ..provider
         })
+    }
+
+    /// POST `{model, input}` to the endpoint and parse the response. `input` is
+    /// a single string, an array of strings, or the probe sentinel.
+    fn request_embeddings(
+        &self,
+        input: serde_json::Value,
+    ) -> Result<OpenAiEmbeddingsResponse, EmbeddingProviderError> {
+        let mut req = self
+            .client
+            .post(&self.endpoint)
+            .json(&json!({ "model": self.model, "input": input }));
+        if let Some(token) = &self.api_key {
+            req = req.bearer_auth(token);
+        }
+        req.send()
+            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
+            .json()
+            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))
+    }
+
+    /// One sentinel embed to learn the model's output dimension (used when
+    /// `MAIDAN_EMBEDDING_DIM` is unset).
+    fn probe_dimension(&self) -> Result<usize, EmbeddingProviderError> {
+        let resp = self.request_embeddings(json!("dimension probe")).map_err(|e| {
+            EmbeddingProviderError::InvalidConfig(format!(
+                "auto-detect embedding dimension via {} failed (set MAIDAN_EMBEDDING_DIM to skip the probe): {e}",
+                self.endpoint
+            ))
+        })?;
+        let dim = resp.data.first().map(|d| d.embedding.len()).unwrap_or(0);
+        if dim == 0 {
+            return Err(EmbeddingProviderError::InvalidConfig(format!(
+                "dimension probe against {} returned no usable embedding",
+                self.endpoint
+            )));
+        }
+        Ok(dim)
+    }
+}
+
+/// Resolve the embedding dimension: an explicit positive `configured` value
+/// wins; otherwise `probe` is called. A configured `0` is rejected.
+fn resolve_dimension(
+    configured: Option<usize>,
+    probe: impl FnOnce() -> Result<usize, EmbeddingProviderError>,
+) -> Result<usize, EmbeddingProviderError> {
+    match configured {
+        Some(0) => Err(EmbeddingProviderError::InvalidConfig(
+            "MAIDAN_EMBEDDING_DIM must be greater than 0".into(),
+        )),
+        Some(d) => Ok(d),
+        None => probe(),
     }
 }
 
@@ -122,21 +185,7 @@ impl EmbeddingProvider for OpenAiCompatibleProvider {
     }
 
     fn embed(&self, body: &str) -> Result<Vec<f32>, EmbeddingProviderError> {
-        let mut req = self
-            .client
-            .post(&self.endpoint)
-            .json(&json!({ "model": self.model, "input": body }));
-        if let Some(token) = &self.api_key {
-            req = req.bearer_auth(token);
-        }
-        let resp = req
-            .send()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?;
-        let parsed: OpenAiEmbeddingsResponse = resp
-            .json()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?;
+        let parsed = self.request_embeddings(json!(body))?;
         let mut batch = parse_embeddings_batch(parsed, self.dimension, 1)?;
         Ok(batch.remove(0))
     }
@@ -145,21 +194,7 @@ impl EmbeddingProvider for OpenAiCompatibleProvider {
         if bodies.is_empty() {
             return Ok(Vec::new());
         }
-        let mut req = self
-            .client
-            .post(&self.endpoint)
-            .json(&json!({ "model": self.model, "input": bodies }));
-        if let Some(token) = &self.api_key {
-            req = req.bearer_auth(token);
-        }
-        let resp = req
-            .send()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?;
-        let parsed: OpenAiEmbeddingsResponse = resp
-            .json()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?;
+        let parsed = self.request_embeddings(json!(bodies))?;
         parse_embeddings_batch(parsed, self.dimension, bodies.len())
     }
 }
@@ -274,6 +309,27 @@ mod tests {
         assert_eq!(out[0][0], 0.0);
         assert_eq!(out[1][0], 0.1);
         assert_eq!(out[2][0], 0.2);
+    }
+
+    #[test]
+    fn resolve_dimension_prefers_configured_and_skips_probe() {
+        let got = resolve_dimension(Some(1536), || panic!("probe must not run when configured"))
+            .expect("configured");
+        assert_eq!(got, 1536);
+    }
+
+    #[test]
+    fn resolve_dimension_probes_when_unset() {
+        let got = resolve_dimension(None, || Ok(768)).expect("probed");
+        assert_eq!(got, 768);
+
+        let err = resolve_dimension(None, || Err(EmbeddingProviderError::Remote("boom".into())));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn resolve_dimension_rejects_zero() {
+        assert!(resolve_dimension(Some(0), || Ok(1)).is_err());
     }
 
     #[test]
