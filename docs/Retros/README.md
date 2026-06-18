@@ -124,3 +124,4 @@ PR review credit; external contributors.
 - [[Cluster 113.0]] — Backend parity harness. Closed at **`v113.0.0`**.
 - [[Cluster 114.0]] — Coverage uplift + envelope fuzz. Closed at **`v114.0.0`**.
 - [[Cluster 115.0]] — Module split + `unwrap()` purge. Closed at **`v115.0.0`**, closing Phase XXI.
+- [[Cluster 116.0]] — Batch embedding pipeline. Closed at **`v116.0.0`**, opening Phase XXII.

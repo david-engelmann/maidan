@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [116.0.0] — 2026-06-17
+
+### Added
+
+- `EmbeddingProvider::embed_batch(bodies)` — default per-item fallback; the OpenAI-compatible provider issues one request with an `input` array (response ordering validated by index + dimension). Backfill (`reindex`) now embeds in chunks of 32 via `embed_batch`.
+- Batched live indexing: `BatchingEmbeddingHandler` enqueues live messages onto a **bounded** channel and a worker flushes batches via `embed_batch` (off-runtime). The bounded channel is the backpressure; `queue_depth` is hard-capped by `queue_capacity`, so the indexer-lag metric is bounded. Backfill stays on its own task and never enters the live queue.
+- Indexer metrics: `maidan_indexer_queue_depth`, `maidan_indexer_queue_capacity`, `maidan_indexer_embedded_total`, `maidan_indexer_embed_failed_total`, `maidan_indexer_embed_batches_total`. New env: `MAIDAN_INDEXER_QUEUE_CAPACITY` (1024), `MAIDAN_INDEXER_BATCH_SIZE` (32).
+
 ## [115.0.0] — 2026-06-17
 
 ### Changed

@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v116.0.0 — Batch embedding pipeline
+
+| Capability | Where |
+|------------|-------|
+| Batched live embedding indexer (bounded queue + backpressure) | `crates/maidan-search/src/embedding_batcher.rs` |
+| Batch embedding provider API (`embed_batch`) | `crates/maidan-search/src/embedding_provider.rs` |
+| Chunked large-workspace backfill | `crates/maidan-search/src/reindex.rs` |
+| Bounded indexer-lag + throughput metrics | `crates/maidan-server/src/metrics.rs` (`maidan_indexer_queue_depth`, …) |
+
 ## v115.0.0 — Module split + `unwrap()` purge
 
 | Capability | Where |
