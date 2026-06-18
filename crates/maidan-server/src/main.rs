@@ -10,7 +10,8 @@ use maidan_bus::{
     PostgresPresenceNotifier, PostgresResourceNotifier, PresenceNotifier, ResourceNotifier,
 };
 use maidan_search::{
-    EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
+    BatchConfig, BatchingEmbeddingHandler, Indexer, IndexerMetrics, LoggingHandler, PostgresSearch,
+    Search, SqliteSearch,
 };
 use maidan_server::{config::ArtifactBackend, router, version, AppState, Config};
 use maidan_store::{
@@ -197,15 +198,32 @@ async fn main() -> anyhow::Result<()> {
 
     let indexer_last_error = Arc::new(RwLock::new(None));
 
-    let indexer_handler: Arc<dyn maidan_search::EventHandler> = if use_embedding_indexer {
-        tracing::info!("indexer: embedding generation (postgres)");
-        Arc::new(
-            EmbeddingHandler::new(store.clone(), search.clone(), embedding_provider.clone())
-                .with_health_error_slot(indexer_last_error.clone()),
-        )
+    let (indexer_handler, indexer_metrics): (
+        Arc<dyn maidan_search::EventHandler>,
+        Arc<IndexerMetrics>,
+    ) = if use_embedding_indexer {
+        let config = BatchConfig::from_env();
+        let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
+        tracing::info!(
+            queue_capacity = config.queue_capacity,
+            batch_size = config.batch_size,
+            "indexer: batched embedding generation (postgres)"
+        );
+        let handler = BatchingEmbeddingHandler::spawn(
+            store.clone(),
+            search.clone(),
+            embedding_provider.clone(),
+            config,
+            metrics.clone(),
+            Some(indexer_last_error.clone()),
+        );
+        (Arc::new(handler), metrics)
     } else {
         tracing::info!("indexer: logging only (sqlite)");
-        Arc::new(LoggingHandler::default())
+        (
+            Arc::new(LoggingHandler::default()),
+            Arc::new(IndexerMetrics::default()),
+        )
     };
 
     let auth_disabled = maidan_server::auth::auth_disabled_from_env();
@@ -291,6 +309,7 @@ async fn main() -> anyhow::Result<()> {
     }
     state.presence.spawn_tasks();
     state.indexer_last_error = indexer_last_error;
+    state.indexer_metrics = indexer_metrics;
     state.bus_hydrate_stats = bus_hydrate_stats;
     state.outbox_relay = outbox_relay;
     state.outbox_backend = outbox_backend.clone();

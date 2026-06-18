@@ -51,6 +51,12 @@ pub async fn reindex_sqlite(
     reindex_rows(search, provider, rows).await
 }
 
+/// Backfill embeds in batches via [`EmbeddingProvider::embed_batch`] so a
+/// remote provider issues one request per chunk instead of one per message.
+/// Tuned for throughput, not latency — backfill runs on its own task
+/// (`reindex_ops`), never the live indexer queue, so live indexing stays fresh.
+const REINDEX_BATCH: usize = 32;
+
 async fn reindex_rows(
     search: &dyn Search,
     provider: &dyn EmbeddingProvider,
@@ -58,22 +64,28 @@ async fn reindex_rows(
 ) -> Result<ReindexReport, SearchError> {
     let mut report = ReindexReport::default();
     let model = provider.model_name();
-    for row in rows {
-        let embedding = match provider.embed(&row.body) {
+    for chunk in rows.chunks(REINDEX_BATCH) {
+        let bodies: Vec<&str> = chunk.iter().map(|r| r.body.as_str()).collect();
+        let embeddings = match provider.embed_batch(&bodies) {
             Ok(v) => v,
             Err(err) => {
-                report.failed += 1;
-                tracing::warn!(message_id = %row.id, error = %err, "reindex embed failed");
+                report.failed += chunk.len() as u64;
+                tracing::warn!(batch = chunk.len(), error = %err, "reindex embed batch failed");
                 continue;
             }
         };
-        match search.upsert_embedding(row.id, model, &embedding).await {
-            Ok(()) => report.processed += 1,
-            Err(err) => {
-                report.failed += 1;
-                tracing::warn!(message_id = %row.id, error = %err, "reindex upsert failed");
+        for (row, embedding) in chunk.iter().zip(embeddings.iter()) {
+            match search.upsert_embedding(row.id, model, embedding).await {
+                Ok(()) => report.processed += 1,
+                Err(err) => {
+                    report.failed += 1;
+                    tracing::warn!(message_id = %row.id, error = %err, "reindex upsert failed");
+                }
             }
         }
+        // Cooperative: let the live indexer (and everything else) make
+        // progress between chunks of a large-workspace backfill.
+        tokio::task::yield_now().await;
     }
     Ok(report)
 }
