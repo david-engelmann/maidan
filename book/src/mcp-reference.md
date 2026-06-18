@@ -6,7 +6,7 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 
 - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
-- **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: `202 Accepted`, response multiplexed on the same SSE session)
+- **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: JSON-RPC response returned directly and pushed to the SSE session)
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
 - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)
 
@@ -705,7 +705,7 @@ Fetch artifact metadata by sha256 hex digest.
 
 ### `search_messages`
 
-Lexical full-text search over a workspace's messages. Returns ranked hits with highlighted snippets.
+Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.
 
 **Capability:** `search:query`
 
@@ -719,6 +719,14 @@ Lexical full-text search over a workspace's messages. Returns ranked hits with h
     "channel_id": {
       "format": "uuid",
       "type": "string"
+    },
+    "embedding_model": {
+      "description": "Semantic/hybrid only: registered model name (default: active provider).",
+      "type": "string"
+    },
+    "hybrid_weight": {
+      "description": "Hybrid only: semantic weight in [0,1] (default 0.5). combined = w*semantic + (1-w)*lexical over normalized scores.",
+      "type": "number"
     },
     "kind": {
       "enum": [
@@ -735,7 +743,8 @@ Lexical full-text search over a workspace's messages. Returns ranked hits with h
       "default": "lexical",
       "enum": [
         "lexical",
-        "semantic"
+        "semantic",
+        "hybrid"
       ],
       "type": "string"
     },
@@ -880,6 +889,73 @@ List registered FSM automation hooks in a workspace.
 ```json
 {
   "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_thread_context`
+
+Pack thread messages, edits, references, and FSM history for agent prompts.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "message_limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "transition_limit": {
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_workspace_context`
+
+Pack workspace channels and thread contexts (bounded by thread_limit).
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "message_limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "thread_limit": {
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "transition_limit": {
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    },
     "workspace_id": {
       "format": "uuid",
       "type": "string"

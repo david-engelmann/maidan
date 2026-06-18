@@ -47,6 +47,31 @@ pub async fn search_messages(
                 .semantic_search(workspace_id, &embedding, q.limit, &filters, model)
                 .await?
         }
+        SearchMode::Hybrid => {
+            let embedding = state
+                .embedding_provider
+                .embed(&q.q)
+                .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
+            let model = q
+                .embedding_model
+                .as_deref()
+                .unwrap_or_else(|| state.embedding_provider.model_name());
+            let weight = q
+                .hybrid_weight
+                .unwrap_or(maidan_search::DEFAULT_HYBRID_WEIGHT);
+            state
+                .search
+                .hybrid_search(
+                    workspace_id,
+                    &q.q,
+                    &embedding,
+                    q.limit,
+                    &filters,
+                    model,
+                    weight,
+                )
+                .await?
+        }
     };
     Ok(Json(hits))
 }

@@ -174,6 +174,9 @@ pub enum SearchMode {
     Lexical,
     /// Embed `q` with the configured provider and rank by cosine similarity.
     Semantic,
+    /// Run lexical + semantic and fuse their normalized `[0,1]` scores
+    /// (`hybrid_weight` controls the semantic share).
+    Hybrid,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -191,6 +194,9 @@ pub struct SearchQuery {
     pub kind: Option<MemberKind>,
     /// Semantic only: query this model's embedding table (default: active provider).
     pub embedding_model: Option<String>,
+    /// Hybrid only: semantic weight in `[0,1]` (default `0.5`). `combined =
+    /// w*semantic + (1-w)*lexical` over the normalized scores.
+    pub hybrid_weight: Option<f64>,
 }
 
 fn default_search_limit() -> i64 {
