@@ -39,6 +39,7 @@ Live API: `GET /openapi.json` on your server.
 | [Decisions.md](Decisions.md) | Architectural decisions (ADRs) |
 | [Conventions.md](Conventions.md) | Branch, commit, PR conventions |
 | [Operations.md](Operations.md) | PR flow, CI, releases |
+| [Dependencies.md](Dependencies.md) | Dependency currency + duplicate-version policy (`deny.toml`) |
 | [Open Work.md](Open%20Work.md) | Short backlog + risks |
 | [Remaining Work.md](Remaining%20Work.md) | Exhaustive backlog matrix |
 | [Roadmap.md](Roadmap.md) | Cluster ladder history |
