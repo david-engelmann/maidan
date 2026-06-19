@@ -96,7 +96,7 @@
 |---------|--------|-----|-----------------|
 | **116** ✓ | Batch embedding pipeline | `v116.0.0` ✓ | Indexer batches embed calls with backpressure; large-workspace backfill runs on a separate queue so live indexing stays fresh; indexer-lag metric bounded |
 | **117** ✓ | Pluggable production provider | `v117.0.0` ✓ | First-class `openai-compatible` provider path with tunable dimension/model, slotting into the per-model table scheme (v47); migration/reindex story documented |
-| **118** | Hybrid relevance | `v118.0.0` | Optional hybrid lexical+semantic ranking over the normalized `[0,1]` score; a small relevance eval harness guards regressions |
+| **118** ✓ | Hybrid relevance | `v118.0.0` ✓ | Optional hybrid lexical+semantic ranking over the normalized `[0,1]` score; a small relevance eval harness guards regressions |
 
 **Ordering:** **116** before **117** (batching makes a remote provider viable). **118** after **117**.
 

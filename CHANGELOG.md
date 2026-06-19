@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [118.0.0] — 2026-06-18
+
+### Added
+
+- Hybrid search mode (`mode=hybrid` on HTTP search + the MCP `search_messages` tool): runs lexical and semantic search and fuses their normalized `[0,1]` scores as `combined = w*semantic + (1-w)*lexical`, with `w` = `hybrid_weight` (default 0.5, clamped). Implemented as a `Search::hybrid_search` default trait method (`score::fuse_hybrid`), so both backends inherit it.
+- Relevance eval harness (`maidan-search/tests/relevance_eval.rs`): a labeled corpus + controlled synonym embedding asserting hybrid recall dominates both single modes, recovers synonym docs lexical misses, and keeps a top-1-relevant (MRR) floor.
+
 ## [117.0.0] — 2026-06-18
 
 ### Added
