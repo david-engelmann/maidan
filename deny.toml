@@ -54,13 +54,44 @@ confidence-threshold = 0.93
 exceptions = []
 
 [bans]
-multiple-versions = "warn"
+# Cluster 119: duplicate majors are a hard error so our first-party crates
+# can't silently introduce a new one. The unavoidable duplicates all come from
+# a few vendored subtrees (the AWS SDK crypto/HTTP stack and openidconnect v4)
+# and cross-cutting ecosystem transitions (rustls 0.21->0.23, http 0.2->1,
+# rand 0.8->0.9, windows 0.48->0.52, syn 1->2); those are quarantined below
+# with the reason each is blocked upstream.
+multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
 highlight = "all"
 deny = []
-skip = []
-skip-tree = []
+
+# Whole vendored subtrees whose internal duplicate crypto/HTTP/TLS crates we
+# don't control. Re-evaluate when these roots publish updates (esp.
+# openidconnect v5 -> drops base64 0.21 + rsa; see docs/Dependencies.md).
+skip-tree = [
+    { crate = "aws-config", reason = "AWS SDK pins an older crypto/http/rustls stack (hmac, sha2, md-5, rustls 0.21, h2 0.3, hyper 0.14)" },
+    { crate = "aws-sdk-s3", reason = "AWS SDK crypto stack (hmac 0.12/0.13, sha2 0.10)" },
+    { crate = "openidconnect", reason = "v4 pins base64 0.21, rsa (RUSTSEC-2023-0071), oauth2->thiserror 1; clears on v5" },
+    { crate = "testcontainers", reason = "dev-only (integration tests); bollard pulls its own http/base64 stack" },
+]
+
+# Cross-cutting ecosystem-transition duplicates pulled from many crates (not
+# confined to one subtree), accepted until the ecosystem converges.
+skip = [
+    { crate = "getrandom@0.2.17", reason = "rand 0.8 / ring still on getrandom 0.2" },
+    { crate = "getrandom@0.3.4", reason = "getrandom 0.2->0.4 ecosystem transition" },
+    { crate = "rand@0.8.6", reason = "rand 0.8->0.9 transition (transitive)" },
+    { crate = "rand_core@0.6.4", reason = "rand 0.8 core" },
+    { crate = "rand_chacha@0.3.1", reason = "rand 0.8 chacha" },
+    { crate = "hashbrown@0.15.5", reason = "hashbrown ecosystem transition (0.15/0.16/0.17)" },
+    { crate = "hashbrown@0.16.1", reason = "hashbrown ecosystem transition" },
+    { crate = "windows-sys@0.48.0", reason = "windows-sys 0.48/0.52/0.61 transition (platform shims)" },
+    { crate = "windows-sys@0.52.0", reason = "windows-sys transition" },
+    { crate = "itertools@0.10.5", reason = "itertools 0.10/0.13/0.14 spread (sqlx, metrics, etc.)" },
+    { crate = "itertools@0.13.0", reason = "itertools transition" },
+    { crate = "metrics-util@0.19.1", reason = "metrics-exporter-prometheus pulls an older metrics-util" },
+]
 
 [sources]
 unknown-registry = "deny"
