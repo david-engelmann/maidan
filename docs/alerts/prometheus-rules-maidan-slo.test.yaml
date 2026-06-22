@@ -1,0 +1,110 @@
+# promtool unit tests for the Maidan SLO rules.
+#
+# The rules live in a Kubernetes PrometheusRule CRD; `scripts/check-alert-rules.sh`
+# extracts `.spec` into a raw Prometheus rules file (`slo-rules.generated.yaml`,
+# git-ignored) before running `promtool test rules` from this directory.
+#
+# Cases deliberately exercise the gauge-correct semantics added in Cluster 121:
+# the queue-saturation capacity guard and the restart-safe embed-failure delta.
+# The asserted annotations also lock in `$value` rendering (the saturation ratio
+# humanizes to a sane percentage — a Cluster-122 fix found by these very tests).
+rule_files:
+  - slo-rules.generated.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Recording rule: queue fill ratio is depth / clamp_min(capacity, 1).
+  - interval: 1m
+    input_series:
+      - series: maidan_indexer_queue_depth
+        values: "9+0x10"
+      - series: maidan_indexer_queue_capacity
+        values: "10+0x10"
+    promql_expr_test:
+      - expr: maidan_slo:indexer_queue_saturation
+        eval_time: 5m
+        exp_samples:
+          - labels: "maidan_slo:indexer_queue_saturation"
+            value: 0.9
+
+  # MaidanIndexerQueueSaturated fires when the queue is >80% full; $value is the
+  # fill fraction (renders "90% full"), not capacity.
+  - interval: 1m
+    input_series:
+      - series: maidan_indexer_queue_depth
+        values: "9+0x10"
+      - series: maidan_indexer_queue_capacity
+        values: "10+0x10"
+    alert_rule_test:
+      - alertname: MaidanIndexerQueueSaturated
+        eval_time: 7m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: search_index
+            exp_annotations:
+              summary: Embedding indexer queue near capacity
+              description: |
+                Batched embed queue is 90% full (Cluster 116
+                backpressure). The embedding provider can't keep up; live writes will block
+                on the bounded queue. Check provider latency/errors and MAIDAN_INDEXER_*.
+
+  # Guard: capacity 0 (logging-only indexer) must NOT fire, even though the
+  # clamped ratio (9/1 = 9) exceeds 0.8 — the `capacity > 0` conjunct wins.
+  - interval: 1m
+    input_series:
+      - series: maidan_indexer_queue_depth
+        values: "9+0x10"
+      - series: maidan_indexer_queue_capacity
+        values: "0+0x10"
+    alert_rule_test:
+      - alertname: MaidanIndexerQueueSaturated
+        eval_time: 7m
+        exp_alerts: []
+
+  # MaidanIndexerEmbedFailures fires when the monotonic gauge climbs over 15m.
+  - interval: 1m
+    input_series:
+      - series: maidan_indexer_embed_failed_total
+        values: "5+0x15 8+0x10"
+    alert_rule_test:
+      - alertname: MaidanIndexerEmbedFailures
+        eval_time: 22m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: search_index
+            exp_annotations:
+              summary: Embedding generation/upsert failing
+              description: |
+                3 embed failures in the last 15m. Messages aren't being indexed
+                for semantic search. Check the embedding provider and check_health error slot.
+
+  # Restart-safety: a reset to 0 yields a NEGATIVE offset delta, so no alert
+  # (this is the exact claim in the rule's comment — `rate()` would mis-fire).
+  - interval: 1m
+    input_series:
+      - series: maidan_indexer_embed_failed_total
+        values: "100+0x15 0+0x10"
+    alert_rule_test:
+      - alertname: MaidanIndexerEmbedFailures
+        eval_time: 22m
+        exp_alerts: []
+
+  # Pre-existing rule sanity: outbox backlog over threshold fires.
+  - interval: 1m
+    input_series:
+      - series: maidan_outbox_pending
+        values: "150+0x10"
+    alert_rule_test:
+      - alertname: MaidanOutboxPendingHigh
+        eval_time: 7m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: outbox_lag
+            exp_annotations:
+              summary: Outbox relay backlog
+              description: |
+                150 unpublished outbox rows. See Production outbox relay runbook.
