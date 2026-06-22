@@ -26,9 +26,9 @@ single source of truth for *how* to operate in this codebase. The
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, tagged `vX.0.0` on the same ladder but
-  with no new gate tag — see "Project state at this handoff" below and
-  [`docs/Roadmap.md`](docs/Roadmap.md)).
+  (Phase XXIV, **Cluster 121+**, latest **`v122.0.0`**, tagged `vX.0.0` on
+  the same ladder but with no new gate tag — see "Project state at this
+  handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
 - **CI:** GitHub Actions, 6 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
   (testcontainers)`, `docker compose smoke`, `scale-out smoke`). Every
@@ -176,7 +176,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 - **Do not commit secrets.** `.env`, `*.pem`, `*.key`, `maidan.toml`
   are git-ignored. CI runs `trufflehog`.
 - **Do not bypass GPG signing** unless explicitly authorized. No
-  signing key is configured (tags through `v121.0.0` are annotated but
+  signing key is configured (tags through `v122.0.0` are annotated but
   unsigned); annotated unsigned tags are acceptable until a key is set
   up.
 - **Do not push to `main` directly.** Branch protection blocks it;
@@ -203,7 +203,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 - **Integrator docs:** [`docs/Integration.md`](docs/Integration.md) + [mdBook](https://david-engelmann.github.io/maidan/) (GitHub Pages).
 - **Product Ladder 102+ is COMPLETE:** Phases XIX–XXIII (Clusters 102–120) merged on `main`. Scale gate **`maidan-scale-1.0`** tagged at **`v120.0.0`** (see [`docs/Gates/maidan-scale-1.0.md`](docs/Gates/maidan-scale-1.0.md)). No further ladder cluster is defined past 120; remaining work is post-gate human-product + cross-cutting tracks ([`docs/Open Work.md`](docs/Open%20Work.md), [`docs/Remaining Work.md`](docs/Remaining%20Work.md)).
-- **Post-gate hardening (Phase XXIV, Cluster 121+):** opportunistic backlog burn-down tagged on the same `vX.0.0` ladder, no new gate tag. **Cluster 121** (`v121.0.0`) closed the OpenAPI-wide capability map in CI (Cluster 69 deferral) and extended the SLO dashboards/alerts to the Cluster 116 indexer metrics.
+- **Post-gate hardening (Phase XXIV, Cluster 121+):** opportunistic backlog burn-down tagged on the same `vX.0.0` ladder, no new gate tag. **Cluster 121** (`v121.0.0`) closed the OpenAPI-wide capability map in CI (Cluster 69 deferral) and extended the SLO dashboards/alerts to the Cluster 116 indexer metrics. **Cluster 122** (`v122.0.0`) added a `promtool (alert rules)` CI job that executes the SLO PromQL (it caught a `$value`-rendering bug in `MaidanIndexerQueueSaturated`) and corrected the OTLP-export status (shipped in Cluster 89, not open).
 - **Gate tags cut (all four):** **`maidan-2.0`** (`v58`), **`maidan-agent-1.0`** (`v76`), **`maidan-operator-1.0`** (`v101`), **`maidan-scale-1.0`** (`v120`).
-- **No `v93`–`v100` tags (intentional):** clusters **93–101** shipped as a single batch PR (#264) and were released as **`v101.0.0`** — they were never separate releases, so there are no `v93.0.0`–`v100.0.0` tags to cut. Version tags cut: `v101.0.0`, `v102.0.0`–`v120.0.0`, and `v121.0.0`.
+- **No `v93`–`v100` tags (intentional):** clusters **93–101** shipped as a single batch PR (#264) and were released as **`v101.0.0`** — they were never separate releases, so there are no `v93.0.0`–`v100.0.0` tags to cut. Version tags cut: `v101.0.0`, `v102.0.0`–`v120.0.0`, `v121.0.0`, and `v122.0.0`.
 - **CI:** 6 required checks on `main` (incl. `scale-out smoke`, promoted at the scale gate).

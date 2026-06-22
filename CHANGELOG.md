@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [122.0.0] — 2026-06-22
+
+Post-gate hardening (Phase XXIV). No new product capability, no new gate tag.
+
+### Added
+
+- **`promtool (alert rules)` CI job** — executes the SLO recording/alert PromQL on every PR: `promtool check rules` (lint expressions + Go templates) and `promtool test rules` (unit tests). `scripts/check-alert-rules.sh` extracts `.spec` from the `PrometheusRule` CRD into a git-ignored raw rules file first. Closes the "alert exprs are never executed in CI" gap flagged by the Cluster 121 retro (the `alert_templates_contract` test only checks metric *names*).
+- **SLO rule unit tests** (`docs/alerts/prometheus-rules-maidan-slo.test.yaml`) pinning the Cluster 121 semantics: `MaidanIndexerQueueSaturated` fires >80% full and is guarded off at capacity 0; `MaidanIndexerEmbedFailures` fires on a rising delta but not on a reset-to-0 (restart-safe).
+
+### Fixed
+
+- **`MaidanIndexerQueueSaturated` annotation** rendered "1000% full": the expr `capacity > 0 and saturation > 0.8` made `$value` the capacity (PromQL `and` returns the LHS). Reordered to `saturation > 0.8 and capacity > 0` so `$value` is the fill fraction ("90% full"); the capacity guard is unchanged. Found by the new promtool unit tests.
+
+### Changed
+
+- **OTLP-export status corrected** (`Remaining Work.md` §1/§3, the [121.0.0] note, and the Cluster 121 plan/retro): OTLP export (traces + metrics fanout) shipped in **Cluster 89** — env-gated, documented in `Production.md` — it was never an open deferral. The genuine residual observability gap is an end-to-end OTLP collector smoke.
+
 ## [121.0.0] — 2026-06-22
 
 Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. No new product capability, no new gate tag.

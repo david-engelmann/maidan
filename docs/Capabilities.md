@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v122.0.0 — Alert rules executed in CI
+
+| Capability | Where |
+|------------|-------|
+| SLO recording/alert PromQL executed in CI (`check rules` + unit tests) | `.github/workflows/ci.yml` (`promtool (alert rules)`), `scripts/check-alert-rules.sh` |
+| SLO rule unit tests (queue-sat guard, embed-failure restart-safety, `$value`) | `docs/alerts/prometheus-rules-maidan-slo.test.yaml` |
+
+_Post-gate hardening (Phase XXIV): closes the "alert exprs never executed" gap from Cluster 121 — which immediately caught a `$value`-rendering bug in `MaidanIndexerQueueSaturated`. Also corrects the OTLP-export status (shipped in Cluster 89). No new gate tag._
+
 ## v121.0.0 — Observability & contract completeness
 
 | Capability | Where |
