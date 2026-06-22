@@ -41,9 +41,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 77–101** is **closed on `main`** (operator gate **`maidan-operator-1.0`** at **`v101.0.0`**). Release tag **`v101.0.0`** is the Pi/edge integration point; see [Pi.md](Pi.md).
 
-**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)**, Phase **XX (hot-path hardening, 106–110)**, and Phase **XXI — correctness & coverage (111–115)** are **closed** (`v102.0.0`–`v115.0.0`). Phase **XXII — Search & indexer at scale** (Clusters 116–118) is **closed** (`v116.0.0`–`v118.0.0`). Phase **XXIII — Supply chain & scale gate** (Clusters 119–120) is **in progress**: dependency dedupe & currency (119, **`v119.0.0`**) is closed; the final **`maidan-scale-1.0`** gate (120) closes the 102+ ladder at **`v120.0.0`**.
+**In progress:** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** (Clusters **102–120**, gate **`maidan-scale-1.0`** at **`v120.0.0`**). Phase **XIX (scale-out core, 102–105)**, Phase **XX (hot-path hardening, 106–110)**, and Phase **XXI — correctness & coverage (111–115)** are **closed** (`v102.0.0`–`v115.0.0`). **Product Ladder 102+ is COMPLETE.** Phases **XIX–XXIII** (Clusters 102–120) are closed (`v102.0.0`–`v120.0.0`); the **`maidan-scale-1.0`** product gate is tagged at **`v120.0.0`** ([[Gates/maidan-scale-1.0]]), alongside `maidan-operator-1.0` (`v101`), `maidan-agent-1.0` (`v76`), and `maidan-2.0` (`v58`). No further ladder cluster is defined past 120; future work is post-gate human-product and the cross-cutting tracks ([[Open Work]], [[Remaining Work]]).
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **120.0** — scale product gate at **`v120.0.0`** / **`maidan-scale-1.0`**, closing Phase XXIII and the 102+ ladder
+([[Retros/Cluster 120.0]]).
 
 **Recently closed:** Cluster **119.0** — dependency dedupe & currency (thiserror 2, `deny.toml` duplicate-major gate, edition-2024 eval) at **`v119.0.0`**, opening Phase XXIII
 ([[Retros/Cluster 119.0]]).

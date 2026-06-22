@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v120.0.0 — Scale product gate (`maidan-scale-1.0`)
+
+| Capability | Where |
+|------------|-------|
+| `maidan-scale-1.0` gate (criteria → evidence) | `docs/Gates/maidan-scale-1.0.md`, `maidan_scale_gate_e2e` |
+| Recorded store bench baseline | `crates/maidan-store/benches/STORE_BASELINE.md` |
+| `scale-out smoke` as a gate-required check | `.github/workflows/ci.yml` |
+
+_Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
+
 ## v119.0.0 — Dependency dedupe & currency
 
 | Capability | Where |

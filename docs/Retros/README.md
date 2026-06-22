@@ -128,3 +128,4 @@ PR review credit; external contributors.
 - [[Cluster 117.0]] — Pluggable production provider. Closed at **`v117.0.0`**.
 - [[Cluster 118.0]] — Hybrid relevance. Closed at **`v118.0.0`**, closing Phase XXII.
 - [[Cluster 119.0]] — Dependency dedupe & currency. Closed at **`v119.0.0`**, opening Phase XXIII.
+- [[Cluster 120.0]] — Scale product gate. Closed at **`v120.0.0`** / **`maidan-scale-1.0`**, closing Phase XXIII and the 102+ ladder.
