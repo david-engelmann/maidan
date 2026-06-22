@@ -100,6 +100,19 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<Thread>, StoreError>;
 
+    /// One keyset page of a workspace's **live** threads, ordered
+    /// `(created_at, id)` ascending. `after` is an exclusive cursor (the last
+    /// thread id of the prior page); `None` starts from the beginning. Unlike
+    /// [`list_threads_for_workspace`](Self::list_threads_for_workspace), this
+    /// filters tombstoned threads and applies `LIMIT` in SQL, so workspace
+    /// context assembly does not load every thread into memory.
+    async fn page_threads_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        after: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError>;
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,

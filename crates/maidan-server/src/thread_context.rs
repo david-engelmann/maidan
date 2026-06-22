@@ -161,39 +161,21 @@ pub async fn build_workspace_context(
     let workspace = store.get_workspace(workspace_id).await?;
     let channels = store.list_channels(workspace_id).await?;
     let page_limit = thread_limit.clamp(1, 50);
-    // All workspace threads in one read, replacing the per-channel N+1.
-    let mut ordered_threads: Vec<Thread> = store
-        .list_threads_for_workspace(workspace_id)
-        .await?
-        .into_iter()
-        .filter(|t| t.tombstoned_at.is_none())
-        .collect();
-    ordered_threads.sort_by(|a, b| {
-        a.created_at
-            .cmp(&b.created_at)
-            .then_with(|| a.id.0.cmp(&b.id.0))
-    });
-    let start = thread_cursor.map_or(0, |cursor| {
-        ordered_threads
-            .iter()
-            .position(|t| t.id == cursor)
-            .map(|i| i + 1)
-            .unwrap_or(ordered_threads.len())
-    });
-    let slice = ordered_threads
-        .into_iter()
-        .skip(start)
-        .take(page_limit as usize + 1)
-        .collect::<Vec<_>>();
-    let next_thread_cursor = if slice.len() > page_limit as usize {
-        slice
-            .get(page_limit as usize - 1)
-            .map(|t| t.id.0.to_string())
+    // One keyset page from SQL (ordered `(created_at, id)`, tombstoned filtered),
+    // fetching one extra row to detect a next page — no longer loads every
+    // workspace thread to slice it in memory.
+    let mut page = store
+        .page_threads_for_workspace(workspace_id, thread_cursor, page_limit + 1)
+        .await?;
+    let has_more = page.len() > page_limit as usize;
+    page.truncate(page_limit as usize);
+    let next_thread_cursor = if has_more {
+        page.last().map(|t| t.id.0.to_string())
     } else {
         None
     };
     let mut threads = Vec::new();
-    for thread in slice.into_iter().take(page_limit as usize) {
+    for thread in page {
         threads.push(build_thread_context(store, thread.id, limits).await?);
     }
     Ok(WorkspaceContext {

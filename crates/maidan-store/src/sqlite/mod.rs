@@ -216,6 +216,15 @@ impl Store for SqliteStore {
         threads::list_for_workspace(&self.pool, workspace_id).await
     }
 
+    async fn page_threads_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        after: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::page_for_workspace(&self.pool, workspace_id, after, limit).await
+    }
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,
