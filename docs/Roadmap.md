@@ -43,7 +43,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 102+ is COMPLETE.** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** — closed across Phases **XIX (scale-out core, 102–105)**, **XX (hot-path hardening, 106–110)**, **XXI (correctness & coverage, 111–115)**, **XXII (search & indexer at scale, 116–118)**, and **XXIII (supply chain & scale gate, 119–120)**, tags **`v102.0.0`–`v120.0.0`**. The **`maidan-scale-1.0`** product gate is tagged at **`v120.0.0`** ([[Gates/maidan-scale-1.0]]), alongside `maidan-operator-1.0` (`v101`), `maidan-agent-1.0` (`v76`), and `maidan-2.0` (`v58`) — all four gate tags are cut. No further ladder cluster is defined past 120; future work is post-gate human-product and the cross-cutting tracks ([[Open Work]], [[Remaining Work]]).
 
+**Post-gate hardening (Phase XXIV):** with the ladder closed, work continues opportunistically from [[Open Work]] / [[Remaining Work]], tagged on the same `vX.0.0` ladder but **without** new gate tags. Cluster **121.0** (`v121.0.0`) is the first: OpenAPI-wide capability map in CI + scale-out SLO dashboard/alert coverage.
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **121.0** — observability & contract completeness (every OpenAPI op classified in CI; SLO alerts/dashboard extended to the Cluster 116 indexer metrics) at **`v121.0.0`**, opening Phase XXIV (post-gate hardening)
+([[Retros/Cluster 121.0]]).
 
 **Recently closed:** Cluster **120.0** — scale product gate at **`v120.0.0`** / **`maidan-scale-1.0`**, closing Phase XXIII and the 102+ ladder
 ([[Retros/Cluster 120.0]]).

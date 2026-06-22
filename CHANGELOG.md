@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [121.0.0] — 2026-06-22
+
+Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. No new product capability, no new gate tag.
+
+### Added
+
+- **OpenAPI-wide capability map in CI** (closes the Cluster 69 deferral): `every_openapi_operation_is_bearer_session_or_public` classifies every OpenAPI operation as bearer-mapped (and thus in `contracts/http-capability-map.json`), session-cookie-gated (`/auth/session`, `/auth/session/mint`), or explicitly public (health/metrics/spec/discovery/OIDC handshake). A new route shipping with neither auth nor a capability mapping now fails CI.
+- **Scale-out SLO coverage** for the Cluster 116 batched-embed indexer gauges:
+  - recording rule `maidan_slo:indexer_queue_saturation` (clamp-guarded queue fill ratio);
+  - alert `MaidanIndexerQueueSaturated` — embed queue >80% full (backpressure);
+  - alert `MaidanIndexerEmbedFailures` — restart-safe offset-delta on the monotonic `maidan_indexer_embed_failed_total` gauge;
+  - operator-dashboard panels for indexer queue depth vs capacity and embed failures;
+  - `alert_templates_contract` now asserts the three new indexer metric names.
+
+### Changed
+
+- `docs/Remaining Work.md` §1/§3 — OpenAPI-wide capability map marked closed (121); SLO dashboards/alerts noted as extended to scale-out indexer metrics. OTLP export wiring (Cluster 89) remains the open observability piece.
+
 ## [120.0.0] — 2026-06-22
 
 ### Added
