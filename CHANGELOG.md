@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [120.0.0] — 2026-06-22
+
+### Added
+
+- **`maidan-scale-1.0` product gate** (tagged at this commit), closing Product Ladder 102+:
+  - `maidan_scale_gate_e2e` — scale runtime surfaces + indexer lag/queue-depth telemetry respond.
+  - `docs/Gates/maidan-scale-1.0.md` — the 7 gate criteria (Clusters 102–119) mapped to test/CI/doc evidence.
+  - `crates/maidan-store/benches/STORE_BASELINE.md` — recorded store hot-path bench baseline.
+  - `scale-out smoke` CI job promoted to a gate-required check.
+
 ## [119.0.0] — 2026-06-22
 
 ### Changed
