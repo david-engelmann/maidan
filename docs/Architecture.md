@@ -1,8 +1,8 @@
 # Architecture
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
-**Current baseline:** **`v101.0.0`** (Product Ladder **77+** through cluster **101**,
-operator gate **`maidan-operator-1.0`**).
+**Current baseline:** **`v120.0.0`** (Product Ladder **102+** complete; scale
+gate **`maidan-scale-1.0`**). See [Scale-out & hardening](#scale-out--hardening-ladder-102) below for the 102–120 additions.
 Older versioned sections below record how capabilities accrued; see
 [Capabilities.md](Capabilities.md) and [CHANGELOG.md](../CHANGELOG.md) for the authoritative release list.
 
@@ -31,7 +31,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 | **Context** | HTTP + MCP `get_*_context` with cursors (**74**, **82**) | Workspace thread list still in-memory slice |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
 | **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**), profile overlays (**88**) | Bootstrap compile-time strip (**91**) |
-| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** · **`maidan-operator-1.0`** **`v101`** | Ladder **77–101** closed on `main` ([Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md)) |
+| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** · operator gate `v101` (tag pending) · **`maidan-scale-1.0`** **`v120`** | Ladder **77–101** ([Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md)) and **102–120** ([Clusters/Product Ladder 102+.md](Clusters/Product%20Ladder%20102+.md)) closed on `main`; scale gate [docs/Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md) |
 
 ```mermaid
 flowchart TB
@@ -505,13 +505,43 @@ ephemeral signals.
 `two_replica_durable_state_e2e` exercises both across two servers on one database.
 See [Decisions](Decisions.md).
 
+## Scale-out & hardening (Ladder 102+)
+
+Product Ladder 102+ (Clusters 102–120, tags `v102.0.0`–`v120.0.0`) hardened the
+substrate for multi-replica operation and search-at-scale. By phase — see
+[Capabilities.md](Capabilities.md) and the per-cluster retros for detail:
+
+- **XIX — scale-out core (102–105):** run **≥2 replicas behind a load balancer**
+  sharing one Postgres + object store. Cross-replica MCP resource notifications,
+  distributed presence/roster, and OAuth/notify-across-pods all work; durable
+  ephemeral state is exercised by `two_replica_*_e2e` and the `scale-out smoke`
+  CI job.
+- **XX — hot-path hardening (106–110):** bounded query counts (no N+1 in
+  context/search), configurable connection pool + outbox relay, ANN/HNSW tuning
+  knobs (`MAIDAN_HNSW_*`) with recorded perf baselines, and per-workspace
+  fairness so one workspace can't starve another.
+- **XXI — correctness & coverage (111–115):** a **≥40% coverage floor** gated in
+  CI over the whole test suite; `maidan-auth` suite, FSM property tests,
+  Postgres↔SQLite parity harness, and JSON-RPC/MCP/A2A envelope fuzz; **no
+  non-test `unwrap()/expect()` in `crates/*/src`** (clippy-enforced); `routes.rs`
+  and `tools.rs` split into domain modules.
+- **XXII — search & indexer at scale (116–118):** the indexer **batches embed
+  calls onto a bounded queue with backpressure** and a bounded lag metric;
+  embeddings come from a **pluggable `openai-compatible` provider** (dimension
+  auto-detected at boot) registered in the per-model table scheme; search adds a
+  **hybrid** mode fusing normalized lexical + semantic scores, guarded by a
+  relevance eval harness.
+- **XXIII — supply chain & scale gate (119–120):** workspace on thiserror 2;
+  `cargo deny` `multiple-versions = "deny"` makes a new duplicate major a CI
+  error; the **`maidan-scale-1.0`** gate ([Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md))
+  ties the criteria to evidence and promotes `scale-out smoke` to a required check.
+
 ## What's deliberately not here yet
 
-See [[Remaining Work]] and [[Clusters/Product Ladder 77+]]. Highlights:
+See [[Remaining Work]] and [[Open Work]]. Post-gate (no ladder cluster defined past 120):
 
-- **MCP streamable** bidirectional mux (**78**).
-- **HTTP capability map** for every OpenAPI operation (**77**).
-- **Operator UI** channel browser, live tail, artifacts (**92–96**).
-- **OTLP** metrics push + SLO alert templates (**89–90**); bootstrap compile-time strip (**91**).
-- Slack-grade UX beyond ladder **77+**: native clients, huddles, org hierarchy.
+- Slack-grade human UX: native clients, huddles, org hierarchy.
+- Hosted SaaS / React SPA.
+- Postgres sharding / storage-engine change (vertical + read-replica scaling assumed sufficient).
 - Multi-region active-active (out of scope).
+- Edition 2024 adoption (evaluated in 119; a focused Track-V/X migration).

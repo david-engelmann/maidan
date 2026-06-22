@@ -20,11 +20,13 @@ single source of truth for *how* to operate in this codebase. The
   admin-merge is the standard workflow (see
   [`docs/Operations.md`](docs/Operations.md)).
 - **Release cadence:** work ships in clusters — the initial A–H + 1.0
-  arc (`v0.X.Y` → `v1.0.0`), then a numbered product ladder (1–101,
+  arc (`v0.X.Y` → `v1.0.0`), then a numbered product ladder (1–120,
   tagged `vX.0.0`). Every cluster closes with a mandatory retro PR and
-  a tag. Current state: ladder **1–101 closed on `main`**; operator
-  gate `maidan-operator-1.0` at **`v101.0.0`** (see "Project state at
-  this handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
+  a tag. Current state: **Product Ladder 102+ is complete** — Phases
+  XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
+  **`maidan-scale-1.0`** at **`v120.0.0`**. No further ladder cluster
+  is defined past 120 (see "Project state at this handoff" below and
+  [`docs/Roadmap.md`](docs/Roadmap.md)).
 - **CI:** GitHub Actions, 6 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
   (testcontainers)`, `docker compose smoke`, `scale-out smoke`). Every
@@ -172,7 +174,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 - **Do not commit secrets.** `.env`, `*.pem`, `*.key`, `maidan.toml`
   are git-ignored. CI runs `trufflehog`.
 - **Do not bypass GPG signing** unless explicitly authorized. No
-  signing key is configured (tags through `v101.0.0` are annotated but
+  signing key is configured (tags through `v120.0.0` are annotated but
   unsigned); annotated unsigned tags are acceptable until a key is set
   up.
 - **Do not push to `main` directly.** Branch protection blocks it;
@@ -198,6 +200,7 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 ## Project state at this handoff
 
 - **Integrator docs:** [`docs/Integration.md`](docs/Integration.md) + [mdBook](https://david-engelmann.github.io/maidan/) (GitHub Pages).
-- **Ladder 77–101:** merged on `main`; operator gate reached at **`v101.0.0`** (which **is** tagged). Maintainer cut of the intermediate tags **`v93`–`v100`** and the **`maidan-operator-1.0`** gate tag is still pending.
-- **Agent / product gates:** **`maidan-agent-1.0`** (`v76`) and **`maidan-2.0`** (`v58`) gate tags are cut.
-- Open backlog: [`docs/Open Work.md`](docs/Open%20Work.md).
+- **Product Ladder 102+ is COMPLETE:** Phases XIX–XXIII (Clusters 102–120) merged on `main`. Scale gate **`maidan-scale-1.0`** tagged at **`v120.0.0`** (see [`docs/Gates/maidan-scale-1.0.md`](docs/Gates/maidan-scale-1.0.md)). No further ladder cluster is defined past 120; remaining work is post-gate human-product + cross-cutting tracks ([`docs/Open Work.md`](docs/Open%20Work.md), [`docs/Remaining Work.md`](docs/Remaining%20Work.md)).
+- **Gate tags cut:** **`maidan-2.0`** (`v58`), **`maidan-agent-1.0`** (`v76`), **`maidan-scale-1.0`** (`v120`).
+- **Tag backlog (NOT cut):** the **`maidan-operator-1.0`** gate (intended at `v101.0.0`) and intermediate version tags **`v93.0.0`–`v100.0.0`** (8 tags) were never cut. `v101.0.0` and `v102.0.0`–`v120.0.0` are all cut. Cutting the backlog is a pending maintainer action (each `vX.0.0` push triggers `release.yml`).
+- **CI:** 6 required checks on `main` (incl. `scale-out smoke`, promoted at the scale gate).

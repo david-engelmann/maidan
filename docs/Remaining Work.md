@@ -1,10 +1,10 @@
 # Remaining work (post–`maidan-agent-1.0`)
 
-Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`), **59–67**, and **68–76** (agent substrate completion).
-Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]], and
-[[Clusters/Product Ladder 77+]] (Clusters **77–101**, gate **`maidan-operator-1.0`**).
+Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`), **59–67**, **68–76** (agent substrate), **77–101** (operator), and **102–120** (scale-out & hardening, gate `maidan-scale-1.0`).
+Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]],
+[[Clusters/Product Ladder 77+]] (Clusters **77–101**), and [[Clusters/Product Ladder 102+]] (Clusters **102–120**).
 
-**Latest closes:** **`v87.0.0`** reindex job API · **`v86.0.0`** per-model search param · **`v85.0.0`** sqlite-vec optional.
+**Latest closes:** **`v120.0.0`** scale product gate (`maidan-scale-1.0`); Product Ladder 102+ (Clusters 102–120) **complete**.
 
 ---
 
@@ -40,8 +40,9 @@ From [[Open Work]] — unchanged except where a release mitigated.
 - **Bootstrap / `AUTH_DISABLED` misconfiguration** — catastrophic in production.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener recovery** — best-effort; `/health/ready` reflects retry state.
-- **Coverage floor 11%** — opportunistic depth increases.
-- **`hash-v1` default** — configure a real embedding provider for semantic quality.
+- **Coverage floor ≥40%** — enforced in CI over the full suite (v114); opportunistic depth increases beyond the floor.
+- **`hash-v1` default** — `openai-compatible` provider (v117) for real semantics; `hash-v1` is the offline/dev default.
+- **Tag backlog** — `v93.0.0`–`v100.0.0` + the `maidan-operator-1.0` gate tag remain uncut.
 
 ---
 
