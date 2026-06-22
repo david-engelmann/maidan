@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [119.0.0] — 2026-06-22
+
+### Changed
+
+- Workspace moved to **thiserror 2** (source-compatible; our crates on the current major).
+- `deny.toml` `[bans] multiple-versions` **warn → deny** — a new duplicate major now fails CI. Unavoidable duplicates are documented exceptions: `skip-tree` for the vendored AWS SDK (`aws-config`/`aws-sdk-s3`) and `openidconnect` v4 subtrees + `testcontainers` (dev), and a `skip` list for cross-cutting ecosystem transitions (getrandom/rand, hashbrown, windows-sys, itertools, metrics-util).
+
+### Added
+
+- `docs/Dependencies.md` — dependency currency + duplicate-version policy, the openidconnect-v5 tracking item (clears base64 0.21 + the rsa advisory RUSTSEC-2023-0071 when released), and the edition-2024 evaluation (compiles; adoption deferred to a Track-V/X migration).
+
 ## [118.0.0] — 2026-06-18
 
 ### Added

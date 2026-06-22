@@ -127,3 +127,4 @@ PR review credit; external contributors.
 - [[Cluster 116.0]] — Batch embedding pipeline. Closed at **`v116.0.0`**, opening Phase XXII.
 - [[Cluster 117.0]] — Pluggable production provider. Closed at **`v117.0.0`**.
 - [[Cluster 118.0]] — Hybrid relevance. Closed at **`v118.0.0`**, closing Phase XXII.
+- [[Cluster 119.0]] — Dependency dedupe & currency. Closed at **`v119.0.0`**, opening Phase XXIII.
