@@ -244,6 +244,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      id-token: write # keyless cosign signing via GitHub OIDC
     steps:
       - uses: actions/checkout@v4
         with:
@@ -272,6 +273,22 @@ jobs:
             fi
           done
           echo "SBOM not produced; publishing tarballs only"
+      - name: install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: sign release artifacts (keyless / Sigstore)
+        # Keyless signing via the job's GitHub OIDC identity (no private key).
+        # Each artifact gets a self-verifiable `.cosign.bundle` (sig + cert +
+        # Rekor proof). Verify: cosign verify-blob --bundle <f>.cosign.bundle \
+        #   --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+        #   --certificate-oidc-issuer https://token.actions.githubusercontent.com <f>
+        run: |
+          cd dist
+          shopt -s nullglob
+          for f in *.tar.gz sbom.json; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes "$f" --bundle "$f.cosign.bundle"
+          done
+          ls -la
       - name: create release
         uses: softprops/action-gh-release@v2
         with:

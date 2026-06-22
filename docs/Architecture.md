@@ -31,7 +31,7 @@ optional OIDC for humans, and contract-checked tool/event catalogs. See
 | **Context** | HTTP + MCP `get_*_context` with cursors (**74**, **82**) | Workspace thread list still in-memory slice |
 | **Privacy** | Message purge, deep workspace erase (**53**), audit | Not org-wide SCIM/SAML in Maidan |
 | **Deploy** | `helm/maidan`, `helm/maidan-stack`, cert-manager values (**55**), profile overlays (**88**) | Bootstrap compile-time strip (**91**) |
-| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** · operator gate `v101` (tag pending) · **`maidan-scale-1.0`** **`v120`** | Ladder **77–101** ([Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md)) and **102–120** ([Clusters/Product Ladder 102+.md](Clusters/Product%20Ladder%20102+.md)) closed on `main`; scale gate [docs/Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md) |
+| **Product gates** | **`maidan-2.0`** **`v58`** · **`maidan-agent-1.0`** **`v76`** · **`maidan-operator-1.0`** **`v101`** · **`maidan-scale-1.0`** **`v120`** | Ladder **77–101** ([Clusters/Product Ladder 77+.md](Clusters/Product%20Ladder%2077+.md)) and **102–120** ([Clusters/Product Ladder 102+.md](Clusters/Product%20Ladder%20102+.md)) closed on `main`; scale gate [docs/Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md) |
 
 ```mermaid
 flowchart TB

@@ -15,7 +15,7 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v120.0.0`** (P
 - **SQLite semantic search** — brute-force cosine; no HNSW on SQLite.
 - **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful.
 - **`rsa` advisory `RUSTSEC-2023-0071`** — ignored (RS256 id_token verify via openidconnect v4; no fixed `rsa`); clears on openidconnect v5 (unreleased). See [Dependencies.md](Dependencies.md).
-- **Tag backlog** — `v93.0.0`–`v100.0.0` and the `maidan-operator-1.0` gate tag are not yet cut.
+- **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264), released as `v101.0.0`; not a backlog. All four gate tags (incl. `maidan-operator-1.0`) are cut.
 
 ## Shipped (reference)
 

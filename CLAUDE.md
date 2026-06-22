@@ -201,6 +201,6 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 
 - **Integrator docs:** [`docs/Integration.md`](docs/Integration.md) + [mdBook](https://david-engelmann.github.io/maidan/) (GitHub Pages).
 - **Product Ladder 102+ is COMPLETE:** Phases XIX–XXIII (Clusters 102–120) merged on `main`. Scale gate **`maidan-scale-1.0`** tagged at **`v120.0.0`** (see [`docs/Gates/maidan-scale-1.0.md`](docs/Gates/maidan-scale-1.0.md)). No further ladder cluster is defined past 120; remaining work is post-gate human-product + cross-cutting tracks ([`docs/Open Work.md`](docs/Open%20Work.md), [`docs/Remaining Work.md`](docs/Remaining%20Work.md)).
-- **Gate tags cut:** **`maidan-2.0`** (`v58`), **`maidan-agent-1.0`** (`v76`), **`maidan-scale-1.0`** (`v120`).
-- **Tag backlog (NOT cut):** the **`maidan-operator-1.0`** gate (intended at `v101.0.0`) and intermediate version tags **`v93.0.0`–`v100.0.0`** (8 tags) were never cut. `v101.0.0` and `v102.0.0`–`v120.0.0` are all cut. Cutting the backlog is a pending maintainer action (each `vX.0.0` push triggers `release.yml`).
+- **Gate tags cut (all four):** **`maidan-2.0`** (`v58`), **`maidan-agent-1.0`** (`v76`), **`maidan-operator-1.0`** (`v101`), **`maidan-scale-1.0`** (`v120`).
+- **No `v93`–`v100` tags (intentional):** clusters **93–101** shipped as a single batch PR (#264) and were released as **`v101.0.0`** — they were never separate releases, so there are no `v93.0.0`–`v100.0.0` tags to cut. Version tags cut: `v101.0.0` and `v102.0.0`–`v120.0.0`.
 - **CI:** 6 required checks on `main` (incl. `scale-out smoke`, promoted at the scale gate).
