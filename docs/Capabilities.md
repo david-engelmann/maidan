@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v121.0.0 — Observability & contract completeness
+
+| Capability | Where |
+|------------|-------|
+| Every OpenAPI op classified (bearer / session / public) in CI | `crates/maidan-server/tests/http_openapi_capability_map_contract.rs` |
+| Indexer queue-saturation recording rule + backpressure/embed-failure alerts | `docs/alerts/prometheus-rules-maidan-slo.yaml` |
+| Operator dashboard panels for indexer queue depth + embed failures | `docs/dashboards/maidan-operator.json` |
+
+_Post-gate hardening (Phase XXIV): closes the OpenAPI-wide capability-map gap (Cluster 69) and extends the Cluster 90 SLO surface to the Cluster 116 indexer metrics. No new gate tag._
+
 ## v120.0.0 — Scale product gate (`maidan-scale-1.0`)
 
 | Capability | Where |
