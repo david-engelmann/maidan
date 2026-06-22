@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v119.0.0 — Dependency dedupe & currency
+
+| Capability | Where |
+|------------|-------|
+| Duplicate-major CI gate (`multiple-versions = deny`) | `deny.toml` (`lint` job) |
+| Dependency currency + duplicate-version policy doc | `docs/Dependencies.md` |
+| Workspace on thiserror 2 | `Cargo.toml` |
+
 ## v118.0.0 — Hybrid relevance
 
 | Capability | Where |

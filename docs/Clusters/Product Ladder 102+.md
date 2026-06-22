@@ -106,7 +106,7 @@
 
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
-| **119** | Dependency dedupe & currency | `v119.0.0` | Collapse duplicate majors (`thiserror`/`hmac`/`base64`); tighten `deny.toml` `multiple-versions` for crypto crates; track `openidconnect` v5 to clear the `rsa` advisory; evaluate edition 2024 (Track **V/X**) |
+| **119** ✓ | Dependency dedupe & currency | `v119.0.0` ✓ | Collapse duplicate majors (`thiserror`/`hmac`/`base64`); tighten `deny.toml` `multiple-versions` for crypto crates; track `openidconnect` v5 to clear the `rsa` advisory; evaluate edition 2024 (Track **V/X**) |
 | **120** | Scale product gate | `v120.0.0` | **`maidan-scale-1.0`** e2e: multi-replica suite (102–105) + perf budgets (109) + coverage floor (114) + clean `cargo deny` + bench baselines recorded |
 
 **Ordering:** **119** anytime (Track **V**). **120** last.
