@@ -26,8 +26,9 @@ Cluster 90 (SLO recording/alert rules + operator dashboard), Cluster 116
 
 ## Non-goals
 
-- OTLP export wiring (Cluster 89 deferral) — remains open; this cluster
-  covers the dashboards/alerts half only.
+- OTLP export wiring — this cluster covers the dashboards/alerts half only.
+  (_Correction, Cluster 122: the OTLP exporter itself already shipped in
+  Cluster 89; it was never an open deferral._)
 - New product capability — both items are completeness, not features.
 - `rate()`/`increase()` on the indexer gauges — they are monotonic gauge
   mirrors, not Prometheus counters; alerts use ratio + offset-delta.

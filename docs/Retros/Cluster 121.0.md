@@ -32,7 +32,7 @@
 
 | To | What | Why |
 |----|------|-----|
-| Cluster 89 | OTLP export wiring | The other half of "Observability (76)"; dashboards/alerts done, exporter not. |
+| Cluster 89 | OTLP export wiring | _**Correction (Cluster 122):** this was wrong — the OTLP exporter (traces + metrics fanout) shipped in Cluster 89 and is documented in `Production.md`. The real residual gap is an end-to-end collector smoke._ |
 | Post-gate | promtool/`amtool` rule unit tests in CI | No Prometheus toolchain in the pipeline; mitigated by name contract + YAML parse. |
 | Doc debt | `Open Work.md` stale tail (a v76/cluster-78 historical block) | Pre-existing; out of this cluster's two-item scope — flagged for a doc sweep. |
 
@@ -77,9 +77,10 @@
 
 - **Alert exprs aren't executed in CI.** Only metric *names* are contract-
   checked; PromQL correctness is reviewed, not run. A promtool unit-test job
-  would close this (deferred).
-- **OTLP export still open** (Cluster 89). The SLO surface is complete; the
-  push-based export path is not.
+  would close this (_closed in Cluster 122_).
+- **OTLP export still open** (Cluster 89). _**Correction (Cluster 122):** this
+  is wrong — the OTLP exporter (traces + metrics fanout) shipped in Cluster 89,
+  env-gated and documented. The residual gap is an end-to-end collector smoke._
 
 ## Forward look
 

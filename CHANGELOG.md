@@ -23,7 +23,7 @@ Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. 
 
 ### Changed
 
-- `docs/Remaining Work.md` §1/§3 — OpenAPI-wide capability map marked closed (121); SLO dashboards/alerts noted as extended to scale-out indexer metrics. OTLP export wiring (Cluster 89) remains the open observability piece.
+- `docs/Remaining Work.md` §1/§3 — OpenAPI-wide capability map marked closed (121); SLO dashboards/alerts noted as extended to scale-out indexer metrics. (OTLP export was described here as the open observability piece — corrected in [122.0.0]: traces + metrics export shipped in Cluster 89; the open sliver is an end-to-end collector smoke.)
 
 ## [120.0.0] — 2026-06-22
 

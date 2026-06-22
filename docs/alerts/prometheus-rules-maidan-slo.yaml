@@ -113,7 +113,9 @@ spec:
               Set INDEXER_STALE_SECS in readiness; check embedding provider.
 
         - alert: MaidanIndexerQueueSaturated
-          expr: maidan_indexer_queue_capacity > 0 and maidan_slo:indexer_queue_saturation > 0.8
+          # Saturation ratio first so `$value` is the fill fraction (humanizes to a
+          # sane %); the `capacity > 0` conjunct still guards the logging-only indexer.
+          expr: maidan_slo:indexer_queue_saturation > 0.8 and maidan_indexer_queue_capacity > 0
           for: 5m
           labels:
             severity: warning
