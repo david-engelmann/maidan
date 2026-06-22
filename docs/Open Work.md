@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v77.0.0`**.
+Updated at each cluster retro. **Baseline:** code on `main` at **`v120.0.0`** (Product Ladder 102+ complete; scale gate `maidan-scale-1.0`).
 
 ## Standing risks (still open)
 
@@ -12,9 +12,10 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v77.0.0`**.
 - **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener** — best-effort recovery; `/health/ready` reflects errors.
-- **Coverage floor 11%** — incremental uplift opportunistic.
 - **SQLite semantic search** — brute-force cosine; no HNSW on SQLite.
-- **`hash-v1` default** — not semantic until a real provider is configured.
+- **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful.
+- **`rsa` advisory `RUSTSEC-2023-0071`** — ignored (RS256 id_token verify via openidconnect v4; no fixed `rsa`); clears on openidconnect v5 (unreleased). See [Dependencies.md](Dependencies.md).
+- **Tag backlog** — `v93.0.0`–`v100.0.0` and the `maidan-operator-1.0` gate tag are not yet cut.
 
 ## Shipped (reference)
 
