@@ -16,7 +16,7 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | Channel browser, WS tail, artifacts (**92–96**); no React SPA in ladder **77+** |
 | **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) — in progress |
 | **Workspace erasure (53)** | `DELETE /workspaces/:id` full erase | Does not cover org-level IdP user deletion (use IdP) |
-| **Capabilities (69)** | Full MCP matrix + sample HTTP contract | Every OpenAPI path in CI (**77**) |
+| **Capabilities (69)** | Full MCP matrix + bidirectional HTTP capability-map contract; every OpenAPI op classified bearer/session/public in CI (**121**) | — |
 | **A2A (72)** | Persisted tasks + cancel/progress (**79**) | Task marketplace UI |
 | **Context (74)** | HTTP + MCP context + cursors (**82**) | Store-level workspace thread cursor |
 | **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, **83**) | — |
@@ -25,7 +25,7 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | — |
 | **Embeddings** | Pluggable provider; per-model tables + `embedding_model` query (**86**); operator reindex jobs (**87**) | Durable job store |
 | **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
-| **Observability (76)** | Agent metrics runbook + gate e2e | OTLP export + dashboards (**89–90**) |
+| **Observability (76)** | Agent metrics runbook + gate e2e; SLO recording/alert rules + operator dashboard (**90**), extended to scale-out indexer queue/embed metrics (**121**) | OTLP export wiring (**89**) |
 | **Delivery ops (68)** | Unified operator deliveries API (**80**) | — |
 
 **Closed since older drafts of this file:** pins API (**40**), slash commands (**51**), FSM hooks (**52**), DMs (**39**), message edit (**29**), outbox HTTP replay (**56**), Helm stack (**32**/**55**), workspace full erase (**53**), A2A `SendStreamingMessage` (**37**), MCP resource fan-out (**38**), capability matrix for all MCP tools (**69**).
@@ -54,9 +54,9 @@ From [[Open Work]] — unchanged except where a release mitigated.
 | `sqlite-vec` / HNSW on SQLite | Extension linkage deferred |
 | Schema parity property test | Cluster A retro |
 | Sigstore/cosign release artifacts | Manual (**Operations**) |
-| OTLP dashboards / SLO wiring | **89–90** ([[Clusters/Product Ladder 77+]]) |
+| OTLP export wiring | **89** open; SLO dashboards/alerts (**90**) extended to scale-out metrics (**121**) |
 | Multi-region active-active | Out of scope |
-| OpenAPI-wide capability map | Cluster **69** shipped MCP + samples only |
+| ~~OpenAPI-wide capability map~~ | **Closed (121):** every OpenAPI op classified + bidirectional capability-map match in CI |
 | Unified webhook + automation delivery tables | **68** kept separate queues |
 
 ---

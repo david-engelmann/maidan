@@ -138,3 +138,76 @@ fn openapi_bearer_operations_match_http_capability_map() {
         "http-capability-map (surface=http) has entries not in OpenAPI bearer ops: {extra_in_map:?}"
     );
 }
+
+/// Operations that are unauthenticated **by design**: liveness/readiness, the
+/// Prometheus scrape, the spec itself, discovery, and the OIDC browser-login
+/// handshake. Anything not here must be a bearer op (and thus capability-mapped).
+const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
+    ("GET", "/health"),
+    ("GET", "/health/live"),
+    ("GET", "/health/ready"),
+    ("GET", "/metrics"),
+    ("GET", "/openapi.json"),
+    ("GET", "/.well-known/maidan.json"),
+    ("GET", "/auth/oidc/login"),
+    ("GET", "/auth/oidc/callback"),
+    ("POST", "/auth/logout"),
+];
+
+/// Authenticated by the `maidan_session` cookie (the OIDC browser flow), not a
+/// bearer token — so they carry no bearer capability, but they are NOT public:
+/// each is gated by the `session_auth` layer in `app.rs`.
+const SESSION_OPERATIONS: &[(&str, &str)] =
+    &[("GET", "/auth/session"), ("POST", "/auth/session/mint")];
+
+/// Every OpenAPI operation is **classified**: a bearer op (so it appears in the
+/// capability map, enforced above), a session-cookie op, or an explicitly public
+/// route. Catches a new route that accidentally ships with neither auth nor a
+/// capability mapping — which the bearer-vs-map match alone would not see.
+#[test]
+fn every_openapi_operation_is_bearer_session_or_public() {
+    let bearer = collect_openapi_bearer_routes();
+    let allowlisted: BTreeSet<RouteKey> = PUBLIC_OPERATIONS
+        .iter()
+        .chain(SESSION_OPERATIONS.iter())
+        .map(|(m, p)| RouteKey {
+            method: m.to_string(),
+            path: p.to_string(),
+        })
+        .collect();
+
+    let doc = ApiDoc::openapi();
+    let mut unclassified = Vec::new();
+    for (path, item) in doc.paths.paths.iter() {
+        for (item_type, _op) in item.operations.iter() {
+            let key = RouteKey {
+                method: path_item_type_method(item_type),
+                path: path.clone(),
+            };
+            if !bearer.contains(&key) && !allowlisted.contains(&key) {
+                unclassified.push(key);
+            }
+        }
+    }
+    assert!(
+        unclassified.is_empty(),
+        "OpenAPI operations neither bearer-authenticated nor in PUBLIC/SESSION allowlists \
+         (add bearer auth + a capability-map entry, or mark public/session): {unclassified:?}"
+    );
+
+    // Keep the SESSION allowlist honest: those are documented operations, so a
+    // stale entry (route removed/renamed) should surface. PUBLIC infra routes
+    // (/metrics, /openapi.json, …) are intentionally not in the ApiDoc, so they
+    // are exempt from this check.
+    for (method, path) in SESSION_OPERATIONS {
+        let present = doc.paths.paths.get(*path).is_some_and(|item| {
+            item.operations
+                .keys()
+                .any(|t| &path_item_type_method(t) == method)
+        });
+        assert!(
+            present,
+            "SESSION_OPERATIONS entry not in OpenAPI: {method} {path}"
+        );
+    }
+}
