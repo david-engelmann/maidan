@@ -63,6 +63,37 @@ pub async fn list_for_workspace(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// One keyset page of a workspace's live threads, ordered `(created_at, id)`
+/// ascending. `after` is an exclusive cursor (the last thread id of the prior
+/// page); `None` starts from the beginning. Filters tombstoned threads in SQL
+/// and `LIMIT`s in the DB, so context assembly no longer loads every thread.
+pub async fn page_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    after: Option<ThreadId>,
+    limit: i64,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = $1
+           AND t.tombstoned_at IS NULL
+           AND ($2::uuid IS NULL OR (t.created_at, t.id) > (
+                 SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = $2
+               ))
+         ORDER BY t.created_at ASC, t.id ASC
+         LIMIT $3",
+    )
+    .bind(workspace_id.0)
+    .bind(after.map(|t| t.0))
+    .bind(limit.max(0))
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 async fn validate_parent(
     pool: &PgPool,
     channel_id: ChannelId,

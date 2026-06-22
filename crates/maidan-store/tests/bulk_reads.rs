@@ -175,6 +175,103 @@ async fn assert_bulk_reads(store: &dyn Store) {
         .await
         .unwrap()
         .is_empty());
+
+    assert_thread_pagination(store).await;
+}
+
+/// `page_threads_for_workspace` keyset pagination: a small-limit
+/// walk reproduces the full `(created_at, id)` ordering exactly once, the cursor
+/// is exclusive, and a cursor at the end yields nothing. Exercises the `id`
+/// tie-breaker since SQLite's second-granularity `created_at` makes threads
+/// created in the same test share a timestamp.
+async fn assert_thread_pagination(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "page".into(),
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "p".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let mut created = Vec::new();
+    for _ in 0..5 {
+        created.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: ch.id,
+                    parent_thread_id: None,
+                    title: None,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+
+    // A large page defines the canonical order; it must be exactly the created set.
+    let full: Vec<ThreadId> = store
+        .page_threads_for_workspace(ws.id, None, 100)
+        .await
+        .unwrap()
+        .iter()
+        .map(|t| t.id)
+        .collect();
+    let mut got: Vec<_> = full.iter().map(|t| t.0).collect();
+    got.sort();
+    let mut want: Vec<_> = created.iter().map(|t| t.0).collect();
+    want.sort();
+    assert_eq!(
+        got, want,
+        "page returns exactly the workspace's live threads"
+    );
+
+    // A small-limit keyset walk reproduces that order with no gaps or repeats.
+    let mut walk = Vec::new();
+    let mut cursor: Option<ThreadId> = None;
+    for _ in 0..10 {
+        let page = store
+            .page_threads_for_workspace(ws.id, cursor, 2)
+            .await
+            .unwrap();
+        if page.is_empty() {
+            break;
+        }
+        assert!(page.len() <= 2, "LIMIT is respected");
+        for t in &page {
+            walk.push(t.id);
+        }
+        cursor = Some(page.last().unwrap().id);
+    }
+    assert_eq!(
+        walk, full,
+        "keyset walk reproduces the full ordering, once each"
+    );
+
+    // The cursor is exclusive: at the end → empty; mid → strictly-after.
+    assert!(store
+        .page_threads_for_workspace(ws.id, full.last().copied(), 100)
+        .await
+        .unwrap()
+        .is_empty());
+    let after_first: Vec<ThreadId> = store
+        .page_threads_for_workspace(ws.id, Some(full[0]), 100)
+        .await
+        .unwrap()
+        .iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(
+        after_first,
+        full[1..].to_vec(),
+        "cursor returns rows after it"
+    );
 }
 
 #[tokio::test]
