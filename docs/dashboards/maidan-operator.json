@@ -112,6 +112,42 @@
       ],
       "title": "Bus hydrate outcomes",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "maidan_indexer_queue_depth",
+          "legendFormat": "queue depth",
+          "refId": "A"
+        },
+        {
+          "expr": "maidan_indexer_queue_capacity",
+          "legendFormat": "queue capacity",
+          "refId": "B"
+        }
+      ],
+      "title": "Indexer embed queue depth vs capacity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "maidan_indexer_embed_failed_total",
+          "legendFormat": "embed failures (total)",
+          "refId": "A"
+        }
+      ],
+      "title": "Indexer embed failures (total)",
+      "type": "stat"
     }
   ],
   "refresh": "30s",

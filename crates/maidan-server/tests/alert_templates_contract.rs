@@ -17,6 +17,10 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_bus_listener_ok",
         "maidan_indexer_last_event_age_seconds",
         "maidan_subscribe_replay_total",
+        // Cluster 116 batched-embed indexer gauges (Cluster 121 coverage uplift).
+        "maidan_indexer_queue_depth",
+        "maidan_indexer_queue_capacity",
+        "maidan_indexer_embed_failed_total",
     ];
     for metric in expected {
         assert!(

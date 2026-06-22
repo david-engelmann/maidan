@@ -24,6 +24,10 @@ spec:
           expr: maidan_outbox_pending
         - record: maidan_slo:outbox_oldest_pending_seconds
           expr: maidan_outbox_oldest_pending_seconds
+        - record: maidan_slo:indexer_queue_saturation
+          # Batched embed queue fill ratio (Cluster 116); clamp avoids div-by-zero
+          # when the logging-only indexer reports capacity 0.
+          expr: maidan_indexer_queue_depth / clamp_min(maidan_indexer_queue_capacity, 1)
 
     - name: maidan_slo_alerts
       rules:
@@ -107,6 +111,33 @@ spec:
             description: |
               No indexer events for {{ $value | humanizeDuration }}.
               Set INDEXER_STALE_SECS in readiness; check embedding provider.
+
+        - alert: MaidanIndexerQueueSaturated
+          expr: maidan_indexer_queue_capacity > 0 and maidan_slo:indexer_queue_saturation > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            slo: search_index
+          annotations:
+            summary: Embedding indexer queue near capacity
+            description: |
+              Batched embed queue is {{ $value | humanizePercentage }} full (Cluster 116
+              backpressure). The embedding provider can't keep up; live writes will block
+              on the bounded queue. Check provider latency/errors and MAIDAN_INDEXER_*.
+
+        - alert: MaidanIndexerEmbedFailures
+          # embed_failed_total is a monotonic gauge mirror; the offset delta is
+          # restart-safe (a reset to 0 yields a negative delta, not an alert).
+          expr: maidan_indexer_embed_failed_total - (maidan_indexer_embed_failed_total offset 15m) > 0
+          for: 5m
+          labels:
+            severity: warning
+            slo: search_index
+          annotations:
+            summary: Embedding generation/upsert failing
+            description: |
+              {{ $value }} embed failures in the last 15m. Messages aren't being indexed
+              for semantic search. Check the embedding provider and check_health error slot.
 
         - alert: MaidanSubscribeReplayTruncatedSustained
           expr: |
