@@ -118,12 +118,13 @@ gh pr checks <num> --watch         # watch to completion
 Or arm a `Monitor` and keep working — the harness will notify when
 checks land.
 
-The 5 required jobs:
+The 6 required jobs:
 - `lint (fmt + clippy + deny)` — ~30s
 - `secrets scan` — ~10s
 - `unit tests` — ~1m
 - `integration (testcontainers)` — ~1m20s
 - `docker compose smoke` — ~4m
+- `scale-out smoke` — ~9m (required as of the `maidan-scale-1.0` gate, Cluster 120)
 
 If anything goes red, fix on the branch and push again. The most
 common failures and fixes are in "Debugging CI" below.
@@ -429,9 +430,10 @@ If the release workflow runs but doesn't produce a GitHub Release:
 
 `main` is protected. As of v0.2.0:
 
-- 5 required status checks: `lint (fmt + clippy + deny)`,
+- 6 required status checks: `lint (fmt + clippy + deny)`,
   `secrets scan`, `unit tests`, `integration (testcontainers)`,
-  `docker compose smoke`.
+  `docker compose smoke`, and `scale-out smoke` (promoted to required
+  at the `maidan-scale-1.0` gate, Cluster 120).
 - 1 required PR review (the maintainer self-merges via `--admin`
   bypass).
 - No force push.

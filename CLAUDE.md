@@ -25,9 +25,11 @@ single source of truth for *how* to operate in this codebase. The
   a tag. Current state: ladder **1–101 closed on `main`**; operator
   gate `maidan-operator-1.0` at **`v101.0.0`** (see "Project state at
   this handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
-- **CI:** GitHub Actions, 5 required-status-checks on `main`
+- **CI:** GitHub Actions, 6 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
-  (testcontainers)`, `docker compose smoke`). Every PR runs all 5.
+  (testcontainers)`, `docker compose smoke`, `scale-out smoke`). Every
+  PR runs all 6. (`scale-out smoke` was promoted to required at the
+  `maidan-scale-1.0` gate, Cluster 120.)
 
 ## Read order
 
@@ -77,7 +79,7 @@ retro is mandatory. The tag does not get cut without it.
 5. `git push -u origin <branch>` and open the PR with `gh pr create`.
    The body **must** include the PR-level retro section per
    [`docs/Conventions.md`](docs/Conventions.md).
-6. Wait for the 5 required CI jobs to pass. Use `gh pr checks <num>`
+6. Wait for the 6 required CI jobs to pass. Use `gh pr checks <num>`
    or arm a Monitor.
 7. Merge with `gh pr merge <num> -R david-engelmann/maidan --squash
    --admin --delete-branch`. The `--admin` flag is intentional and
