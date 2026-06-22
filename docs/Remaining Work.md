@@ -42,7 +42,7 @@ From [[Open Work]] — unchanged except where a release mitigated.
 - **PostgresBus listener recovery** — best-effort; `/health/ready` reflects retry state.
 - **Coverage floor ≥40%** — enforced in CI over the full suite (v114); opportunistic depth increases beyond the floor.
 - **`hash-v1` default** — `openai-compatible` provider (v117) for real semantics; `hash-v1` is the offline/dev default.
-- **Tag backlog** — `v93.0.0`–`v100.0.0` + the `maidan-operator-1.0` gate tag remain uncut.
+- **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264) → `v101.0.0`; not a backlog. All four gate tags cut.
 
 ---
 

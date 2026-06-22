@@ -39,9 +39,9 @@ Post-1.0 work is organized in [Post-1.0.md](Post-1.0.md) and [Tracks/README.md](
 
 Cross-cutting tracks **T, U, V, W, X** are complete.
 
-**Product Ladder 77–101** is **closed on `main`**; the operator gate was reached at **`v101.0.0`** (the Pi/edge integration point, see [Pi.md](Pi.md)). The **`maidan-operator-1.0`** gate tag and intermediate version tags **`v93.0.0`–`v100.0.0`** remain a pending maintainer cut (not yet tagged).
+**Product Ladder 77–101** is **closed on `main`**; the operator gate **`maidan-operator-1.0`** is tagged at **`v101.0.0`** (the Pi/edge integration point, see [Pi.md](Pi.md)). Clusters 93–101 shipped as one batch (PR #264) released as `v101.0.0`, so there are no separate `v93.0.0`–`v100.0.0` tags.
 
-**Product Ladder 102+ is COMPLETE.** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** — closed across Phases **XIX (scale-out core, 102–105)**, **XX (hot-path hardening, 106–110)**, **XXI (correctness & coverage, 111–115)**, **XXII (search & indexer at scale, 116–118)**, and **XXIII (supply chain & scale gate, 119–120)**, tags **`v102.0.0`–`v120.0.0`**. The **`maidan-scale-1.0`** product gate is tagged at **`v120.0.0`** ([[Gates/maidan-scale-1.0]]), alongside `maidan-agent-1.0` (`v76`) and `maidan-2.0` (`v58`). No further ladder cluster is defined past 120; future work is post-gate human-product and the cross-cutting tracks ([[Open Work]], [[Remaining Work]]).
+**Product Ladder 102+ is COMPLETE.** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** — closed across Phases **XIX (scale-out core, 102–105)**, **XX (hot-path hardening, 106–110)**, **XXI (correctness & coverage, 111–115)**, **XXII (search & indexer at scale, 116–118)**, and **XXIII (supply chain & scale gate, 119–120)**, tags **`v102.0.0`–`v120.0.0`**. The **`maidan-scale-1.0`** product gate is tagged at **`v120.0.0`** ([[Gates/maidan-scale-1.0]]), alongside `maidan-operator-1.0` (`v101`), `maidan-agent-1.0` (`v76`), and `maidan-2.0` (`v58`) — all four gate tags are cut. No further ladder cluster is defined past 120; future work is post-gate human-product and the cross-cutting tracks ([[Open Work]], [[Remaining Work]]).
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 

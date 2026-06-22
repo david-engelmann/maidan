@@ -229,9 +229,11 @@ When PRs `X.1` through `X.N` are merged:
    git tag -l v0.X.0 -n20  # verify the message
    ```
 
-   Signing: if `git config user.signingkey` is set, use `-s` instead
-   of `-a`. Otherwise annotated unsigned is acceptable
-   pre-1.0 — see [`docs/Decisions.md`](Decisions.md).
+   Tag signing: no GPG signing key is configured, so tags are **annotated
+   but unsigned** (the standing convention — see [`docs/Decisions.md`](Decisions.md)).
+   To enable GPG-signed tags, set `git config user.signingkey <key>`, add the
+   public key to GitHub, and use `-s` instead of `-a`. (Release *artifacts* are
+   already signed keylessly via cosign — see step 7.)
 
 6. **Push the tag** — this fires
    [`.github/workflows/release.yml`](../.github/workflows/release.yml):
@@ -254,9 +256,17 @@ When PRs `X.1` through `X.N` are merged:
 
 7. Verify the Release at `https://github.com/david-engelmann/maidan/releases/tag/v0.X.0`.
    If anything failed, see "Debugging the release workflow" below.
-   The workflow attaches `sbom.json` (cyclonedx). **Artifact signing (Track V.3):**
-   cosign is not wired in CI yet; sign release tarballs manually with
-   your org's Sigstore key if policy requires it.
+   The workflow attaches `sbom.json` (cyclonedx) and **keyless cosign
+   (Sigstore) signatures** for every release artifact (Track V.3): each
+   `*.tar.gz` and `sbom.json` ships with a self-verifiable `.cosign.bundle`,
+   signed via the workflow's GitHub OIDC identity (no private key). Verify:
+
+   ```sh
+   cosign verify-blob --bundle maidan-<target>.tar.gz.cosign.bundle \
+     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+     maidan-<target>.tar.gz
+   ```
 
 8. Open the next cluster kickoff.
 
