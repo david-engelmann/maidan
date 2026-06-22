@@ -13,6 +13,7 @@
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](../docs/Production.md)
+- [Scale gate (maidan-scale-1.0)](../docs/Gates/maidan-scale-1.0.md)
 - [Embeddings & semantic search](../docs/Embeddings.md)
 - [Deploy](../docs/Deploy.md)
 - [Raspberry Pi / ARM64](../docs/Pi.md)

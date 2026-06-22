@@ -40,6 +40,7 @@ Live API: `GET /openapi.json` on your server.
 | [Conventions.md](Conventions.md) | Branch, commit, PR conventions |
 | [Operations.md](Operations.md) | PR flow, CI, releases |
 | [Dependencies.md](Dependencies.md) | Dependency currency + duplicate-version policy (`deny.toml`) |
+| [Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md) | Scale product gate (`v120.0.0`): criteria → evidence |
 | [Open Work.md](Open%20Work.md) | Short backlog + risks |
 | [Remaining Work.md](Remaining%20Work.md) | Exhaustive backlog matrix |
 | [Roadmap.md](Roadmap.md) | Cluster ladder history |
