@@ -265,10 +265,11 @@ jobs:
         run: docker compose --profile federation down -v
 
   scale-out-smoke:
-    # Non-required (promoted to a required check at the Cluster 120 scale gate).
+    # Required check as of the Cluster 120 `maidan-scale-1.0` gate (v120.0.0).
     # Two replicas behind an LB sharing one Postgres + object store, exercising
     # the REST cross-replica paths. WS/notify/presence/OAuth cross-replica are
     # covered by the in-process two_replica_*_e2e tests.
+    # NOTE: also add "scale-out smoke" to branch-protection required checks.
     name: scale-out smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
