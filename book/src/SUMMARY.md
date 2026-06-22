@@ -26,6 +26,7 @@
 - [Decisions](../docs/Decisions.md)
 - [Conventions](../docs/Conventions.md)
 - [Operations](../docs/Operations.md)
+- [Dependencies](../docs/Dependencies.md)
 - [Open Work](../docs/Open%20Work.md)
 - [Roadmap](../docs/Roadmap.md)
 
