@@ -7,9 +7,11 @@ use crate::sqlite::outbox;
 pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, StoreError> {
     let payload = serde_json::to_string(event)?;
     let mut tx = pool.begin().await?;
+    // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
+    // distinct from the caller-supplied `occurred_at`.
     let row = sqlx::query(
-        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at",
     )
     .bind(event.kind().as_str())
@@ -18,6 +20,7 @@ pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, Sto
     .bind(event.thread_id().map(|t| t.0))
     .bind(payload)
     .bind(event.occurred_at().to_rfc3339())
+    .bind(chrono::Utc::now().to_rfc3339())
     .fetch_one(&mut *tx)
     .await?;
     let stored = row_to_stored(&row)?;
@@ -56,6 +59,34 @@ pub async fn list_after(
     )
     .bind(workspace_id.0)
     .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_stored).collect()
+}
+
+/// Replay rows with `id > after_id` that are **stable** — inserted at or before
+/// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
+/// loop advance a durable cursor without stranding a lower `id` that is still
+/// in flight (Cluster 125 at-least-once delivery). `inserted_at` is stored as
+/// RFC3339, which sorts lexically in chronological order.
+pub async fn list_after_stable(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    after_id: i64,
+    stable_before: chrono::DateTime<chrono::Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE workspace_id = ? AND id > ? AND inserted_at <= ?
+         ORDER BY id ASC
+         LIMIT ?",
+    )
+    .bind(workspace_id.0)
+    .bind(after_id)
+    .bind(stable_before.to_rfc3339())
     .bind(limit)
     .fetch_all(pool)
     .await?;

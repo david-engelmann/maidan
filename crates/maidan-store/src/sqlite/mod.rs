@@ -439,6 +439,16 @@ impl Store for SqliteStore {
         events::list_after(&self.pool, workspace_id, after_id, limit).await
     }
 
+    async fn list_events_after_stable(
+        &self,
+        workspace_id: WorkspaceId,
+        after_id: i64,
+        stable_before: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        events::list_after_stable(&self.pool, workspace_id, after_id, stable_before, limit).await
+    }
+
     async fn create_app(&self, new: NewApp) -> Result<App, StoreError> {
         apps::create_app(&self.pool, new).await
     }

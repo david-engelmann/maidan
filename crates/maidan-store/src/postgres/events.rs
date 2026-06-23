@@ -7,9 +7,11 @@ use crate::postgres::outbox;
 pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreError> {
     let payload = serde_json::to_value(event)?;
     let mut tx = pool.begin().await?;
+    // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
+    // distinct from the caller-supplied `occurred_at`.
     let row = sqlx::query(
-        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at",
     )
     .bind(event.kind().as_str())
@@ -18,6 +20,7 @@ pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreEr
     .bind(event.thread_id().map(|t| t.0))
     .bind(payload)
     .bind(event.occurred_at())
+    .bind(chrono::Utc::now())
     .fetch_one(&mut *tx)
     .await?;
     let stored = row_to_stored(&row)?;
@@ -56,6 +59,33 @@ pub async fn list_after(
     )
     .bind(workspace_id.0)
     .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_stored).collect()
+}
+
+/// Replay rows with `id > after_id` that are **stable** — inserted at or before
+/// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
+/// loop advance a durable cursor without stranding a lower `id` that is still
+/// in flight (Cluster 125 at-least-once delivery).
+pub async fn list_after_stable(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    after_id: i64,
+    stable_before: chrono::DateTime<chrono::Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE workspace_id = $1 AND id > $2 AND inserted_at <= $3
+         ORDER BY id ASC
+         LIMIT $4",
+    )
+    .bind(workspace_id.0)
+    .bind(after_id)
+    .bind(stable_before)
     .bind(limit)
     .fetch_all(pool)
     .await?;
