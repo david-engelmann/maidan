@@ -37,8 +37,12 @@ add a custom exporter against `GET /workspaces/:wid/automation/dlq` or SQL on
 ## Validate locally
 
 ```bash
-./scripts/validate-prometheus-rules.sh
+./scripts/check-alert-rules.sh
 ```
 
-Uses `promtool` when installed; otherwise checks YAML structure and required
-metric name substrings.
+Runs `promtool check rules` + `promtool test rules` (the unit tests in
+`prometheus-rules-maidan-slo.test.yaml`) after extracting the raw rule groups
+from the `PrometheusRule` CRD. Requires `promtool` (skips with a hint if it's
+not installed); CI enforces it via the required `promtool (alert rules)` job.
+Metric-name presence is additionally guarded by the `alert_templates_contract`
+test (`cargo test -p maidan-server`).
