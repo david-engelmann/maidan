@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v125.0.0 — At-least-once event delivery
+
+| Capability | Where |
+|------------|-------|
+| Opt-in at-least-once subscribe (gap-free, in-order, per-consumer) | `at_least_once` flag (`/ws/subscribe`), `event_stream::reconcile_deliver` |
+| Stability-gated gap-safe event replay | `Store::list_events_after_stable`, `maidan_events.inserted_at` |
+
+_Post-gate hardening (Phase XXIV): closes the silent out-of-order delivery gap with an opt-in cursor-driven reconcile mode (time-based stability horizon); the default optimistic low-latency path is unchanged. No new gate tag._
+
 ## v124.0.0 — CI / observability loose ends
 
 | Capability | Where |
