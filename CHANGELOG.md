@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [124.0.0] — 2026-06-23
+
+Post-gate hardening (Phase XXIV). CI / observability loose ends. No new product capability, no new gate tag.
+
+### Removed
+
+- `scripts/validate-prometheus-rules.sh` — a substring-only checker whose `promtool check rules` branch was dead (it ran on the `PrometheusRule` CRD, which promtool can't parse, behind an uninstalled-promtool guard). `scripts/check-alert-rules.sh` (CRD extraction + `promtool check`/`test rules`, the required `promtool (alert rules)` job since v122) is now the sole validator; metric-name presence stays guarded by `alert_templates_contract`.
+
+### Changed
+
+- `scripts/check-alert-rules.sh` now skips gracefully with an install hint when `promtool` is absent (preserving the deleted script's local behavior).
+- **Required status checks on `main`: 6 → 8.** `promtool (alert rules)` (v122) and `otlp smoke` (v123) promoted to required branch-protection checks. Docs updated (`CLAUDE.md`, `Operations.md`, `Production.md`, `Capabilities.md`, `docs/alerts/README.md`).
+
 ## [123.0.0] — 2026-06-23
 
 Post-gate hardening (Phase XXIV). No new product capability, no new gate tag.
