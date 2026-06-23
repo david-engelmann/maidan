@@ -863,3 +863,175 @@ async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() 
     ws.close(None).await.ok();
     server.abort();
 }
+
+/// At-least-once mode (Cluster 125): a `workspace_id + consumer_id` subscription
+/// with `at_least_once: true` is delivered by the reconcile loop. It must deliver
+/// the stable backlog in id order, and on reconnect the durable cursor must floor
+/// out everything already delivered (no re-delivery).
+#[tokio::test]
+async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect() {
+    // Deterministic, fast reconcile via AppState config (no process-wide env, which
+    // would race other tests): no stability delay, tight poll.
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store_probe = store.clone();
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(256));
+    let mut state = AppState::for_tests(store, artifacts, bus, search);
+    state.delivery_stability = Duration::ZERO;
+    state.delivery_reconcile_interval = Duration::from_millis(150);
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+
+    // Backlog: workspace_created + member_joined + channel_created.
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "alo-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
+    for body in [
+        json!({"handle": "alice", "kind": "human"}),
+        json!({"handle": "_chan", "kind": "human"}),
+    ] {
+        let _: serde_json::Value = client
+            .post(format!("{base}/workspaces/{workspace_id}/members"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+    }
+
+    let subscribe = json!({
+        "filter": {"workspace_id": workspace_id},
+        "consumer_id": "alo-consumer",
+        "at_least_once": true,
+    });
+
+    let req = ws_url.clone().into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    ws.send(Message::Text(subscribe.to_string())).await.unwrap();
+
+    // The reconcile first pass delivers the now-stable backlog, in id order.
+    let mut kinds = Vec::new();
+    let collect = async {
+        while kinds.len() < 3 {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if is_control_frame(&v) {
+                    continue;
+                }
+                kinds.push(v["kind"].as_str().unwrap().to_string());
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), collect)
+        .await
+        .expect("timeout waiting for at-least-once backlog");
+    assert_eq!(
+        kinds,
+        vec!["workspace_created", "member_joined", "member_joined"]
+    );
+
+    // The reconcile loop advances the durable cursor just after sending the batch;
+    // wait for that commit so the reconnect deterministically sees the floor (a
+    // reconnect that races ahead would merely re-deliver — at-least-once — but we
+    // assert the no-re-delivery path here).
+    let ws_id = maidan_types::WorkspaceId(uuid::Uuid::parse_str(&workspace_id).unwrap());
+    let wait_cursor = async {
+        loop {
+            if store_probe
+                .get_delivery_cursor("alo-consumer", ws_id)
+                .await
+                .unwrap()
+                >= 3
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), wait_cursor)
+        .await
+        .expect("delivery cursor did not advance to 3");
+    ws.close(None).await.ok();
+
+    // A new event after the cursor.
+    let _: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    // Reconnect with the same consumer_id: the ack's after_id is the floored
+    // cursor (past the 3 delivered events), and only the new event arrives.
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws reconnect");
+    ws.send(Message::Text(subscribe.to_string())).await.unwrap();
+
+    let mut ack_after_id = None;
+    let mut next_kind = None;
+    let collect2 = async {
+        while next_kind.is_none() {
+            if let Some(Ok(Message::Text(payload))) = ws.next().await {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                    ack_after_id = v["after_id"].as_i64();
+                    continue;
+                }
+                if is_control_frame(&v) {
+                    continue;
+                }
+                next_kind = Some(v["kind"].as_str().unwrap().to_string());
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), collect2)
+        .await
+        .expect("timeout waiting for post-reconnect event");
+
+    assert_eq!(
+        ack_after_id,
+        Some(3),
+        "reconnect cursor must floor past the 3 delivered backlog events"
+    );
+    assert_eq!(
+        next_kind.as_deref(),
+        Some("channel_created"),
+        "only the event after the cursor should be re-delivered"
+    );
+
+    ws.close(None).await.ok();
+    server.abort();
+}

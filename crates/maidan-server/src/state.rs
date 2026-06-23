@@ -126,6 +126,10 @@ pub struct AppState {
     /// Live embedding-indexer counters (queue depth, throughput) for metrics
     /// (Cluster 116). Default-zeroed unless the batching indexer is wired.
     pub indexer_metrics: Arc<maidan_search::IndexerMetrics>,
+    /// At-least-once delivery (Cluster 125): stability window + reconcile poll
+    /// cadence for `at_least_once` subscriptions. Read from env once at startup.
+    pub delivery_stability: std::time::Duration,
+    pub delivery_reconcile_interval: std::time::Duration,
 }
 
 impl AppState {
@@ -174,6 +178,8 @@ impl AppState {
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
+            delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
+            delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
         }
     }
 
