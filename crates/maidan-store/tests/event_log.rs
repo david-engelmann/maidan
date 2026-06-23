@@ -77,6 +77,82 @@ async fn append_and_replay_events_in_order() {
 }
 
 #[tokio::test]
+async fn list_events_after_stable_gates_on_insert_time() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "stable-ws".to_string(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "u".to_string(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+
+    let e1 = store
+        .append_event(&Event::MemberJoined {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws.id,
+            member: member.clone(),
+        })
+        .await
+        .expect("append1");
+    let e2 = store
+        .append_event(&Event::MemberJoined {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws.id,
+            member,
+        })
+        .await
+        .expect("append2");
+
+    // A horizon in the past treats the just-inserted rows as not-yet-stable.
+    let past = chrono::Utc::now() - chrono::Duration::hours(1);
+    let none = store
+        .list_events_after_stable(ws.id, 0, past, 10)
+        .await
+        .expect("stable past");
+    assert!(
+        none.is_empty(),
+        "rows inserted now must be excluded by a past horizon, got {}",
+        none.len()
+    );
+
+    // A horizon in the future treats them all as stable, in id order, honoring after_id.
+    let future = chrono::Utc::now() + chrono::Duration::hours(1);
+    let all = store
+        .list_events_after_stable(ws.id, 0, future, 10)
+        .await
+        .expect("stable future");
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].id, e1.id);
+    assert_eq!(all[1].id, e2.id);
+
+    let tail = store
+        .list_events_after_stable(ws.id, e1.id, future, 10)
+        .await
+        .expect("stable tail");
+    assert_eq!(tail.len(), 1);
+    assert_eq!(tail[0].id, e2.id);
+}
+
+#[tokio::test]
 async fn get_stored_event_returns_row_and_missing_is_not_found() {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")

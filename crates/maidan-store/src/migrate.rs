@@ -40,6 +40,8 @@ const POSTGRES_UP_V28: &str =
     include_str!("../../../migrations/postgres/0028_group_dm_and_mention_webhook.sql");
 const POSTGRES_UP_V29: &str = include_str!("../../../migrations/postgres/0029_oauth_codes.sql");
 const POSTGRES_UP_V30: &str = include_str!("../../../migrations/postgres/0030_reindex_jobs.sql");
+const POSTGRES_UP_V31: &str =
+    include_str!("../../../migrations/postgres/0031_events_inserted_at.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -73,6 +75,7 @@ const SQLITE_UP_V27: &str =
     include_str!("../../../migrations/sqlite/0027_group_dm_and_mention_webhook.sql");
 const SQLITE_UP_V28: &str = include_str!("../../../migrations/sqlite/0028_oauth_codes.sql");
 const SQLITE_UP_V29: &str = include_str!("../../../migrations/sqlite/0029_reindex_jobs.sql");
+const SQLITE_UP_V30: &str = include_str!("../../../migrations/sqlite/0030_events_inserted_at.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -155,6 +158,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 28, POSTGRES_UP_V28).await?;
     apply_postgres(pool, 29, POSTGRES_UP_V29).await?;
     apply_postgres(pool, 30, POSTGRES_UP_V30).await?;
+    apply_postgres(pool, 31, POSTGRES_UP_V31).await?;
     Ok(())
 }
 
@@ -198,6 +202,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 27, SQLITE_UP_V27).await?;
     apply_sqlite(pool, 28, SQLITE_UP_V28).await?;
     apply_sqlite(pool, 29, SQLITE_UP_V29).await?;
+    apply_sqlite(pool, 30, SQLITE_UP_V30).await?;
     Ok(())
 }
 

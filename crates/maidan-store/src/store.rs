@@ -262,6 +262,16 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Like [`Store::list_events_after`] but only rows inserted at or before
+    /// `stable_before` (the at-least-once reconcile read; Cluster 125).
+    async fn list_events_after_stable(
+        &self,
+        workspace_id: WorkspaceId,
+        after_id: i64,
+        stable_before: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     async fn create_app(&self, new: NewApp) -> Result<App, StoreError>;
     async fn get_app(&self, id: AppId) -> Result<App, StoreError>;
     async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError>;

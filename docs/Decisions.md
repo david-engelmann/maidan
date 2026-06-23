@@ -479,6 +479,44 @@ schema redesign and break Postgres parity.
 
 **To revisit:** never. This is the cleanest way to bridge.
 
+### At-least-once delivery via cursor reconciliation + a time-based stability horizon
+
+**Decision (Cluster 125).** Live subscription stays the low-latency optimistic
+path (broadcast bus, monotonic `watermark` per stream — which already dedups
+re-published / NOTIFY-duplicated `log_id`s). Completeness is provided by a
+**reconcile loop**: for `workspace + consumer_id` subscriptions, a periodic timer
+(and a NOTIFY hint) replays `list_events_after_stable(cursor, now - W)` in strict
+`id` order and advances the durable `delivery_cursor`. A row is **stable** only
+once its DB insert time (`maidan_events.inserted_at`, set by the app at append —
+distinct from the caller-supplied `occurred_at`) is older than the window `W`.
+
+**Why this.** The real delivery hole was never duplicates (the watermark + the
+`delivery_cursor` floor already handle those) — it was *silent gaps*: an event
+whose `log_id` arrives after a higher one was already delivered (a failed outbox
+row retried later, or a late-committing `BIGSERIAL`) is `<= watermark` and
+dropped, and replay only fires on broadcast `Lagged`. Gating the cursor on a
+stability horizon guarantees that, under "no insert transaction outlives `W`",
+no lower `id` can still commit and be stranded behind the cursor — so the
+reconcile loop eventually delivers every committed row exactly once per consumer.
+
+**Alternatives.**
+- *Commit-sequence column* (assign a monotonic commit-order value at commit and
+  consume strictly by it): truly strict with no time assumption, but needs a
+  migration + insert-path change and is awkward on SQLite (no clean commit-time
+  sequence). Rejected as too invasive for the gain.
+- *Contiguity detection* (`log_id` skipped ⇒ gap): wrong — filtered streams and
+  the global serial legitimately skip ids.
+- *Pure live + client dedup* (status quo): leaves the silent-gap hole.
+
+**Cost.** A backfill-latency floor of `W` (default small, tunable via
+`MAIDAN_DELIVERY_STABILITY_SECS`); the optimistic live path is unaffected, so
+steady-state latency is unchanged. Not strict against a pathologically long
+(`> W`) insert transaction — accepted, and documented.
+
+**To revisit:** if sub-`W` completeness is required, or if a long-transaction
+workload makes `W` impractical — then the commit-sequence column (or logical
+decoding) becomes warranted.
+
 ## CI + Tooling
 
 ### `cargo-deny` `wildcards = "deny"` + `allow-wildcard-paths = true` + `publish = false` everywhere
