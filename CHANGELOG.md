@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [123.0.0] — 2026-06-23
+
+Post-gate hardening (Phase XXIV). No new product capability, no new gate tag.
+
+### Added
+
+- **`otlp smoke` CI job + `otlp` compose profile** — end-to-end proof that maidan-server's OTLP export reaches a real OpenTelemetry Collector. `docker/otel-collector-config.yaml` (OTLP/gRPC → debug exporter) + `scripts/otlp-smoke.sh` bring up `postgres` + `otel-collector` + a server with `OTLP_ENDPOINT`/`OTLP_METRICS=1`, drive traffic, and assert the collector received a traces batch (incl. the per-request `http_request` span), a metrics batch, and resource `service.name=maidan-otlp-smoke`. Closes the residual observability gap named by Cluster 122 (the in-process `metrics_push` test never proved delivery to a collector).
+
+### Changed
+
+- `docs/Production.md` — added an OTLP end-to-end verification runbook; the alert-rules validation note now points at the CI-wired `scripts/check-alert-rules.sh` (v122).
+- `docs/Remaining Work.md` §1/§3 — OTLP-smoke gap closed (123); corrected the stale "durable job store" line: durable reindex jobs shipped in **Cluster 104** (`maidan_reindex_jobs`).
+
 ## [122.0.0] — 2026-06-22
 
 Post-gate hardening (Phase XXIV). No new product capability, no new gate tag.
