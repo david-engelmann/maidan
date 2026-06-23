@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v124.0.0 — CI / observability loose ends
+
+| Capability | Where |
+|------------|-------|
+| Single SLO-rule validator (promtool check + unit tests) | `scripts/check-alert-rules.sh` |
+| 8 required status checks (adds `promtool (alert rules)` + `otlp smoke`) | branch protection on `main`; [[Operations]] |
+
+_Post-gate hardening (Phase XXIV): collapses the two overlapping rule validators into one and promotes the Cluster 122/123 observability jobs to required checks. No new gate tag._
+
 ## v123.0.0 — OTLP delivery proven end-to-end
 
 | Capability | Where |

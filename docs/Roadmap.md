@@ -43,9 +43,12 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Product Ladder 102+ is COMPLETE.** [Product Ladder 102+](Clusters/Product%20Ladder%20102+.md) — **scale-out, hardening & correctness** — closed across Phases **XIX (scale-out core, 102–105)**, **XX (hot-path hardening, 106–110)**, **XXI (correctness & coverage, 111–115)**, **XXII (search & indexer at scale, 116–118)**, and **XXIII (supply chain & scale gate, 119–120)**, tags **`v102.0.0`–`v120.0.0`**. The **`maidan-scale-1.0`** product gate is tagged at **`v120.0.0`** ([[Gates/maidan-scale-1.0]]), alongside `maidan-operator-1.0` (`v101`), `maidan-agent-1.0` (`v76`), and `maidan-2.0` (`v58`) — all four gate tags are cut. No further ladder cluster is defined past 120; future work is post-gate human-product and the cross-cutting tracks ([[Open Work]], [[Remaining Work]]).
 
-**Post-gate hardening (Phase XXIV):** with the ladder closed, work continues opportunistically from [[Open Work]] / [[Remaining Work]], tagged on the same `vX.0.0` ladder but **without** new gate tags. Cluster **121.0** (`v121.0.0`) opened it (OpenAPI-wide capability map in CI + scale-out SLO coverage); Cluster **122.0** (`v122.0.0`) added promtool execution of the SLO alert rules; Cluster **123.0** (`v123.0.0`) proved OTLP export end-to-end against a real collector.
+**Post-gate hardening (Phase XXIV):** with the ladder closed, work continues opportunistically from [[Open Work]] / [[Remaining Work]], tagged on the same `vX.0.0` ladder but **without** new gate tags. Cluster **121.0** (`v121.0.0`) opened it (OpenAPI-wide capability map in CI + scale-out SLO coverage); Cluster **122.0** (`v122.0.0`) added promtool execution of the SLO alert rules; Cluster **123.0** (`v123.0.0`) proved OTLP export end-to-end against a real collector; Cluster **124.0** (`v124.0.0`) consolidated the rule validators and promoted the alert-rules + otlp-smoke jobs to required checks (8 total).
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
+
+**Recently closed:** Cluster **124.0** — CI/observability loose ends (one SLO-rule validator; `promtool (alert rules)` + `otlp smoke` promoted to required, 8 checks total) at **`v124.0.0`**
+([[Retros/Cluster 124.0]]).
 
 **Recently closed:** Cluster **123.0** — OTLP end-to-end collector smoke (server pushes traces + metrics to a real OpenTelemetry Collector; CI asserts delivery) at **`v123.0.0`**
 ([[Retros/Cluster 123.0]]).
