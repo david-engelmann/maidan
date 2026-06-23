@@ -38,6 +38,11 @@ pub struct McpStreamQuery {
     pub dm_conversation_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub channel_grants: Vec<uuid::Uuid>,
+    /// Opt into gap-free at-least-once delivery (Cluster 126): cursor-driven
+    /// reconcile instead of the optimistic live path. Requires `workspace_id`
+    /// and `consumer_id`; adds a stability-window latency floor on fresh events.
+    #[serde(default)]
+    pub at_least_once: bool,
 }
 
 pub async fn stream(
@@ -65,6 +70,11 @@ pub async fn stream(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     }
     let delivery_consumer_id = q.consumer_id.clone();
+    // At-least-once requires both a workspace filter and a durable consumer id
+    // (the reconcile cursor is keyed by them); ignore the flag otherwise.
+    let reconcile = (q.at_least_once)
+        .then(|| filter.workspace_id.zip(delivery_consumer_id.clone()))
+        .flatten();
 
     let (sse_tx, sse_rx) = mpsc::channel(256);
     let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
@@ -82,7 +92,9 @@ pub async fn stream(
     });
 
     let mut high_water = after_id;
-    if after_id > 0 || from_resume_token {
+    // At-least-once mode delivers the backlog via the reconcile loop's first
+    // pass (stability-gated), so skip the optimistic replay here.
+    if reconcile.is_none() && (after_id > 0 || from_resume_token) {
         let outcome = replay_matching_events(
             state.store.as_ref(),
             &filter,
@@ -124,20 +136,39 @@ pub async fn stream(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let watermark = Arc::new(AtomicI64::new(high_water));
     let bus_store = state.store.clone();
-    tokio::spawn(async move {
-        event_stream::forward_bus_items(
-            subscriber,
-            text_tx,
-            watermark,
-            bus_store,
-            bus_filter,
-            crate::subscribe_metrics::SubscribeTransport::McpSse,
-            delivery_consumer_id,
-        )
-        .await;
-    });
+    if let Some((workspace_id, consumer_id)) = reconcile {
+        let stability = state.delivery_stability;
+        let interval = state.delivery_reconcile_interval;
+        tokio::spawn(async move {
+            event_stream::reconcile_deliver(
+                subscriber,
+                text_tx,
+                bus_store,
+                bus_filter,
+                workspace_id,
+                consumer_id,
+                high_water,
+                stability,
+                interval,
+            )
+            .await;
+        });
+    } else {
+        let watermark = Arc::new(AtomicI64::new(high_water));
+        tokio::spawn(async move {
+            event_stream::forward_bus_items(
+                subscriber,
+                text_tx,
+                watermark,
+                bus_store,
+                bus_filter,
+                crate::subscribe_metrics::SubscribeTransport::McpSse,
+                delivery_consumer_id,
+            )
+            .await;
+        });
+    }
 
     let stream = ReceiverStream::new(sse_rx);
     Ok(Sse::new(stream).keep_alive(
