@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v123.0.0 — OTLP delivery proven end-to-end
+
+| Capability | Where |
+|------------|-------|
+| OTLP traces + metrics asserted against a real collector in CI | `compose.yaml` (`otlp` profile), `docker/otel-collector-config.yaml`, `scripts/otlp-smoke.sh`, `.github/workflows/ci.yml` (`otlp smoke`) |
+
+_Post-gate hardening (Phase XXIV): closes the residual observability gap from Cluster 122 — the OTLP export wiring (Cluster 89) is now proven against a running collector, not just an in-process unit test. No new gate tag._
+
 ## v122.0.0 — Alert rules executed in CI
 
 | Capability | Where |
