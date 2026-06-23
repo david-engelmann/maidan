@@ -2,10 +2,19 @@
 # Validate the Maidan SLO rules with promtool: lint the PromQL/templates and run
 # the unit tests. The rules ship as a Kubernetes PrometheusRule CRD, so we first
 # extract `.spec` (the raw `groups:` document promtool expects) into a temporary,
-# git-ignored file. Used by CI (`promtool (alert rules)`) and locally.
+# git-ignored file. Used by CI (`promtool (alert rules)`, which is a required
+# check) and locally. The sole rule validator — metric-name presence is also
+# guarded by the `alert_templates_contract` test.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+if ! command -v promtool >/dev/null 2>&1; then
+  echo "promtool not found — install it (https://prometheus.io/download/) to" \
+       "validate the SLO rules locally; CI runs it in the required" \
+       "'promtool (alert rules)' job. Skipping." >&2
+  exit 0
+fi
 
 RULES="docs/alerts/prometheus-rules-maidan-slo.yaml"
 TEST_FILE="prometheus-rules-maidan-slo.test.yaml"

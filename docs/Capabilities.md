@@ -250,7 +250,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Capability | Where |
 |------------|-------|
 | Prometheus SLO rules + Alertmanager example | `docs/alerts/` |
-| Rules validation script | `scripts/validate-prometheus-rules.sh` |
+| Rules validation script | `scripts/check-alert-rules.sh` (superseded the substring-only `validate-prometheus-rules.sh` in `v122.0.0`; now promtool check + unit tests) |
 | Alert/metric contract test | `maidan-server/tests/alert_templates_contract.rs` |
 
 ## v89.0.0 — OTLP metrics export

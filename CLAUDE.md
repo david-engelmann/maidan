@@ -29,11 +29,12 @@ single source of truth for *how* to operate in this codebase. The
   (Phase XXIV, **Cluster 121+**, latest **`v123.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
   handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
-- **CI:** GitHub Actions, 6 required-status-checks on `main`
+- **CI:** GitHub Actions, 8 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
-  (testcontainers)`, `docker compose smoke`, `scale-out smoke`). Every
-  PR runs all 6. (`scale-out smoke` was promoted to required at the
-  `maidan-scale-1.0` gate, Cluster 120.)
+  (testcontainers)`, `docker compose smoke`, `scale-out smoke`,
+  `promtool (alert rules)`, `otlp smoke`). Every PR runs all 8.
+  (`scale-out smoke` was promoted at the `maidan-scale-1.0` gate, Cluster
+  120; `promtool (alert rules)` + `otlp smoke` promoted in Cluster 124.)
 
 ## Read order
 
@@ -83,7 +84,7 @@ retro is mandatory. The tag does not get cut without it.
 5. `git push -u origin <branch>` and open the PR with `gh pr create`.
    The body **must** include the PR-level retro section per
    [`docs/Conventions.md`](docs/Conventions.md).
-6. Wait for the 6 required CI jobs to pass. Use `gh pr checks <num>`
+6. Wait for the 8 required CI jobs to pass. Use `gh pr checks <num>`
    or arm a Monitor.
 7. Merge with `gh pr merge <num> -R david-engelmann/maidan --squash
    --admin --delete-branch`. The `--admin` flag is intentional and
@@ -206,4 +207,4 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 - **Post-gate hardening (Phase XXIV, Cluster 121+):** opportunistic backlog burn-down tagged on the same `vX.0.0` ladder, no new gate tag. **Cluster 121** (`v121.0.0`) closed the OpenAPI-wide capability map in CI (Cluster 69 deferral) and extended the SLO dashboards/alerts to the Cluster 116 indexer metrics. **Cluster 122** (`v122.0.0`) added a `promtool (alert rules)` CI job that executes the SLO PromQL (it caught a `$value`-rendering bug in `MaidanIndexerQueueSaturated`) and corrected the OTLP-export status (shipped in Cluster 89, not open). **Cluster 123** (`v123.0.0`) added an `otlp smoke` CI job + `otlp` compose profile that proves OTLP traces + metrics reach a real collector end-to-end.
 - **Gate tags cut (all four):** **`maidan-2.0`** (`v58`), **`maidan-agent-1.0`** (`v76`), **`maidan-operator-1.0`** (`v101`), **`maidan-scale-1.0`** (`v120`).
 - **No `v93`–`v100` tags (intentional):** clusters **93–101** shipped as a single batch PR (#264) and were released as **`v101.0.0`** — they were never separate releases, so there are no `v93.0.0`–`v100.0.0` tags to cut. Version tags cut: `v101.0.0`, `v102.0.0`–`v120.0.0`, `v121.0.0`, `v122.0.0`, and `v123.0.0`.
-- **CI:** 6 required checks on `main` (incl. `scale-out smoke`, promoted at the scale gate).
+- **CI:** 8 required checks on `main` (incl. `scale-out smoke`, promoted at the scale gate; `promtool (alert rules)` + `otlp smoke`, promoted in Cluster 124).

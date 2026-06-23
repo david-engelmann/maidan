@@ -283,6 +283,7 @@ jobs:
     # and templates (`check rules`) and runs the unit tests (`test rules`). The
     # alert_templates_contract test only checks metric *names*; this catches
     # expression bugs (e.g. an `and` ordering that humanizes the wrong $value).
+    # Required check as of Cluster 124 (v124.0.0).
     name: promtool (alert rules)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -304,6 +305,7 @@ jobs:
     # OpenTelemetry Collector, and the smoke asserts the collector received both.
     # Proves the Cluster 89 export wiring against a collector, not just the
     # in-process metrics_push unit test.
+    # Required check as of Cluster 124 (v124.0.0).
     name: otlp smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
