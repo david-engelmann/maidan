@@ -270,6 +270,51 @@ services:
     profiles:
       - scale
 
+  # --- OTLP end-to-end smoke (Cluster 123): server pushes traces + metrics to
+  # a real OpenTelemetry Collector. The collector's debug exporter logs received
+  # telemetry to stdout so scripts/otlp-smoke.sh can assert delivery. localfs +
+  # AUTH_DISABLED keep the profile lean (no MinIO); postgres is the shared base.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.154.0
+    container_name: maidan-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    profiles:
+      - otlp
+
+  maidan-otlp:
+    build:
+      context: .
+      dockerfile: crates/maidan-server/Dockerfile
+    image: maidan-server:dev
+    container_name: maidan-otlp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      AUTH_DISABLED: "1"
+      INDEXER_STALE_SECS: "300"
+      # Export both signals to the collector; short interval so the smoke is fast.
+      OTLP_ENDPOINT: http://otel-collector:4317
+      OTLP_METRICS: "1"
+      OTLP_METRICS_INTERVAL_SECS: "2"
+      OTLP_SERVICE_NAME: maidan-otlp-smoke
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "${MAIDAN_OTLP_PORT:-8082}:8080"
+    volumes:
+      - maidan_otlp_data:/data
+    restart: on-failure:5
+    profiles:
+      - otlp
+
 volumes:
   postgres_data:
   minio_data:
@@ -277,3 +322,4 @@ volumes:
   maidan_data:
   maidan_a_data:
   maidan_b_data:
+  maidan_otlp_data:

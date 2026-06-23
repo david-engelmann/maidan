@@ -342,7 +342,9 @@ Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Ga
 
 Example Grafana dashboard (Prometheus datasource): `docs/dashboards/maidan-operator.json` (`v89.0.0`).
 
-SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). Validate with `./scripts/validate-prometheus-rules.sh`.
+SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). CI executes them with promtool (`scripts/check-alert-rules.sh`, the `promtool (alert rules)` job, `v122.0.0`); `./scripts/validate-prometheus-rules.sh` is the older substring-only local check.
+
+**Verify OTLP export end-to-end (`v123.0.0`):** the `otlp` compose profile runs maidan-server against a real OpenTelemetry Collector (`docker/otel-collector-config.yaml`). `./scripts/otlp-smoke.sh` brings up `postgres` + `otel-collector` + a server with `OTLP_ENDPOINT`/`OTLP_METRICS=1`, drives traffic, and asserts the collector received both a traces batch (incl. the per-request `http_request` span) and a metrics batch tagged `service.name=maidan-otlp-smoke`. Run it after touching the OTLP wiring or upgrading the OpenTelemetry SDK. CI runs it as the `otlp smoke` job.
 
 **Semantic scale:** set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` in Helm prod values; run `maidan reindex-embeddings --database-url $DATABASE_URL` after provider changes.
 
