@@ -23,9 +23,9 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | **Outbox** | Relay modes + quarantine + HTTP replay (**56**, **84**) | — |
 | **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
 | **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | — |
-| **Embeddings** | Pluggable provider; per-model tables + `embedding_model` query (**86**); operator reindex jobs (**87**) | Durable job store |
+| **Embeddings** | Pluggable provider; per-model tables + `embedding_model` query (**86**); operator reindex jobs (**87**); durable job store — `maidan_reindex_jobs`, status resolvable on any replica (**104**) | — |
 | **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
-| **Observability (76)** | Agent metrics runbook + gate e2e; OTLP export — traces + metrics fanout (**89**, env-gated, documented in `Production.md`); SLO recording/alert rules + operator dashboard (**90**), extended to scale-out indexer metrics (**121**) and promtool-executed in CI (**122**) | No end-to-end OTLP collector smoke (delivery is unit-tested + documented, not asserted against a running collector) |
+| **Observability (76)** | Agent metrics runbook + gate e2e; OTLP export — traces + metrics fanout (**89**, env-gated, documented in `Production.md`), asserted end-to-end against a real collector (**123**); SLO recording/alert rules + operator dashboard (**90**), extended to scale-out indexer metrics (**121**) and promtool-executed in CI (**122**) | — |
 | **Delivery ops (68)** | Unified operator deliveries API (**80**) | — |
 
 **Closed since older drafts of this file:** pins API (**40**), slash commands (**51**), FSM hooks (**52**), DMs (**39**), message edit (**29**), outbox HTTP replay (**56**), Helm stack (**32**/**55**), workspace full erase (**53**), A2A `SendStreamingMessage` (**37**), MCP resource fan-out (**38**), capability matrix for all MCP tools (**69**).
@@ -54,7 +54,7 @@ From [[Open Work]] — unchanged except where a release mitigated.
 | `sqlite-vec` / HNSW on SQLite | Extension linkage deferred |
 | Schema parity property test | Cluster A retro |
 | Sigstore/cosign release artifacts | Manual (**Operations**) |
-| OTLP end-to-end collector smoke | export (traces + metrics) shipped **89**; SLO rules promtool-executed in CI **122**; a job standing up a collector to assert delivery is the remaining sliver |
+| ~~OTLP end-to-end collector smoke~~ | **Closed (123):** the `otlp` compose profile + `otlp smoke` CI job assert traces + metrics reach a real collector. |
 | Multi-region active-active | Out of scope |
 | ~~OpenAPI-wide capability map~~ | **Closed (121):** every OpenAPI op classified + bidirectional capability-map match in CI |
 | Unified webhook + automation delivery tables | **68** kept separate queues |

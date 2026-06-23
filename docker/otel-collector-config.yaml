@@ -1,0 +1,25 @@
+# OpenTelemetry Collector config for the `otlp` compose profile (Cluster 123).
+# Receives OTLP/gRPC from maidan-server and logs every span + metric via the
+# debug exporter so scripts/otlp-smoke.sh can assert end-to-end delivery from
+# the collector's stdout (no shell/filesystem access into the image required).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]

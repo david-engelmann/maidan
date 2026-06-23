@@ -298,3 +298,30 @@ jobs:
           promtool --version
       - name: check + unit-test SLO rules
         run: ./scripts/check-alert-rules.sh
+
+  otlp-smoke:
+    # End-to-end OTLP: maidan-server pushes traces + metrics to a real
+    # OpenTelemetry Collector, and the smoke asserts the collector received both.
+    # Proves the Cluster 89 export wiring against a collector, not just the
+    # in-process metrics_push unit test.
+    name: otlp smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: build images
+        run: |
+          docker build \
+            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
+            -t maidan-server:dev \
+            -f crates/maidan-server/Dockerfile .
+          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+      - name: otlp end-to-end smoke
+        run: bash scripts/otlp-smoke.sh
+      - name: collector logs on failure
+        if: failure()
+        run: |
+          echo "=== otel-collector ==="
+          docker compose --profile otlp logs otel-collector || true
+          echo "=== maidan-otlp ==="
+          docker compose --profile otlp logs maidan-otlp || true
