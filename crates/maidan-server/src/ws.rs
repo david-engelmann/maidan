@@ -68,6 +68,11 @@ pub struct SubscribeFrame {
     /// When set with `filter.workspace_id`, enables presence/typing fan-out.
     #[serde(default)]
     pub member_id: Option<Uuid>,
+    /// Opt into gap-free at-least-once delivery (Cluster 125): cursor-driven
+    /// reconcile instead of the optimistic live path. Requires `filter.workspace_id`
+    /// and `consumer_id`; adds a stability-window latency floor on fresh events.
+    #[serde(default)]
+    pub at_least_once: bool,
 }
 
 struct SubscribeRequest {
@@ -76,6 +81,7 @@ struct SubscribeRequest {
     from_resume_token: bool,
     consumer_id: Option<String>,
     member_id: Option<MemberId>,
+    at_least_once: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,7 +129,9 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
     };
 
     let mut high_water = request.after_id;
-    if request.after_id > 0 || request.from_resume_token {
+    // At-least-once mode delivers the backlog via the reconcile loop's first
+    // pass (stability-gated), so skip the optimistic replay here.
+    if !request.at_least_once && (request.after_id > 0 || request.from_resume_token) {
         match replay_matching_events(
             state.store.as_ref(),
             &request.filter,
@@ -183,23 +191,53 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         }
     };
 
-    let watermark = Arc::new(std::sync::atomic::AtomicI64::new(high_water));
     let bus_filter = request.filter.clone();
     let bus_store = state.store.clone();
     let bus_tx = text_tx.clone();
     let delivery_consumer_id = request.consumer_id.clone();
-    let bus_task = tokio::spawn(async move {
-        event_stream::forward_bus_items(
-            subscriber,
-            bus_tx,
-            watermark,
-            bus_store,
-            bus_filter,
-            crate::subscribe_metrics::SubscribeTransport::Ws,
-            delivery_consumer_id,
-        )
-        .await;
-    });
+    let delivery_stability = state.delivery_stability;
+    let delivery_reconcile_interval = state.delivery_reconcile_interval;
+    // `at_least_once` is only set when both workspace_id and consumer_id resolve
+    // (see `resolve_subscribe_request`); the destructure falls back otherwise.
+    let reconcile = request
+        .at_least_once
+        .then(|| {
+            request
+                .filter
+                .workspace_id
+                .zip(delivery_consumer_id.clone())
+        })
+        .flatten();
+    let bus_task = if let Some((workspace_id, consumer_id)) = reconcile {
+        tokio::spawn(async move {
+            event_stream::reconcile_deliver(
+                subscriber,
+                bus_tx,
+                bus_store,
+                bus_filter,
+                workspace_id,
+                consumer_id,
+                high_water,
+                delivery_stability,
+                delivery_reconcile_interval,
+            )
+            .await;
+        })
+    } else {
+        let watermark = Arc::new(std::sync::atomic::AtomicI64::new(high_water));
+        tokio::spawn(async move {
+            event_stream::forward_bus_items(
+                subscriber,
+                bus_tx,
+                watermark,
+                bus_store,
+                bus_filter,
+                crate::subscribe_metrics::SubscribeTransport::Ws,
+                delivery_consumer_id,
+            )
+            .await;
+        })
+    };
 
     let _presence_reg = match (request.filter.workspace_id, request.member_id) {
         (Some(workspace_id), Some(member_id)) => {
@@ -380,12 +418,18 @@ async fn read_subscribe(
         ));
     }
 
+    // At-least-once requires both a workspace filter and a durable consumer id
+    // (the reconcile cursor is keyed by them); silently ignore the flag otherwise.
+    let at_least_once =
+        sub.at_least_once && filter.workspace_id.is_some() && sub.consumer_id.is_some();
+
     Ok(SubscribeRequest {
         filter,
         after_id,
         from_resume_token: sub.resume_token.as_deref().is_some_and(|t| !t.is_empty()),
         consumer_id: sub.consumer_id.clone(),
         member_id,
+        at_least_once,
     })
 }
 

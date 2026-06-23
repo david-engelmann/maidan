@@ -289,6 +289,122 @@ pub async fn forward_bus_items(
     }
 }
 
+/// Stability window for at-least-once reconcile delivery (Cluster 125): a row is
+/// eligible only once its `inserted_at` is older than this. Must exceed the
+/// longest insert-transaction duration. Default 2s; `0` disables the gate.
+pub fn reconcile_stability_window_from_env() -> std::time::Duration {
+    std::env::var("MAIDAN_DELIVERY_STABILITY_SECS")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&s| s >= 0.0)
+        .map(std::time::Duration::from_secs_f64)
+        .unwrap_or_else(|| std::time::Duration::from_secs(2))
+}
+
+/// Poll cadence for the reconcile loop (a NOTIFY also wakes it). Default 1s.
+pub fn reconcile_interval_from_env() -> std::time::Duration {
+    std::env::var("MAIDAN_DELIVERY_RECONCILE_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&ms| ms > 0)
+        .map(std::time::Duration::from_millis)
+        .unwrap_or_else(|| std::time::Duration::from_millis(1000))
+}
+
+/// Cursor-driven **at-least-once** delivery (Cluster 125).
+///
+/// Polls stable rows (`inserted_at <= now - stability`) with `id > cursor` from
+/// the durable delivery cursor, in strict `id` order, delivers the matching ones
+/// and advances the cursor. `wake` is the bus subscription, used only as a
+/// low-latency hint (its contents are ignored). Because delivery reads from a
+/// contiguous cursor and only stable rows, no committed event is ever skipped by
+/// an out-of-order publish or a late-committing serial — the gap the optimistic
+/// [`forward_bus_items`] path can drop. The cost is a stability-window latency
+/// floor on fresh events; the backlog (already stable) is delivered immediately.
+#[allow(clippy::too_many_arguments)]
+pub async fn reconcile_deliver(
+    mut wake: maidan_bus::EventStream,
+    tx: mpsc::Sender<String>,
+    store: Arc<dyn Store>,
+    filter: EventFilter,
+    workspace_id: maidan_types::WorkspaceId,
+    consumer_id: String,
+    start_after_id: i64,
+    stability: std::time::Duration,
+    poll_interval: std::time::Duration,
+) {
+    let mut cursor = start_after_id;
+    let mut ticker = tokio::time::interval(poll_interval);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        // Wake on either the poll tick or any bus notification (content ignored).
+        tokio::select! {
+            _ = ticker.tick() => {}
+            item = wake.next() => {
+                if item.is_none() {
+                    break;
+                }
+            }
+        }
+        // Drain all currently-stable rows above the cursor, in id order.
+        loop {
+            let window =
+                chrono::Duration::from_std(stability).unwrap_or_else(|_| chrono::Duration::zero());
+            let cutoff = chrono::Utc::now() - window;
+            let rows = match store
+                .list_events_after_stable(workspace_id, cursor, cutoff, REPLAY_LIMIT)
+                .await
+            {
+                Ok(rows) => rows,
+                Err(err) => {
+                    tracing::warn!(error = %err, "reconcile read failed");
+                    break;
+                }
+            };
+            if rows.is_empty() {
+                break;
+            }
+            let batch_len = rows.len() as i64;
+            let mut batch_max = cursor;
+            for row in rows {
+                // Advance past every examined row (matched or not) — the cursor
+                // is this consumer's position in the workspace event stream.
+                batch_max = batch_max.max(row.id);
+                let envelope = match envelope_from_stored(&row) {
+                    Ok(e) => e,
+                    Err(err) => {
+                        tracing::warn!(error = %err, event_id = row.id, "drop stored event with invalid payload");
+                        continue;
+                    }
+                };
+                if !filter.matches_envelope(&envelope) {
+                    continue;
+                }
+                let payload = match serde_json::to_string(&envelope) {
+                    Ok(p) => p,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "drop unserializable reconcile event");
+                        continue;
+                    }
+                };
+                if tx.send(payload).await.is_err() {
+                    return;
+                }
+            }
+            cursor = batch_max;
+            if let Err(err) = store
+                .advance_delivery_cursor(&consumer_id, workspace_id, cursor)
+                .await
+            {
+                tracing::warn!(error = %err, consumer_id, cursor, "reconcile cursor advance failed");
+            }
+            if batch_len < REPLAY_LIMIT {
+                break;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

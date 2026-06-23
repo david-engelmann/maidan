@@ -47,6 +47,8 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` | no | How long a request waits for a free pooled connection before erroring instead of hanging (default `30`). Under saturation this surfaces a clean `500`/timeout rather than blocking indefinitely. |
 | `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. Default `0` = **disabled** (prior behavior). See the caveat below before enabling. |
 | `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
+| `MAIDAN_DELIVERY_STABILITY_SECS` | no | At-least-once delivery (`v125.0.0`) stability window: a subscribe with `at_least_once` only delivers events whose insert time is older than this. Must exceed the longest insert-transaction duration. Default `2`; `0` disables the gate. |
+| `MAIDAN_DELIVERY_RECONCILE_MS` | no | Poll cadence for the at-least-once reconcile loop (a NOTIFY also wakes it). Default `1000`. |
 
 ### Database tuning (`v107.0.0`)
 
@@ -181,6 +183,32 @@ Loop: on `replay_truncated`, reconnect or resubscribe with `after_id` (or a fres
 `resume_token` from the next `subscribe_ack`) until no truncation frame.
 
 Event envelopes follow: `{ "log_id": <i64>, "kind": "...", ... }`.
+
+### At-least-once delivery (`v125.0.0`)
+
+By default the live path is **optimistic, best-effort**: events stream with low
+latency, but an event published out of `log_id` order (a failed outbox row
+retried after later rows, or a late-committing serial) can be silently skipped
+by the monotonic watermark, and the live buffer can drop events on lag.
+
+Add **`"at_least_once": true`** to the subscribe frame (requires both
+`filter.workspace_id` and a durable `consumer_id`) to switch that subscription to
+**cursor-driven reconcile** delivery:
+
+```json
+{ "filter": { "workspace_id": "<uuid>" }, "consumer_id": "my-agent", "at_least_once": true }
+```
+
+- **Guarantee:** every committed event matching the filter is delivered in
+  `log_id` order and exactly once per `consumer_id` — no silent gaps. The durable
+  delivery cursor floors re-delivery across reconnects.
+- **Cost:** a stability-window latency floor on *fresh* events
+  (`MAIDAN_DELIVERY_STABILITY_SECS`, default `2s`); the backlog (already stable)
+  is delivered immediately on connect.
+- **Caveat:** strictness holds under "no insert transaction outlives the window".
+  A pathologically long (`> window`) write transaction can still strand a lower
+  `log_id`; size the window above your slowest write transaction. Clients should
+  still dedup by `log_id` (cheap, and the contract is at-least-once).
 
 ### Delivery reliability metrics (`v6.0.0`)
 
