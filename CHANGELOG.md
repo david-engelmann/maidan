@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [125.0.0] — 2026-06-23
+
+Post-gate hardening (Phase XXIV). Opt-in at-least-once event delivery. No new gate tag.
+
+### Added
+
+- **Opt-in at-least-once subscriptions.** A `/ws/subscribe` frame with `"at_least_once": true` (requires `filter.workspace_id` + `consumer_id`) switches that subscription to **cursor-driven reconcile** delivery: every committed matching event is delivered in `log_id` order, exactly once per consumer, with **no silent out-of-order gap** (the case the optimistic watermark path can drop on a failed-then-retried outbox row or a late-committing serial). The durable delivery cursor floors re-delivery across reconnects. Default behavior is unchanged for subscriptions that don't opt in.
+- **`maidan_events.inserted_at`** (migrations: Postgres 0031, SQLite 0030) — the DB insert wall-clock — plus `Store::list_events_after_stable`, the stability-gated gap-safe read backing the reconcile loop.
+- Env: `MAIDAN_DELIVERY_STABILITY_SECS` (default `2`) and `MAIDAN_DELIVERY_RECONCILE_MS` (default `1000`).
+
+### Changed
+
+- `docs/Decisions.md` — new ADR "At-least-once delivery via cursor reconciliation + a time-based stability horizon" (and why dedup was already handled — the real hole was completeness). `docs/Production.md` — the at-least-once subscribe contract (guarantee, latency cost, long-transaction caveat).
+
 ## [124.0.0] — 2026-06-23
 
 Post-gate hardening (Phase XXIV). CI / observability loose ends. No new product capability, no new gate tag.
