@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v132.0.0 — Global admin audit query API
+
+| Capability | Where |
+|------------|-------|
+| `GET /operator/audit` — cross-workspace audit, gated by `audit:read-global` | `routes/workspace.rs::list_global_audit`, `maidan-auth` capability |
+
+_Post-gate hardening (Phase XXIV): exposes the existing cross-workspace `Store::list_audit` behind a new global capability (no org model needed). Completes the 127–132 sweep. No new gate tag._
+
 ## v131.0.0 — Delivery-unification verification-close
 
 | Capability | Where |
