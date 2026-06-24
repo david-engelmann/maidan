@@ -445,6 +445,17 @@
       function uiReadPath(suffix) {
         return `${base()}/ui/api${suffix}`;
       }
+      // Writes go straight to the bearer API when a token is set, else through
+      // the session-authed /ui/api proxy (same suffix). Mirrors the read path.
+      function apiWritePath(suffix) {
+        return token() ? `${base()}${suffix}` : uiReadPath(suffix);
+      }
+      // A write is allowed with either a bearer token or a signed-in session.
+      function requireAuthForWrite() {
+        if (token() || sessionMemberId) return true;
+        alert("Sign in (session) or set a bearer token to write.");
+        return false;
+      }
 
       async function loadThreads() {
         const list = document.getElementById("thread-list");
@@ -644,7 +655,7 @@
         const url =
           t && !sessionMemberId
             ? `${base()}/workspaces/${wid()}/channels`
-            : uiApiPath(`/workspaces/${wid()}/channels`);
+            : uiReadPath(`/workspaces/${wid()}/channels`);
         try {
           const res = await fetch(url, { headers: headers(), credentials: "include" });
           const body = await res.text();
@@ -1055,7 +1066,7 @@
           const aid = authorId();
           if (!aid) return alert("Author required to attach artifact to thread");
           const meta = { artifacts: [artifact.sha256] };
-          const postPath = uiWritePath(`/threads/${selectedThreadId}/messages`);
+          const postPath = apiWritePath(`/threads/${selectedThreadId}/messages`);
           const pres = await fetch(postPath, {
             method: "POST",
             headers: headers(true),
