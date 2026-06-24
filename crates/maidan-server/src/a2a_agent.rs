@@ -99,18 +99,52 @@ async fn persist_task(state: &AppState, workspace_id: WorkspaceId, task: &Task) 
         return;
     }
     if let Ok(Some(url)) = state.store.get_a2a_push_config(workspace_id).await {
-        let url = url.clone();
+        let task_id = task.id.clone();
         tokio::spawn(async move {
-            let client = reqwest::Client::new();
-            let _ = client
-                .post(url)
-                .header("Content-Type", "application/json")
-                .json(&value)
-                .timeout(std::time::Duration::from_secs(10))
-                .send()
-                .await;
+            deliver_a2a_push(&url, &value, &task_id).await;
         });
     }
+}
+
+/// Deliver an A2A push notification with bounded retry + backoff. Best-effort
+/// (not a durable outbox), but — unlike the prior fire-and-forget — failures are
+/// retried, logged, and counted (`maidan_a2a_push_total{result}`) so a dropped
+/// agent notification is visible instead of silent.
+async fn deliver_a2a_push(url: &str, value: &serde_json::Value, task_id: &str) {
+    const MAX_ATTEMPTS: u32 = 3;
+    let client = reqwest::Client::new();
+    let mut backoff = Duration::from_millis(200);
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .json(value)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                metrics::counter!("maidan_a2a_push_total", "result" => "ok").increment(1);
+                return;
+            }
+            Ok(resp) => {
+                tracing::warn!(task_id, attempt, status = %resp.status(), "a2a push got non-success status");
+            }
+            Err(err) => {
+                tracing::warn!(task_id, attempt, error = %err, "a2a push request failed");
+            }
+        }
+        if attempt < MAX_ATTEMPTS {
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_secs(2));
+        }
+    }
+    metrics::counter!("maidan_a2a_push_total", "result" => "failed").increment(1);
+    tracing::error!(
+        task_id,
+        attempts = MAX_ATTEMPTS,
+        "a2a push gave up after retries"
+    );
 }
 
 async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
@@ -124,7 +158,10 @@ async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
 }
 
 fn sse_json_rpc_frame(frame: JsonRpcResponse) -> SseEvent {
-    let data = serde_json::to_string(&frame).unwrap_or_default();
+    let data = serde_json::to_string(&frame).unwrap_or_else(|err| {
+        tracing::error!(error = %err, "a2a: failed to serialize JSON-RPC SSE frame");
+        String::new()
+    });
     SseEvent::default().data(data)
 }
 
@@ -496,8 +533,12 @@ async fn dispatch_subscribe_to_task(
                 return;
             }
             tokio::time::sleep(Duration::from_millis(SUBSCRIBE_POLL_MS)).await;
-            let Ok(current) = load_task(&state_bg, &task_id).await else {
-                return;
+            let current = match load_task(&state_bg, &task_id).await {
+                Ok(current) => current,
+                Err(err) => {
+                    tracing::warn!(task_id, error = %err, "a2a subscribe poll: load_task failed, ending stream");
+                    return;
+                }
             };
             if current.status.state == last_state {
                 continue;
@@ -555,4 +596,56 @@ pub async fn agent_card() -> impl IntoResponse {
             METHOD_TASKS_CANCEL.into(),
         ],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::deliver_a2a_push;
+    use std::sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    };
+
+    use axum::{http::StatusCode, routing::post, Router};
+
+    /// Spawn a push endpoint that returns 500 for the first `fail_n` hits, then
+    /// 200. Returns (base_url, hit_counter).
+    async fn push_server(fail_n: u32) -> (String, Arc<AtomicU32>) {
+        let hits = Arc::new(AtomicU32::new(0));
+        let hits_route = hits.clone();
+        let app = Router::new().route(
+            "/push",
+            post(move || {
+                let hits = hits_route.clone();
+                async move {
+                    let n = hits.fetch_add(1, Ordering::SeqCst);
+                    if n < fail_n {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    } else {
+                        StatusCode::OK
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{addr}/push"), hits)
+    }
+
+    #[tokio::test]
+    async fn a2a_push_retries_then_succeeds() {
+        // Fails twice, succeeds on the third attempt.
+        let (url, hits) = push_server(2).await;
+        deliver_a2a_push(&url, &serde_json::json!({"task": "t1"}), "t1").await;
+        assert_eq!(hits.load(Ordering::SeqCst), 3, "should retry up to success");
+    }
+
+    #[tokio::test]
+    async fn a2a_push_gives_up_after_max_attempts() {
+        // Always fails — bounded at MAX_ATTEMPTS (3), then gives up (no hang/loop).
+        let (url, hits) = push_server(u32::MAX).await;
+        deliver_a2a_push(&url, &serde_json::json!({"task": "t2"}), "t2").await;
+        assert_eq!(hits.load(Ordering::SeqCst), 3, "should cap at MAX_ATTEMPTS");
+    }
 }

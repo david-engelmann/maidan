@@ -18,7 +18,11 @@ impl A2aClient {
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             bearer: None,
+            // A connect timeout bounds the indefinite-hang risk for every request
+            // (streaming included) without capping a legitimately long streaming
+            // response; non-streaming `call` adds an overall per-request timeout.
             http: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
                 .build()
                 .map_err(|e| A2aClientError::Http(e.to_string()))?,
         })
@@ -106,7 +110,11 @@ impl A2aClient {
             params,
         };
         let url = format!("{}/a2a/v1/rpc", self.base_url);
-        let mut req = self.http.post(&url).json(&body);
+        let mut req = self
+            .http
+            .post(&url)
+            .timeout(std::time::Duration::from_secs(30))
+            .json(&body);
         if let Some(token) = &self.bearer {
             req = req.bearer_auth(token);
         }
