@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v130.0.0 — Test-coverage uplift (observability + MCP)
+
+| Capability | Where |
+|------------|-------|
+| Tested observability env-parsing (pure parsers) | `crates/maidan-observability/src/{metrics,lib}.rs` |
+| MCP prompts catalog-integrity test | `crates/maidan-mcp/src/prompts.rs` |
+
+_Post-gate hardening (Phase XXIV): fills the zero-coverage gaps the v126 scan named, via race-free pure-function refactors. No new gate tag._
+
 ## v129.0.0 — Hardening: error-visibility + bounded buffers
 
 | Capability | Where |

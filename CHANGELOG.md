@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [130.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). Test-coverage uplift. No new gate tag.
+
+### Changed
+
+- **observability env-parsing is now unit-tested** via pure extraction: `is_truthy`, `resolve_metrics_endpoint`, `parse_metrics_interval`, `parse_log_format`. The `*_from_env` wrappers feed `std::env::var(...)` into these pure functions, so tests are deterministic and don't mutate process env (which would race the parallel test binary). Behavior is unchanged.
+- **maidan-mcp `prompts.rs`** (previously untested) gains a catalog-integrity test.
+
 ## [129.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). Error-visibility + bounded buffers. No new gate tag.
