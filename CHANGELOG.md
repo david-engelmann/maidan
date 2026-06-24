@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [126.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). MCP SSE at-least-once parity. No new gate tag.
+
+### Added
+
+- **`at_least_once` on `GET /mcp/stream`** — the Cluster 125 opt-in at-least-once delivery now works on the MCP SSE transport too (query param; requires `workspace_id` + `consumer_id`). Routes the stream through the same `reconcile_deliver` loop the WebSocket path uses (stability-gated, cursor-driven, gap-free, exactly-once per consumer); the optimistic SSE path is unchanged when unset.
+
+### Changed
+
+- `docs/Production.md` — the at-least-once contract now documents both transports (the `/ws/subscribe` frame field and the `/mcp/stream` query param).
+
 ## [125.0.0] — 2026-06-23
 
 Post-gate hardening (Phase XXIV). Opt-in at-least-once event delivery. No new gate tag.

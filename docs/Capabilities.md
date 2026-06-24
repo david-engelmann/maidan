@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v126.0.0 — MCP SSE at-least-once parity
+
+| Capability | Where |
+|------------|-------|
+| At-least-once on MCP SSE (`/mcp/stream?at_least_once=true`) | `crates/maidan-server/src/mcp_stream.rs` (reuses `event_stream::reconcile_deliver`) |
+
+_Post-gate hardening (Phase XXIV): extends the Cluster 125 at-least-once delivery to the MCP SSE transport — both real-time transports now offer opt-in gap-free delivery. No new gate tag._
+
 ## v125.0.0 — At-least-once event delivery
 
 | Capability | Where |
