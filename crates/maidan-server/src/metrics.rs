@@ -136,6 +136,10 @@ pub fn init() {
             "maidan_automation_delivery_total",
             "Automation HTTP deliveries (slash/fsm) by outcome"
         );
+        describe_counter!(
+            "maidan_a2a_push_total",
+            "A2A task push notifications by outcome (ok/failed after retries)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
