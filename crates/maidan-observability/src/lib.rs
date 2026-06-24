@@ -36,18 +36,22 @@ pub struct Config {
     pub service_name: String,
 }
 
+/// Parse the `MAIDAN_LOG_FORMAT` value: `json` (case-insensitive) → JSON, any
+/// other value (including unset) → Plain.
+fn parse_log_format(raw: &str) -> LogFormat {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "json" => LogFormat::Json,
+        _ => LogFormat::Plain,
+    }
+}
+
 impl Config {
     pub fn from_env() -> Self {
         let log_filter =
             std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".to_string());
-        let log_format = match std::env::var("MAIDAN_LOG_FORMAT")
-            .unwrap_or_else(|_| "plain".into())
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "json" => LogFormat::Json,
-            _ => LogFormat::Plain,
-        };
+        let log_format = parse_log_format(
+            &std::env::var("MAIDAN_LOG_FORMAT").unwrap_or_else(|_| "plain".into()),
+        );
         let otlp_endpoint = std::env::var("OTLP_ENDPOINT")
             .ok()
             .filter(|s| !s.trim().is_empty());
@@ -140,4 +144,18 @@ pub fn init(config: Config) -> Result<Guard, InitError> {
         tracer_provider,
         meter_provider: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_format_parses_json_case_insensitively_else_plain() {
+        assert_eq!(parse_log_format("json"), LogFormat::Json);
+        assert_eq!(parse_log_format(" JSON "), LogFormat::Json);
+        assert_eq!(parse_log_format("plain"), LogFormat::Plain);
+        assert_eq!(parse_log_format(""), LogFormat::Plain);
+        assert_eq!(parse_log_format("text"), LogFormat::Plain);
+    }
 }

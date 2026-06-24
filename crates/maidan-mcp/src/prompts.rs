@@ -61,3 +61,34 @@ async fn thread_workflow(store: &Arc<dyn Store>, args: &Value) -> Result<Value, 
         }]
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_entries_are_well_formed() {
+        let catalog = catalog();
+        assert!(!catalog.is_empty(), "prompt catalog must not be empty");
+        for prompt in &catalog {
+            let name = prompt["name"].as_str().expect("prompt name is a string");
+            assert!(!name.is_empty(), "prompt name must be non-empty");
+            assert!(
+                prompt["description"]
+                    .as_str()
+                    .is_some_and(|d| !d.is_empty()),
+                "{name}: description must be a non-empty string"
+            );
+            // `arguments` (when present) must be an array of {name, required}.
+            if let Some(args) = prompt.get("arguments") {
+                let args = args.as_array().expect("arguments is an array");
+                for arg in args {
+                    assert!(arg["name"].as_str().is_some_and(|n| !n.is_empty()));
+                    assert!(arg["required"].is_boolean());
+                }
+            }
+        }
+        // The documented `thread_workflow` prompt is present.
+        assert!(catalog.iter().any(|p| p["name"] == "thread_workflow"));
+    }
+}

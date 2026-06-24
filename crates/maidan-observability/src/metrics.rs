@@ -29,41 +29,57 @@ impl MeterGuard {
     }
 }
 
+/// Whether a raw env value is truthy (`1`/`true`/`yes`/`on`, case-insensitive).
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 fn env_truthy(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+    std::env::var(name).map(|v| is_truthy(&v)).unwrap_or(false)
+}
+
+/// Pure resolution of the OTLP metrics endpoint from raw inputs (see
+/// [`otlp_metrics_endpoint_from_env`]): a dedicated endpoint wins; otherwise the
+/// shared OTLP endpoint is used only when metrics push is enabled. Blank strings
+/// count as unset.
+fn resolve_metrics_endpoint(
+    dedicated: Option<String>,
+    metrics_enabled: bool,
+    otlp_endpoint: Option<String>,
+) -> Option<String> {
+    if let Some(dedicated) = dedicated.filter(|s| !s.trim().is_empty()) {
+        return Some(dedicated);
+    }
+    if !metrics_enabled {
+        return None;
+    }
+    otlp_endpoint.filter(|s| !s.trim().is_empty())
+}
+
+/// Pure parse of the metrics push interval (see [`otlp_metrics_interval_from_env`]):
+/// a positive integer number of seconds, else the 15s default.
+fn parse_metrics_interval(raw: Option<String>) -> Duration {
+    raw.and_then(|s| s.parse().ok())
+        .filter(|&secs| secs > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(15))
 }
 
 /// Resolved OTLP metrics endpoint when push export is enabled.
 pub fn otlp_metrics_endpoint_from_env() -> Option<String> {
-    let dedicated = std::env::var("OTLP_METRICS_ENDPOINT")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-    if dedicated.is_some() {
-        return dedicated;
-    }
-    if !env_truthy("OTLP_METRICS") {
-        return None;
-    }
-    std::env::var("OTLP_ENDPOINT")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
+    resolve_metrics_endpoint(
+        std::env::var("OTLP_METRICS_ENDPOINT").ok(),
+        env_truthy("OTLP_METRICS"),
+        std::env::var("OTLP_ENDPOINT").ok(),
+    )
 }
 
 /// Export interval for periodic OTLP metrics push (default 15s).
 pub fn otlp_metrics_interval_from_env() -> Duration {
-    std::env::var("OTLP_METRICS_INTERVAL_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&secs| secs > 0)
-        .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(15))
+    parse_metrics_interval(std::env::var("OTLP_METRICS_INTERVAL_SECS").ok())
 }
 
 /// Build an OpenTelemetry [`Recorder`] backed by a periodic OTLP push exporter.
@@ -90,4 +106,62 @@ pub fn build_otlp_metrics_recorder(
         .build();
 
     Ok((MeterGuard(provider), recorder))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truthy_values_are_case_insensitive_and_trimmed() {
+        for v in ["1", "true", "TRUE", " Yes ", "on"] {
+            assert!(is_truthy(v), "{v:?} should be truthy");
+        }
+        for v in ["0", "false", "", "off", "no", "2"] {
+            assert!(!is_truthy(v), "{v:?} should not be truthy");
+        }
+    }
+
+    #[test]
+    fn metrics_interval_parses_positive_seconds_else_defaults() {
+        assert_eq!(
+            parse_metrics_interval(Some("5".into())),
+            Duration::from_secs(5)
+        );
+        // Non-positive, unparseable, and unset all fall back to 15s.
+        assert_eq!(
+            parse_metrics_interval(Some("0".into())),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            parse_metrics_interval(Some("nope".into())),
+            Duration::from_secs(15)
+        );
+        assert_eq!(parse_metrics_interval(None), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn metrics_endpoint_prefers_dedicated_then_gated_shared() {
+        // Dedicated endpoint always wins, even if metrics push is off.
+        assert_eq!(
+            resolve_metrics_endpoint(Some("http://d".into()), false, Some("http://o".into())),
+            Some("http://d".into())
+        );
+        // No dedicated + metrics on → shared endpoint.
+        assert_eq!(
+            resolve_metrics_endpoint(None, true, Some("http://o".into())),
+            Some("http://o".into())
+        );
+        // No dedicated + metrics off → none, even with a shared endpoint set.
+        assert_eq!(
+            resolve_metrics_endpoint(None, false, Some("http://o".into())),
+            None
+        );
+        // Blank strings count as unset.
+        assert_eq!(
+            resolve_metrics_endpoint(Some("  ".into()), true, Some("http://o".into())),
+            Some("http://o".into())
+        );
+        assert_eq!(resolve_metrics_endpoint(None, true, Some("".into())), None);
+    }
 }
