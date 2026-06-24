@@ -6,8 +6,13 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
+/// Per-session SSE buffer bound (Cluster 129). A slow client that fills this is
+/// disconnected (push returns false) instead of growing server memory without
+/// limit — the channel was previously unbounded.
+const SESSION_BUFFER: usize = 256;
+
 struct SessionEntry {
-    tx: tokio::sync::mpsc::UnboundedSender<String>,
+    tx: tokio::sync::mpsc::Sender<String>,
     last_touch: Instant,
 }
 
@@ -46,9 +51,9 @@ impl StreamableSessionRegistry {
     }
 
     /// Open a new session and return the SSE consumer side.
-    pub async fn open(&self, id: String) -> tokio::sync::mpsc::UnboundedReceiver<String> {
+    pub async fn open(&self, id: String) -> tokio::sync::mpsc::Receiver<String> {
         self.prune_expired().await;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = tokio::sync::mpsc::channel(SESSION_BUFFER);
         self.sessions.lock().await.insert(
             id,
             SessionEntry {
@@ -76,7 +81,20 @@ impl StreamableSessionRegistry {
         let Some(entry) = guard.get(id) else {
             return false;
         };
-        entry.tx.send(data).is_ok()
+        // Non-blocking: we hold the registry lock, so never await on capacity.
+        // A full buffer (slow client) or a closed receiver both fail the push;
+        // the caller treats that as a gone session and stops the stream.
+        match entry.tx.try_send(data) {
+            Ok(()) => true,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                tracing::warn!(
+                    session = id,
+                    "mcp streamable session buffer full; dropping client"
+                );
+                false
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => false,
+        }
     }
 
     pub async fn close(&self, id: &str) {
@@ -107,6 +125,19 @@ mod tests {
         reg.close("sess").await;
         assert!(!reg.is_open("sess").await);
         assert!(!reg.push("sess", "x".into()).await);
+    }
+
+    #[tokio::test]
+    async fn full_session_buffer_fails_push_without_blocking() {
+        let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
+        let _rx = reg.open("sess".to_string()).await; // never drained
+                                                      // Fill the bounded buffer.
+        for _ in 0..SESSION_BUFFER {
+            assert!(reg.push("sess", "x".into()).await);
+        }
+        // The next push finds the buffer full and fails (non-blocking) rather
+        // than growing memory or hanging.
+        assert!(!reg.push("sess", "overflow".into()).await);
     }
 
     #[tokio::test]

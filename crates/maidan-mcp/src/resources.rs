@@ -86,7 +86,11 @@ pub async fn read(
                         "messages": messages,
                     })
                 }
-                _ => unreachable!(),
+                other => {
+                    return Err(McpError::InvalidParams(format!(
+                        "unknown resource kind: {other}"
+                    )))
+                }
             }
         }
         other => {

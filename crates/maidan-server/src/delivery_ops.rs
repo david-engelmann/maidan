@@ -145,7 +145,11 @@ pub async fn get_delivery(
                 .await?;
             Ok(Json(OperatorDelivery::Automation(row)))
         }
-        _ => unreachable!(),
+        // parse_delivery_kind only yields webhook|automation; treat anything
+        // else as an internal invariant violation rather than panicking.
+        other => Err(ApiError::Internal(format!(
+            "unexpected delivery kind: {other}"
+        ))),
     }
 }
 
@@ -172,7 +176,11 @@ pub async fn replay_delivery(
                 .replay_automation_delivery(delivery_id, workspace_id)
                 .await?,
         ),
-        _ => unreachable!(),
+        other => {
+            return Err(ApiError::Internal(format!(
+                "unexpected delivery kind: {other}"
+            )))
+        }
     };
     let actor_id = if auth.bypass {
         None
