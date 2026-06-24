@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [131.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). Docs-only — delivery-unification verification-close. No new gate tag.
+
+### Changed
+
+- **Closed the "unify webhook + automation delivery" backlog item** as substantially-addressed (verified against code). Signing + backoff are already shared (`automation_delivery` reuses `webhooks::sign_payload`/`delivery_backoff`) and the operator API is unified (`OperatorDelivery`); the two storage tables stay separate **by design** (distinct foreign keys — webhook→subscriptions, automation→slash/fsm). A storage merge was declined as a risky migration with no functional gain; the rationale is recorded in `Remaining Work.md` §3 + `Open Work.md`.
+
 ## [130.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). Test-coverage uplift. No new gate tag.

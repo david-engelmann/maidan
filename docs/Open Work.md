@@ -33,11 +33,10 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v126.0.0`** (P
 | What | Notes |
 |------|-------|
 | Full MCP streamable 2024-11-05 bidirectional mux | Subset shipped in **73**; spec-complete session still open |
-| Unify webhooks + automation delivery queues | **68** retro deferral; still separate tables (value debatable) |
 | Global cross-workspace admin audit query API | Audit data exists per workspace; query API not exposed |
 | Multi-region active-active | Out of scope |
 
-_Items previously listed here that have since shipped (verified v126): OpenAPI↔capability map (**121**), OTLP export + dashboards + e2e (**89/90/123**), `sqlite-vec` + per-model embedding tables (**85/86**) — removed._
+_Closed (verified v126/v131): OpenAPI↔capability map (**121**), OTLP export + dashboards + e2e (**89/90/123**), `sqlite-vec` + per-model embedding tables (**85/86**); webhook+automation delivery unification — substantially addressed (shared signing/backoff + unified operator API; storage intentionally separate, **131**)._
 
 ## Known state
 
