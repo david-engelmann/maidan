@@ -145,7 +145,18 @@ impl OutboxRelay {
                 Err(err) => {
                     let attempts = self.backend.record_attempt(row.id).await?;
                     if attempts >= self.max_attempts as i32 {
-                        let _ = self.backend.quarantine(row.id).await;
+                        // A failed quarantine leaves the row pending → it would
+                        // retry forever, burning the relay budget. Surface it
+                        // (the next tick retries the quarantine) instead of
+                        // silently dropping the error.
+                        if let Err(qerr) = self.backend.quarantine(row.id).await {
+                            warn!(
+                                outbox_id = row.id,
+                                log_id = row.log_id,
+                                error = %qerr,
+                                "outbox quarantine failed; row stays pending and will retry"
+                            );
+                        }
                         counter!("maidan_outbox_relay_total", "result" => "quarantined")
                             .increment(1);
                         warn!(
