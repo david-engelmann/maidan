@@ -191,12 +191,17 @@ latency, but an event published out of `log_id` order (a failed outbox row
 retried after later rows, or a late-committing serial) can be silently skipped
 by the monotonic watermark, and the live buffer can drop events on lag.
 
-Add **`"at_least_once": true`** to the subscribe frame (requires both
-`filter.workspace_id` and a durable `consumer_id`) to switch that subscription to
-**cursor-driven reconcile** delivery:
+Set **`at_least_once`** (requires both a workspace filter and a durable
+`consumer_id`) to switch that subscription to **cursor-driven reconcile**
+delivery — on **WebSocket** (`/ws/subscribe` frame) or **MCP SSE**
+(`/mcp/stream` query param), `v126.0.0`:
 
 ```json
 { "filter": { "workspace_id": "<uuid>" }, "consumer_id": "my-agent", "at_least_once": true }
+```
+
+```
+GET /mcp/stream?workspace_id=<uuid>&consumer_id=my-agent&at_least_once=true
 ```
 
 - **Guarantee:** every committed event matching the filter is delivered in
