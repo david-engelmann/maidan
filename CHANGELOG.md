@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [127.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). Docs-only — backlog reconciliation. No new gate tag.
+
+### Changed
+
+- **Reconciled `docs/Remaining Work.md` + `docs/Open Work.md` against the code at v126.** Struck ~11 entries listed as open but already shipped (group DMs, presence/typing, per-model embedding tables, `sqlite-vec`, schema-parity tests, cosign signing, bootstrap compile-time strip, SQLite delivery cursor, Helm prod profiles, context thread cursor, Web UI tabs), each with the shipping cluster + evidence. Fixed the stale `Open Work` tail (it still claimed "latest tag v76 / active cluster 78"). Classified the §4 Slack-parity gaps as product/UI (complete backends) vs out-of-scope vs backend-tractable.
+
 ## [126.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). MCP SSE at-least-once parity. No new gate tag.

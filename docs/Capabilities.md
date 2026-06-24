@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v127.0.0 — Backlog reconciliation
+
+| Capability | Where |
+|------------|-------|
+| Backlog verified against code (v126) — trustworthy open-work list | `docs/Remaining Work.md`, `docs/Open Work.md` |
+
+_Post-gate hardening (Phase XXIV): docs-only — corrected ~11 phantom (already-shipped) backlog entries + the stale `Open Work` tail, so the remaining-work list matches the code. No new gate tag._
+
 ## v126.0.0 — MCP SSE at-least-once parity
 
 | Capability | Where |
