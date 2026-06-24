@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [133.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). `/ui` write-path repair + JS guard. No new gate tag.
+
+### Fixed
+
+- **The `/ui` console write path was broken** — its JS called helpers that don't exist: `apiWritePath` / `requireAuthForWrite` (undefined) and `uiApiPath` / `uiWritePath` (typo'd). Create-channel, create-thread, post-message, and attach-artifact threw `ReferenceError`. CI never caught it (no browser; the JS is untested). Defined the two helpers (bearer-or-session) and repointed the typo'd calls (`uiApiPath`→`uiReadPath`, `uiWritePath`→`apiWritePath`).
+
+### Added
+
+- `tests/ui_js_contract.rs` — a dependency-free CI guard (in the `unit tests` job) asserting every bare `ident(` call in `index.html`'s inline script resolves to a definition, a parameter, or a known JS/DOM global. Catches "helper called but never defined" without a browser. (It flagged all four broken references above before the fix.)
+
 ## [132.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). Global admin audit query API. No new gate tag. Completes the 127–132 sweep.
