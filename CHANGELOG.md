@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [129.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). Error-visibility + bounded buffers. No new gate tag.
+
+### Fixed
+
+- **Unbounded MCP streamable session buffer** — the per-session SSE channel was `unbounded_channel()`; a slow client could grow server memory without limit. Now a bounded `channel(256)` with non-blocking `try_send` (full buffer logs + disconnects the client; callers already treat a failed push as a gone session).
+- **Swallowed outbox quarantine error** (`outbox_relay.rs`) — a failed `quarantine()` was `let _ = …`, leaving the row pending → infinite retry. Now logged (the next tick retries the quarantine).
+- **`unreachable!()` in live request handlers** (`delivery_ops` get/replay, `mcp/resources` read) → typed errors, so a future upstream change can't turn a bad input into a process panic.
+
 ## [128.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). A2A delivery robustness. No new gate tag.

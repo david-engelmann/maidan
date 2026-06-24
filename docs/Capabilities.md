@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v129.0.0 — Hardening: error-visibility + bounded buffers
+
+| Capability | Where |
+|------------|-------|
+| Bounded MCP streamable session buffer (no memory-exhaustion) | `crates/maidan-mcp/src/streamable_session.rs` |
+| Outbox quarantine-failure visibility (no silent infinite-retry) | `crates/maidan-server/src/outbox_relay.rs` |
+| Request-handler `unreachable!()` → typed errors | `delivery_ops.rs`, `crates/maidan-mcp/src/resources.rs` |
+
+_Post-gate hardening (Phase XXIV): the top correctness/robustness findings from the v126 scan. No new gate tag._
+
 ## v128.0.0 — A2A delivery robustness
 
 | Capability | Where |
