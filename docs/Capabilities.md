@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v133.0.0 — /ui write-path repair + JS guard
+
+| Capability | Where |
+|------------|-------|
+| `/ui` write path works (session or bearer); undefined-helper CI guard | `crates/maidan-server/static/index.html`, `tests/ui_js_contract.rs` |
+
+_Post-gate hardening (Phase XXIV): repaired a shipped-broken, CI-invisible `/ui` write path (4 undefined JS refs) and added a guard so the bug class fails CI. Foundation for the UI feature clusters. No new gate tag._
+
 ## v132.0.0 — Global admin audit query API
 
 | Capability | Where |
