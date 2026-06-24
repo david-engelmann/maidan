@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v131.0.0 — Delivery-unification verification-close
+
+| Capability | Where |
+|------------|-------|
+| Webhook + automation delivery unified (logic + operator API; storage intentionally separate) | `automation_delivery.rs`, `webhooks.rs`, `delivery_ops.rs` |
+
+_Post-gate hardening (Phase XXIV): docs-only. Verified the unify-delivery item substantially addressed and declined a risky storage-table migration; rationale recorded. No new gate tag._
+
 ## v130.0.0 — Test-coverage uplift (observability + MCP)
 
 | Capability | Where |

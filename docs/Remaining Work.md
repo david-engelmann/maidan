@@ -57,7 +57,7 @@ From [[Open Work]] — unchanged except where a release mitigated.
 | ~~OTLP end-to-end collector smoke~~ | **Closed (123):** the `otlp` compose profile + `otlp smoke` CI job assert traces + metrics reach a real collector. |
 | Multi-region active-active | Out of scope |
 | ~~OpenAPI-wide capability map~~ | **Closed (121):** every OpenAPI op classified + bidirectional capability-map match in CI |
-| Unified webhook + automation delivery tables | **Open:** `maidan_webhook_deliveries` + `maidan_automation_deliveries` are still separate (identical retry/quarantine schema). Refactor value debatable — they work fine separate. |
+| ~~Unified webhook + automation delivery~~ | **Closed as substantially-addressed (131):** signing + backoff are shared (`automation_delivery` reuses `webhooks::{sign_payload, delivery_backoff}`) and the operator API is unified (`OperatorDelivery`). The two storage tables stay separate **by design** — distinct foreign keys (`maidan_webhook_deliveries`→subscriptions, `maidan_automation_deliveries`→slash/fsm); merging them is a risky migration for no functional gain. |
 
 ---
 
