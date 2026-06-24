@@ -247,6 +247,19 @@ pub fn get_unified_delivery() {}
 pub fn replay_unified_delivery() {}
 
 #[utoipa::path(
+    get,
+    path = "/operator/audit",
+    tag = "operator",
+    params(("limit" = Option<i64>, Query, description = "Max events (default 50, clamped 1..=500)")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Audit events across all workspaces"),
+        (status = 403, description = "Missing audit:read-global capability"),
+    )
+)]
+pub fn list_global_audit() {}
+
+#[utoipa::path(
     post,
     path = "/operator/reindex-embeddings",
     tag = "operator",

@@ -231,6 +231,7 @@ pub fn router(state: AppState) -> Router {
             "/operator/reindex-embeddings/:job_id",
             get(reindex_ops::get_reindex_embeddings_job),
         )
+        .route("/operator/audit", get(routes::list_global_audit))
         .route(
             "/workspaces/:wid/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),

@@ -420,6 +420,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/operator/audit",
+    "capability": "audit:read-global",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/operator/reindex-embeddings",
     "capability": "token:admin",

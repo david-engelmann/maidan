@@ -149,6 +149,7 @@ fn http_deny_caps(required: &str) -> Vec<String> {
         ],
         capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
         capability::FEDERATION_ADMIN => vec![capability::WORKSPACE_READ.into()],
+        capability::AUDIT_READ_GLOBAL => vec![capability::WORKSPACE_READ.into()],
         other => panic!("unsupported capability in http map: {other}"),
     }
 }

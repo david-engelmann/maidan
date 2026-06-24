@@ -10,6 +10,10 @@ pub const EVENT_SUBSCRIBE: &str = "event:subscribe";
 pub const TOKEN_ADMIN: &str = "token:admin";
 pub const FEDERATION_INGEST: &str = "federation:ingest";
 pub const FEDERATION_ADMIN: &str = "federation:admin";
+/// Read the audit log across **all** workspaces (operator/global; Cluster 132).
+/// Not workspace-scoped — a token holding it queries `/operator/audit` without
+/// an `ensure_workspace` check.
+pub const AUDIT_READ_GLOBAL: &str = "audit:read-global";
 
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
@@ -22,6 +26,7 @@ const KNOWN: &[&str] = &[
     TOKEN_ADMIN,
     FEDERATION_INGEST,
     FEDERATION_ADMIN,
+    AUDIT_READ_GLOBAL,
 ];
 
 /// Default capabilities for tokens minted by the admin API in tests and docs.
