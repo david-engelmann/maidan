@@ -4,7 +4,7 @@ Exhaustive backlog after Product Ladders **17–34**, **35–58** (`maidan-2.0`)
 Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion Checklist]],
 [[Clusters/Product Ladder 77+]] (Clusters **77–101**), and [[Clusters/Product Ladder 102+]] (Clusters **102–120**).
 
-**Latest closes:** **`v120.0.0`** scale product gate (`maidan-scale-1.0`); Product Ladder 102+ (Clusters 102–120) **complete**.
+**Latest closes:** **`v120.0.0`** scale product gate (`maidan-scale-1.0`); Product Ladder 102+ (Clusters 102–120) **complete**. Post-gate hardening **121–126** (`v121`–`v126`): OpenAPI capability map in CI, promtool-executed SLO rules, OTLP e2e, 8 required checks, and opt-in at-least-once delivery (WebSocket + MCP SSE). This file was **reconciled against code at v126** (Cluster 127) — ~11 entries that the docs listed as open were already shipped.
 
 ---
 
@@ -13,18 +13,18 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 | Area | Shipped | Gap |
 |------|---------|-----|
 | **MCP streamable (73)** | `POST/DELETE /mcp/streamable`, TTL, mux (**78**) | — |
-| **Web UI (23)** | `/ui` tabs: events, search, FSM, tokens | Channel browser, WS tail, artifacts (**92–96**); no React SPA in ladder **77+** |
-| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI | Production value profiles (**88**) — in progress |
+| **Web UI (23)** | `/ui` tabs: events feed + WS tail, search, thread/FSM, tokens, admin/audit (**92–96**) | No React SPA (non-goal in ladder **77+**) |
+| **Helm (55)** | `helm/maidan` + `helm/maidan-stack`, kind CI; production value profiles `values-profile-{otel,redis,s3}.yaml` + `PROFILES.md` (**88**) | — |
 | **Workspace erasure (53)** | `DELETE /workspaces/:id` full erase | Does not cover org-level IdP user deletion (use IdP) |
 | **Capabilities (69)** | Full MCP matrix + bidirectional HTTP capability-map contract; every OpenAPI op classified bearer/session/public in CI (**121**) | — |
-| **A2A (72)** | Persisted tasks + cancel/progress (**79**) | Task marketplace UI |
-| **Context (74)** | HTTP + MCP context + cursors (**82**) | Store-level workspace thread cursor |
+| **A2A (72)** | Persisted tasks + cancel/progress + `tasks/resubscribe` (**79**) | Task marketplace = product/UI (§4), not a backend gap |
+| **Context (74)** | HTTP + MCP context + cursors (**82**); store-level `page_threads_for_workspace` keyset cursor | — |
 | **Delivery cursors (13)** | Postgres + SQLite cursors (**56**, **83**) | — |
 | **Outbox** | Relay modes + quarantine + HTTP replay (**56**, **84**) | — |
-| **mcp-stdio (36)** | Postgres-backed | Embedded indexer mode (**100**) |
+| **mcp-stdio (36)** | Postgres-backed line-delimited JSON-RPC | No dedicated embedded-indexer mode (indexer runs as a server background task; niche, low value) |
 | **Semantic (75)** | CLI reindex + runbook; Postgres HNSW; optional `sqlite-vec` (**85**) | — |
 | **Embeddings** | Pluggable provider; per-model tables + `embedding_model` query (**86**); operator reindex jobs (**87**); durable job store — `maidan_reindex_jobs`, status resolvable on any replica (**104**) | — |
-| **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate | Compile-time strip (**91**) |
+| **Bootstrap** | `MAIDAN_BOOTSTRAP=1` gate + compile-time strip — `bootstrap` cargo feature; `--no-default-features` removes the routes, asserted by `bootstrap_absent_e2e` + the `bootstrap-strip` CI job (**91**) | — |
 | **Observability (76)** | Agent metrics runbook + gate e2e; OTLP export — traces + metrics fanout (**89**, env-gated, documented in `Production.md`), asserted end-to-end against a real collector (**123**); SLO recording/alert rules + operator dashboard (**90**), extended to scale-out indexer metrics (**121**) and promtool-executed in CI (**122**) | — |
 | **Delivery ops (68)** | Unified operator deliveries API (**80**) | — |
 
@@ -36,8 +36,8 @@ Use with [[Open Work]] (standing risks + short deferrals), [[Product Completion 
 
 From [[Open Work]] — unchanged except where a release mitigated.
 
-- **At-most-once event bus** — outbox + relay; clients must idempotent-replay by `log_id`.
-- **Bootstrap / `AUTH_DISABLED` misconfiguration** — catastrophic in production.
+- **At-most-once event bus (default path)** — the optimistic live path (`forward_bus_items`) is best-effort; **mitigated** by opt-in `at_least_once` reconcile delivery on WebSocket (**125**) and MCP SSE (**126**), which guarantees gap-free at-least-once per `consumer_id`. Default subscribers still idempotent-replay by `log_id`.
+- **Bootstrap / `AUTH_DISABLED` misconfiguration** — catastrophic in production; compile-time strip (**91**) removes the path entirely in hardened builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener recovery** — best-effort; `/health/ready` reflects retry state.
 - **Coverage floor ≥40%** — enforced in CI over the full suite (v114); opportunistic depth increases beyond the floor.
@@ -50,14 +50,14 @@ From [[Open Work]] — unchanged except where a release mitigated.
 
 | Item | Notes |
 |------|-------|
-| Per-model embedding tables | Filter by model at query time today (**75**) |
-| `sqlite-vec` / HNSW on SQLite | Extension linkage deferred |
-| Schema parity property test | Cluster A retro |
-| Sigstore/cosign release artifacts | Manual (**Operations**) |
+| ~~Per-model embedding tables~~ | **Closed (86/migration 0020):** per-model tables via `table_name_for_model` + `maidan_embedding_models` registry. |
+| ~~`sqlite-vec` / HNSW on SQLite~~ | **Closed (85):** `sqlite-vec` optional feature + CI job; Postgres HNSW; SQLite brute-force cosine fallback. |
+| ~~Schema parity property test~~ | **Closed:** `backend_parity.rs` (migration-slug lockstep) + `dialect_parity.rs` (cross-backend result parity). |
+| ~~Sigstore/cosign release artifacts~~ | **Closed:** `release.yml` keyless `cosign sign-blob --bundle` over tarballs + SBOM. |
 | ~~OTLP end-to-end collector smoke~~ | **Closed (123):** the `otlp` compose profile + `otlp smoke` CI job assert traces + metrics reach a real collector. |
 | Multi-region active-active | Out of scope |
 | ~~OpenAPI-wide capability map~~ | **Closed (121):** every OpenAPI op classified + bidirectional capability-map match in CI |
-| Unified webhook + automation delivery tables | **68** kept separate queues |
+| Unified webhook + automation delivery tables | **Open:** `maidan_webhook_deliveries` + `maidan_automation_deliveries` are still separate (identical retry/quarantine schema). Refactor value debatable — they work fine separate. |
 
 ---
 
@@ -69,7 +69,7 @@ Maidan is **Slack-shaped**, not Slack-complete.
 |------------------|--------------|-------------|
 | Workspaces / orgs | Workspace-scoped tokens + OIDC | No org hierarchy above workspace |
 | Channels | Public/private `Channel` | No Slack Connect-style shared-channel UX |
-| Direct messages | Thread-backed 1:1 DMs (**39**) | No group DMs |
+| Direct messages | Thread-backed 1:1 DMs (**39**) + **group DMs** (N-member, **97**) | — (group DMs shipped) |
 | Threads | `Thread` + FSM | No “also send to channel” UX |
 | @mentions | `Mention` records | No notification router / email digests |
 | Reactions | Votes + emoji reactions API | Not full emoji picker UX |
@@ -80,11 +80,19 @@ Maidan is **Slack-shaped**, not Slack-complete.
 | Workflow / shortcuts | Slash commands + FSM hooks + webhooks | No Workflow Builder UI |
 | Apps / bots | Installed apps + OAuth (**57**, **65**) | Distinct from member tokens |
 | Huddles / calls | — | Not planned |
-| Presence / status | — | Not implemented |
+| Presence / status | **Online/away + typing, cross-replica** (`PresenceHub` + `maidan_presence` NOTIFY, **103**) | — (shipped; UI is WS-driven) |
 | Mobile / desktop | HTTP + MCP + `/ui` | No native clients |
 | Enterprise SSO | OIDC | SAML-in-Maidan / SCIM not in scope |
 | Real-time | WS + MCP SSE | UI does not WS-tail; bus not exactly-once |
-| Admin / audit | Workspace audit + automation DLQ (**68**) | No global admin console |
+| Admin / audit | Workspace audit + automation DLQ (**68**) | No global cross-workspace admin console (audit data exists; query API not exposed) |
+
+**Classification (verified v126):** the remaining §4 gaps are **product/UI** features
+with **complete backends** — reactions, pins, search (lexical+semantic+facets),
+and workflow primitives (slash/FSM/webhooks) all ship full APIs; what's missing
+is dedicated UI/UX and product design, not backend capability. **Backend-tractable**
+exceptions worth a focused cluster: a global cross-workspace **admin audit query
+API** (data exists, expose it). **Out of scope:** org hierarchy (workspace→org
+refactor), native clients, huddles, SAML/SCIM.
 
 ---
 
@@ -111,8 +119,11 @@ See [[Clusters/Product Ladder 68+]] for the committed ladder (**71–76**). Oppo
 
 ## 7. Codebase intentional stubs
 
-- `maidan-store` SQLite: delivery cursor no-ops.
-- Threat model: compile-time bootstrap disable not implemented.
+_Both prior entries were stale (verified v126) and are corrected:_
+
+- ~~`maidan-store` SQLite: delivery cursor no-ops.~~ **Implemented** — `sqlite/delivery_cursor.rs` `get_cursor`/`advance_cursor` (monotonic, `ON CONFLICT … DO UPDATE`).
+- ~~Threat model: compile-time bootstrap disable not implemented.~~ **Implemented (91)** — `bootstrap` cargo feature; `--no-default-features` strips the bootstrap routes (`bootstrap_absent_e2e` + `bootstrap-strip` CI job).
+- _No remaining intentional stubs in `src` — no `todo!()`/`unimplemented!()`/`FIXME` (verified v126)._
 
 ---
 
