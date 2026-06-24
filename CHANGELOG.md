@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [128.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). A2A delivery robustness. No new gate tag.
+
+### Fixed
+
+- **A2A client could hang indefinitely** — `A2aClient` built a reqwest client with no timeout. Added a 10s `connect_timeout` (all requests) + a 30s per-request timeout on the non-streaming `call`.
+- **A2A push notifications were fire-and-forget** — the push POST in `persist_task` swallowed all failures with no retry. Now `deliver_a2a_push` retries 3× with capped exponential backoff, logs each failure, and counts outcomes via `maidan_a2a_push_total{result}`. (Best-effort, not a durable outbox.)
+- A2A SSE subscribe poll now logs the `load_task` failure that previously ended the stream silently; the SSE-frame serializer logs on serialize failure instead of emitting a silent empty frame.
+
 ## [127.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). Docs-only — backlog reconciliation. No new gate tag.

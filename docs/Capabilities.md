@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v128.0.0 — A2A delivery robustness
+
+| Capability | Where |
+|------------|-------|
+| A2A push retry + backoff + `maidan_a2a_push_total` metric | `crates/maidan-server/src/a2a_agent.rs` |
+| A2A client connect/request timeouts (no indefinite hang) | `crates/maidan-a2a/src/client.rs` |
+
+_Post-gate hardening (Phase XXIV): the A2A delivery paths were fire-and-forget (no timeout/retry/logging); now bounded, retried, and observable. No new gate tag._
+
 ## v127.0.0 — Backlog reconciliation
 
 | Capability | Where |
