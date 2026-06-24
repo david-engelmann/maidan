@@ -9,7 +9,7 @@ use axum::{
 #[cfg(feature = "bootstrap")]
 use chrono::Utc;
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{AUDIT_READ_GLOBAL, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -259,6 +259,19 @@ pub async fn list_workspace_audit(
             .list_audit_for_workspace(workspace_id, limit)
             .await?,
     ))
+}
+
+/// `GET /operator/audit` — audit events across **all** workspaces (Cluster 132).
+/// Gated by the global `audit:read-global` capability; intentionally **not**
+/// `ensure_workspace`-scoped (it spans workspaces).
+pub async fn list_global_audit(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Query(q): Query<ListAuditQuery>,
+) -> ApiResult<Json<Vec<AuditEvent>>> {
+    cap(&auth, AUDIT_READ_GLOBAL)?;
+    let limit = q.limit.clamp(1, 500);
+    Ok(Json(state.store.list_audit(limit).await?))
 }
 
 pub async fn list_events(
