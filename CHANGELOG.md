@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [132.0.0] — 2026-06-24
+
+Post-gate hardening (Phase XXIV). Global admin audit query API. No new gate tag. Completes the 127–132 sweep.
+
+### Added
+
+- **`GET /operator/audit?limit=`** — cross-workspace audit query, gated by a new global capability **`audit:read-global`** (not workspace-scoped; not in `default_minted`). Returns recent-first audit events across all workspaces (`limit` clamped 1..=500). Exposes the existing `Store::list_audit`; the capability is the gate (no org/super-admin model needed). OpenAPI + `http-capability-map.json` wired so the Cluster 121 contract stays green; denial covered by the capability-matrix test, allow by `operator_audit_e2e`.
+
 ## [131.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). Docs-only — delivery-unification verification-close. No new gate tag.
