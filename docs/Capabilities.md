@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v138.0.0 — Global audit + reindex controls (operator console complete)
+
+| Capability | Where |
+|------------|-------|
+| Load cross-workspace global audit in `/ui` (bearer, `audit:read-global`) | `static/index.html`, top-level `/operator/audit` |
+| Trigger + poll embedding reindex in `/ui` (workspace = session; global = `token:admin`) | `static/index.html`, `/ui/api/operator/reindex-embeddings[/:job_id]` |
+
+_Post-gate hardening (Phase XXIV): completes the "Operator" tab (137 + 138). Each control is gated by the cap it actually needs and degrades honestly without a token. No new gate tag._
+
 ## v137.0.0 — Deliveries & DLQ in the operator console
 
 | Capability | Where |
