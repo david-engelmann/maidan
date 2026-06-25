@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v139.0.0 — 1:1 direct messages in the console
+
+| Capability | Where |
+|------------|-------|
+| Open / list / read / post 1:1 DMs in `/ui` (new "DMs" tab) | `static/index.html`, `/ui/api/workspaces/:wid/dm`, `/ui/api/dm/:id/messages` |
+
+_Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `dm::*` handlers under `/ui/api`; the conversation pane reads via the existing thread-messages route (DMs are thread-backed). The exact parallel to group DMs (136). No new gate tag._
+
 ## v138.0.0 — Global audit + reindex controls (operator console complete)
 
 | Capability | Where |

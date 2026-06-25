@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [139.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: 1:1 direct messages. No new gate tag.
+
+### Added
+
+- **1:1 direct messages in the `/ui` console** — a new "DMs" tab: open a DM by the other member's ID (the actor is the signed-in member; self-DM rejected), a refreshable list (each row shows the *other* participant), and a conversation pane (select → read, send → post as the actor). Backed by new session-gated `/ui/api` routes — `GET`/`POST` `/ui/api/workspaces/:wid/dm` and `POST /ui/api/dm/:id/messages` — reusing the existing tested `dm::*` handlers; the conversation pane reads through the existing `/ui/api/threads/:tid/messages` (DMs are thread-backed). The exact parallel to group DMs (136). `ui_js_contract` guard validates the new JS.
+
 ## [138.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: global audit + reindex controls (completes the operator console). No new gate tag.
