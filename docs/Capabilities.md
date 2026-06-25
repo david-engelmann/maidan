@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v134.0.0 — Reactions in the operator UI
+
+| Capability | Where |
+|------------|-------|
+| Emoji reactions in `/ui` (chips, quick-add, toggle) | `static/index.html`, `/ui/api/messages/:mid/reactions` |
+
+_Post-gate hardening (Phase XXIV): first UI feature on the repaired/guarded base — reuses the tested reaction handlers under `/ui/api`. No new gate tag._
+
 ## v133.0.0 — /ui write-path repair + JS guard
 
 | Capability | Where |

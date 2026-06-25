@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [134.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: message reactions. No new gate tag.
+
+### Added
+
+- **Emoji reactions in the `/ui` console** — each message shows aggregated emoji chips with counts (your own highlighted), quick-add buttons (👍 ❤️ ✅ 🎉 👀), and click-to-toggle. Backed by new session-gated `/ui/api/messages/:mid/reactions` routes (GET/POST/DELETE) that mount the existing, tested reaction handlers (bearer mode uses the top-level routes). The `ui_js_contract` guard validates the new JS.
+
 ## [133.0.0] — 2026-06-24
 
 Post-gate hardening (Phase XXIV). `/ui` write-path repair + JS guard. No new gate tag.
