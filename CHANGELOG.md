@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [135.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: message pins. No new gate tag.
+
+### Added
+
+- **Pin/unpin messages in the `/ui` console** — `loadMessages` loads the thread's pins; each message meta shows a 📌 pin/unpin toggle reflecting + flipping state. Backed by new session-gated `/ui/api/threads/:tid/pins` routes (GET/POST/DELETE) reusing the existing tested pin handlers (bearer mode uses the top-level routes). `ui_js_contract` guard validates the new JS.
+
 ## [134.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: message reactions. No new gate tag.

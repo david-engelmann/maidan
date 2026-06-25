@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v135.0.0 — Pins in the thread view
+
+| Capability | Where |
+|------------|-------|
+| Pin/unpin in `/ui` (per-message toggle) | `static/index.html`, `/ui/api/threads/:tid/pins` |
+
+_Post-gate hardening (Phase XXIV): pins affordance reusing the tested pin handlers under `/ui/api`. No new gate tag._
+
 ## v134.0.0 — Reactions in the operator UI
 
 | Capability | Where |
