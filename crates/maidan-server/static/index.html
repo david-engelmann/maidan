@@ -183,6 +183,11 @@
       .reaction-chip.mine { border-color: #60a5fa; background: #eff6ff; }
       .reaction-add { opacity: 0.55; }
       .reaction-add:hover, .reaction-chip:hover { opacity: 1; border-color: #60a5fa; }
+      .pin-toggle {
+        font-size: 0.7rem; padding: 0 0.3rem; border-radius: 4px; cursor: pointer;
+        border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+      }
+      .pin-toggle.pinned { color: inherit; border-color: #60a5fa; background: #eff6ff; }
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
@@ -394,6 +399,7 @@
       let wsUserDisconnect = false;
       let selectedChannelId = null;
       let selectedThreadId = null;
+      let pinnedIds = new Set();
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
@@ -530,6 +536,7 @@
             box.textContent = `HTTP ${res.status}`;
             return;
           }
+          await loadPins(selectedThreadId);
           renderMessages(JSON.parse(body), box);
         } catch (e) {
           box.textContent = String(e);
@@ -550,6 +557,18 @@
           let metaText = `${m.id} · ${m.author_id}`;
           if (m.edited_at) metaText += " · edited";
           meta.textContent = metaText;
+          const pinned = pinnedIds.has(m.id);
+          const pinBtn = document.createElement("button");
+          pinBtn.type = "button";
+          pinBtn.className = "pin-toggle" + (pinned ? " pinned" : "");
+          pinBtn.textContent = pinned ? "📌 pinned" : "📌 pin";
+          pinBtn.title = pinned ? "Unpin" : "Pin to thread";
+          pinBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            togglePin(selectedThreadId, m.id, pinned);
+          };
+          meta.appendChild(document.createTextNode(" · "));
+          meta.appendChild(pinBtn);
           const body = document.createElement("div");
           body.textContent = m.body;
           div.appendChild(meta);
@@ -640,6 +659,45 @@
           setStatus(String(e), "err");
         }
         await loadReactions(messageId, el);
+      }
+
+      async function loadPins(threadId) {
+        pinnedIds = new Set();
+        if (!threadId) return;
+        const url = token()
+          ? `${base()}/threads/${threadId}/pins`
+          : uiReadPath(`/threads/${threadId}/pins`);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (res.ok) {
+            const pins = await res.json();
+            pins.forEach((p) => pinnedIds.add(p.message_id));
+          }
+        } catch (e) {
+          /* leave pins empty on error */
+        }
+      }
+
+      async function togglePin(threadId, messageId, pinned) {
+        if (!requireAuthForWrite()) return;
+        const member = authorId();
+        if (!member) return alert("Sign in or set Actor ID to pin");
+        try {
+          const res = await fetch(apiWritePath(`/threads/${threadId}/pins`), {
+            method: pinned ? "DELETE" : "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ message_id: messageId, member_id: member }),
+          });
+          if (!res.ok) {
+            setStatus(`HTTP ${res.status}`, "err");
+            return;
+          }
+        } catch (e) {
+          setStatus(String(e), "err");
+          return;
+        }
+        await loadMessages();
       }
 
       async function loadMessageEdits(messageId) {

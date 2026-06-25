@@ -309,6 +309,7 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/messages/:mid/reactions",
             get(routes::list_reactions),
         )
+        .route("/ui/api/threads/:tid/pins", get(routes::list_pins))
         .route("/ui/api/workspaces/:wid/members", get(routes::list_members))
         .route(
             "/ui/api/workspaces/:wid/members/:mid/tokens",
@@ -333,6 +334,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/messages/:mid/reactions",
             post(routes::add_reaction).delete(routes::remove_reaction),
+        )
+        .route(
+            "/ui/api/threads/:tid/pins",
+            post(routes::pin_message).delete(routes::unpin_message),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
