@@ -300,6 +300,7 @@
         <button type="button" data-tab="admin" aria-selected="true">Admin</button>
         <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
+        <button type="button" data-tab="presence">Presence</button>
         <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="dms">DMs</button>
         <button type="button" data-tab="group-dms">Group DMs</button>
@@ -357,6 +358,23 @@
       </section>
       <section id="panel-events" class="panel">
         <button id="load-events" type="button">Load events</button>
+      </section>
+      <section id="panel-presence" class="panel">
+        <p class="muted">
+          Live workspace roster from the presence hub. Requires an active
+          WebSocket subscribe — connect in the <strong>Events (HTTP)</strong>
+          tab while signed in (the subscribe sends your member ID, which
+          registers you online). The roster updates on each
+          <code>presence_snapshot</code> frame.
+        </p>
+        <div>
+          <button id="presence-online" type="button">Set online</button>
+          <button id="presence-away" type="button">Set away</button>
+        </div>
+        <h4>Online now</h4>
+        <ul id="presence-list" class="muted">
+          <li>Connect the WebSocket to populate.</li>
+        </ul>
       </section>
       <section id="panel-dms" class="panel">
         <details open>
@@ -1411,6 +1429,31 @@
         setWsStatus("disconnected");
       }
 
+      function renderPresence(frame) {
+        const list = document.getElementById("presence-list");
+        list.innerHTML = "";
+        const members = (frame && frame.members) || [];
+        if (!members.length) {
+          list.innerHTML = "<li>No one online</li>";
+          return;
+        }
+        const me = authorId();
+        members.forEach((m) => {
+          const li = document.createElement("li");
+          const mine = m.member_id === me ? " (you)" : "";
+          li.textContent = `${m.member_id} · ${m.status}${mine}`;
+          list.appendChild(li);
+        });
+      }
+
+      function setPresence(status) {
+        if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
+          return setStatus("Connect the WebSocket (Events tab) first", "err");
+        }
+        wsSocket.send(JSON.stringify({ type: "presence", status }));
+        setStatus(`Presence → ${status}`, "ok");
+      }
+
       function connectWs() {
         if (wsSocket) {
           wsUserDisconnect = true;
@@ -1466,7 +1509,12 @@
             appendLive(`[ack] after_id=${v.after_id}`);
             return;
           }
-          if (t === "presence_snapshot" || t === "presence" || t === "typing") {
+          if (t === "presence_snapshot") {
+            renderPresence(v);
+            appendLive(JSON.stringify(v));
+            return;
+          }
+          if (t === "presence" || t === "typing") {
             appendLive(JSON.stringify(v));
             return;
           }
@@ -1538,6 +1586,8 @@
       document.getElementById("refresh-channels").onclick = loadChannels;
       document.getElementById("ws-connect").onclick = connectWs;
       document.getElementById("ws-disconnect").onclick = disconnectWs;
+      document.getElementById("presence-online").onclick = () => setPresence("online");
+      document.getElementById("presence-away").onclick = () => setPresence("away");
       document.getElementById("ws-clear").onclick = () => {
         document.getElementById("live-feed").textContent = "";
       };
