@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [136.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: group DMs. No new gate tag.
+
+### Added
+
+- **Group DMs in the `/ui` console** — a new "Group DMs" tab: open a group DM (comma-separated member ids + optional title; the actor is auto-included and ≥2 members enforced), refresh the list (by member), select a conversation, read its messages, and post as the actor. Backed by new session-gated `/ui/api` routes — `GET`/`POST` `/ui/api/workspaces/:wid/group-dms`, `GET /ui/api/group-dms/:id`, `POST /ui/api/group-dms/:id/messages` — reusing the existing tested `group_dm::*` handlers; the conversation pane reads through the existing `/ui/api/threads/:tid/messages` (group DMs are thread-backed). `ui_js_contract` guard validates the new JS.
+
 ## [135.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: message pins. No new gate tag.
