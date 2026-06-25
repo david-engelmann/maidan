@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v137.0.0 — Deliveries & DLQ in the operator console
+
+| Capability | Where |
+|------------|-------|
+| List + replay webhook/automation deliveries (incl. DLQ) in `/ui` (new "Operator" tab) | `static/index.html`, `/ui/api/workspaces/:wid/deliveries[/:did/replay]` |
+
+_Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `delivery_ops` handlers under `/ui/api`; list (`workspace:read`) + replay (`workspace:write`) map onto the operator-session caps, so it works on a plain login. No new gate tag._
+
 ## v136.0.0 — Group DMs in the operator console
 
 | Capability | Where |

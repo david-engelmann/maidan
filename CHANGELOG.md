@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [137.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: deliveries & DLQ operator view. No new gate tag.
+
+### Added
+
+- **Deliveries & dead-letter queue in the `/ui` console** — a new "Operator" tab listing webhook + automation deliveries for the current workspace, with a status filter (pending / quarantined / delivered), a kind filter (all / webhook / automation), and a per-row **Replay** to re-attempt a quarantined or failed delivery. Backed by new session-gated `/ui/api` routes — `GET /ui/api/workspaces/:wid/deliveries` (`workspace:read`) + `POST /ui/api/workspaces/:wid/deliveries/:did/replay` (`workspace:write`) — reusing the existing tested `delivery_ops::*` handlers; both map onto the operator-session caps, so the view works on a plain login. Automation auth-header fields are deliberately not rendered. `ui_js_contract` guard validates the new JS.
+
 ## [136.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: group DMs. No new gate tag.
