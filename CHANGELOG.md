@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [138.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: global audit + reindex controls (completes the operator console). No new gate tag.
+
+### Added
+
+- **Global audit + reindex-embeddings controls in the `/ui` "Operator" tab** — a cross-workspace global-audit view (limit + load; bearer-only, needs `audit:read-global`) and reindex controls: "Reindex this workspace" (`POST {workspace_id}`, `workspace:write`, works on a plain login), "Reindex system-wide" (`POST {}`, `token:admin` bearer), and a poll-by-job-id status readout. Reindex is backed by new session-gated `/ui/api/operator/reindex-embeddings[/:job_id]` routes (the status `GET` lives on the write router because a workspace-scoped job needs `workspace:write` to read) reusing the tested `reindex_ops::*` handlers; global audit calls the top-level `/operator/audit` directly with a bearer. The UI degrades honestly when no token is set. `ui_js_contract` guard validates the new JS.
+
 ## [137.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: deliveries & DLQ operator view. No new gate tag.
