@@ -175,6 +175,14 @@
         margin: 0.5rem 0;
       }
       #message-list .edited { color: var(--muted); font-size: 0.75rem; font-style: italic; }
+      .reactions { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; }
+      .reaction-chip, .reaction-add {
+        font-size: 0.8rem; line-height: 1; padding: 0.15rem 0.4rem; border-radius: 999px;
+        border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+      }
+      .reaction-chip.mine { border-color: #60a5fa; background: #eff6ff; }
+      .reaction-add { opacity: 0.55; }
+      .reaction-add:hover, .reaction-chip:hover { opacity: 1; border-color: #60a5fa; }
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
@@ -559,8 +567,79 @@
             document.getElementById("edit-message-body").value = m.body;
             loadMessageEdits(m.id);
           };
+          const reactions = document.createElement("div");
+          reactions.className = "reactions";
+          div.appendChild(reactions);
+          loadReactions(m.id, reactions);
           box.appendChild(div);
         });
+      }
+
+      const QUICK_REACTIONS = ["👍", "❤️", "✅", "🎉", "👀"];
+
+      async function loadReactions(messageId, el) {
+        el.innerHTML = "";
+        const url = token()
+          ? `${base()}/messages/${messageId}/reactions`
+          : uiReadPath(`/messages/${messageId}/reactions`);
+        let list = [];
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (res.ok) list = await res.json();
+        } catch (e) {
+          /* leave reactions empty on error */
+        }
+        const me = authorId();
+        const agg = {};
+        list.forEach((r) => {
+          const a = agg[r.emoji] || (agg[r.emoji] = { count: 0, mine: false });
+          a.count += 1;
+          if (me && r.member_id === me) a.mine = true;
+        });
+        Object.keys(agg).forEach((emoji) => {
+          const { count, mine } = agg[emoji];
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "reaction-chip" + (mine ? " mine" : "");
+          chip.textContent = `${emoji} ${count}`;
+          chip.title = mine ? "Remove your reaction" : "React";
+          chip.onclick = (ev) => {
+            ev.stopPropagation();
+            toggleReaction(messageId, emoji, mine, el);
+          };
+          el.appendChild(chip);
+        });
+        QUICK_REACTIONS.forEach((emoji) => {
+          if (agg[emoji]) return;
+          const add = document.createElement("button");
+          add.type = "button";
+          add.className = "reaction-add";
+          add.textContent = emoji;
+          add.title = "React";
+          add.onclick = (ev) => {
+            ev.stopPropagation();
+            toggleReaction(messageId, emoji, false, el);
+          };
+          el.appendChild(add);
+        });
+      }
+
+      async function toggleReaction(messageId, emoji, mine, el) {
+        if (!requireAuthForWrite()) return;
+        const member = authorId();
+        if (!member) return alert("Sign in or set Actor ID to react");
+        try {
+          const res = await fetch(apiWritePath(`/messages/${messageId}/reactions`), {
+            method: mine ? "DELETE" : "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ emoji, member_id: member }),
+          });
+          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+        await loadReactions(messageId, el);
       }
 
       async function loadMessageEdits(messageId) {
