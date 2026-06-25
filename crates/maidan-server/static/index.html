@@ -188,6 +188,14 @@
         border: 1px solid var(--border); background: var(--bg); color: var(--muted);
       }
       .pin-toggle.pinned { color: inherit; border-color: #60a5fa; background: #eff6ff; }
+      .deliv { padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+      .deliv-head { margin-bottom: 0.15rem; }
+      .deliv-kind {
+        font-size: 0.7rem; padding: 0 0.3rem; border-radius: 4px;
+        border: 1px solid var(--border); background: #eff6ff; text-transform: uppercase;
+      }
+      .deliv-dlq { color: var(--err); font-weight: 600; }
+      .deliv-err { color: var(--err); word-break: break-word; }
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
@@ -294,6 +302,7 @@
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="group-dms">Group DMs</button>
+        <button type="button" data-tab="operator">Operator</button>
         <button type="button" data-tab="tokens">Tokens</button>
       </nav>
       <section id="panel-admin" class="panel active">
@@ -368,6 +377,31 @@
           <div id="gdm-messages"></div>
           <label>Message <input id="gdm-body" placeholder="message body" /></label>
           <button id="gdm-send" type="button">Send</button>
+        </details>
+      </section>
+      <section id="panel-operator" class="panel">
+        <details open>
+          <summary>Deliveries &amp; dead-letter queue</summary>
+          <p class="muted">
+            Webhook + automation deliveries for the current workspace. Replay a
+            quarantined (DLQ) or failed delivery to re-attempt it.
+          </p>
+          <label>Status
+            <select id="op-deliv-status">
+              <option value="pending">Pending</option>
+              <option value="quarantined">Quarantined (DLQ)</option>
+              <option value="delivered">Delivered</option>
+            </select>
+          </label>
+          <label>Kind
+            <select id="op-deliv-kind">
+              <option value="all">All</option>
+              <option value="webhook">Webhook</option>
+              <option value="automation">Automation</option>
+            </select>
+          </label>
+          <button id="op-deliv-refresh" type="button">Refresh</button>
+          <div id="op-deliv-list" class="muted"></div>
         </details>
       </section>
       <section id="panel-thread" class="panel">
@@ -846,6 +880,96 @@
         }
       }
 
+      function renderDeliveries(rows) {
+        const box = document.getElementById("op-deliv-list");
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No deliveries";
+          return;
+        }
+        rows.forEach((d) => {
+          const card = document.createElement("div");
+          card.className = "deliv";
+          const head = document.createElement("div");
+          head.className = "deliv-head";
+          const tag = document.createElement("span");
+          tag.className = "deliv-kind";
+          tag.textContent = d.kind;
+          head.appendChild(tag);
+          const meta = document.createElement("span");
+          meta.textContent = ` #${d.id} · ${d.attempts} attempt${d.attempts === 1 ? "" : "s"}`;
+          head.appendChild(meta);
+          if (d.quarantined_at) {
+            const q = document.createElement("span");
+            q.className = "deliv-dlq";
+            q.textContent = " DLQ";
+            head.appendChild(q);
+          } else if (d.delivered_at) {
+            const ok = document.createElement("span");
+            ok.textContent = " ✓ delivered";
+            head.appendChild(ok);
+          }
+          card.appendChild(head);
+          const url = document.createElement("div");
+          url.textContent = d.target_url;
+          card.appendChild(url);
+          if (d.last_error) {
+            const err = document.createElement("div");
+            err.className = "deliv-err";
+            err.textContent = `error: ${d.last_error}`;
+            card.appendChild(err);
+          }
+          const ts = document.createElement("div");
+          ts.className = "muted";
+          const next = d.next_attempt_at ? ` · next: ${d.next_attempt_at}` : "";
+          ts.textContent = `created: ${d.created_at || "?"}${next}`;
+          card.appendChild(ts);
+          const replay = document.createElement("button");
+          replay.type = "button";
+          replay.textContent = "Replay";
+          replay.onclick = () => replayDelivery(d.id, d.kind);
+          card.appendChild(replay);
+          box.appendChild(card);
+        });
+      }
+
+      async function loadDeliveries() {
+        const box = document.getElementById("op-deliv-list");
+        box.innerHTML = "";
+        const status = document.getElementById("op-deliv-status").value;
+        const kind = document.getElementById("op-deliv-kind").value;
+        let query = `kind=${encodeURIComponent(kind)}&limit=50`;
+        if (status === "quarantined") query += "&quarantined=true";
+        else if (status === "delivered") query += "&delivered=true";
+        const suffix = `/workspaces/${wid()}/deliveries?${query}`;
+        const url = token() ? `${base()}${suffix}` : uiReadPath(suffix);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) {
+            box.textContent = `HTTP ${res.status}`;
+            return;
+          }
+          renderDeliveries(await res.json());
+        } catch (e) {
+          box.textContent = String(e);
+        }
+      }
+
+      async function replayDelivery(id, kind) {
+        if (!requireAuthForWrite()) return;
+        try {
+          const res = await fetch(
+            apiWritePath(`/workspaces/${wid()}/deliveries/${id}/replay?kind=${encodeURIComponent(kind)}`),
+            { method: "POST", headers: headers(true), credentials: "include" },
+          );
+          if (!res.ok) return setStatus(`replay HTTP ${res.status}`, "err");
+          setStatus(`Replayed ${kind} delivery #${id}`, "ok");
+          await loadDeliveries();
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
       async function loadMessageEdits(messageId) {
         const box = document.getElementById("edit-history-list");
         if (!messageId) {
@@ -1296,6 +1420,7 @@
       document.getElementById("gdm-open").onclick = openGroupDm;
       document.getElementById("gdm-refresh").onclick = loadGroupDms;
       document.getElementById("gdm-send").onclick = sendGroupDmMessage;
+      document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
