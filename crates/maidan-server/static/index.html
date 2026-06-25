@@ -293,6 +293,7 @@
         <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="thread">FSM</button>
+        <button type="button" data-tab="group-dms">Group DMs</button>
         <button type="button" data-tab="tokens">Tokens</button>
       </nav>
       <section id="panel-admin" class="panel active">
@@ -347,6 +348,28 @@
       <section id="panel-events" class="panel">
         <button id="load-events" type="button">Load events</button>
       </section>
+      <section id="panel-group-dms" class="panel">
+        <details open>
+          <summary>Open a group DM</summary>
+          <label>Member IDs (comma-separated UUIDs; yours is added if signed in)
+            <input id="gdm-member-ids" placeholder="uuid, uuid, …" />
+          </label>
+          <label>Title (optional) <input id="gdm-title" placeholder="optional" /></label>
+          <button id="gdm-open" type="button">Open group DM</button>
+        </details>
+        <details open style="margin-top: 0.5rem">
+          <summary>My group DMs</summary>
+          <button id="gdm-refresh" type="button">Refresh</button>
+          <ul id="gdm-list" class="muted"></ul>
+        </details>
+        <details open style="margin-top: 0.5rem">
+          <summary>Conversation</summary>
+          <div id="gdm-selected" class="muted">Select a group DM</div>
+          <div id="gdm-messages"></div>
+          <label>Message <input id="gdm-body" placeholder="message body" /></label>
+          <button id="gdm-send" type="button">Send</button>
+        </details>
+      </section>
       <section id="panel-thread" class="panel">
         <label>Channel ID <input id="channel-id" /></label>
         <label>Thread ID <input id="thread-id" /></label>
@@ -400,6 +423,7 @@
       let selectedChannelId = null;
       let selectedThreadId = null;
       let pinnedIds = new Set();
+      let selectedGdm = null;
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
@@ -698,6 +722,128 @@
           return;
         }
         await loadMessages();
+      }
+
+      async function loadGroupDms() {
+        const list = document.getElementById("gdm-list");
+        list.innerHTML = "";
+        const me = authorId();
+        if (!me) {
+          list.innerHTML = "<li>Sign in or set Actor ID</li>";
+          return;
+        }
+        const suffix = `/workspaces/${wid()}/group-dms?member_id=${encodeURIComponent(me)}`;
+        const url = token() ? `${base()}${suffix}` : uiReadPath(suffix);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) {
+            list.innerHTML = `<li>HTTP ${res.status}</li>`;
+            return;
+          }
+          const convos = await res.json();
+          if (!convos.length) {
+            list.innerHTML = "<li>No group DMs</li>";
+            return;
+          }
+          convos.forEach((c) => {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = "#";
+            a.textContent = `${c.title || "(untitled)"} · ${c.id.slice(0, 8)}…`;
+            a.onclick = (ev) => {
+              ev.preventDefault();
+              selectGroupDm(c);
+            };
+            li.appendChild(a);
+            list.appendChild(li);
+          });
+        } catch (e) {
+          list.innerHTML = `<li>${escapeHtml(String(e))}</li>`;
+        }
+      }
+
+      function selectGroupDm(c) {
+        selectedGdm = c;
+        document.getElementById("gdm-selected").textContent =
+          `${c.title || "(untitled)"} · ${c.id}`;
+        loadGroupDmMessages(c.thread_id);
+      }
+
+      async function loadGroupDmMessages(threadId) {
+        const box = document.getElementById("gdm-messages");
+        box.innerHTML = "";
+        if (!threadId) return;
+        const suffix = `/threads/${threadId}/messages?limit=50`;
+        const url = token() ? `${base()}${suffix}` : uiReadPath(suffix);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) {
+            box.textContent = `HTTP ${res.status}`;
+            return;
+          }
+          const msgs = await res.json();
+          if (!msgs.length) {
+            box.textContent = "No messages";
+            return;
+          }
+          msgs.forEach((m) => {
+            const div = document.createElement("div");
+            div.className = "msg";
+            div.textContent = `${m.author_id}: ${m.body}`;
+            box.appendChild(div);
+          });
+        } catch (e) {
+          box.textContent = String(e);
+        }
+      }
+
+      async function openGroupDm() {
+        if (!requireAuthForWrite()) return;
+        const me = authorId();
+        if (!me) return alert("Sign in or set Actor ID");
+        const ids = document
+          .getElementById("gdm-member-ids")
+          .value.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (!ids.includes(me)) ids.push(me);
+        if (ids.length < 2) return alert("A group DM needs at least 2 members");
+        const title = document.getElementById("gdm-title").value.trim() || null;
+        try {
+          const res = await fetch(apiWritePath(`/workspaces/${wid()}/group-dms`), {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ member_ids: ids, title }),
+          });
+          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          setStatus("Group DM opened", "ok");
+          await loadGroupDms();
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
+      async function sendGroupDmMessage() {
+        if (!requireAuthForWrite()) return;
+        const me = authorId();
+        if (!me) return alert("Sign in or set Actor ID");
+        if (!selectedGdm) return alert("Select a group DM first");
+        const body = document.getElementById("gdm-body").value.trim();
+        if (!body) return alert("Message body required");
+        try {
+          const res = await fetch(apiWritePath(`/group-dms/${selectedGdm.id}/messages`), {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ author_id: me, body }),
+          });
+          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          document.getElementById("gdm-body").value = "";
+          await loadGroupDmMessages(selectedGdm.thread_id);
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
       }
 
       async function loadMessageEdits(messageId) {
@@ -1147,6 +1293,9 @@
         await loadMessages();
       };
       document.getElementById("reload-messages").onclick = loadMessages;
+      document.getElementById("gdm-open").onclick = openGroupDm;
+      document.getElementById("gdm-refresh").onclick = loadGroupDms;
+      document.getElementById("gdm-send").onclick = sendGroupDmMessage;
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
