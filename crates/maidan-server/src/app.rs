@@ -315,6 +315,7 @@ pub fn router(state: AppState) -> Router {
             get(group_dm::list_group_dms),
         )
         .route("/ui/api/group-dms/:id", get(group_dm::get_group_dm))
+        .route("/ui/api/workspaces/:wid/dm", get(dm::list_dm_conversations))
         .route(
             "/ui/api/workspaces/:wid/deliveries",
             get(delivery_ops::list_deliveries),
@@ -356,6 +357,8 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/group-dms/:id/messages",
             post(group_dm::post_group_dm_message),
         )
+        .route("/ui/api/workspaces/:wid/dm", post(dm::open_dm_conversation))
+        .route("/ui/api/dm/:id/messages", post(dm::post_dm_message))
         .route(
             "/ui/api/workspaces/:wid/deliveries/:did/replay",
             post(delivery_ops::replay_delivery),
