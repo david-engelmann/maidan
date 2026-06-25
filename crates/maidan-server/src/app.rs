@@ -310,6 +310,11 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_reactions),
         )
         .route("/ui/api/threads/:tid/pins", get(routes::list_pins))
+        .route(
+            "/ui/api/workspaces/:wid/group-dms",
+            get(group_dm::list_group_dms),
+        )
+        .route("/ui/api/group-dms/:id", get(group_dm::get_group_dm))
         .route("/ui/api/workspaces/:wid/members", get(routes::list_members))
         .route(
             "/ui/api/workspaces/:wid/members/:mid/tokens",
@@ -338,6 +343,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/threads/:tid/pins",
             post(routes::pin_message).delete(routes::unpin_message),
+        )
+        .route(
+            "/ui/api/workspaces/:wid/group-dms",
+            post(group_dm::open_group_dm),
+        )
+        .route(
+            "/ui/api/group-dms/:id/messages",
+            post(group_dm::post_group_dm_message),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
