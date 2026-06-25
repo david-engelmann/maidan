@@ -360,6 +360,16 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/deliveries/:did/replay",
             post(delivery_ops::replay_delivery),
         )
+        .route(
+            "/ui/api/operator/reindex-embeddings",
+            post(reindex_ops::start_reindex_embeddings),
+        )
+        // GET on the write router: a workspace-scoped reindex job needs
+        // workspace:write to read, which only the write session grants.
+        .route(
+            "/ui/api/operator/reindex-embeddings/:job_id",
+            get(reindex_ops::get_reindex_embeddings_job),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::ui_session_or_bearer_middleware,

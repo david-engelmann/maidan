@@ -403,6 +403,29 @@
           <button id="op-deliv-refresh" type="button">Refresh</button>
           <div id="op-deliv-list" class="muted"></div>
         </details>
+        <details style="margin-top: 0.5rem">
+          <summary>Global audit (cross-workspace)</summary>
+          <p class="muted">
+            Requires a bearer token with <code>audit:read-global</code> (set the
+            token at the top). A workspace session can't read the global audit.
+          </p>
+          <label>Limit <input id="op-audit-limit" type="number" value="100" min="1" max="500" /></label>
+          <button id="op-audit-load" type="button">Load global audit</button>
+          <div id="op-audit-list" class="muted"></div>
+        </details>
+        <details style="margin-top: 0.5rem">
+          <summary>Reindex embeddings</summary>
+          <p class="muted">
+            "This workspace" reindexes the current workspace (works on your
+            login). "System-wide" reindexes everything and needs a
+            <code>token:admin</code> bearer.
+          </p>
+          <button id="op-reindex-workspace" type="button">Reindex this workspace</button>
+          <button id="op-reindex-global" type="button">Reindex system-wide</button>
+          <div id="op-reindex-status" class="muted"></div>
+          <label>Job ID <input id="op-reindex-job" placeholder="job uuid" /></label>
+          <button id="op-reindex-poll" type="button">Check job</button>
+        </details>
       </section>
       <section id="panel-thread" class="panel">
         <label>Channel ID <input id="channel-id" /></label>
@@ -970,6 +993,102 @@
         }
       }
 
+      async function loadGlobalAudit() {
+        const box = document.getElementById("op-audit-list");
+        box.innerHTML = "";
+        if (!token()) {
+          box.textContent =
+            "Set a bearer token with audit:read-global above to load the global audit.";
+          return;
+        }
+        const limit = document.getElementById("op-audit-limit").value || "100";
+        try {
+          const res = await fetch(
+            `${base()}/operator/audit?limit=${encodeURIComponent(limit)}`,
+            { headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) {
+            box.textContent =
+              res.status === 403
+                ? "403 — token lacks audit:read-global"
+                : `HTTP ${res.status}`;
+            return;
+          }
+          const rows = await res.json();
+          if (!rows.length) {
+            box.textContent = "No audit events";
+            return;
+          }
+          rows.forEach((e) => {
+            const div = document.createElement("div");
+            div.className = "deliv";
+            const head = document.createElement("div");
+            head.className = "deliv-head";
+            head.textContent = `${e.occurred_at} · ${e.action}`;
+            div.appendChild(head);
+            const meta = document.createElement("div");
+            meta.className = "muted";
+            const actor = e.actor_id || "system";
+            const target = e.target_kind
+              ? `${e.target_kind}${e.target_id ? " " + e.target_id : ""}`
+              : "—";
+            meta.textContent = `actor: ${actor} · target: ${target}`;
+            div.appendChild(meta);
+            box.appendChild(div);
+          });
+        } catch (e) {
+          box.textContent = String(e);
+        }
+      }
+
+      function renderReindexJob(j) {
+        const box = document.getElementById("op-reindex-status");
+        const scope = j.workspace_id ? `workspace ${j.workspace_id}` : "system-wide";
+        let line = `job ${j.job_id} · ${j.status} · ${scope} · model ${j.embedding_model}`;
+        if (j.processed !== undefined) line += ` · processed ${j.processed}`;
+        if (j.failed !== undefined) line += ` · failed ${j.failed}`;
+        if (j.error) line += ` · error: ${j.error}`;
+        box.textContent = line;
+      }
+
+      async function startReindex(global) {
+        if (!requireAuthForWrite()) return;
+        if (global && !token()) {
+          return setStatus("System-wide reindex needs a token:admin bearer", "err");
+        }
+        const body = global ? {} : { workspace_id: wid() };
+        try {
+          const res = await fetch(apiWritePath(`/operator/reindex-embeddings`), {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) return setStatus(`reindex HTTP ${res.status}`, "err");
+          const job = await res.json();
+          renderReindexJob(job);
+          document.getElementById("op-reindex-job").value = job.job_id;
+          setStatus(`Reindex started (${job.job_id})`, "ok");
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
+      async function pollReindex() {
+        const id = document.getElementById("op-reindex-job").value.trim();
+        if (!id) return setStatus("Enter a job ID", "err");
+        try {
+          const res = await fetch(
+            apiWritePath(`/operator/reindex-embeddings/${encodeURIComponent(id)}`),
+            { headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) return setStatus(`poll HTTP ${res.status}`, "err");
+          renderReindexJob(await res.json());
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
       async function loadMessageEdits(messageId) {
         const box = document.getElementById("edit-history-list");
         if (!messageId) {
@@ -1421,6 +1540,10 @@
       document.getElementById("gdm-refresh").onclick = loadGroupDms;
       document.getElementById("gdm-send").onclick = sendGroupDmMessage;
       document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
+      document.getElementById("op-audit-load").onclick = loadGlobalAudit;
+      document.getElementById("op-reindex-workspace").onclick = () => startReindex(false);
+      document.getElementById("op-reindex-global").onclick = () => startReindex(true);
+      document.getElementById("op-reindex-poll").onclick = pollReindex;
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
