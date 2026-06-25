@@ -305,6 +305,10 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/messages/:mid/edits",
             get(routes::list_message_edits),
         )
+        .route(
+            "/ui/api/messages/:mid/reactions",
+            get(routes::list_reactions),
+        )
         .route("/ui/api/workspaces/:wid/members", get(routes::list_members))
         .route(
             "/ui/api/workspaces/:wid/members/:mid/tokens",
@@ -326,6 +330,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/channels/:cid/threads", post(routes::create_thread))
         .route("/ui/api/threads/:tid/messages", post(routes::post_message))
+        .route(
+            "/ui/api/messages/:mid/reactions",
+            post(routes::add_reaction).delete(routes::remove_reaction),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::ui_session_or_bearer_middleware,
