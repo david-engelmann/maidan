@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [140.0.0] — 2026-06-25
+
+Post-gate hardening (Phase XXIV). UI feature: workspace presence roster. No new gate tag.
+
+### Added
+
+- **Workspace presence roster in the `/ui` console** — a new "Presence" tab showing who's online, rendered from the `presence_snapshot` frames that already ride the existing WebSocket subscribe (the subscribe sends `member_id` when signed in, which registers the operator in the presence hub). Online/Away buttons send `{"type":"presence","status":...}` over the open socket. No backend change — presence is WS-only (no HTTP API). `ui_js_contract` guard validates the new JS.
+
 ## [139.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: 1:1 direct messages. No new gate tag.
