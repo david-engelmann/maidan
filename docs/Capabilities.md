@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v136.0.0 — Group DMs in the operator console
+
+| Capability | Where |
+|------------|-------|
+| Open / list / read / post group DMs in `/ui` (new tab) | `static/index.html`, `/ui/api/.../group-dms` |
+
+_Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested group-DM handlers under `/ui/api`; the conversation pane reads via the existing thread-messages route (group DMs are thread-backed). No new gate tag._
+
 ## v135.0.0 — Pins in the thread view
 
 | Capability | Where |
