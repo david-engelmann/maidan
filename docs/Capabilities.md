@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v140.0.0 — Workspace presence roster in the console
+
+| Capability | Where |
+|------------|-------|
+| Live presence roster + online/away in `/ui` (over the WS) | `static/index.html` (`renderPresence`/`setPresence`) |
+
+_Post-gate hardening (Phase XXIV): renders the realtime `presence_snapshot` frames (already on the WS) into a roster; no backend change — presence is WS-only. No new gate tag._
+
 ## v139.0.0 — 1:1 direct messages in the console
 
 | Capability | Where |
