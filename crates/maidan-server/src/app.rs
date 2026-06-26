@@ -317,6 +317,10 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/group-dms/:id", get(group_dm::get_group_dm))
         .route("/ui/api/workspaces/:wid/dm", get(dm::list_dm_conversations))
         .route(
+            "/ui/api/workspaces/:wid/slash-commands",
+            get(slash_commands::list_slash_commands),
+        )
+        .route(
             "/ui/api/workspaces/:wid/deliveries",
             get(delivery_ops::list_deliveries),
         )
@@ -359,6 +363,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/workspaces/:wid/dm", post(dm::open_dm_conversation))
         .route("/ui/api/dm/:id/messages", post(dm::post_dm_message))
+        .route(
+            "/ui/api/workspaces/:wid/slash-commands",
+            post(slash_commands::create_slash_command),
+        )
+        .route(
+            "/ui/api/workspaces/:wid/slash-commands/:cid",
+            delete(slash_commands::revoke_slash_command),
+        )
         .route(
             "/ui/api/workspaces/:wid/deliveries/:did/replay",
             post(delivery_ops::replay_delivery),

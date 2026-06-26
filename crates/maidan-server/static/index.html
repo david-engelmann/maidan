@@ -305,6 +305,7 @@
         <button type="button" data-tab="dms">DMs</button>
         <button type="button" data-tab="group-dms">Group DMs</button>
         <button type="button" data-tab="operator">Operator</button>
+        <button type="button" data-tab="slash">Slash</button>
         <button type="button" data-tab="tokens">Tokens</button>
       </nav>
       <section id="panel-admin" class="panel active">
@@ -483,6 +484,34 @@
           <button id="transition-thread" type="button">Transition</button>
           <button id="load-messages" type="button">Messages</button>
         </div>
+      </section>
+      <section id="panel-slash" class="panel">
+        <p class="muted">
+          Register workspace slash commands. To <strong>run</strong> one, post
+          <code>/name args</code> as a message in a thread (FSM tab or a channel
+          thread) — the result lands in the message metadata. An
+          <code>http</code> handler receives a signed webhook; its signing
+          secret is shown once, here, at registration.
+        </p>
+        <details open>
+          <summary>Register a command</summary>
+          <label>Name (<code>[a-z0-9_-]</code>, 1–32) <input id="slash-name" placeholder="ping" /></label>
+          <label>Description (optional) <input id="slash-desc" placeholder="optional" /></label>
+          <label>Handler kind
+            <select id="slash-kind">
+              <option value="http">http (webhook URL)</option>
+              <option value="mcp_tool">mcp_tool (MCP tool name)</option>
+            </select>
+          </label>
+          <label>Handler target <input id="slash-target" placeholder="https://… or tool name" /></label>
+          <button id="slash-register" type="button">Register</button>
+          <div id="slash-secret" class="muted"></div>
+        </details>
+        <details open style="margin-top: 0.5rem">
+          <summary>Registered commands</summary>
+          <button id="slash-refresh" type="button">Refresh</button>
+          <div id="slash-list" class="muted"></div>
+        </details>
       </section>
       <section id="panel-tokens" class="panel">
         <label>Member <input id="token-member" /></label>
@@ -1251,6 +1280,122 @@
         }
       }
 
+      async function loadSlashCommands() {
+        const box = document.getElementById("slash-list");
+        box.innerHTML = "";
+        const suffix = `/workspaces/${wid()}/slash-commands`;
+        const url = token() ? `${base()}${suffix}` : uiReadPath(suffix);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) {
+            box.textContent = `HTTP ${res.status}`;
+            return;
+          }
+          const cmds = await res.json();
+          if (!cmds.length) {
+            box.textContent = "No slash commands";
+            return;
+          }
+          cmds.forEach((c) => {
+            const div = document.createElement("div");
+            div.className = "deliv";
+            const head = document.createElement("div");
+            head.className = "deliv-head";
+            const tag = document.createElement("span");
+            tag.className = "deliv-kind";
+            tag.textContent = c.handler_kind;
+            head.appendChild(tag);
+            const name = document.createElement("span");
+            name.textContent = ` /${c.name}${c.enabled ? "" : " · revoked"}`;
+            head.appendChild(name);
+            div.appendChild(head);
+            if (c.description) {
+              const d = document.createElement("div");
+              d.textContent = c.description;
+              div.appendChild(d);
+            }
+            const target = document.createElement("div");
+            target.className = "muted";
+            target.textContent = `→ ${c.handler_target}`;
+            div.appendChild(target);
+            if (c.enabled) {
+              const revoke = document.createElement("button");
+              revoke.type = "button";
+              revoke.textContent = "Revoke";
+              revoke.onclick = () => revokeSlashCommand(c.id);
+              div.appendChild(revoke);
+            }
+            box.appendChild(div);
+          });
+        } catch (e) {
+          box.textContent = String(e);
+        }
+      }
+
+      async function registerSlashCommand() {
+        if (!requireAuthForWrite()) return;
+        const name = document.getElementById("slash-name").value.trim();
+        if (!name) return alert("Name required");
+        const handlerKind = document.getElementById("slash-kind").value;
+        const handlerTarget = document.getElementById("slash-target").value.trim();
+        if (!handlerTarget) return alert("Handler target required");
+        const description = document.getElementById("slash-desc").value.trim() || null;
+        const secretBox = document.getElementById("slash-secret");
+        secretBox.innerHTML = "";
+        try {
+          const res = await fetch(apiWritePath(`/workspaces/${wid()}/slash-commands`), {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({
+              name,
+              description,
+              handler_kind: handlerKind,
+              handler_target: handlerTarget,
+            }),
+          });
+          if (!res.ok) return setStatus(`register HTTP ${res.status}`, "err");
+          const out = await res.json();
+          setStatus(`Registered /${name}`, "ok");
+          if (out.secret) {
+            const warn = document.createElement("div");
+            warn.textContent = "Signing secret (shown once — copy it now):";
+            secretBox.appendChild(warn);
+            const code = document.createElement("code");
+            code.textContent = out.secret;
+            code.style.wordBreak = "break-all";
+            secretBox.appendChild(code);
+            const copy = document.createElement("button");
+            copy.type = "button";
+            copy.textContent = "Copy";
+            copy.onclick = () => navigator.clipboard.writeText(out.secret);
+            secretBox.appendChild(copy);
+          }
+          document.getElementById("slash-name").value = "";
+          document.getElementById("slash-target").value = "";
+          document.getElementById("slash-desc").value = "";
+          await loadSlashCommands();
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
+      async function revokeSlashCommand(id) {
+        if (!requireAuthForWrite()) return;
+        try {
+          const res = await fetch(apiWritePath(`/workspaces/${wid()}/slash-commands/${id}`), {
+            method: "DELETE",
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return setStatus(`revoke HTTP ${res.status}`, "err");
+          setStatus("Command revoked", "ok");
+          await loadSlashCommands();
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
       async function loadMessageEdits(messageId) {
         const box = document.getElementById("edit-history-list");
         if (!messageId) {
@@ -1741,6 +1886,8 @@
       document.getElementById("op-reindex-workspace").onclick = () => startReindex(false);
       document.getElementById("op-reindex-global").onclick = () => startReindex(true);
       document.getElementById("op-reindex-poll").onclick = pollReindex;
+      document.getElementById("slash-register").onclick = registerSlashCommand;
+      document.getElementById("slash-refresh").onclick = loadSlashCommands;
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
