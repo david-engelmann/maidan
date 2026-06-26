@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [142.0.0] — 2026-06-26
+
+Post-gate hardening (Phase XXIV). UI feature: slash-command registry. No new gate tag.
+
+### Added
+
+- **Slash-command registry in the `/ui` console** — a new "Slash" tab to register (name / description / `handler_kind` `http`|`mcp_tool` / `handler_target`), list, and revoke workspace slash commands. For an `http` handler the one-time webhook signing secret is shown once at registration (copy button + warning, like token minting). Backed by new session-gated `/ui/api/workspaces/:wid/slash-commands[/:cid]` routes reusing the tested `slash_commands::*` handlers. Commands still run by posting `/name args` as a message (dispatch is message-triggered; there is no execute endpoint). `ui_js_contract` guard validates the new JS.
+
 ## [141.0.0] — 2026-06-26
 
 Post-gate hardening (Phase XXIV). Docs fix: the published site now serves every page. No new gate tag.
