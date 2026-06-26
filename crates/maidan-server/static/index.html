@@ -196,6 +196,15 @@
       }
       .deliv-dlq { color: var(--err); font-weight: 600; }
       .deliv-err { color: var(--err); word-break: break-word; }
+      .slash-result {
+        margin-top: 0.3rem; padding: 0.3rem 0.5rem; font-size: 0.82rem;
+        border-left: 3px solid var(--accent); background: #f8fafc;
+      }
+      .slash-head { font-weight: 600; }
+      .slash-ok { color: var(--ok); }
+      .slash-warn { color: #b45309; }
+      .slash-err { color: var(--err); word-break: break-word; }
+      .slash-response { margin: 0.2rem 0 0; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; }
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
@@ -706,6 +715,7 @@
           const meta = document.createElement("div");
           meta.className = "meta";
           let metaText = `${m.id} · ${m.author_id}`;
+          if (m.posted_at) metaText += ` · ${m.posted_at.slice(0, 19).replace("T", " ")}`;
           if (m.edited_at) metaText += " · edited";
           meta.textContent = metaText;
           const pinned = pinnedIds.has(m.id);
@@ -724,6 +734,7 @@
           body.textContent = m.body;
           div.appendChild(meta);
           div.appendChild(body);
+          renderSlashResult(m.metadata, div);
           artifactShasFromMetadata(m.metadata).forEach((sha) => {
             const card = document.createElement("div");
             card.className = "artifact-card";
@@ -743,6 +754,40 @@
           loadReactions(m.id, reactions);
           box.appendChild(div);
         });
+      }
+
+      function renderSlashResult(meta, div) {
+        if (!meta || typeof meta !== "object" || !meta.slash_command) return;
+        const sc = meta.slash_command;
+        const sr = meta.slash_response || {};
+        const boxEl = document.createElement("div");
+        boxEl.className = "slash-result";
+        const head = document.createElement("div");
+        head.className = "slash-head";
+        head.textContent = `⌘ /${sc.name}${sc.args ? " " + sc.args : ""}`;
+        boxEl.appendChild(head);
+        const status = document.createElement("div");
+        if (sr.ok) {
+          status.className = "slash-ok";
+          status.textContent = "✓ ok";
+        } else if (sr.retrying) {
+          status.className = "slash-warn";
+          status.textContent = `⟳ retrying${sr.error ? " · " + sr.error : ""}`;
+        } else {
+          status.className = "slash-err";
+          status.textContent = `✗ ${sr.error || "failed"}`;
+        }
+        boxEl.appendChild(status);
+        if (sr.response !== undefined) {
+          const pre = document.createElement("pre");
+          pre.className = "slash-response";
+          pre.textContent =
+            typeof sr.response === "string"
+              ? sr.response
+              : JSON.stringify(sr.response, null, 2);
+          boxEl.appendChild(pre);
+        }
+        div.appendChild(boxEl);
       }
 
       const QUICK_REACTIONS = ["👍", "❤️", "✅", "🎉", "👀"];
