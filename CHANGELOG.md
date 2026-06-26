@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [141.0.0] — 2026-06-26
+
+Post-gate hardening (Phase XXIV). Docs fix: the published site now serves every page. No new gate tag.
+
+### Fixed
+
+- **The published mdBook site shipped a sidebar of ~20 dead links.** mdBook only builds chapter sources under its `src/` dir, but `book/src/SUMMARY.md` referenced the canonical docs with `../docs/...` paths that escape `src/`; mdBook silently skipped them, so only 3 pages (`introduction`, `api`, `mcp-reference`) actually existed and every `docs/*` link 404'd — the links even resolved outside the `/maidan/` base (clicking "Integrating with Maidan" went to GitHub's user-level 404). New `book/sync-docs.sh` stages the 21 SUMMARY-referenced docs into `book/src/docs/` at build time (run by `docs.yml` before `mdbook build`), rewriting out-of-`docs/` repo-root links to absolute GitHub URLs and flattening Obsidian `[[wikilinks]]`. SUMMARY/intro/api links drop the `../`. The site now builds 27 pages (was ~6); the integration guide is reachable from the live nav.
+
+### Added
+
+- **Copy-pasteable local quickstart on the docs landing page** and a **helpful custom 404** (`book/src/404.md`) pointing lost readers to the home + integration guide and noting the `/maidan/` URL prefix.
+
 ## [140.0.0] — 2026-06-25
 
 Post-gate hardening (Phase XXIV). UI feature: workspace presence roster. No new gate tag.

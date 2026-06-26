@@ -33,14 +33,14 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v126.0.0`** (P
 | What | Notes |
 |------|-------|
 | Full MCP streamable 2024-11-05 bidirectional mux | Subset shipped in **73**; spec-complete session still open |
-| Global cross-workspace admin audit query API | Audit data exists per workspace; query API not exposed |
+| Docs link-checker in CI | `docs` job builds but doesn't fail on dead links; mdBook silently skipped out-of-`src` SUMMARY entries until **141**. A linkcheck step (e.g. `mdbook-linkcheck`) would catch regressions. |
 | Multi-region active-active | Out of scope |
 
-_Closed (verified v126/v131): OpenAPI↔capability map (**121**), OTLP export + dashboards + e2e (**89/90/123**), `sqlite-vec` + per-model embedding tables (**85/86**); webhook+automation delivery unification — substantially addressed (shared signing/backoff + unified operator API; storage intentionally separate, **131**)._
+_Closed (verified v126/v131/v132): OpenAPI↔capability map (**121**), OTLP export + dashboards + e2e (**89/90/123**), `sqlite-vec` + per-model embedding tables (**85/86**); webhook+automation delivery unification — substantially addressed (shared signing/backoff + unified operator API; storage intentionally separate, **131**); global cross-workspace admin audit query API (`GET /operator/audit`, gated by `audit:read-global`, **132**)._
 
 ## Known state
 
-- **Latest tag:** **`v126.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
+- **Latest tag:** **`v141.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 

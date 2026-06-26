@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v141.0.0 — Published docs serve every page (dead-nav fix)
+
+| Capability | Where |
+|------------|-------|
+| The mdBook site builds + serves all 21 SUMMARY pages (was ~20 dead links) | `book/sync-docs.sh`, `book/src/SUMMARY.md`, `.github/workflows/docs.yml` |
+| Landing-page quickstart + helpful custom 404 | `book/src/introduction.md`, `book/src/404.md` |
+
+_Post-gate hardening (Phase XXIV): a build-time staging step copies the canonical `docs/*` into `book/src/docs/` so mdBook builds them as real in-site pages; the integration guide is now reachable from the live nav. No new gate tag._
+
 ## v140.0.0 — Workspace presence roster in the console
 
 | Capability | Where |
