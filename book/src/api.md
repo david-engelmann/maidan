@@ -8,6 +8,6 @@ The spec documents REST routes and `application/problem+json` errors. MCP
 (`POST /mcp`) and WebSocket (`GET /ws/subscribe`) are not fully in OpenAPI; see
 [MCP reference](./mcp-reference.md).
 
-See [Integrating with Maidan](../docs/Integration.md) for auth, capabilities, and transports.
+See [Integrating with Maidan](docs/Integration.md) for auth, capabilities, and transports.
 
-See also [Production](../docs/Production.md) for probes, environment variables, and bootstrap.
+See also [Production](docs/Production.md) for probes, environment variables, and bootstrap.

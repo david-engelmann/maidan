@@ -10,6 +10,10 @@ Cargo.lock.bak
 /dist/
 /build/
 
+# mdBook (generated): build output + docs staged in by book/sync-docs.sh
+/book/build/
+/book/src/docs/
+
 # Coverage
 *.profraw
 *.profdata

@@ -34,6 +34,8 @@ jobs:
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: "0.4.40"
+      - name: stage docs into book/src
+        run: bash book/sync-docs.sh
       - name: build site
         run: mdbook build book
       - uses: actions/upload-artifact@v4
