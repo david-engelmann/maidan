@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v142.0.0 — Slash-command registry in the console
+
+| Capability | Where |
+|------------|-------|
+| Register / list / revoke slash commands in `/ui` (new "Slash" tab) | `static/index.html`, `/ui/api/workspaces/:wid/slash-commands[/:cid]` |
+
+_Post-gate hardening (Phase XXIV): surfaces the slash-command registry reusing the tested `slash_commands::*` handlers under `/ui/api`; one-time secret display for `http` handlers. Execution stays message-triggered (`/name args`). No new gate tag._
+
 ## v141.0.0 — Published docs serve every page (dead-nav fix)
 
 | Capability | Where |
