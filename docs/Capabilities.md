@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v143.0.0 — Richer message rendering (timestamps + slash results)
+
+| Capability | Where |
+|------------|-------|
+| Thread messages show `posted_at` + inline slash-command results | `static/index.html` (`renderMessages`/`renderSlashResult`) |
+
+_Post-gate hardening (Phase XXIV): UI-only polish surfacing data already in the message payload; completes the slash loop in the thread view. No new gate tag._
+
 ## v142.0.0 — Slash-command registry in the console
 
 | Capability | Where |

@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [143.0.0] — 2026-06-30
+
+Post-gate hardening (Phase XXIV). UI polish: richer message rendering. No new gate tag.
+
+### Added
+
+- **Timestamps and inline slash-command results in the `/ui` thread view** — `renderMessages` now shows each message's `posted_at` (trimmed) in the meta line, and renders a compact block from `slash_command`/`slash_response` metadata (`⌘ /name args`, ok / error / retrying status, and the handler response). Completes the slash loop: register in the Slash tab (142), run by posting `/name args`, see the result inline. UI-only (no backend); the data was already in the message payload. `ui_js_contract` guard validates the new JS.
+
 ## [142.0.0] — 2026-06-26
 
 Post-gate hardening (Phase XXIV). UI feature: slash-command registry. No new gate tag.
