@@ -17,7 +17,11 @@ Post-gate hardening (Phase XXIV). UI polish: richer message rendering. No new ga
 
 ### Security
 
-- **Bumped `anyhow` 1.0.102 → 1.0.104** to clear **RUSTSEC-2026-0190** (unsoundness in `Error::downcast_mut()` on a `.context()`-wrapped error). The advisory landed in the RustSec DB and failed the required `lint` job's `cargo-deny` advisories check on every PR; the fix is in `anyhow >= 1.0.103`. Lockfile-only, no code change.
+- **Cleared three RustSec advisory-DB findings that had accumulated on the `cargo-deny` gate** (lockfile-only bumps, no `Cargo.toml`/code change):
+  - `anyhow` 1.0.102 → 1.0.104 — **RUSTSEC-2026-0190** (unsoundness in `Error::downcast_mut()` on a `.context()`-wrapped error; fixed in `>= 1.0.103`).
+  - `crossbeam-epoch` 0.9.18 → 0.9.20 — **RUSTSEC-2026-0204** (invalid pointer dereference in the `fmt::Pointer` impl for `Atomic`/`Shared`; fixed in `>= 0.9.20`).
+  - `spin` 0.10.0 → 0.10.1 (and 0.9.8 → 0.9.9) — the 0.10.0 release (via `crc-fast` → `aws-sdk-s3`) was **yanked**.
+  - These landed in the RustSec DB over time and failed the required `lint` job's `cargo-deny` advisories check on every PR. `cargo deny check` is clean again locally.
 
 ## [142.0.0] — 2026-06-26
 

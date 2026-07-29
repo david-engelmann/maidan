@@ -34,14 +34,21 @@ unnecessary, `cargo deny check` flags it ("unnecessary skip"); remove it.
 | `base64` | **0.22** (our crates) | 0.21 from openidconnect v4 | Clears with **openidconnect v5** (see below). |
 | `hmac` | 0.12 (server) | 0.12 **and** 0.13, both AWS-internal | Inside the AWS SDK crypto stack (`aws-sigv4`/`p256`/`hkdf`); not ours to collapse. |
 
-## `anyhow` — RUSTSEC-2026-0190 (fixed by upgrade, Cluster 143)
+## RustSec advisory-DB findings cleared in Cluster 143 (upgrade-away)
 
-**RUSTSEC-2026-0190** (unsoundness in `anyhow::Error::downcast_mut()` when the
-error carries `.context()`) landed in the advisory DB and failed the required
-`lint` job's `cargo-deny` advisories check for every PR. Fixed by bumping
-`anyhow` **1.0.102 → 1.0.104** (`cargo update -p anyhow`; the fix is in
-`>= 1.0.103`). Lockfile-only — no `Cargo.toml` change (our req is `1`). No
-ignore added; this is a clean upgrade-away.
+A `cargo-deny` **advisories** gate is a function of *time*, not just the diff —
+new advisories (and crate yanks) turn `main` red with no code change. Three
+had accumulated by Cluster 143; all fixed by lockfile-only bumps (no
+`Cargo.toml` change, no `[advisories] ignore` added):
+
+| Advisory | Crate | Bump | Note |
+|----------|-------|------|------|
+| **RUSTSEC-2026-0190** | `anyhow` | 1.0.102 → 1.0.104 | unsoundness in `Error::downcast_mut()` on a `.context()`-wrapped error; fix in `>= 1.0.103` |
+| **RUSTSEC-2026-0204** | `crossbeam-epoch` | 0.9.18 → 0.9.20 | invalid pointer deref in `fmt::Pointer` for `Atomic`/`Shared`; fix in `>= 0.9.20` |
+| yanked | `spin` | 0.10.0 → 0.10.1 | 0.10.0 (via `crc-fast` → `aws-sdk-s3`) was yanked |
+
+Distinct from the standing `RUSTSEC-2023-0071` (`rsa`) ignore below — those are
+clean upgrades, not exceptions.
 
 ## openidconnect v5 — tracking item
 
