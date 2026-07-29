@@ -34,6 +34,15 @@ unnecessary, `cargo deny check` flags it ("unnecessary skip"); remove it.
 | `base64` | **0.22** (our crates) | 0.21 from openidconnect v4 | Clears with **openidconnect v5** (see below). |
 | `hmac` | 0.12 (server) | 0.12 **and** 0.13, both AWS-internal | Inside the AWS SDK crypto stack (`aws-sigv4`/`p256`/`hkdf`); not ours to collapse. |
 
+## `anyhow` — RUSTSEC-2026-0190 (fixed by upgrade, Cluster 143)
+
+**RUSTSEC-2026-0190** (unsoundness in `anyhow::Error::downcast_mut()` when the
+error carries `.context()`) landed in the advisory DB and failed the required
+`lint` job's `cargo-deny` advisories check for every PR. Fixed by bumping
+`anyhow` **1.0.102 → 1.0.104** (`cargo update -p anyhow`; the fix is in
+`>= 1.0.103`). Lockfile-only — no `Cargo.toml` change (our req is `1`). No
+ignore added; this is a clean upgrade-away.
+
 ## openidconnect v5 — tracking item
 
 openidconnect **v5 is not yet published** (latest is `4.0.1`). The v4 subtree is

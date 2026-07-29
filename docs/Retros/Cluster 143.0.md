@@ -23,6 +23,13 @@
 - **Nothing new on the wire.** Both additions were already in the message
   payload — `posted_at` and the `slash_*` metadata written by slash dispatch
   — just never rendered. The first cluster that's pure presentation.
+- **CI went red mid-cluster from an upstream advisory, not our code.** While the
+  retro sat open, **RUSTSEC-2026-0190** (unsoundness in `anyhow::Error::downcast_mut()`)
+  landed in the RustSec DB and failed the required `lint` job's `cargo-deny`
+  advisories check on the docs-only PR. Fixed by bumping `anyhow`
+  1.0.102 → 1.0.104 (fix is in `>= 1.0.103`); folded into this cluster since it
+  blocked 143's own release gate. A recurring reality of a `cargo-deny`
+  advisories gate: green is a function of *time*, not just the diff.
 
 ## Decisions
 

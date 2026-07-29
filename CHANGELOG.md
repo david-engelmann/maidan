@@ -15,6 +15,10 @@ Post-gate hardening (Phase XXIV). UI polish: richer message rendering. No new ga
 
 - **Timestamps and inline slash-command results in the `/ui` thread view** — `renderMessages` now shows each message's `posted_at` (trimmed) in the meta line, and renders a compact block from `slash_command`/`slash_response` metadata (`⌘ /name args`, ok / error / retrying status, and the handler response). Completes the slash loop: register in the Slash tab (142), run by posting `/name args`, see the result inline. UI-only (no backend); the data was already in the message payload. `ui_js_contract` guard validates the new JS.
 
+### Security
+
+- **Bumped `anyhow` 1.0.102 → 1.0.104** to clear **RUSTSEC-2026-0190** (unsoundness in `Error::downcast_mut()` on a `.context()`-wrapped error). The advisory landed in the RustSec DB and failed the required `lint` job's `cargo-deny` advisories check on every PR; the fix is in `anyhow >= 1.0.103`. Lockfile-only, no code change.
+
 ## [142.0.0] — 2026-06-26
 
 Post-gate hardening (Phase XXIV). UI feature: slash-command registry. No new gate tag.
