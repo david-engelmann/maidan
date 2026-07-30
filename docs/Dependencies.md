@@ -34,6 +34,22 @@ unnecessary, `cargo deny check` flags it ("unnecessary skip"); remove it.
 | `base64` | **0.22** (our crates) | 0.21 from openidconnect v4 | Clears with **openidconnect v5** (see below). |
 | `hmac` | 0.12 (server) | 0.12 **and** 0.13, both AWS-internal | Inside the AWS SDK crypto stack (`aws-sigv4`/`p256`/`hkdf`); not ours to collapse. |
 
+## RustSec advisory-DB findings cleared in Cluster 143 (upgrade-away)
+
+A `cargo-deny` **advisories** gate is a function of *time*, not just the diff —
+new advisories (and crate yanks) turn `main` red with no code change. Three
+had accumulated by Cluster 143; all fixed by lockfile-only bumps (no
+`Cargo.toml` change, no `[advisories] ignore` added):
+
+| Advisory | Crate | Bump | Note |
+|----------|-------|------|------|
+| **RUSTSEC-2026-0190** | `anyhow` | 1.0.102 → 1.0.104 | unsoundness in `Error::downcast_mut()` on a `.context()`-wrapped error; fix in `>= 1.0.103` |
+| **RUSTSEC-2026-0204** | `crossbeam-epoch` | 0.9.18 → 0.9.20 | invalid pointer deref in `fmt::Pointer` for `Atomic`/`Shared`; fix in `>= 0.9.20` |
+| yanked | `spin` | 0.10.0 → 0.10.1 | 0.10.0 (via `crc-fast` → `aws-sdk-s3`) was yanked |
+
+Distinct from the standing `RUSTSEC-2023-0071` (`rsa`) ignore below — those are
+clean upgrades, not exceptions.
+
 ## openidconnect v5 — tracking item
 
 openidconnect **v5 is not yet published** (latest is `4.0.1`). The v4 subtree is
