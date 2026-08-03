@@ -21,8 +21,39 @@ use crate::error::McpError;
 use crate::protocol::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use crate::{prompts, resources, tools};
 
-const MCP_VERSION: &str = "2024-11-05";
+/// Protocol revisions this server implements, newest first. `initialize`
+/// negotiates against the client's requested version, and the HTTP transports
+/// validate the `MCP-Protocol-Version` header against this set. The streamable
+/// transport features land incrementally; `2024-11-05` is the negotiated
+/// baseline all transports honor.
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05"];
 const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
+
+/// The version `initialize` echoes when the client requests none, and the
+/// fallback when it requests an unsupported one (per the MCP spec: respond with
+/// a version the server supports).
+pub fn preferred_protocol_version() -> &'static str {
+    SUPPORTED_PROTOCOL_VERSIONS[0]
+}
+
+/// Whether `version` is one this server implements — used to validate the
+/// `MCP-Protocol-Version` header.
+pub fn is_supported_protocol_version(version: &str) -> bool {
+    SUPPORTED_PROTOCOL_VERSIONS.contains(&version)
+}
+
+/// Negotiate the `initialize` protocol version: echo the client's requested
+/// version if supported, else the preferred one (MCP spec §Lifecycle).
+fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
+    requested
+        .and_then(|v| {
+            SUPPORTED_PROTOCOL_VERSIONS
+                .iter()
+                .find(|s| **s == v)
+                .copied()
+        })
+        .unwrap_or_else(preferred_protocol_version)
+}
 
 #[derive(Clone)]
 pub struct McpServer {
@@ -139,7 +170,10 @@ impl McpServer {
         auth: &AuthContext,
     ) -> Result<Value, McpError> {
         match request.method.as_str() {
-            "initialize" => self.initialize().await,
+            "initialize" => self.initialize(&request.params).await,
+            // The client's post-initialize handshake notification is accepted
+            // (and ignored) rather than treated as an unknown method.
+            "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools::catalog() })),
             "tools/call" => self.tools_call(&request.params, auth).await,
             "resources/list" => Ok(json!({ "resources": resources::catalog() })),
@@ -152,9 +186,11 @@ impl McpServer {
         }
     }
 
-    async fn initialize(&self) -> Result<Value, McpError> {
+    async fn initialize(&self, params: &Value) -> Result<Value, McpError> {
+        let requested = params.get("protocolVersion").and_then(|v| v.as_str());
+        let protocol_version = negotiate_protocol_version(requested);
         Ok(json!({
-            "protocolVersion": MCP_VERSION,
+            "protocolVersion": protocol_version,
             "capabilities": {
                 "tools": {},
                 "resources": { "subscribe": true },
@@ -422,6 +458,40 @@ mod tests {
             method: method.into(),
             params,
         }
+    }
+
+    #[test]
+    fn protocol_version_negotiation_follows_the_spec_rule() {
+        // Supported requested version is echoed; unsupported/absent fall back to preferred.
+        assert_eq!(negotiate_protocol_version(Some("2024-11-05")), "2024-11-05");
+        assert_eq!(
+            negotiate_protocol_version(Some("1999-01-01")),
+            preferred_protocol_version()
+        );
+        assert_eq!(
+            negotiate_protocol_version(None),
+            preferred_protocol_version()
+        );
+        assert!(is_supported_protocol_version("2024-11-05"));
+        assert!(!is_supported_protocol_version("1999-01-01"));
+    }
+
+    #[tokio::test]
+    async fn initialize_echoes_negotiated_version_and_the_initialized_notification_is_accepted() {
+        let (server, _thread, _member) = mk_server().await;
+        let auth = AuthContext::bypass();
+        let init = server
+            .handle(
+                request(1, "initialize", json!({ "protocolVersion": "2024-11-05" })),
+                &auth,
+            )
+            .await;
+        assert_eq!(init.result.unwrap()["protocolVersion"], "2024-11-05");
+        // The post-init handshake notification is dispatched without error.
+        let ack = server
+            .handle(request(2, "notifications/initialized", json!({})), &auth)
+            .await;
+        assert!(ack.error.is_none());
     }
 
     #[tokio::test]

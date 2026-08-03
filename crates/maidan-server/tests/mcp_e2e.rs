@@ -642,3 +642,91 @@ async fn parse_error_for_garbage_body() {
     assert_eq!(body["error"]["code"], -32700);
     server.abort();
 }
+
+#[tokio::test]
+async fn mcp_initialize_negotiates_protocol_version() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    // A supported requested version is echoed back verbatim.
+    let ok = rpc(
+        &client,
+        &base,
+        1,
+        "initialize",
+        json!({ "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t"} }),
+    )
+    .await;
+    assert_eq!(ok["result"]["protocolVersion"], "2024-11-05");
+    // An unsupported requested version falls back to a version the server supports.
+    let fallback = rpc(
+        &client,
+        &base,
+        2,
+        "initialize",
+        json!({ "protocolVersion": "1999-01-01" }),
+    )
+    .await;
+    assert_eq!(fallback["result"]["protocolVersion"], "2024-11-05");
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_batch_returns_array_of_responses() {
+    let (addr, client, server, _dir) = spawn().await;
+    let batch = json!([
+        { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} },
+        { "jsonrpc": "2.0", "method": "notifications/initialized" },
+        { "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} },
+    ]);
+    let resp = client
+        .post(format!("http://{addr}/mcp"))
+        .json(&batch)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    let arr = body.as_array().expect("batch returns an array");
+    // Two id-bearing requests → two responses; the notification produces none.
+    assert_eq!(arr.len(), 2);
+    let ids: Vec<&Value> = arr.iter().map(|r| &r["id"]).collect();
+    assert!(ids.contains(&&json!(1)) && ids.contains(&&json!(2)));
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_notification_gets_202_and_no_body() {
+    let (addr, client, server, _dir) = spawn().await;
+    let resp = client
+        .post(format!("http://{addr}/mcp"))
+        .json(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    assert!(resp.bytes().await.unwrap().is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_unsupported_protocol_version_header_is_rejected() {
+    let (addr, client, server, _dir) = spawn().await;
+    let resp = client
+        .post(format!("http://{addr}/mcp"))
+        .header("mcp-protocol-version", "1999-01-01")
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    // A supported version passes through.
+    let ok = client
+        .post(format!("http://{addr}/mcp"))
+        .header("mcp-protocol-version", "2024-11-05")
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), StatusCode::OK);
+    server.abort();
+}

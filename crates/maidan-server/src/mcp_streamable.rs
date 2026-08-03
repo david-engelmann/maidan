@@ -27,6 +27,7 @@ pub async fn streamable(
         auth.require_capability(WORKSPACE_READ)
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
+    crate::mcp::validate_protocol_version(&headers)?;
 
     let request: JsonRpcRequest = match serde_json::from_slice(&body) {
         Ok(r) => r,
