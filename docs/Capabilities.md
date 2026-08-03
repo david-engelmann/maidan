@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v146.0.0 — MCP GET /mcp/streamable SSE + Accept negotiation
+
+| Capability | Where |
+|------------|-------|
+| `GET /mcp/streamable` server→client SSE stream (session-aware) | `mcp_streamable.rs::stream_get`, `app.rs`, cap-map |
+| `Accept`-based JSON-vs-SSE content negotiation on `POST /mcp/streamable` | `mcp_streamable.rs::accepts_event_stream` |
+
+_Post-gate hardening (Phase XXIV): part 2 of the MCP streamable spec-completeness arc (145–148). Resumability (147) and server→client requests (148) remain. No new gate tag._
+
 ## v145.0.0 — MCP conformance basics (initialize/version + batching + notifications)
 
 | Capability | Where |

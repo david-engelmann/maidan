@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [146.0.0] — 2026-08-03
+
+Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 2 of the 145–148 arc. No new gate tag.
+
+### Added
+
+- **`GET /mcp/streamable`** — the MCP spec's server→client SSE stream on the streamable endpoint. Delivers unsolicited server notifications (e.g. `notifications/resources/updated`) from the server-wide broadcast; touches + echoes an open `Mcp-Session-Id` (`workspace:read`).
+- **`Accept`-header content negotiation on `POST /mcp/streamable`** — a client that accepts only `application/json` (no `text/event-stream`) gets a single JSON response instead of an opened SSE session, per the spec's "return SSE or JSON" rule. Absent `Accept` preserves the streaming default.
+
 ## [145.0.0] — 2026-08-03
 
 Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 1 of the 145–148 arc. No new gate tag.
