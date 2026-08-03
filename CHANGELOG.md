@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [145.0.0] — 2026-08-03
+
+Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 1 of the 145–148 arc. No new gate tag.
+
+### Added
+
+- **MCP `initialize` protocol-version negotiation** — reads the client's `protocolVersion` and echoes it if supported, else the preferred one (MCP spec §Lifecycle); was: params ignored, version hardcoded. New `maidan-mcp` API: `SUPPORTED_PROTOCOL_VERSIONS` / `is_supported_protocol_version` / `preferred_protocol_version`.
+- **`MCP-Protocol-Version` header validation** on `POST /mcp` and `POST /mcp/streamable` — absent is allowed (back-compat), present-but-unsupported → `400`.
+- **JSON-RPC batching** on `POST /mcp` — a top-level array is dispatched element-by-element and answered with an array of responses (quota per request); an empty batch → `-32600`.
+- **JSON-RPC notifications** (requests without an `id`) are executed for effect and answered `202 Accepted` with no body (single or in a batch); `notifications/initialized` and `notifications/cancelled` are accepted instead of `MethodNotFound`.
+
 ## [144.0.0] — 2026-08-03
 
 Post-gate hardening (Phase XXIV). Docs dead-link gate + latent-link cleanup. No new gate tag.
