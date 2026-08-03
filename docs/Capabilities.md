@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v145.0.0 — MCP conformance basics (initialize/version + batching + notifications)
+
+| Capability | Where |
+|------------|-------|
+| MCP `initialize` protocol-version negotiation; `MCP-Protocol-Version` header validation | `maidan-mcp/src/server.rs`, `maidan-server/src/mcp.rs`, `mcp_streamable.rs` |
+| JSON-RPC batching + notifications (`202`) on `POST /mcp` | `maidan-server/src/mcp.rs` |
+
+_Post-gate hardening (Phase XXIV): first of the MCP streamable spec-completeness arc (145–148). Closes the JSON-RPC/lifecycle conformance gaps; streamable-transport gaps (GET SSE, resumability, server→client requests) follow in 146–148. No new gate tag._
+
 ## v144.0.0 — Docs dead-link gate + latent-link cleanup
 
 | Capability | Where |
