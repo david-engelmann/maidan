@@ -32,6 +32,14 @@ fn accepts_event_stream(headers: &HeaderMap) -> bool {
     }
 }
 
+/// The `Last-Event-ID` header parsed as the session event id to resume after.
+fn last_event_id(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get("last-event-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse().ok())
+}
+
 pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -78,8 +86,17 @@ async fn follow_up_on_open_session(
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
     let response = state.mcp.handle(request, auth).await;
-    push_response_and_notifications(state, session_id, &response).await?;
-    let mut resp = StatusCode::ACCEPTED.into_response();
+    // Mux onto the open SSE leg (202). If that leg has since dropped — the
+    // session survives it now, for reconnect — the response was still logged
+    // for replay; answer it inline (200) rather than failing.
+    let mut resp = if push_response_and_notifications(state, session_id, &response)
+        .await
+        .is_ok()
+    {
+        StatusCode::ACCEPTED.into_response()
+    } else {
+        Json(response).into_response()
+    };
     attach_session_header(&mut resp, session_id);
     Ok(resp)
 }
@@ -116,20 +133,16 @@ async fn open_new_streamable_session(
         }
     });
 
-    let registry_cleanup = registry.clone();
-    let session_cleanup = session_id.clone();
-    let stream = futures::stream::unfold(sse_rx, move |mut rx| {
-        let registry_cleanup = registry_cleanup.clone();
-        let session_cleanup = session_cleanup.clone();
-        async move {
-            match rx.recv().await {
-                Some(data) => Some((Ok::<Event, Infallible>(Event::default().data(data)), rx)),
-                None => {
-                    registry_cleanup.close(&session_cleanup).await;
-                    None
-                }
-            }
-        }
+    // Each frame carries its `id:` so a dropped client can resume with
+    // `Last-Event-ID`. The session is *not* closed when this stream ends — it
+    // stays open (with its replay log) for reconnect until TTL or DELETE.
+    let stream = futures::stream::unfold(sse_rx, move |mut rx| async move {
+        rx.recv().await.map(|(event_id, data)| {
+            (
+                Ok::<Event, Infallible>(Event::default().id(event_id.to_string()).data(data)),
+                rx,
+            )
+        })
     });
 
     let mut resp = Sse::new(stream)
@@ -208,13 +221,24 @@ pub async fn stream_get(
         _ => None,
     };
 
+    // Resumability: with an open session and a `Last-Event-ID`, replay the
+    // retained frames after that id before the live stream (Cluster 147).
+    let replay_frames = match (&session_id, last_event_id(&headers)) {
+        (Some(id), Some(after)) => registry.replay_after(id, after).await,
+        _ => Vec::new(),
+    };
+    let replay = futures::stream::iter(replay_frames.into_iter().map(|(event_id, data)| {
+        Ok::<Event, Infallible>(Event::default().id(event_id.to_string()).data(data))
+    }));
+
     let rx = state.mcp.subscribe_notifications();
-    let stream = BroadcastStream::new(rx).filter_map(|item| {
+    let live = BroadcastStream::new(rx).filter_map(|item| {
         let notification = item.ok()?;
         serde_json::to_string(&notification)
             .ok()
             .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
     });
+    let stream = replay.chain(live);
 
     let mut resp = Sse::new(stream)
         .keep_alive(

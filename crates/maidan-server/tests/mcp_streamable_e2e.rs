@@ -443,3 +443,70 @@ async fn streamable_post_with_json_accept_returns_single_json() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn streamable_get_replays_after_last_event_id() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+
+    // Open a session with `initialize` (SSE). The response is session event id 0.
+    let init = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(init.status(), StatusCode::OK);
+    let session = init
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    // Drop the SSE stream; the session (and its replay log) survives for reconnect.
+    drop(init);
+
+    // A follow-up on the open session logs event id 1 (the tools/list response),
+    // whether it muxes (202) or answers inline (200) after the leg dropped.
+    let follow = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        follow.status() == StatusCode::ACCEPTED || follow.status() == StatusCode::OK,
+        "follow-up status {}",
+        follow.status()
+    );
+
+    // Reconnect via GET with Last-Event-ID: 0 → the retained event id 1 is replayed.
+    let get = client
+        .get(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .header("last-event-id", "0")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let mut buf = String::new();
+    let mut stream = get.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+        if buf.contains("\"id\":2") {
+            break;
+        }
+    }
+    assert!(
+        buf.contains("\"id\":2"),
+        "replay should include the tools/list response"
+    );
+    assert!(
+        buf.contains("id: 1"),
+        "replayed frame carries its SSE event id"
+    );
+
+    server.abort();
+}
