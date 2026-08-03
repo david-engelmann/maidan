@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [144.0.0] — 2026-08-03
+
+Post-gate hardening (Phase XXIV). Docs dead-link gate + latent-link cleanup. No new gate tag.
+
+### Added
+
+- **Dead-link gate in the `docs` CI job** — `book.toml` gains an `[output.linkcheck]` renderer (`warning-policy = "error"`, `follow-web-links = false`), so `mdbook build` now fails on a dead internal link instead of shipping it (the class of bug behind the ~20 dead sidebar links fixed in 141). `docs.yml` installs `mdbook-linkcheck`; the second renderer nests HTML under `build/html/`, so the deploy uploads from there.
+
+### Fixed
+
+- **35 latent broken links in the published docs** (surfaced the moment the gate went on): space-named files are now staged under hyphenated names (`Capability Map.md` → `Capability-Map.md`, plus Agent Integration / Open Work / Cluster A) — eliminating `%20`-in-path and giving cleaner URLs (`/maidan/docs/Capability-Map.html`); links out of the published set (unpublished `docs/` pages, repo source, `.github/`, `deny.toml`) are rewritten to absolute GitHub URLs; and `docs/Decisions.md` stray `[`Type`]` bracket-refs (dangling reference-links) were fixed.
+
+### Changed
+
+- **Backlog docs reconciled against shipped code** — `Remaining Work.md §4` no longer lists the global cross-workspace admin-audit API as an open gap (shipped in **132**, UI in **138**); the Slack-parity matrix + Web-UI row now reflect the 134–143 `/ui` track; `Open Work.md`/`Remaining Work.md` baselines bumped to v143.
+
 ## [143.0.0] — 2026-06-30
 
 Post-gate hardening (Phase XXIV). UI polish: richer message rendering. No new gate tag.

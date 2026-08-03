@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v144.0.0 — Docs dead-link gate + latent-link cleanup
+
+| Capability | Where |
+|------------|-------|
+| CI fails the docs build on dead internal links (was: shipped silently) | `book/book.toml` `[output.linkcheck]`, `.github/workflows/docs.yml`, `book/sync-docs.sh` |
+| 35 latent broken published links fixed; space-files hyphenated (cleaner URLs) | `book/sync-docs.sh`, `book/src/SUMMARY.md` |
+
+_Post-gate hardening (Phase XXIV): the 141 follow-up — turns the doc-nav guarantee into a CI gate and fixes the broken links it surfaced. Backlog docs reconciled (132 audit API + 134–143 UI track). No new gate tag._
+
 ## v143.0.0 — Richer message rendering (timestamps + slash results)
 
 | Capability | Where |
