@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v147.0.0 — MCP streamable resumability (Last-Event-ID)
+
+| Capability | Where |
+|------------|-------|
+| SSE `id:` on session frames + `Last-Event-ID` reconnect replay | `maidan-mcp/src/streamable_session.rs`, `mcp_streamable.rs` |
+| Streamable session survives a dropped POST leg (reconnectable) | `mcp_streamable.rs` |
+
+_Post-gate hardening (Phase XXIV): part 3 of the MCP streamable spec-completeness arc (145–148). Server→client requests (148) remain. No new gate tag._
+
 ## v146.0.0 — MCP GET /mcp/streamable SSE + Accept negotiation
 
 | Capability | Where |

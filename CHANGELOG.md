@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [147.0.0] — 2026-08-03
+
+Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 3 of the 145–148 arc. No new gate tag.
+
+### Added
+
+- **MCP streamable resumability (`Last-Event-ID` replay)** — every session SSE frame now carries a monotonic `id:`; the registry retains the last 256 in a bounded per-session log. `GET /mcp/streamable` with a `Last-Event-ID` header replays the retained frames after that id (as id'd SSE events) before continuing live — the spec's reconnect/redelivery mechanism.
+
+### Changed
+
+- **A streamable session survives a dropped POST stream** (was: the stream's end closed it), so a client can reconnect and replay; TTL/DELETE still clean up. A follow-up POST whose SSE leg has dropped now degrades gracefully to a single JSON response (200) instead of failing — the response is logged for replay regardless.
+
 ## [146.0.0] — 2026-08-03
 
 Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 2 of the 145–148 arc. No new gate tag.
