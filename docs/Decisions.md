@@ -210,7 +210,7 @@ infrastructure.
 
 ### MCP resource notifications on HTTP SSE (`v16.0.0`)
 
-**Decision.** Share one [`McpServer`] per process in [`AppState`]; fan-out
+**Decision.** Share one `McpServer` per process in `AppState`; fan-out
 `notifications/resources/updated` on a tokio broadcast channel; expose
 `GET /mcp/notifications` as an SSE stream of JSON-RPC notification lines.
 `POST /mcp` stays one-request-one-response.

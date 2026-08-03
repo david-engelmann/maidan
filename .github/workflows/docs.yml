@@ -20,7 +20,7 @@ jobs:
   build:
     name: mdbook
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: install rust
@@ -34,9 +34,13 @@ jobs:
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: "0.4.40"
+      - name: install mdbook-linkcheck
+        # The `[output.linkcheck]` renderer in book.toml runs during `mdbook build`
+        # and fails the build on dead internal links. mdBook finds it on PATH.
+        run: cargo install mdbook-linkcheck --locked --version 0.7.7
       - name: stage docs into book/src
         run: bash book/sync-docs.sh
-      - name: build site
+      - name: build site (also runs the dead-link check)
         run: mdbook build book
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +66,8 @@ jobs:
       - name: upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: book/build
+          # linkcheck is a second renderer, so mdBook nests HTML under build/html
+          path: book/build/html
       - name: deploy pages
         id: deployment
         uses: actions/deploy-pages@v4
