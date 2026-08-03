@@ -30,7 +30,7 @@ and [Deploy](docs/Deploy.md).
 
 - **HTTP:** import `GET /openapi.json` from your server — overview in [HTTP API](./api.md).
 - **MCP:** [MCP tools & resources](./mcp-reference.md) (generated on each docs build).
-- **Capabilities:** [Capability map](docs/Capability%20Map.md) and `contracts/*.json` in the repo.
+- **Capabilities:** [Capability map](docs/Capability-Map.md) and `contracts/*.json` in the repo.
 
 ## About this site
 

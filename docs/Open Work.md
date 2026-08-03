@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v126.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121–126). Reconciled against code at v126 (Cluster 127).
+Updated at each cluster retro. **Baseline:** code on `main` at **`v143.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+). Reconciled against code at v126 (Cluster 127) and again at v143 (Cluster 144).
 
 ## Standing risks (still open)
 

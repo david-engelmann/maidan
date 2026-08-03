@@ -14,3 +14,11 @@ git-repository-url = "https://github.com/david-engelmann/maidan"
 edit-url-template = "https://github.com/david-engelmann/maidan/edit/main/{path}"
 site-url = "/maidan/"
 cname = ""
+
+# Dead-link gate: fail `mdbook build` on broken internal links (the class of bug
+# that shipped ~20 dead sidebar links before Cluster 141). Web links are not
+# fetched (no network flakiness in CI). Adding this second renderer nests the
+# HTML output under `build/html/` — docs.yml deploys from there.
+[output.linkcheck]
+follow-web-links = false
+warning-policy = "error"

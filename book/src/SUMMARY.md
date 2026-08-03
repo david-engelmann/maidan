@@ -5,8 +5,8 @@
 # Integrate
 
 - [Integrating with Maidan](docs/Integration.md)
-- [Capability map](docs/Capability%20Map.md)
-- [Agent integration (alias)](docs/Agent%20Integration.md)
+- [Capability map](docs/Capability-Map.md)
+- [Agent integration (alias)](docs/Agent-Integration.md)
 
 # Reference
 
@@ -28,11 +28,11 @@
 - [Conventions](docs/Conventions.md)
 - [Operations](docs/Operations.md)
 - [Dependencies](docs/Dependencies.md)
-- [Open Work](docs/Open%20Work.md)
+- [Open Work](docs/Open-Work.md)
 - [Roadmap](docs/Roadmap.md)
 
 # Historical (optional)
 
 - [Vault index](docs/README.md)
-- [Cluster plans](docs/Clusters/Cluster%20A.md) — see `docs/Clusters/` in the repo
+- [Cluster plans](docs/Clusters/Cluster-A.md) — see `docs/Clusters/` in the repo
 - [Retrospectives](docs/Retros/README.md)
