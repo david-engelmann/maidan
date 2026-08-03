@@ -618,6 +618,12 @@
     "surface": "mcp"
   },
   {
+    "method": "GET",
+    "path": "/mcp/streamable",
+    "capability": "workspace:read",
+    "surface": "mcp"
+  },
+  {
     "method": "POST",
     "path": "/mcp/streamable",
     "capability": "workspace:read",
