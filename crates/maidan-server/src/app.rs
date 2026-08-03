@@ -33,6 +33,7 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/mcp", post(mcp::handler))
         .route("/mcp/streamable", post(mcp_streamable::streamable))
+        .route("/mcp/streamable", get(mcp_streamable::stream_get))
         .route("/mcp/streamable", delete(mcp_streamable::close_session))
         .route("/a2a/v1/rpc", post(a2a_agent::json_rpc))
         .route("/mcp/notifications", get(mcp_notifications::stream))

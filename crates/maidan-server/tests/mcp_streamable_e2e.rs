@@ -321,3 +321,125 @@ async fn streamable_delete_closes_session() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn streamable_get_delivers_server_notification() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "get-sse-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap();
+    let alice: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "alice", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let alice_id = alice["id"].as_str().unwrap();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let th: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "stream"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = th["id"].as_str().unwrap();
+    let uri = format!("maidan://threads/{thread_id}");
+
+    // Subscribe to the resource, then open the server→client GET SSE stream.
+    let _: Value = client
+        .post(format!("{base}/mcp"))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"resources/subscribe","params":{"uri":uri}}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let get_resp = client
+        .get(format!("{base}/mcp/streamable"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    // Trigger an update; it must arrive on the already-open GET stream.
+    let _ = client
+        .post(format!("{base}/mcp"))
+        .json(&json!({
+            "jsonrpc":"2.0","id":2,"method":"tools/call",
+            "params":{"name":"post_message","arguments":{
+                "thread_id": thread_id, "author_id": alice_id, "body": "hi"}}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let mut buf = String::new();
+    let mut stream = get_resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+        if buf.contains("notifications/resources/updated") {
+            break;
+        }
+    }
+    assert!(
+        buf.contains(&uri),
+        "GET stream should carry the resource-updated notification"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn streamable_post_with_json_accept_returns_single_json() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("accept", "application/json")
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        content_type.contains("application/json"),
+        "JSON Accept should yield a JSON body, got {content_type}"
+    );
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["id"], 1);
+    assert!(body["result"]["protocolVersion"].is_string());
+
+    server.abort();
+}

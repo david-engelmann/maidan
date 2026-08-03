@@ -13,9 +13,24 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_mcp::{JsonRpcRequest, JsonRpcResponse};
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
 use crate::state::AppState;
+
+/// Whether the client's `Accept` header permits an SSE response. Absent →
+/// `true` (preserve the streaming default). MCP spec: the server may answer a
+/// request with a single `application/json` body when the client accepts it.
+fn accepts_event_stream(headers: &HeaderMap) -> bool {
+    match headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(accept) => accept.contains("text/event-stream") || accept.contains("*/*"),
+        None => true,
+    }
+}
 
 pub async fn streamable(
     State(state): State<AppState>,
@@ -35,6 +50,13 @@ pub async fn streamable(
     };
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
         return Ok(Json(resp).into_response());
+    }
+
+    // Content negotiation: a client that accepts only JSON gets a single
+    // response body rather than an SSE session (MCP spec allows either).
+    if !accepts_event_stream(&headers) {
+        let response = state.mcp.handle(request, &auth).await;
+        return Ok(Json(response).into_response());
     }
 
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
@@ -160,6 +182,51 @@ pub async fn close_session(
     };
     state.mcp.streamable_sessions().close(session_id).await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Server→client SSE stream for a streamable session (`GET /mcp/streamable`,
+/// Cluster 146). Delivers unsolicited server notifications (e.g. resource
+/// updates) per the MCP spec's server-initiated GET stream; touches and echoes
+/// an open `Mcp-Session-Id` when supplied.
+pub async fn stream_get(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    if !auth.bypass {
+        auth.require_capability(WORKSPACE_READ)
+            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
+    }
+    crate::mcp::validate_protocol_version(&headers)?;
+
+    let registry = state.mcp.streamable_sessions();
+    let session_id = match headers.get("mcp-session-id").and_then(|v| v.to_str().ok()) {
+        Some(id) if !id.is_empty() && registry.is_open(id).await => {
+            registry.touch(id).await;
+            Some(id.to_string())
+        }
+        _ => None,
+    };
+
+    let rx = state.mcp.subscribe_notifications();
+    let stream = BroadcastStream::new(rx).filter_map(|item| {
+        let notification = item.ok()?;
+        serde_json::to_string(&notification)
+            .ok()
+            .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
+    });
+
+    let mut resp = Sse::new(stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("ping"),
+        )
+        .into_response();
+    if let Some(id) = session_id {
+        attach_session_header(&mut resp, &id);
+    }
+    Ok(resp)
 }
 
 fn attach_session_header(resp: &mut Response, session_id: &str) {
