@@ -32,14 +32,14 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v143.0.0`** (P
 
 | What | Notes |
 |------|-------|
-| Full MCP streamable transport spec-completeness | **In progress — arc 145–148.** 145 landed initialize/version negotiation + `MCP-Protocol-Version` header + JSON-RPC batching + notifications; 146 GET SSE + `Accept`, 147 resumability, 148 server→client requests remain. |
+| Full MCP streamable transport spec-completeness | **In progress — arc 145–148.** 145 (initialize/version + header + batching + notifications) and 146 (`GET /mcp/streamable` SSE + `Accept` negotiation) shipped; 147 resumability + 148 server→client requests remain. |
 | Multi-region active-active | Out of scope |
 
 _Closed (verified v126/v131/v132/v144): OpenAPI↔capability map (**121**), OTLP export + dashboards + e2e (**89/90/123**), `sqlite-vec` + per-model embedding tables (**85/86**); webhook+automation delivery unification — substantially addressed (shared signing/backoff + unified operator API; storage intentionally separate, **131**); global cross-workspace admin audit query API (`GET /operator/audit`, gated by `audit:read-global`, **132**); docs link-checker in CI (`mdbook-linkcheck` gate, **144**)._
 
 ## Known state
 
-- **Latest tag:** **`v145.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
+- **Latest tag:** **`v146.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 
