@@ -52,7 +52,24 @@ pub async fn streamable(
     }
     crate::mcp::validate_protocol_version(&headers)?;
 
-    let request: JsonRpcRequest = match serde_json::from_slice(&body) {
+    // Parse once as a value so a client's *response* (to a server→client
+    // request) can be told apart from a request/notification.
+    let value: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
+    };
+    let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
+
+    // A JSON-RPC response (has `id`, no `method`) answers a server→client
+    // request — route it to the awaiting caller rather than dispatching it.
+    if value.get("method").is_none() && value.get("id").is_some() {
+        if let Some(sid) = session_header.filter(|s| !s.is_empty()) {
+            state.mcp.resolve_client_response(sid, value).await;
+        }
+        return Ok(StatusCode::ACCEPTED.into_response());
+    }
+
+    let request: JsonRpcRequest = match serde_json::from_value(value) {
         Ok(r) => r,
         Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
     };
@@ -67,9 +84,7 @@ pub async fn streamable(
         return Ok(Json(response).into_response());
     }
 
-    let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
     let registry = state.mcp.streamable_sessions();
-
     if let Some(existing) = session_header.filter(|s| !s.is_empty()) {
         if registry.is_open(existing).await {
             return follow_up_on_open_session(&state, &auth, existing, request).await;
@@ -110,6 +125,19 @@ async fn open_new_streamable_session(
     let session_id = state.mcp.touch_streamable_session(session_header).await;
     let registry = state.mcp.streamable_sessions();
     let sse_rx = registry.open(session_id.clone()).await;
+
+    // Record the client's declared capabilities so the server can gate
+    // server→client requests (sampling / roots / elicitation) on them.
+    if request.method == "initialize" {
+        let capabilities = request
+            .params
+            .get("capabilities")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        registry
+            .set_client_capabilities(&session_id, capabilities)
+            .await;
+    }
 
     let response = state.mcp.handle(request, auth).await;
     push_response_and_notifications(state, &session_id, &response).await?;

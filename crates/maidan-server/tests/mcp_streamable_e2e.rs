@@ -15,6 +15,16 @@ use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
+    let (addr, client, server, _mcp) = spawn_with_mcp().await;
+    (addr, client, server)
+}
+
+async fn spawn_with_mcp() -> (
+    SocketAddr,
+    reqwest::Client,
+    tokio::task::JoinHandle<()>,
+    Arc<maidan_mcp::McpServer>,
+) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -42,6 +52,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    let mcp = state.mcp.clone();
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -50,7 +61,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         .timeout(Duration::from_secs(10))
         .build()
         .unwrap();
-    (addr, client, server)
+    (addr, client, server, mcp)
 }
 
 #[tokio::test]
@@ -507,6 +518,77 @@ async fn streamable_get_replays_after_last_event_id() {
         buf.contains("id: 1"),
         "replayed frame carries its SSE event id"
     );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn server_to_client_request_round_trips_over_http() {
+    let (addr, client, server, mcp) = spawn_with_mcp().await;
+    let base = format!("http://{addr}");
+
+    // Open a session; the client declares the `sampling` capability.
+    let init = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":"2024-11-05","capabilities":{"sampling":{}}}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(init.status(), StatusCode::OK);
+    let session = init
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // The server issues a sampling request to the client…
+    let mcp_bg = mcp.clone();
+    let session_bg = session.clone();
+    let call = tokio::spawn(async move {
+        mcp_bg
+            .request_client(
+                &session_bg,
+                "sampling/createMessage",
+                json!({"prompt": "hi"}),
+            )
+            .await
+    });
+
+    // …which arrives on the client's SSE stream; read out its JSON-RPC id.
+    let mut buf = String::new();
+    let mut stream = init.bytes_stream();
+    let mut request_id = None;
+    while let Some(chunk) = stream.next().await {
+        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+        if let Some(line) = buf
+            .lines()
+            .find(|l| l.starts_with("data:") && l.contains("sampling/createMessage"))
+        {
+            let data = line.trim_start_matches("data:").trim();
+            let req: Value = serde_json::from_str(data).unwrap();
+            request_id = req["id"].as_i64();
+            break;
+        }
+    }
+    let request_id = request_id.expect("server→client request delivered on the SSE stream");
+
+    // The client POSTs its response; the awaiting server call resolves.
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&json!({"jsonrpc":"2.0","id":request_id,"result":{"text":"sure"}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    let result = call.await.unwrap().unwrap();
+    assert_eq!(result, json!({"text":"sure"}));
 
     server.abort();
 }
