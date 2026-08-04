@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v148.0.0 — MCP server→client requests (streamable arc complete)
+
+| Capability | Where |
+|------------|-------|
+| Server→client JSON-RPC requests (sampling / roots / elicitation), capability-gated + correlated | `maidan-mcp/src/server.rs::request_client`, `streamable_session.rs` |
+| Per-session client-capability tracking (from `initialize`) | `mcp_streamable.rs`, `streamable_session.rs` |
+
+_Post-gate hardening (Phase XXIV): concludes the MCP streamable spec-completeness arc (145–148) — version negotiation, header, batching, notifications, GET SSE, `Accept`, resumability, and now bidirectional requests. No new gate tag; the backlog item is closed._
+
 ## v147.0.0 — MCP streamable resumability (Last-Event-ID)
 
 | Capability | Where |
