@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
@@ -53,6 +54,20 @@ fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
                 .copied()
         })
         .unwrap_or_else(preferred_protocol_version)
+}
+
+/// How long a server→client request waits for the client's response.
+const CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The client capability a server→client method requires, or `None` if the
+/// method is not one the server may initiate.
+fn client_capability_for_method(method: &str) -> Option<&'static str> {
+    match method {
+        "sampling/createMessage" => Some("sampling"),
+        "roots/list" => Some("roots"),
+        "elicitation/create" => Some("elicitation"),
+        _ => None,
+    }
 }
 
 #[derive(Clone)]
@@ -140,6 +155,70 @@ impl McpServer {
     /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport).
     pub fn subscribe_notifications(&self) -> broadcast::Receiver<JsonRpcNotification> {
         self.notification_tx.subscribe()
+    }
+
+    /// Issue a server→client JSON-RPC request over a client's streamable
+    /// session (MCP `sampling/createMessage`, `roots/list`,
+    /// `elicitation/create`) and await its response (Cluster 148). Requires the
+    /// client to have declared the corresponding capability in `initialize`;
+    /// the request rides the session's SSE stream and the client's response
+    /// arrives as an inbound POST routed by [`Self::resolve_client_response`].
+    pub async fn request_client(
+        &self,
+        session_id: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, McpError> {
+        let capability = client_capability_for_method(method)
+            .ok_or_else(|| McpError::InvalidParams(format!("{method} is not a server request")))?;
+        let registry = &self.streamable_sessions;
+        if !registry.client_supports(session_id, capability).await {
+            return Err(McpError::Forbidden(format!(
+                "client did not declare the {capability} capability"
+            )));
+        }
+        let Some((request_id, rx)) = registry.register_client_request(session_id).await else {
+            return Err(McpError::Internal("unknown or closed mcp session".into()));
+        };
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        });
+        let data =
+            serde_json::to_string(&request).map_err(|e| McpError::Internal(e.to_string()))?;
+        if !registry.push(session_id, data).await {
+            registry.cancel_client_request(session_id, request_id).await;
+            return Err(McpError::Internal("mcp session has no live stream".into()));
+        }
+        match tokio::time::timeout(CLIENT_REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(response)) => {
+                if let Some(err) = response.get("error") {
+                    Err(McpError::Internal(format!("client returned error: {err}")))
+                } else {
+                    Ok(response.get("result").cloned().unwrap_or(Value::Null))
+                }
+            }
+            _ => {
+                registry.cancel_client_request(session_id, request_id).await;
+                Err(McpError::Internal(
+                    "client did not respond to server request".into(),
+                ))
+            }
+        }
+    }
+
+    /// Route an inbound JSON-RPC *response* (from the client on the streamable
+    /// endpoint) to the awaiting [`Self::request_client`]. Returns whether a
+    /// pending request matched.
+    pub async fn resolve_client_response(&self, session_id: &str, response: Value) -> bool {
+        let Some(request_id) = response.get("id").and_then(|v| v.as_i64()) else {
+            return false;
+        };
+        self.streamable_sessions
+            .resolve_client_response(session_id, request_id, response)
+            .await
     }
 
     /// Invoke a tool by name (used by slash-command dispatch and tests).
@@ -474,6 +553,53 @@ mod tests {
         );
         assert!(is_supported_protocol_version("2024-11-05"));
         assert!(!is_supported_protocol_version("1999-01-01"));
+    }
+
+    #[tokio::test]
+    async fn request_client_pushes_the_request_and_awaits_the_clients_response() {
+        let (server, _thread, _member) = mk_server().await;
+        let registry = server.streamable_sessions();
+        let mut client_rx = registry.open("sess".to_string()).await;
+        registry
+            .set_client_capabilities("sess", json!({"sampling": {}}))
+            .await;
+
+        // Issue the server→client request from one task…
+        let server_bg = server.clone();
+        let call = tokio::spawn(async move {
+            server_bg
+                .request_client("sess", "sampling/createMessage", json!({"prompt": "hi"}))
+                .await
+        });
+
+        // …the client reads it off its SSE stream and replies by id.
+        let (_event_id, data) = client_rx.recv().await.unwrap();
+        let pushed: Value = serde_json::from_str(&data).unwrap();
+        assert_eq!(pushed["method"], "sampling/createMessage");
+        let request_id = pushed["id"].as_i64().unwrap();
+        let response = json!({"jsonrpc": "2.0", "id": request_id, "result": {"text": "ok"}});
+        assert!(server.resolve_client_response("sess", response).await);
+
+        let result = call.await.unwrap().unwrap();
+        assert_eq!(result, json!({"text": "ok"}));
+    }
+
+    #[tokio::test]
+    async fn request_client_is_forbidden_without_the_declared_capability() {
+        let (server, _thread, _member) = mk_server().await;
+        let _rx = server.streamable_sessions().open("sess".to_string()).await;
+        // No capabilities declared → the server may not initiate sampling.
+        let err = server
+            .request_client("sess", "sampling/createMessage", json!({}))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, McpError::Forbidden(_)));
+        // An unknown method is a param error, not a capability check.
+        let err = server
+            .request_client("sess", "tools/list", json!({}))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, McpError::InvalidParams(_)));
     }
 
     #[tokio::test]
