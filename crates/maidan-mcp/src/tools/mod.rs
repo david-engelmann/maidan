@@ -18,6 +18,7 @@ mod artifact;
 mod automation;
 mod catalog;
 mod channel;
+mod member;
 mod message;
 mod reference;
 mod search;
@@ -36,7 +37,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_pins"
         | "get_artifact_metadata"
         | "get_thread_context"
-        | "get_workspace_context" => Ok(WORKSPACE_READ),
+        | "get_workspace_context"
+        | "list_mentions"
+        | "get_inbox"
+        | "mark_inbox_read" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -72,6 +76,9 @@ pub async fn dispatch(
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, args).await,
         "list_threads" => thread::list_threads(store, args).await,
+        "list_mentions" => member::list_mentions(store, args).await,
+        "get_inbox" => member::get_inbox(store, args).await,
+        "mark_inbox_read" => member::mark_inbox_read(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,

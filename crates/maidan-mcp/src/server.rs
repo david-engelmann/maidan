@@ -603,6 +603,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inbox_tools_surface_a_members_mentions() {
+        let (server, thread, member) = mk_server().await;
+        let auth = AuthContext::bypass();
+
+        // Post a message and record a mention of the member.
+        let msg = server
+            .store
+            .post_message(NewMessage {
+                thread_id: thread,
+                author_id: member,
+                body: "hey there".into(),
+                metadata: json!({}),
+            })
+            .await
+            .unwrap();
+        server.store.record_mention(msg.id, member).await.unwrap();
+
+        let parse = |out: Value| -> Value {
+            serde_json::from_str(out["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // list_mentions returns the mention.
+        let out = server
+            .call_tool(&auth, "list_mentions", &json!({ "member_id": member.0 }))
+            .await
+            .unwrap();
+        assert_eq!(parse(out).as_array().unwrap().len(), 1);
+
+        // get_inbox surfaces it too (as an object with the inbox shape).
+        let out = server
+            .call_tool(&auth, "get_inbox", &json!({ "member_id": member.0 }))
+            .await
+            .unwrap();
+        assert!(parse(out).is_object());
+
+        // mark_inbox_read advances the cursor and returns the inbox.
+        let out = server
+            .call_tool(
+                &auth,
+                "mark_inbox_read",
+                &json!({ "member_id": member.0, "read_through": chrono::Utc::now().to_rfc3339() }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(out["isError"], json!(false));
+    }
+
+    #[tokio::test]
     async fn initialize_echoes_negotiated_version_and_the_initialized_notification_is_accepted() {
         let (server, _thread, _member) = mk_server().await;
         let auth = AuthContext::bypass();

@@ -67,6 +67,42 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_mentions",
+            "description": "List recent @mentions of a member (most recent first).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "description": "max results (default 50, max 500)"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "get_inbox",
+            "description": "A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "description": "max mentions (default 50, max 500)"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "mark_inbox_read",
+            "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "read_through": {"type": "string", "format": "date-time"}
+                },
+                "required": ["member_id", "read_through"]
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {
