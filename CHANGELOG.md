@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [148.0.0] — 2026-08-04
+
+Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 4 (final) of the 145–148 arc. No new gate tag.
+
+### Added
+
+- **MCP server→client requests** — the server can now issue JSON-RPC *requests* to a client over its streamable session (`sampling/createMessage`, `roots/list`, `elicitation/create`) via `McpServer::request_client`, gated on the client having declared the matching capability in `initialize` (else `Forbidden`). The request rides the session's SSE stream; the client's response is POSTed back as a JSON-RPC response, which `POST /mcp/streamable` distinguishes from a request (has `id`, no `method`) and routes to the awaiting caller. Closes the "bidirectional" gap — the **MCP streamable spec-completeness arc (145–148) is complete**.
+- **Per-session client-capability tracking** — the streamable handler records the client's declared `capabilities` from `initialize` into the session (previously discarded), gating the above.
+
 ## [147.0.0] — 2026-08-03
 
 Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 3 of the 145–148 arc. No new gate tag.
