@@ -162,3 +162,86 @@ async fn mcp_stream_at_least_once_delivers_backlog_in_order_and_advances_cursor(
 
     server.abort();
 }
+
+#[tokio::test]
+async fn mcp_stream_filters_by_event_kind() {
+    let (addr, client, _store, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "filt"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+
+    // Live subscription narrowed to channel_created only (Cluster 150).
+    let resp = client
+        .get(format!(
+            "{base}/mcp/stream?workspace_id={workspace_id}&kinds=channel_created"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Let the subscription attach, then fire a member_joined (excluded) followed
+    // by a channel_created (included).
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "bob", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let _: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    // The first delivered event is the channel_created — member_joined was filtered.
+    let (kinds, _ack) = collect_events(resp, 1).await;
+    assert_eq!(
+        kinds[0], "channel_created",
+        "the kinds filter must exclude member_joined"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn mcp_stream_rejects_unknown_kind() {
+    let (addr, client, _store, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "bad"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let resp = client
+        .get(format!(
+            "{base}/mcp/stream?workspace_id={workspace_id}&kinds=not_a_real_kind"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    server.abort();
+}
