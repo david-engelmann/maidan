@@ -110,6 +110,10 @@ pub struct ThreadContextQuery {
     #[serde(default = "default_transition_limit")]
     pub transition_limit: i64,
     pub message_cursor: Option<uuid::Uuid>,
+    /// Include full `body_before`/`body_after` on each edit (heavy). Default
+    /// `false` returns edit metadata only — the largest token lever on a pack.
+    #[serde(default)]
+    pub include_edits: bool,
 }
 
 fn default_transition_limit() -> i64 {
@@ -125,6 +129,10 @@ pub struct WorkspaceContextQuery {
     #[serde(default)]
     pub transition_limit: i64,
     pub thread_cursor: Option<uuid::Uuid>,
+    /// Include full edit bodies on every nested thread pack (heavy). Default
+    /// `false` returns edit metadata only.
+    #[serde(default)]
+    pub include_edits: bool,
 }
 
 fn default_workspace_thread_limit() -> i64 {
@@ -197,6 +205,11 @@ pub struct SearchQuery {
     /// Hybrid only: semantic weight in `[0,1]` (default `0.5`). `combined =
     /// w*semantic + (1-w)*lexical` over the normalized scores.
     pub hybrid_weight: Option<f64>,
+    /// Drop the full message `body` from each hit, returning only the bounded
+    /// `snippet` (semantic hits get a truncated body prefix as their snippet).
+    /// Default `false` keeps today's full-body response.
+    #[serde(default)]
+    pub snippet_only: bool,
 }
 
 fn default_search_limit() -> i64 {

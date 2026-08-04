@@ -73,5 +73,12 @@ pub async fn search_messages(
                 .await?
         }
     };
+    let hits = if q.snippet_only {
+        hits.into_iter()
+            .map(maidan_search::SearchHit::into_snippet_only)
+            .collect()
+    } else {
+        hits
+    };
     Ok(Json(hits))
 }

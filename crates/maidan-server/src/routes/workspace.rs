@@ -145,6 +145,7 @@ pub async fn get_workspace_context(
             50
         },
         message_cursor: None,
+        include_edits: q.include_edits,
     };
     let packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
