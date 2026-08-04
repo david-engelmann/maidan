@@ -83,7 +83,9 @@ fn default_limit() -> i64 {
 
 pub(super) async fn list_messages(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ListMessagesArgs = serde_json::from_value(args.clone())?;
-    let messages = store.list_messages(ThreadId(a.thread_id), a.limit).await?;
+    let messages = store
+        .list_messages(ThreadId(a.thread_id), a.limit.clamp(1, 500))
+        .await?;
     Ok(content_json(&messages))
 }
 
