@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v150.0.0 — MCP stream thread/member/kind filters
+
+| Capability | Where |
+|------------|-------|
+| `GET /mcp/stream` narrowing by `channel_id`/`thread_id`/`member_id`/`kinds` (await my mention) | `crates/maidan-server/src/mcp_stream.rs` |
+
+_Post-gate hardening (Phase XXIV): completes the MCP-agent-surface pair (149 discover + 150 await mentions). Pure query→filter wiring over the existing `EventFilter`; no new gate tag._
+
 ## v149.0.0 — MCP inbox + mention tools
 
 | Capability | Where |

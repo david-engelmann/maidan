@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [150.0.0] — 2026-08-04
+
+Post-gate hardening (Phase XXIV). MCP agent surface, part 2 (stream filters). No new gate tag.
+
+### Added
+
+- **`GET /mcp/stream` narrowing by channel / thread / member / kind** — new `channel_id`, `thread_id`, `member_id`, and `kinds` (comma-separated snake_case event kinds; unknown → `400`) query params, wired into the existing `EventFilter`. The WebSocket subscribe already accepted the full filter, but the MCP/SSE stream only wired `workspace_id`/`dm_conversation_id`/`channel_grants` — so an MCP agent had to take the whole workspace firehose and filter client-side. Delivers the "await my mention" primitive: `?workspace_id=…&member_id=…&kinds=mention_recorded`. Completes the MCP-agent-surface pair with 149 (inbox/mentions).
+
 ## [149.0.0] — 2026-08-04
 
 Post-gate hardening (Phase XXIV). MCP agent surface, part 1 (inbox/mentions). No new gate tag.
