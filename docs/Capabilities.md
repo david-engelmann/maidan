@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v149.0.0 — MCP inbox + mention tools
+
+| Capability | Where |
+|------------|-------|
+| MCP `list_mentions` / `get_inbox` / `mark_inbox_read` (agent discovers its @mentions) | `crates/maidan-mcp/src/tools/member.rs`, catalog + contracts |
+
+_Post-gate hardening (Phase XXIV): first of the MCP-agent-surface arc (149–150), from the next-arc research. Closes the gap where an MCP-only agent couldn't see it was @mentioned. No new gate tag._
+
 ## v148.0.0 — MCP server→client requests (streamable arc complete)
 
 | Capability | Where |

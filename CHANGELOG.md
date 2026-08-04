@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [149.0.0] — 2026-08-04
+
+Post-gate hardening (Phase XXIV). MCP agent surface, part 1 (inbox/mentions). No new gate tag.
+
+### Added
+
+- **MCP inbox + mention tools** — `list_mentions`, `get_inbox`, `mark_inbox_read` (all `workspace:read`), so an MCP-only agent can discover it was @mentioned. The store + HTTP have had these reads for a while, but they were never in the MCP catalog — an agent could receive a mention (`record_mention` *is* an MCP tool) and have no way to find out. Mirror the HTTP handlers; limits clamp to (1, 500).
+
 ## [148.0.0] — 2026-08-04
 
 Post-gate hardening (Phase XXIV). MCP transport spec-completeness, part 4 (final) of the 145–148 arc. No new gate tag.
