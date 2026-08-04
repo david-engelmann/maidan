@@ -38,6 +38,18 @@ pub struct McpStreamQuery {
     pub dm_conversation_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub channel_grants: Vec<uuid::Uuid>,
+    /// Narrow live delivery to a single channel / thread / member (Cluster 150),
+    /// so an MCP agent can subscribe to just one thread or "just my mentions"
+    /// server-side instead of filtering the whole workspace client-side.
+    #[serde(default)]
+    pub channel_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub thread_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub member_id: Option<uuid::Uuid>,
+    /// Comma-separated event kinds (snake_case), e.g. `message_posted,mention_recorded`.
+    #[serde(default)]
+    pub kinds: Option<String>,
     /// Opt into gap-free at-least-once delivery (Cluster 126): cursor-driven
     /// reconcile instead of the optimistic live path. Requires `workspace_id`
     /// and `consumer_id`; adds a stability-window latency floor on fresh events.
@@ -229,6 +241,26 @@ fn resolve_stream_params(
                 .map(maidan_types::ChannelId)
                 .collect(),
         );
+    }
+    if let Some(ch) = q.channel_id {
+        filter.channel_id = Some(maidan_types::ChannelId(ch));
+    }
+    if let Some(th) = q.thread_id {
+        filter.thread_id = Some(maidan_types::ThreadId(th));
+    }
+    if let Some(m) = q.member_id {
+        filter.member_id = Some(maidan_types::MemberId(m));
+    }
+    if let Some(kinds) = q.kinds.as_deref().filter(|s| !s.is_empty()) {
+        let mut set = std::collections::HashSet::new();
+        for name in kinds.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            let kind = maidan_types::EventKind::parse(name)
+                .ok_or_else(|| ApiError::BadRequest(format!("unknown event kind: {name}")))?;
+            set.insert(kind);
+        }
+        if !set.is_empty() {
+            filter.kinds = Some(set);
+        }
     }
 
     Ok((filter, q.after_id, false))
