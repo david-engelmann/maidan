@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [151.0.0] — 2026-08-04
+
+Post-gate hardening (Phase XXIV). Token-efficiency lean reads (arc item B1). No new gate tag.
+
+### Changed
+
+- **`get_thread_context` edits are lean by default** — each edit record now
+  carries only `{id, message_id, editor_id, edited_at}` instead of the full
+  `body_before` + `body_after` copies, which were the single largest token cost
+  in a context pack. New opt-in **`include_edits: true`** restores the full
+  before/after bodies. `get_workspace_context` inherits the lean default through
+  its nested per-thread packs (its biggest multiplier: N threads × edits). The
+  lean record is a strict subset of the full shape, so consumers that ignore
+  edit bodies are unaffected.
+
+### Fixed
+
+- **`list_messages` limit is clamped to `1..=500`** — previously unbounded, so a
+  negative or very large `limit` could pull the entire thread. Catalog schema
+  now advertises the bounds.
+
 ## [150.0.0] — 2026-08-04
 
 Post-gate hardening (Phase XXIV). MCP agent surface, part 2 (stream filters). No new gate tag.

@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v151.0.0 — Token-efficient lean context reads
+
+| Capability | Where |
+|------------|-------|
+| `get_thread_context` edits lean by default (`{id, editor, edited_at}`), opt-in `include_edits=true` for full bodies | `crates/maidan-mcp/src/context.rs` |
+| `list_messages` limit clamped to `1..=500` | `crates/maidan-mcp/src/tools/message.rs` |
+
+_Post-gate hardening (Phase XXIV): first token-efficiency cluster (arc item B1). Edit bodies were the largest token cost in a context pack; `get_workspace_context` inherits the lean default through its nested packs. MCP-only; the typed HTTP `/threads/:id/context` pack is a deferred follow-up. No new gate tag._
+
 ## v150.0.0 — MCP stream thread/member/kind filters
 
 | Capability | Where |
