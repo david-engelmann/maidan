@@ -109,7 +109,7 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "limit": {"type": "integer", "default": 100}
+                    "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 500}
                 },
                 "required": ["thread_id"]
             }
@@ -428,13 +428,14 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_thread_context",
-            "description": "Pack thread messages, edits, references, and FSM history for agent prompts.",
+            "description": "Pack thread messages, edits, references, and FSM history for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
-                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."}
                 },
                 "required": ["thread_id"]
             }
