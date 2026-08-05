@@ -192,6 +192,7 @@ impl Modify for SecurityAddon {
         CreateThread,
         ThreadTransition,
         ThreadContext,
+        crate::thread_context::MessageEditView,
         ThreadFsmContext,
         WorkspaceContext,
         ThreadContextQuery,

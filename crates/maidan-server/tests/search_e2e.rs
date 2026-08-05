@@ -165,6 +165,43 @@ async fn http_search_returns_ranked_hits() {
 }
 
 #[tokio::test]
+async fn http_search_snippet_only_drops_bodies_and_keeps_snippets() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+
+    // Default: full bodies present.
+    let full: Vec<Value> = client
+        .get(format!("{base}/workspaces/{workspace_id}/search?q=rust"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(full.iter().all(|h| !h["body"].as_str().unwrap().is_empty()));
+
+    // snippet_only: bodies blanked, snippets retained (lexical hits have FTS snippets).
+    let lean: Vec<Value> = client
+        .get(format!(
+            "{base}/workspaces/{workspace_id}/search?q=rust&snippet_only=true"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(lean.len(), full.len());
+    for hit in &lean {
+        assert_eq!(hit["body"].as_str().unwrap(), "");
+        assert!(!hit["snippet"].as_str().unwrap().is_empty());
+    }
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn http_search_accepts_author_channel_and_kind_facets() {
     let (addr, client, server, _dir) = spawn().await;
     let base = format!("http://{addr}");

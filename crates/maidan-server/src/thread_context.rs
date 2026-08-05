@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
 use maidan_store::Store;
 use maidan_types::*;
 
@@ -13,13 +14,48 @@ pub struct ThreadFsmContext {
     pub transitions: Vec<ThreadTransition>,
 }
 
+/// A context-pack edit record. The `body_before`/`body_after` diff copies are
+/// the single largest token cost in a pack, so they are omitted unless the
+/// caller asks for them (`include_edits=true`); the who/when/which-message
+/// signal is always present. See `crates/maidan-mcp/src/context.rs` for the
+/// MCP-side twin of this behavior.
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct MessageEditView {
+    pub id: i64,
+    pub message_id: MessageId,
+    pub editor_id: MemberId,
+    pub edited_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_after: Option<String>,
+}
+
+impl MessageEditView {
+    fn from_edit(edit: MessageEdit, include_bodies: bool) -> Self {
+        let (body_before, body_after) = if include_bodies {
+            (Some(edit.body_before), Some(edit.body_after))
+        } else {
+            (None, None)
+        };
+        Self {
+            id: edit.id,
+            message_id: edit.message_id,
+            editor_id: edit.editor_id,
+            edited_at: edit.edited_at,
+            body_before,
+            body_after,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct ThreadContext {
     pub workspace_id: WorkspaceId,
     pub channel_id: ChannelId,
     pub thread: Thread,
     pub messages: Vec<Message>,
-    pub message_edits: Vec<MessageEdit>,
+    pub message_edits: Vec<MessageEditView>,
     pub references: Vec<Reference>,
     pub artifacts: Vec<Artifact>,
     pub fsm: ThreadFsmContext,
@@ -43,6 +79,9 @@ pub struct ThreadContextLimits {
     pub message_limit: i64,
     pub transition_limit: i64,
     pub message_cursor: Option<MessageId>,
+    /// Include full `body_before`/`body_after` on each edit. Default `false`:
+    /// edits carry metadata only. The single biggest token lever on a pack.
+    pub include_edits: bool,
 }
 
 impl Default for ThreadContextLimits {
@@ -51,6 +90,7 @@ impl Default for ThreadContextLimits {
             message_limit: 100,
             transition_limit: 50,
             message_cursor: None,
+            include_edits: false,
         }
     }
 }
@@ -134,6 +174,10 @@ pub async fn build_thread_context(
             e.id,
         )
     });
+    let message_edits: Vec<MessageEditView> = message_edits
+        .into_iter()
+        .map(|e| MessageEditView::from_edit(e, limits.include_edits))
+        .collect();
 
     Ok(ThreadContext {
         workspace_id,
