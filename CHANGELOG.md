@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [154.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). `request_client` GET-stream delivery fix (arc lane 3, part 1). No new gate tag.
+
+### Fixed
+
+- **Server→client requests now reach the canonical `GET /mcp/streamable`
+  stream.** `request_client` (sampling / roots / elicitation) previously pushed
+  onto the session's POST-leg mpsc, so a client listening on the spec-canonical
+  server→client GET stream never received them — only a client holding a POST
+  SSE leg did. A new per-session broadcast (`push_client_request` /
+  `subscribe_client_requests`) delivers server→client requests; `stream_get`
+  merges them with the unsolicited notifications. The POST-leg response/
+  notification mpsc and the replay log are untouched.
+
+### Changed
+
+- Server→client requests are delivered on the **GET stream**, not the POST leg
+  (spec-canonical). `request_client` has no organic caller yet (one arrives in
+  Cluster 155), so no integration regresses.
+
 ## [153.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). Live-updating `/ui` thread view (UI polish). No new gate tag.
