@@ -188,9 +188,14 @@ impl McpServer {
         });
         let data =
             serde_json::to_string(&request).map_err(|e| McpError::Internal(e.to_string()))?;
-        if !registry.push(session_id, data).await {
+        // Server→client requests ride the spec-canonical `GET /mcp/streamable`
+        // stream (Cluster 154), not the POST leg's response mpsc. No open GET
+        // leg → fail fast rather than await a reply that can't arrive.
+        if !registry.push_client_request(session_id, data).await {
             registry.cancel_client_request(session_id, request_id).await;
-            return Err(McpError::Internal("mcp session has no live stream".into()));
+            return Err(McpError::Internal(
+                "mcp session has no open GET stream to receive the request".into(),
+            ));
         }
         match tokio::time::timeout(CLIENT_REQUEST_TIMEOUT, rx).await {
             Ok(Ok(response)) => {
@@ -559,10 +564,12 @@ mod tests {
     async fn request_client_pushes_the_request_and_awaits_the_clients_response() {
         let (server, _thread, _member) = mk_server().await;
         let registry = server.streamable_sessions();
-        let mut client_rx = registry.open("sess".to_string()).await;
+        let _mpsc_rx = registry.open("sess".to_string()).await;
         registry
             .set_client_capabilities("sess", json!({"sampling": {}}))
             .await;
+        // The client listens on the canonical GET stream for server→client requests.
+        let mut client_rx = registry.subscribe_client_requests("sess").await.unwrap();
 
         // Issue the server→client request from one task…
         let server_bg = server.clone();
@@ -572,8 +579,8 @@ mod tests {
                 .await
         });
 
-        // …the client reads it off its SSE stream and replies by id.
-        let (_event_id, data) = client_rx.recv().await.unwrap();
+        // …the client reads it off the GET stream and replies by id.
+        let data = client_rx.recv().await.unwrap();
         let pushed: Value = serde_json::from_str(&data).unwrap();
         assert_eq!(pushed["method"], "sampling/createMessage");
         let request_id = pushed["id"].as_i64().unwrap();
