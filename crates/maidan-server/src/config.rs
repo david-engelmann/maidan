@@ -104,6 +104,55 @@ pub fn is_production() -> bool {
     std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
 }
 
+fn env_truthy(name: &str) -> bool {
+    matches!(
+        std::env::var(name).as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+/// Whether the operator asked to run with authentication disabled.
+pub fn auth_disabled_requested() -> bool {
+    env_truthy("AUTH_DISABLED")
+}
+
+/// Whether the operator has *explicitly acknowledged* running without any
+/// authentication. `AUTH_DISABLED` is fail-closed: it takes effect only when
+/// this is also set (and never in production).
+pub fn insecure_no_auth_acknowledged() -> bool {
+    env_truthy("MAIDAN_ALLOW_INSECURE_NO_AUTH")
+}
+
+/// Fail-closed gate for `AUTH_DISABLED`. Pure over its inputs so it is unit
+/// tested without touching the process environment. Disabling auth is rejected
+/// in production outright, and otherwise requires the explicit
+/// `MAIDAN_ALLOW_INSECURE_NO_AUTH` acknowledgement — so a stray `AUTH_DISABLED=1`
+/// (e.g. copied from a dev compose file) fails startup loudly instead of
+/// silently serving an unauthenticated workspace.
+pub(crate) fn validate_insecure_no_auth(
+    requested: bool,
+    production: bool,
+    acknowledged: bool,
+) -> Result<(), ConfigError> {
+    if requested {
+        if production {
+            return Err(ConfigError::Invalid(
+                "AUTH_DISABLED",
+                "cannot be set when MAIDAN_ENV=production".into(),
+            ));
+        }
+        if !acknowledged {
+            return Err(ConfigError::Invalid(
+                "AUTH_DISABLED",
+                "running without authentication requires MAIDAN_ALLOW_INSECURE_NO_AUTH=1 to \
+                 acknowledge the risk (never set this in production)"
+                    .into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
@@ -144,17 +193,11 @@ impl Config {
         let log_filter =
             std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".to_string());
 
-        if std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
-            && matches!(
-                std::env::var("AUTH_DISABLED").as_deref(),
-                Ok("1") | Ok("true") | Ok("TRUE")
-            )
-        {
-            return Err(ConfigError::Invalid(
-                "AUTH_DISABLED",
-                "cannot be set when MAIDAN_ENV=production".into(),
-            ));
-        }
+        validate_insecure_no_auth(
+            auth_disabled_requested(),
+            is_production(),
+            insecure_no_auth_acknowledged(),
+        )?;
 
         let db = DbConfig::from_lookup(|name| std::env::var(name).ok())?;
 
@@ -177,6 +220,25 @@ mod tests {
         let map: HashMap<&'static str, String> =
             pairs.iter().map(|(k, v)| (*k, v.to_string())).collect();
         move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn auth_disabled_is_fail_closed() {
+        // Not requested → always fine regardless of the other flags.
+        assert!(validate_insecure_no_auth(false, false, false).is_ok());
+        assert!(validate_insecure_no_auth(false, true, false).is_ok());
+        // Requested + acknowledged (non-prod) → allowed.
+        assert!(validate_insecure_no_auth(true, false, true).is_ok());
+        // Requested without the explicit acknowledgement → rejected.
+        assert!(matches!(
+            validate_insecure_no_auth(true, false, false),
+            Err(ConfigError::Invalid("AUTH_DISABLED", _))
+        ));
+        // Requested in production → rejected even with the acknowledgement.
+        assert!(matches!(
+            validate_insecure_no_auth(true, true, true),
+            Err(ConfigError::Invalid("AUTH_DISABLED", _))
+        ));
     }
 
     #[test]

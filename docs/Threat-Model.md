@@ -30,7 +30,7 @@ integrator document, not a formal audit.
 | ID | Threat | Mitigation today | Residual |
 |----|--------|------------------|----------|
 | T1 | Stolen API token | Capability-scoped tokens; revoke via `DELETE /tokens/:id` | Token usable until revoked |
-| T2 | `AUTH_DISABLED` left on in prod | `MAIDAN_ENV=production` refuses boot with auth disabled | Misconfiguration before guard added |
+| T2 | `AUTH_DISABLED` left on in prod / by mistake | **Fail-closed (`v157.0.0`):** `AUTH_DISABLED` is honored only with the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` acknowledgement and never when `MAIDAN_ENV=production` — either way boot is refused, so a stray flag can't silently open the server | A dev binary with both flags explicitly set is still open by design (intended for seed/test) |
 | T3 | Bootstrap routes create admin without auth | `MAIDAN_BOOTSTRAP=1` when auth is on; one workspace via bootstrap; production Docker image built **without** `bootstrap` feature (`v91.0.0`) | Open `/workspaces` if dev binary with `AUTH_DISABLED` or bootstrap left on |
 | T4 | Federation peer impersonation | Peer bearer + idempotent ingest | Compromised peer can push events |
 | T5 | Artifact exfiltration | Bearer on download; SHA-256 addressing | Guessable SHA if leaked elsewhere |
