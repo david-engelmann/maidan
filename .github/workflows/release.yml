@@ -235,6 +235,54 @@ jobs:
           cache-from: type=gha,scope=maidan-postgres
           cache-to: type=gha,mode=max,scope=maidan-postgres
 
+  sign-images:
+    name: cosign sign container images
+    needs: [docker-server-manifest, docker-postgres]
+    if: needs.docker-server-manifest.result == 'success' && needs.docker-postgres.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signing via GitHub OIDC
+    steps:
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v3
+      - name: login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: sign images by digest (keyless / Sigstore)
+        # Keyless signing via the job's GitHub OIDC identity (no private key).
+        # Resolve each tag to its immutable index digest and sign THAT, so the
+        # signature can't be dodged by a later tag re-point. Verify:
+        #   cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
+        #     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+        #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+        env:
+          COSIGN_YES: "true"
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          for name in maidan-server maidan-postgres; do
+            IMAGE="ghcr.io/${OWNER}/${name}"
+            DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')"
+            echo "signing ${IMAGE}@${DIGEST}"
+            cosign sign --yes "${IMAGE}@${DIGEST}"
+          done
+
   release:
     name: github release
     needs: [bundle]

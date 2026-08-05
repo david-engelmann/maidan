@@ -270,6 +270,18 @@ When PRs `X.1` through `X.N` are merged:
      maidan-<target>.tar.gz
    ```
 
+   The **container images** are also keyless-signed (`v158.0.0`): the
+   `sign-images` job resolves each pushed tag to its immutable index digest and
+   `cosign sign`s it. Verify (and enforce in an admission controller —
+   Kyverno/Sigstore policy):
+
+   ```sh
+   cosign verify ghcr.io/david-engelmann/maidan-server:v0.X.0 \
+     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   # same for ghcr.io/david-engelmann/maidan-postgres:v0.X.0
+   ```
+
 8. Open the next cluster kickoff.
 
 ## Debugging CI
