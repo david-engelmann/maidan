@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v153.0.0 — Live-updating `/ui` thread view
+
+| Capability | Where |
+|------------|-------|
+| `/ui` thread view refreshes live from WS message/reaction/pin frames (debounced) | `crates/maidan-server/static/index.html` |
+
+_Post-gate hardening (Phase XXIV): UI polish (arc lane 2). Routes the WS domain-event frames — previously only Events-tab log lines — into `loadMessages` for the open thread. No backend change._
+
 ## v152.0.0 — Lean HTTP context pack + snippet-only search
 
 | Capability | Where |
