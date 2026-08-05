@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v154.0.0 — `request_client` GET-stream delivery
+
+| Capability | Where |
+|------------|-------|
+| Server→client requests (sampling/roots/elicitation) delivered on the canonical `GET /mcp/streamable` | `crates/maidan-mcp/src/streamable_session.rs`, `crates/maidan-server/src/mcp_streamable.rs` |
+
+_Post-gate hardening (Phase XXIV): arc lane 3, part 1. Per-session request broadcast + GET-stream merge; POST-leg mpsc/replay untouched. A real caller (sampling-backed `summarize_thread`) arrives in Cluster 155. No new gate tag._
+
 ## v153.0.0 — Live-updating `/ui` thread view
 
 | Capability | Where |
