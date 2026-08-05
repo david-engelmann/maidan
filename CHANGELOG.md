@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [156.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 1 — production-safety defaults. No new gate tag.
+
+### Added
+
+- **SIGTERM graceful shutdown.** The server now drains on `SIGTERM` as well as
+  `SIGINT` (unix). Kubernetes/systemd send `SIGTERM` on rollout/stop; previously
+  the process was killed mid-request instead of draining through
+  `with_graceful_shutdown` + the worker `shutdown()` sequence. Falls back to
+  `SIGINT`-only if the handler can't be installed; non-unix unchanged.
+
+### Changed
+
+- **`MAIDAN_DB_STATEMENT_TIMEOUT_MS` now defaults to `30000` (30 s)** instead of
+  `0` (disabled), so a runaway query can't pin a pooled connection indefinitely.
+  Boot migrations remain exempt (they reset `statement_timeout = 0` under the
+  advisory lock); set `0` to restore the uncapped behavior. `docs/Production.md`
+  updated.
+
 ## [155.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). First organic `request_client` caller — sampling-backed `summarize_thread` (arc lane 3, part 2). No new gate tag.

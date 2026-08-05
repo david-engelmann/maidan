@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v156.0.0 — Production-safety defaults (SIGTERM drain + statement timeout)
+
+| Capability | Where |
+|------------|-------|
+| SIGTERM graceful shutdown (k8s/systemd drain) | `crates/maidan-server/src/main.rs` |
+| Default 30 s `statement_timeout` (runaway-query cap) | `crates/maidan-server/src/config.rs` |
+
+_Post-gate hardening (Phase XXIV): first cluster of the enterprise-hardening arc (from the 5-agent production-readiness sweep). Safe-by-default; both are configurable. No new gate tag._
+
 ## v155.0.0 — Sampling-backed `summarize_thread` (first `request_client` caller)
 
 | Capability | Where |
