@@ -420,9 +420,36 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("bind {}", config.bind))?;
     tracing::info!(addr = %listener.local_addr()?, "listening");
 
+    // Drain on SIGINT (ctrl_c) *and* SIGTERM — Kubernetes/systemd send SIGTERM
+    // on rollout/stop, and without handling it the process is killed mid-request
+    // instead of draining via `with_graceful_shutdown`.
     let shutdown = async {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::info!("shutdown signal received");
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            match signal(SignalKind::terminate()) {
+                Ok(mut sigterm) => {
+                    tokio::select! {
+                        _ = tokio::signal::ctrl_c() => {
+                            tracing::info!("shutdown signal received (SIGINT)");
+                        }
+                        _ = sigterm.recv() => {
+                            tracing::info!("shutdown signal received (SIGTERM)");
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "failed to install SIGTERM handler; SIGINT only");
+                    let _ = tokio::signal::ctrl_c().await;
+                    tracing::info!("shutdown signal received (SIGINT)");
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                tracing::info!("shutdown signal received");
+            }
         }
     };
 
