@@ -546,6 +546,18 @@ async fn server_to_client_request_round_trips_over_http() {
         .unwrap()
         .to_string();
 
+    // The client opens the canonical server→client GET stream for this session
+    // (Cluster 154 — server→client requests are delivered here, not on the POST
+    // leg). Subscribing happens as the handler builds the response, so it is
+    // established by the time `send()` returns its head.
+    let get_resp = client
+        .get(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
     // The server issues a sampling request to the client…
     let mcp_bg = mcp.clone();
     let session_bg = session.clone();
@@ -559,9 +571,9 @@ async fn server_to_client_request_round_trips_over_http() {
             .await
     });
 
-    // …which arrives on the client's SSE stream; read out its JSON-RPC id.
+    // …which arrives on the GET stream; read out its JSON-RPC id.
     let mut buf = String::new();
-    let mut stream = init.bytes_stream();
+    let mut stream = get_resp.bytes_stream();
     let mut request_id = None;
     while let Some(chunk) = stream.next().await {
         buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
@@ -575,7 +587,7 @@ async fn server_to_client_request_round_trips_over_http() {
             break;
         }
     }
-    let request_id = request_id.expect("server→client request delivered on the SSE stream");
+    let request_id = request_id.expect("server→client request delivered on the GET stream");
 
     // The client POSTs its response; the awaiting server call resolves.
     let resp = client

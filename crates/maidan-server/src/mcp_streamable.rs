@@ -260,12 +260,32 @@ pub async fn stream_get(
     }));
 
     let rx = state.mcp.subscribe_notifications();
-    let live = BroadcastStream::new(rx).filter_map(|item| {
+    let notifications = BroadcastStream::new(rx).filter_map(|item| {
         let notification = item.ok()?;
         serde_json::to_string(&notification)
             .ok()
             .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
     });
+
+    // Server→client requests (sampling / roots / elicitation) for this session
+    // are delivered here, on the canonical GET stream (Cluster 154), merged with
+    // the unsolicited notifications above.
+    let session_requests = match &session_id {
+        Some(id) => registry.subscribe_client_requests(id).await,
+        None => None,
+    };
+    let live: std::pin::Pin<
+        Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>,
+    > = match session_requests {
+        Some(req_rx) => {
+            let requests = BroadcastStream::new(req_rx).filter_map(|item| {
+                item.ok()
+                    .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
+            });
+            Box::pin(notifications.merge(requests))
+        }
+        None => Box::pin(notifications),
+    };
     let stream = replay.chain(live);
 
     let mut resp = Sse::new(stream)

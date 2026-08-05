@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
 
 /// Per-session SSE buffer bound (Cluster 129). A slow client that fills this is
 /// disconnected (push returns false) instead of growing server memory without
@@ -30,6 +30,11 @@ struct SessionEntry {
     /// client's response, keyed by that id.
     next_request_id: i64,
     pending: HashMap<i64, oneshot::Sender<Value>>,
+    /// Server→client requests are delivered on the spec-canonical
+    /// `GET /mcp/streamable` stream (Cluster 154). This broadcast fans a pushed
+    /// request out to every open GET leg for the session; the POST leg (which
+    /// consumes `tx`) carries only the request/response + notifications.
+    client_req_tx: broadcast::Sender<String>,
 }
 
 #[derive(Clone)]
@@ -72,6 +77,7 @@ impl StreamableSessionRegistry {
     pub async fn open(&self, id: String) -> tokio::sync::mpsc::Receiver<(u64, String)> {
         self.prune_expired().await;
         let (tx, rx) = tokio::sync::mpsc::channel(SESSION_BUFFER);
+        let (client_req_tx, _) = broadcast::channel(SESSION_BUFFER);
         self.sessions.lock().await.insert(
             id,
             SessionEntry {
@@ -82,6 +88,7 @@ impl StreamableSessionRegistry {
                 client_capabilities: Value::Null,
                 next_request_id: 0,
                 pending: HashMap::new(),
+                client_req_tx,
             },
         );
         rx
@@ -178,6 +185,29 @@ impl StreamableSessionRegistry {
         let (tx, rx) = oneshot::channel();
         entry.pending.insert(request_id, tx);
         Some((request_id, rx))
+    }
+
+    /// Deliver a server→client request payload on the session's GET-stream
+    /// broadcast. Returns whether it reached at least one open GET leg — a
+    /// `false` means no client is listening on the spec-canonical stream, so
+    /// the caller should fail fast rather than await a response that can't come.
+    pub async fn push_client_request(&self, id: &str, data: String) -> bool {
+        self.prune_expired().await;
+        let mut guard = self.sessions.lock().await;
+        let Some(entry) = guard.get_mut(id) else {
+            return false;
+        };
+        entry.last_touch = Instant::now();
+        entry.client_req_tx.send(data).is_ok()
+    }
+
+    /// Subscribe a `GET /mcp/streamable` leg to this session's server→client
+    /// requests. `None` if the session is gone.
+    pub async fn subscribe_client_requests(&self, id: &str) -> Option<broadcast::Receiver<String>> {
+        let mut guard = self.sessions.lock().await;
+        let entry = guard.get_mut(id)?;
+        entry.last_touch = Instant::now();
+        Some(entry.client_req_tx.subscribe())
     }
 
     /// Route the client's response (by request id) to the awaiting caller.
@@ -286,6 +316,24 @@ mod tests {
             !reg.resolve_client_response("sess", req_id, serde_json::json!({}))
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn client_requests_reach_a_get_stream_subscriber() {
+        let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
+        let _mpsc = reg.open("sess".to_string()).await;
+
+        // No GET leg subscribed yet → a request is undeliverable (fail fast).
+        assert!(!reg.push_client_request("sess", "req0".into()).await);
+
+        // A subscribed GET leg receives requests; the POST-leg mpsc is separate.
+        let mut get_rx = reg.subscribe_client_requests("sess").await.unwrap();
+        assert!(reg.push_client_request("sess", "req1".into()).await);
+        assert_eq!(get_rx.recv().await.unwrap(), "req1");
+
+        // Unknown session: no subscriber, no delivery.
+        assert!(reg.subscribe_client_requests("missing").await.is_none());
+        assert!(!reg.push_client_request("missing", "x".into()).await);
     }
 
     #[tokio::test]
