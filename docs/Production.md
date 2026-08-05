@@ -17,8 +17,9 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
-| `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED`.       |
-| `AUTH_DISABLED` | no       | Must **not** be set in production.                   |
+| `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
+| `AUTH_DISABLED` | no       | Serve every request unauthenticated. **Fail-closed:** takes effect only when `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is *also* set, and never when `MAIDAN_ENV=production` (either violation refuses boot). A stray `AUTH_DISABLED=1` alone now fails startup loudly instead of silently serving an open workspace. Dev/test/CI only. |
+| `MAIDAN_ALLOW_INSECURE_NO_AUTH` | no | Explicit acknowledgement required to honor `AUTH_DISABLED`. Never set in production. |
 | `MAIDAN_BOOTSTRAP` | no    | Set to `1` only during initial seed when auth is on **and** the server was built with the `bootstrap` Cargo feature (default for local dev; **off** in the production Docker image unless `MAIDAN_ENABLE_BOOTSTRAP=1` at image build). Allows unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members`. Only the **first** workspace may be created via bootstrap; remove the flag and restart after minting tokens. |
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
@@ -95,11 +96,11 @@ workspace may be created via bootstrap; a second `POST /workspaces` returns
 
 Typical production seed (private network):
 
-1. Set `MAIDAN_BOOTSTRAP=1` and `AUTH_DISABLED=1`.
+1. Set `MAIDAN_BOOTSTRAP=1`, `AUTH_DISABLED=1`, and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement — `AUTH_DISABLED` alone now refuses to boot).
 2. Create workspace + member, mint admin token.
-3. Unset both flags, set `MAIDAN_ENV=production`, restart.
+3. Unset those flags, set `MAIDAN_ENV=production`, restart.
 
-Integration tests use `AUTH_DISABLED=1` (bootstrap flag not required).
+Integration tests use `AUTH_DISABLED=1` + `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (bootstrap flag not required).
 
 Human browser login via OIDC ships in **`v2.0.0`**. See [OIDC.md](OIDC.md) for design
 detail. Summary:

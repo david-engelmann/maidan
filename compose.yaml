@@ -116,6 +116,7 @@ services:
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: 1
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
       FEDERATION_DISABLED: 1
       # Smoke-only 32-byte key (hex); required to register federation peers.
       FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
@@ -143,6 +144,7 @@ services:
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: 1
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
       FEDERATION_DISABLED: "0"
       FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
       FEDERATION_POLL_INTERVAL_SECS: "3"
@@ -218,6 +220,7 @@ services:
       S3_SECRET_ACCESS_KEY: maidanmaidan
       MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       AUTH_DISABLED: "1"
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
       INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
@@ -248,6 +251,7 @@ services:
       S3_SECRET_ACCESS_KEY: maidanmaidan
       MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       AUTH_DISABLED: "1"
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
       INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
@@ -299,6 +303,7 @@ services:
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: "1"
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
       INDEXER_STALE_SECS: "300"
       # Export both signals to the collector; short interval so the smoke is fast.
       OTLP_ENDPOINT: http://otel-collector:4317

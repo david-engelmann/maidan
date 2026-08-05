@@ -16,11 +16,16 @@ use crate::federation::PeerContext;
 use crate::session::load_session;
 use crate::state::AppState;
 
+/// Whether bearer auth is actually disabled. Fail-closed: `AUTH_DISABLED` takes
+/// effect only when the operator has explicitly acknowledged it via
+/// `MAIDAN_ALLOW_INSECURE_NO_AUTH` and the deployment is not production. This
+/// mirrors the startup validation in [`crate::config`] as defense-in-depth, so
+/// the code path that flips on `AuthContext::bypass()` can never do so from a
+/// stray `AUTH_DISABLED=1` alone.
 pub fn auth_disabled_from_env() -> bool {
-    matches!(
-        std::env::var("AUTH_DISABLED").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
-    )
+    crate::config::auth_disabled_requested()
+        && crate::config::insecure_no_auth_acknowledged()
+        && !crate::config::is_production()
 }
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
