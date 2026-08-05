@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v152.0.0 — Lean HTTP context pack + snippet-only search
+
+| Capability | Where |
+|------------|-------|
+| HTTP `/threads/:id/context` + `/workspaces/:wid/context` edits lean by default (`MessageEditView`, optional bodies), opt-in `include_edits=true` | `crates/maidan-server/src/thread_context.rs` |
+| `GET /workspaces/:wid/search?snippet_only=true` drops full bodies (semantic hits get a truncated snippet) | `crates/maidan-server/src/routes/search.rs`, `crates/maidan-search/src/hit.rs` |
+
+_Post-gate hardening (Phase XXIV): token-efficiency part 2 (arc item B1), extending Cluster 151's MCP lean reads to REST. Both context-pack surfaces + search now have opt-in token-lean modes. No new gate tag._
+
 ## v151.0.0 — Token-efficient lean context reads
 
 | Capability | Where |
