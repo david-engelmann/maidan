@@ -38,6 +38,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_artifact_metadata"
         | "get_thread_context"
         | "get_workspace_context"
+        | "summarize_thread"
         | "list_mentions"
         | "get_inbox"
         | "mark_inbox_read" => Ok(WORKSPACE_READ),
@@ -65,6 +66,7 @@ pub async fn dispatch(
     auth: &AuthContext,
     name: &str,
     args: &Value,
+    session_id: Option<&str>,
 ) -> Result<Value, McpError> {
     let store = &server.store;
     let artifacts = &server.artifacts;
@@ -114,6 +116,7 @@ pub async fn dispatch(
             let v = crate::context::get_workspace_context(store.as_ref(), args).await?;
             Ok(content_json(&v))
         }
+        "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

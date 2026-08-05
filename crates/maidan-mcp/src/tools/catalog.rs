@@ -454,5 +454,18 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["workspace_id"]
             }
         }),
+        json!({
+            "name": "summarize_thread",
+            "description": "Summarize a thread by asking the connected MCP client to sample an LLM (server→client sampling/createMessage over the GET /mcp/streamable stream). Requires a streamable session whose client declared the sampling capability.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
+                    "instructions": {"type": "string", "description": "Optional steer for the summary."}
+                },
+                "required": ["thread_id"]
+            }
+        }),
     ]
 }

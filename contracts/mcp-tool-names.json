@@ -29,6 +29,7 @@
   "register_slash_command",
   "remove_reaction",
   "search_messages",
+  "summarize_thread",
   "unpin_message",
   "upload_artifact",
   "upload_artifact_multipart_part"

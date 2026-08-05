@@ -604,3 +604,160 @@ async fn server_to_client_request_round_trips_over_http() {
 
     server.abort();
 }
+
+/// The `summarize_thread` tool is the first organic caller of `request_client`:
+/// a `tools/call` gathers the thread and asks the *client* to sample a summary
+/// over the canonical GET stream (Cluster 155). This drives the whole Cluster
+/// 154 delivery path end-to-end through a real feature.
+#[tokio::test]
+async fn summarize_thread_tool_samples_via_the_client() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+
+    // Seed a thread with a couple of messages.
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "sum-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap();
+    let alice: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "alice", "kind": "human"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let alice_id = alice["id"].as_str().unwrap();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let th: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "release plan"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = th["id"].as_str().unwrap().to_string();
+    for body in ["ship on friday", "blocked on the migration"] {
+        let _: Value = client
+            .post(format!("{base}/threads/{thread_id}/messages"))
+            .json(&json!({"author_id": alice_id, "body": body}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+    }
+
+    // Open a streamable session declaring `sampling`, then the GET stream.
+    let init = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":"2024-11-05","capabilities":{"sampling":{}}}
+        }))
+        .send()
+        .await
+        .unwrap();
+    let session = init
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let get_resp = client
+        .get(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    // Call the tool (JSON accept → the result comes back in the POST body). It
+    // blocks server-side until the client answers the sampling request, so
+    // spawn it and drive the client side concurrently.
+    let call_client = client.clone();
+    let call_base = base.clone();
+    let call_session = session.clone();
+    let call_thread = thread_id.clone();
+    let call = tokio::spawn(async move {
+        call_client
+            .post(format!("{call_base}/mcp/streamable"))
+            .header("mcp-session-id", &call_session)
+            .header("accept", "application/json")
+            .json(&json!({
+                "jsonrpc":"2.0","id":2,"method":"tools/call",
+                "params":{"name":"summarize_thread","arguments":{"thread_id": call_thread}}
+            }))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+    });
+
+    // The sampling request arrives on the GET stream; read its JSON-RPC id.
+    let mut buf = String::new();
+    let mut stream = get_resp.bytes_stream();
+    let mut request_id = None;
+    while let Some(chunk) = stream.next().await {
+        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+        if let Some(line) = buf
+            .lines()
+            .find(|l| l.starts_with("data:") && l.contains("sampling/createMessage"))
+        {
+            let data = line.trim_start_matches("data:").trim();
+            let req: Value = serde_json::from_str(data).unwrap();
+            // The transcript the server sent the client includes the messages.
+            let text = req["params"]["messages"][0]["content"]["text"]
+                .as_str()
+                .unwrap();
+            assert!(text.contains("ship on friday"));
+            request_id = req["id"].as_i64();
+            break;
+        }
+    }
+    let request_id = request_id.expect("sampling request delivered on the GET stream");
+
+    // The client returns its sampled summary.
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&json!({
+            "jsonrpc":"2.0","id":request_id,
+            "result":{"role":"assistant","content":{"type":"text","text":"SUMMARY: friday, migration blocker"}}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    // The tool call resolves, carrying the client's summary.
+    let body = call.await.unwrap();
+    assert!(
+        body.contains("SUMMARY: friday, migration blocker"),
+        "tools/call result should carry the client's sampled summary: {body}"
+    );
+
+    server.abort();
+}
