@@ -10,7 +10,7 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v143.0.0`** (P
 
 - **Workspace-flat authorization (no channel/thread scope)** — capabilities are workspace-scoped only; any token with `message:post` can read/write *any* channel or thread in its workspace, including private ones (private-channel enforcement exists only in the event-subscription fan-out, `subscribe_grants.rs`, not on REST/MCP read/write). No `channel_members` table. Blocks least-privilege for multi-tenant agent fleets; **flagship of the post-v155 hardening program** (channel/thread RBAC + optional Postgres RLS defense-in-depth).
 - **At-most-once event bus (default path)** — transactional outbox (**10**), quarantine (**12**), HTTP outbox replay (**56**); NOTIFY duplicates/gaps possible on the optimistic path. **Mitigated:** opt-in `at_least_once` reconcile delivery (WebSocket **125**, MCP SSE **126**) is gap-free + at-least-once per `consumer_id`.
-- **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration; compile-time strip (**91**) removes the path in hardened (`--no-default-features`) builds.
+- **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration. **Mitigated:** fail-closed (**157**) — `AUTH_DISABLED` needs the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack and refuses boot otherwise (and always in production); compile-time strip (**91**) removes the path entirely in hardened (`--no-default-features`) builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener** — best-effort recovery; `/health/ready` reflects errors.
 - **SQLite semantic search** — brute-force cosine fallback; optional `sqlite-vec` feature for an index; HNSW is Postgres-only (by design, not a gap).
@@ -39,7 +39,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v156.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
+- **Latest tag:** **`v157.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 
