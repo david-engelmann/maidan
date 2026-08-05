@@ -45,7 +45,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
 | `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default preserves the dialect default (**Postgres 16**, **SQLite 8**). See the replica caveat below. |
 | `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` | no | How long a request waits for a free pooled connection before erroring instead of hanging (default `30`). Under saturation this surfaces a clean `500`/timeout rather than blocking indefinitely. |
-| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. Default `0` = **disabled** (prior behavior). See the caveat below before enabling. |
+| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. **Default `30000` (30 s)** — caps runaway queries so one can't pin a pooled connection indefinitely. Set `0` to disable. See the caveat below. |
 | `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
 | `MAIDAN_DELIVERY_STABILITY_SECS` | no | At-least-once delivery (`v125.0.0`) stability window: a subscribe with `at_least_once` only delivers events whose insert time is older than this. Must exceed the longest insert-transaction duration. Default `2`; `0` disables the gate. |
 | `MAIDAN_DELIVERY_RECONCILE_MS` | no | Poll cadence for the at-least-once reconcile loop (a NOTIFY also wakes it). Default `1000`. |
@@ -58,12 +58,12 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
   4 replicas × 16 = 64. Raise the pool only after confirming the server is
   connection-starved (acquire timeouts), not query-bound.
 - **`MAIDAN_DB_STATEMENT_TIMEOUT_MS` applies to every server query**, including
-  the in-server operator reindex (`POST /operator/reindex-embeddings`). Set it
-  comfortably above your longest expected query, or trigger large reindexes via
-  the `maidan reindex-embeddings` CLI, which uses its own pool with no cap. Boot
-  migrations are already exempt (the migration session resets the timeout under
-  the advisory lock), so enabling this will not break startup or a rolling
-  update.
+  the in-server operator reindex (`POST /operator/reindex-embeddings`). The
+  default is now `30000` (30 s); raise it above your longest expected query, or
+  trigger large reindexes via the `maidan reindex-embeddings` CLI, which uses its
+  own pool with no cap, or set `0` to disable the cap entirely. Boot migrations
+  are already exempt (the migration session resets the timeout under the advisory
+  lock), so the default will not break startup or a rolling update.
 
 ### Tenant fairness (`v110.0.0`)
 

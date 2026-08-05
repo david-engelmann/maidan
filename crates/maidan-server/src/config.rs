@@ -41,8 +41,10 @@ pub struct DbConfig {
     /// Seconds to wait for a free pooled connection before erroring
     /// (matches sqlx's prior 30 s default).
     pub acquire_timeout_secs: u64,
-    /// Postgres per-connection `statement_timeout` in ms; `0` disables it
-    /// (the default — prior behavior had no server-side cap).
+    /// Postgres per-connection `statement_timeout` in ms; `0` disables it.
+    /// Defaults to 30 000 (30 s) so a runaway query can't pin a pooled
+    /// connection indefinitely; boot migrations exempt themselves. Set
+    /// `MAIDAN_DB_STATEMENT_TIMEOUT_MS=0` to restore the uncapped behavior.
     pub statement_timeout_ms: u64,
     /// SQLite `busy_timeout` in ms (default 5000, as before).
     pub busy_timeout_ms: u64,
@@ -53,7 +55,7 @@ impl Default for DbConfig {
         Self {
             max_connections: None,
             acquire_timeout_secs: 30,
-            statement_timeout_ms: 0,
+            statement_timeout_ms: 30_000,
             busy_timeout_ms: 5000,
         }
     }
@@ -178,13 +180,20 @@ mod tests {
     }
 
     #[test]
-    fn db_config_defaults_reproduce_prior_behavior() {
+    fn db_config_defaults_are_safe() {
         let cfg = DbConfig::from_lookup(lookup(&[])).unwrap();
         assert_eq!(cfg, DbConfig::default());
         assert_eq!(cfg.max_connections, None); // dialect default (pg 16 / sqlite 8)
         assert_eq!(cfg.acquire_timeout_secs, 30);
-        assert_eq!(cfg.statement_timeout_ms, 0); // disabled
+        assert_eq!(cfg.statement_timeout_ms, 30_000); // 30 s cap by default
         assert_eq!(cfg.busy_timeout_ms, 5000);
+    }
+
+    #[test]
+    fn db_config_statement_timeout_can_be_disabled() {
+        let cfg =
+            DbConfig::from_lookup(lookup(&[("MAIDAN_DB_STATEMENT_TIMEOUT_MS", "0")])).unwrap();
+        assert_eq!(cfg.statement_timeout_ms, 0); // 0 restores the uncapped behavior
     }
 
     #[test]
@@ -192,13 +201,13 @@ mod tests {
         let cfg = DbConfig::from_lookup(lookup(&[
             ("MAIDAN_DB_MAX_CONNECTIONS", "32"),
             ("MAIDAN_DB_ACQUIRE_TIMEOUT_SECS", "5"),
-            ("MAIDAN_DB_STATEMENT_TIMEOUT_MS", "30000"),
+            ("MAIDAN_DB_STATEMENT_TIMEOUT_MS", "15000"),
             ("MAIDAN_DB_BUSY_TIMEOUT_MS", "10000"),
         ]))
         .unwrap();
         assert_eq!(cfg.max_connections, Some(32));
         assert_eq!(cfg.acquire_timeout_secs, 5);
-        assert_eq!(cfg.statement_timeout_ms, 30000);
+        assert_eq!(cfg.statement_timeout_ms, 15000);
         assert_eq!(cfg.busy_timeout_ms, 10000);
     }
 
