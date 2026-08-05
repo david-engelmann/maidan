@@ -198,3 +198,32 @@ fn ui_js_has_no_undefined_bare_function_calls() {
          (CI has no browser to catch this at runtime): {unresolved:?}"
     );
 }
+
+/// Cluster 153: the live thread view wires WS event frames into the message
+/// list. No browser in CI, so guard the wiring statically — the helper must be
+/// defined, invoked, and driven by the thread-content kind set + the open-thread
+/// predicate in the WS handler.
+#[test]
+fn ui_js_wires_live_thread_refresh() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function scheduleLiveRefresh("),
+        "scheduleLiveRefresh must be defined"
+    );
+    assert!(
+        s.contains("scheduleLiveRefresh()"),
+        "scheduleLiveRefresh must be invoked (dead helper otherwise)"
+    );
+    assert!(
+        s.contains("liveFrameTargetsOpenThread(v)"),
+        "the WS handler must gate the refresh on the open thread"
+    );
+    for kind in [
+        "message_posted",
+        "message_edited",
+        "reaction_added",
+        "message_pinned",
+    ] {
+        assert!(s.contains(kind), "THREAD_CONTENT_KINDS must include {kind}");
+    }
+}

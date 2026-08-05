@@ -154,6 +154,8 @@
       }
       #message-list .msg { margin-bottom: 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
       #message-list .meta { color: var(--muted); font-size: 0.75rem; }
+      #live-indicator { font-size: 0.75rem; margin-left: 0.4rem; transition: color 0.4s ease; }
+      #live-indicator.on { color: #16a34a; }
       textarea.compose { min-height: 3rem; font-family: inherit; }
       .inline-form { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
       .inline-form input { flex: 1; min-width: 6rem; }
@@ -266,6 +268,7 @@
         <section id="collab-panel">
           <strong>Thread</strong>
           <span id="thread-context" class="muted">none selected</span>
+          <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket (connect it in the Events tab)">● live</span>
           <div id="message-list"></div>
           <label>Message
             <textarea id="compose-body" class="compose" placeholder="Post a message (@handle for mentions)"></textarea>
@@ -672,6 +675,12 @@
         selectedThreadId = id;
         document.getElementById("thread-id").value = id;
         document.getElementById("thread-context").textContent = label || id;
+        // Reset the live marker for the newly-opened thread.
+        const live = document.getElementById("live-indicator");
+        if (live) {
+          live.hidden = true;
+          live.classList.remove("on");
+        }
         document.querySelectorAll("#thread-list li").forEach((n) => {
           n.classList.toggle("selected", n.dataset.id === id);
         });
@@ -701,6 +710,48 @@
         } catch (e) {
           box.textContent = String(e);
         }
+      }
+
+      // Cluster 153: live thread view. WS event frames whose thread matches the
+      // open thread refresh the message list (debounced) instead of only
+      // landing as Events-tab log lines. Requires the WebSocket connected with a
+      // filter that includes this thread (workspace-wide subscribe covers it).
+      const THREAD_CONTENT_KINDS = new Set([
+        "message_posted",
+        "message_edited",
+        "message_tombstoned",
+        "reaction_added",
+        "reaction_removed",
+        "message_pinned",
+        "message_unpinned",
+      ]);
+      let liveRefreshTimer = null;
+      function flashLiveIndicator() {
+        const el = document.getElementById("live-indicator");
+        if (!el) return;
+        el.hidden = false;
+        el.classList.add("on");
+        setTimeout(() => el.classList.remove("on"), 600);
+      }
+      // Coalesce bursts: at most one reload per window, trailing indicator flash.
+      function scheduleLiveRefresh() {
+        if (liveRefreshTimer) return;
+        liveRefreshTimer = setTimeout(() => {
+          liveRefreshTimer = null;
+          if (selectedThreadId) {
+            loadMessages();
+            flashLiveIndicator();
+          }
+        }, 300);
+      }
+      // A frame refreshes the open thread only when it names that thread and
+      // carries a message/reaction/pin change.
+      function liveFrameTargetsOpenThread(frame) {
+        return (
+          !!selectedThreadId &&
+          frame.thread_id === selectedThreadId &&
+          THREAD_CONTENT_KINDS.has(frame.kind)
+        );
       }
 
       function renderMessages(messages, box) {
@@ -1716,6 +1767,7 @@
             wsAfterId = Math.max(wsAfterId, v.log_id);
             const kind = v.kind || "?";
             appendLive(`[${v.log_id}] ${kind}`);
+            if (liveFrameTargetsOpenThread(v)) scheduleLiveRefresh();
             return;
           }
           if (v.kind) {
