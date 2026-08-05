@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [152.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). Token-efficiency lean reads, part 2 — REST parity (arc item B1). No new gate tag.
+
+### Changed
+
+- **HTTP context pack edits are lean by default** — `GET /threads/:id/context`
+  and `GET /workspaces/:wid/context` now serialize `message_edits` as
+  `MessageEditView` with **optional** `body_before`/`body_after`; the body
+  copies (the largest token cost in a pack) are omitted unless
+  **`include_edits=true`** is passed. Brings the REST surface in line with the
+  MCP `get_thread_context` default shipped in Cluster 151. The who/when/which
+  metadata is always present; the OpenAPI schema registers `MessageEditView`.
+
+### Added
+
+- **`snippet_only=true` on `GET /workspaces/:wid/search`** — drops the full
+  message `body` from each hit, returning only the bounded `snippet`. Semantic
+  hits (which carry an empty snippet and lean on `body`) get a UTF-8-safe
+  truncated body prefix so they still carry locatable content. Default response
+  is unchanged.
+
 ## [151.0.0] — 2026-08-04
 
 Post-gate hardening (Phase XXIV). Token-efficiency lean reads (arc item B1). No new gate tag.
