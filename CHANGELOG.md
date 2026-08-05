@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [157.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 2 — fail-closed auth. No new gate tag.
+
+### Security
+
+- **`AUTH_DISABLED` is now fail-closed.** It was rejected only when
+  `MAIDAN_ENV=production`, so any non-production or `MAIDAN_ENV`-unset deployment
+  that set `AUTH_DISABLED=1` served every request unauthenticated. It now takes
+  effect **only** when the explicit **`MAIDAN_ALLOW_INSECURE_NO_AUTH=1`**
+  acknowledgement is also set, and never in production — a stray `AUTH_DISABLED=1`
+  refuses boot (`validate_insecure_no_auth`, enforced in `Config::from_env` and
+  again in `auth_disabled_from_env()` as defense-in-depth) instead of silently
+  disabling auth.
+
+### Changed
+
+- Dev/test/CI manifests that run without auth (`compose.yaml` all profiles,
+  `helm/maidan/values-ci.yaml`) now set `MAIDAN_ALLOW_INSECURE_NO_AUTH`
+  alongside `AUTH_DISABLED`. `docs/Production.md` + `docs/Threat-Model.md` (T2)
+  updated.
+
 ## [156.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 1 — production-safety defaults. No new gate tag.

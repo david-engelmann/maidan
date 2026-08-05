@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v157.0.0 — Fail-closed `AUTH_DISABLED`
+
+| Capability | Where |
+|------------|-------|
+| `AUTH_DISABLED` requires explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack + never in prod (refuses boot otherwise) | `crates/maidan-server/src/{config,auth}.rs` |
+
+_Post-gate hardening (Phase XXIV): enterprise-hardening arc part 2. Closes the silent-open-door risk (`AUTH_DISABLED` alone in a non-prod/unset-env deployment). Coordinated across compose/helm CI manifests. No new gate tag._
+
 ## v156.0.0 — Production-safety defaults (SIGTERM drain + statement timeout)
 
 | Capability | Where |
