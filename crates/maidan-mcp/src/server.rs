@@ -234,12 +234,25 @@ impl McpServer {
         args: &Value,
     ) -> Result<Value, McpError> {
         let params = json!({ "name": name, "arguments": args });
-        self.tools_call(&params, auth).await
+        self.tools_call(&params, auth, None).await
     }
 
     pub async fn handle(&self, request: JsonRpcRequest, auth: &AuthContext) -> JsonRpcResponse {
+        self.handle_in_session(request, auth, None).await
+    }
+
+    /// Like [`Self::handle`], but carries the streamable `Mcp-Session-Id` so a
+    /// tool that issues a server→client request (e.g. the sampling-backed
+    /// `summarize_thread`) can target the client on that session. Non-streamable
+    /// transports pass `None`.
+    pub async fn handle_in_session(
+        &self,
+        request: JsonRpcRequest,
+        auth: &AuthContext,
+        session_id: Option<&str>,
+    ) -> JsonRpcResponse {
         let id = request.id.clone().unwrap_or(Value::Null);
-        match self.dispatch(&request, auth).await {
+        match self.dispatch(&request, auth, session_id).await {
             Ok(result) => JsonRpcResponse::success(id, result),
             Err(err) => {
                 tracing::debug!(method = %request.method, error = %err, "mcp dispatch error");
@@ -252,6 +265,7 @@ impl McpServer {
         &self,
         request: &JsonRpcRequest,
         auth: &AuthContext,
+        session_id: Option<&str>,
     ) -> Result<Value, McpError> {
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
@@ -259,7 +273,7 @@ impl McpServer {
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools::catalog() })),
-            "tools/call" => self.tools_call(&request.params, auth).await,
+            "tools/call" => self.tools_call(&request.params, auth, session_id).await,
             "resources/list" => Ok(json!({ "resources": resources::catalog() })),
             "resources/read" => self.resources_read(&request.params, auth).await,
             "resources/subscribe" => self.resources_subscribe(&request.params, auth).await,
@@ -287,7 +301,12 @@ impl McpServer {
         }))
     }
 
-    async fn tools_call(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
+    async fn tools_call(
+        &self,
+        params: &Value,
+        auth: &AuthContext,
+        session_id: Option<&str>,
+    ) -> Result<Value, McpError> {
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
@@ -297,7 +316,7 @@ impl McpServer {
             auth.require_capability(cap).map_err(McpError::from)?;
         }
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let result = tools::dispatch(self, auth, name, &args).await?;
+        let result = tools::dispatch(self, auth, name, &args, session_id).await?;
         self.queue_resource_updates(name, &args, &result).await;
         Ok(result)
     }

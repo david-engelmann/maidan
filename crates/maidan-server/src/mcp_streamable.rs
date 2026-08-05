@@ -78,9 +78,15 @@ pub async fn streamable(
     }
 
     // Content negotiation: a client that accepts only JSON gets a single
-    // response body rather than an SSE session (MCP spec allows either).
+    // response body rather than an SSE session (MCP spec allows either). Pass
+    // any open session id through so a tool that issues a server→client request
+    // (e.g. summarize_thread) can target that session's GET stream and return
+    // its result in this JSON body.
     if !accepts_event_stream(&headers) {
-        let response = state.mcp.handle(request, &auth).await;
+        let response = state
+            .mcp
+            .handle_in_session(request, &auth, session_header.filter(|s| !s.is_empty()))
+            .await;
         return Ok(Json(response).into_response());
     }
 
@@ -100,7 +106,10 @@ async fn follow_up_on_open_session(
     session_id: &str,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
-    let response = state.mcp.handle(request, auth).await;
+    let response = state
+        .mcp
+        .handle_in_session(request, auth, Some(session_id))
+        .await;
     // Mux onto the open SSE leg (202). If that leg has since dropped — the
     // session survives it now, for reconnect — the response was still logged
     // for replay; answer it inline (200) rather than failing.

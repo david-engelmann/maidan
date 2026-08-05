@@ -29,6 +29,7 @@
   "register_slash_command": "workspace:write",
   "remove_reaction": "workspace:write",
   "search_messages": "search:query",
+  "summarize_thread": "workspace:read",
   "unpin_message": "workspace:write",
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload"
