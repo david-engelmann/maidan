@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [153.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). Live-updating `/ui` thread view (UI polish). No new gate tag.
+
+### Added
+
+- **Live thread view in the `/ui` console** — WebSocket domain-event frames
+  whose `thread_id` matches the open thread now refresh the message list
+  (debounced, ≤1 reload / 300 ms) instead of only appearing as `[log_id] kind`
+  log lines in the Events tab. Triggers on the thread-content kinds
+  (`message_posted` / `message_edited` / `message_tombstoned` /
+  `reaction_added` / `reaction_removed` / `message_pinned` / `message_unpinned`).
+  A small `● live` indicator flashes on each refresh. Requires the WebSocket
+  connected with a filter that includes the thread; UI-only, no backend change.
+
 ## [152.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). Token-efficiency lean reads, part 2 — REST parity (arc item B1). No new gate tag.
