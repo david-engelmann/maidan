@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [155.0.0] — 2026-08-05
+
+Post-gate hardening (Phase XXIV). First organic `request_client` caller — sampling-backed `summarize_thread` (arc lane 3, part 2). No new gate tag.
+
+### Added
+
+- **`summarize_thread` MCP tool** — the first organic caller of
+  `request_client`. A `tools/call` gathers the thread transcript and issues a
+  server→client `sampling/createMessage` over the canonical GET stream (the
+  Cluster 154 delivery path), returning the client's completion. Requires a
+  streamable session whose client declared the `sampling` capability;
+  `workspace:read`. `limit` clamped `1..=500`, optional `instructions`.
+
+### Changed
+
+- **Tool dispatch carries the streamable session id.** `McpServer::handle` now
+  delegates to `handle_in_session(request, auth, session_id)`; `dispatch` /
+  `tools_call` / `tools::dispatch` thread an optional `Mcp-Session-Id` so a tool
+  can target its client. The `POST /mcp/streamable` JSON-accept path and both
+  SSE session paths pass the session through; non-streamable transports pass
+  `None`.
+
 ## [154.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). `request_client` GET-stream delivery fix (arc lane 3, part 1). No new gate tag.

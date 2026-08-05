@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v155.0.0 — Sampling-backed `summarize_thread` (first `request_client` caller)
+
+| Capability | Where |
+|------------|-------|
+| MCP `summarize_thread` — asks the connected client to sample a thread summary (server→client `sampling/createMessage` over the GET stream) | `crates/maidan-mcp/src/tools/thread.rs`, catalog + contracts |
+| Tool dispatch carries the streamable session id (`handle_in_session`) | `crates/maidan-mcp/src/server.rs`, `crates/maidan-server/src/mcp_streamable.rs` |
+
+_Post-gate hardening (Phase XXIV): closes arc lane 3 and the three-lane next-arc plan (token efficiency 151+152, live UI 153, request_client 154+155). `request_client` now has a real in-tree caller. No new gate tag._
+
 ## v154.0.0 — `request_client` GET-stream delivery
 
 | Capability | Where |
