@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [160.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part B — REST enforcement. No new gate tag.
+
+### Security
+
+- **Private channels are now access-controlled over REST.** New
+  `ensure_channel_access` / `ensure_thread_access` / `ensure_message_access` /
+  `can_access_channel` in `maidan-auth`: a public channel is open to the whole
+  workspace; a **private** channel requires a `channel_members` row. Enforced on
+  every REST content surface — channels (get/list, and `create` auto-adds the
+  creator as an admin of a new private channel), threads (create/list/get/
+  context/transition), messages (post/list/get/edit/tombstone/purge/mention/
+  edits), reactions/pins/votes, workspace-search hits, and the workspace-context
+  pack. Closes the reported gap where any `message:post` token could read or
+  write **any** channel in its workspace, including private ones. The `__dm__`
+  system channel is exempt (DM/group-DM membership is enforced per-conversation).
+  Public channels and DMs are unchanged.
+
+### Not yet covered (follow-ups)
+
+- MCP tool enforcement (Cluster 161), the WebSocket event-subscribe
+  private-channel gate (`subscribe_grants` verification), and `reference.rs`
+  authorization remain — tracked in Open Work.
+
 ## [159.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part A — membership model (no enforcement). No new gate tag.

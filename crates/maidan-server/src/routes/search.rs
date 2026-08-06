@@ -26,7 +26,7 @@ pub async fn search_messages(
         channel_id: q.channel.map(ChannelId),
         author_kind: q.kind,
     };
-    let hits = match q.mode {
+    let mut hits = match q.mode {
         SearchMode::Lexical => {
             state
                 .search
@@ -73,6 +73,32 @@ pub async fn search_messages(
                 .await?
         }
     };
+    // Drop hits in private channels the caller can't access (Cluster 160).
+    // Cache the per-channel decision so a result page hits each channel once.
+    if !auth.bypass {
+        let mut decision: std::collections::HashMap<ChannelId, bool> =
+            std::collections::HashMap::new();
+        let mut allowed = Vec::with_capacity(hits.len());
+        for hit in hits {
+            let ok = match decision.get(&hit.channel_id) {
+                Some(v) => *v,
+                None => {
+                    let v = maidan_auth::can_access_channel(
+                        state.store.as_ref(),
+                        &auth,
+                        hit.channel_id,
+                    )
+                    .await?;
+                    decision.insert(hit.channel_id, v);
+                    v
+                }
+            };
+            if ok {
+                allowed.push(hit);
+            }
+        }
+        hits = allowed;
+    }
     let hits = if q.snippet_only {
         hits.into_iter()
             .map(maidan_search::SearchHit::into_snippet_only)

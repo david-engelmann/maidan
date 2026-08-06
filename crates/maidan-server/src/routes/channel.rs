@@ -35,6 +35,14 @@ pub async fn create_channel(
             private: body.private,
         })
         .await?;
+    // Auto-add the creator as an admin of a new private channel so they don't
+    // lock themselves out (Cluster 160). Bypass callers have no real member.
+    if c.private && !auth.bypass {
+        state
+            .store
+            .add_channel_member(c.id, auth.member_id, ChannelMemberRole::Admin)
+            .await?;
+    }
     publish(
         &state,
         Event::ChannelCreated {
@@ -55,7 +63,22 @@ pub async fn list_channels(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    Ok(Json(state.store.list_channels(workspace_id).await?))
+    let all = state.store.list_channels(workspace_id).await?;
+    if auth.bypass {
+        return Ok(Json(all));
+    }
+    // Hide private channels the caller is not a member of (Cluster 160). Public
+    // and the DM system channel are always listed.
+    let mut visible = Vec::with_capacity(all.len());
+    for ch in all {
+        if !ch.private
+            || ch.name == DM_CHANNEL_NAME
+            || state.store.channel_is_member(ch.id, auth.member_id).await?
+        {
+            visible.push(ch);
+        }
+    }
+    Ok(Json(visible))
 }
 
 pub async fn get_channel(
@@ -66,5 +89,6 @@ pub async fn get_channel(
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     Ok(Json(channel))
 }

@@ -29,6 +29,7 @@ pub async fn create_thread(
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     let t = state
         .store
         .create_thread(NewThread {
@@ -58,6 +59,7 @@ pub async fn list_threads(
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     Ok(Json(state.store.list_threads(ChannelId(channel_id)).await?))
 }
 
@@ -70,6 +72,7 @@ pub async fn get_thread(
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     Ok(Json(thread))
 }
 
@@ -83,6 +86,7 @@ pub async fn get_thread_context(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     let packed = crate::thread_context::build_thread_context(
         state.store.as_ref(),
         thread_id,
@@ -123,6 +127,7 @@ pub async fn transition_thread(
     let workspace_id = ctx.workspace_id;
     let channel_id = ctx.channel_id;
     ensure_workspace(&auth, workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel_id).await?;
     let result = state
         .store
         .transition_thread(thread_id, MemberId(body.actor_id), action)

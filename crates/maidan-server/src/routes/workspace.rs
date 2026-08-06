@@ -147,7 +147,7 @@ pub async fn get_workspace_context(
         message_cursor: None,
         include_edits: q.include_edits,
     };
-    let packed = crate::thread_context::build_workspace_context(
+    let mut packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
         workspace_id,
         q.thread_limit.clamp(1, 50),
@@ -155,6 +155,29 @@ pub async fn get_workspace_context(
         limits,
     )
     .await?;
+    // Drop packed threads in private channels the caller can't access
+    // (Cluster 160). Cache the per-channel decision.
+    if !auth.bypass {
+        let mut decision: std::collections::HashMap<ChannelId, bool> =
+            std::collections::HashMap::new();
+        let mut visible = Vec::with_capacity(packed.threads.len());
+        for tc in packed.threads {
+            let ok = match decision.get(&tc.channel_id) {
+                Some(v) => *v,
+                None => {
+                    let v =
+                        maidan_auth::can_access_channel(state.store.as_ref(), &auth, tc.channel_id)
+                            .await?;
+                    decision.insert(tc.channel_id, v);
+                    v
+                }
+            };
+            if ok {
+                visible.push(tc);
+            }
+        }
+        packed.threads = visible;
+    }
     Ok(Json(packed))
 }
 
