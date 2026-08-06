@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v167.0.0 — Perf: rate-limiter map eviction + embedding model cache
+
+| Fix | Where |
+|-----|-------|
+| Rate-limiter in-memory bucket map bounded (evict elapsed windows) | `crates/maidan-server/src/rate_limit/limiter.rs` |
+| `PostgresSearch` caches model→table (skips SELECT + create-checks per upsert) | `crates/maidan-search/src/postgres.rs` |
+
+_Post-gate hardening (Phase XXIV): arc 2 (perf), part 2 — a memory leak + the embedding-upsert round-trip halving. No new gate tag._
+
 ## v166.0.0 — Perf: per-connection SQLite pragmas + per-workspace webhook fan-out
 
 | Fix | Where |

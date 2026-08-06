@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [167.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 2. No new gate tag.
+
+### Fixed
+
+- **Rate-limiter in-memory bucket map is now bounded.** Entries were never
+  evicted — the map grew without bound as distinct keys (tokens/clients/routes ×
+  windows) accumulated: a memory leak. It now sweeps entries whose window has
+  fully elapsed once the map crosses a threshold (`MEMORY_SWEEP_THRESHOLD`).
+
+### Changed
+
+- **Embedding upserts cache the model→table resolution.** `PostgresSearch` now
+  caches `model → table_name`, so a steady-state `upsert_embedding` skips the
+  `maidan_embedding_models` SELECT + `CREATE TABLE IF NOT EXISTS` checks that ran
+  on every call — halving the round-trips in the live indexer + reindex hot path.
+
 ## [166.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 1. No new gate tag.
