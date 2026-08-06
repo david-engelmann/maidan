@@ -8,7 +8,7 @@ Updated at each cluster retro. **Baseline:** code on `main` at **`v143.0.0`** (P
 
 ## Standing risks (still open)
 
-- **Channel/thread authorization** — **substantially mitigated** for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). **Remaining surfaces (follow-ups):** MCP **point-access** tools now enforced (**161**); MCP **aggregate** reads (`search_messages` / `get_workspace_context` / `list_channels`) still return private content — filter next; the WS event-subscribe private-channel gate (`subscribe_grants` still self-asserts membership); `reference.rs` (no workspace/access check at all); and DM threads readable via the *generic* thread route (the `__dm__` exemption preserves this pre-existing behavior — tighten by checking DM participants). Plus the `channel:admin` membership-management API. Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`).
+- **Channel/thread authorization** — **substantially mitigated** for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). **Remaining surfaces (follow-ups):** MCP **point-access** tools now enforced (**161**); MCP **aggregate** reads filtered (**162**); the WS event-subscribe private-channel gate (`subscribe_grants` still self-asserts membership); `reference.rs` (no workspace/access check at all); and DM threads readable via the *generic* thread route (the `__dm__` exemption preserves this pre-existing behavior — tighten by checking DM participants). Plus the `channel:admin` membership-management API. Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`).
 - **At-most-once event bus (default path)** — transactional outbox (**10**), quarantine (**12**), HTTP outbox replay (**56**); NOTIFY duplicates/gaps possible on the optimistic path. **Mitigated:** opt-in `at_least_once` reconcile delivery (WebSocket **125**, MCP SSE **126**) is gap-free + at-least-once per `consumer_id`.
 - **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration. **Mitigated:** fail-closed (**157**) — `AUTH_DISABLED` needs the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack and refuses boot otherwise (and always in production); compile-time strip (**91**) removes the path entirely in hardened (`--no-default-features`) builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
@@ -39,7 +39,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v161.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
+- **Latest tag:** **`v162.0.0`** (post-gate hardening, Phase XXIV). All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
 

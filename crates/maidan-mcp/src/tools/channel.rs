@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use maidan_auth::AuthContext;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -15,10 +16,27 @@ struct ListChannelsArgs {
     workspace_id: uuid::Uuid,
 }
 
-pub(super) async fn list_channels(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn list_channels(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: ListChannelsArgs = serde_json::from_value(args.clone())?;
     let channels = store.list_channels(WorkspaceId(a.workspace_id)).await?;
-    Ok(content_json(&channels))
+    if auth.bypass {
+        return Ok(content_json(&channels));
+    }
+    // Hide private channels the caller is not a member of (Cluster 162).
+    let mut visible = Vec::with_capacity(channels.len());
+    for ch in channels {
+        if !ch.private
+            || ch.name == DM_CHANNEL_NAME
+            || store.channel_is_member(ch.id, auth.member_id).await?
+        {
+            visible.push(ch);
+        }
+    }
+    Ok(content_json(&visible))
 }
 
 #[derive(Deserialize)]

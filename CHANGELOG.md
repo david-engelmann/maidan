@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [162.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part D — MCP aggregate-read filtering. No new gate tag.
+
+### Security
+
+- **MCP aggregate reads no longer return private-channel content to non-members.**
+  `search_messages` drops hits in inaccessible channels; `list_channels` hides
+  private channels the caller isn't in (public + `__dm__` always listed);
+  `get_workspace_context` drops packed threads in inaccessible channels. Each
+  caches the per-channel decision. Together with 160 (REST) and 161 (MCP
+  point-access), the channel-content read/write vuln is now closed on both
+  primary surfaces.
+
+### Not yet covered (follow-ups)
+
+- The WebSocket event-subscribe private-channel gate (`subscribe_grants`),
+  `reference.rs` authorization, and the `channel:admin` membership API remain
+  (Open Work).
+
 ## [161.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part C — MCP point-access enforcement. No new gate tag.
