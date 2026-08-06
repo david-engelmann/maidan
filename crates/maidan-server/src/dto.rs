@@ -38,6 +38,13 @@ pub struct CreateChannel {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct AddChannelMember {
+    pub member_id: uuid::Uuid,
+    /// `member` (default) or `admin`.
+    pub role: Option<maidan_types::ChannelMemberRole>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateThread {
     pub title: Option<String>,
     pub parent_thread_id: Option<uuid::Uuid>,

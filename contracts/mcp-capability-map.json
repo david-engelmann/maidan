@@ -1,5 +1,6 @@
 {
   "abort_artifact_multipart": "artifact:upload",
+  "add_channel_member": "channel:admin",
   "add_reaction": "workspace:write",
   "add_reference": "workspace:write",
   "begin_artifact_multipart": "artifact:upload",
@@ -10,6 +11,7 @@
   "get_inbox": "workspace:read",
   "get_thread_context": "workspace:read",
   "get_workspace_context": "workspace:read",
+  "list_channel_members": "channel:admin",
   "list_channels": "workspace:read",
   "list_dm_conversations": "workspace:read",
   "list_fsm_hooks": "workspace:read",
@@ -27,6 +29,7 @@
   "record_mention": "workspace:write",
   "register_fsm_hook": "workspace:write",
   "register_slash_command": "workspace:write",
+  "remove_channel_member": "channel:admin",
   "remove_reaction": "workspace:write",
   "search_messages": "search:query",
   "summarize_thread": "workspace:read",

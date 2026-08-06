@@ -57,6 +57,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "list_slash_commands" => Ok(WORKSPACE_READ),
         "register_fsm_hook" => Ok(WORKSPACE_WRITE),
         "list_fsm_hooks" => Ok(WORKSPACE_READ),
+        "add_channel_member" | "list_channel_members" | "remove_channel_member" => {
+            Ok(maidan_auth::capability::CHANNEL_ADMIN)
+        }
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -121,6 +124,9 @@ pub async fn dispatch(
     let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,
+        "add_channel_member" => channel::add_channel_member(store, args).await,
+        "list_channel_members" => channel::list_channel_members(store, args).await,
+        "remove_channel_member" => channel::remove_channel_member(store, args).await,
         "open_dm_conversation" => channel::open_dm_conversation(store, args).await,
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, args).await,

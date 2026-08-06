@@ -119,6 +119,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/channels/:id", get(routes::get_channel))
         .route(
+            "/channels/:cid/members",
+            post(routes::add_channel_member).get(routes::list_channel_members),
+        )
+        .route(
+            "/channels/:cid/members/:mid",
+            axum::routing::delete(routes::remove_channel_member),
+        )
+        .route(
             "/channels/:cid/threads",
             post(routes::create_thread).get(routes::list_threads),
         )

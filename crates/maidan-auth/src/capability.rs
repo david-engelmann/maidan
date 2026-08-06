@@ -14,6 +14,10 @@ pub const FEDERATION_ADMIN: &str = "federation:admin";
 /// Not workspace-scoped — a token holding it queries `/operator/audit` without
 /// an `ensure_workspace` check.
 pub const AUDIT_READ_GLOBAL: &str = "audit:read-global";
+/// Manage per-channel membership (add/remove/list `channel_members`; Cluster
+/// 164). Deliberately not in [`default_minted`] — channel administration is a
+/// granted-on-purpose surface.
+pub const CHANNEL_ADMIN: &str = "channel:admin";
 
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
@@ -27,6 +31,7 @@ const KNOWN: &[&str] = &[
     FEDERATION_INGEST,
     FEDERATION_ADMIN,
     AUDIT_READ_GLOBAL,
+    CHANNEL_ADMIN,
 ];
 
 /// Default capabilities for tokens minted by the admin API in tests and docs.

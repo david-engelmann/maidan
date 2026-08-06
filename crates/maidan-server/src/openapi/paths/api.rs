@@ -311,6 +311,28 @@ pub fn mark_member_inbox_read() {}
     responses((status = 200, body = Channel)))]
 pub fn get_channel() {}
 
+#[utoipa::path(post, path = "/channels/{cid}/members", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    request_body = AddChannelMember,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = ChannelMember)))]
+pub fn add_channel_member() {}
+
+#[utoipa::path(get, path = "/channels/{cid}/members", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ChannelMember>)))]
+pub fn list_channel_members() {}
+
+#[utoipa::path(delete, path = "/channels/{cid}/members/{mid}", tag = "channels",
+    params(
+        ("cid" = Uuid, Path, description = "Channel id"),
+        ("mid" = Uuid, Path, description = "Member id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "removed")))]
+pub fn remove_channel_member() {}
+
 #[utoipa::path(get, path = "/channels/{cid}/threads", tag = "threads",
     params(("cid" = Uuid, Path, description = "Channel id")),
     security(("bearerAuth" = [])),
