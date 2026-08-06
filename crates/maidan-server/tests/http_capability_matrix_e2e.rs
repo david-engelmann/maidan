@@ -150,6 +150,10 @@ fn http_deny_caps(required: &str) -> Vec<String> {
         capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
         capability::FEDERATION_ADMIN => vec![capability::WORKSPACE_READ.into()],
         capability::AUDIT_READ_GLOBAL => vec![capability::WORKSPACE_READ.into()],
+        capability::CHANNEL_ADMIN => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         other => panic!("unsupported capability in http map: {other}"),
     }
 }
@@ -205,6 +209,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/channels/") {
         return template
             .replace("{cid}", &f.channel)
+            .replace("{mid}", &f.member)
             .replace("{id}", &f.channel);
     }
     if template.starts_with("/threads/") {
@@ -292,6 +297,9 @@ fn apply_route_defaults(
         return b.json(&json!({ "member_id": f.member, "kind": "upvote" }));
     }
     if path.contains("/mentions") && method == "POST" {
+        return b.json(&json!({ "member_id": f.member }));
+    }
+    if path.ends_with("/members") && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
     }
     if path.contains("/pins") && (method == "POST" || method == "DELETE") {

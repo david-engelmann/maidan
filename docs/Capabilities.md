@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v164.0.0 — channel:admin membership API (RBAC part F)
+
+| Capability | Where |
+|------------|-------|
+| `channel:admin` cap + `/channels/:cid/members` REST (add/list/remove) | `crates/maidan-server/src/routes/channel.rs`, `app.rs`, `openapi` |
+| MCP `add_channel_member` / `list_channel_members` / `remove_channel_member` | `crates/maidan-mcp/src/tools/channel.rs` + catalog + contracts |
+
+_Post-gate hardening (Phase XXIV): sixth RBAC cluster. Makes private channels operational — admins grant/revoke membership. No new gate tag._
+
 ## v163.0.0 — Verified WS/MCP subscribe grants (RBAC part E)
 
 | Capability | Where |

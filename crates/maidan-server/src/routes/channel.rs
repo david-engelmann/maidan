@@ -7,7 +7,7 @@ use axum::{
 };
 use chrono::Utc;
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{CHANNEL_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -91,4 +91,47 @@ pub async fn get_channel(
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     Ok(Json(channel))
+}
+
+pub async fn add_channel_member(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(cid): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<AddChannelMember>,
+) -> ApiResult<(StatusCode, Json<ChannelMember>)> {
+    let channel = state.store.get_channel(ChannelId(cid)).await?;
+    cap(&auth, CHANNEL_ADMIN)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    let role = body.role.unwrap_or(ChannelMemberRole::Member);
+    let m = state
+        .store
+        .add_channel_member(channel.id, MemberId(body.member_id), role)
+        .await?;
+    Ok((StatusCode::CREATED, Json(m)))
+}
+
+pub async fn list_channel_members(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(cid): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ChannelMember>>> {
+    let channel = state.store.get_channel(ChannelId(cid)).await?;
+    cap(&auth, CHANNEL_ADMIN)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    Ok(Json(state.store.list_channel_members(channel.id).await?))
+}
+
+pub async fn remove_channel_member(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((cid, mid)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    let channel = state.store.get_channel(ChannelId(cid)).await?;
+    cap(&auth, CHANNEL_ADMIN)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    state
+        .store
+        .remove_channel_member(channel.id, MemberId(mid))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }

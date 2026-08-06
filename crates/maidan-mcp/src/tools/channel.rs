@@ -16,6 +16,57 @@ struct ListChannelsArgs {
     workspace_id: uuid::Uuid,
 }
 
+#[derive(Deserialize)]
+struct AddChannelMemberArgs {
+    channel_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    #[serde(default)]
+    role: Option<ChannelMemberRole>,
+}
+
+#[derive(Deserialize)]
+struct ChannelMemberRefArgs {
+    channel_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+#[derive(Deserialize)]
+struct ChannelRefArgs {
+    channel_id: uuid::Uuid,
+}
+
+pub(super) async fn add_channel_member(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AddChannelMemberArgs = serde_json::from_value(args.clone())?;
+    let role = a.role.unwrap_or(ChannelMemberRole::Member);
+    let m = store
+        .add_channel_member(ChannelId(a.channel_id), MemberId(a.member_id), role)
+        .await?;
+    Ok(content_json(&m))
+}
+
+pub(super) async fn list_channel_members(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    let members = store.list_channel_members(ChannelId(a.channel_id)).await?;
+    Ok(content_json(&members))
+}
+
+pub(super) async fn remove_channel_member(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelMemberRefArgs = serde_json::from_value(args.clone())?;
+    store
+        .remove_channel_member(ChannelId(a.channel_id), MemberId(a.member_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({"ok": true})))
+}
+
 pub(super) async fn list_channels(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

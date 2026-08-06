@@ -634,5 +634,23 @@
     "path": "/ws/subscribe",
     "capability": "event:subscribe",
     "surface": "websocket"
+  },
+  {
+    "method": "POST",
+    "path": "/channels/{cid}/members",
+    "capability": "channel:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/channels/{cid}/members",
+    "capability": "channel:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/channels/{cid}/members/{mid}",
+    "capability": "channel:admin",
+    "surface": "http"
   }
 ]

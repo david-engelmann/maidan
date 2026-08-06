@@ -1,5 +1,6 @@
 [
   "abort_artifact_multipart",
+  "add_channel_member",
   "add_reaction",
   "add_reference",
   "begin_artifact_multipart",
@@ -10,6 +11,7 @@
   "get_inbox",
   "get_thread_context",
   "get_workspace_context",
+  "list_channel_members",
   "list_channels",
   "list_dm_conversations",
   "list_fsm_hooks",
@@ -27,6 +29,7 @@
   "record_mention",
   "register_fsm_hook",
   "register_slash_command",
+  "remove_channel_member",
   "remove_reaction",
   "search_messages",
   "summarize_thread",

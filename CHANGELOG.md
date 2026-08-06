@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [164.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part F — the `channel:admin` membership-management API. No new gate tag.
+
+### Added
+
+- **`channel:admin` capability + channel-membership management API.** New
+  capability (in `KNOWN`, not `default_minted`). REST: `POST` / `GET`
+  `/channels/:cid/members` and `DELETE /channels/:cid/members/:mid` (add-or-update
+  role / list / remove), gated by `channel:admin`. MCP: `add_channel_member` /
+  `list_channel_members` / `remove_channel_member` tools. OpenAPI-documented;
+  wired into the HTTP + MCP capability maps and matrices. This makes private
+  channels operational — admins can grant/revoke access, not only the creator's
+  auto-add. End-to-end e2e: add member → access granted → list → remove →
+  denied.
+
 ## [163.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part E — verified subscribe grants. No new gate tag.

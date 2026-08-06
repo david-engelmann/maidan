@@ -56,6 +56,42 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "add_channel_member",
+            "description": "Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "role": {"type": "string", "enum": ["member", "admin"], "default": "member"}
+                },
+                "required": ["channel_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_channel_members",
+            "description": "List the members of a channel. Requires channel:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "remove_channel_member",
+            "description": "Remove a member from a channel. Requires channel:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id", "member_id"]
+            }
+        }),
+        json!({
             "name": "list_threads",
             "description": "List threads in a channel.",
             "inputSchema": {

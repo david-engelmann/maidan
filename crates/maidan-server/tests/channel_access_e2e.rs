@@ -49,6 +49,7 @@ async fn mint(store: &dyn Store, ws: maidan_types::WorkspaceId, member: MemberId
                 capability::WORKSPACE_WRITE.into(),
                 capability::MESSAGE_POST.into(),
                 capability::THREAD_TRANSITION.into(),
+                capability::CHANNEL_ADMIN.into(),
             ],
             expires_at: None,
         })
@@ -343,6 +344,134 @@ async fn public_channel_and_dm_are_unaffected() {
         dm_read.status(),
         StatusCode::OK,
         "DM thread readable (channel exemption)"
+    );
+
+    ctx.server.abort();
+}
+
+#[tokio::test]
+async fn channel_admin_api_manages_membership_end_to_end() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let mk = |handle: &'static str| {
+        let store = ctx.store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let alice = mk("alice").await;
+    let bob = mk("bob").await;
+    let alice_tok = mint(ctx.store.as_ref(), ws.id, alice.id).await; // has channel:admin
+    let bob_tok = mint(ctx.store.as_ref(), ws.id, bob.id).await;
+    let auth = |t: &str| format!("Bearer {t}");
+
+    // Alice creates a private channel + thread.
+    let ch: Value = ctx
+        .client
+        .post(format!("{base}/workspaces/{}/channels", ws.id.0))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"name": "secret", "private": true}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = ch["id"].as_str().unwrap().to_string();
+    let th: Value = ctx
+        .client
+        .post(format!("{base}/channels/{cid}/threads"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"title": "t"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = th["id"].as_str().unwrap().to_string();
+
+    // Bob denied before being added.
+    assert_eq!(
+        ctx.client
+            .get(format!("{base}/threads/{tid}/messages"))
+            .header("Authorization", auth(&bob_tok))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // Add Bob via the management API (alice has channel:admin).
+    let add = ctx
+        .client
+        .post(format!("{base}/channels/{cid}/members"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"member_id": bob.id.0}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
+
+    // Now Bob can read.
+    assert_eq!(
+        ctx.client
+            .get(format!("{base}/threads/{tid}/messages"))
+            .header("Authorization", auth(&bob_tok))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    // List shows Alice (auto-added admin) + Bob.
+    let members: Value = ctx
+        .client
+        .get(format!("{base}/channels/{cid}/members"))
+        .header("Authorization", auth(&alice_tok))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(members.as_array().unwrap().len(), 2);
+
+    // Remove Bob → denied again.
+    let del = ctx
+        .client
+        .delete(format!("{base}/channels/{cid}/members/{}", bob.id.0))
+        .header("Authorization", auth(&alice_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        ctx.client
+            .get(format!("{base}/threads/{tid}/messages"))
+            .header("Authorization", auth(&bob_tok))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
     );
 
     ctx.server.abort();
