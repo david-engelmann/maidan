@@ -50,6 +50,14 @@ async fn full_roundtrip() {
 }
 
 #[tokio::test]
+async fn channel_members_roundtrip() {
+    let Some((store, _container)) = spawn().await else {
+        return;
+    };
+    common::run_channel_members_scenario(&store).await;
+}
+
+#[tokio::test]
 async fn migrations_are_idempotent() {
     let Some((store, _container)) = spawn().await else {
         return;

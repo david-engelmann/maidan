@@ -171,6 +171,44 @@ pub struct NewChannel {
     pub private: bool,
 }
 
+/// A member's role within a channel (Cluster 159). `Admin` may manage
+/// membership; both roles grant access to a private channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelMemberRole {
+    Member,
+    Admin,
+}
+
+impl ChannelMemberRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Member => "member",
+            Self::Admin => "admin",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "member" => Some(Self::Member),
+            "admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+}
+
+/// Membership row for a channel (Cluster 159). Rows exist for private
+/// channels; public channels are open to the whole workspace without rows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChannelMember {
+    pub channel_id: ChannelId,
+    pub member_id: MemberId,
+    pub role: ChannelMemberRole,
+    pub created_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 
