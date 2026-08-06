@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v158.0.0 — Signed container images (keyless cosign)
+
+| Capability | Where |
+|------------|-------|
+| `cosign sign` (keyless) on the `maidan-server` + `maidan-postgres` images, by digest | `.github/workflows/release.yml` (`sign-images` job) |
+
+_Post-gate hardening (Phase XXIV): enterprise-hardening arc part 3. Closes the unsigned-images supply-chain gap; images are verifiable in an admission controller. Runs on the release tag. No new gate tag._
+
 ## v157.0.0 — Fail-closed `AUTH_DISABLED`
 
 | Capability | Where |

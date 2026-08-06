@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [158.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 3 — signed container images. No new gate tag.
+
+### Added
+
+- **Keyless cosign signatures on the container images.** A new `sign-images`
+  release job resolves each pushed tag (`maidan-server`, `maidan-postgres`) to
+  its immutable index digest and `cosign sign`s the digest via the workflow's
+  GitHub OIDC identity (no private key) — the same trust root as the existing
+  release-blob signatures. Admission controllers (Kyverno / Sigstore policy) can
+  now verify the images; `docs/Operations.md` documents the `cosign verify`
+  command. (trivy image scanning is deferred to the perf/CI arc.)
+
 ## [157.0.0] — 2026-08-05
 
 Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 2 — fail-closed auth. No new gate tag.
