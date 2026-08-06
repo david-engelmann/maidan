@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v161.0.0 — Private-channel access control over MCP (RBAC part C)
+
+| Capability | Where |
+|------------|-------|
+| MCP pre-dispatch per-channel gate for point-access content tools | `crates/maidan-mcp/src/tools/mod.rs` (`enforce_channel_access`) |
+| `resources/read` gates `threads/{id}` + `channels/{id}` | `crates/maidan-mcp/src/server.rs` |
+
+_Post-gate hardening (Phase XXIV): third RBAC cluster. Closes the MCP read/write path into private channels (aggregate reads — search / workspace-context / list-channels — filtered next). No new gate tag._
+
 ## v160.0.0 — Private-channel access control over REST (RBAC part B)
 
 | Capability | Where |

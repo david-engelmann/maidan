@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [161.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part C — MCP point-access enforcement. No new gate tag.
+
+### Security
+
+- **MCP tools now enforce per-channel access.** A pre-dispatch gate
+  (`tools::dispatch`) resolves each point-access content tool's target and calls
+  `ensure_channel_access` / `ensure_thread_access` / `ensure_message_access`:
+  `list_threads`, `list_messages`, `post_message`, `get_thread_context`,
+  `summarize_thread`, `pin_message`/`unpin_message`/`list_pins`, `edit_message`,
+  `record_mention`, `cast_vote`, `add_reaction`/`remove_reaction`/`list_reactions`.
+  `resources/read` also gates the `maidan://threads/{id}` and
+  `maidan://channels/{id}` resources. Bypass callers pass; DM tools rely on their
+  own participant checks. Closes the MCP read/write path into private channels.
+
+### Not yet covered (follow-ups)
+
+- MCP **aggregate** reads still return private content — `search_messages`,
+  `get_workspace_context`, `list_channels` — filtered in the next cluster. The
+  WS event-subscribe gate, `reference.rs`, and the `channel:admin` membership API
+  also remain (Open Work).
+
 ## [160.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part B — REST enforcement. No new gate tag.
