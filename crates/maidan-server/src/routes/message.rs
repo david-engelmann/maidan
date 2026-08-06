@@ -30,6 +30,7 @@ pub async fn post_message(
     cap(&auth, MESSAGE_POST)?;
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     if !auth.bypass && auth.token_id.is_none() && MemberId(body.author_id) != auth.member_id {
         return Err(ApiError::Forbidden(
             "author_id must match the signed-in session member".into(),
@@ -112,6 +113,7 @@ pub async fn edit_message(
     let message_id = MessageId(message_id);
     let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     let existing = state.store.get_message(message_id).await?;
     if existing.tombstoned_at.is_some() {
         return Err(ApiError::BadRequest("message is tombstoned".into()));
@@ -162,6 +164,7 @@ pub async fn list_messages(
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     Ok(Json(
         state
             .store
@@ -178,6 +181,7 @@ pub async fn get_message(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
@@ -191,6 +195,7 @@ pub async fn list_message_edits(
     let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     let limit = q.limit.clamp(1, 500);
     Ok(Json(
         state.store.list_message_edits(message_id, limit).await?,
@@ -205,6 +210,7 @@ pub async fn tombstone_message(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     state.store.tombstone_message(MessageId(id)).await?;
     publish(
         &state,
@@ -239,6 +245,7 @@ pub async fn purge_message(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     state.store.purge_message(MessageId(id)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -252,6 +259,7 @@ pub async fn create_mention(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
     state
         .store
         .record_mention(MessageId(message_id), MemberId(body.member_id))

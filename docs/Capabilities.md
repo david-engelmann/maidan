@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v160.0.0 — Private-channel access control over REST (RBAC part B)
+
+| Capability | Where |
+|------------|-------|
+| `ensure_channel_access` / `ensure_thread_access` / `ensure_message_access` / `can_access_channel` | `crates/maidan-auth/src/access.rs` |
+| Per-channel enforcement on all REST content routes + search + workspace-context | `crates/maidan-server/src/routes/{channel,thread,message,social,search,workspace}.rs` |
+
+_Post-gate hardening (Phase XXIV): second RBAC cluster. Private channels require a `channel_members` row; public + `__dm__` unchanged; creator auto-added on private create. Closes the workspace-flat read/write vuln on REST. MCP + subscribe + references follow. No new gate tag._
+
 ## v159.0.0 — Channel membership model (RBAC part A)
 
 | Capability | Where |

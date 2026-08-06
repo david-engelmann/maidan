@@ -1,6 +1,7 @@
 //! AuthN/AuthZ for Maidan: API token hashing, capability vocabulary, and
 //! bearer resolution against the store.
 
+pub mod access;
 pub mod capability;
 pub mod context;
 pub mod error;
@@ -8,6 +9,9 @@ pub mod peer_secret;
 pub mod resolve;
 pub mod token;
 
+pub use access::{
+    can_access_channel, ensure_channel_access, ensure_message_access, ensure_thread_access,
+};
 pub use capability::*;
 pub use context::AuthContext;
 pub use error::AuthError;
