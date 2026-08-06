@@ -43,12 +43,33 @@ pub fn ensure_auto_extension() {
     let _ = &AUTO_EXT;
 }
 
-/// `SqlitePoolOptions` that loads `sqlite-vec` on each new connection.
+/// `SqlitePoolOptions` that loads `sqlite-vec` and applies the per-connection
+/// PRAGMAs on **each** new connection (default 5000 ms `busy_timeout`).
 pub fn pool_options() -> SqlitePoolOptions {
+    pool_options_with(5000)
+}
+
+/// As [`pool_options`], with a configurable `busy_timeout` (Cluster 166).
+///
+/// `foreign_keys` and `busy_timeout` are **per-connection** settings in SQLite,
+/// so they must run on every connection the pool opens — not once on a single
+/// pooled connection (the prior `configure_pool` bug left the other connections
+/// with FKs off and fail-fast-on-busy). `journal_mode = WAL` is file-level and
+/// idempotent per connection.
+pub fn pool_options_with(busy_timeout_ms: u64) -> SqlitePoolOptions {
     ensure_auto_extension();
-    SqlitePoolOptions::new().after_connect(|conn, _| {
+    SqlitePoolOptions::new().after_connect(move |conn, _| {
         Box::pin(async move {
             load_on_connection(conn).await?;
+            sqlx::query("PRAGMA foreign_keys = ON")
+                .execute(&mut *conn)
+                .await?;
+            sqlx::query("PRAGMA journal_mode = WAL")
+                .execute(&mut *conn)
+                .await?;
+            sqlx::query(&format!("PRAGMA busy_timeout = {busy_timeout_ms}"))
+                .execute(&mut *conn)
+                .await?;
             Ok(())
         })
     })
@@ -88,5 +109,44 @@ pub async fn vec_available(pool: &sqlx::SqlitePool) -> bool {
     {
         let _ = pool;
         false
+    }
+}
+
+#[cfg(test)]
+mod pragma_tests {
+    use super::pool_options_with;
+
+    // A file-backed DB (not `:memory:`, which is per-connection) so the pool
+    // hands out several connections against the same database.
+    #[tokio::test]
+    async fn pragmas_apply_to_every_pooled_connection() {
+        let path = std::env::temp_dir().join(format!("maidan_pragma_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let pool = pool_options_with(1234)
+            .max_connections(3)
+            .connect(&url)
+            .await
+            .unwrap();
+
+        // Hold three connections at once to force three distinct ones.
+        let mut held = Vec::new();
+        for _ in 0..3 {
+            let mut c = pool.acquire().await.unwrap();
+            let fk: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+                .fetch_one(&mut *c)
+                .await
+                .unwrap();
+            assert_eq!(fk, 1, "foreign_keys must be ON on every connection");
+            let bt: i64 = sqlx::query_scalar("PRAGMA busy_timeout")
+                .fetch_one(&mut *c)
+                .await
+                .unwrap();
+            assert_eq!(bt, 1234, "busy_timeout must be set on every connection");
+            held.push(c);
+        }
+        drop(held);
+        pool.close().await;
+        let _ = std::fs::remove_file(&path);
     }
 }

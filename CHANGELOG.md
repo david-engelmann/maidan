@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [166.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 1. No new gate tag.
+
+### Fixed
+
+- **SQLite `foreign_keys`/`busy_timeout` now apply to every pooled connection.**
+  They were run once on a single pooled connection, but both are *per-connection*
+  in SQLite — so the other connections ran with FK enforcement **off** (data-
+  integrity risk) and fail-fast-on-`SQLITE_BUSY`. They (and `journal_mode = WAL`)
+  now run in the pool's `after_connect` hook (`sqlite_pool_options_with`).
+- **Webhook fan-out no longer scans every workspace's subscriptions per event.**
+  `enqueue_matches` listed **all** enabled webhook subscriptions across all
+  workspaces on every bus event and filtered in memory; it now queries only the
+  event's workspace (`list_enabled_webhook_subscriptions_for_workspace`, using
+  `idx_webhook_subs_workspace`) and builds the payload lazily on first match.
+
 ## [165.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part G — reference authorization (arc complete). No new gate tag.

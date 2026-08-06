@@ -418,6 +418,12 @@ pub trait Store: Send + Sync {
     async fn list_enabled_webhook_subscriptions(
         &self,
     ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError>;
+    /// Enabled webhook subscriptions for one workspace — the per-event hot path
+    /// (avoids scanning every workspace's subscriptions; Cluster 166).
+    async fn list_enabled_webhook_subscriptions_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError>;
     async fn get_webhook_subscription(
         &self,
         id: WebhookSubscriptionId,
