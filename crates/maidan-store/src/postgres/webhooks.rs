@@ -75,6 +75,31 @@ pub async fn list(
     rows.iter().map(row_to_subscription).collect()
 }
 
+pub async fn list_enabled_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<WebhookSubscriptionRow>, StoreError> {
+    // Uses idx_webhook_subs_workspace instead of scanning every workspace's
+    // enabled subscriptions on each event (Cluster 166, H1).
+    let rows = sqlx::query(&format!(
+        "SELECT {SUB_COLS}
+         FROM maidan_webhook_subscriptions
+         WHERE enabled = TRUE AND revoked_at IS NULL AND workspace_id = $1"
+    ))
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let subscription = row_to_subscription(row)?;
+            Ok(WebhookSubscriptionRow {
+                secret_ciphertext: row.get("secret_ciphertext"),
+                subscription,
+            })
+        })
+        .collect()
+}
+
 pub async fn list_enabled(pool: &PgPool) -> Result<Vec<WebhookSubscriptionRow>, StoreError> {
     let rows = sqlx::query(&format!(
         "SELECT {SUB_COLS}

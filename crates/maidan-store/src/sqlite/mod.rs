@@ -695,6 +695,20 @@ impl Store for SqliteStore {
             .collect())
     }
 
+    async fn list_enabled_webhook_subscriptions_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError> {
+        let rows = webhooks::list_enabled_for_workspace(&self.pool, workspace_id).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| WebhookSubscriptionWithSecret {
+                subscription: row.subscription,
+                secret_ciphertext: row.secret_ciphertext,
+            })
+            .collect())
+    }
+
     async fn get_webhook_subscription(
         &self,
         id: WebhookSubscriptionId,

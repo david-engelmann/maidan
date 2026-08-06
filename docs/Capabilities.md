@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v166.0.0 — Perf: per-connection SQLite pragmas + per-workspace webhook fan-out
+
+| Fix | Where |
+|-----|-------|
+| SQLite `foreign_keys`/`busy_timeout`/WAL in `after_connect` (per connection) | `crates/maidan-search/src/sqlite_vec.rs` (`pool_options_with`) |
+| Webhook fan-out queries only the event's workspace (was an all-workspaces scan) | `crates/maidan-server/src/webhook_worker.rs`, store `list_enabled_webhook_subscriptions_for_workspace` |
+
+_Post-gate hardening (Phase XXIV): arc 2 (perf + CI/CD), part 1 — a real SQLite correctness bug + the biggest per-event query win. No new gate tag._
+
 ## v165.0.0 — Reference authorization (RBAC arc complete)
 
 | Capability | Where |

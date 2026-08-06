@@ -75,6 +75,30 @@ pub async fn list(
     rows.iter().map(row_to_subscription).collect()
 }
 
+pub async fn list_enabled_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<WebhookSubscriptionRow>, StoreError> {
+    // Per-workspace query instead of an all-workspaces scan per event (H1).
+    let rows = sqlx::query(&format!(
+        "SELECT {SUB_COLS}
+         FROM maidan_webhook_subscriptions
+         WHERE enabled = 1 AND revoked_at IS NULL AND workspace_id = ?"
+    ))
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let subscription = row_to_subscription(row)?;
+            Ok(WebhookSubscriptionRow {
+                secret_ciphertext: row.get("secret_ciphertext"),
+                subscription,
+            })
+        })
+        .collect()
+}
+
 pub async fn list_enabled(pool: &SqlitePool) -> Result<Vec<WebhookSubscriptionRow>, StoreError> {
     let rows = sqlx::query(&format!(
         "SELECT {SUB_COLS}

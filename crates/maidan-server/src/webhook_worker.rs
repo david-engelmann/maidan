@@ -120,24 +120,27 @@ async fn enqueue_matches(
         return Ok(());
     };
     let kind = event.kind();
+    // Only this workspace's enabled subscriptions (H1) — was an all-workspaces
+    // scan on every event.
     let subs = state
         .store
-        .list_enabled_webhook_subscriptions()
+        .list_enabled_webhook_subscriptions_for_workspace(workspace_id)
         .await
         .map_err(|e| e.to_string())?;
-    let payload = build_payload(log_id, event).map_err(|e| e.to_string())?;
+    // Build the payload lazily — only once a subscription actually matches.
+    let mut payload: Option<String> = None;
     let mut enqueued = std::collections::HashSet::new();
     for sub in &subs {
         let subscription = &sub.subscription;
-        if subscription.workspace_id != workspace_id {
-            continue;
-        }
         if !kinds_match(subscription, &kind) {
             continue;
         }
+        if payload.is_none() {
+            payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
+        }
         state
             .store
-            .enqueue_webhook_delivery(subscription.id, log_id, &payload)
+            .enqueue_webhook_delivery(subscription.id, log_id, payload.as_deref().unwrap())
             .await
             .map_err(|e| e.to_string())?;
         enqueued.insert(subscription.id);
@@ -148,16 +151,22 @@ async fn enqueue_matches(
             .get_workspace_mention_webhook_id(workspace_id)
             .await
         {
+            // `subs` is already scoped to this workspace (H1).
             if !enqueued.contains(&mention_webhook_id)
                 && subs.iter().any(|s| {
-                    s.subscription.id == mention_webhook_id
-                        && s.subscription.workspace_id == workspace_id
-                        && s.subscription.revoked_at.is_none()
+                    s.subscription.id == mention_webhook_id && s.subscription.revoked_at.is_none()
                 })
             {
+                if payload.is_none() {
+                    payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
+                }
                 state
                     .store
-                    .enqueue_webhook_delivery(mention_webhook_id, log_id, &payload)
+                    .enqueue_webhook_delivery(
+                        mention_webhook_id,
+                        log_id,
+                        payload.as_deref().unwrap(),
+                    )
                     .await
                     .map_err(|e| e.to_string())?;
             }

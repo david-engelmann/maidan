@@ -44,5 +44,8 @@ pub use score::{
     DEFAULT_HYBRID_WEIGHT,
 };
 pub use sqlite::SqliteSearch;
-pub use sqlite_vec::{ensure_auto_extension, pool_options as sqlite_pool_options, vec_available};
+pub use sqlite_vec::{
+    ensure_auto_extension, pool_options as sqlite_pool_options,
+    pool_options_with as sqlite_pool_options_with, vec_available,
+};
 pub use traits::Search;
