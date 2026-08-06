@@ -120,7 +120,7 @@ pub async fn dispatch(
     let search = &server.search;
     let embedding_provider = &server.embedding_provider;
     match name {
-        "list_channels" => channel::list_channels(store, args).await,
+        "list_channels" => channel::list_channels(store, auth, args).await,
         "open_dm_conversation" => channel::open_dm_conversation(store, args).await,
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, args).await,
@@ -150,7 +150,9 @@ pub async fn dispatch(
         }
         "abort_artifact_multipart" => artifact::abort_artifact_multipart(artifacts, args).await,
         "get_artifact_metadata" => artifact::get_artifact_metadata(store, args).await,
-        "search_messages" => search::search_messages(search, embedding_provider, args).await,
+        "search_messages" => {
+            search::search_messages(search, embedding_provider, store, auth, args).await
+        }
         "register_slash_command" => automation::register_slash_command(store, auth, args).await,
         "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,
         "register_fsm_hook" => automation::register_fsm_hook(store, auth, args).await,
@@ -160,7 +162,40 @@ pub async fn dispatch(
             Ok(content_json(&v))
         }
         "get_workspace_context" => {
-            let v = crate::context::get_workspace_context(store.as_ref(), args).await?;
+            let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
+            // Drop packed threads in private channels the caller can't access
+            // (Cluster 162), caching the per-channel decision.
+            if !auth.bypass {
+                if let Some(threads) = v.get("threads").and_then(|t| t.as_array()) {
+                    let mut decision: std::collections::HashMap<maidan_types::ChannelId, bool> =
+                        std::collections::HashMap::new();
+                    let mut kept = Vec::with_capacity(threads.len());
+                    for t in threads {
+                        let cid = t
+                            .get("channel_id")
+                            .and_then(|c| c.as_str())
+                            .and_then(|s| s.parse::<uuid::Uuid>().ok())
+                            .map(maidan_types::ChannelId);
+                        let keep = match cid {
+                            Some(id) => match decision.get(&id) {
+                                Some(v) => *v,
+                                None => {
+                                    let ok =
+                                        maidan_auth::can_access_channel(store.as_ref(), auth, id)
+                                            .await?;
+                                    decision.insert(id, ok);
+                                    ok
+                                }
+                            },
+                            None => true,
+                        };
+                        if keep {
+                            kept.push(t.clone());
+                        }
+                    }
+                    v["threads"] = Value::Array(kept);
+                }
+            }
             Ok(content_json(&v))
         }
         "summarize_thread" => thread::summarize_thread(server, session_id, args).await,

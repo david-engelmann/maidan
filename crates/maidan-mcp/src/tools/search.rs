@@ -1,7 +1,10 @@
 //! Message search (lexical + semantic) tool handler.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use maidan_auth::AuthContext;
+use maidan_store::Store;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -41,6 +44,8 @@ fn default_search_limit() -> i64 {
 pub(super) async fn search_messages(
     search: &Arc<dyn maidan_search::Search>,
     embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
@@ -91,6 +96,29 @@ pub(super) async fn search_messages(
                 )
                 .await?
         }
+    };
+    // Drop hits in private channels the caller can't access (Cluster 162),
+    // caching the per-channel decision.
+    let hits = if auth.bypass {
+        hits
+    } else {
+        let mut decision: HashMap<ChannelId, bool> = HashMap::new();
+        let mut allowed = Vec::with_capacity(hits.len());
+        for hit in hits {
+            let ok = match decision.get(&hit.channel_id) {
+                Some(v) => *v,
+                None => {
+                    let v = maidan_auth::can_access_channel(store.as_ref(), auth, hit.channel_id)
+                        .await?;
+                    decision.insert(hit.channel_id, v);
+                    v
+                }
+            };
+            if ok {
+                allowed.push(hit);
+            }
+        }
+        allowed
     };
     Ok(content_json(&hits))
 }

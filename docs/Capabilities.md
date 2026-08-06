@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v162.0.0 — MCP aggregate-read filtering (RBAC part D)
+
+| Capability | Where |
+|------------|-------|
+| `search_messages` / `list_channels` / `get_workspace_context` filter private-channel content by access | `crates/maidan-mcp/src/tools/{search,channel,mod}.rs` |
+
+_Post-gate hardening (Phase XXIV): fourth RBAC cluster. Closes the MCP aggregate-read leaks; with 160+161 the channel-content read/write vuln is closed on REST + MCP. No new gate tag._
+
 ## v161.0.0 — Private-channel access control over MCP (RBAC part C)
 
 | Capability | Where |

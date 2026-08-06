@@ -737,6 +737,58 @@ mod tests {
             .call_tool(&alice_auth, "list_messages", &args)
             .await
             .unwrap();
+
+        // Aggregate reads (Cluster 162): the private channel is filtered out of
+        // list_channels + get_workspace_context for Bob, present for Alice.
+        let unwrap_content = |v: Value| -> Value {
+            let text = v["content"][0]["text"].as_str().unwrap().to_string();
+            serde_json::from_str(&text).unwrap()
+        };
+        let ws_args = json!({ "workspace_id": ws.id.0 });
+
+        let bob_channels = unwrap_content(
+            server
+                .call_tool(&bob_auth, "list_channels", &ws_args)
+                .await
+                .unwrap(),
+        );
+        assert!(
+            !bob_channels
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["id"] == json!(ch.id.0)),
+            "bob must not see the private channel"
+        );
+        let alice_channels = unwrap_content(
+            server
+                .call_tool(&alice_auth, "list_channels", &ws_args)
+                .await
+                .unwrap(),
+        );
+        assert!(
+            alice_channels
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["id"] == json!(ch.id.0)),
+            "alice sees the private channel"
+        );
+
+        let bob_ctx = unwrap_content(
+            server
+                .call_tool(&bob_auth, "get_workspace_context", &ws_args)
+                .await
+                .unwrap(),
+        );
+        assert!(
+            bob_ctx["threads"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|t| t["channel_id"] != json!(ch.id.0)),
+            "bob's workspace context excludes the private channel's threads"
+        );
     }
 
     #[tokio::test]
