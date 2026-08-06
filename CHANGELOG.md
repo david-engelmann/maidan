@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [165.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part G — reference authorization (arc complete). No new gate tag.
+
+### Security
+
+- **References are now access-controlled.** `create_reference` /
+  `list_references` (REST) and `add_reference` (MCP) had **no** workspace or
+  channel check — a token could link or list references into any thread/message,
+  including private channels, cross-tenant. They now resolve each referenced
+  Thread/Message via `ensure_thread_access` / `ensure_message_access` (which also
+  enforces the workspace), closing the last RBAC gap. **With 159–165 the
+  channel/thread RBAC arc is complete**: private-channel access is enforced on
+  read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and
+  references.
+
 ## [164.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part F — the `channel:admin` membership-management API. No new gate tag.
