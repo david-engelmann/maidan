@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v159.0.0 — Channel membership model (RBAC part A)
+
+| Capability | Where |
+|------------|-------|
+| `channel_members` table + `ChannelMember`/`ChannelMemberRole` + 4 Store methods (both backends) | `crates/maidan-store/src/{postgres,sqlite}/channel_members.rs`, migrations `0032`/`0031` |
+
+_Post-gate hardening (Phase XXIV): first cluster of the flagship channel/thread RBAC. Membership substrate only — additive, no enforcement (Cluster 160), zero behavior change. No new gate tag._
+
 ## v158.0.0 — Signed container images (keyless cosign)
 
 | Capability | Where |

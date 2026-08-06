@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [159.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part A — membership model (no enforcement). No new gate tag.
+
+### Added
+
+- **`channel_members` membership model** — new table (postgres `0032` / sqlite
+  `0031`): `(channel_id, member_id, role ∈ {member, admin}, created_at)`. New
+  `ChannelMember` / `ChannelMemberRole` types and four `Store` methods
+  (`add_channel_member` idempotent upsert / `remove_channel_member` /
+  `list_channel_members` / `channel_is_member`), both backends. This is the
+  substrate for per-channel authorization; **no enforcement yet** (Cluster 160)
+  — public channels remain open to the workspace, so there is no behavior change.
+
 ## [158.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Enterprise-hardening arc, part 3 — signed container images. No new gate tag.
