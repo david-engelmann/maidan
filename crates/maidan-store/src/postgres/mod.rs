@@ -5,6 +5,7 @@ mod apps;
 mod artifacts;
 mod audit;
 mod automation_deliveries;
+mod channel_members;
 mod channels;
 pub mod delivery_cursor;
 mod dm;
@@ -129,6 +130,35 @@ impl Store for PostgresStore {
     }
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError> {
         channels::list(&self.pool, workspace_id).await
+    }
+
+    async fn add_channel_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        role: ChannelMemberRole,
+    ) -> Result<ChannelMember, StoreError> {
+        channel_members::add(&self.pool, channel_id, member_id, role).await
+    }
+    async fn remove_channel_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<(), StoreError> {
+        channel_members::remove(&self.pool, channel_id, member_id).await
+    }
+    async fn list_channel_members(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ChannelMember>, StoreError> {
+        channel_members::list(&self.pool, channel_id).await
+    }
+    async fn channel_is_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        channel_members::is_member(&self.pool, channel_id, member_id).await
     }
 
     async fn open_dm_conversation(

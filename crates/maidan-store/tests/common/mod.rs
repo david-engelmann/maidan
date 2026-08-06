@@ -370,3 +370,80 @@ pub struct ParitySnapshot {
     pub edit_count: usize,
     pub reaction_emojis: Vec<String>,
 }
+
+/// Cluster 159: `channel_members` round-trip — add (idempotent upsert), query,
+/// list, remove — exercised against both backends from the roundtrip suites.
+#[allow(dead_code)]
+pub async fn run_channel_members_scenario(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "cm-ws".into(),
+        })
+        .await
+        .expect("workspace");
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("alice");
+    let bob = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bob".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("bob");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "secret".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .expect("channel");
+
+    // No rows yet.
+    assert!(!store.channel_is_member(ch.id, alice.id).await.unwrap());
+    assert!(store.list_channel_members(ch.id).await.unwrap().is_empty());
+
+    // Add alice as admin, bob as member.
+    let a = store
+        .add_channel_member(ch.id, alice.id, ChannelMemberRole::Admin)
+        .await
+        .expect("add alice");
+    assert_eq!(a.role, ChannelMemberRole::Admin);
+    store
+        .add_channel_member(ch.id, bob.id, ChannelMemberRole::Member)
+        .await
+        .expect("add bob");
+    assert!(store.channel_is_member(ch.id, alice.id).await.unwrap());
+    assert!(store.channel_is_member(ch.id, bob.id).await.unwrap());
+    assert_eq!(store.list_channel_members(ch.id).await.unwrap().len(), 2);
+
+    // Idempotent upsert: re-adding alice as plain member updates the role, not a dup.
+    let a2 = store
+        .add_channel_member(ch.id, alice.id, ChannelMemberRole::Member)
+        .await
+        .expect("re-add alice");
+    assert_eq!(a2.role, ChannelMemberRole::Member);
+    assert_eq!(
+        a2.created_at, a.created_at,
+        "created_at preserved on upsert"
+    );
+    assert_eq!(store.list_channel_members(ch.id).await.unwrap().len(), 2);
+
+    // Remove bob.
+    store
+        .remove_channel_member(ch.id, bob.id)
+        .await
+        .expect("remove bob");
+    assert!(!store.channel_is_member(ch.id, bob.id).await.unwrap());
+    assert_eq!(store.list_channel_members(ch.id).await.unwrap().len(), 1);
+}

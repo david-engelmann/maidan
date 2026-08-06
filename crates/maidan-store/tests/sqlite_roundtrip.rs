@@ -27,6 +27,12 @@ async fn full_roundtrip() {
 }
 
 #[tokio::test]
+async fn channel_members_roundtrip() {
+    let store = spawn().await;
+    common::run_channel_members_scenario(&store).await;
+}
+
+#[tokio::test]
 async fn migrations_are_idempotent() {
     let store = spawn().await;
     run_sqlite_migrations(store.pool())

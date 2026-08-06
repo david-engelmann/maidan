@@ -45,6 +45,30 @@ pub trait Store: Send + Sync {
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
 
+    /// Per-channel membership (Cluster 159). Public channels are open to the
+    /// workspace and need no rows; these gate private channels. `add` is an
+    /// idempotent upsert of the role.
+    async fn add_channel_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        role: ChannelMemberRole,
+    ) -> Result<ChannelMember, StoreError>;
+    async fn remove_channel_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<(), StoreError>;
+    async fn list_channel_members(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ChannelMember>, StoreError>;
+    async fn channel_is_member(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError>;
+
     async fn open_dm_conversation(
         &self,
         workspace_id: WorkspaceId,
