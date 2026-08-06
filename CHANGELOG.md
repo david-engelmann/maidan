@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [163.0.0] — 2026-08-06
+
+Post-gate hardening (Phase XXIV). Channel/thread RBAC, part E — verified subscribe grants. No new gate tag.
+
+### Security
+
+- **WS/MCP subscribe grants are now verified against membership.**
+  `apply_subscribe_grants` previously trusted the client's asserted
+  `channel_grants`, so a non-member could subscribe with a private channel's id
+  and receive its events. It now drops any asserted private-channel grant the
+  caller isn't a member of (public + `__dm__` pass; bypass unchanged), so the
+  channel is denied and lands in `private_channel_deny`. The WS subscribe path
+  (`ws.rs`) resolves the caller's identity *before* applying grants; the MCP SSE
+  stream passes its `AuthContext` through. Closes the private-channel **event**
+  leak on the WebSocket + MCP SSE surfaces.
+
+### Not yet covered (follow-ups)
+
+- `reference.rs` authorization and the `channel:admin` membership API remain
+  (Open Work).
+
 ## [162.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Channel/thread RBAC, part D — MCP aggregate-read filtering. No new gate tag.

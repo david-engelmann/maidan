@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v163.0.0 — Verified WS/MCP subscribe grants (RBAC part E)
+
+| Capability | Where |
+|------------|-------|
+| Subscribe `channel_grants` verified against `channel_is_member` (private-channel events gated) | `crates/maidan-server/src/subscribe_grants.rs`, `ws.rs`, `mcp_stream.rs` |
+
+_Post-gate hardening (Phase XXIV): fifth RBAC cluster. Closes the private-channel event leak on WS + MCP SSE (asserted grants were previously trusted). No new gate tag._
+
 ## v162.0.0 — MCP aggregate-read filtering (RBAC part D)
 
 | Capability | Where |

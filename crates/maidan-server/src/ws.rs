@@ -366,7 +366,39 @@ async fn read_subscribe(
     crate::dm::expand_event_filter(state, &mut filter)
         .await
         .map_err(|e| (1008u16, format!("{e:?}")))?;
-    crate::subscribe_grants::apply_subscribe_grants(state, &mut filter)
+    // Resolve the caller's identity *before* applying channel grants so the
+    // grant verification (Cluster 163) can check real membership.
+    let ctx = if state.auth_disabled {
+        AuthContext::bypass()
+    } else if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
+        resolve_bearer(state.store.as_ref(), secret)
+            .await
+            .map_err(|_| (1008u16, "invalid or expired token".to_string()))?
+    } else if let Ok(session) = load_session(state, headers).await {
+        AuthContext::from_session(
+            session.member_id,
+            session.workspace_id,
+            vec![
+                WORKSPACE_READ.into(),
+                EVENT_SUBSCRIBE.into(),
+                SEARCH_QUERY.into(),
+            ],
+        )
+    } else {
+        return Err((
+            1008u16,
+            "missing token in subscribe frame or browser session".into(),
+        ));
+    };
+    if !state.auth_disabled {
+        ctx.require_capability(EVENT_SUBSCRIBE)
+            .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
+        if let Some(ws) = filter.workspace_id {
+            ctx.ensure_workspace(ws)
+                .map_err(|_| (1008u16, "token is not valid for this workspace".into()))?;
+        }
+    }
+    crate::subscribe_grants::apply_subscribe_grants(state, &ctx, &mut filter)
         .await
         .map_err(|e| (1008u16, e))?;
     if let Some(ref consumer_id) = sub.consumer_id {
@@ -379,35 +411,6 @@ async fn read_subscribe(
         )
         .await
         .map_err(|e| (1011u16, e.to_string()))?;
-    }
-
-    if !state.auth_disabled {
-        let ctx = if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
-            resolve_bearer(state.store.as_ref(), secret)
-                .await
-                .map_err(|_| (1008u16, "invalid or expired token".to_string()))?
-        } else if let Ok(session) = load_session(state, headers).await {
-            AuthContext::from_session(
-                session.member_id,
-                session.workspace_id,
-                vec![
-                    WORKSPACE_READ.into(),
-                    EVENT_SUBSCRIBE.into(),
-                    SEARCH_QUERY.into(),
-                ],
-            )
-        } else {
-            return Err((
-                1008u16,
-                "missing token in subscribe frame or browser session".into(),
-            ));
-        };
-        ctx.require_capability(EVENT_SUBSCRIBE)
-            .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
-        if let Some(ws) = filter.workspace_id {
-            ctx.ensure_workspace(ws)
-                .map_err(|_| (1008u16, "token is not valid for this workspace".into()))?;
-        }
     }
 
     let member_id = sub.member_id.map(MemberId);
