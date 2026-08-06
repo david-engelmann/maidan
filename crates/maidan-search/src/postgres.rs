@@ -25,6 +25,11 @@ pub use crate::embedding_tables::DEFAULT_EMBEDDING_DIM as EMBEDDING_DIM;
 pub struct PostgresSearch {
     pool: PgPool,
     hnsw: crate::hnsw::HnswParams,
+    /// Cache of resolved `model → table_name` so a steady-state embedding upsert
+    /// skips the `maidan_embedding_models` SELECT + `CREATE TABLE IF NOT EXISTS`
+    /// checks on every call (Cluster 167, H6). A model's table never changes once
+    /// registered.
+    model_tables: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 impl PostgresSearch {
@@ -32,6 +37,7 @@ impl PostgresSearch {
         Self {
             pool,
             hnsw: crate::hnsw::HnswParams::from_env(),
+            model_tables: std::sync::Arc::default(),
         }
     }
 
@@ -118,9 +124,32 @@ impl Search for PostgresSearch {
         model: &str,
         embedding: &[f32],
     ) -> Result<(), SearchError> {
-        let table =
-            embedding_tables::ensure_model_postgres(&self.pool, model, embedding.len(), self.hnsw)
+        // Cache hit skips ensure_model_postgres's SELECT + create-checks; the
+        // guard is dropped before the await so the lock is never held across it.
+        let cached = {
+            let guard = self
+                .model_tables
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.get(model).cloned()
+        };
+        let table = match cached {
+            Some(t) => t,
+            None => {
+                let t = embedding_tables::ensure_model_postgres(
+                    &self.pool,
+                    model,
+                    embedding.len(),
+                    self.hnsw,
+                )
                 .await?;
+                self.model_tables
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(model.to_string(), t.clone());
+                t
+            }
+        };
         let vector = Vector::from(embedding.to_vec());
         let sql = format!(
             r#"

@@ -13,7 +13,13 @@ pub struct WindowConfig {
 struct MemoryCounter {
     window_start: Instant,
     count: u32,
+    window: Duration,
 }
+
+/// When the in-memory bucket map reaches this size, sweep entries whose window
+/// has fully elapsed (Cluster 167). Without this the map grows without bound as
+/// distinct keys — tokens/clients/routes × windows — accumulate: a memory leak.
+const MEMORY_SWEEP_THRESHOLD: usize = 16_384;
 
 static MEMORY_BUCKETS: LazyLock<Mutex<HashMap<String, MemoryCounter>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -23,10 +29,15 @@ fn memory_try_acquire(key: &str, cfg: WindowConfig) -> bool {
     let mut buckets = MEMORY_BUCKETS
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
+    if buckets.len() >= MEMORY_SWEEP_THRESHOLD {
+        buckets.retain(|_, e| now.duration_since(e.window_start) < e.window);
+    }
     let entry = buckets.entry(key.to_string()).or_insert(MemoryCounter {
         window_start: now,
         count: 0,
+        window: cfg.window,
     });
+    entry.window = cfg.window;
     if now.duration_since(entry.window_start) >= cfg.window {
         entry.window_start = now;
         entry.count = 0;
@@ -100,5 +111,26 @@ mod tests {
         assert!(!try_acquire(key, cfg, None).await);
         tokio::time::sleep(Duration::from_millis(60)).await;
         assert!(try_acquire(key, cfg, None).await);
+    }
+
+    #[test]
+    fn memory_map_evicts_expired_windows_when_large() {
+        // A very short window so every key's window elapses immediately, then
+        // insert past the sweep threshold to trigger the retain (Cluster 167).
+        let cfg = WindowConfig {
+            max: 100,
+            window: Duration::from_nanos(1),
+        };
+        for i in 0..(MEMORY_SWEEP_THRESHOLD + 5) {
+            memory_try_acquire(&format!("evict-{i}"), cfg);
+        }
+        let len = MEMORY_BUCKETS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
+        assert!(
+            len < MEMORY_SWEEP_THRESHOLD,
+            "map must be bounded by eviction, got {len}"
+        );
     }
 }
