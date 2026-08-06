@@ -105,6 +105,31 @@ async fn enforce_channel_access(
                     .await?;
             }
         }
+        "add_reference" => {
+            for (kind_key, id_key) in [("src_kind", "src_id"), ("dst_kind", "dst_id")] {
+                if let (Some(kv), Some(id)) = (args.get(kind_key), field(id_key)) {
+                    match serde_json::from_value::<maidan_types::RefSide>(kv.clone()) {
+                        Ok(maidan_types::RefSide::Thread) => {
+                            maidan_auth::ensure_thread_access(
+                                store,
+                                auth,
+                                maidan_types::ThreadId(id),
+                            )
+                            .await?;
+                        }
+                        Ok(maidan_types::RefSide::Message) => {
+                            maidan_auth::ensure_message_access(
+                                store,
+                                auth,
+                                maidan_types::MessageId(id),
+                            )
+                            .await?;
+                        }
+                        Err(_) => {}
+                    }
+                }
+            }
+        }
         _ => {}
     }
     Ok(())

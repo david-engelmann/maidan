@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v165.0.0 — Reference authorization (RBAC arc complete)
+
+| Capability | Where |
+|------------|-------|
+| `create`/`list_references` (REST) + `add_reference` (MCP) gated on the referenced entity's channel access | `crates/maidan-server/src/routes/reference.rs`, `crates/maidan-mcp/src/tools/mod.rs` |
+
+_Post-gate hardening (Phase XXIV): final RBAC cluster. References resolve Thread/Message → channel access (also fixes a missing workspace check). **The channel/thread RBAC arc (159–165) is complete.** No new gate tag._
+
 ## v164.0.0 — channel:admin membership API (RBAC part F)
 
 | Capability | Where |

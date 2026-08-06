@@ -14,8 +14,24 @@ use maidan_types::*;
 
 use super::{cap, publish, ApiResult};
 use crate::dto::*;
-use crate::error::ApiJson;
+use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
+
+/// Ensure the caller may access a referenced entity — and, via the `ensure_*`
+/// helpers, that it belongs to their workspace (Cluster 165; this path had no
+/// workspace/access check before).
+async fn ensure_ref_access(
+    store: &dyn maidan_store::Store,
+    auth: &AuthContext,
+    kind: RefSide,
+    id: uuid::Uuid,
+) -> Result<(), ApiError> {
+    match kind {
+        RefSide::Thread => maidan_auth::ensure_thread_access(store, auth, ThreadId(id)).await?,
+        RefSide::Message => maidan_auth::ensure_message_access(store, auth, MessageId(id)).await?,
+    }
+    Ok(())
+}
 
 pub async fn create_reference(
     State(state): State<AppState>,
@@ -23,6 +39,8 @@ pub async fn create_reference(
     ApiJson(body): ApiJson<CreateReference>,
 ) -> ApiResult<(StatusCode, Json<Reference>)> {
     cap(&auth, WORKSPACE_WRITE)?;
+    ensure_ref_access(state.store.as_ref(), &auth, body.src_kind, body.src_id).await?;
+    ensure_ref_access(state.store.as_ref(), &auth, body.dst_kind, body.dst_id).await?;
     let r = state
         .store
         .add_reference(NewReference {
@@ -50,6 +68,7 @@ pub async fn list_references(
     Query(q): Query<ListReferencesQuery>,
 ) -> ApiResult<Json<Vec<Reference>>> {
     cap(&auth, WORKSPACE_READ)?;
+    ensure_ref_access(state.store.as_ref(), &auth, q.src_kind, q.src_id).await?;
     Ok(Json(
         state
             .store

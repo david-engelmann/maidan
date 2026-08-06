@@ -219,6 +219,16 @@ async fn private_channel_denies_non_members_over_rest() {
             .unwrap(),
         "get channel",
     );
+    // Cluster 165: references into the private thread are gated too.
+    denied(
+        ctx.client
+            .get(format!("{base}/references?src_kind=thread&src_id={tid}"))
+            .header("Authorization", auth(&bob_tok))
+            .send()
+            .await
+            .unwrap(),
+        "list references",
+    );
 
     // Add Bob as an explicit member → now allowed.
     ctx.store
