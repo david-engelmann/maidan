@@ -61,6 +61,52 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     }
 }
 
+/// Pre-dispatch per-channel authorization for point-access content tools
+/// (Cluster 161). Bypass callers pass through; DM tools rely on their own
+/// participant checks (the `__dm__` channel is exempt in `ensure_*`); aggregate
+/// reads (`list_channels` / `get_workspace_context` / `search_messages`) filter
+/// their result sets separately. A tool whose id arg is absent/malformed is left
+/// to its handler's own decode error.
+async fn enforce_channel_access(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    name: &str,
+    args: &Value,
+) -> Result<(), McpError> {
+    if auth.bypass {
+        return Ok(());
+    }
+    let store = server.store.as_ref();
+    let field = |key: &str| -> Option<uuid::Uuid> {
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+    };
+    match name {
+        "list_threads" => {
+            if let Some(id) = field("channel_id") {
+                maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
+                    .await?;
+            }
+        }
+        "list_messages" | "post_message" | "get_thread_context" | "summarize_thread"
+        | "pin_message" | "unpin_message" | "list_pins" => {
+            if let Some(id) = field("thread_id") {
+                maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
+            }
+        }
+        "edit_message" | "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction"
+        | "list_reactions" => {
+            if let Some(id) = field("message_id") {
+                maidan_auth::ensure_message_access(store, auth, maidan_types::MessageId(id))
+                    .await?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub async fn dispatch(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -68,6 +114,7 @@ pub async fn dispatch(
     args: &Value,
     session_id: Option<&str>,
 ) -> Result<Value, McpError> {
+    enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
     let artifacts = &server.artifacts;
     let search = &server.search;

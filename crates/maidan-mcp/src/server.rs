@@ -343,6 +343,36 @@ impl McpServer {
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
+        // Gate channel/thread resource content on per-channel access (Cluster
+        // 161); workspace/artifact resources remain workspace-scoped.
+        if !auth.bypass {
+            if let Some(rest) = uri.strip_prefix("maidan://") {
+                let mut parts = rest.splitn(2, '/');
+                match (parts.next(), parts.next()) {
+                    (Some("threads"), Some(id)) => {
+                        if let Ok(u) = id.parse() {
+                            maidan_auth::ensure_thread_access(
+                                self.store.as_ref(),
+                                auth,
+                                maidan_types::ThreadId(u),
+                            )
+                            .await?;
+                        }
+                    }
+                    (Some("channels"), Some(id)) => {
+                        if let Ok(u) = id.parse() {
+                            maidan_auth::ensure_channel_access(
+                                self.store.as_ref(),
+                                auth,
+                                maidan_types::ChannelId(u),
+                            )
+                            .await?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         resources::read(&self.store, &self.artifacts, uri).await
     }
 
@@ -626,6 +656,87 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, McpError::InvalidParams(_)));
+    }
+
+    #[tokio::test]
+    async fn mcp_denies_non_members_in_private_channels() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "rbac".into(),
+            })
+            .await
+            .unwrap();
+        let mk = |handle: &'static str| {
+            let store = store.clone();
+            async move {
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Human,
+                    })
+                    .await
+                    .unwrap()
+            }
+        };
+        let alice = mk("alice").await;
+        let bob = mk("bob").await;
+        let ch = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "secret".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        store
+            .add_channel_member(ch.id, alice.id, ChannelMemberRole::Admin)
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: ch.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+
+        let caps = vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()];
+        let bob_auth = AuthContext::from_session(bob.id, ws.id, caps.clone());
+        let alice_auth = AuthContext::from_session(alice.id, ws.id, caps);
+        let args = json!({ "thread_id": thread.id.0 });
+
+        // Non-member Bob is denied; member Alice is allowed.
+        let err = server
+            .call_tool(&bob_auth, "list_messages", &args)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, McpError::Forbidden(_)));
+        server
+            .call_tool(&alice_auth, "list_messages", &args)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
