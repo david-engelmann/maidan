@@ -117,6 +117,7 @@ async fn sqlite_mixed_dimension_models_coexist() {
             author_id: member.id,
             body: "dim1024".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -126,6 +127,7 @@ async fn sqlite_mixed_dimension_models_coexist() {
             author_id: member.id,
             body: "dim512".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

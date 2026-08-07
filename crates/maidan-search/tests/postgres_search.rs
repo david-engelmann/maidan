@@ -112,6 +112,7 @@ async fn configured_hnsw_build_params_and_ef_search() {
             author_id: member.id,
             body: "hnsw target".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

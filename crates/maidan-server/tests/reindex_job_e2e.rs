@@ -64,6 +64,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
             author_id: member.id,
             body: body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

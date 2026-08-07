@@ -106,6 +106,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             author_id: alice.id,
             body: "hello".to_string(),
             metadata: serde_json::json!({"client": "test"}),
+            content: None,
         })
         .await
         .expect("post msg1");
@@ -115,6 +116,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             author_id: bot.id,
             body: "world".to_string(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .expect("post msg2");
@@ -280,6 +282,7 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
             author_id: m.id,
             body: "one".to_string(),
             metadata: serde_json::json!({"i": 1}),
+            content: None,
         })
         .await
         .expect("m1");
@@ -289,6 +292,7 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
             author_id: m.id,
             body: "two".to_string(),
             metadata: serde_json::json!({"i": 2}),
+            content: None,
         })
         .await
         .expect("m2");
@@ -308,6 +312,7 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
             EditMessage {
                 body: "one-edited".to_string(),
                 metadata: serde_json::json!({"i": 1, "edited": true}),
+                content: None,
             },
         )
         .await

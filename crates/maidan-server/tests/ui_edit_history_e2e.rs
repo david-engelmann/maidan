@@ -97,6 +97,7 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
             author_id: alice.id,
             body: "version one".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -107,6 +108,7 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
             EditMessage {
                 body: "version two".into(),
                 metadata: serde_json::json!({}),
+                content: None,
             },
         )
         .await

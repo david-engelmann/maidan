@@ -47,6 +47,7 @@ async fn seed_workspace(
             author_id: alice.id,
             body: "secret content".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

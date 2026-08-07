@@ -60,6 +60,7 @@ async fn resolve_thread_and_message_chain_match_channel_workspace() {
             author_id: member.id,
             body: "hello".into(),
             metadata: Default::default(),
+            content: None,
         })
         .await
         .expect("message");

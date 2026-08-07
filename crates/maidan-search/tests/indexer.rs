@@ -19,6 +19,7 @@ fn make_message(thread_id: ThreadId, author_id: MemberId, body: &str) -> Message
         author_id,
         body: body.into(),
         metadata: serde_json::json!({}),
+        content: None,
         posted_at: Utc::now(),
         edited_at: None,
         tombstoned_at: None,

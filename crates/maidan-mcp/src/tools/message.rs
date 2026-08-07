@@ -19,9 +19,12 @@ use crate::error::McpError;
 struct PostDmMessageArgs {
     dm_conversation_id: uuid::Uuid,
     author_id: uuid::Uuid,
+    #[serde(default)]
     body: String,
     #[serde(default)]
     metadata: Value,
+    #[serde(default)]
+    content: Option<Vec<ContentBlock>>,
 }
 
 pub(super) async fn post_dm_message(
@@ -38,7 +41,12 @@ pub(super) async fn post_dm_message(
             "author_id must be a DM participant".into(),
         ));
     }
-    let body = a.body.clone();
+    let content = a.content.clone();
+    let body = if a.body.is_empty() {
+        content.as_deref().map(derive_body).unwrap_or_default()
+    } else {
+        a.body.clone()
+    };
     let msg = store
         .post_message(NewMessage {
             thread_id: dm.thread_id,
@@ -49,6 +57,7 @@ pub(super) async fn post_dm_message(
             } else {
                 a.metadata
             },
+            content,
         })
         .await?;
     let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
@@ -93,9 +102,12 @@ pub(super) async fn list_messages(store: &Arc<dyn Store>, args: &Value) -> Resul
 struct PostMessageArgs {
     thread_id: uuid::Uuid,
     author_id: uuid::Uuid,
+    #[serde(default)]
     body: String,
     #[serde(default)]
     metadata: Value,
+    #[serde(default)]
+    content: Option<Vec<ContentBlock>>,
 }
 
 pub(super) async fn post_message(
@@ -104,7 +116,12 @@ pub(super) async fn post_message(
 ) -> Result<Value, McpError> {
     let store = &server.store;
     let a: PostMessageArgs = serde_json::from_value(args.clone())?;
-    let body = a.body.clone();
+    let content = a.content.clone();
+    let body = if a.body.is_empty() {
+        content.as_deref().map(derive_body).unwrap_or_default()
+    } else {
+        a.body.clone()
+    };
     let thread_id = ThreadId(a.thread_id);
     let msg = store
         .post_message(NewMessage {
@@ -116,6 +133,7 @@ pub(super) async fn post_message(
             } else {
                 a.metadata
             },
+            content,
         })
         .await?;
     let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
@@ -147,9 +165,12 @@ pub(super) async fn post_message(
 struct EditMessageArgs {
     message_id: uuid::Uuid,
     editor_id: uuid::Uuid,
+    #[serde(default)]
     body: String,
     #[serde(default)]
     metadata: Option<Value>,
+    #[serde(default)]
+    content: Option<Vec<ContentBlock>>,
 }
 
 pub(super) async fn edit_message(
@@ -177,13 +198,22 @@ pub(super) async fn edit_message(
         Some(v) if !v.is_null() => v,
         _ => existing.metadata,
     };
+    // Cluster 173: omitted content keeps existing; an empty body with content
+    // re-derives the searchable body.
+    let content = a.content.or(existing.content);
+    let edit_body = if a.body.is_empty() {
+        content.as_deref().map(derive_body).unwrap_or_default()
+    } else {
+        a.body
+    };
     let msg = store
         .edit_message(
             message_id,
             editor_id,
             EditMessage {
-                body: a.body,
+                body: edit_body,
                 metadata,
+                content,
             },
         )
         .await?;

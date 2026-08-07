@@ -237,6 +237,7 @@ mod tests {
                 author_id: member.id,
                 body: "original body".into(),
                 metadata: json!({}),
+                content: None,
             })
             .await
             .unwrap();
@@ -247,6 +248,7 @@ mod tests {
                 EditMessage {
                     body: "edited body".into(),
                     metadata: json!({}),
+                    content: None,
                 },
             )
             .await

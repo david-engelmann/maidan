@@ -148,6 +148,7 @@ async fn build_corpus(bodies: &[&str]) -> Corpus {
                 author_id: member.id,
                 body: (*body).into(),
                 metadata: serde_json::json!({}),
+                content: None,
             })
             .await
             .unwrap();

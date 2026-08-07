@@ -235,6 +235,7 @@ async fn post_a2a_message(
             author_id: MemberId(ctx.author_id),
             body: body_text,
             metadata: serde_json::json!({ "a2a": true }),
+            content: None,
         })
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;

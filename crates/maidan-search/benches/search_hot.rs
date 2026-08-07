@@ -79,6 +79,7 @@ fn sqlite_ctx() -> BenchCtx {
                     author_id: member.id,
                     body: body.clone(),
                     metadata: serde_json::json!({}),
+                    content: None,
                 })
                 .await
                 .expect("message");

@@ -124,6 +124,7 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
             author_id: member.id,
             body: "see attached".into(),
             metadata: serde_json::json!({ "artifact_sha256": artifact.sha256 }),
+            content: None,
         })
         .await
         .unwrap();
@@ -251,6 +252,7 @@ async fn thread_context_edit_bodies_are_opt_in() {
             author_id: member.id,
             body: "first draft".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -261,6 +263,7 @@ async fn thread_context_edit_bodies_are_opt_in() {
             EditMessage {
                 body: "final wording".into(),
                 metadata: serde_json::json!({}),
+                content: None,
             },
         )
         .await

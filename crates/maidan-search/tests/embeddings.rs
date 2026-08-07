@@ -154,6 +154,7 @@ async fn upsert_replaces_existing_embedding() {
             author_id: member.id,
             body: "single message".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [173.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 3. No new gate
+tag.
+
+### Added
+
+- **Structured message content.** Messages can now carry an ordered list of
+  typed `content` blocks — `text`, `code`, `tool_use`, `tool_result`,
+  `resource_link` (internally tagged, matching the MCP/Anthropic dialect) — over
+  both REST (`POST`/`PATCH` message `content`) and MCP (`post_message`,
+  `edit_message`, `post_dm_message`). Persisted in a new nullable column
+  (Postgres JSONB / SQLite JSON). When `content` is posted without a `body`, the
+  server derives `body` from the text-bearing blocks, so full-text + semantic
+  search are unchanged (a `tool_use` block contributes nothing to `body`). Plain
+  body-only messages have `content: null`. Tombstone + workspace-purge clear it.
+
+### Notes
+
+- Federation/A2A-ingested messages remain body-only for now (the ingest path
+  doesn't yet map `parts → content`) — logged in Open Work. No new event kind,
+  capability, MCP tool name, or contract change.
+
 ## [172.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 2. No new gate

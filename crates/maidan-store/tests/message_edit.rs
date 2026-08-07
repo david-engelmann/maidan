@@ -54,6 +54,7 @@ async fn edit_message_sets_body_and_edited_at() {
             author_id: member.id,
             body: "original".into(),
             metadata: serde_json::json!({"k": 1}),
+            content: None,
         })
         .await
         .expect("post");
@@ -65,6 +66,7 @@ async fn edit_message_sets_body_and_edited_at() {
             EditMessage {
                 body: "revised".into(),
                 metadata: serde_json::json!({"k": 2}),
+                content: None,
             },
         )
         .await
@@ -131,6 +133,7 @@ async fn edit_message_rejects_tombstoned() {
             author_id: member.id,
             body: "x".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .expect("post");
@@ -143,6 +146,7 @@ async fn edit_message_rejects_tombstoned() {
             EditMessage {
                 body: "nope".into(),
                 metadata: serde_json::json!({}),
+                content: None,
             },
         )
         .await

@@ -181,6 +181,7 @@ impl Modify for SecurityAddon {
         Thread,
         ThreadState,
         Message,
+        ContentBlock,
         MessageEdit,
         Mention,
         Vote,

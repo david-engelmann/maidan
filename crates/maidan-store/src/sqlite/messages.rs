@@ -9,16 +9,22 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
     let id = Uuid::new_v4();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
+    let content_text = new
+        .content
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
     let row = sqlx::query(
-        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         RETURNING id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at",
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
     )
     .bind(id)
     .bind(new.thread_id.0)
     .bind(new.author_id.0)
     .bind(&new.body)
     .bind(&metadata_text)
+    .bind(&content_text)
     .bind(now)
     .fetch_one(pool)
     .await?;
@@ -27,7 +33,7 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
 
 pub async fn get(pool: &SqlitePool, id: MessageId) -> Result<Message, StoreError> {
     let row = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
          FROM maidan_messages WHERE id = ?",
     )
     .bind(id.0)
@@ -43,7 +49,7 @@ pub async fn list(
     limit: i64,
 ) -> Result<Vec<Message>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
          FROM maidan_messages
          WHERE thread_id = ? AND tombstoned_at IS NULL
          ORDER BY posted_at ASC, id ASC
@@ -65,7 +71,7 @@ pub async fn list_after(
     let rows = match after {
         None => {
             sqlx::query(
-                "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+                "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
                  FROM maidan_messages
                  WHERE thread_id = ? AND tombstoned_at IS NULL
                  ORDER BY posted_at ASC, id ASC
@@ -78,7 +84,7 @@ pub async fn list_after(
         }
         Some(after_id) => {
             sqlx::query(
-                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.posted_at, m.edited_at, m.tombstoned_at
+                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.content, m.posted_at, m.edited_at, m.tombstoned_at
                  FROM maidan_messages m
                  JOIN maidan_messages anchor ON anchor.id = ?
                  WHERE m.thread_id = ? AND m.tombstoned_at IS NULL
@@ -120,13 +126,19 @@ pub async fn edit(
         super::message_edits::append(pool, id, editor_id, &existing.body, &edit.body, now).await?;
     }
     let metadata_text = serde_json::to_string(&edit.metadata)?;
+    let content_text = edit
+        .content
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
     let row = sqlx::query(
-        "UPDATE maidan_messages SET body = ?, metadata = ?, edited_at = ?
+        "UPDATE maidan_messages SET body = ?, metadata = ?, content = ?, edited_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
-         RETURNING id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
     )
     .bind(&edit.body)
     .bind(&metadata_text)
+    .bind(&content_text)
     .bind(now)
     .bind(id.0)
     .fetch_optional(pool)
@@ -138,7 +150,7 @@ pub async fn edit(
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
     let now = Utc::now();
     let res = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = ?, body = '' WHERE id = ? AND tombstoned_at IS NULL",
+        "UPDATE maidan_messages SET tombstoned_at = ?, body = '', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
     )
     .bind(now)
     .bind(id.0)
@@ -159,6 +171,9 @@ fn row_to_message(row: &sqlx::sqlite::SqliteRow) -> Result<Message, StoreError> 
         author_id: MemberId(row.get::<Uuid, _>("author_id")),
         body: row.get("body"),
         metadata,
+        content: row
+            .get::<Option<String>, _>("content")
+            .and_then(|s| serde_json::from_str(&s).ok()),
         posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
         edited_at: row.get::<Option<DateTime<Utc>>, _>("edited_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),

@@ -91,6 +91,7 @@ pub async fn seed(store: &dyn Store) -> Fixture {
                 author_id,
                 body: body.into(),
                 metadata: serde_json::json!({"topic": "engineering"}),
+                content: None,
             })
             .await
             .unwrap();

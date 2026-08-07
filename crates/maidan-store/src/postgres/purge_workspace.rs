@@ -42,7 +42,7 @@ pub async fn purge(
     .await?;
 
     let tombstone = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = ''
+        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL
          WHERE tombstoned_at IS NULL
            AND thread_id IN (
              SELECT t.id FROM maidan_threads t

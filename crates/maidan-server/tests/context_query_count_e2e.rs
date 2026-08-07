@@ -51,6 +51,7 @@ async fn seed_thread_with_messages(
                 author_id: author,
                 body: format!("message {i}"),
                 metadata: json!({}),
+                content: None,
             })
             .await
             .unwrap();
@@ -73,6 +74,7 @@ async fn seed_thread_with_messages(
                 EditMessage {
                     body: format!("message {i} edited"),
                     metadata: json!({}),
+                    content: None,
                 },
             )
             .await

@@ -311,6 +311,68 @@ pub struct ThreadTransition {
     pub occurred_at: DateTime<Utc>,
 }
 
+/// A typed part of a message's structured content (Cluster 173). The wire form
+/// is internally tagged (`{"type":"text","text":"…"}`), matching the MCP /
+/// Anthropic content-block dialect and the existing A2A `TextPart`. `body`
+/// remains the canonical searchable plain-text projection derived from these.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    Text {
+        text: String,
+    },
+    Code {
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        language: Option<String>,
+        code: String,
+    },
+    /// A tool/function invocation (agent → tool).
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    /// The result of a prior [`ContentBlock::ToolUse`], correlated by id.
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(default)]
+        is_error: bool,
+    },
+    /// A pointer to a resource/artifact (URI form).
+    ResourceLink {
+        uri: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        title: Option<String>,
+    },
+}
+
+/// Derive the plain-text `body` projection from structured content blocks
+/// (Cluster 173) so full-text + semantic search stay unchanged. `ToolUse` adds
+/// nothing (a tool name is not prose); code is fenced; a resource link renders
+/// as its title or URI. Blocks are joined by blank lines.
+pub fn derive_body(blocks: &[ContentBlock]) -> String {
+    blocks
+        .iter()
+        .filter_map(|b| match b {
+            ContentBlock::Text { text } => Some(text.clone()),
+            ContentBlock::Code { language, code } => Some(format!(
+                "```{}\n{code}\n```",
+                language.as_deref().unwrap_or("")
+            )),
+            ContentBlock::ToolResult { content, .. } => Some(content.clone()),
+            ContentBlock::ResourceLink { uri, title, .. } => {
+                Some(title.clone().unwrap_or_else(|| uri.clone()))
+            }
+            ContentBlock::ToolUse { .. } => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Message {
@@ -319,6 +381,10 @@ pub struct Message {
     pub author_id: MemberId,
     pub body: String,
     pub metadata: serde_json::Value,
+    /// Typed structured content (Cluster 173); `None` for plain/legacy messages.
+    /// `body` is the plain-text projection of these blocks.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub content: Option<Vec<ContentBlock>>,
     pub posted_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub tombstoned_at: Option<DateTime<Utc>>,
@@ -330,6 +396,7 @@ pub struct NewMessage {
     pub author_id: MemberId,
     pub body: String,
     pub metadata: serde_json::Value,
+    pub content: Option<Vec<ContentBlock>>,
 }
 
 /// Body/metadata replacement for [`Store::edit_message`] (Cluster 29).
@@ -337,6 +404,7 @@ pub struct NewMessage {
 pub struct EditMessage {
     pub body: String,
     pub metadata: serde_json::Value,
+    pub content: Option<Vec<ContentBlock>>,
 }
 
 /// One recorded body change for a message (Cluster 46).

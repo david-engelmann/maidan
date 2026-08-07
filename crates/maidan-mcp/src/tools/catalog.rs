@@ -38,8 +38,9 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "dm_conversation_id": {"type": "string", "format": "uuid"},
                     "author_id": {"type": "string", "format": "uuid"},
-                    "body": {"type": "string"},
-                    "metadata": {"type": "object"}
+                    "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
+                    "metadata": {"type": "object"},
+                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
                 "required": ["dm_conversation_id", "author_id", "body"]
             }
@@ -195,8 +196,9 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "author_id": {"type": "string", "format": "uuid"},
-                    "body": {"type": "string"},
-                    "metadata": {"type": "object"}
+                    "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
+                    "metadata": {"type": "object"},
+                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
                 "required": ["thread_id", "author_id", "body"]
             }
@@ -209,8 +211,9 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
                     "editor_id": {"type": "string", "format": "uuid"},
-                    "body": {"type": "string"},
-                    "metadata": {"type": "object"}
+                    "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
+                    "metadata": {"type": "object"},
+                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
                 "required": ["message_id", "editor_id", "body"]
             }

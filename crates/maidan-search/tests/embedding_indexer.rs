@@ -87,6 +87,7 @@ async fn embedding_handler_upserts_on_message_posted() {
             author_id: author.id,
             body: "semantic body".to_string(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .expect("message");
@@ -211,6 +212,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
                 author_id: author.id,
                 body: body.to_string(),
                 metadata: serde_json::json!({}),
+                content: None,
             })
             .await
             .expect("message");

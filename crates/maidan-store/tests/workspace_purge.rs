@@ -55,6 +55,7 @@ async fn purge_workspace_tombstones_then_deletes_all_messages() {
             author_id: alice.id,
             body: "hello".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -64,6 +65,7 @@ async fn purge_workspace_tombstones_then_deletes_all_messages() {
             author_id: alice.id,
             body: "world".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
