@@ -28,6 +28,27 @@ mod thread;
 
 pub use catalog::catalog;
 
+/// The tool catalog filtered to the tools the caller may invoke (Cluster 176,
+/// token round 3). Bypass callers (auth disabled) see everything; otherwise a
+/// tool whose required capability the caller lacks is omitted, so a
+/// capability-scoped agent gets a smaller, relevant `tools/list` — fewer tokens
+/// and no tools it would only get 403s from. The unfiltered [`catalog`] is
+/// unchanged (contract tests + full-capability callers rely on it).
+pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
+    catalog()
+        .into_iter()
+        .filter(|tool| {
+            if auth.bypass {
+                return true;
+            }
+            tool.get("name")
+                .and_then(|n| n.as_str())
+                .and_then(|name| required_capability(name).ok())
+                .is_some_and(|cap| auth.has_capability(cap))
+        })
+        .collect()
+}
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"
@@ -255,4 +276,55 @@ pub(super) fn content_json<T: serde::Serialize>(value: &T) -> Value {
         ],
         "isError": false
     })
+}
+
+#[cfg(test)]
+mod catalog_filter_tests {
+    use super::*;
+    use maidan_types::{ApiTokenId, MemberId, WorkspaceId};
+
+    fn tool_names(tools: &[Value]) -> Vec<String> {
+        tools
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn bypass_sees_the_whole_catalog() {
+        let auth = AuthContext::bypass();
+        assert_eq!(catalog_for(&auth).len(), catalog().len());
+    }
+
+    #[test]
+    fn a_read_only_token_sees_only_read_tools() {
+        let auth = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            MemberId(uuid::Uuid::new_v4()),
+            WorkspaceId(uuid::Uuid::new_v4()),
+            vec![WORKSPACE_READ.to_string()],
+        );
+        let names = tool_names(&catalog_for(&auth));
+        // A workspace:read tool is present; write / search / artifact tools are not.
+        assert!(names.contains(&"list_threads".to_string()));
+        assert!(!names.contains(&"post_message".to_string())); // message:post
+        assert!(!names.contains(&"search_messages".to_string())); // search:query
+        assert!(!names.contains(&"add_reaction".to_string())); // workspace:write
+                                                               // Every surfaced tool really does require workspace:read.
+        for name in &names {
+            assert_eq!(required_capability(name).unwrap(), WORKSPACE_READ, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_missing_capability_hides_its_tools() {
+        let auth = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            MemberId(uuid::Uuid::new_v4()),
+            WorkspaceId(uuid::Uuid::new_v4()),
+            vec![SEARCH_QUERY.to_string()],
+        );
+        let names = tool_names(&catalog_for(&auth));
+        assert_eq!(names, vec!["search_messages".to_string()]);
+    }
 }

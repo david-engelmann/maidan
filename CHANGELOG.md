@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [176.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 2. No
+new gate tag.
+
+### Changed
+
+- **`tools/list` is capability-filtered.** The MCP tool list now returns only
+  the tools the caller's token capabilities allow (via `tools::catalog_for`),
+  instead of the entire catalog — a capability-scoped agent no longer pays tokens
+  for ~40 tool schemas it can't invoke. Bypass / full-capability callers see the
+  full list, unchanged. The unfiltered catalog (contract tests, full-cap callers)
+  is untouched — only the per-caller response is scoped.
+
 ## [175.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 1. No

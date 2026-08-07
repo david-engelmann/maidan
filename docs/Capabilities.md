@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v176.0.0 — Token: capability-filtered tools/list
+
+| Change | Where |
+|--------|-------|
+| MCP `tools/list` returns only the tools the caller's capabilities allow (`catalog_for`); bypass sees all | `crates/maidan-mcp/src/tools/mod.rs` |
+
 ## v175.0.0 — Token: MCP search snippet_only parity
 
 | Change | Where |
