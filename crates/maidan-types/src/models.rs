@@ -373,6 +373,12 @@ pub fn derive_body(blocks: &[ContentBlock]) -> String {
         .join("\n\n")
 }
 
+/// `true` for a JSON value that carries no information — `null` or an empty
+/// object — used to omit an empty `metadata` from the wire (Cluster 177).
+fn json_value_is_empty(v: &serde_json::Value) -> bool {
+    v.is_null() || v.as_object().is_some_and(|o| o.is_empty())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Message {
@@ -380,6 +386,10 @@ pub struct Message {
     pub thread_id: ThreadId,
     pub author_id: MemberId,
     pub body: String,
+    /// Open annotation bag. Omitted from the wire when empty (Cluster 177, token
+    /// round 3) — most messages carry no metadata, so `"metadata":{}` on every
+    /// one was pure token waste. Deserializes back to an empty object by default.
+    #[serde(skip_serializing_if = "json_value_is_empty", default)]
     pub metadata: serde_json::Value,
     /// Typed structured content (Cluster 173); `None` for plain/legacy messages.
     /// `body` is the plain-text projection of these blocks.
@@ -1000,4 +1010,44 @@ pub struct ReindexJob {
     pub started_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<DateTime<Utc>>,
+}
+
+#[cfg(test)]
+mod message_serde_tests {
+    use super::*;
+
+    fn msg(metadata: serde_json::Value) -> Message {
+        Message {
+            id: MessageId(uuid::Uuid::nil()),
+            thread_id: ThreadId(uuid::Uuid::nil()),
+            author_id: MemberId(uuid::Uuid::nil()),
+            body: "hi".into(),
+            metadata,
+            content: None,
+            posted_at: chrono::Utc::now(),
+            edited_at: None,
+            tombstoned_at: None,
+        }
+    }
+
+    #[test]
+    fn empty_metadata_is_omitted_from_the_wire() {
+        // {} and null both carry no info → omitted (Cluster 177).
+        for empty in [serde_json::json!({}), serde_json::Value::Null] {
+            let v = serde_json::to_value(msg(empty)).unwrap();
+            assert!(
+                v.get("metadata").is_none(),
+                "empty metadata must be omitted, got {v}"
+            );
+            // Round-trips back to an (empty) object via default.
+            let back: Message = serde_json::from_value(v).unwrap();
+            assert!(json_value_is_empty(&back.metadata));
+        }
+    }
+
+    #[test]
+    fn non_empty_metadata_is_kept() {
+        let v = serde_json::to_value(msg(serde_json::json!({"topic": "x"}))).unwrap();
+        assert_eq!(v["metadata"]["topic"], "x");
+    }
 }

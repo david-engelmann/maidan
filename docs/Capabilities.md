@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v177.0.0 — Token: omit empty message metadata
+
+| Change | Where |
+|--------|-------|
+| `Message.metadata` omitted from serialization when empty (`{}`/`null`) — REST, events, MCP, write-acks | `crates/maidan-types/src/models.rs` |
+
 ## v176.0.0 — Token: capability-filtered tools/list
 
 | Change | Where |
