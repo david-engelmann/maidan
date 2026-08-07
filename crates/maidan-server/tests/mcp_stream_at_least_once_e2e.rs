@@ -245,3 +245,79 @@ async fn mcp_stream_rejects_unknown_kind() {
     assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
     server.abort();
 }
+
+/// Read the first domain-event frame (skips control frames like subscribe_ack).
+async fn first_event_frame(resp: reqwest::Response) -> Value {
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    let work = async {
+        loop {
+            let Some(chunk) = stream.next().await else {
+                panic!("stream ended before an event frame");
+            };
+            buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+            while let Some(idx) = buf.find("\n\n") {
+                let frame: String = buf.drain(..idx + 2).collect();
+                for line in frame.lines() {
+                    let Some(data) = line.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let Ok(v) = serde_json::from_str::<Value>(data.trim()) else {
+                        continue;
+                    };
+                    if v.get("type").is_none() {
+                        return v; // a domain-event frame (control frames carry "type")
+                    }
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), work)
+        .await
+        .expect("timeout waiting for an event frame")
+}
+
+/// Cluster 178 (token round 3): `lean=true` delivers `{log_id, kind, ...ids}`
+/// pointer frames — the heavy embedded event payload is dropped, but the
+/// top-level routing fields clients read stay put.
+#[tokio::test]
+async fn mcp_stream_lean_frames_omit_the_event_payload() {
+    let (addr, client, _store, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "lean-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+
+    // Backlog has workspace_created. Subscribe lean + at_least_once (deterministic
+    // backlog delivery) and inspect the first event frame.
+    let resp = client
+        .get(format!(
+            "{base}/mcp/stream?workspace_id={workspace_id}&consumer_id=lean&at_least_once=true&lean=true"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success());
+    let frame = first_event_frame(resp).await;
+
+    // Routing fields present…
+    assert!(
+        frame["log_id"].is_number(),
+        "lean frame keeps log_id: {frame}"
+    );
+    assert_eq!(frame["kind"], "workspace_created");
+    assert_eq!(frame["workspace_id"].as_str(), Some(workspace_id.as_str()));
+    // …but the heavy embedded payload is gone (full frame would carry `workspace`).
+    assert!(
+        frame.get("workspace").is_none(),
+        "lean frame must drop the embedded event payload: {frame}"
+    );
+    server.abort();
+}

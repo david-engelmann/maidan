@@ -55,6 +55,10 @@ pub struct McpStreamQuery {
     /// and `consumer_id`; adds a stability-window latency floor on fresh events.
     #[serde(default)]
     pub at_least_once: bool,
+    /// Opt into lean event frames (Cluster 178, token round 3): `{log_id, kind,
+    /// ...ids}` pointers instead of full serialized events.
+    #[serde(default)]
+    pub lean: bool,
 }
 
 pub async fn stream(
@@ -103,6 +107,7 @@ pub async fn stream(
         }
     });
 
+    let lean = q.lean;
     let mut high_water = after_id;
     // At-least-once mode delivers the backlog via the reconcile loop's first
     // pass (stability-gated), so skip the optimistic replay here.
@@ -113,6 +118,7 @@ pub async fn stream(
             after_id,
             &text_tx,
             delivery_consumer_id.as_deref(),
+            lean,
         )
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -163,6 +169,7 @@ pub async fn stream(
                 high_water,
                 stability,
                 interval,
+                lean,
             )
             .await;
         });
@@ -177,6 +184,7 @@ pub async fn stream(
                 bus_filter,
                 crate::subscribe_metrics::SubscribeTransport::McpSse,
                 delivery_consumer_id,
+                lean,
             )
             .await;
         });

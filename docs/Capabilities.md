@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v178.0.0 — Token: opt-in lean event frames
+
+| Change | Where |
+|--------|-------|
+| `lean` subscribe flag (WS + MCP SSE) → event frames carry `{log_id, kind, ...ids}` pointers instead of full events | `crates/maidan-server/src/{event_stream,ws,mcp_stream}.rs` |
+
 ## v177.0.0 — Token: omit empty message metadata
 
 | Change | Where |

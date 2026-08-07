@@ -115,12 +115,50 @@ pub async fn emit_replay_truncated_if_needed(
 }
 
 /// Replay persisted events matching `filter` with `id > after_id`.
+/// Lean domain-event frame (Cluster 178, token round 3): the top-level routing
+/// fields of a full frame (`log_id`, `kind`, and whatever ids apply) minus the
+/// heavy embedded event payload. A client that just tails for activity gets a
+/// "something happened, go fetch" pointer; the fields are a strict subset of the
+/// full frame's, so `log_id`/`kind`/`thread_id`-based client logic is unchanged.
+#[derive(Serialize)]
+struct LeanFrame<'a> {
+    log_id: i64,
+    kind: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_id: Option<uuid::Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    channel_id: Option<uuid::Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread_id: Option<uuid::Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    member_id: Option<uuid::Uuid>,
+}
+
+/// Serialize an event frame for a subscriber — the full flattened envelope, or a
+/// [`LeanFrame`] pointer when `lean` (Cluster 178).
+fn frame_payload(envelope: &BusEnvelope, lean: bool) -> Result<String, serde_json::Error> {
+    if lean {
+        let e = &envelope.event;
+        serde_json::to_string(&LeanFrame {
+            log_id: envelope.log_id,
+            kind: e.kind().as_str(),
+            workspace_id: e.workspace_id().map(|w| w.0),
+            channel_id: e.channel_id().map(|c| c.0),
+            thread_id: e.thread_id().map(|t| t.0),
+            member_id: e.member_id().map(|m| m.0),
+        })
+    } else {
+        serde_json::to_string(envelope)
+    }
+}
+
 pub async fn replay_matching_events(
     store: &dyn Store,
     filter: &EventFilter,
     after_id: i64,
     tx: &mpsc::Sender<String>,
     delivery_consumer_id: Option<&str>,
+    lean: bool,
 ) -> Result<ReplayOutcome, maidan_store::StoreError> {
     let Some(workspace_id) = filter.workspace_id else {
         return Ok(ReplayOutcome {
@@ -144,7 +182,7 @@ pub async fn replay_matching_events(
         if !filter.matches_envelope(&envelope) {
             continue;
         }
-        let payload = match serde_json::to_string(&envelope) {
+        let payload = match frame_payload(&envelope, lean) {
             Ok(p) => p,
             Err(err) => {
                 tracing::warn!(error = %err, "drop unserializable replay event");
@@ -223,6 +261,7 @@ pub async fn forward_bus_items(
     filter: EventFilter,
     transport: SubscribeTransport,
     delivery_consumer_id: Option<String>,
+    lean: bool,
 ) {
     // Best-effort cursor on the optimistic path, coalesced (Cluster 169, H2):
     // buffer the highest delivered id and persist it on a count/time threshold
@@ -250,7 +289,7 @@ pub async fn forward_bus_items(
                         last_flush = std::time::Instant::now();
                     }
                 }
-                let payload = match serde_json::to_string(envelope.as_ref()) {
+                let payload = match frame_payload(envelope.as_ref(), lean) {
                     Ok(p) => p,
                     Err(err) => {
                         tracing::warn!(error = %err, "drop unserializable event");
@@ -271,6 +310,7 @@ pub async fn forward_bus_items(
                         after_id,
                         &tx,
                         delivery_consumer_id.as_deref(),
+                        lean,
                     )
                     .await
                     {
@@ -373,6 +413,7 @@ pub async fn reconcile_deliver(
     start_after_id: i64,
     stability: std::time::Duration,
     poll_interval: std::time::Duration,
+    lean: bool,
 ) {
     let mut cursor = start_after_id;
     let mut ticker = tokio::time::interval(poll_interval);
@@ -421,7 +462,7 @@ pub async fn reconcile_deliver(
                 if !filter.matches_envelope(&envelope) {
                     continue;
                 }
-                let payload = match serde_json::to_string(&envelope) {
+                let payload = match frame_payload(&envelope, lean) {
                     Ok(p) => p,
                     Err(err) => {
                         tracing::warn!(error = %err, "drop unserializable reconcile event");

@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [178.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 4
+(final). No new gate tag.
+
+### Added
+
+- **Opt-in lean event frames.** A `lean` subscribe flag (WS subscribe frame /
+  MCP-SSE query param) makes the streamed domain-event frames carry only
+  `{log_id, kind, workspace_id?, channel_id?, thread_id?, member_id?}` — a
+  "something happened, go fetch" pointer — instead of the full serialized event.
+  Saves tokens for agents that tail for activity and read on demand. Default off;
+  the lean frame is a strict subset of the full frame's top-level fields, so
+  `log_id`/`kind`/`thread_id`-based client logic is unchanged. Applies on all
+  delivery paths (optimistic live, lag-replay, at-least-once reconcile).
+
+This completes token round 3 (175–178) and the post-v155 four-arc program
+(enterprise hardening 156–165, perf + CI/CD 166–170, agentic features 171–174,
+token round 3 175–178).
+
 ## [177.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 3. No
