@@ -73,6 +73,12 @@ pub struct SubscribeFrame {
     /// and `consumer_id`; adds a stability-window latency floor on fresh events.
     #[serde(default)]
     pub at_least_once: bool,
+    /// Opt into lean event frames (Cluster 178, token round 3): domain-event
+    /// frames carry only `{log_id, kind, ...ids}` — a "something happened, go
+    /// fetch" pointer — instead of the full serialized event, saving tokens for
+    /// an agent that tails for activity and reads on demand.
+    #[serde(default)]
+    pub lean: bool,
 }
 
 struct SubscribeRequest {
@@ -82,6 +88,7 @@ struct SubscribeRequest {
     consumer_id: Option<String>,
     member_id: Option<MemberId>,
     at_least_once: bool,
+    lean: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,6 +145,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             request.after_id,
             &text_tx,
             request.consumer_id.as_deref(),
+            request.lean,
         )
         .await
         {
@@ -197,6 +205,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
     let delivery_consumer_id = request.consumer_id.clone();
     let delivery_stability = state.delivery_stability;
     let delivery_reconcile_interval = state.delivery_reconcile_interval;
+    let lean = request.lean;
     // `at_least_once` is only set when both workspace_id and consumer_id resolve
     // (see `resolve_subscribe_request`); the destructure falls back otherwise.
     let reconcile = request
@@ -220,6 +229,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
                 high_water,
                 delivery_stability,
                 delivery_reconcile_interval,
+                lean,
             )
             .await;
         })
@@ -234,6 +244,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
                 bus_filter,
                 crate::subscribe_metrics::SubscribeTransport::Ws,
                 delivery_consumer_id,
+                lean,
             )
             .await;
         })
@@ -433,6 +444,7 @@ async fn read_subscribe(
         consumer_id: sub.consumer_id.clone(),
         member_id,
         at_least_once,
+        lean: sub.lean,
     })
 }
 
