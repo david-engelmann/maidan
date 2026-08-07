@@ -18,6 +18,38 @@ use crate::subscribe_metrics::{
 
 pub const REPLAY_LIMIT: i64 = 500;
 
+/// Coalesce the optimistic-path delivery-cursor write (Cluster 169, H2): buffer
+/// the highest delivered `log_id` and persist it at most once per this many
+/// events or [`CURSOR_FLUSH_INTERVAL`], plus a final flush when the stream ends.
+/// The cursor is best-effort on this path (the authoritative at-least-once path
+/// is [`reconcile_deliver`], which already batches), and `advance_delivery_cursor`
+/// is monotonic, so a coalesced-away write only means an at-least-once reconnect
+/// re-delivers a few already-seen events — the contract already tolerates that.
+const CURSOR_FLUSH_EVENTS: u32 = 64;
+const CURSOR_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Persist a buffered delivery cursor (Cluster 169, H2). No-op when nothing is
+/// buffered or no consumer/workspace resolved.
+async fn flush_delivery_cursor(
+    store: &Arc<dyn Store>,
+    writer: Option<(&str, maidan_types::WorkspaceId)>,
+    pending: &mut Option<i64>,
+) {
+    if let (Some((consumer_id, workspace_id)), Some(log_id)) = (writer, pending.take()) {
+        if let Err(err) = store
+            .advance_delivery_cursor(consumer_id, workspace_id, log_id)
+            .await
+        {
+            tracing::warn!(
+                error = %err,
+                consumer_id,
+                log_id,
+                "delivery cursor advance failed"
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ReplayOutcome {
     pub high_water: i64,
@@ -123,10 +155,14 @@ pub async fn replay_matching_events(
             break;
         }
         high_water = high_water.max(envelope.log_id);
+    }
+    // Coalesce the per-row cursor writes into one advance to the batch high-water
+    // (Cluster 169, H2) — monotonic, so this is equivalent to the per-row writes.
+    if high_water > after_id {
         if let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
         {
             let _ = store
-                .advance_delivery_cursor(consumer_id, workspace_id, envelope.log_id)
+                .advance_delivery_cursor(consumer_id, workspace_id, high_water)
                 .await;
         }
     }
@@ -188,6 +224,13 @@ pub async fn forward_bus_items(
     transport: SubscribeTransport,
     delivery_consumer_id: Option<String>,
 ) {
+    // Best-effort cursor on the optimistic path, coalesced (Cluster 169, H2):
+    // buffer the highest delivered id and persist it on a count/time threshold
+    // + a final flush, instead of a DB write per event.
+    let cursor_writer = delivery_consumer_id.as_deref().zip(filter.workspace_id);
+    let mut pending_cursor: Option<i64> = None;
+    let mut events_since_flush: u32 = 0;
+    let mut last_flush = std::time::Instant::now();
     while let Some(item) = subscriber.next().await {
         match item {
             BusItem::Event(envelope) => {
@@ -196,19 +239,15 @@ pub async fn forward_bus_items(
                     continue;
                 }
                 watermark.fetch_max(id, Ordering::Relaxed);
-                if let (Some(consumer_id), Some(workspace_id)) =
-                    (delivery_consumer_id.as_deref(), filter.workspace_id)
-                {
-                    if let Err(err) = store
-                        .advance_delivery_cursor(consumer_id, workspace_id, id)
-                        .await
+                if cursor_writer.is_some() {
+                    pending_cursor = Some(pending_cursor.map_or(id, |p| p.max(id)));
+                    events_since_flush += 1;
+                    if events_since_flush >= CURSOR_FLUSH_EVENTS
+                        || last_flush.elapsed() >= CURSOR_FLUSH_INTERVAL
                     {
-                        tracing::warn!(
-                            error = %err,
-                            consumer_id,
-                            log_id = id,
-                            "delivery cursor advance failed"
-                        );
+                        flush_delivery_cursor(&store, cursor_writer, &mut pending_cursor).await;
+                        events_since_flush = 0;
+                        last_flush = std::time::Instant::now();
                     }
                 }
                 let payload = match serde_json::to_string(envelope.as_ref()) {
@@ -287,6 +326,8 @@ pub async fn forward_bus_items(
             }
         }
     }
+    // Persist whatever's buffered when the stream ends (Cluster 169, H2).
+    flush_delivery_cursor(&store, cursor_writer, &mut pending_cursor).await;
 }
 
 /// Stability window for at-least-once reconcile delivery (Cluster 125): a row is

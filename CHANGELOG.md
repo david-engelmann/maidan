@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [169.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Perf — arc 2, part 4 (closes the DB-hot-path
+items). No new gate tag.
+
+### Changed
+
+- **Optimistic-path delivery-cursor writes are coalesced.** The optimistic live
+  subscribe path (`forward_bus_items`) issued an `advance_delivery_cursor` DB
+  UPSERT on **every** delivered event — one write per event per subscriber, in
+  the hot path. It now buffers the highest delivered `log_id` and persists it at
+  most once per 64 events or 500 ms, plus a flush when the stream ends. The
+  lag-replay path advances once to the batch high-water instead of per row.
+  Safe because this cursor is best-effort (the authoritative at-least-once path,
+  `reconcile_deliver`, already batches), `advance_delivery_cursor` is monotonic,
+  and delivery is at-least-once — a coalesced-away write only re-delivers a few
+  already-seen events on reconnect, never skips.
+
 ## [168.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 3. No new gate tag.
