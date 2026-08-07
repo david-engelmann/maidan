@@ -33,6 +33,7 @@
   "register_slash_command": "workspace:write",
   "remove_channel_member": "channel:admin",
   "remove_reaction": "workspace:write",
+  "request_approval": "workspace:read",
   "search_messages": "search:query",
   "summarize_thread": "workspace:read",
   "unassign_thread": "thread:transition",

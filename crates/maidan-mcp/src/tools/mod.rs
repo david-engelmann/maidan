@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 
 use crate::error::McpError;
 
+mod approval;
 mod artifact;
 mod automation;
 mod catalog;
@@ -39,6 +40,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_context"
         | "get_workspace_context"
         | "summarize_thread"
+        | "request_approval"
         | "list_mentions"
         | "get_inbox"
         | "mark_inbox_read" => Ok(WORKSPACE_READ),
@@ -237,6 +239,7 @@ pub async fn dispatch(
             Ok(content_json(&v))
         }
         "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
+        "request_approval" => approval::request_approval(server, session_id, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

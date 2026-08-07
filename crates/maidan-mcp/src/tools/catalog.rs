@@ -543,5 +543,17 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["thread_id"]
             }
         }),
+        json!({
+            "name": "request_approval",
+            "description": "Human-in-the-loop gate: ask the human on the connected MCP client to approve or reject an action (server→client elicitation/create over the GET /mcp/streamable stream). Requires a streamable session whose client declared the elicitation capability. Returns {approved, action, content}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "what the human is being asked to approve"},
+                    "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply (MCP requestedSchema)"}
+                },
+                "required": ["prompt"]
+            }
+        }),
     ]
 }

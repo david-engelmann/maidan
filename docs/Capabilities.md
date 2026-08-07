@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v174.0.0 — Agentic: human-in-the-loop approvals
+
+| Change | Where |
+|--------|-------|
+| MCP `request_approval` — server→client `elicitation/create` HITL gate; returns `{approved, action, content}` | `crates/maidan-mcp/src/tools/approval.rs` |
+
 ## v173.0.0 — Agentic: structured message content
 
 | Change | Where |
