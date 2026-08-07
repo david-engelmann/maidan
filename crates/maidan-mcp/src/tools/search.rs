@@ -35,6 +35,10 @@ struct SearchMessagesArgs {
     kind: Option<maidan_types::MemberKind>,
     embedding_model: Option<String>,
     hybrid_weight: Option<f64>,
+    /// Drop full `body` from each hit, keeping only the snippet (Cluster 175,
+    /// token round 3) — parity with the REST `snippet_only` param (Cluster 152).
+    #[serde(default)]
+    snippet_only: bool,
 }
 
 fn default_search_limit() -> i64 {
@@ -119,6 +123,13 @@ pub(super) async fn search_messages(
             }
         }
         allowed
+    };
+    let hits = if a.snippet_only {
+        hits.into_iter()
+            .map(maidan_search::SearchHit::into_snippet_only)
+            .collect()
+    } else {
+        hits
     };
     Ok(content_json(&hits))
 }

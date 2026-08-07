@@ -308,3 +308,50 @@ async fn mcp_search_messages_tool_works() {
 
     server.abort();
 }
+
+/// Cluster 175 (token round 3): the MCP `search_messages` tool honors
+/// `snippet_only`, dropping full bodies to save tokens — parity with REST.
+#[tokio::test]
+async fn mcp_search_messages_snippet_only_drops_bodies() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+
+    let resp: Value = client
+        .post(format!("{base}/mcp"))
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "search_messages",
+                "arguments": {
+                    "workspace_id": workspace_id,
+                    "query": "rust",
+                    "snippet_only": true
+                }
+            }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+    let hits: Vec<Value> = serde_json::from_str(text).unwrap();
+    assert_eq!(hits.len(), 3);
+    for hit in &hits {
+        assert_eq!(
+            hit["body"].as_str().unwrap(),
+            "",
+            "snippet_only blanks body"
+        );
+        assert!(
+            !hit["snippet"].as_str().unwrap().is_empty(),
+            "lexical hits keep their FTS snippet"
+        );
+    }
+
+    server.abort();
+}
