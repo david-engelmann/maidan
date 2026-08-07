@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v172.0.0 — Agentic: MCP structured backpressure
+
+| Change | Where |
+|--------|-------|
+| Rate-limited `POST /mcp` + `/mcp/streamable` return a JSON-RPC error envelope (`-32029` + `data.retry_after_ms`), still 429 + `Retry-After` | `crates/maidan-server/src/rate_limit/mod.rs` |
+| `McpError::RateLimited { retry_after_ms }` | `crates/maidan-mcp/src/error.rs` |
+
 ## v171.0.0 — Agentic: thread task assignment / handoff
 
 | Change | Where |

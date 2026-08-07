@@ -7,14 +7,22 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::State,
-    http::{header, Request},
+    http::{header, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
+    Json,
 };
 
 pub use limiter::{try_acquire, WindowConfig};
 
 use crate::error::ApiError;
+
+/// The MCP JSON-RPC POST endpoints — a rate-limit rejection here is returned as a
+/// JSON-RPC error envelope (Cluster 172) so an agent's JSON-RPC layer gets a
+/// typed backpressure signal instead of an opaque transport 429.
+pub(crate) fn is_mcp_jsonrpc_path(path: &str) -> bool {
+    path == "/mcp" || path == "/mcp/streamable"
+}
 
 #[derive(Clone, Copy, Debug)]
 struct RateLimitConfig {
@@ -97,12 +105,13 @@ pub async fn middleware(
         return next.run(req).await;
     }
     let redis = state.rate_limit_redis.as_ref();
+    let is_mcp = is_mcp_jsonrpc_path(req.uri().path());
 
     // Global per-client (bearer/IP) limit.
     if let Some(cfg) = global {
         let key = format!("global:{}", client_key(&req));
         if !try_acquire(&key, cfg.into(), redis).await {
-            return too_many(cfg.window, cfg.max);
+            return too_many(cfg.window, cfg.max, is_mcp);
         }
     }
     // Per-workspace fairness on workspace-scoped routes (Cluster 110).
@@ -110,7 +119,7 @@ pub async fn middleware(
         if let Some(wid) = workspace_id_from_path(req.uri().path()) {
             let key = format!("ws:{wid}");
             if !try_acquire(&key, cfg.into(), redis).await {
-                return too_many(cfg.window, cfg.max);
+                return too_many(cfg.window, cfg.max, is_mcp);
             }
         }
     }
@@ -126,13 +135,23 @@ impl From<RateLimitConfig> for WindowConfig {
     }
 }
 
-pub(crate) fn too_many(window: Duration, max: u32) -> Response {
+pub(crate) fn too_many(window: Duration, max: u32, is_mcp: bool) -> Response {
     let retry_after = window.as_secs().max(1);
-    let err = ApiError::TooManyRequests(format!(
-        "rate limit exceeded ({max} requests per {secs}s)",
-        secs = window.as_secs()
-    ));
-    let mut response = err.into_response();
+    let mut response = if is_mcp {
+        // Structured backpressure for MCP JSON-RPC clients (Cluster 172): a
+        // JSON-RPC error envelope with `retry_after_ms` in `data`, still under a
+        // 429 so HTTP-level infra sees it too.
+        let retry_after_ms = u64::try_from(window.as_millis()).unwrap_or(u64::MAX).max(1);
+        let err = maidan_mcp::McpError::RateLimited { retry_after_ms }.to_jsonrpc();
+        let body = maidan_mcp::JsonRpcResponse::failure(serde_json::Value::Null, err);
+        (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response()
+    } else {
+        ApiError::TooManyRequests(format!(
+            "rate limit exceeded ({max} requests per {secs}s)",
+            secs = window.as_secs()
+        ))
+        .into_response()
+    };
     if let Ok(v) = retry_after.to_string().parse() {
         response.headers_mut().insert(header::RETRY_AFTER, v);
     }

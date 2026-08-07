@@ -97,3 +97,45 @@ async fn burst_over_limit_returns_429_problem_json() {
     assert!(body["type"].as_str().unwrap().contains("rate-limited"));
     handle.abort();
 }
+
+#[tokio::test]
+async fn mcp_rate_limit_returns_jsonrpc_backpressure_envelope() {
+    // Cluster 172: a rate-limited POST /mcp must return a JSON-RPC error
+    // envelope (code -32029 + data.retry_after_ms), not the plain problem+json,
+    // so an agent's JSON-RPC layer gets a typed backpressure signal.
+    let (addr, handle, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+    let client = reqwest::Client::builder()
+        .default_headers({
+            let mut h = reqwest::header::HeaderMap::new();
+            // Distinct client key so this test's bucket is isolated.
+            h.insert("x-forwarded-for", "10.0.0.42".parse().unwrap());
+            h.insert("MCP-Protocol-Version", "2024-11-05".parse().unwrap());
+            h
+        })
+        .build()
+        .expect("client");
+
+    let call = || {
+        client
+            .post(format!("{base}/mcp"))
+            .json(&serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+            .send()
+    };
+
+    // max=3 → the first three pass the limiter; the fourth is throttled.
+    for _ in 0..3 {
+        let _ = call().await.expect("send");
+    }
+    let resp = call().await.expect("limited");
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(resp.headers().get("retry-after").is_some());
+    let body: serde_json::Value = resp.json().await.expect("jsonrpc body");
+    assert_eq!(body["jsonrpc"], "2.0");
+    assert_eq!(body["error"]["code"], -32029);
+    assert!(
+        body["error"]["data"]["retry_after_ms"].as_u64().is_some(),
+        "backpressure envelope must carry retry_after_ms, got {body}"
+    );
+    handle.abort();
+}
