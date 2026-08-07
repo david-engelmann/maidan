@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [175.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 1. No
+new gate tag.
+
+### Added
+
+- **`snippet_only` on the MCP `search_messages` tool** (default `false`): drops
+  the full message `body` from each hit and keeps only the snippet, saving tokens
+  in agent search results — parity with the REST `snippet_only` param (Cluster
+  152), reusing the same `SearchHit::into_snippet_only`.
+
 ## [174.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 4 (final). No

@@ -434,6 +434,7 @@ pub fn catalog() -> Vec<Value> {
                         "default": "lexical"
                     },
                     "limit": {"type": "integer", "default": 25},
+                    "snippet_only": {"type": "boolean", "default": false, "description": "Drop full message body from each hit (keep only the snippet) to save tokens."},
                     "author_id": {"type": "string", "format": "uuid"},
                     "channel_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string", "enum": ["human", "agent"]},

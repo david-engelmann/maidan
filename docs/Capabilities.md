@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v175.0.0 — Token: MCP search snippet_only parity
+
+| Change | Where |
+|--------|-------|
+| MCP `search_messages` `snippet_only` (drop bodies, keep snippet) — parity with REST | `crates/maidan-mcp/src/tools/search.rs` |
+
 ## v174.0.0 — Agentic: human-in-the-loop approvals
 
 | Change | Where |
