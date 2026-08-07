@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v169.0.0 — Perf: coalesce optimistic delivery-cursor writes
+
+| Fix | Where |
+|-----|-------|
+| Optimistic subscribe path buffers the delivery cursor (persist per 64 events / 500 ms + flush on stream end) instead of a DB write per event; lag-replay advances once to the batch high-water | `crates/maidan-server/src/event_stream.rs` |
+
 ## v168.0.0 — Perf: outbox relay round-trips + tunable broadcast cap
 
 | Fix | Where |
