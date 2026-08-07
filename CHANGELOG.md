@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [170.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). CI/CD — arc 2, part 5 (closes arc 2). No new
+gate tag.
+
+### Changed
+
+- **The arm64 release image builds on a native runner.** `release.yml` built the
+  `linux/arm64` `maidan-server` image under QEMU emulation on an amd64 runner;
+  because the server Dockerfile does a full `cargo build --release`, that leg ran
+  ~2 h and dominated the ~2 h 18 m release. Each matrix leg now builds only its
+  native platform (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64), and
+  the QEMU setup step is removed. (`maidan-postgres` is unchanged — its image is
+  `FROM pgvector/pgvector` with no compile, so its emulated arm64 build is fast.)
+
+### Added
+
+- **Container image vulnerability scan (trivy).** A new `trivy-scan` release job
+  scans the published `maidan-server` image for fixable OS + library
+  `CRITICAL,HIGH` CVEs. Report-only on introduction (does not gate the release);
+  promotable to blocking once the baseline is reviewed.
+
 ## [169.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Perf — arc 2, part 4 (closes the DB-hot-path

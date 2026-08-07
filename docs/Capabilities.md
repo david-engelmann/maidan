@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v170.0.0 — CI/CD: native arm64 release build + trivy image scan
+
+| Change | Where |
+|--------|-------|
+| arm64 `maidan-server` image builds on a native `ubuntu-24.04-arm` runner (no QEMU) — kills the ~2 h emulated Rust compile | `.github/workflows/release.yml` |
+| trivy vulnerability scan of the released server image (report-only) | `.github/workflows/release.yml` |
+
 ## v169.0.0 — Perf: coalesce optimistic delivery-cursor writes
 
 | Fix | Where |
