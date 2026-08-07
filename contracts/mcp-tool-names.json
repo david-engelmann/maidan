@@ -33,6 +33,7 @@
   "register_slash_command",
   "remove_channel_member",
   "remove_reaction",
+  "request_approval",
   "search_messages",
   "summarize_thread",
   "unassign_thread",

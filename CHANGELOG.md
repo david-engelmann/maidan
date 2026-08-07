@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [174.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 4 (final). No
+new gate tag.
+
+### Added
+
+- **Human-in-the-loop approvals.** A new MCP `request_approval` tool lets an
+  agent ask the human on the connected client to approve or reject an action,
+  via a server→client `elicitation/create` over the GET `/mcp/streamable` stream
+  (requires the client to have declared the `elicitation` capability). It
+  returns `{approved, action, content}` — `approved` is true iff the human chose
+  `accept`; `decline`/`cancel`/timeout mean not approved (fail-closed). The
+  elicitation analogue of the sampling-backed `summarize_thread`.
+
+Arc 3 (agentic features) is complete: thread task assignment/handoff (171), MCP
+structured backpressure (172), structured message content (173), HITL approvals
+(174).
+
 ## [173.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 3. No new gate
