@@ -107,7 +107,11 @@ pub async fn middleware(State(state): State<AppState>, req: Request<Body>, next:
                                     window: Duration::from_secs(q.window_secs),
                                 };
                                 if !try_acquire(&key, cfg, state.rate_limit_redis.as_ref()).await {
-                                    return too_many(cfg.window, cfg.max);
+                                    return too_many(
+                                        cfg.window,
+                                        cfg.max,
+                                        crate::rate_limit::is_mcp_jsonrpc_path(path),
+                                    );
                                 }
                             }
                         }

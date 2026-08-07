@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [172.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 2. No new gate
+tag.
+
+### Added
+
+- **Structured backpressure for MCP clients.** A rate-limited `POST /mcp` or
+  `POST /mcp/streamable` now returns a JSON-RPC error envelope — code `-32029`
+  with `data.retry_after_ms` — instead of only an opaque transport 429, so an
+  agent's JSON-RPC layer gets a typed, machine-readable backoff signal. The
+  response is still HTTP 429 with a `Retry-After` header (HTTP infra still sees
+  the backpressure); non-MCP routes keep the existing `problem+json` body. The
+  per-token-capability quota limiter shares this path. New
+  `McpError::RateLimited { retry_after_ms }`.
+
 ## [171.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 1. No new gate

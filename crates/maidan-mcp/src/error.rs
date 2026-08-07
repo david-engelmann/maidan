@@ -24,7 +24,15 @@ pub enum McpError {
 
     #[error("forbidden: {0}")]
     Forbidden(String),
+
+    #[error("rate limited; retry after {retry_after_ms}ms")]
+    RateLimited { retry_after_ms: u64 },
 }
+
+/// JSON-RPC error code for backpressure (Cluster 172). In the server-defined
+/// range (-32000..=-32099); a client that recognizes it should back off for
+/// `data.retry_after_ms` before retrying.
+pub const RATE_LIMITED_CODE: i32 = -32029;
 
 impl McpError {
     pub fn to_jsonrpc(&self) -> JsonRpcError {
@@ -58,6 +66,11 @@ impl McpError {
                 code: -32003,
                 message: format!("forbidden: {msg}"),
                 data: None,
+            },
+            Self::RateLimited { retry_after_ms } => JsonRpcError {
+                code: RATE_LIMITED_CODE,
+                message: format!("rate limited; retry after {retry_after_ms}ms"),
+                data: Some(serde_json::json!({ "retry_after_ms": retry_after_ms })),
             },
         }
     }
@@ -116,10 +129,26 @@ mod tests {
             (McpError::NotFound, -32004),
             (McpError::Unauthorized, -32001),
             (McpError::Forbidden("f".into()), -32003),
+            (
+                McpError::RateLimited {
+                    retry_after_ms: 500,
+                },
+                RATE_LIMITED_CODE,
+            ),
         ];
         for (err, expected_code) in cases {
             assert_eq!(err.to_jsonrpc().code, expected_code, "{err:?}");
         }
+    }
+
+    #[test]
+    fn rate_limited_carries_retry_after_in_data() {
+        let e = McpError::RateLimited {
+            retry_after_ms: 1500,
+        }
+        .to_jsonrpc();
+        assert_eq!(e.code, RATE_LIMITED_CODE);
+        assert_eq!(e.data.unwrap()["retry_after_ms"], 1500);
     }
 
     #[test]
