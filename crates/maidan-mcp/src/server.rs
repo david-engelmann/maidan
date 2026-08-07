@@ -272,7 +272,7 @@ impl McpServer {
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
-            "tools/list" => Ok(json!({ "tools": tools::catalog() })),
+            "tools/list" => Ok(json!({ "tools": tools::catalog_for(auth) })),
             "tools/call" => self.tools_call(&request.params, auth, session_id).await,
             "resources/list" => Ok(json!({ "resources": resources::catalog() })),
             "resources/read" => self.resources_read(&request.params, auth).await,
