@@ -138,9 +138,12 @@ async fn enqueue_matches(
         if payload.is_none() {
             payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
         }
+        let Some(body) = payload.as_deref() else {
+            continue;
+        };
         state
             .store
-            .enqueue_webhook_delivery(subscription.id, log_id, payload.as_deref().unwrap())
+            .enqueue_webhook_delivery(subscription.id, log_id, body)
             .await
             .map_err(|e| e.to_string())?;
         enqueued.insert(subscription.id);
@@ -160,15 +163,13 @@ async fn enqueue_matches(
                 if payload.is_none() {
                     payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
                 }
-                state
-                    .store
-                    .enqueue_webhook_delivery(
-                        mention_webhook_id,
-                        log_id,
-                        payload.as_deref().unwrap(),
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
+                if let Some(body) = payload.as_deref() {
+                    state
+                        .store
+                        .enqueue_webhook_delivery(mention_webhook_id, log_id, body)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
             }
         }
     }

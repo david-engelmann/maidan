@@ -24,7 +24,7 @@ pub struct InMemoryBus {
 
 impl InMemoryBus {
     pub fn new() -> Self {
-        Self::with_capacity(1024)
+        Self::with_capacity(crate::broadcast_cap_from_env())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {

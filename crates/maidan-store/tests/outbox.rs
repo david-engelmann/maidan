@@ -124,6 +124,57 @@ async fn mark_published_clears_pending_and_rejects_unknown_id() {
 }
 
 #[tokio::test]
+async fn list_pending_joins_the_event_payload() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+
+    let store = PostgresStore::new(pool.clone());
+    let stored = store
+        .append_event(&workspace_created_event("payload-ws"))
+        .await
+        .unwrap();
+    let pending = outbox::list_pending(&pool, 8).await.unwrap();
+    let row = pending
+        .into_iter()
+        .find(|r| r.log_id == stored.id)
+        .expect("pending row");
+    // H4: the payload rides the pending list, so the relay never re-fetches it.
+    assert!(row.payload.is_object());
+    let event: Event = serde_json::from_value(row.payload).unwrap();
+    assert!(matches!(event, Event::WorkspaceCreated { .. }));
+}
+
+#[tokio::test]
+async fn mark_published_batch_clears_all_pending_and_is_idempotent() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+
+    let store = PostgresStore::new(pool.clone());
+    for name in ["batch-a", "batch-b", "batch-c"] {
+        store
+            .append_event(&workspace_created_event(name))
+            .await
+            .unwrap();
+    }
+    let ids: Vec<i64> = outbox::list_pending(&pool, 8)
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.id)
+        .collect();
+    assert_eq!(ids.len(), 3);
+
+    outbox::mark_published_batch(&pool, &ids).await.unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+
+    // Idempotent: already-published rows are skipped, no error; empty is a no-op.
+    outbox::mark_published_batch(&pool, &ids).await.unwrap();
+    outbox::mark_published_batch(&pool, &[]).await.unwrap();
+}
+
+#[tokio::test]
 async fn list_pending_orders_by_id_and_respects_limit() {
     let Some((_container, pool)) = postgres_pool().await else {
         return;

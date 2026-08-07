@@ -31,7 +31,6 @@ use crate::error::BusError;
 const RESOURCE_CHANNEL: &str = "maidan_resource_updated";
 /// Postgres `NOTIFY` payloads are capped at ~8 KB; stay safely under it.
 const PAYLOAD_LIMIT: usize = 7990;
-const BROADCAST_CAP: usize = 1024;
 
 /// Backend-agnostic cross-process channel for MCP resource-update URIs.
 #[async_trait]
@@ -54,7 +53,7 @@ pub struct InMemoryResourceNotifier {
 
 impl InMemoryResourceNotifier {
     pub fn new() -> Self {
-        Self::with_capacity(BROADCAST_CAP)
+        Self::with_capacity(crate::broadcast_cap_from_env())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
@@ -96,7 +95,7 @@ pub struct PostgresResourceNotifier {
 impl PostgresResourceNotifier {
     /// Connect and start the `LISTEN` fan-in task on `maidan_resource_updated`.
     pub async fn connect(pool: PgPool) -> Result<Self, BusError> {
-        let (tx, _) = broadcast::channel(BROADCAST_CAP);
+        let (tx, _) = broadcast::channel(crate::broadcast_cap_from_env());
 
         let listener_tx = tx.clone();
         let mut listener = PgListener::connect_with(&pool).await?;

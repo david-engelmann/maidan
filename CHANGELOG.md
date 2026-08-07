@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [168.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 3. No new gate tag.
+
+### Changed
+
+- **Outbox relay does fewer round-trips per row.** `list_pending` now JOINs the
+  event payload from `maidan_events`, so the relay publishes straight from the
+  pending row instead of a per-row `get_stored_event`, and the
+  successfully-published rows are marked in a single `mark_published_batch`
+  after the loop rather than one `UPDATE` each. A full 64-row batch drops from
+  ~128 extra DB calls to ~1. The at-least-once contract is unchanged (a crash
+  between publish and the batch mark re-publishes the batch; consumers dedup on
+  `log_id`).
+- **Broadcast-channel capacity is env-tunable.** The event bus and the
+  presence/resource notifiers read `MAIDAN_BUS_BROADCAST_CAP` (default 1024) via
+  a shared `maidan_bus::broadcast_cap_from_env()`, replacing three hard-coded
+  `1024` constants. A larger cap lets a slow subscriber lag further before the
+  channel drops the oldest frames.
+
+### Fixed
+
+- **Removed two `unwrap()`s in `webhook_worker.rs`.** The Cluster 166
+  lazy-payload change left `payload.as_deref().unwrap()` in library code — a
+  CLAUDE.md violation that the `lint` job's dedicated `-D clippy::unwrap_used`
+  step rejects. It merged during the GitHub Actions outage (validated only with
+  `--all-targets -D warnings`, which does not enable that restriction lint), so
+  `main` went red once CI recovered. Rewritten with `let-else` / `if let Some`.
+
 ## [167.0.0] — 2026-08-06
 
 Post-gate hardening (Phase XXIV). Perf/correctness — arc 2, part 2. No new gate tag.

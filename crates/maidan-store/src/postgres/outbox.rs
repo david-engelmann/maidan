@@ -12,6 +12,10 @@ pub struct OutboxRow {
     pub id: i64,
     pub log_id: i64,
     pub attempts: i32,
+    /// The event payload, JOINed from `maidan_events` (Cluster 168, H4) so the
+    /// relay publishes directly from the pending list instead of a per-row
+    /// `get_stored_event` round-trip.
+    pub payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -24,10 +28,11 @@ pub struct QuarantinedOutboxRow {
 
 pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT id, log_id, attempts
-         FROM maidan_outbox
+        "SELECT o.id, o.log_id, o.attempts, e.payload
+         FROM maidan_outbox o
+         JOIN maidan_events e ON e.id = o.log_id
          WHERE {RELAYABLE}
-         ORDER BY id ASC
+         ORDER BY o.id ASC
          LIMIT $1"
     ))
     .bind(limit)
@@ -39,6 +44,7 @@ pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, S
             id: row.get("id"),
             log_id: row.get("log_id"),
             attempts: row.get("attempts"),
+            payload: row.get("payload"),
         })
         .collect())
 }
@@ -56,6 +62,24 @@ pub async fn mark_published(pool: &PgPool, outbox_id: i64) -> Result<(), StoreEr
     if updated == 0 {
         return Err(StoreError::NotFound);
     }
+    Ok(())
+}
+
+/// Mark a batch of outbox rows published in a single statement (Cluster 168,
+/// H4). Idempotent: rows already published are skipped by the `IS NULL` guard,
+/// so no error on a partial match. A no-op for an empty slice.
+pub async fn mark_published_batch(pool: &PgPool, outbox_ids: &[i64]) -> Result<(), StoreError> {
+    if outbox_ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE maidan_outbox
+         SET published_at = NOW()
+         WHERE id = ANY($1) AND published_at IS NULL",
+    )
+    .bind(outbox_ids)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

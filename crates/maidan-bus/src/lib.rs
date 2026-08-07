@@ -35,3 +35,20 @@ pub use presence_notify::{
 pub use resource_notify::{InMemoryResourceNotifier, PostgresResourceNotifier, ResourceNotifier};
 pub use stream::EventStream;
 pub use traits::EventBus;
+
+/// Default capacity for the process-local broadcast channels that back the
+/// event bus and the presence/resource notifiers.
+pub const DEFAULT_BROADCAST_CAP: usize = 1024;
+
+/// Resolve the broadcast-channel capacity from `MAIDAN_BUS_BROADCAST_CAP`,
+/// falling back to [`DEFAULT_BROADCAST_CAP`] (Cluster 168, R1). A larger cap
+/// lets a slow subscriber lag further before the broadcast channel drops the
+/// oldest frames (`RecvError::Lagged`), at the cost of more retained memory per
+/// channel. Non-positive or unparseable values fall back to the default.
+pub fn broadcast_cap_from_env() -> usize {
+    std::env::var("MAIDAN_BUS_BROADCAST_CAP")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_BROADCAST_CAP)
+}

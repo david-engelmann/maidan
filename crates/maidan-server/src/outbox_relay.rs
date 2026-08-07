@@ -135,24 +135,30 @@ impl OutboxRelay {
     pub async fn run_once(&self) -> Result<RelayTick, maidan_store::StoreError> {
         let pending = self.backend.list_pending(BATCH).await?;
         let fetched = pending.len();
-        let mut relayed = 0usize;
+        // Collect the rows that publish cleanly and mark them in one statement
+        // after the loop (Cluster 168, H4) rather than a round-trip per row. A
+        // crash between publish and the batch mark re-publishes on the next tick
+        // — the at-least-once contract already tolerates duplicates.
+        let mut published = Vec::with_capacity(fetched);
         for row in pending {
-            match self.relay_one(row.id, row.log_id).await {
+            let outbox_id = row.id;
+            let log_id = row.log_id;
+            match self.relay_one(log_id, row.payload).await {
                 Ok(()) => {
-                    relayed += 1;
+                    published.push(outbox_id);
                     counter!("maidan_outbox_relay_total", "result" => "ok").increment(1);
                 }
                 Err(err) => {
-                    let attempts = self.backend.record_attempt(row.id).await?;
+                    let attempts = self.backend.record_attempt(outbox_id).await?;
                     if attempts >= self.max_attempts as i32 {
                         // A failed quarantine leaves the row pending → it would
                         // retry forever, burning the relay budget. Surface it
                         // (the next tick retries the quarantine) instead of
                         // silently dropping the error.
-                        if let Err(qerr) = self.backend.quarantine(row.id).await {
+                        if let Err(qerr) = self.backend.quarantine(outbox_id).await {
                             warn!(
-                                outbox_id = row.id,
-                                log_id = row.log_id,
+                                outbox_id,
+                                log_id,
                                 error = %qerr,
                                 "outbox quarantine failed; row stays pending and will retry"
                             );
@@ -160,8 +166,8 @@ impl OutboxRelay {
                         counter!("maidan_outbox_relay_total", "result" => "quarantined")
                             .increment(1);
                         warn!(
-                            outbox_id = row.id,
-                            log_id = row.log_id,
+                            outbox_id,
+                            log_id,
                             attempts,
                             max_attempts = self.max_attempts,
                             error = %err,
@@ -170,8 +176,8 @@ impl OutboxRelay {
                     } else {
                         counter!("maidan_outbox_relay_total", "result" => "failed").increment(1);
                         warn!(
-                            outbox_id = row.id,
-                            log_id = row.log_id,
+                            outbox_id,
+                            log_id,
                             attempts,
                             error = %err,
                             "outbox relay failed"
@@ -180,21 +186,22 @@ impl OutboxRelay {
                 }
             }
         }
+        let relayed = published.len();
+        self.backend.mark_published_batch(&published).await?;
         Ok(RelayTick { fetched, relayed })
     }
 
-    async fn relay_one(&self, outbox_id: i64, log_id: i64) -> Result<(), maidan_store::StoreError> {
-        let stored = self.backend.get_stored_event(log_id).await?;
-        let event: Event = serde_json::from_value(stored.payload)?;
-        let envelope = BusEnvelope {
-            log_id: stored.id,
-            event,
-        };
+    async fn relay_one(
+        &self,
+        log_id: i64,
+        payload: serde_json::Value,
+    ) -> Result<(), maidan_store::StoreError> {
+        let event: Event = serde_json::from_value(payload)?;
+        let envelope = BusEnvelope { log_id, event };
         self.bus
             .publish(envelope)
             .await
             .map_err(|err| maidan_store::StoreError::InvalidInput(err.to_string()))?;
-        self.backend.mark_published(outbox_id).await?;
         Ok(())
     }
 }
