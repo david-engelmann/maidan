@@ -36,14 +36,26 @@ pub async fn post_message(
             "author_id must match the signed-in session member".into(),
         ));
     }
-    let parsed_slash = maidan_router::parse_slash_command(&body.body);
+    // Cluster 173: a content-only post derives its searchable `body` from the
+    // blocks; an explicit `body` is respected verbatim.
+    let content = body.content.clone();
+    let post_body = if body.body.is_empty() {
+        content
+            .as_deref()
+            .map(maidan_types::derive_body)
+            .unwrap_or_default()
+    } else {
+        body.body.clone()
+    };
+    let parsed_slash = maidan_router::parse_slash_command(&post_body);
     let m = state
         .store
         .post_message(NewMessage {
             thread_id: ThreadId(thread_id),
             author_id: MemberId(body.author_id),
-            body: body.body,
-            metadata: body.metadata,
+            body: post_body,
+            metadata: body.metadata.clone(),
+            content,
         })
         .await?;
     let mut message = m;
@@ -77,6 +89,7 @@ pub async fn post_message(
                     EditMessage {
                         body: message.body.clone(),
                         metadata,
+                        content: message.content.clone(),
                     },
                 )
                 .await?;
@@ -121,14 +134,26 @@ pub async fn edit_message(
     let editor_id = MemberId(body.editor_id);
     ensure_message_edit(&auth, editor_id, existing.author_id)?;
     let metadata = body.metadata.unwrap_or(existing.metadata);
+    // Cluster 173: omitted content keeps the existing blocks; a content edit
+    // with an empty body re-derives the searchable body.
+    let content = body.content.or(existing.content);
+    let edit_body = if body.body.is_empty() {
+        content
+            .as_deref()
+            .map(maidan_types::derive_body)
+            .unwrap_or_default()
+    } else {
+        body.body
+    };
     let updated = state
         .store
         .edit_message(
             message_id,
             editor_id,
             EditMessage {
-                body: body.body,
+                body: edit_body,
                 metadata,
+                content,
             },
         )
         .await?;

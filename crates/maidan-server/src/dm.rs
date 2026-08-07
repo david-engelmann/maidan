@@ -151,6 +151,7 @@ pub async fn post_dm_message(
             author_id,
             body: body.body,
             metadata,
+            content: None,
         })
         .await?;
     let ctx = resolve_thread_context(state.store.as_ref(), dm.thread_id).await?;

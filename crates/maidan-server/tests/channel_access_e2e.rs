@@ -340,6 +340,7 @@ async fn public_channel_and_dm_are_unaffected() {
             author_id: alice.id,
             body: "dm hi".into(),
             metadata: json!({}),
+            content: None,
         })
         .await
         .unwrap();

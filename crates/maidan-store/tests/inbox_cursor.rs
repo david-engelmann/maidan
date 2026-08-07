@@ -69,6 +69,7 @@ async fn inbox_unread_count_and_mark_read_on_sqlite() {
             author_id: alice.id,
             body: "ping".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

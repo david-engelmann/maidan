@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v173.0.0 — Agentic: structured message content
+
+| Change | Where |
+|--------|-------|
+| Typed `content` blocks on messages (`text`/`code`/`tool_use`/`tool_result`/`resource_link`), REST + MCP, both backends; `body` derived when omitted | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/messages.rs` |
+| `content` column on `maidan_messages` (pg `0034` JSONB / sqlite `0033` TEXT) | `migrations/*/00xx_message_content.sql` |
+
 ## v172.0.0 — Agentic: MCP structured backpressure
 
 | Change | Where |

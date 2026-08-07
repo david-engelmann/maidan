@@ -219,6 +219,7 @@ mod tests {
                 author_id: member.id,
                 body: "hi".into(),
                 metadata: json!({}),
+                content: None,
             })
             .await
             .unwrap();

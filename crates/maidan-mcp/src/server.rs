@@ -804,6 +804,7 @@ mod tests {
                 author_id: member,
                 body: "hey there".into(),
                 metadata: json!({}),
+                content: None,
             })
             .await
             .unwrap();

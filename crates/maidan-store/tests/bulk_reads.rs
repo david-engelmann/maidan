@@ -80,6 +80,7 @@ async fn assert_bulk_reads(store: &dyn Store) {
                     author_id: author.id,
                     body: body.into(),
                     metadata: json!({}),
+                    content: None,
                 })
                 .await
                 .unwrap(),
@@ -133,6 +134,7 @@ async fn assert_bulk_reads(store: &dyn Store) {
                 EditMessage {
                     body: body.into(),
                     metadata: json!({}),
+                    content: None,
                 },
             )
             .await
@@ -145,6 +147,7 @@ async fn assert_bulk_reads(store: &dyn Store) {
             EditMessage {
                 body: "e".into(),
                 metadata: json!({}),
+                content: None,
             },
         )
         .await

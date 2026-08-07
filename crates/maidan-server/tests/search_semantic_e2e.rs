@@ -82,6 +82,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
             author_id: alice.id,
             body: target_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -91,6 +92,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
             author_id: alice.id,
             body: other_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -238,6 +240,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
             author_id: alice.id,
             body: general_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -255,6 +258,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
             author_id: bot.id,
             body: release_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -405,6 +409,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
             author_id: alice.id,
             body: target_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -414,6 +419,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
             author_id: alice.id,
             body: other_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -533,6 +539,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
             author_id: alice.id,
             body: default_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -542,6 +549,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
             author_id: alice.id,
             body: legacy_body.into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

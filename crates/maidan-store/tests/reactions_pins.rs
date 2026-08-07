@@ -58,6 +58,7 @@ async fn reactions_add_list_remove() {
             author_id: m.id,
             body: "hi".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();
@@ -129,6 +130,7 @@ async fn pin_message_requires_same_thread() {
             author_id: m.id,
             body: "only in t1".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

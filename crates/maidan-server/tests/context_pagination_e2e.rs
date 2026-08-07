@@ -77,6 +77,7 @@ async fn thread_context_pages_messages_by_cursor() {
                 author_id: member.id,
                 body: format!("msg-{i}"),
                 metadata: serde_json::json!({}),
+                content: None,
             })
             .await
             .unwrap();
@@ -174,6 +175,7 @@ async fn mcp_get_thread_context_honors_message_cursor() {
                 author_id: member.id,
                 body: format!("m{i}"),
                 metadata: serde_json::json!({}),
+                content: None,
             })
             .await
             .unwrap();

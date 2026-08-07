@@ -7,16 +7,18 @@ use crate::error::StoreError;
 
 pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreError> {
     let id = Uuid::new_v4();
+    let content = new.content.as_ref().map(serde_json::to_value).transpose()?;
     let row = sqlx::query(
-        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at",
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
     )
     .bind(id)
     .bind(new.thread_id.0)
     .bind(new.author_id.0)
     .bind(&new.body)
     .bind(&new.metadata)
+    .bind(content)
     .fetch_one(pool)
     .await?;
     Ok(row_to_message(&row))
@@ -24,7 +26,7 @@ pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreErro
 
 pub async fn get(pool: &PgPool, id: MessageId) -> Result<Message, StoreError> {
     let row = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
          FROM maidan_messages WHERE id = $1",
     )
     .bind(id.0)
@@ -40,7 +42,7 @@ pub async fn list(
     limit: i64,
 ) -> Result<Vec<Message>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
          FROM maidan_messages
          WHERE thread_id = $1 AND tombstoned_at IS NULL
          ORDER BY posted_at ASC, id ASC
@@ -62,7 +64,7 @@ pub async fn list_after(
     let rows = match after {
         None => {
             sqlx::query(
-                "SELECT id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at
+                "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
                  FROM maidan_messages
                  WHERE thread_id = $1 AND tombstoned_at IS NULL
                  ORDER BY posted_at ASC, id ASC
@@ -75,7 +77,7 @@ pub async fn list_after(
         }
         Some(after_id) => {
             sqlx::query(
-                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.posted_at, m.edited_at, m.tombstoned_at
+                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.content, m.posted_at, m.edited_at, m.tombstoned_at
                  FROM maidan_messages m
                  JOIN maidan_messages anchor ON anchor.id = $1
                  WHERE m.thread_id = $2 AND m.tombstoned_at IS NULL
@@ -118,14 +120,20 @@ pub async fn edit(
             .await?;
     }
     let metadata = serde_json::to_value(&edit.metadata)?;
+    let content = edit
+        .content
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()?;
     let row = sqlx::query(
-        "UPDATE maidan_messages SET body = $2, metadata = $3, edited_at = NOW()
+        "UPDATE maidan_messages SET body = $2, metadata = $3, content = $4, edited_at = NOW()
          WHERE id = $1 AND tombstoned_at IS NULL
-         RETURNING id, thread_id, author_id, body, metadata, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
     )
     .bind(id.0)
     .bind(&edit.body)
     .bind(metadata)
+    .bind(content)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -134,7 +142,7 @@ pub async fn edit(
 
 pub async fn tombstone(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
     let res = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '' WHERE id = $1 AND tombstoned_at IS NULL",
+        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL WHERE id = $1 AND tombstoned_at IS NULL",
     )
     .bind(id.0)
     .execute(pool)
@@ -152,6 +160,9 @@ fn row_to_message(row: &sqlx::postgres::PgRow) -> Message {
         author_id: MemberId(row.get::<Uuid, _>("author_id")),
         body: row.get("body"),
         metadata: row.get::<serde_json::Value, _>("metadata"),
+        content: row
+            .get::<Option<serde_json::Value>, _>("content")
+            .and_then(|v| serde_json::from_value(v).ok()),
         posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
         edited_at: row.get::<Option<DateTime<Utc>>, _>("edited_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),

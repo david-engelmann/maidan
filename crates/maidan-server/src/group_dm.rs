@@ -102,6 +102,7 @@ pub async fn post_group_dm_message(
             author_id,
             body: body.body,
             metadata,
+            content: None,
         })
         .await?;
     let ctx = resolve_thread_context(state.store.as_ref(), group.thread_id).await?;

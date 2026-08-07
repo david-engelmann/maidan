@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, MemberId, MemberKind, RefSide,
-    WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ContentBlock, MemberId, MemberKind,
+    RefSide, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -80,17 +80,26 @@ pub struct UnassignThread {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMessage {
     pub author_id: uuid::Uuid,
+    #[serde(default)]
     pub body: String,
     #[serde(default)]
     pub metadata: serde_json::Value,
+    /// Typed structured content (Cluster 173). When present and `body` is empty,
+    /// the server derives `body` from these blocks for search/back-compat.
+    #[serde(default)]
+    pub content: Option<Vec<ContentBlock>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EditMessageRequest {
     pub editor_id: uuid::Uuid,
+    #[serde(default)]
     pub body: String,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
+    /// Replacement structured content (Cluster 173). Omitted → keep existing.
+    #[serde(default)]
+    pub content: Option<Vec<ContentBlock>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

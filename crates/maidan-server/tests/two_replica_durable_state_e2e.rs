@@ -205,6 +205,7 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
             author_id: bot.id,
             body: "cross replica reindex".into(),
             metadata: json!({}),
+            content: None,
         })
         .await
         .unwrap();

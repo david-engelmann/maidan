@@ -75,6 +75,7 @@ async fn postgres_deep_purge_removes_related_rows() {
             author_id: alice.id,
             body: "classified".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

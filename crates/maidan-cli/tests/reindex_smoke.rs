@@ -63,6 +63,7 @@ async fn reindex_embeddings_cli_processes_live_messages() {
             author_id: member.id,
             body: "reindex me".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .unwrap();

@@ -52,6 +52,7 @@ async fn purge_removes_only_tombstoned_messages() {
             author_id: member.id,
             body: "secret".into(),
             metadata: serde_json::json!({}),
+            content: None,
         })
         .await
         .expect("msg");
