@@ -35,7 +35,6 @@ use crate::traits::EventBus;
 
 const CHANNEL: &str = "maidan_events";
 const PAYLOAD_LIMIT: usize = 7990;
-const BROADCAST_CAP: usize = 1024;
 const NOTIFY_POINTER_SCHEMA: &str = "log_id_v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,7 +93,7 @@ impl PostgresBus {
 
     /// Connect to Postgres. Starts a LISTEN fan-in task when `notify_on_publish` is true.
     pub async fn connect_with(pool: PgPool, options: PostgresBusOptions) -> Result<Self, BusError> {
-        let (tx, _) = broadcast::channel(BROADCAST_CAP);
+        let (tx, _) = broadcast::channel(crate::broadcast_cap_from_env());
         let listener_health = Arc::new(ListenerHealth::default());
         let hydrate_stats = Arc::new(HydrateStats::default());
 

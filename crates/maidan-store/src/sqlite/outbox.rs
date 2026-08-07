@@ -10,23 +10,27 @@ const RELAYABLE: &str = "published_at IS NULL AND quarantined_at IS NULL";
 
 pub async fn list_pending(pool: &SqlitePool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT id, log_id, attempts
-         FROM maidan_outbox
+        "SELECT o.id, o.log_id, o.attempts, e.payload
+         FROM maidan_outbox o
+         JOIN maidan_events e ON e.id = o.log_id
          WHERE {RELAYABLE}
-         ORDER BY id ASC
+         ORDER BY o.id ASC
          LIMIT ?"
     ))
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| OutboxRow {
-            id: row.get("id"),
-            log_id: row.get("log_id"),
-            attempts: row.get("attempts"),
+    rows.iter()
+        .map(|row| {
+            let payload: String = row.get("payload");
+            Ok(OutboxRow {
+                id: row.get("id"),
+                log_id: row.get("log_id"),
+                attempts: row.get("attempts"),
+                payload: serde_json::from_str(&payload)?,
+            })
         })
-        .collect())
+        .collect()
 }
 
 pub async fn mark_published(pool: &SqlitePool, outbox_id: i64) -> Result<(), StoreError> {
@@ -42,6 +46,27 @@ pub async fn mark_published(pool: &SqlitePool, outbox_id: i64) -> Result<(), Sto
     if updated == 0 {
         return Err(StoreError::NotFound);
     }
+    Ok(())
+}
+
+/// Mark a batch of outbox rows published in one statement (Cluster 168, H4).
+/// Idempotent: the `IS NULL` guard skips already-published rows, so a partial
+/// match is not an error. A no-op for an empty slice.
+pub async fn mark_published_batch(pool: &SqlitePool, outbox_ids: &[i64]) -> Result<(), StoreError> {
+    if outbox_ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders = vec!["?"; outbox_ids.len()].join(",");
+    let sql = format!(
+        "UPDATE maidan_outbox
+         SET published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE published_at IS NULL AND id IN ({placeholders})"
+    );
+    let mut query = sqlx::query(&sql);
+    for id in outbox_ids {
+        query = query.bind(id);
+    }
+    query.execute(pool).await?;
     Ok(())
 }
 

@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v168.0.0 — Perf: outbox relay round-trips + tunable broadcast cap
+
+| Fix | Where |
+|-----|-------|
+| Outbox `list_pending` JOINs the event payload; relay publishes from it (no per-row `get_stored_event`) + batch `mark_published_batch` | `crates/maidan-store/src/{postgres,sqlite}/outbox.rs`, `crates/maidan-server/src/outbox_relay.rs` |
+| Env-tunable broadcast capacity `MAIDAN_BUS_BROADCAST_CAP` (event bus + presence/resource notifiers) | `crates/maidan-bus/src/lib.rs` |
+| Hotfix: removed two `unwrap()`s in the webhook worker (Cluster 166) that failed the strict lint | `crates/maidan-server/src/webhook_worker.rs` |
+
 ## v167.0.0 — Perf: rate-limiter map eviction + embedding model cache
 
 | Fix | Where |

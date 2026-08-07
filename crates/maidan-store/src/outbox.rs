@@ -27,6 +27,17 @@ impl OutboxBackend {
         }
     }
 
+    pub async fn mark_published_batch(&self, outbox_ids: &[i64]) -> Result<(), StoreError> {
+        match self {
+            Self::Postgres(pool) => {
+                crate::postgres::outbox::mark_published_batch(pool, outbox_ids).await
+            }
+            Self::Sqlite(pool) => {
+                crate::sqlite::outbox::mark_published_batch(pool, outbox_ids).await
+            }
+        }
+    }
+
     pub async fn record_attempt(&self, outbox_id: i64) -> Result<i32, StoreError> {
         match self {
             Self::Postgres(pool) => crate::postgres::outbox::record_attempt(pool, outbox_id).await,
