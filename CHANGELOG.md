@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [177.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 3. No
+new gate tag.
+
+### Changed
+
+- **Empty message metadata is omitted from the wire.** `Message.metadata` now
+  serializes with `skip_serializing_if` when it's empty (`{}`/`null`), so every
+  serialized message (REST responses, event frames, MCP tool results,
+  write-acks) drops the ubiquitous `"metadata":{}`. Serialization-only and
+  idempotent — the stored column is unchanged, a wire message without `metadata`
+  deserializes back to an empty object, and consumers already tolerate absence
+  (`/ui` metadata readers are null-guarded). Mirrors the `content` omit-empty
+  from Cluster 173.
+
 ## [176.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 2. No
