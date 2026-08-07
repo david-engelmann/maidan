@@ -34,6 +34,7 @@ pub enum EventKind {
     ChannelCreated,
     ThreadCreated,
     ThreadStateChanged,
+    ThreadAssignmentChanged,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -55,6 +56,7 @@ impl EventKind {
             Self::ChannelCreated => "channel_created",
             Self::ThreadCreated => "thread_created",
             Self::ThreadStateChanged => "thread_state_changed",
+            Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -76,6 +78,7 @@ impl EventKind {
             "channel_created" => Some(Self::ChannelCreated),
             "thread_created" => Some(Self::ThreadCreated),
             "thread_state_changed" => Some(Self::ThreadStateChanged),
+            "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -123,6 +126,16 @@ pub enum Event {
         actor_id: MemberId,
         from_state: ThreadState,
         to_state: ThreadState,
+        thread: Thread,
+    },
+    ThreadAssignmentChanged {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        previous_assignee_id: Option<MemberId>,
+        assignee_id: Option<MemberId>,
         thread: Thread,
     },
     MessagePosted {
@@ -218,6 +231,7 @@ impl Event {
             Self::ChannelCreated { .. } => EventKind::ChannelCreated,
             Self::ThreadCreated { .. } => EventKind::ThreadCreated,
             Self::ThreadStateChanged { .. } => EventKind::ThreadStateChanged,
+            Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -239,6 +253,7 @@ impl Event {
             | Self::ChannelCreated { occurred_at, .. }
             | Self::ThreadCreated { occurred_at, .. }
             | Self::ThreadStateChanged { occurred_at, .. }
+            | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -260,6 +275,7 @@ impl Event {
             | Self::ChannelCreated { workspace_id, .. }
             | Self::ThreadCreated { workspace_id, .. }
             | Self::ThreadStateChanged { workspace_id, .. }
+            | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -278,6 +294,7 @@ impl Event {
             Self::ChannelCreated { channel, .. } => Some(channel.id),
             Self::ThreadCreated { channel_id, .. }
             | Self::ThreadStateChanged { channel_id, .. }
+            | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -291,6 +308,7 @@ impl Event {
         match self {
             Self::ThreadCreated { thread, .. } => Some(thread.id),
             Self::ThreadStateChanged { thread_id, .. } => Some(*thread_id),
+            Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -323,6 +341,7 @@ impl Event {
         match self {
             Self::MemberJoined { member, .. } => Some(member.id),
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
+            Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
             | Self::ReactionAdded { member_id, .. }

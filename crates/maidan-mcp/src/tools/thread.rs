@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use chrono::Utc;
+use maidan_router::resolve_thread_context;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -19,6 +21,95 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
     let a: ListThreadsArgs = serde_json::from_value(args.clone())?;
     let threads = store.list_threads(ChannelId(a.channel_id)).await?;
     Ok(content_json(&threads))
+}
+
+#[derive(Deserialize)]
+struct AssignThreadArgs {
+    thread_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    assignee_id: uuid::Uuid,
+}
+
+#[derive(Deserialize)]
+struct ClaimThreadArgs {
+    thread_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+#[derive(Deserialize)]
+struct UnassignThreadArgs {
+    thread_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+}
+
+/// Emit a `ThreadAssignmentChanged` event for an assignment mutation
+/// (Cluster 171). No-op when the bus is unconfigured.
+async fn publish_assignment(
+    server: &crate::server::McpServer,
+    thread: &Thread,
+    actor_id: MemberId,
+    previous_assignee_id: Option<MemberId>,
+) -> Result<(), McpError> {
+    if server.event_bus.is_none() {
+        return Ok(());
+    }
+    let ctx = resolve_thread_context(server.store.as_ref(), thread.id)
+        .await
+        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    server
+        .publish_event(Event::ThreadAssignmentChanged {
+            occurred_at: Utc::now(),
+            workspace_id: ctx.workspace_id,
+            channel_id: ctx.channel_id,
+            thread_id: thread.id,
+            actor_id,
+            previous_assignee_id,
+            assignee_id: thread.assignee_id,
+            thread: thread.clone(),
+        })
+        .await;
+    Ok(())
+}
+
+pub(super) async fn assign_thread(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AssignThreadArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let previous = server.store.get_thread(thread_id).await?.assignee_id;
+    let thread = server
+        .store
+        .assign_thread(thread_id, MemberId(a.assignee_id))
+        .await?;
+    publish_assignment(server, &thread, MemberId(a.actor_id), previous).await?;
+    Ok(content_json(&thread))
+}
+
+pub(super) async fn claim_thread(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let member_id = MemberId(a.member_id);
+    let result = server.store.claim_thread(thread_id, member_id).await?;
+    if result.claimed {
+        publish_assignment(server, &result.thread, member_id, None).await?;
+    }
+    Ok(content_json(&result))
+}
+
+pub(super) async fn unassign_thread(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: UnassignThreadArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let previous = server.store.get_thread(thread_id).await?.assignee_id;
+    let thread = server.store.unassign_thread(thread_id).await?;
+    publish_assignment(server, &thread, MemberId(a.actor_id), previous).await?;
+    Ok(content_json(&thread))
 }
 
 #[derive(Deserialize)]

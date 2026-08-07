@@ -150,6 +150,27 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadTransition>, StoreError>;
 
+    /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
+    /// the thread doesn't exist (Cluster 171).
+    async fn assign_thread(
+        &self,
+        thread_id: ThreadId,
+        assignee_id: MemberId,
+    ) -> Result<Thread, StoreError>;
+
+    /// Atomically claim an unassigned thread for `member_id` (Cluster 171). The
+    /// compare-and-set (`WHERE assignee_id IS NULL`) makes concurrent claims
+    /// race-safe: exactly one wins. `claimed` is `false` when it was already
+    /// assigned; `NotFound` only when the thread doesn't exist.
+    async fn claim_thread(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<ThreadClaimResult, StoreError>;
+
+    /// Clear a thread's assignee (Cluster 171). `NotFound` if it doesn't exist.
+    async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError>;
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     async fn edit_message(
         &self,

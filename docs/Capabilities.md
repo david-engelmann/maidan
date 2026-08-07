@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v171.0.0 — Agentic: thread task assignment / handoff
+
+| Change | Where |
+|--------|-------|
+| `Thread.assignee_id` axis + `assign` / atomic `claim` / `unassign` (both backends) | `crates/maidan-store/src/{postgres,sqlite}/threads.rs` |
+| REST `PUT`/`DELETE /threads/:id/assignee` + `POST …/assignee/claim` (`thread:transition`, RBAC-gated) | `crates/maidan-server/src/routes/thread.rs` |
+| MCP `assign_thread` / `claim_thread` / `unassign_thread` | `crates/maidan-mcp/src/tools/thread.rs` |
+| `ThreadAssignmentChanged` event (prev→new assignee + actor) | `crates/maidan-types/src/events.rs` |
+
 ## v170.0.0 — CI/CD: native arm64 release build + trivy image scan
 
 | Change | Where |

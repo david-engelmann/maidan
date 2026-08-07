@@ -226,7 +226,10 @@ jobs:
       # CVEs in the release logs without gating the release. Promote `exit-code`
       # to '1' once the baseline is clean and reviewed.
       - name: trivy vulnerability scan
-        uses: aquasecurity/trivy-action@v0.28.0
+        # v0.36.0: pins its internal `setup-trivy` by commit SHA, so it can't
+        # break when an upstream tag is removed — v0.28.0 pinned the since-yanked
+        # `setup-trivy@v0.2.1` and failed to resolve on the v170.0.0 release run.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}
           format: table

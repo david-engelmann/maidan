@@ -136,6 +136,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/context", get(routes::get_thread_context))
         .route(
+            "/threads/:id/assignee",
+            axum::routing::put(routes::assign_thread).delete(routes::unassign_thread),
+        )
+        .route("/threads/:id/assignee/claim", post(routes::claim_thread))
+        .route(
             "/threads/:tid/messages",
             post(routes::post_message).get(routes::list_messages),
         )

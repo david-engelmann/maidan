@@ -152,3 +152,109 @@ pub async fn transition_thread(
     state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result.thread))
 }
+
+/// Publish a `ThreadAssignmentChanged` event (Cluster 171). Shared by the
+/// assign / claim / unassign handlers.
+async fn publish_assignment(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    channel_id: ChannelId,
+    thread: &Thread,
+    actor_id: MemberId,
+    previous_assignee_id: Option<MemberId>,
+) {
+    publish(
+        state,
+        Event::ThreadAssignmentChanged {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id: thread.id,
+            actor_id,
+            previous_assignee_id,
+            assignee_id: thread.assignee_id,
+            thread: thread.clone(),
+        },
+    )
+    .await;
+}
+
+pub async fn assign_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<AssignThread>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    let previous = state.store.get_thread(thread_id).await?.assignee_id;
+    let thread = state
+        .store
+        .assign_thread(thread_id, MemberId(body.assignee_id))
+        .await?;
+    publish_assignment(
+        &state,
+        ctx.workspace_id,
+        ctx.channel_id,
+        &thread,
+        MemberId(body.actor_id),
+        previous,
+    )
+    .await;
+    Ok(Json(thread))
+}
+
+pub async fn unassign_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<UnassignThread>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    let previous = state.store.get_thread(thread_id).await?.assignee_id;
+    let thread = state.store.unassign_thread(thread_id).await?;
+    publish_assignment(
+        &state,
+        ctx.workspace_id,
+        ctx.channel_id,
+        &thread,
+        MemberId(body.actor_id),
+        previous,
+    )
+    .await;
+    Ok(Json(thread))
+}
+
+pub async fn claim_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<ClaimThread>,
+) -> ApiResult<Json<ThreadClaimResult>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    let member_id = MemberId(body.member_id);
+    let result = state.store.claim_thread(thread_id, member_id).await?;
+    if result.claimed {
+        publish_assignment(
+            &state,
+            ctx.workspace_id,
+            ctx.channel_id,
+            &result.thread,
+            member_id,
+            None,
+        )
+        .await;
+    }
+    Ok(Json(result))
+}

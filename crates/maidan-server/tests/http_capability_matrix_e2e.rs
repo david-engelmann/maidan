@@ -314,6 +314,18 @@ fn apply_route_defaults(
             "action": "start_review"
         }));
     }
+    if path == "/threads/{id}/assignee" && method == "PUT" {
+        return b.json(&json!({
+            "actor_id": f.member,
+            "assignee_id": f.member
+        }));
+    }
+    if path == "/threads/{id}/assignee" && method == "DELETE" {
+        return b.json(&json!({ "actor_id": f.member }));
+    }
+    if path == "/threads/{id}/assignee/claim" && method == "POST" {
+        return b.json(&json!({ "member_id": f.member }));
+    }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({
             "author_id": f.member,

@@ -370,6 +370,27 @@ pub fn get_thread_context() {}
     responses((status = 200, body = Thread)))]
 pub fn transition_thread() {}
 
+#[utoipa::path(put, path = "/threads/{id}/assignee", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = AssignThread,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread)))]
+pub fn assign_thread() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/assignee", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = UnassignThread,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread)))]
+pub fn unassign_thread() {}
+
+#[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = ClaimThread,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadClaimResult)))]
+pub fn claim_thread() {}
+
 #[utoipa::path(get, path = "/threads/{tid}/messages", tag = "messages",
     params(
         ("tid" = Uuid, Path, description = "Thread id"),
