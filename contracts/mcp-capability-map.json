@@ -3,8 +3,10 @@
   "add_channel_member": "channel:admin",
   "add_reaction": "workspace:write",
   "add_reference": "workspace:write",
+  "assign_thread": "thread:transition",
   "begin_artifact_multipart": "artifact:upload",
   "cast_vote": "workspace:write",
+  "claim_thread": "thread:transition",
   "complete_artifact_multipart": "artifact:upload",
   "edit_message": "message:post",
   "get_artifact_metadata": "workspace:read",
@@ -33,6 +35,7 @@
   "remove_reaction": "workspace:write",
   "search_messages": "search:query",
   "summarize_thread": "workspace:read",
+  "unassign_thread": "thread:transition",
   "unpin_message": "workspace:write",
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload"

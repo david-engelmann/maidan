@@ -56,6 +56,27 @@ pub struct TransitionThread {
     pub action: String,
 }
 
+/// Assign / hand off a thread to a member (Cluster 171). `actor_id` records who
+/// performed the assignment (carried on the emitted event).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AssignThread {
+    pub actor_id: uuid::Uuid,
+    pub assignee_id: uuid::Uuid,
+}
+
+/// Atomically claim an unassigned thread for a member (Cluster 171). The
+/// claimer is both the actor and the assignee.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ClaimThread {
+    pub member_id: uuid::Uuid,
+}
+
+/// Clear a thread's assignee (Cluster 171). `actor_id` records who unassigned it.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UnassignThread {
+    pub actor_id: uuid::Uuid,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMessage {
     pub author_id: uuid::Uuid,

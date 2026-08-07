@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [171.0.0] — 2026-08-07
+
+Post-gate hardening (Phase XXIV). Agentic features — arc 3, part 1. No new gate
+tag.
+
+### Added
+
+- **Thread task assignment / handoff.** Threads gain an `assignee_id` axis
+  (orthogonal to the state FSM) so agents can own work. New operations, all
+  gated by the existing `thread:transition` capability + per-channel RBAC:
+  - REST: `PUT /threads/:id/assignee` (assign/handoff), `DELETE
+    /threads/:id/assignee` (unassign), `POST /threads/:id/assignee/claim`.
+  - MCP tools: `assign_thread`, `claim_thread`, `unassign_thread`.
+  - **Atomic claim**: `claim` is a compare-and-set (`WHERE assignee_id IS NULL`)
+    so exactly one of N concurrent claimers wins; it returns `{thread, claimed}`
+    rather than erroring on a loss.
+  - Every change emits a `ThreadAssignmentChanged` event on the bus (prev→new
+    assignee + actor), so orchestrators see ownership changes live.
+
+### Fixed
+
+- **`release.yml` trivy job** now pins `aquasecurity/trivy-action@v0.36.0`
+  (Cluster 170 used `@v0.28.0`, whose internal `setup-trivy@v0.2.1` pin was
+  removed upstream — it failed to resolve on the v170.0.0 release run). v0.36.0
+  pins its dependency by commit SHA.
+
 ## [170.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). CI/CD — arc 2, part 5 (closes arc 2). No new

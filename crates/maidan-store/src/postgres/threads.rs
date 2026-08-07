@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ChannelId, NewThread, Thread, ThreadId, ThreadState, WorkspaceId};
+use maidan_types::{
+    ChannelId, MemberId, NewThread, Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -11,7 +13,7 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
     )
     .bind(id)
     .bind(new.channel_id.0)
@@ -24,7 +26,7 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id
          FROM maidan_threads WHERE id = $1",
     )
     .bind(id.0)
@@ -36,7 +38,7 @@ pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
 
 pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id
          FROM maidan_threads WHERE channel_id = $1 ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
@@ -45,13 +47,77 @@ pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, S
     rows.iter().map(row_to_thread).collect()
 }
 
+/// Set the assignee unconditionally (assign / handoff). `NotFound` if absent or
+/// tombstoned — claiming dead work is a bug (Cluster 171).
+pub async fn assign(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    assignee_id: MemberId,
+) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = $1, updated_at = NOW()
+         WHERE id = $2 AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
+    )
+    .bind(assignee_id.0)
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
+/// Clear the assignee (Cluster 171). `NotFound` if absent.
+pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = NULL, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
+/// Atomic compare-and-set claim (Cluster 171): the `assignee_id IS NULL`
+/// predicate + row lock guarantees only one concurrent claimer wins. A `None`
+/// result means the row was already assigned (or absent) — disambiguate with a
+/// follow-up read.
+pub async fn claim(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<ThreadClaimResult, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = $1, updated_at = NOW()
+         WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
+    )
+    .bind(member_id.0)
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        Some(row) => Ok(ThreadClaimResult {
+            thread: row_to_thread(&row)?,
+            claimed: true,
+        }),
+        None => Ok(ThreadClaimResult {
+            thread: get(pool, thread_id).await?,
+            claimed: false,
+        }),
+    }
+}
+
 pub async fn list_for_workspace(
     pool: &PgPool,
     workspace_id: WorkspaceId,
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1
@@ -75,7 +141,7 @@ pub async fn page_for_workspace(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1
@@ -123,12 +189,14 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
     let state_str: String = row.get("state");
     let state = parse_state(&state_str)?;
     let parent: Option<Uuid> = row.get("parent_thread_id");
+    let assignee: Option<Uuid> = row.get("assignee_id");
     Ok(Thread {
         id: ThreadId(row.get::<Uuid, _>("id")),
         channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
         parent_thread_id: parent.map(ThreadId),
         title: row.get("title"),
         state,
+        assignee_id: assignee.map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),

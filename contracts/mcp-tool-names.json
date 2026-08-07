@@ -3,8 +3,10 @@
   "add_channel_member",
   "add_reaction",
   "add_reference",
+  "assign_thread",
   "begin_artifact_multipart",
   "cast_vote",
+  "claim_thread",
   "complete_artifact_multipart",
   "edit_message",
   "get_artifact_metadata",
@@ -33,6 +35,7 @@
   "remove_reaction",
   "search_messages",
   "summarize_thread",
+  "unassign_thread",
   "unpin_message",
   "upload_artifact",
   "upload_artifact_multipart_part"

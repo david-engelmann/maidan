@@ -18,6 +18,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ChannelCreated,
         EventKind::ThreadCreated,
         EventKind::ThreadStateChanged,
+        EventKind::ThreadAssignmentChanged,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

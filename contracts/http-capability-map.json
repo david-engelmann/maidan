@@ -210,6 +210,24 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/assignee",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/assignee",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/assignee/claim",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "DELETE",
     "path": "/threads/{id}/pins",
     "capability": "workspace:write",

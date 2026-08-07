@@ -120,6 +120,7 @@ fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
         "channel_created" => Ok(EventKind::ChannelCreated),
         "thread_created" => Ok(EventKind::ThreadCreated),
         "thread_state_changed" => Ok(EventKind::ThreadStateChanged),
+        "thread_assignment_changed" => Ok(EventKind::ThreadAssignmentChanged),
         "message_posted" => Ok(EventKind::MessagePosted),
         "message_edited" => Ok(EventKind::MessageEdited),
         "message_tombstoned" => Ok(EventKind::MessageTombstoned),

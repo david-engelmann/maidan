@@ -11,6 +11,7 @@
   "reaction_added",
   "reaction_removed",
   "reference_added",
+  "thread_assignment_changed",
   "thread_created",
   "thread_state_changed",
   "vote_cast",

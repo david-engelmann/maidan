@@ -266,6 +266,10 @@ pub struct Thread {
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
     pub state: ThreadState,
+    /// The member this thread/task is assigned to, if any (Cluster 171). An
+    /// axis orthogonal to [`ThreadState`]: assignment persists across state
+    /// transitions. Set via assign/handoff, atomic claim, or cleared on unassign.
+    pub assignee_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
@@ -283,6 +287,17 @@ pub struct ThreadTransitionResult {
     pub thread: Thread,
     pub from_state: ThreadState,
     pub to_state: ThreadState,
+}
+
+/// Outcome of an atomic [`Thread`] claim (Cluster 171): `claimed` is `true` when
+/// this call won the compare-and-set (the thread was unassigned and is now the
+/// caller's), `false` when it was already assigned. `thread` is the current row
+/// either way.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadClaimResult {
+    pub thread: Thread,
+    pub claimed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

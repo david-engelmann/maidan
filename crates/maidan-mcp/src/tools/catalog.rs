@@ -103,6 +103,43 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "assign_thread",
+            "description": "Assign or hand off a thread/task to a member.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the assignment"},
+                    "assignee_id": {"type": "string", "format": "uuid", "description": "member to assign the thread to"}
+                },
+                "required": ["thread_id", "actor_id", "assignee_id"]
+            }
+        }),
+        json!({
+            "name": "claim_thread",
+            "description": "Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid", "description": "member claiming the thread"}
+                },
+                "required": ["thread_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "unassign_thread",
+            "description": "Clear a thread's assignee.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the unassignment"}
+                },
+                "required": ["thread_id", "actor_id"]
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {
