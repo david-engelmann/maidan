@@ -188,10 +188,10 @@ async fn ensure_task_workspace_access(
                 }
                 // Cluster 179: per-channel access on the A2A read path too — a
                 // task's context thread may live in a private channel.
-                if let Err(e) = maidan_auth::ensure_channel_access(
+                if let Err(e) = maidan_auth::ensure_thread_access(
                     state.store.as_ref(),
                     auth,
-                    thread_ctx.channel_id,
+                    ThreadId(thread_id),
                 )
                 .await
                 {
@@ -244,7 +244,7 @@ async fn post_a2a_message(
     // `message:post` token could post into a private channel it isn't a member
     // of. Mirror the REST thread-route check.
     if let Err(e) =
-        maidan_auth::ensure_channel_access(state.store.as_ref(), auth, thread_ctx.channel_id).await
+        maidan_auth::ensure_thread_access(state.store.as_ref(), auth, ThreadId(ctx.thread_id)).await
     {
         return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
     }

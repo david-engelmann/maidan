@@ -72,7 +72,10 @@ pub async fn get_thread(
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    // Cluster 180: thread-scoped access (DM-participant-aware for `__dm__`),
+    // not channel-scoped — the generic route must not expose a DM thread to a
+    // non-participant.
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(id)).await?;
     Ok(Json(thread))
 }
 
@@ -86,7 +89,7 @@ pub async fn get_thread_context(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let packed = crate::thread_context::build_thread_context(
         state.store.as_ref(),
         thread_id,
@@ -127,7 +130,7 @@ pub async fn transition_thread(
     let workspace_id = ctx.workspace_id;
     let channel_id = ctx.channel_id;
     ensure_workspace(&auth, workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let result = state
         .store
         .transition_thread(thread_id, MemberId(body.actor_id), action)
@@ -189,7 +192,7 @@ pub async fn assign_thread(
     let thread_id = ThreadId(id);
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let previous = state.store.get_thread(thread_id).await?.assignee_id;
     let thread = state
         .store
@@ -217,7 +220,7 @@ pub async fn unassign_thread(
     let thread_id = ThreadId(id);
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let previous = state.store.get_thread(thread_id).await?.assignee_id;
     let thread = state.store.unassign_thread(thread_id).await?;
     publish_assignment(
@@ -242,7 +245,7 @@ pub async fn claim_thread(
     let thread_id = ThreadId(id);
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
     let result = state.store.claim_thread(thread_id, member_id).await?;
     if result.claimed {

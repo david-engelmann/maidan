@@ -27,7 +27,7 @@ pub async fn cast_vote(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     state
         .store
         .cast_vote(NewVote {
@@ -63,7 +63,7 @@ pub async fn list_votes(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     Ok(Json(
         state
             .store
@@ -82,7 +82,7 @@ pub async fn add_reaction(
     let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     let member_id = MemberId(body.member_id);
     let emoji = body.emoji.clone();
     state
@@ -121,7 +121,7 @@ pub async fn remove_reaction(
     let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     let member_id = MemberId(body.member_id);
     let emoji = body.emoji.clone();
     if state
@@ -156,7 +156,7 @@ pub async fn list_reactions(
     let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, chain.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     Ok(Json(
         state
             .store
@@ -175,7 +175,7 @@ pub async fn pin_message(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
     state
@@ -215,7 +215,7 @@ pub async fn unpin_message(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
     if state.store.unpin_message(thread_id, message_id).await? {
@@ -249,7 +249,7 @@ pub async fn list_pins(
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     Ok(Json(
         state
             .store

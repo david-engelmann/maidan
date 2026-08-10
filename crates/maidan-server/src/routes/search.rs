@@ -73,23 +73,22 @@ pub async fn search_messages(
                 .await?
         }
     };
-    // Drop hits in private channels the caller can't access (Cluster 160).
-    // Cache the per-channel decision so a result page hits each channel once.
+    // Drop hits the caller can't access — thread-keyed + DM-participant-aware
+    // (Cluster 180; the earlier channel-keyed filter exempted `__dm__` and so
+    // leaked DM message content into search results). Cache per-thread so a
+    // result page hits each thread once.
     if !auth.bypass {
-        let mut decision: std::collections::HashMap<ChannelId, bool> =
+        let mut decision: std::collections::HashMap<ThreadId, bool> =
             std::collections::HashMap::new();
         let mut allowed = Vec::with_capacity(hits.len());
         for hit in hits {
-            let ok = match decision.get(&hit.channel_id) {
+            let ok = match decision.get(&hit.thread_id) {
                 Some(v) => *v,
                 None => {
-                    let v = maidan_auth::can_access_channel(
-                        state.store.as_ref(),
-                        &auth,
-                        hit.channel_id,
-                    )
-                    .await?;
-                    decision.insert(hit.channel_id, v);
+                    let v =
+                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, hit.thread_id)
+                            .await?;
+                    decision.insert(hit.thread_id, v);
                     v
                 }
             };

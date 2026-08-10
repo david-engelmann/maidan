@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v180.0.0 — Security: DM-thread access is participant-checked everywhere
+
+| Change | Where |
+|--------|-------|
+| `ensure_thread_access` is DM-participant-aware (new `ensure_dm_participant` + `can_access_thread`); generic thread/message/social routes + A2A ingress gate on it; search + workspace-context filter per-thread — closes DM read/write/leak via the `__dm__` channel exemption | `crates/maidan-auth/src/access.rs` + route/tool gates |
+
 ## v179.0.0 — Security: A2A ingress channel/thread RBAC
 
 | Change | Where |
