@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::Utc;
 use maidan_auth::{capability, hash_secret, TokenSecret, TOKEN_ADMIN};
-use maidan_types::NewApiToken;
+use maidan_types::{NewApiToken, NewAuditEvent};
 
 use crate::dto::{MintApiTokenResponse, SessionResponse};
 use crate::error::ApiError;
@@ -46,6 +46,23 @@ pub async fn mint_first_admin_token(
             expires_at: None,
         })
         .await?;
+
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(ctx.member_id),
+            action: "token.mint".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": record.workspace_id.0,
+                "subject_member_id": record.member_id.0,
+                "capabilities": record.capabilities.clone(),
+                "source": "oidc-first-admin",
+            }),
+        },
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,

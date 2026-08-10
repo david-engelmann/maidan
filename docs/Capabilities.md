@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v182.0.0 — Security: audit-log coverage for credential + membership mutations
+
+| Change | Where |
+|--------|-------|
+| Audit trail now records `token.mint`/`token.revoke` (incl. OIDC first-admin), `app_token.mint`/`app_installation.revoke`, `channel_member.add`/`.remove`, `message.purge` — best-effort writes via `crate::audit::record`; table-level 401/403 denial auditing deliberately excluded (write-amplifier → logs/metrics) | `crates/maidan-server/src/audit.rs` + token/apps/channel/message/session handlers |
+
 ## v181.0.0 — Correctness: one EventKind parser, round-trip guarded
 
 | Change | Where |
