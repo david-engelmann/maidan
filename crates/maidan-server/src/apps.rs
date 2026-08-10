@@ -138,6 +138,17 @@ pub async fn revoke_app_installation(
         return Err(ApiError::NotFound);
     }
     let revoked = state.store.revoke_app_installation(installation_id).await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "app_installation.revoke".into(),
+            target_kind: Some("app_installation".into()),
+            target_id: Some(installation_id.0),
+            metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
+        },
+    )
+    .await;
     Ok(Json(AppInstallationResponse::from(revoked)))
 }
 
@@ -190,6 +201,24 @@ pub async fn mint_app_token(
             .await?;
     }
     let quotas = state.store.list_token_quotas(record.id).await?;
+
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "app_token.mint".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": record.workspace_id.0,
+                "app_installation_id": installation_id.0,
+                "bot_member_id": installation.bot_member_id.0,
+                "capabilities": capabilities.clone(),
+                "expires_at": record.expires_at,
+            }),
+        },
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,

@@ -107,6 +107,21 @@ pub async fn add_channel_member(
         .store
         .add_channel_member(channel.id, MemberId(body.member_id), role)
         .await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "channel_member.add".into(),
+            target_kind: Some("channel".into()),
+            target_id: Some(channel.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": channel.workspace_id.0,
+                "subject_member_id": body.member_id,
+                "role": role.as_str(),
+            }),
+        },
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -133,5 +148,19 @@ pub async fn remove_channel_member(
         .store
         .remove_channel_member(channel.id, MemberId(mid))
         .await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "channel_member.remove".into(),
+            target_kind: Some("channel".into()),
+            target_id: Some(channel.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": channel.workspace_id.0,
+                "subject_member_id": mid,
+            }),
+        },
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }

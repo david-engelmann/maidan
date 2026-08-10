@@ -8,6 +8,7 @@ pub mod a2a_agent;
 pub mod app;
 pub mod app_oauth;
 pub mod apps;
+pub mod audit;
 pub mod auth;
 pub mod automation_deliveries;
 pub mod automation_delivery;

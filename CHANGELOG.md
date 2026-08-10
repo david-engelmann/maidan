@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [182.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 4. No new
+gate tag.
+
+### Added
+
+- **Audit-trail coverage for credential + membership mutations.** The audit log
+  (`GET /workspaces/:id/audit`, `GET /operator/audit`) now records `token.mint`,
+  `token.revoke` (including the OIDC first-admin session mint), `app_token.mint`,
+  `app_installation.revoke`, `channel_member.add`, `channel_member.remove`, and
+  `message.purge` — previously these security-critical state changes left no
+  trace. Each row carries the actor, a `target_kind`/`target_id`, and metadata
+  (workspace, subject member, capabilities). Writes are best-effort (a failed
+  audit insert logs `audit.write_failed` and does not break the operation — a
+  mint must never lose its secret to an audit hiccup).
+
+### Notes
+
+- Table-level 401/403 **denial** auditing was deliberately *not* added: a
+  rejected, attacker-controlled request stream would be an unbounded audit-table
+  write amplifier. Denials stay in structured logs + metrics.
+
 ## [181.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 3. No new

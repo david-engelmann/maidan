@@ -64,6 +64,23 @@ pub async fn mint_api_token(
     }
     let quotas = state.store.list_token_quotas(record.id).await?;
 
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "token.mint".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": record.workspace_id.0,
+                "subject_member_id": record.member_id.0,
+                "capabilities": record.capabilities.clone(),
+                "expires_at": record.expires_at,
+            }),
+        },
+    )
+    .await;
+
     Ok((
         StatusCode::CREATED,
         Json(MintApiTokenResponse {
@@ -123,5 +140,20 @@ pub async fn revoke_api_token(
     let token_id = ApiTokenId(id);
     let existing = state.store.get_api_token(token_id).await?;
     ensure_workspace(&auth, existing.workspace_id)?;
-    Ok(Json(state.store.revoke_api_token(token_id).await?))
+    let revoked = state.store.revoke_api_token(token_id).await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "token.revoke".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(revoked.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": revoked.workspace_id.0,
+                "subject_member_id": revoked.member_id.0,
+            }),
+        },
+    )
+    .await;
+    Ok(Json(revoked))
 }
