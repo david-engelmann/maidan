@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v181.0.0 — Correctness: one EventKind parser, round-trip guarded
+
+| Change | Where |
+|--------|-------|
+| Store `parse_kind` (both backends) delegates to the single `EventKind::parse` — no per-backend copy to drift (the Cluster 171 silent-rollback bug class); `EventKind::ALL` + round-trip guard with a compile-time tripwire on new variants | `crates/maidan-types/src/events.rs` + `maidan-store/src/{sqlite,postgres}/events.rs` |
+
 ## v180.0.0 — Security: DM-thread access is participant-checked everywhere
 
 | Change | Where |

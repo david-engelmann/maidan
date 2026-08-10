@@ -312,7 +312,7 @@ pub fn event_kind_from_payload(payload: &str) -> EventKind {
 }
 
 pub fn kinds_match(subscription: &WebhookSubscription, kind: &EventKind) -> bool {
-    let needle = kind.clone().as_str();
+    let needle = kind.as_str();
     subscription.event_kinds.iter().any(|k| k == needle)
 }
 

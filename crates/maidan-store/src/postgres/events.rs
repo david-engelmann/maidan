@@ -112,28 +112,12 @@ fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError>
     })
 }
 
+/// Parse the persisted `kind` column back into an [`EventKind`]. Delegates to
+/// the single [`maidan_types::EventKind::parse`] so the wire-form mapping has no
+/// per-backend copy to drift (Cluster 181 — Cluster 171 lost an event because a
+/// store copy was missing a variant; the read-back failed and the insert rolled
+/// back silently). Round-trip is guarded in `maidan-types`.
 fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
-    use maidan_types::EventKind;
-    match s {
-        "workspace_created" => Ok(EventKind::WorkspaceCreated),
-        "member_joined" => Ok(EventKind::MemberJoined),
-        "channel_created" => Ok(EventKind::ChannelCreated),
-        "thread_created" => Ok(EventKind::ThreadCreated),
-        "thread_state_changed" => Ok(EventKind::ThreadStateChanged),
-        "thread_assignment_changed" => Ok(EventKind::ThreadAssignmentChanged),
-        "message_posted" => Ok(EventKind::MessagePosted),
-        "message_edited" => Ok(EventKind::MessageEdited),
-        "message_tombstoned" => Ok(EventKind::MessageTombstoned),
-        "mention_recorded" => Ok(EventKind::MentionRecorded),
-        "vote_cast" => Ok(EventKind::VoteCast),
-        "reaction_added" => Ok(EventKind::ReactionAdded),
-        "reaction_removed" => Ok(EventKind::ReactionRemoved),
-        "message_pinned" => Ok(EventKind::MessagePinned),
-        "message_unpinned" => Ok(EventKind::MessageUnpinned),
-        "reference_added" => Ok(EventKind::ReferenceAdded),
-        "artifact_upserted" => Ok(EventKind::ArtifactUpserted),
-        other => Err(StoreError::InvalidInput(format!(
-            "unknown event kind: {other}"
-        ))),
-    }
+    maidan_types::EventKind::parse(s)
+        .ok_or_else(|| StoreError::InvalidInput(format!("unknown event kind: {s}")))
 }
