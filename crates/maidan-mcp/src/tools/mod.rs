@@ -226,23 +226,26 @@ pub async fn dispatch(
             let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
             // Drop packed threads in private channels the caller can't access
             // (Cluster 162), caching the per-channel decision.
+            // Thread-keyed + DM-participant-aware (Cluster 180; channel-keyed
+            // exempted `__dm__` and leaked DM threads into the context pack).
             if !auth.bypass {
                 if let Some(threads) = v.get("threads").and_then(|t| t.as_array()) {
-                    let mut decision: std::collections::HashMap<maidan_types::ChannelId, bool> =
+                    let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =
                         std::collections::HashMap::new();
                     let mut kept = Vec::with_capacity(threads.len());
                     for t in threads {
-                        let cid = t
-                            .get("channel_id")
+                        let tid = t
+                            .get("thread")
+                            .and_then(|th| th.get("id"))
                             .and_then(|c| c.as_str())
                             .and_then(|s| s.parse::<uuid::Uuid>().ok())
-                            .map(maidan_types::ChannelId);
-                        let keep = match cid {
+                            .map(maidan_types::ThreadId);
+                        let keep = match tid {
                             Some(id) => match decision.get(&id) {
                                 Some(v) => *v,
                                 None => {
                                     let ok =
-                                        maidan_auth::can_access_channel(store.as_ref(), auth, id)
+                                        maidan_auth::can_access_thread(store.as_ref(), auth, id)
                                             .await?;
                                     decision.insert(id, ok);
                                     ok

@@ -52,7 +52,35 @@ pub async fn can_access_channel(
     }
 }
 
-/// Ensure the caller may access the channel that owns `thread_id`.
+/// Ensure the caller participates in the DM / group-DM conversation backing
+/// `thread_id` (Cluster 180). DM threads all live in the one `__dm__` system
+/// channel, so `ensure_channel_access` can't gate them per-conversation — this
+/// resolves the specific conversation and checks membership. A `__dm__` thread
+/// with no resolvable conversation is treated as inaccessible (defensive).
+pub async fn ensure_dm_participant(
+    store: &dyn Store,
+    auth: &AuthContext,
+    thread_id: ThreadId,
+) -> Result<(), AuthError> {
+    let me = auth.member_id;
+    if let Some(dm) = store.dm_conversation_for_thread(thread_id).await? {
+        if dm.member_low_id == me || dm.member_high_id == me {
+            return Ok(());
+        }
+    } else if let Some(gdm) = store.group_dm_conversation_for_thread(thread_id).await? {
+        if gdm.member_ids.contains(&me) {
+            return Ok(());
+        }
+    }
+    Err(AuthError::Forbidden(
+        "caller is not a participant of this DM conversation".into(),
+    ))
+}
+
+/// Ensure the caller may access `thread_id`. For a normal channel this is
+/// channel access; for a `__dm__` thread it is DM-conversation participation
+/// (Cluster 180) — closing the gap where a DM thread was readable via the
+/// generic thread route by any workspace member.
 pub async fn ensure_thread_access(
     store: &dyn Store,
     auth: &AuthContext,
@@ -62,7 +90,29 @@ pub async fn ensure_thread_access(
         return Ok(());
     }
     let thread = store.get_thread(thread_id).await?;
+    let channel = store.get_channel(thread.channel_id).await?;
+    auth.ensure_workspace(channel.workspace_id)?;
+    if channel.name == DM_CHANNEL_NAME {
+        return ensure_dm_participant(store, auth, thread_id).await;
+    }
     ensure_channel_access(store, auth, thread.channel_id).await
+}
+
+/// The bool form of [`ensure_thread_access`], for filtering aggregate result
+/// sets (search hits, workspace-context threads) per-thread (Cluster 180) — this
+/// is DM-participant-aware, unlike the channel-keyed [`can_access_channel`],
+/// which exempts the shared `__dm__` channel and so leaked DM content into
+/// aggregate reads. `Forbidden` becomes `false`; store errors propagate.
+pub async fn can_access_thread(
+    store: &dyn Store,
+    auth: &AuthContext,
+    thread_id: ThreadId,
+) -> Result<bool, AuthError> {
+    match ensure_thread_access(store, auth, thread_id).await {
+        Ok(()) => Ok(true),
+        Err(AuthError::Forbidden(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// Ensure the caller may access the channel that owns `message_id`.

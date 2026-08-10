@@ -158,17 +158,19 @@ pub async fn get_workspace_context(
     // Drop packed threads in private channels the caller can't access
     // (Cluster 160). Cache the per-channel decision.
     if !auth.bypass {
-        let mut decision: std::collections::HashMap<ChannelId, bool> =
+        // Thread-keyed + DM-participant-aware (Cluster 180; channel-keyed leaked
+        // DM threads into the workspace-context pack).
+        let mut decision: std::collections::HashMap<ThreadId, bool> =
             std::collections::HashMap::new();
         let mut visible = Vec::with_capacity(packed.threads.len());
         for tc in packed.threads {
-            let ok = match decision.get(&tc.channel_id) {
+            let ok = match decision.get(&tc.thread.id) {
                 Some(v) => *v,
                 None => {
                     let v =
-                        maidan_auth::can_access_channel(state.store.as_ref(), &auth, tc.channel_id)
+                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.thread.id)
                             .await?;
-                    decision.insert(tc.channel_id, v);
+                    decision.insert(tc.thread.id, v);
                     v
                 }
             };

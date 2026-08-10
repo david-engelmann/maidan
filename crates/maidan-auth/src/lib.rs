@@ -10,7 +10,8 @@ pub mod resolve;
 pub mod token;
 
 pub use access::{
-    can_access_channel, ensure_channel_access, ensure_message_access, ensure_thread_access,
+    can_access_channel, can_access_thread, ensure_channel_access, ensure_dm_participant,
+    ensure_message_access, ensure_thread_access,
 };
 pub use capability::*;
 pub use context::AuthContext;

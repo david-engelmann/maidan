@@ -596,3 +596,84 @@ async fn a2a_ingress_denies_non_members_in_private_channels() {
 
     ctx.server.abort();
 }
+
+/// Cluster 180: a DM thread is NOT readable via the generic `/threads/:id` route
+/// by a non-participant (the `__dm__` exemption previously left this open);
+/// participants still read it.
+#[tokio::test]
+async fn dm_thread_not_readable_via_generic_route_by_non_participant() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "dm-acme".into(),
+        })
+        .await
+        .unwrap();
+    let mk = |handle: &'static str| {
+        let store = ctx.store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let alice = mk("alice").await;
+    let bob = mk("bob").await;
+    let mallory = mk("mallory").await;
+    let alice_tok = mint(ctx.store.as_ref(), ws.id, alice.id).await;
+    let bob_tok = mint(ctx.store.as_ref(), ws.id, bob.id).await;
+    let mallory_tok = mint(ctx.store.as_ref(), ws.id, mallory.id).await;
+    let auth = |t: &str| format!("Bearer {t}");
+
+    // Alice opens a DM with bob (participants = {alice, bob}).
+    let dm: Value = ctx
+        .client
+        .post(format!("{base}/workspaces/{}/dm", ws.id.0))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"member_id": alice.id.0, "other_member_id": bob.id.0}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = dm["thread_id"].as_str().expect("dm thread_id");
+
+    let get_msgs = |tok: &str| {
+        ctx.client
+            .get(format!("{base}/threads/{tid}/messages"))
+            .header("Authorization", auth(tok))
+            .send()
+    };
+
+    // Non-participant is denied via the generic thread route…
+    assert_eq!(
+        get_msgs(&mallory_tok).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    // …the generic thread GET too.
+    assert_eq!(
+        ctx.client
+            .get(format!("{base}/threads/{tid}"))
+            .header("Authorization", auth(&mallory_tok))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    // …participants (both members) still read it.
+    assert_eq!(get_msgs(&alice_tok).await.unwrap().status(), StatusCode::OK);
+    assert_eq!(get_msgs(&bob_tok).await.unwrap().status(), StatusCode::OK);
+
+    ctx.server.abort();
+}

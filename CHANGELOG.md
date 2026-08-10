@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [180.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 2. No new
+gate tag.
+
+### Security
+
+- **DM/group-DM threads are now participant-checked on every surface.** DM
+  threads live in the shared `__dm__` channel, which `ensure_channel_access`
+  exempts — so the generic content routes (`GET /threads/:id`, `…/messages`,
+  `…/context`, plus message/reaction/pin/vote routes and the A2A ingress) let any
+  workspace member read/write a DM they weren't part of, and workspace **search +
+  workspace-context leaked DM message content** to non-participants.
+  `ensure_thread_access` is now DM-participant-aware (via a new
+  `ensure_dm_participant`), all thread/message-scoped routes gate on it, and the
+  search/context filters key on per-thread access (`can_access_thread`) instead
+  of the channel. Dedicated `/dm` routes, participants, and public/private
+  channels are unchanged.
+
 ## [179.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — new program, arc A,
