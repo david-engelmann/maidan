@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [181.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 3. No new
+gate tag.
+
+### Changed
+
+- **One `EventKind` wire-form parser instead of three.** The store kept its own
+  `parse_kind` copy in each of `postgres/events.rs` and `sqlite/events.rs`,
+  duplicating `maidan_types::EventKind::parse`. `append` re-parses the `kind`
+  column on read-back, so a store copy missing a variant made the insert **fail
+  after INSERT and silently roll back** (the Cluster 171 bug —
+  `thread_assignment_changed` was in the enum's `parse` but not the store
+  copies). Both store copies now delegate to the single `EventKind::parse`, so
+  there is no per-backend mapping to drift.
+
+### Added
+
+- `EventKind::ALL` + a round-trip guard (`parse(as_str())` for every variant)
+  with a compile-time tripwire: adding a variant fails the guard test's
+  exhaustive match until it's listed. `EventKind` is now `Copy` (fieldless enum).
+
 ## [180.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 2. No new

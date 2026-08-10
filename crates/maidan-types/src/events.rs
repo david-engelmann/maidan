@@ -25,7 +25,7 @@ pub struct StoredEvent {
     pub occurred_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
@@ -93,6 +93,32 @@ impl EventKind {
             _ => None,
         }
     }
+
+    /// Every variant, for exhaustive iteration (round-trip guards, catalogs).
+    /// Kept in sync with the enum by the compile-time tripwire in
+    /// `all_variants_round_trip` — a new variant fails that test's exhaustive
+    /// match until it is listed here. `as_str`/`parse` are the single source of
+    /// truth for the wire form; the store layer parses through `parse` (Cluster
+    /// 181) so there is no per-backend copy to drift.
+    pub const ALL: &'static [EventKind] = &[
+        Self::WorkspaceCreated,
+        Self::MemberJoined,
+        Self::ChannelCreated,
+        Self::ThreadCreated,
+        Self::ThreadStateChanged,
+        Self::ThreadAssignmentChanged,
+        Self::MessagePosted,
+        Self::MessageEdited,
+        Self::MessageTombstoned,
+        Self::MentionRecorded,
+        Self::VoteCast,
+        Self::ReactionAdded,
+        Self::ReactionRemoved,
+        Self::MessagePinned,
+        Self::MessageUnpinned,
+        Self::ReferenceAdded,
+        Self::ArtifactUpserted,
+    ];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -544,5 +570,66 @@ mod filter_tests {
         };
         let kinds: HashSet<EventKind> = [EventKind::MessagePosted].into_iter().collect();
         assert!(!EventFilter::all().with_kinds(kinds).matches(&event));
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+
+    /// The wire form is one source of truth: every variant's `as_str` must
+    /// round-trip back through `parse`. Before Cluster 181 the store kept its
+    /// own per-backend `parse_kind` copies, and Cluster 171 shipped a variant
+    /// (`thread_assignment_changed`) whose store parser was missing — the event
+    /// inserted but failed read-back and the transaction silently rolled back.
+    /// The store now parses through `EventKind::parse`, so this single test
+    /// guards the only remaining parser.
+    #[test]
+    fn all_variants_round_trip() {
+        for &kind in EventKind::ALL {
+            // Compile-time tripwire: a new variant that isn't listed in an arm
+            // here fails to build (no wildcard), which is the reminder to also
+            // add it to `EventKind::ALL` above so it gets round-trip-checked.
+            match kind {
+                EventKind::WorkspaceCreated
+                | EventKind::MemberJoined
+                | EventKind::ChannelCreated
+                | EventKind::ThreadCreated
+                | EventKind::ThreadStateChanged
+                | EventKind::ThreadAssignmentChanged
+                | EventKind::MessagePosted
+                | EventKind::MessageEdited
+                | EventKind::MessageTombstoned
+                | EventKind::MentionRecorded
+                | EventKind::VoteCast
+                | EventKind::ReactionAdded
+                | EventKind::ReactionRemoved
+                | EventKind::MessagePinned
+                | EventKind::MessageUnpinned
+                | EventKind::ReferenceAdded
+                | EventKind::ArtifactUpserted => {}
+            }
+            assert_eq!(
+                EventKind::parse(kind.as_str()),
+                Some(kind),
+                "as_str/parse round-trip broken for {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_lists_each_variant_once() {
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for &kind in EventKind::ALL {
+            assert!(
+                seen.insert(kind.as_str()),
+                "EventKind::ALL lists {kind:?} more than once"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_kind_does_not_parse() {
+        assert_eq!(EventKind::parse("not_a_real_kind"), None);
     }
 }

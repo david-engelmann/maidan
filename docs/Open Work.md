@@ -39,7 +39,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v180.0.0`** (post-gate hardening, Phase XXIV). Post-v155 four-arc program complete (156–178); a new **security-led four-arc program** is underway (arc A: security & correctness — 179 A2A RBAC, 180 DM-thread participant check).
+- **Latest tag:** **`v181.0.0`** (post-gate hardening, Phase XXIV). Post-v155 four-arc program complete (156–178); a new **security-led four-arc program** is underway (arc A: security & correctness — 179 A2A RBAC, 180 DM-thread participant check, 181 EventKind parser unification).
 - **Deferred (Cluster 173):** federation/A2A-ingested messages carry `body` only — the ingest path (`a2a_agent.rs`, federation worker) doesn't yet map incoming `parts → content` (typed structured content). In-scope-to-not-break; propagation is a follow-up. All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
