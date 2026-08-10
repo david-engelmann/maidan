@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v183.0.0 — Security: default-on rate limit + explicit request body cap
+
+| Change | Where |
+|--------|-------|
+| Built-in global per-client rate limit (1200 req/60s) when `MAIDAN_RATE_LIMIT_MAX` unset (server-binary only; explicit env incl. `0` overrides) | `crates/maidan-server/src/{rate_limit/mod,state,main}.rs` |
+| Explicit env-tunable request body cap (`MAIDAN_MAX_BODY_BYTES`, default 2 MiB); oversized body → `413` | `crates/maidan-server/src/{app,error}.rs` |
+
 ## v182.0.0 — Security: audit-log coverage for credential + membership mutations
 
 | Change | Where |

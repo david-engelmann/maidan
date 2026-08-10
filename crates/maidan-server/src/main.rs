@@ -346,6 +346,9 @@ async fn main() -> anyhow::Result<()> {
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
     state.rate_limit_redis = maidan_server::rate_limit::connect_redis_from_env().await;
+    // Default-on global rate limit (Cluster 183): a deployment that configures
+    // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
+    state.rate_limit_default_on = true;
     let app = router(state.clone());
 
     if outbox_relay {
