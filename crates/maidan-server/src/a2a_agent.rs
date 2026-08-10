@@ -186,6 +186,17 @@ async fn ensure_task_workspace_access(
                 if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
                     return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
                 }
+                // Cluster 179: per-channel access on the A2A read path too — a
+                // task's context thread may live in a private channel.
+                if let Err(e) = maidan_auth::ensure_channel_access(
+                    state.store.as_ref(),
+                    auth,
+                    thread_ctx.channel_id,
+                )
+                .await
+                {
+                    return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
+                }
                 return Ok(Some(thread_ctx.workspace_id));
             }
         }
@@ -227,6 +238,15 @@ async fn post_a2a_message(
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_PARAMS, e.to_string()))?;
     if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    // Cluster 179: enforce per-channel access on the A2A ingress — the RBAC arc
+    // (160–165) gated REST/MCP/WS/references but not this external surface, so a
+    // `message:post` token could post into a private channel it isn't a member
+    // of. Mirror the REST thread-route check.
+    if let Err(e) =
+        maidan_auth::ensure_channel_access(state.store.as_ref(), auth, thread_ctx.channel_id).await
+    {
+        return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
     }
     let posted = state
         .store
