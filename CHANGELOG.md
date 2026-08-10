@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [179.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — new program, arc A,
+part 1. No new gate tag.
+
+### Security
+
+- **A2A JSON-RPC ingress now enforces channel/thread access.** `POST /a2a/v1/rpc`
+  previously gated only on the `message:post` capability + workspace, so an
+  external A2A agent could post into — and read tasks whose context thread lives
+  in — a **private channel it isn't a member of**. This was the one surface the
+  160–165 RBAC arc missed. Both the write (`SendMessage`) and read (`tasks/get`)
+  paths now call `ensure_channel_access`, identical to REST/MCP. (`__dm__`
+  generic-route tightening follows in the next cluster.)
+
 ## [178.0.0] — 2026-08-07
 
 Post-gate hardening (Phase XXIV). Token efficiency — arc 4 (round 3), part 4

@@ -487,3 +487,112 @@ async fn channel_admin_api_manages_membership_end_to_end() {
 
     ctx.server.abort();
 }
+
+/// Cluster 179: the A2A JSON-RPC ingress (`POST /a2a/v1/rpc`) enforces per-channel
+/// access. A non-member holding `message:post` is denied posting into a private
+/// channel's thread — the surface the 160–165 RBAC arc had missed.
+#[tokio::test]
+async fn a2a_ingress_denies_non_members_in_private_channels() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "a2a-acme".into(),
+        })
+        .await
+        .unwrap();
+    let mk = |handle: &'static str| {
+        let store = ctx.store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let alice = mk("alice").await;
+    let mallory = mk("mallory").await;
+    let alice_tok = mint(ctx.store.as_ref(), ws.id, alice.id).await;
+    let mallory_tok = mint(ctx.store.as_ref(), ws.id, mallory.id).await;
+    let auth = |t: &str| format!("Bearer {t}");
+
+    // Alice creates a PRIVATE channel (auto-added) + a thread.
+    let ch: Value = ctx
+        .client
+        .post(format!("{base}/workspaces/{}/channels", ws.id.0))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"name": "secret", "private": true}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = ch["id"].as_str().unwrap().to_string();
+    let th: Value = ctx
+        .client
+        .post(format!("{base}/channels/{cid}/threads"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"title": "plans"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = th["id"].as_str().unwrap().to_string();
+
+    let a2a_body = |member: uuid::Uuid| {
+        json!({
+            "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
+            "params": {
+                "message": {"role": "user", "parts": [{"type": "text", "text": "via a2a"}]},
+                "metadata": {"maidan": {"threadId": tid, "authorId": member}}
+            }
+        })
+    };
+
+    // Mallory (not a channel member) is denied — JSON-RPC error, no message posted.
+    let denied: Value = ctx
+        .client
+        .post(format!("{base}/a2a/v1/rpc"))
+        .header("Authorization", auth(&mallory_tok))
+        .json(&a2a_body(mallory.id.0))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        denied.get("error").is_some(),
+        "non-member A2A post must be rejected, got {denied}"
+    );
+    assert!(denied.get("result").is_none());
+
+    // Alice (the channel member) can post via A2A.
+    let ok: Value = ctx
+        .client
+        .post(format!("{base}/a2a/v1/rpc"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&a2a_body(alice.id.0))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        ok.get("result").is_some(),
+        "member A2A post should succeed: {ok}"
+    );
+
+    ctx.server.abort();
+}

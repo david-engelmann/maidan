@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v179.0.0 — Security: A2A ingress channel/thread RBAC
+
+| Change | Where |
+|--------|-------|
+| `POST /a2a/v1/rpc` enforces `ensure_channel_access` on post + task-read (closes a private-channel bypass the 160–165 RBAC arc missed) | `crates/maidan-server/src/a2a_agent.rs` |
+
 ## v178.0.0 — Token: opt-in lean event frames
 
 | Change | Where |
