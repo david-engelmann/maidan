@@ -1,9 +1,27 @@
 use axum::{
+    extract::DefaultBodyLimit,
     middleware,
     routing::{delete, get, post, put},
     Router,
 };
 use tower_http::trace::TraceLayer;
+
+/// Default request body-size cap: 2 MiB (Cluster 183). Matches axum 0.7's
+/// implicit extractor default, but now explicit + tunable via
+/// `MAIDAN_MAX_BODY_BYTES` — a deployment can tighten it (smaller JSON payloads)
+/// or widen it (larger single-shot artifacts) without a rebuild.
+const DEFAULT_MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+
+fn parse_max_body_bytes(raw: Option<String>) -> usize {
+    raw.and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_BODY_BYTES)
+}
+
+/// Resolve the request body-size cap from `MAIDAN_MAX_BODY_BYTES`.
+pub fn max_body_bytes_from_env() -> usize {
+    parse_max_body_bytes(std::env::var("MAIDAN_MAX_BODY_BYTES").ok())
+}
 
 #[cfg(feature = "bootstrap")]
 use crate::bootstrap;
@@ -438,5 +456,30 @@ pub fn router(state: AppState) -> Router {
             rate_limit::middleware,
         ))
         .layer(middleware::from_fn(request_id::middleware))
+        // Cap request bodies before extractors buffer them (Cluster 183).
+        .layer(DefaultBodyLimit::max(max_body_bytes_from_env()))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod body_limit_tests {
+    use super::*;
+
+    #[test]
+    fn max_body_bytes_parses_and_falls_back() {
+        assert_eq!(parse_max_body_bytes(None), DEFAULT_MAX_BODY_BYTES);
+        assert_eq!(
+            parse_max_body_bytes(Some("  ".into())),
+            DEFAULT_MAX_BODY_BYTES
+        );
+        assert_eq!(
+            parse_max_body_bytes(Some("nope".into())),
+            DEFAULT_MAX_BODY_BYTES
+        );
+        assert_eq!(
+            parse_max_body_bytes(Some("0".into())),
+            DEFAULT_MAX_BODY_BYTES
+        );
+        assert_eq!(parse_max_body_bytes(Some("4096".into())), 4096);
+    }
 }

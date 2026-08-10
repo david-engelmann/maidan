@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [183.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 5. No new
+gate tag.
+
+### Added
+
+- **Default-on global rate limit.** When `MAIDAN_RATE_LIMIT_MAX` is unset the
+  server now applies a built-in per-client floor (1200 requests / 60 s per
+  bearer/IP), so a deployment that configures nothing still has a DoS floor. An
+  explicit `MAIDAN_RATE_LIMIT_MAX` (including `0` to disable) always overrides.
+  The per-workspace fairness limit stays independently opt-in. (Library
+  embedders/tests are unaffected — the default is only enabled by the server
+  binary.)
+- **Explicit, tunable request body-size cap** via `MAIDAN_MAX_BODY_BYTES`
+  (default 2 MiB, matching axum's previously-implicit extractor limit). Oversized
+  request bodies now return `413 Payload Too Large` (`problem+json`) instead of a
+  flattened `400`.
+
 ## [182.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 4. No new

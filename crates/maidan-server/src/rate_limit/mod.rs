@@ -34,6 +34,33 @@ fn config_from_env() -> Option<RateLimitConfig> {
     config_from_env_named("MAIDAN_RATE_LIMIT_MAX", "MAIDAN_RATE_LIMIT_WINDOW_SECS")
 }
 
+/// Built-in global per-client limit used when `MAIDAN_RATE_LIMIT_MAX` is unset
+/// and the bootstrap enabled the default (Cluster 183): 1200 requests / 60 s per
+/// bearer/IP — ~20 req/s sustained, generous for a real agent but a firm floor
+/// against a runaway or abusive client on a deployment that configured nothing.
+const DEFAULT_GLOBAL_MAX: u32 = 1200;
+const DEFAULT_GLOBAL_WINDOW_SECS: u64 = 60;
+
+fn default_global() -> RateLimitConfig {
+    RateLimitConfig {
+        max: DEFAULT_GLOBAL_MAX,
+        window: Duration::from_secs(DEFAULT_GLOBAL_WINDOW_SECS),
+    }
+}
+
+/// Resolve the global limit: an explicit `MAIDAN_RATE_LIMIT_MAX` always wins
+/// (including `0`/invalid → disabled); otherwise apply the built-in default when
+/// `default_on` (the server bootstrap sets it; tests leave it off).
+fn resolve_global(default_on: bool) -> Option<RateLimitConfig> {
+    if std::env::var("MAIDAN_RATE_LIMIT_MAX").is_ok() {
+        config_from_env()
+    } else if default_on {
+        Some(default_global())
+    } else {
+        None
+    }
+}
+
 /// Per-workspace fairness limit (Cluster 110): caps total request rate for a
 /// single workspace across *all* its tokens, so one tenant's heavy loop can't
 /// monopolize the shared instance. Independently opt-in from the global limit.
@@ -99,7 +126,7 @@ pub async fn middleware(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    let global = config_from_env();
+    let global = resolve_global(state.rate_limit_default_on);
     let workspace = workspace_config_from_env();
     if (global.is_none() && workspace.is_none()) || exempt_path(req.uri().path()) {
         return next.run(req).await;
@@ -201,5 +228,37 @@ mod tests {
         assert!(exempt_path("/health/ready"));
         assert!(exempt_path("/metrics"));
         assert!(!exempt_path("/workspaces/abc/search"));
+    }
+
+    #[test]
+    fn default_on_applies_a_floor_and_explicit_env_overrides() {
+        // Save/restore so this stays hermetic within the lib-test process.
+        let saved_max = std::env::var("MAIDAN_RATE_LIMIT_MAX").ok();
+        let saved_window = std::env::var("MAIDAN_RATE_LIMIT_WINDOW_SECS").ok();
+        std::env::remove_var("MAIDAN_RATE_LIMIT_MAX");
+        std::env::remove_var("MAIDAN_RATE_LIMIT_WINDOW_SECS");
+
+        // Unset env: off unless the bootstrap enabled the default.
+        assert!(resolve_global(false).is_none());
+        let d = resolve_global(true).expect("default floor when default_on");
+        assert_eq!(d.max, DEFAULT_GLOBAL_MAX);
+        assert_eq!(d.window, Duration::from_secs(DEFAULT_GLOBAL_WINDOW_SECS));
+
+        // Explicit value wins regardless of the flag.
+        std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "5");
+        assert_eq!(resolve_global(false).map(|c| c.max), Some(5));
+        assert_eq!(resolve_global(true).map(|c| c.max), Some(5));
+
+        // Explicit 0 disables even with the default on.
+        std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "0");
+        assert!(resolve_global(true).is_none());
+
+        match saved_max {
+            Some(v) => std::env::set_var("MAIDAN_RATE_LIMIT_MAX", v),
+            None => std::env::remove_var("MAIDAN_RATE_LIMIT_MAX"),
+        }
+        if let Some(v) = saved_window {
+            std::env::set_var("MAIDAN_RATE_LIMIT_WINDOW_SECS", v);
+        }
     }
 }

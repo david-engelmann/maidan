@@ -26,9 +26,19 @@ where
     type Rejection = ApiError;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, ApiError> {
-        let Json(value) = Json::<T>::from_request(req, state)
-            .await
-            .map_err(|e: JsonRejection| ApiError::BadRequest(e.body_text()))?;
+        let Json(value) =
+            Json::<T>::from_request(req, state)
+                .await
+                .map_err(|e: JsonRejection| {
+                    // Preserve a body-size-limit rejection as 413 (Cluster 183); the
+                    // `DefaultBodyLimit` layer surfaces it as a `PAYLOAD_TOO_LARGE`
+                    // status on the rejection. Everything else is a 400.
+                    if e.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                        ApiError::PayloadTooLarge(e.body_text())
+                    } else {
+                        ApiError::BadRequest(e.body_text())
+                    }
+                })?;
         Ok(Self(value))
     }
 }
@@ -40,6 +50,7 @@ pub enum ApiError {
     BadRequest(String),
     Unauthorized,
     Forbidden(String),
+    PayloadTooLarge(String),
     TooManyRequests(String),
     Internal(String),
 }
@@ -52,6 +63,7 @@ impl ApiError {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -64,6 +76,7 @@ impl ApiError {
             Self::BadRequest(_) => "Bad Request",
             Self::Unauthorized => "Unauthorized",
             Self::Forbidden(_) => "Forbidden",
+            Self::PayloadTooLarge(_) => "Payload Too Large",
             Self::TooManyRequests(_) => "Too Many Requests",
             Self::Internal(_) => "Internal Server Error",
         }
@@ -76,6 +89,7 @@ impl ApiError {
             Self::Conflict(msg)
             | Self::BadRequest(msg)
             | Self::Forbidden(msg)
+            | Self::PayloadTooLarge(msg)
             | Self::TooManyRequests(msg)
             | Self::Internal(msg) => msg.clone(),
         }
@@ -88,6 +102,7 @@ impl ApiError {
             Self::BadRequest(_) => "https://maidan.dev/problems/bad-request",
             Self::Unauthorized => "https://maidan.dev/problems/unauthorized",
             Self::Forbidden(_) => "https://maidan.dev/problems/forbidden",
+            Self::PayloadTooLarge(_) => "https://maidan.dev/problems/payload-too-large",
             Self::TooManyRequests(_) => "https://maidan.dev/problems/rate-limited",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
         }

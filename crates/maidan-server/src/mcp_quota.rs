@@ -35,6 +35,7 @@ pub async fn enforce_mcp_quota(
             ApiError::TooManyRequests(m) => m,
             ApiError::Forbidden(m) => m,
             ApiError::BadRequest(m) => m,
+            ApiError::PayloadTooLarge(m) => m,
             ApiError::Unauthorized => "unauthorized".into(),
             ApiError::NotFound => "not found".into(),
             ApiError::Conflict(m) => m,

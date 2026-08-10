@@ -123,6 +123,12 @@ pub struct AppState {
     pub presence: Arc<PresenceHub>,
     /// Optional Redis backend for global and per-token rate limits (Cluster 54).
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
+    /// Apply a built-in global per-client rate limit when `MAIDAN_RATE_LIMIT_MAX`
+    /// is unset (Cluster 183). The server bootstrap turns this on so a deployment
+    /// that configures nothing still has a DoS floor; an explicit
+    /// `MAIDAN_RATE_LIMIT_MAX` (including `0` to disable) always overrides. Left
+    /// `false` in [`AppState::new`] so tests are unaffected unless they opt in.
+    pub rate_limit_default_on: bool,
     /// Live embedding-indexer counters (queue depth, throughput) for metrics
     /// (Cluster 116). Default-zeroed unless the batching indexer is wired.
     pub indexer_metrics: Arc<maidan_search::IndexerMetrics>,
@@ -177,6 +183,7 @@ impl AppState {
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence: Arc::new(PresenceHub::default()),
             rate_limit_redis: None,
+            rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
