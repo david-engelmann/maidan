@@ -140,6 +140,11 @@ pub fn init() {
             "maidan_a2a_push_total",
             "A2A task push notifications by outcome (ok/failed after retries)"
         );
+        describe_counter!(
+            "maidan_event_append_failures_total",
+            "Domain events that failed to append to the log after retries (a lost \
+             event: the domain row committed but no event was persisted)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -158,6 +163,14 @@ pub fn record_automation_delivery(success: bool) {
 
 pub fn record_automation_delivery_duration(elapsed: std::time::Duration) {
     histogram!("maidan_automation_delivery_duration_seconds").record(elapsed.as_secs_f64());
+}
+
+/// A domain event failed to append to the log after retries — the domain row
+/// committed but no event was persisted, so downstream consumers (WS/MCP
+/// notifications, at-least-once delivery, the indexer) will never see it. Alert
+/// on any non-zero rate (Cluster 184).
+pub fn record_event_append_failure() {
+    counter!("maidan_event_append_failures_total").increment(1);
 }
 
 fn sync_hydrate_counters(current: HydrateSnapshot) {

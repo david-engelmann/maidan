@@ -100,18 +100,80 @@ pub(crate) async fn publish_routed_mentions(
     }
 }
 
-/// Fire-and-forget event publish. Errors are logged but never surfaced
-/// to the HTTP caller — the store has already committed, and the bus
-/// being temporarily unavailable should not turn a successful mutation
-/// into a 5xx.
+/// Extra attempts to re-append a domain event after the first fails, before
+/// conceding a lost event (Cluster 184). Transient store errors (pool timeout,
+/// brief lock contention) are the common failure and usually clear on retry.
+const EVENT_APPEND_ATTEMPTS: u32 = 3;
+const EVENT_APPEND_BACKOFF: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Retry an async fallible op up to `attempts` times (min 1), sleeping `backoff`
+/// between tries. Returns the first `Ok`, else the final `Err`.
+async fn retry<T, E, F, Fut>(mut op: F, attempts: u32, backoff: std::time::Duration) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let max = attempts.max(1);
+    let mut done = 0u32;
+    loop {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                done += 1;
+                if done >= max {
+                    return Err(e);
+                }
+                if !backoff.is_zero() {
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        }
+    }
+}
+
+/// Publish a domain event after the mutation's store call succeeded.
 ///
-/// Returns the new `log_id` when append succeeded.
+/// The **durable append** and the **bus notify** are treated differently. A bus
+/// failure is benign — the event is already logged (and in relay mode the outbox
+/// will deliver it), so it should never turn a successful mutation into a 5xx.
+/// A durable **append** failure is not benign: the domain row committed but the
+/// event would be lost (no notifications, no delivery, no indexing). So the
+/// append is retried on transient errors (Cluster 184); a hard failure after
+/// retries is logged loudly and counted (`maidan_event_append_failures_total`)
+/// for alerting. True single-transaction atomicity of the domain write and the
+/// event append is a larger refactor tracked in Open Work.
+///
+/// Returns the new `log_id` when the append succeeded.
 pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
+    // First attempt on the hot path borrows `event` (no clone). Only on failure
+    // do we clone for the (rare) retry loop.
     let stored = match state.store.append_event(&event).await {
         Ok(row) => row,
-        Err(err) => {
-            tracing::warn!(error = %err, "event log append failed");
-            return None;
+        Err(first) => {
+            tracing::warn!(error = %first, "event log append failed; retrying");
+            let store = state.store.clone();
+            let ev = event.clone();
+            let retried = retry(
+                move || {
+                    let store = store.clone();
+                    let ev = ev.clone();
+                    async move { store.append_event(&ev).await }
+                },
+                EVENT_APPEND_ATTEMPTS,
+                EVENT_APPEND_BACKOFF,
+            )
+            .await;
+            match retried {
+                Ok(row) => row,
+                Err(err) => {
+                    tracing::error!(
+                        error = %err,
+                        "event.append_failed: domain row committed but event lost after retries"
+                    );
+                    crate::metrics::record_event_append_failure();
+                    return None;
+                }
+            }
         }
     };
     if state.outbox_relay {
@@ -144,8 +206,48 @@ mod publish_tests {
     use maidan_types::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::publish;
+    use super::{publish, retry};
     use crate::state::AppState;
+
+    #[tokio::test]
+    async fn retry_returns_ok_after_transient_failures() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = AtomicU32::new(0);
+        let out: Result<u32, &str> = retry(
+            || {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if n < 2 {
+                        Err("transient")
+                    } else {
+                        Ok(n)
+                    }
+                }
+            },
+            5,
+            std::time::Duration::ZERO,
+        )
+        .await;
+        assert_eq!(out, Ok(2));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn retry_gives_up_and_returns_last_error() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = AtomicU32::new(0);
+        let out: Result<u32, &str> = retry(
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async move { Err::<u32, &str>("always") }
+            },
+            3,
+            std::time::Duration::ZERO,
+        )
+        .await;
+        assert_eq!(out, Err("always"));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
 
     async fn sqlite_state(bus: Arc<dyn maidan_bus::EventBus>) -> AppState {
         let pool = SqlitePoolOptions::new()

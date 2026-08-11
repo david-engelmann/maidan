@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v184.0.0 — Correctness: harden the domain-write → event-append dual write
+
+| Change | Where |
+|--------|-------|
+| `publish()` retries the durable event append on transient errors, splits append-failure (lost event, loud + metered via `maidan_event_append_failures_total`) from benign bus-publish failure | `crates/maidan-server/src/{routes/mod,metrics}.rs` |
+
 ## v183.0.0 — Security: default-on rate limit + explicit request body cap
 
 | Change | Where |
