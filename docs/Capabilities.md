@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v187.0.0 — SaaS ops: workspace export / portability
+
+| Change | Where |
+|--------|-------|
+| `GET /workspaces/:id/export` (token:admin) returns the workspace content graph (members, channels+members, threads, messages+edits, pins, references) as one JSON bundle; secrets + ops tables excluded | `crates/maidan-server/src/export.rs` + `routes/workspace.rs` |
+
 ## v186.0.0 — SaaS ops: data-retention pruning
 
 | Change | Where |

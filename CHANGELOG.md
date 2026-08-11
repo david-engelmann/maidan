@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [187.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 3.
+No new gate tag.
+
+### Added
+
+- **Workspace export / portability.** `GET /workspaces/:id/export` (gated on
+  `token:admin`) returns the workspace's content graph as one JSON bundle —
+  workspace, members, channels (+ members), threads, messages (+ edits, paginated
+  to completeness), pins, and references — so a tenant can be migrated or archived,
+  not only deleted. DM/group-DM message content is included (DM threads live in
+  the `__dm__` channel). **Excludes secrets** (API tokens, webhook/slash/OIDC) and
+  operational tables (events, audit, deliveries). Reactions/votes and artifact
+  blobs are not yet included, and there is no import path yet (see Open Work).
+
 ## [186.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 2.
