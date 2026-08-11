@@ -403,6 +403,18 @@
   },
   {
     "method": "GET",
+    "path": "/members/{id}/assigned-threads",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/channels/{cid}/threads/claim-next",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/audit",
     "capability": "workspace:read",
     "surface": "http"

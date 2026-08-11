@@ -295,6 +295,20 @@ impl Store for SqliteStore {
     async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError> {
         threads::unassign(&self.pool, thread_id).await
     }
+    async fn list_assigned_threads(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::list_assigned(&self.pool, workspace_id, member_id).await
+    }
+    async fn claim_next_thread(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<Option<Thread>, StoreError> {
+        threads::claim_next(&self.pool, channel_id, member_id).await
+    }
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await

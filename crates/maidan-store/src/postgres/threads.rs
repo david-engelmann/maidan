@@ -111,6 +111,57 @@ pub async fn claim(
     }
 }
 
+/// Threads in `workspace_id` currently assigned to `member_id` — an agent's work
+/// queue (Cluster 190). Live threads only, oldest first. Uses `idx_threads_assignee`.
+pub async fn list_assigned(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = $1 AND t.assignee_id = $2 AND t.tombstoned_at IS NULL
+         ORDER BY t.created_at ASC, t.id ASC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
+/// Atomically claim the oldest unassigned live thread in `channel_id` for
+/// `member_id` (Cluster 190). `FOR UPDATE SKIP LOCKED` is the canonical
+/// concurrent work-queue pattern: parallel claimers skip each other's locked
+/// candidate and each gets a distinct thread. `None` when there is no unassigned
+/// work.
+pub async fn claim_next(
+    pool: &PgPool,
+    channel_id: ChannelId,
+    member_id: MemberId,
+) -> Result<Option<Thread>, StoreError> {
+    let row = sqlx::query(
+        "WITH next AS (
+             SELECT id FROM maidan_threads
+             WHERE channel_id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
+             ORDER BY created_at ASC, id ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+         )
+         UPDATE maidan_threads t SET assignee_id = $1, updated_at = NOW()
+         FROM next WHERE t.id = next.id
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id",
+    )
+    .bind(member_id.0)
+    .bind(channel_id.0)
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_thread).transpose()
+}
+
 pub async fn list_for_workspace(
     pool: &PgPool,
     workspace_id: WorkspaceId,

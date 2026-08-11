@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [190.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 1. No
+new gate tag.
+
+### Added
+
+- **Thread-assignment read-side** (Cluster 171 shipped only the write side).
+  `GET /members/:id/assigned-threads` returns a member's work queue (live
+  threads, oldest-first; RBAC-filtered to what the caller can access).
+  `POST /channels/:cid/threads/claim-next` atomically claims the oldest
+  unassigned thread in a channel for a member (returns the thread, or `null` when
+  there's none) — Postgres uses `FOR UPDATE SKIP LOCKED` so concurrent claimers
+  each get a distinct thread; a claim publishes `ThreadAssignmentChanged`. (MCP
+  tools for these follow in the next cluster.)
+
 ## [189.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B finale.

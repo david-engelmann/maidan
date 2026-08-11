@@ -59,6 +59,8 @@ impl Modify for SecurityAddon {
         paths::erase_workspace,
         paths::export_workspace,
         paths::get_workspace_usage,
+        paths::list_assigned_threads,
+        paths::claim_next_thread,
         paths::list_workspace_audit,
         paths::get_workspace_context,
         paths::list_quarantined_outbox,

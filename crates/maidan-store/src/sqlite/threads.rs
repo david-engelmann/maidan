@@ -116,6 +116,55 @@ pub async fn claim(
     }
 }
 
+/// Threads in `workspace_id` currently assigned to `member_id` — an agent's work
+/// queue (Cluster 190). Live threads only, oldest first. Uses `idx_threads_assignee`.
+pub async fn list_assigned(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ? AND t.assignee_id = ? AND t.tombstoned_at IS NULL
+         ORDER BY t.created_at ASC, t.id ASC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
+/// Atomically claim the oldest unassigned live thread in `channel_id` for
+/// `member_id` (Cluster 190) — the "pull the next task" primitive. `None` when
+/// the channel has no unassigned work. SQLite serializes writers, so the
+/// subquery-guarded UPDATE can't double-assign.
+pub async fn claim_next(
+    pool: &SqlitePool,
+    channel_id: ChannelId,
+    member_id: MemberId,
+) -> Result<Option<Thread>, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+         WHERE id = (
+             SELECT id FROM maidan_threads
+             WHERE channel_id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
+             ORDER BY created_at ASC, id ASC
+             LIMIT 1
+         )
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
+    )
+    .bind(member_id.0)
+    .bind(Utc::now().to_rfc3339())
+    .bind(channel_id.0)
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_thread).transpose()
+}
+
 pub async fn list_for_workspace(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
