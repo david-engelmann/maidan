@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [186.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 2.
+No new gate tag.
+
+### Added
+
+- **Opt-in data-retention pruning** for the unbounded-growth tables. A background
+  sweeper deletes rows past a per-table age:
+  `MAIDAN_RETENTION_EVENTS_DAYS` / `_AUDIT_DAYS` / `_DELIVERIES_DAYS` (unset/`0` =
+  keep forever), every `MAIDAN_RETENTION_SWEEP_SECS` (default daily), in batches
+  of `MAIDAN_RETENTION_BATCH` (default 5000) so a first sweep doesn't take one
+  giant lock. Exposes `maidan_retention_pruned_total{table}`.
+  - **Event-log safety:** events are pruned only up to `min_delivery_cursor` (the
+    lowest watermark across all at-least-once consumers), so a lagging durable
+    consumer never loses an undelivered event; with no such consumer, prune by age
+    alone.
+  - **Deliveries:** only terminal (delivered/quarantined) rows are eligible;
+    in-flight rows are never pruned.
+
 ## [185.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 1.
