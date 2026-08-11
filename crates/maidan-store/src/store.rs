@@ -424,6 +424,39 @@ pub trait Store: Send + Sync {
         log_id: i64,
     ) -> Result<i64, StoreError>;
 
+    /// Lowest `last_delivered_log_id` across all at-least-once delivery cursors,
+    /// or `None` when no cursor exists. An event with `id` at or below this has
+    /// been delivered to every durable consumer and is safe to prune — the
+    /// retention floor for the event log (Cluster 186).
+    async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError>;
+
+    /// Delete up to `limit` oldest event-log rows with `id <= max_id` **and**
+    /// `occurred_at < cutoff`. The `max_id` floor (see [`Store::min_delivery_cursor`])
+    /// keeps events a lagging at-least-once consumer still needs. Returns the row
+    /// count deleted; the caller loops until it is below `limit` (Cluster 186).
+    async fn prune_events(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        max_id: i64,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// Delete up to `limit` oldest audit rows with `occurred_at < cutoff`.
+    async fn prune_audit(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// Delete up to `limit` oldest **terminal** (delivered or quarantined)
+    /// webhook + automation delivery rows created before `cutoff`. In-flight
+    /// (pending/retrying) rows are never pruned regardless of age.
+    async fn prune_deliveries(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
     async fn create_webhook_subscription(
         &self,
         new: NewWebhookSubscription,

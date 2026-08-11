@@ -27,6 +27,7 @@ mod purge_workspace;
 mod reactions;
 mod refs;
 mod reindex_jobs;
+mod retention;
 mod sessions;
 mod slash_commands;
 mod thread_transitions;
@@ -673,6 +674,35 @@ impl Store for PostgresStore {
         log_id: i64,
     ) -> Result<i64, StoreError> {
         delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
+    }
+
+    async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError> {
+        retention::min_delivery_cursor(&self.pool).await
+    }
+
+    async fn prune_events(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        max_id: i64,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_events(&self.pool, cutoff, max_id, limit).await
+    }
+
+    async fn prune_audit(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_audit(&self.pool, cutoff, limit).await
+    }
+
+    async fn prune_deliveries(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_deliveries(&self.pool, cutoff, limit).await
     }
 
     async fn create_webhook_subscription(

@@ -349,6 +349,17 @@ async fn main() -> anyhow::Result<()> {
     // Default-on global rate limit (Cluster 183): a deployment that configures
     // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
     state.rate_limit_default_on = true;
+
+    // Background data-retention sweeper (Cluster 186): opt-in via
+    // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
+    // delivery watermark), audit trail, and delivery tables past their age.
+    if let Some(retention_cfg) = maidan_server::retention::config_from_env() {
+        let retention_store = state.store.clone();
+        tokio::spawn(async move {
+            maidan_server::retention::run(retention_store, retention_cfg).await;
+        });
+    }
+
     let app = router(state.clone());
 
     if outbox_relay {

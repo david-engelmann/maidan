@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v186.0.0 — SaaS ops: data-retention pruning
+
+| Change | Where |
+|--------|-------|
+| Opt-in age retention for the event log (floored at `min_delivery_cursor`), audit trail, and delivery tables; batched background sweeper + `MAIDAN_RETENTION_*` config + `maidan_retention_pruned_total` | `maidan-store/src/{sqlite,postgres}/retention.rs` + `maidan-server/src/retention.rs` |
+
 ## v185.0.0 — SaaS ops: Helm hardening (probes, PDB, NetworkPolicy, existingSecret)
 
 | Change | Where |

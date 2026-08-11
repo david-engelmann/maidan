@@ -145,6 +145,10 @@ pub fn init() {
             "Domain events that failed to append to the log after retries (a lost \
              event: the domain row committed but no event was persisted)"
         );
+        describe_counter!(
+            "maidan_retention_pruned_total",
+            "Rows deleted by the data-retention sweeper, by table"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -171,6 +175,11 @@ pub fn record_automation_delivery_duration(elapsed: std::time::Duration) {
 /// on any non-zero rate (Cluster 184).
 pub fn record_event_append_failure() {
     counter!("maidan_event_append_failures_total").increment(1);
+}
+
+/// Rows deleted by the retention sweeper for `table` (Cluster 186).
+pub fn record_retention_pruned(table: &str, count: u64) {
+    counter!("maidan_retention_pruned_total", "table" => table.to_string()).increment(count);
 }
 
 fn sync_hydrate_counters(current: HydrateSnapshot) {
