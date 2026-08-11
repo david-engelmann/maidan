@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [191.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 2. No
+new gate tag.
+
+### Added
+
+- **MCP tools for the assignment read-side** (the deferred half of Cluster 190):
+  `claim_next_thread` (atomically claim the oldest unassigned thread in a channel;
+  channel access enforced pre-dispatch) and `list_assigned_threads` (a member's
+  work queue; a member-scoped aggregate read, RBAC-filtered to threads the caller
+  can access, like `search_messages`). An MCP-native agent can now discover and
+  pull its work.
+
 ## [190.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 1. No

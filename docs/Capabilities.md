@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v191.0.0 — Agentic: MCP tools for the assignment read-side
+
+| Change | Where |
+|--------|-------|
+| MCP `claim_next_thread` (channel-gated pre-dispatch) + `list_assigned_threads` (member-scoped, RBAC-filtered aggregate read) | `maidan-mcp/src/tools/thread.rs` + `mod.rs` + `catalog.rs` + contracts |
+
 ## v190.0.0 — Agentic: thread-assignment read-side (my-queue + claim-next)
 
 | Change | Where |
