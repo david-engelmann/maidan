@@ -51,6 +51,42 @@ config:
 secrets:
   DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
 
+# Reference a pre-created Secret (holding DATABASE_URL and any other runtime
+# secrets) instead of rendering one from `.Values.secrets`. When set, the chart
+# creates no Secret of its own and mounts this one via envFrom. Keeps secret
+# material out of values files / release history.
+existingSecret: ""
+
+# Health probes. Startup + liveness hit the SHALLOW /health/live (process
+# alive); readiness hits the DEEP /health/ready (dependencies OK) so a degraded
+# dependency drains traffic instead of restart-storming the pod.
+probes:
+  startup:
+    periodSeconds: 5
+    failureThreshold: 30   # up to ~150s of startup grace (migrations, warmup)
+  liveness:
+    periodSeconds: 15
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 3
+
+# Keep a minimum number of pods available during voluntary disruptions (node
+# drains, rollouts). Enable with replicaCount > 1 or autoscaling.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: ""   # set one of the two; maxUnavailable wins when non-empty
+
+# Opt-in NetworkPolicy. Safe by default (open egress so datastores work); tighten
+# ingress with `ingressFrom`, and egress by setting `allowAllEgress: false` +
+# populating `egress`.
+networkPolicy:
+  enabled: false
+  ingressFrom: []      # e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]
+  allowAllEgress: true
+  egress: []           # used when allowAllEgress is false (DNS is always allowed)
+
 persistence:
   enabled: true
   size: 10Gi

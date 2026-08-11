@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v185.0.0 — SaaS ops: Helm hardening (probes, PDB, NetworkPolicy, existingSecret)
+
+| Change | Where |
+|--------|-------|
+| Liveness/startup → shallow `/health/live` (restart-storm fix), readiness → deep `/health/ready`; opt-in `PodDisruptionBudget` (on in prod) + `NetworkPolicy`; `existingSecret` support | `helm/maidan/` |
+
 ## v184.0.0 — Correctness: harden the domain-write → event-append dual write
 
 | Change | Where |
