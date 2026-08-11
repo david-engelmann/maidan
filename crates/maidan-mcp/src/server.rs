@@ -792,6 +792,139 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mcp_assignment_read_side_claims_lists_and_filters() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "aq".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let public = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "open".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let secret = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "secret".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        let mk_thread = |channel_id, store: Arc<dyn Store>| async move {
+            store
+                .create_thread(NewThread {
+                    channel_id,
+                    parent_thread_id: None,
+                    title: Some("t".into()),
+                })
+                .await
+                .unwrap()
+        };
+        let pub_thread = mk_thread(public.id, store.clone()).await;
+        let secret_thread = mk_thread(secret.id, store.clone()).await;
+        // The agent is assigned a thread in a private channel it is NOT a member
+        // of (assignment is orthogonal to membership).
+        store
+            .assign_thread(secret_thread.id, agent.id)
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // claim_next takes the oldest unassigned thread in the public channel.
+        let claimed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": public.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(claimed["id"], json!(pub_thread.id.0));
+
+        // list_assigned shows the public-channel assignment, but the private one
+        // is filtered out — the agent isn't a member of that channel.
+        let queue = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_assigned_threads",
+                    &json!({ "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let ids: Vec<Value> = queue
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["id"].clone())
+            .collect();
+        assert!(
+            ids.contains(&json!(pub_thread.id.0)),
+            "public assignment visible"
+        );
+        assert!(
+            !ids.contains(&json!(secret_thread.id.0)),
+            "private-channel assignment filtered from a non-member caller"
+        );
+
+        // No unassigned work left in the public channel → null.
+        let none = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": public.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(none.is_null());
+    }
+
+    #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
         let auth = AuthContext::bypass();

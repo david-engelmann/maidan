@@ -141,6 +141,29 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_assigned_threads",
+            "description": "List the threads currently assigned to a member (their work queue), oldest first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "claim_next_thread",
+            "description": "Atomically claim the oldest unassigned thread in a channel for a member. Returns the claimed thread, or null when there is no unassigned work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid", "description": "member to claim the thread for"}
+                },
+                "required": ["channel_id", "member_id"]
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {

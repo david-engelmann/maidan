@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use maidan_auth::AuthContext;
 use maidan_router::resolve_thread_context;
 use maidan_store::Store;
 use maidan_types::*;
@@ -110,6 +111,62 @@ pub(super) async fn unassign_thread(
     let thread = server.store.unassign_thread(thread_id).await?;
     publish_assignment(server, &thread, MemberId(a.actor_id), previous).await?;
     Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
+struct ListAssignedThreadsArgs {
+    member_id: uuid::Uuid,
+}
+
+/// A member's assigned-thread queue (Cluster 191). A member-scoped aggregate
+/// read: the pre-dispatch channel gate can't cover a `member_id` arg, so this
+/// filters the result to threads the caller can access (like `search_messages`).
+pub(super) async fn list_assigned_threads(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListAssignedThreadsArgs = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let member = store.get_member(member_id).await?;
+    let threads = store
+        .list_assigned_threads(member.workspace_id, member_id)
+        .await?;
+    if auth.bypass {
+        return Ok(content_json(&threads));
+    }
+    let mut visible = Vec::with_capacity(threads.len());
+    for t in threads {
+        if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
+            visible.push(t);
+        }
+    }
+    Ok(content_json(&visible))
+}
+
+#[derive(Deserialize)]
+struct ClaimNextThreadArgs {
+    channel_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+/// Atomically claim the oldest unassigned thread in a channel (Cluster 191).
+/// Channel access is enforced pre-dispatch (the `channel_id` arg). Returns the
+/// claimed thread, or `null` when there is no unassigned work.
+pub(super) async fn claim_next_thread(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let claimed = server
+        .store
+        .claim_next_thread(ChannelId(a.channel_id), member_id)
+        .await?;
+    if let Some(thread) = &claimed {
+        publish_assignment(server, thread, member_id, None).await?;
+    }
+    Ok(content_json(&claimed))
 }
 
 #[derive(Deserialize)]
