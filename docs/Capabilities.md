@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v190.0.0 — Agentic: thread-assignment read-side (my-queue + claim-next)
+
+| Change | Where |
+|--------|-------|
+| `GET /members/:id/assigned-threads` (my work queue, RBAC-filtered) + `POST /channels/:cid/threads/claim-next` (atomically claim oldest unassigned; Postgres `FOR UPDATE SKIP LOCKED`) | `maidan-store/src/*/threads.rs` + `routes/thread.rs` |
+
 ## v189.0.0 — SaaS ops: secret-rotation keyring
 
 | Change | Where |

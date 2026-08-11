@@ -174,6 +174,23 @@ pub trait Store: Send + Sync {
     /// Clear a thread's assignee (Cluster 171). `NotFound` if it doesn't exist.
     async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError>;
 
+    /// Threads in `workspace_id` assigned to `member_id` — the agent's work queue
+    /// (Cluster 190). Live threads only, oldest first.
+    async fn list_assigned_threads(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<Thread>, StoreError>;
+
+    /// Atomically claim the oldest unassigned live thread in `channel_id` for
+    /// `member_id` — the "pull the next task" primitive (Cluster 190). `None` when
+    /// there is no unassigned work. Concurrent claimers each get a distinct thread.
+    async fn claim_next_thread(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+    ) -> Result<Option<Thread>, StoreError>;
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     async fn edit_message(
         &self,

@@ -38,6 +38,27 @@ pub fn get_workspace_usage() {}
 
 #[utoipa::path(
     get,
+    path = "/members/{id}/assigned-threads",
+    tag = "threads",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Thread>, description = "Threads assigned to the member"))
+)]
+pub fn list_assigned_threads() {}
+
+#[utoipa::path(
+    post,
+    path = "/channels/{cid}/threads/claim-next",
+    tag = "threads",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    request_body = ClaimThread,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread, description = "The claimed thread, or null when the channel has no unassigned work"))
+)]
+pub fn claim_next_thread() {}
+
+#[utoipa::path(
+    get,
     path = "/workspaces/{wid}/audit",
     tag = "workspaces",
     params(

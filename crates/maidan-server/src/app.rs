@@ -107,6 +107,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/members/:id", get(routes::get_member))
         .route(
+            "/members/:id/assigned-threads",
+            get(routes::list_assigned_threads),
+        )
+        .route(
             "/members/:id/mentions",
             get(routes::list_mentions_for_member),
         )
@@ -149,6 +153,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/channels/:cid/threads",
             post(routes::create_thread).get(routes::list_threads),
+        )
+        .route(
+            "/channels/:cid/threads/claim-next",
+            post(routes::claim_next_thread),
         )
         .route(
             "/threads/:id",

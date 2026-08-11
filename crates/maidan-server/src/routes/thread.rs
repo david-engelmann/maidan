@@ -261,3 +261,59 @@ pub async fn claim_thread(
     }
     Ok(Json(result))
 }
+
+/// A member's work queue: threads assigned to them (Cluster 190). Filtered to
+/// threads the *caller* can access (RBAC-consistent with search / context).
+pub async fn list_assigned_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<Thread>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member_id = MemberId(id);
+    let member = state.store.get_member(member_id).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    let threads = state
+        .store
+        .list_assigned_threads(member.workspace_id, member_id)
+        .await?;
+    if auth.bypass {
+        return Ok(Json(threads));
+    }
+    let mut visible = Vec::with_capacity(threads.len());
+    for t in threads {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, t.id).await? {
+            visible.push(t);
+        }
+    }
+    Ok(Json(visible))
+}
+
+/// Atomically claim the oldest unassigned thread in a channel (Cluster 190) —
+/// the "pull the next task" primitive. Returns the claimed thread, or `null`
+/// when the channel has no unassigned work.
+pub async fn claim_next_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(cid): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<ClaimThread>,
+) -> ApiResult<Json<Option<Thread>>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let channel = state.store.get_channel(ChannelId(cid)).await?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    let member_id = MemberId(body.member_id);
+    let claimed = state.store.claim_next_thread(channel.id, member_id).await?;
+    if let Some(thread) = &claimed {
+        publish_assignment(
+            &state,
+            channel.workspace_id,
+            channel.id,
+            thread,
+            member_id,
+            None,
+        )
+        .await;
+    }
+    Ok(Json(claimed))
+}
