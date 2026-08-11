@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [188.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 4.
+No new gate tag.
+
+### Added
+
+- **Per-workspace usage / metering.** `GET /workspaces/:id/usage` (gated on
+  `workspace:read`) returns live member/channel/thread/message counts (excluding
+  tombstoned rows) for one workspace — a metering / quota-visibility basis that
+  stays low-cardinality (a per-request DB aggregate, not a per-tenant Prometheus
+  series, which would blow up cardinality as tenants grow). Artifact storage
+  bytes are intentionally omitted (blobs are content-addressed and deduped across
+  workspaces, so per-tenant bytes is ill-defined).
+
 ## [187.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 3.

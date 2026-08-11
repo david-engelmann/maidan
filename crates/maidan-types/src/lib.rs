@@ -9,9 +9,11 @@ pub mod events;
 pub mod ids;
 pub mod models;
 pub mod purge;
+pub mod usage;
 
 pub use erase::*;
 pub use events::*;
 pub use ids::*;
 pub use models::*;
 pub use purge::*;
+pub use usage::*;

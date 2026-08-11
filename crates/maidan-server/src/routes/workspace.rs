@@ -79,6 +79,21 @@ pub async fn export_workspace(
     ))
 }
 
+/// Live per-workspace usage counts for metering / quota visibility (Cluster
+/// 188). Low-cardinality (a per-request DB aggregate, not a scraped per-tenant
+/// series). `workspace:read` — aggregate counts, not content.
+pub async fn get_workspace_usage(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<WorkspaceUsage>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    Ok(Json(state.store.workspace_usage(workspace_id).await?))
+}
+
 pub async fn replay_quarantined_outbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
