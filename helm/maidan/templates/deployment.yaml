@@ -34,22 +34,33 @@ spec:
             - configMapRef:
                 name: {{ include "maidan.fullname" . }}-config
             - secretRef:
-                name: {{ include "maidan.fullname" . }}-secrets
+                name: {{ include "maidan.secretName" . }}
           volumeMounts:
             - name: artifact-data
               mountPath: /data
+          # Startup + liveness use the SHALLOW /health/live (process alive);
+          # readiness uses the DEEP /health/ready (dependencies OK). This keeps a
+          # degraded dependency (DB blip) from failing liveness and triggering a
+          # restart storm — the pod drains from Service endpoints instead, and
+          # recovers when the dependency does (Cluster 185).
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
-            initialDelaySeconds: 3
-            periodSeconds: 5
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:

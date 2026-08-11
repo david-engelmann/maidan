@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [185.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 1.
+No new gate tag.
+
+### Changed
+
+- **Helm liveness no longer restart-storms on a degraded dependency.** Both
+  probes hit `/health`, which returns `503` when any dependency (DB/storage/
+  indexer/bus) is degraded — so a transient DB blip failed the *liveness* probe
+  and Kubernetes killed the pod mid-recovery. Liveness + a new startupProbe now
+  hit the shallow `/health/live` (always `200`, process-alive); readiness hits
+  the deep `/health/ready` (the same check as before). Probe timings are tunable
+  via `.Values.probes`.
+
+### Added
+
+- **`PodDisruptionBudget`** template (opt-in; enabled with `minAvailable: 1` in
+  `values-prod.yaml`) so node drains/rollouts keep a pod serving.
+- **`NetworkPolicy`** template (opt-in, safe-by-default: ingress restricted to
+  the HTTP port, egress open with DNS always allowed; tighten via `ingressFrom`
+  / `allowAllEgress: false` + `egress`).
+- **`existingSecret`** — reference a pre-created Secret instead of rendering one
+  from `.Values.secrets`, keeping secret material out of values files / release
+  history.
+
 ## [184.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — arc A finale. No new

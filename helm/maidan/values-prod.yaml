@@ -23,6 +23,17 @@ autoscaling:
   maxReplicas: 20
   targetCPUUtilizationPercentage: 65
 
+# Keep at least one pod serving during node drains / rollouts (replicaCount ≥ 2).
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# NetworkPolicy is opt-in and cluster-specific — enable it and set `ingressFrom`
+# to your ingress controller's namespace, then lock egress down to your
+# datastores (`allowAllEgress: false` + `egress`).
+# networkPolicy:
+#   enabled: true
+
 resources:
   requests:
     cpu: 250m
