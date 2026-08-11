@@ -9,7 +9,7 @@ use axum::{
 #[cfg(feature = "bootstrap")]
 use chrono::Utc;
 use maidan_auth::{
-    capability::{AUDIT_READ_GLOBAL, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{AUDIT_READ_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -60,6 +60,23 @@ pub async fn get_workspace(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
     Ok(Json(state.store.get_workspace(workspace_id).await?))
+}
+
+/// Export the whole workspace content graph as one JSON bundle (Cluster 187).
+/// Gated on `token:admin` — it dumps every channel (private included) and DM,
+/// so it's a workspace-admin operation, not a per-member read. Secrets and
+/// operational tables are excluded (see [`crate::export`]).
+pub async fn export_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<crate::export::WorkspaceExport>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(
+        crate::export::build(&state.store, workspace_id).await?,
+    ))
 }
 
 pub async fn replay_quarantined_outbox(

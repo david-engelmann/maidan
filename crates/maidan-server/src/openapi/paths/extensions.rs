@@ -18,6 +18,16 @@ pub fn purge_workspace() {}
 
 #[utoipa::path(
     get,
+    path = "/workspaces/{id}/export",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, description = "Workspace content bundle (JSON)"))
+)]
+pub fn export_workspace() {}
+
+#[utoipa::path(
+    get,
     path = "/workspaces/{wid}/audit",
     tag = "workspaces",
     params(

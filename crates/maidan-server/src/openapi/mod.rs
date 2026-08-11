@@ -57,6 +57,7 @@ impl Modify for SecurityAddon {
         paths::get_workspace,
         paths::purge_workspace,
         paths::erase_workspace,
+        paths::export_workspace,
         paths::list_workspace_audit,
         paths::get_workspace_context,
         paths::list_quarantined_outbox,
