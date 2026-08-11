@@ -326,6 +326,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/assignee/claim" && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
     }
+    if path == "/channels/{cid}/threads/claim-next" && method == "POST" {
+        return b.json(&json!({ "member_id": f.member }));
+    }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({
             "author_id": f.member,
