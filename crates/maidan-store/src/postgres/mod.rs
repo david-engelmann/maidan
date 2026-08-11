@@ -77,6 +77,9 @@ impl Store for PostgresStore {
     async fn count_workspaces(&self) -> Result<i64, StoreError> {
         workspaces::count(&self.pool).await
     }
+    async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
+        workspaces::usage(&self.pool, id).await
+    }
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
         members::create(&self.pool, new).await

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v188.0.0 — SaaS ops: per-workspace usage / metering
+
+| Change | Where |
+|--------|-------|
+| `GET /workspaces/:id/usage` (workspace:read) returns live member/channel/thread/message counts (tombstones excluded); a low-cardinality metering basis (on-demand DB aggregate, not per-tenant Prometheus series) | `maidan-types/src/usage.rs` + `maidan-store` + `routes/workspace.rs` |
+
 ## v187.0.0 — SaaS ops: workspace export / portability
 
 | Change | Where |

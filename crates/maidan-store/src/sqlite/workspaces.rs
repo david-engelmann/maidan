@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{NewWorkspace, WebhookSubscriptionId, Workspace, WorkspaceId};
+use maidan_types::{NewWorkspace, WebhookSubscriptionId, Workspace, WorkspaceId, WorkspaceUsage};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -27,6 +27,33 @@ pub async fn count(pool: &SqlitePool) -> Result<i64, StoreError> {
         .fetch_one(pool)
         .await?;
     Ok(row.get::<i64, _>("n"))
+}
+
+pub async fn usage(pool: &SqlitePool, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
+    let row = sqlx::query(
+        "SELECT
+           (SELECT COUNT(*) FROM maidan_members
+              WHERE workspace_id = ?1 AND tombstoned_at IS NULL) AS members,
+           (SELECT COUNT(*) FROM maidan_channels
+              WHERE workspace_id = ?1 AND tombstoned_at IS NULL) AS channels,
+           (SELECT COUNT(*) FROM maidan_threads t
+              JOIN maidan_channels c ON t.channel_id = c.id
+              WHERE c.workspace_id = ?1 AND t.tombstoned_at IS NULL) AS threads,
+           (SELECT COUNT(*) FROM maidan_messages m
+              JOIN maidan_threads t ON m.thread_id = t.id
+              JOIN maidan_channels c ON t.channel_id = c.id
+              WHERE c.workspace_id = ?1 AND m.tombstoned_at IS NULL) AS messages",
+    )
+    .bind(id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(WorkspaceUsage {
+        workspace_id: id,
+        members: row.get::<i64, _>("members"),
+        channels: row.get::<i64, _>("channels"),
+        threads: row.get::<i64, _>("threads"),
+        messages: row.get::<i64, _>("messages"),
+    })
 }
 
 pub async fn get(pool: &SqlitePool, id: WorkspaceId) -> Result<Workspace, StoreError> {

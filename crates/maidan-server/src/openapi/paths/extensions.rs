@@ -28,6 +28,16 @@ pub fn export_workspace() {}
 
 #[utoipa::path(
     get,
+    path = "/workspaces/{id}/usage",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = WorkspaceUsage))
+)]
+pub fn get_workspace_usage() {}
+
+#[utoipa::path(
+    get,
     path = "/workspaces/{wid}/audit",
     tag = "workspaces",
     params(

@@ -397,6 +397,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/usage",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/audit",
     "capability": "workspace:read",
     "surface": "http"
