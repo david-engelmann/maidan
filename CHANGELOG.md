@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [184.0.0] — 2026-08-10
+
+Post-gate hardening (Phase XXIV). Security & correctness — arc A finale. No new
+gate tag.
+
+### Changed
+
+- **Domain events are no longer silently lost when the log append fails.** Every
+  mutation commits its domain row, then `publish()` appends the `Event` in a
+  separate transaction; the old code logged a single `warn` and dropped the event
+  on append failure while the caller still got a `2xx` — no notification, no
+  delivery, no indexing. `publish()` now retries the durable append on transient
+  errors (3 attempts, 50 ms backoff), distinguishes an append failure (dangerous
+  — event lost) from a benign bus-publish failure (already logged), and on a hard
+  failure logs `event.append_failed` and increments the new
+  `maidan_event_append_failures_total` metric so a lost event is alertable.
+
+### Notes
+
+- This hardens the dual write; it is **not** full single-transaction atomicity
+  (a crash between the domain commit and a successful append still loses the
+  event). The transactional-outbox refactor that would close that is a larger,
+  tracked follow-up (see Open Work).
+
 ## [183.0.0] — 2026-08-10
 
 Post-gate hardening (Phase XXIV). Security & correctness — arc A, part 5. No new
