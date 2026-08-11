@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [189.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B finale.
+No new gate tag.
+
+### Added
+
+- **Secret key rotation.** At-rest secrets (federation peer tokens, webhook /
+  slash / fsm-hook secrets) were AEAD-encrypted with a single key from
+  `FEDERATION_ENCRYPTION_KEY` with no rotation path — changing it stranded every
+  stored ciphertext. A try-all-keys decrypt keyring now lets you rotate: set the
+  new key as `FEDERATION_ENCRYPTION_KEY` and move the old key(s) into
+  `FEDERATION_DECRYPT_KEYS` (comma-separated, same encoding). Encryption always
+  uses the new primary; decryption tries the primary then the fallbacks. No
+  ciphertext-format change (backward-compatible); AEAD authentication makes
+  trying keys safe. A malformed `FEDERATION_DECRYPT_KEYS` entry fails startup
+  rather than silently stranding a key.
+
 ## [188.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Multi-tenant SaaS operability — arc B, part 4.

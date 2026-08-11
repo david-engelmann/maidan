@@ -11,7 +11,7 @@ use axum::{
 };
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
-    decrypt_peer_secret, encrypt_peer_secret, AuthContext, TokenSecret,
+    decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_mcp::tools;
 use maidan_router::ParsedSlashCommand;
@@ -74,7 +74,7 @@ pub fn resolve_slash_secret(
         }
     }
     let key = runtime.encryption_key.as_deref()?;
-    let secret = decrypt_peer_secret(secret_ciphertext, key).ok()?;
+    let secret = decrypt_peer_secret_rotating(secret_ciphertext, key).ok()?;
     remember_slash_secret(&runtime.secrets, command_id, secret.clone());
     Some(secret)
 }

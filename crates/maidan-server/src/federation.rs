@@ -12,8 +12,8 @@ use axum::{
 use maidan_a2a::{FederatedEventBatch, FederationEnvelope, FederationError};
 use maidan_auth::{
     capability::{FEDERATION_ADMIN, FEDERATION_INGEST},
-    decrypt_peer_secret, encrypt_peer_secret, hash_secret, resolve_peer_bearer, AuthContext,
-    TokenSecret,
+    decrypt_peer_secret_rotating, encrypt_peer_secret, hash_secret, resolve_peer_bearer,
+    AuthContext, TokenSecret,
 };
 use maidan_types::{Event, NewPeer, Peer, PeerId, WorkspaceId};
 use serde::Serialize;
@@ -81,7 +81,7 @@ pub async fn hydrate_federation_secrets(state: &AppState) -> Result<(), String> 
         let Some(ciphertext) = peer.outbound_secret_ciphertext.as_deref() else {
             continue;
         };
-        match decrypt_peer_secret(ciphertext, key) {
+        match decrypt_peer_secret_rotating(ciphertext, key) {
             Ok(secret) => remember_peer_secret(&state.federation.outbound_secrets, peer.id, secret),
             Err(err) => tracing::warn!(
                 peer = %peer.id,
@@ -101,7 +101,7 @@ pub fn resolve_outbound_secret(state: &AppState, peer: &Peer) -> Option<String> 
     }
     let ciphertext = peer.outbound_secret_ciphertext.as_deref()?;
     let key = state.federation.encryption_key.as_deref()?;
-    let secret = decrypt_peer_secret(ciphertext, key).ok()?;
+    let secret = decrypt_peer_secret_rotating(ciphertext, key).ok()?;
     remember_peer_secret(&state.federation.outbound_secrets, peer.id, secret.clone());
     Some(secret)
 }
