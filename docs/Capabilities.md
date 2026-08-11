@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v189.0.0 — SaaS ops: secret-rotation keyring
+
+| Change | Where |
+|--------|-------|
+| Try-all-keys decrypt keyring — rotate `FEDERATION_ENCRYPTION_KEY` by moving old keys into `FEDERATION_DECRYPT_KEYS` (decrypt fallbacks); no ciphertext-format change, AEAD-safe | `crates/maidan-auth/src/peer_secret.rs` |
+
 ## v188.0.0 — SaaS ops: per-workspace usage / metering
 
 | Change | Where |

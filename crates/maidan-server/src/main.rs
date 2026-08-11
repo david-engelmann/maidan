@@ -271,6 +271,18 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    // Key rotation (Cluster 189): old keys from FEDERATION_DECRYPT_KEYS stay
+    // available for decrypt after the primary is rotated. A malformed entry is a
+    // hard error — silently dropping an old key would strand its ciphertexts.
+    let decrypt_fallback_keys =
+        maidan_auth::decrypt_fallback_keys_from_env().context("FEDERATION_DECRYPT_KEYS")?;
+    if !decrypt_fallback_keys.is_empty() {
+        tracing::info!(
+            count = decrypt_fallback_keys.len(),
+            "secret key rotation: decrypt fallback keys loaded"
+        );
+    }
+    maidan_auth::init_decrypt_fallback_keys(decrypt_fallback_keys);
     let federation = maidan_server::FederationRuntime::new(
         federation_disabled,
         federation_encryption_key.clone(),

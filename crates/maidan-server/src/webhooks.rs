@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
-    decrypt_peer_secret, encrypt_peer_secret, AuthContext, TokenSecret,
+    decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
     Event, EventKind, NewWebhookSubscription, WebhookSubscription, WebhookSubscriptionId,
@@ -69,7 +69,7 @@ pub async fn hydrate_webhook_secrets(state: &AppState) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     for sub in subs {
-        match decrypt_peer_secret(&sub.secret_ciphertext, key) {
+        match decrypt_peer_secret_rotating(&sub.secret_ciphertext, key) {
             Ok(secret) => {
                 remember_webhook_secret(&state.webhooks.secrets, sub.subscription.id, secret)
             }
@@ -94,7 +94,7 @@ pub fn resolve_webhook_secret(
         }
     }
     let key = runtime.encryption_key.as_deref()?;
-    let secret = decrypt_peer_secret(secret_ciphertext, key).ok()?;
+    let secret = decrypt_peer_secret_rotating(secret_ciphertext, key).ok()?;
     remember_webhook_secret(&runtime.secrets, subscription_id, secret.clone());
     Some(secret)
 }

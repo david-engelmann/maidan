@@ -60,6 +60,70 @@ pub fn encrypt_peer_secret(plaintext: &str, key: &[u8; 32]) -> Result<String, Pe
     Ok(STANDARD.encode(blob))
 }
 
+/// Decryption fallback keys for **key rotation** (Cluster 189): old keys kept
+/// available for decrypt after the primary (`FEDERATION_ENCRYPTION_KEY`) is
+/// rotated. Set once at startup; empty when no rotation is in progress.
+static DECRYPT_FALLBACK_KEYS: std::sync::OnceLock<Vec<[u8; 32]>> = std::sync::OnceLock::new();
+
+/// Install the process-wide decrypt fallback keys (idempotent; first call wins).
+pub fn init_decrypt_fallback_keys(keys: Vec<[u8; 32]>) {
+    let _ = DECRYPT_FALLBACK_KEYS.set(keys);
+}
+
+/// Parse `FEDERATION_DECRYPT_KEYS` — a comma-separated list of old encryption
+/// keys (each base64 or 64-char hex, same encoding as the primary) to try on
+/// decrypt during a rotation. A malformed entry is a hard error (silently
+/// dropping an old key would make its ciphertexts undecryptable).
+pub fn decrypt_fallback_keys_from_env() -> Result<Vec<[u8; 32]>, PeerSecretError> {
+    match std::env::var("FEDERATION_DECRYPT_KEYS") {
+        Ok(raw) => parse_decrypt_keys(&raw),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+fn parse_decrypt_keys(raw: &str) -> Result<Vec<[u8; 32]>, PeerSecretError> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(parse_key_bytes)
+        .collect()
+}
+
+/// Try `keys` in order; return the first successful decrypt. AEAD authentication
+/// makes trying the wrong key safe — it fails cleanly rather than returning
+/// garbage — so a keyring can attempt several keys without corruption.
+pub fn decrypt_peer_secret_multi(
+    encoded: &str,
+    keys: &[[u8; 32]],
+) -> Result<String, PeerSecretError> {
+    let mut last = PeerSecretError::DecryptFailed;
+    for key in keys {
+        match decrypt_peer_secret(encoded, key) {
+            Ok(plain) => return Ok(plain),
+            Err(err) => last = err,
+        }
+    }
+    Err(last)
+}
+
+/// Decrypt with the runtime `primary` key first, then the process-wide rotation
+/// fallbacks (Cluster 189). New ciphertexts made with the primary decrypt on the
+/// first try; ciphertexts made with a pre-rotation key decrypt via a fallback.
+pub fn decrypt_peer_secret_rotating(
+    encoded: &str,
+    primary: &[u8; 32],
+) -> Result<String, PeerSecretError> {
+    match decrypt_peer_secret(encoded, primary) {
+        Ok(plain) => Ok(plain),
+        Err(primary_err) => match DECRYPT_FALLBACK_KEYS.get() {
+            Some(fallbacks) if !fallbacks.is_empty() => {
+                decrypt_peer_secret_multi(encoded, fallbacks)
+            }
+            _ => Err(primary_err),
+        },
+    }
+}
+
 pub fn decrypt_peer_secret(encoded: &str, key: &[u8; 32]) -> Result<String, PeerSecretError> {
     let blob = STANDARD
         .decode(encoded.trim())
@@ -103,5 +167,32 @@ mod tests {
         let ct = encrypt_peer_secret("secret", &test_key()).expect("encrypt");
         let wrong = [0x22; 32];
         assert!(decrypt_peer_secret(&ct, &wrong).is_err());
+    }
+
+    #[test]
+    fn multi_tries_keys_until_one_works() {
+        let good = [0x33; 32];
+        let wrong = [0x44; 32];
+        let ct = encrypt_peer_secret("rotate-me", &good).expect("encrypt");
+        // A ciphertext made with `good` decrypts when `good` is anywhere in the
+        // keyring (here, after a wrong key) — the rotation case.
+        assert_eq!(
+            decrypt_peer_secret_multi(&ct, &[wrong, good]).expect("multi"),
+            "rotate-me"
+        );
+        // No matching key fails cleanly.
+        assert!(decrypt_peer_secret_multi(&ct, &[wrong]).is_err());
+        assert!(decrypt_peer_secret_multi(&ct, &[]).is_err());
+    }
+
+    #[test]
+    fn parse_decrypt_keys_reads_a_list_and_rejects_bad() {
+        let hex = "cd".repeat(32);
+        let b64 = STANDARD.encode([0xef; 32]);
+        let keys = parse_decrypt_keys(&format!(" {hex}, {b64} ")).expect("keys");
+        assert_eq!(keys, vec![[0xcd; 32], [0xef; 32]]);
+        assert!(parse_decrypt_keys("").expect("empty").is_empty());
+        // A malformed entry is a hard error (don't silently drop an old key).
+        assert!(parse_decrypt_keys(&format!("{hex},not-a-key")).is_err());
     }
 }
