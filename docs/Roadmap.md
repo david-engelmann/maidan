@@ -47,7 +47,7 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
-**Recently closed:** Cluster **186.0** — SaaS ops: data-retention pruning (opt-in age retention for events [cursor-floored] / audit / deliveries, batched sweeper); **Arc B part 2**, at **`v186.0.0`**
+**Recently closed:** Cluster **186.0** — SaaS ops: data-retention pruning (opt-in age retention for events (cursor-floored) / audit / deliveries, batched sweeper); **Arc B part 2**, at **`v186.0.0`**
 ([[Retros/Cluster 186.0]]).
 
 **Recently closed:** Cluster **178.0** — token: opt-in lean event frames (`lean` subscribe flag → `{log_id, kind, ...ids}` pointers); arc 4 (round 3) part 4 — **token round 3 + the four-arc program complete**, at **`v178.0.0`**
