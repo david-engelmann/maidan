@@ -158,6 +158,7 @@ pub fn router(state: AppState) -> Router {
             "/channels/:cid/threads/claim-next",
             post(routes::claim_next_thread),
         )
+        .route("/threads/:id/claim/renew", post(routes::renew_claim))
         .route(
             "/threads/:id",
             get(routes::get_thread).post(routes::transition_thread),

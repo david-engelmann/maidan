@@ -84,9 +84,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "add_channel_member" | "list_channel_members" | "remove_channel_member" => {
             Ok(maidan_auth::capability::CHANNEL_ADMIN)
         }
-        "assign_thread" | "claim_thread" | "unassign_thread" | "claim_next_thread" => {
-            Ok(maidan_auth::capability::THREAD_TRANSITION)
-        }
+        "assign_thread" | "claim_thread" | "unassign_thread" | "claim_next_thread"
+        | "renew_claim" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -121,7 +120,7 @@ async fn enforce_channel_access(
         }
         "list_messages" | "post_message" | "get_thread_context" | "summarize_thread"
         | "pin_message" | "unpin_message" | "list_pins" | "assign_thread" | "claim_thread"
-        | "unassign_thread" => {
+        | "unassign_thread" | "renew_claim" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -189,6 +188,7 @@ pub async fn dispatch(
         "unassign_thread" => thread::unassign_thread(server, args).await,
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
+        "renew_claim" => thread::renew_claim(server, args).await,
         "list_mentions" => member::list_mentions(store, args).await,
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,

@@ -153,14 +153,28 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "claim_next_thread",
-            "description": "Atomically claim the oldest unassigned thread in a channel for a member. Returns the claimed thread, or null when there is no unassigned work.",
+            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread, or null when there is no claimable work.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "member to claim the thread for"}
+                    "member_id": {"type": "string", "format": "uuid", "description": "member to claim the thread for"},
+                    "lease_secs": {"type": "integer", "description": "optional lease deadline in seconds; the claim is reclaimable after it lapses (omit for a durable claim)"}
                 },
                 "required": ["channel_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "renew_claim",
+            "description": "Extend a claimed thread's lease (heartbeat). Only the current assignee may renew.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
+                    "lease_secs": {"type": "integer", "description": "new lease deadline in seconds from now"}
+                },
+                "required": ["thread_id", "member_id", "lease_secs"]
             }
         }),
         json!({

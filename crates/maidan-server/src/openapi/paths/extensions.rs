@@ -51,11 +51,22 @@ pub fn list_assigned_threads() {}
     path = "/channels/{cid}/threads/claim-next",
     tag = "threads",
     params(("cid" = Uuid, Path, description = "Channel id")),
-    request_body = ClaimThread,
+    request_body = ClaimNextThread,
     security(("bearerAuth" = [])),
-    responses((status = 200, body = Thread, description = "The claimed thread, or null when the channel has no unassigned work"))
+    responses((status = 200, body = Thread, description = "The claimed thread, or null when the channel has no claimable work"))
 )]
 pub fn claim_next_thread() {}
+
+#[utoipa::path(
+    post,
+    path = "/threads/{id}/claim/renew",
+    tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = RenewClaim,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread, description = "Lease extended (current assignee only)"))
+)]
+pub fn renew_claim() {}
 
 #[utoipa::path(
     get,

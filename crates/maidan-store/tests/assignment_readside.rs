@@ -58,7 +58,7 @@ async fn run_readside_suite(store: &dyn Store) {
 
     // claim-next takes the OLDEST unassigned thread (first).
     let claimed = store
-        .claim_next_thread(channel.id, agent.id)
+        .claim_next_thread(channel.id, agent.id, None)
         .await
         .expect("claim1")
         .expect("some work");
@@ -75,14 +75,14 @@ async fn run_readside_suite(store: &dyn Store) {
 
     // A second claim takes the next oldest (second); a third finds nothing.
     let claimed2 = store
-        .claim_next_thread(channel.id, agent.id)
+        .claim_next_thread(channel.id, agent.id, None)
         .await
         .expect("claim2")
         .expect("more work");
     assert_eq!(claimed2.id, second.id);
     assert!(
         store
-            .claim_next_thread(channel.id, agent.id)
+            .claim_next_thread(channel.id, agent.id, None)
             .await
             .expect("claim3")
             .is_none(),
@@ -104,6 +104,80 @@ async fn run_readside_suite(store: &dyn Store) {
         .await
         .expect("list-other")
         .is_empty());
+
+    // --- leases (Cluster 192): an expired lease is reclaimable; the holder can
+    // renew; a non-holder cannot ---
+    let lease_ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "lease".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("lease-ch");
+    let m1 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "lease-a".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m1");
+    let m2 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "lease-b".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m2");
+    let leased = store
+        .create_thread(NewThread {
+            channel_id: lease_ch.id,
+            parent_thread_id: None,
+            title: Some("leased".into()),
+        })
+        .await
+        .expect("leased-thread");
+
+    // m1 claims with an already-past lease (dead agent).
+    let c1 = store
+        .claim_next_thread(lease_ch.id, m1.id, Some(-1))
+        .await
+        .expect("claim m1")
+        .expect("some");
+    assert_eq!(c1.id, leased.id);
+    assert_eq!(c1.assignee_id, Some(m1.id));
+    // m2 reclaims the expired lease.
+    let c2 = store
+        .claim_next_thread(lease_ch.id, m2.id, Some(3600))
+        .await
+        .expect("claim m2")
+        .expect("reclaimed");
+    assert_eq!(c2.id, leased.id, "same thread reclaimed");
+    assert_eq!(
+        c2.assignee_id,
+        Some(m2.id),
+        "expired lease reclaimed by the next claimer"
+    );
+    // Lease is now valid → nothing else claimable.
+    assert!(store
+        .claim_next_thread(lease_ch.id, m1.id, Some(3600))
+        .await
+        .expect("claim none")
+        .is_none());
+    // The holder renews; a non-holder is rejected.
+    store
+        .renew_claim(leased.id, m2.id, 7200)
+        .await
+        .expect("holder renews");
+    assert!(matches!(
+        store.renew_claim(leased.id, m1.id, 7200).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
 }
 
 #[tokio::test]

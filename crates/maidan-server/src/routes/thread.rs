@@ -296,14 +296,17 @@ pub async fn claim_next_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(cid): Path<uuid::Uuid>,
-    ApiJson(body): ApiJson<ClaimThread>,
+    ApiJson(body): ApiJson<ClaimNextThread>,
 ) -> ApiResult<Json<Option<Thread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let member_id = MemberId(body.member_id);
-    let claimed = state.store.claim_next_thread(channel.id, member_id).await?;
+    let claimed = state
+        .store
+        .claim_next_thread(channel.id, member_id, body.lease_secs)
+        .await?;
     if let Some(thread) = &claimed {
         publish_assignment(
             &state,
@@ -316,4 +319,24 @@ pub async fn claim_next_thread(
         .await;
     }
     Ok(Json(claimed))
+}
+
+/// Extend a claimed thread's lease (heartbeat), for the current assignee only
+/// (Cluster 192). `NotFound` if the caller isn't the holder.
+pub async fn renew_claim(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<RenewClaim>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let thread = state
+        .store
+        .renew_claim(thread_id, MemberId(body.member_id), body.lease_secs)
+        .await?;
+    Ok(Json(thread))
 }

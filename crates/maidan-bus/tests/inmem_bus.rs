@@ -38,6 +38,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         title: None,
         state: ThreadState::Open,
         assignee_id: None,
+        assignment_expires_at: None,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         tombstoned_at: None,

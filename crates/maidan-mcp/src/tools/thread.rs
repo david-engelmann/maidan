@@ -148,11 +148,15 @@ pub(super) async fn list_assigned_threads(
 struct ClaimNextThreadArgs {
     channel_id: uuid::Uuid,
     member_id: uuid::Uuid,
+    /// Optional lease deadline in seconds; the claim is reclaimable after it
+    /// lapses (Cluster 192). Omit for a durable claim.
+    #[serde(default)]
+    lease_secs: Option<i64>,
 }
 
-/// Atomically claim the oldest unassigned thread in a channel (Cluster 191).
+/// Atomically claim the oldest claimable thread in a channel (Cluster 191/192).
 /// Channel access is enforced pre-dispatch (the `channel_id` arg). Returns the
-/// claimed thread, or `null` when there is no unassigned work.
+/// claimed thread, or `null` when there is no claimable work.
 pub(super) async fn claim_next_thread(
     server: &crate::server::McpServer,
     args: &Value,
@@ -161,12 +165,33 @@ pub(super) async fn claim_next_thread(
     let member_id = MemberId(a.member_id);
     let claimed = server
         .store
-        .claim_next_thread(ChannelId(a.channel_id), member_id)
+        .claim_next_thread(ChannelId(a.channel_id), member_id, a.lease_secs)
         .await?;
     if let Some(thread) = &claimed {
         publish_assignment(server, thread, member_id, None).await?;
     }
     Ok(content_json(&claimed))
+}
+
+#[derive(Deserialize)]
+struct RenewClaimArgs {
+    thread_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    lease_secs: i64,
+}
+
+/// Extend a claimed thread's lease (heartbeat), only for the current assignee
+/// (Cluster 192). Thread access is enforced pre-dispatch (the `thread_id` arg).
+pub(super) async fn renew_claim(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RenewClaimArgs = serde_json::from_value(args.clone())?;
+    let thread = server
+        .store
+        .renew_claim(ThreadId(a.thread_id), MemberId(a.member_id), a.lease_secs)
+        .await?;
+    Ok(content_json(&thread))
 }
 
 #[derive(Deserialize)]
