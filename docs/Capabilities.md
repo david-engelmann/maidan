@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v199.0.0 — Perf: concurrent workspace-context assembly
+
+| Change | Where |
+|--------|-------|
+| `build_workspace_context` builds each page thread's context via a bounded `buffered` stream (`CONTEXT_THREAD_CONCURRENCY=8`) instead of a sequential loop — collapses `Σ per-thread` latency toward `ceil(N/8)×`, order + query-count + error semantics unchanged | `crates/maidan-server/src/thread_context.rs` |
+
 ## v198.0.0 — Perf: load / soak harness (Arc D opener)
 
 | Change | Where |
