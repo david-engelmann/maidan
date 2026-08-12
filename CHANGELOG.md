@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [194.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 5. No
+new gate tag.
+
+### Changed
+
+- **A2A ingest preserves structured content.** The A2A ingress
+  (`POST /a2a/v1/rpc`) built its message with `content: None`, joining the
+  message's text parts into `body` and discarding the structure — so a message's
+  ingress decided whether it carried structured `content` (REST/MCP could, A2A
+  couldn't; Cluster 173). It now maps each text part to a `ContentBlock::Text`,
+  so an A2A message carries the same structured content as a REST/MCP post.
+  `body` stays the joined searchable projection (search/embeddings unchanged).
+
 ## [193.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 4. No
