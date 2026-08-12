@@ -112,6 +112,25 @@ pub async fn get_thread_context(
     Ok(Json(packed))
 }
 
+/// `GET /threads/:id/tool-transcript` (Cluster 197) — the thread's tool-call
+/// transcript: every `ToolUse` block correlated with its `ToolResult` by id. A
+/// token-lean projection that drops text/code blocks and message bodies.
+pub async fn get_tool_transcript(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ToolTranscriptQuery>,
+) -> ApiResult<Json<ToolTranscript>> {
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+    let messages = state.store.list_messages(thread_id, limit).await?;
+    Ok(Json(tool_transcript(thread_id, &messages)))
+}
+
 pub async fn transition_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

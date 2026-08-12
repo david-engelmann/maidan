@@ -25,6 +25,29 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
 }
 
 #[derive(Deserialize)]
+struct ToolTranscriptArgs {
+    thread_id: uuid::Uuid,
+    /// Max messages to scan (default 200, clamped 1..=500).
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// A thread's tool-call transcript (Cluster 197): every `ToolUse` block across
+/// the thread's messages, each correlated with its `ToolResult` by id. A
+/// token-lean projection — `Text`/`Code` blocks and `body` are dropped. Channel
+/// access is enforced pre-dispatch (the `thread_id` arg).
+pub(super) async fn get_tool_transcript(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ToolTranscriptArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let limit = a.limit.unwrap_or(200).clamp(1, 500);
+    let messages = store.list_messages(thread_id, limit).await?;
+    Ok(content_json(&tool_transcript(thread_id, &messages)))
+}
+
+#[derive(Deserialize)]
 struct AssignThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,

@@ -378,6 +378,142 @@ pub fn derive_body(blocks: &[ContentBlock]) -> String {
         .join("\n\n")
 }
 
+/// One tool invocation in a thread's transcript (Cluster 197): a
+/// [`ContentBlock::ToolUse`] paired with its [`ContentBlock::ToolResult`]
+/// (correlated by id), plus the message context each block came from.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ToolCallEntry {
+    pub tool_use_id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+    pub message_id: MessageId,
+    pub author_id: MemberId,
+    pub posted_at: DateTime<Utc>,
+    /// The correlated result, if a matching `ToolResult` was found.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub result: Option<ToolCallResult>,
+}
+
+/// The result side of a [`ToolCallEntry`], from the message carrying the
+/// matching `ToolResult` block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ToolCallResult {
+    pub content: String,
+    pub is_error: bool,
+    pub message_id: MessageId,
+    pub author_id: MemberId,
+    pub posted_at: DateTime<Utc>,
+}
+
+/// A `ToolResult` block whose `tool_use_id` matched no `ToolUse` in the scanned
+/// messages (Cluster 197) — surfaced rather than dropped so a gap is visible.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OrphanToolResult {
+    pub tool_use_id: String,
+    pub content: String,
+    pub is_error: bool,
+    pub message_id: MessageId,
+    pub author_id: MemberId,
+    pub posted_at: DateTime<Utc>,
+}
+
+/// A thread's tool-call transcript (Cluster 197): every [`ContentBlock::ToolUse`]
+/// across the thread's messages, each correlated with its `ToolResult` by id,
+/// plus any results whose call is outside the scanned window. A token-lean
+/// projection of the tool structure — `Text`/`Code`/`ResourceLink` blocks and
+/// `body` are dropped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ToolTranscript {
+    pub thread_id: ThreadId,
+    pub entries: Vec<ToolCallEntry>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub orphan_results: Vec<OrphanToolResult>,
+}
+
+/// Extract a [`ToolTranscript`] from a thread's messages (Cluster 197). Walks
+/// each non-tombstoned message's structured content, pairing every `ToolUse`
+/// with the first `ToolResult` carrying the same id (correlation is
+/// order-independent — a result may land in a later message). A result with no
+/// matching call is an orphan; a duplicate result for an already-resolved call
+/// is treated as an orphan too. `messages` should be chronological; entry order
+/// follows the calls' order.
+pub fn tool_transcript(thread_id: ThreadId, messages: &[Message]) -> ToolTranscript {
+    use std::collections::HashMap;
+    let mut entries: Vec<ToolCallEntry> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut orphan_results: Vec<OrphanToolResult> = Vec::new();
+
+    let live = || messages.iter().filter(|m| m.tombstoned_at.is_none());
+
+    for m in live() {
+        let Some(blocks) = m.content.as_ref() else {
+            continue;
+        };
+        for block in blocks {
+            if let ContentBlock::ToolUse { id, name, input } = block {
+                // A duplicate id keeps the first call; later ones aren't
+                // distinguishable for correlation.
+                if !index.contains_key(id) {
+                    index.insert(id.clone(), entries.len());
+                    entries.push(ToolCallEntry {
+                        tool_use_id: id.clone(),
+                        name: name.clone(),
+                        input: input.clone(),
+                        message_id: m.id,
+                        author_id: m.author_id,
+                        posted_at: m.posted_at,
+                        result: None,
+                    });
+                }
+            }
+        }
+    }
+
+    for m in live() {
+        let Some(blocks) = m.content.as_ref() else {
+            continue;
+        };
+        for block in blocks {
+            if let ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } = block
+            {
+                match index.get(tool_use_id) {
+                    Some(&i) if entries[i].result.is_none() => {
+                        entries[i].result = Some(ToolCallResult {
+                            content: content.clone(),
+                            is_error: *is_error,
+                            message_id: m.id,
+                            author_id: m.author_id,
+                            posted_at: m.posted_at,
+                        });
+                    }
+                    _ => orphan_results.push(OrphanToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        content: content.clone(),
+                        is_error: *is_error,
+                        message_id: m.id,
+                        author_id: m.author_id,
+                        posted_at: m.posted_at,
+                    }),
+                }
+            }
+        }
+    }
+
+    ToolTranscript {
+        thread_id,
+        entries,
+        orphan_results,
+    }
+}
+
 /// `true` for a JSON value that carries no information — `null` or an empty
 /// object — used to omit an empty `metadata` from the wire (Cluster 177).
 fn json_value_is_empty(v: &serde_json::Value) -> bool {
@@ -1054,5 +1190,106 @@ mod message_serde_tests {
     fn non_empty_metadata_is_kept() {
         let v = serde_json::to_value(msg(serde_json::json!({"topic": "x"}))).unwrap();
         assert_eq!(v["metadata"]["topic"], "x");
+    }
+}
+
+#[cfg(test)]
+mod tool_transcript_tests {
+    use super::*;
+
+    fn msg_with(id_seed: u128, ts: i64, blocks: Vec<ContentBlock>) -> Message {
+        Message {
+            id: MessageId(uuid::Uuid::from_u128(id_seed)),
+            thread_id: ThreadId(uuid::Uuid::from_u128(999)),
+            author_id: MemberId(uuid::Uuid::from_u128(1)),
+            body: String::new(),
+            metadata: serde_json::json!({}),
+            content: Some(blocks),
+            posted_at: DateTime::from_timestamp(ts, 0).unwrap(),
+            edited_at: None,
+            tombstoned_at: None,
+        }
+    }
+    fn use_block(id: &str, name: &str) -> ContentBlock {
+        ContentBlock::ToolUse {
+            id: id.into(),
+            name: name.into(),
+            input: serde_json::json!({"q": 1}),
+        }
+    }
+    fn result_block(id: &str, content: &str, is_error: bool) -> ContentBlock {
+        ContentBlock::ToolResult {
+            tool_use_id: id.into(),
+            content: content.into(),
+            is_error,
+        }
+    }
+
+    #[test]
+    fn pairs_use_with_result_across_messages() {
+        let thread = ThreadId(uuid::Uuid::from_u128(999));
+        let messages = vec![
+            msg_with(
+                1,
+                100,
+                vec![use_block("a", "search"), use_block("b", "fetch")],
+            ),
+            msg_with(
+                2,
+                200,
+                vec![
+                    ContentBlock::Text {
+                        text: "thinking".into(),
+                    },
+                    result_block("a", "found 3 rows", false),
+                ],
+            ),
+            msg_with(3, 300, vec![result_block("b", "boom", true)]),
+        ];
+        let t = tool_transcript(thread, &messages);
+        assert_eq!(t.entries.len(), 2, "two tool calls");
+        assert!(t.orphan_results.is_empty());
+
+        let a = &t.entries[0];
+        assert_eq!(a.tool_use_id, "a");
+        assert_eq!(a.name, "search");
+        let a_res = a.result.as_ref().expect("a is resolved");
+        assert_eq!(a_res.content, "found 3 rows");
+        assert!(!a_res.is_error);
+        assert_eq!(a_res.message_id, MessageId(uuid::Uuid::from_u128(2)));
+
+        let b = &t.entries[1];
+        assert_eq!(b.tool_use_id, "b");
+        assert!(b.result.as_ref().unwrap().is_error, "b failed");
+    }
+
+    #[test]
+    fn unresolved_call_has_no_result_and_orphan_result_is_surfaced() {
+        let thread = ThreadId(uuid::Uuid::from_u128(999));
+        let messages = vec![
+            msg_with(1, 100, vec![use_block("pending", "slow")]),
+            msg_with(
+                2,
+                200,
+                vec![result_block("ghost", "no matching call", false)],
+            ),
+        ];
+        let t = tool_transcript(thread, &messages);
+        assert_eq!(t.entries.len(), 1);
+        assert!(t.entries[0].result.is_none(), "call still pending");
+        assert_eq!(t.orphan_results.len(), 1);
+        assert_eq!(t.orphan_results[0].tool_use_id, "ghost");
+    }
+
+    #[test]
+    fn tombstoned_messages_are_skipped() {
+        let thread = ThreadId(uuid::Uuid::from_u128(999));
+        let mut gone = msg_with(1, 100, vec![use_block("a", "search")]);
+        gone.tombstoned_at = Some(Utc::now());
+        let messages = vec![gone, msg_with(2, 200, vec![result_block("a", "x", false)])];
+        let t = tool_transcript(thread, &messages);
+        // The call was tombstoned, so its result has no live match → orphan.
+        assert!(t.entries.is_empty());
+        assert_eq!(t.orphan_results.len(), 1);
     }
 }

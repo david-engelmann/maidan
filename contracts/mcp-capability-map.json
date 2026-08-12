@@ -13,6 +13,7 @@
   "get_artifact_metadata": "workspace:read",
   "get_inbox": "workspace:read",
   "get_thread_context": "workspace:read",
+  "get_tool_transcript": "workspace:read",
   "get_workspace_context": "workspace:read",
   "list_assigned_threads": "workspace:read",
   "list_channel_members": "channel:admin",

@@ -104,6 +104,18 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_tool_transcript",
+            "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 200, "minimum": 1, "maximum": 500, "description": "max messages to scan"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "assign_thread",
             "description": "Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.",
             "inputSchema": {
