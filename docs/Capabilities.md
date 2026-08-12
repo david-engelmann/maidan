@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v201.0.0 — Perf: workspace-sharded event fan-out
+
+| Change | Where |
+|--------|-------|
+| `ShardedBroadcast` — a publish reaches only the event's workspace shard + a global shard (cross-workspace subscribers), not every subscriber; fan-out is O(relevant) not O(all). Used by `InMemoryBus` + `PostgresBus` local broadcast; shards created on subscribe, pruned on last-receiver-drop. Behavior unchanged (optimization under the existing `EventFilter`) | `crates/maidan-bus/src/sharded.rs` |
+
 ## v200.0.0 — Perf + security: filtered-ANN search (RBAC deny in the query)
 
 | Change | Where |

@@ -2,7 +2,7 @@
 
 A snapshot of Maidan's shape. Updated at the close of each cluster.
 **Current baseline:** **`v179.0.0`** (Product Ladder **102+** complete at
-**`v120.0.0`** / scale gate **`maidan-scale-1.0`**; **`v121.0.0`**–**`v200.0.0`**
+**`v120.0.0`** / scale gate **`maidan-scale-1.0`**; **`v121.0.0`**–**`v201.0.0`**
 are post-gate hardening — Phase XXIV, no new gate tag). See [Scale-out & hardening](#scale-out--hardening-ladder-102) below for the 102–120 additions.
 Older versioned sections below record how capabilities accrued; see
 [Capabilities.md](Capabilities.md) and [CHANGELOG.md](../CHANGELOG.md) for the authoritative release list.

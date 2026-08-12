@@ -15,13 +15,13 @@
 //! Use with outbox relay when NOTIFY is unavailable; multi-instance fan-out
 //! requires notify mode or client replay.
 
+use crate::sharded::ShardedBroadcast;
 use async_trait::async_trait;
 use futures::StreamExt;
 use maidan_types::{BusEnvelope, Event, EventFilter};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
-use tokio::sync::broadcast;
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 
 use std::sync::Arc;
@@ -79,7 +79,9 @@ impl Default for PostgresBusOptions {
 #[derive(Clone)]
 pub struct PostgresBus {
     pool: PgPool,
-    local: broadcast::Sender<BusEnvelope>,
+    // Cluster 201: workspace-sharded local fan-out. The LISTEN task and
+    // polled-mode publishes feed this; subscribers read their workspace's shard.
+    local: Arc<ShardedBroadcast>,
     notify_on_publish: bool,
     listener_health: Arc<ListenerHealth>,
     hydrate_stats: Arc<HydrateStats>,
@@ -93,7 +95,7 @@ impl PostgresBus {
 
     /// Connect to Postgres. Starts a LISTEN fan-in task when `notify_on_publish` is true.
     pub async fn connect_with(pool: PgPool, options: PostgresBusOptions) -> Result<Self, BusError> {
-        let (tx, _) = broadcast::channel(crate::broadcast_cap_from_env());
+        let tx = Arc::new(ShardedBroadcast::new(crate::broadcast_cap_from_env()));
         let listener_health = Arc::new(ListenerHealth::default());
         let hydrate_stats = Arc::new(HydrateStats::default());
 
@@ -114,7 +116,7 @@ impl PostgresBus {
                                 .await
                             {
                                 Ok(Some(envelope)) => {
-                                    let _ = listener_tx.send(envelope);
+                                    listener_tx.publish(envelope);
                                 }
                                 Ok(None) => {}
                                 Err(err) => {
@@ -230,13 +232,13 @@ impl EventBus for PostgresBus {
                 .execute(&self.pool)
                 .await?;
         } else {
-            let _ = self.local.send(envelope);
+            self.local.publish(envelope);
         }
         Ok(())
     }
 
     async fn subscribe(&self, filter: EventFilter) -> Result<EventStream, BusError> {
-        let rx = self.local.subscribe();
+        let rx = self.local.subscribe(&filter);
         let stream = BroadcastStream::new(rx).filter_map(move |msg| {
             let filter = filter.clone();
             async move {

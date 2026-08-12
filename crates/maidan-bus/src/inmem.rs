@@ -5,12 +5,14 @@
 //! events get dropped from their view but the stream stays open. The
 //! [`InMemoryBus::with_capacity`] constructor tunes the bound.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use futures::StreamExt;
 use maidan_types::{BusEnvelope, EventFilter};
 
 use crate::item::BusItem;
-use tokio::sync::broadcast;
+use crate::sharded::ShardedBroadcast;
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 
 use crate::error::BusError;
@@ -19,7 +21,9 @@ use crate::traits::EventBus;
 
 #[derive(Debug, Clone)]
 pub struct InMemoryBus {
-    tx: broadcast::Sender<BusEnvelope>,
+    // Cluster 201: workspace-sharded fan-out — a publish reaches only the
+    // subscribers that could match it, not every subscriber.
+    fanout: Arc<ShardedBroadcast>,
 }
 
 impl InMemoryBus {
@@ -28,8 +32,9 @@ impl InMemoryBus {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        let (tx, _) = broadcast::channel(capacity);
-        Self { tx }
+        Self {
+            fanout: Arc::new(ShardedBroadcast::new(capacity)),
+        }
     }
 }
 
@@ -42,14 +47,13 @@ impl Default for InMemoryBus {
 #[async_trait]
 impl EventBus for InMemoryBus {
     async fn publish(&self, envelope: BusEnvelope) -> Result<(), BusError> {
-        // `send` errors only when there are zero receivers; that is not
-        // a failure for fire-and-forget pub/sub.
-        let _ = self.tx.send(envelope);
+        // Fire-and-forget: a shard with no receivers simply drops the event.
+        self.fanout.publish(envelope);
         Ok(())
     }
 
     async fn subscribe(&self, filter: EventFilter) -> Result<EventStream, BusError> {
-        let rx = self.tx.subscribe();
+        let rx = self.fanout.subscribe(&filter);
         let stream = BroadcastStream::new(rx).filter_map(move |msg| {
             let filter = filter.clone();
             async move {

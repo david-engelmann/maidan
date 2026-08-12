@@ -17,6 +17,7 @@ pub mod listener_health;
 pub mod postgres;
 pub mod presence_notify;
 pub mod resource_notify;
+pub mod sharded;
 pub mod stream;
 /// Test doubles for integration tests in downstream crates.
 pub mod test_support;
