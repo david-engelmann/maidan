@@ -863,3 +863,99 @@ async fn request_approval_tool_elicits_the_human_via_the_client() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn list_roots_tool_queries_the_client() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+
+    // Open a streamable session declaring `roots`, then the GET stream.
+    let init = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&json!({
+            "jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":"2024-11-05","capabilities":{"roots":{}}}
+        }))
+        .send()
+        .await
+        .unwrap();
+    let session = init
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let get_resp = client
+        .get(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+
+    // Call list_roots; it blocks server-side until the client answers.
+    let call_client = client.clone();
+    let call_base = base.clone();
+    let call_session = session.clone();
+    let call = tokio::spawn(async move {
+        call_client
+            .post(format!("{call_base}/mcp/streamable"))
+            .header("mcp-session-id", &call_session)
+            .header("accept", "application/json")
+            .json(&json!({
+                "jsonrpc":"2.0","id":2,"method":"tools/call",
+                "params":{"name":"list_roots","arguments":{}}
+            }))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+    });
+
+    // The roots/list request arrives on the GET stream.
+    let mut buf = String::new();
+    let mut stream = get_resp.bytes_stream();
+    let mut request_id = None;
+    while let Some(chunk) = stream.next().await {
+        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+        if let Some(line) = buf
+            .lines()
+            .find(|l| l.starts_with("data:") && l.contains("roots/list"))
+        {
+            let data = line.trim_start_matches("data:").trim();
+            let req: Value = serde_json::from_str(data).unwrap();
+            request_id = req["id"].as_i64();
+            break;
+        }
+    }
+    let request_id = request_id.expect("roots/list request delivered on the GET stream");
+
+    // The client returns its roots.
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-session-id", &session)
+        .json(&json!({
+            "jsonrpc":"2.0","id":request_id,
+            "result":{"roots":[{"uri":"file:///work","name":"work"}]}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+    // The tool resolves with the client's roots (a text content block whose text
+    // is the serialized roots JSON — parse both layers).
+    let body = call.await.unwrap();
+    let outer: Value = serde_json::from_str(&body).unwrap();
+    let text = outer["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("expected a text content block: {body}"));
+    let inner: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(inner["roots"][0]["uri"], "file:///work", "body={body}");
+    assert_eq!(inner["roots"][0]["name"], "work");
+
+    server.abort();
+}
