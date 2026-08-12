@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [193.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 4. No
+new gate tag.
+
+### Added
+
+- **`list_roots` MCP tool** — asks the connected client which roots
+  (filesystem/workspace boundaries) it exposes, via the server→client
+  `roots/list` request over `GET /mcp/streamable`. This is the first organic
+  caller of `request_client`'s third verb (after sampling → `summarize_thread`
+  and elicitation → `request_approval`). Requires a streamable session whose
+  client declared the `roots` capability; returns the client's `{roots: [...]}`.
+  Capability `workspace:read`.
+
 ## [192.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 3. No

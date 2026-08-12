@@ -593,5 +593,14 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["prompt"]
             }
         }),
+        json!({
+            "name": "list_roots",
+            "description": "List the roots (filesystem/workspace boundaries) the connected MCP client exposes, via the server→client roots/list request over the GET /mcp/streamable stream. Requires a streamable session whose client declared the roots capability. Returns the client's {roots: [...]}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }),
     ]
 }

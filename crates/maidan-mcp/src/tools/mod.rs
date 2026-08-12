@@ -22,6 +22,7 @@ mod channel;
 mod member;
 mod message;
 mod reference;
+mod roots;
 mod search;
 mod social;
 mod thread;
@@ -65,7 +66,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_mentions"
         | "get_inbox"
         | "mark_inbox_read"
-        | "list_assigned_threads" => Ok(WORKSPACE_READ),
+        | "list_assigned_threads"
+        | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -267,6 +269,7 @@ pub async fn dispatch(
         }
         "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
         "request_approval" => approval::request_approval(server, session_id, args).await,
+        "list_roots" => roots::list_roots(server, session_id, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

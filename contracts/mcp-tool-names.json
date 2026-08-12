@@ -23,6 +23,7 @@
   "list_messages",
   "list_pins",
   "list_reactions",
+  "list_roots",
   "list_slash_commands",
   "list_threads",
   "mark_inbox_read",

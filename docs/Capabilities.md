@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v193.0.0 — Agentic: the `roots/list` tool
+
+| Change | Where |
+|--------|-------|
+| MCP `list_roots` — server→client `roots/list` over the streamable session; the third `request_client` verb's first organic caller | `crates/maidan-mcp/src/tools/roots.rs` |
+
 ## v192.0.0 — Agentic: claim leases + reclaim (dead-agent recovery)
 
 | Change | Where |
