@@ -35,6 +35,7 @@
   "register_slash_command",
   "remove_channel_member",
   "remove_reaction",
+  "renew_claim",
   "request_approval",
   "search_messages",
   "summarize_thread",

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v192.0.0 — Agentic: claim leases + reclaim (dead-agent recovery)
+
+| Change | Where |
+|--------|-------|
+| `claim_next_thread` lease-aware (`lease_secs`; expired lease = reclaimable, no reaper) + `renew_claim` heartbeat (holder-only); `assignment_expires_at` column; REST `POST /threads/:id/claim/renew` + MCP `renew_claim` | `*/threads.rs` + `routes/thread.rs` + `tools/thread.rs` |
+
 ## v191.0.0 — Agentic: MCP tools for the assignment read-side
 
 | Change | Where |

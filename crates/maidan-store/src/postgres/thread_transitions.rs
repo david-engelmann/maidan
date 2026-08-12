@@ -16,7 +16,7 @@ pub async fn transition(
     let mut tx = pool.begin().await?;
 
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at
          FROM maidan_threads WHERE id = $1",
     )
     .bind(thread_id.0)
@@ -40,7 +40,7 @@ pub async fn transition(
 
     if let Some(parent_id) = thread.parent_thread_id {
         let parent_row = sqlx::query(
-            "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id
+            "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at
              FROM maidan_threads WHERE id = $1",
         )
         .bind(parent_id.0)
@@ -72,7 +72,7 @@ pub async fn transition(
     let row = sqlx::query(
         "UPDATE maidan_threads SET state = $1, updated_at = $2
          WHERE id = $3
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
     )
     .bind(to_state.as_str())
     .bind(now)

@@ -270,6 +270,11 @@ pub struct Thread {
     /// axis orthogonal to [`ThreadState`]: assignment persists across state
     /// transitions. Set via assign/handoff, atomic claim, or cleared on unassign.
     pub assignee_id: Option<MemberId>,
+    /// Lease deadline for a claimed assignment (Cluster 192). When set and in the
+    /// past, the assignment is reclaimable by the next `claim_next` (dead-agent
+    /// recovery); `None` is a durable assignment with no lease.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,

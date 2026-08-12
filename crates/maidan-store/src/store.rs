@@ -182,14 +182,28 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError>;
 
-    /// Atomically claim the oldest unassigned live thread in `channel_id` for
-    /// `member_id` — the "pull the next task" primitive (Cluster 190). `None` when
-    /// there is no unassigned work. Concurrent claimers each get a distinct thread.
+    /// Atomically claim the oldest claimable live thread in `channel_id` for
+    /// `member_id` — the "pull the next task" primitive (Cluster 190). Claimable =
+    /// unassigned **or** its lease has expired (Cluster 192 dead-agent recovery).
+    /// `lease_secs` sets a lease deadline (`None` = durable, no lease). `None`
+    /// return when there is no claimable work. Concurrent claimers get distinct
+    /// threads.
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
+        lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError>;
+
+    /// Extend a claimed thread's lease (heartbeat), only for the current assignee
+    /// (Cluster 192). `NotFound` if the thread is gone or the caller isn't the
+    /// holder.
+    async fn renew_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_secs: i64,
+    ) -> Result<Thread, StoreError>;
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     async fn edit_message(

@@ -71,6 +71,23 @@ pub struct ClaimThread {
     pub member_id: uuid::Uuid,
 }
 
+/// Claim the next unassigned/expired thread in a channel (Cluster 190/192).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ClaimNextThread {
+    pub member_id: uuid::Uuid,
+    /// Optional lease deadline in seconds; the claim is reclaimable after it
+    /// lapses (Cluster 192). Omit for a durable claim.
+    #[serde(default)]
+    pub lease_secs: Option<i64>,
+}
+
+/// Extend a claimed thread's lease, for the current assignee (Cluster 192).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RenewClaim {
+    pub member_id: uuid::Uuid,
+    pub lease_secs: i64,
+}
+
 /// Clear a thread's assignee (Cluster 171). `actor_id` records who unassigned it.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnassignThread {

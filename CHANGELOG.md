@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [192.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 3. No
+new gate tag.
+
+### Added
+
+- **Claim leases + reclaim (dead-agent recovery).** A claimed thread can now
+  carry a lease: `claim_next_thread` takes an optional `lease_secs` (REST body +
+  MCP arg; omit for a durable claim), and a thread is claimable when it's
+  unassigned **or** its lease has expired — so a claimed-then-dead agent no longer
+  holds a thread forever; the next claimer transparently reclaims it (no reaper).
+  New `POST /threads/:id/claim/renew` + MCP `renew_claim` extend the lease for the
+  current assignee only (heartbeat). Adds a nullable `assignment_expires_at`
+  column (migration pg 0035 / sqlite 0034) + `Thread.assignment_expires_at`.
+  Manual `assign` / claim-a-specific-thread stay durable.
+
 ## [191.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 2. No

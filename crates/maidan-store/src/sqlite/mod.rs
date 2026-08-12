@@ -306,8 +306,17 @@ impl Store for SqliteStore {
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
+        lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError> {
-        threads::claim_next(&self.pool, channel_id, member_id).await
+        threads::claim_next(&self.pool, channel_id, member_id, lease_secs).await
+    }
+    async fn renew_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_secs: i64,
+    ) -> Result<Thread, StoreError> {
+        threads::renew_claim(&self.pool, thread_id, member_id, lease_secs).await
     }
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
