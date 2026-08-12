@@ -62,6 +62,9 @@ pub struct TransitionThread {
 pub struct AssignThread {
     pub actor_id: uuid::Uuid,
     pub assignee_id: uuid::Uuid,
+    /// Optional handoff note for the assignee (Cluster 195).
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Atomically claim an unassigned thread for a member (Cluster 171). The

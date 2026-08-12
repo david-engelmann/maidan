@@ -105,13 +105,14 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "assign_thread",
-            "description": "Assign or hand off a thread/task to a member.",
+            "description": "Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "actor_id": {"type": "string", "format": "uuid", "description": "member performing the assignment"},
-                    "assignee_id": {"type": "string", "format": "uuid", "description": "member to assign the thread to"}
+                    "assignee_id": {"type": "string", "format": "uuid", "description": "member to assign the thread to"},
+                    "note": {"type": "string", "description": "optional handoff note for the assignee"}
                 },
                 "required": ["thread_id", "actor_id", "assignee_id"]
             }

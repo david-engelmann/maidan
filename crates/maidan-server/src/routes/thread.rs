@@ -165,6 +165,7 @@ async fn publish_assignment(
     thread: &Thread,
     actor_id: MemberId,
     previous_assignee_id: Option<MemberId>,
+    note: Option<String>,
 ) {
     publish(
         state,
@@ -176,6 +177,7 @@ async fn publish_assignment(
             actor_id,
             previous_assignee_id,
             assignee_id: thread.assignee_id,
+            note,
             thread: thread.clone(),
         },
     )
@@ -205,6 +207,7 @@ pub async fn assign_thread(
         &thread,
         MemberId(body.actor_id),
         previous,
+        body.note,
     )
     .await;
     Ok(Json(thread))
@@ -230,6 +233,7 @@ pub async fn unassign_thread(
         &thread,
         MemberId(body.actor_id),
         previous,
+        None,
     )
     .await;
     Ok(Json(thread))
@@ -255,6 +259,7 @@ pub async fn claim_thread(
             ctx.channel_id,
             &result.thread,
             member_id,
+            None,
             None,
         )
         .await;
@@ -314,6 +319,7 @@ pub async fn claim_next_thread(
             channel.id,
             thread,
             member_id,
+            None,
             None,
         )
         .await;

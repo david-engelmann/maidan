@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [195.0.0] — 2026-08-11
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 6. No
+new gate tag.
+
+### Added
+
+- **Handoff notes on thread assignment.** `assign_thread` (REST
+  `PUT /threads/:id/assignee` + the MCP tool) accepts an optional `note` — the
+  free-text context an agent hands off with the work ("picked this up, blocked on
+  the staging creds"). The note rides the `ThreadAssignmentChanged` event so the
+  new assignee and every subscriber see it in real time. Event-only (not
+  persisted on the thread): a handoff note is a moment-in-time message, and the
+  assignment log already lives in the event stream. `#[serde(default,
+  skip_serializing_if = "Option::is_none")]` keeps note-less assignments (claim /
+  unassign / `claim_next`, which pass no note) byte-identical to before. The
+  federation event-rewrite threads the note through unchanged.
+
 ## [194.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 5. No

@@ -162,6 +162,11 @@ pub enum Event {
         actor_id: MemberId,
         previous_assignee_id: Option<MemberId>,
         assignee_id: Option<MemberId>,
+        /// Optional handoff note the actor attached when assigning/handing off
+        /// (Cluster 195) — context for the assignee. Only carried by a deliberate
+        /// `assign`; a pull-claim or unassign has none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
         thread: Thread,
     },
     MessagePosted {

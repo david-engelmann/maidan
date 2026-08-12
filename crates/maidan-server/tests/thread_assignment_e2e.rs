@@ -295,6 +295,131 @@ async fn assign_claim_unassign_and_emit_events_over_rest() {
 }
 
 #[tokio::test]
+async fn assign_with_note_carries_the_note_on_the_event() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let mk = |h: &'static str| {
+        let store = ctx.store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: h.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let alice = mk("alice").await;
+    let bob = mk("bob").await;
+    let tok = mint(ctx.store.as_ref(), ws.id, alice.id).await;
+
+    let ch: Value = ctx
+        .client
+        .post(format!("{base}/workspaces/{}/channels", ws.id.0))
+        .header("Authorization", auth(&tok))
+        .json(&json!({"name": "work"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = ch["id"].as_str().unwrap().to_string();
+    let th: Value = ctx
+        .client
+        .post(format!("{base}/channels/{cid}/threads"))
+        .header("Authorization", auth(&tok))
+        .json(&json!({"title": "task"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = th["id"].as_str().unwrap().to_string();
+
+    // Assign to bob WITH a handoff note.
+    ctx.client
+        .put(format!("{base}/threads/{tid}/assignee"))
+        .header("Authorization", auth(&tok))
+        .json(&json!({
+            "actor_id": alice.id.0,
+            "assignee_id": bob.id.0,
+            "note": "please pick up the deploy checklist"
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let events: Value = ctx
+        .client
+        .get(format!(
+            "{base}/workspaces/{}/events?after_id=0&limit=100",
+            ws.id.0
+        ))
+        .header("Authorization", auth(&tok))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let arr = events.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
+    let assignment = arr
+        .iter()
+        .find(|e| e["kind"] == json!("thread_assignment_changed"))
+        .expect("an assignment event was emitted");
+    assert_eq!(
+        assignment["payload"]["note"].as_str(),
+        Some("please pick up the deploy checklist"),
+        "the handoff note rides the assignment event"
+    );
+
+    // An unassign (no note) omits the field entirely.
+    ctx.client
+        .delete(format!("{base}/threads/{tid}/assignee"))
+        .header("Authorization", auth(&tok))
+        .json(&json!({"actor_id": alice.id.0}))
+        .send()
+        .await
+        .unwrap();
+    let events: Value = ctx
+        .client
+        .get(format!(
+            "{base}/workspaces/{}/events?after_id=0&limit=100",
+            ws.id.0
+        ))
+        .header("Authorization", auth(&tok))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let arr = events.as_array().map(|a| a.as_slice()).unwrap_or(&[]);
+    let unassign = arr
+        .iter()
+        .filter(|e| e["kind"] == json!("thread_assignment_changed"))
+        .find(|e| e["payload"]["assignee_id"].is_null())
+        .expect("an unassign event was emitted");
+    assert!(
+        unassign["payload"].get("note").is_none() || unassign["payload"]["note"].is_null(),
+        "a note-less assignment omits the field"
+    );
+}
+
+#[tokio::test]
 async fn concurrent_claims_have_exactly_one_winner() {
     let ctx = spawn().await;
     let base = ctx.base();

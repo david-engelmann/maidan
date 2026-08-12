@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v195.0.0 — Agentic: handoff notes on thread assignment
+
+| Change | Where |
+|--------|-------|
+| `assign_thread` (REST `PUT /threads/:id/assignee` + MCP tool) accepts an optional `note`; it rides the `ThreadAssignmentChanged` event to the new assignee + subscribers in real time (event-only, not persisted). Note-less claim/unassign/`claim_next` unchanged | `events.rs` + `dto.rs` + `routes/thread.rs` + `tools/{thread,catalog}.rs` + `federation.rs` |
+
 ## v194.0.0 — Agentic: A2A ingest preserves parts as structured content
 
 | Change | Where |
