@@ -28,6 +28,7 @@ pub async fn cast_vote(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     state
         .store
         .cast_vote(NewVote {
@@ -84,6 +85,7 @@ pub async fn add_reaction(
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
     state
         .store
@@ -123,6 +125,7 @@ pub async fn remove_reaction(
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
     if state
         .store
@@ -178,6 +181,7 @@ pub async fn pin_message(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     state
         .store
         .pin_message(NewPin {
@@ -218,6 +222,7 @@ pub async fn unpin_message(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     if state.store.unpin_message(thread_id, message_id).await? {
         publish(
             &state,

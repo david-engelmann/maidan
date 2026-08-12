@@ -286,3 +286,89 @@ async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
 
     h.server.abort();
 }
+
+/// Cluster 202: the anti-spoofing guard is wired on a *newly-guarded* surface
+/// (reactions), not only on `post_message` — a session caller cannot react as
+/// another member, but may react as itself.
+#[tokio::test]
+async fn session_cannot_react_as_another_member() {
+    let h = spawn_oidc().await;
+    let base = format!("http://{}", h.addr);
+    let wid = h.workspace_id.0;
+    let cookie = login_session(&h).await;
+    let session: serde_json::Value = h
+        .client
+        .get(format!("{base}/auth/session"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("session")
+        .json()
+        .await
+        .expect("session json");
+    let member_id = session["member_id"]
+        .as_str()
+        .expect("member_id")
+        .to_string();
+
+    let ch: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/workspaces/{wid}/channels"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({ "name": "react" }))
+        .send()
+        .await
+        .expect("channel")
+        .json()
+        .await
+        .expect("channel json");
+    let cid = ch["id"].as_str().expect("cid");
+    let th: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/channels/{cid}/threads"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({ "title": "t" }))
+        .send()
+        .await
+        .expect("thread")
+        .json()
+        .await
+        .expect("thread json");
+    let tid = th["id"].as_str().expect("tid");
+    let msg: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/threads/{tid}/messages"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({ "author_id": member_id, "body": "hi" }))
+        .send()
+        .await
+        .expect("message")
+        .json()
+        .await
+        .expect("message json");
+    let mid = msg["id"].as_str().expect("mid");
+
+    // React as ANOTHER member → 403 (the newly-guarded add_reaction surface).
+    let spoof = h
+        .client
+        .post(format!("{base}/ui/api/messages/{mid}/reactions"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({ "member_id": "00000000-0000-0000-0000-000000000099", "emoji": "👍" }))
+        .send()
+        .await
+        .expect("spoof reaction");
+    assert_eq!(spoof.status(), StatusCode::FORBIDDEN);
+
+    // React as itself → allowed.
+    let ok = h
+        .client
+        .post(format!("{base}/ui/api/messages/{mid}/reactions"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({ "member_id": member_id, "emoji": "👍" }))
+        .send()
+        .await
+        .expect("self reaction");
+    assert!(ok.status().is_success(), "a session may react as itself");
+
+    h.server.abort();
+}

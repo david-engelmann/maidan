@@ -50,6 +50,22 @@ pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) ->
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
+/// Anti-spoofing guard (Cluster 202): a **session** caller (browser/OIDC login,
+/// no API token) may only act as its *own* member. `claimed` is the
+/// caller-supplied acting member — the `author_id`/`actor_id`/`editor_id`/voter
+/// on a member-attributed write. A **bearer token** is the orchestrator model
+/// and may legitimately act as any member in its workspace (unchanged);
+/// `bypass` (auth disabled / tests) is unrestricted. This centralizes the guard
+/// that previously lived only on `post_message`.
+pub(crate) fn ensure_acting_member(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
+    if !auth.bypass && auth.token_id.is_none() && claimed != auth.member_id {
+        return Err(ApiError::Forbidden(
+            "a session caller may only act as its own member".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_message_edit(
     auth: &AuthContext,
     editor_id: MemberId,
@@ -307,5 +323,30 @@ mod publish_tests {
         let log_id = publish(&state, event).await;
         assert!(log_id.is_some());
         assert_eq!(bus.publishes(), 0);
+    }
+
+    #[test]
+    fn ensure_acting_member_blocks_session_spoof_only() {
+        use super::ensure_acting_member;
+        use maidan_auth::AuthContext;
+
+        let me = MemberId(uuid::Uuid::new_v4());
+        let other = MemberId(uuid::Uuid::new_v4());
+        let ws = WorkspaceId(uuid::Uuid::new_v4());
+
+        // Session caller (browser/OIDC, no token): may act only as itself.
+        let session = AuthContext::from_session(me, ws, vec![]);
+        assert!(ensure_acting_member(&session, me).is_ok());
+        assert!(
+            ensure_acting_member(&session, other).is_err(),
+            "a session caller cannot act as another member"
+        );
+
+        // Bearer token: the orchestrator model — may act as any member (unchanged).
+        let bearer = AuthContext::from_token(ApiTokenId(uuid::Uuid::new_v4()), me, ws, vec![]);
+        assert!(ensure_acting_member(&bearer, other).is_ok());
+
+        // Bypass (auth disabled / tests): unrestricted.
+        assert!(ensure_acting_member(&AuthContext::bypass(), other).is_ok());
     }
 }

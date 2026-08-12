@@ -142,6 +142,7 @@ pub async fn post_dm_message(
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
     let author_id = MemberId(body.author_id);
+    crate::routes::ensure_acting_member(&auth, author_id)?;
     ensure_dm_participant(&dm, author_id)?;
     let metadata = body.metadata.unwrap_or_else(|| serde_json::json!({}));
     let m = state

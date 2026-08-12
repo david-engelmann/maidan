@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v202.0.0 — Security: session-bound acting identity (anti-spoofing)
+
+| Change | Where |
+|--------|-------|
+| `ensure_acting_member(auth, claimed)` — a **session** caller may only act as its own member; applied to every member-attributed write (post/DM/group-DM/edit/vote/react/pin/unpin/transition/assign/unassign/claim/claim-next/renew). Bearer = act-as-any (unchanged); bypass unrestricted. Closes a session-impersonation vuln | `routes/mod.rs` + all write handlers |
+
 ## v201.0.0 — Perf: workspace-sharded event fan-out
 
 | Change | Where |
