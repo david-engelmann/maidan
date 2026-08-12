@@ -30,6 +30,34 @@ mdbook build book
 mdbook serve book   # preview at http://127.0.0.1:3000
 ```
 
+## Load & soak testing (Cluster 198, Arc D)
+
+`scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread
+/ search) at the server and prints per-op latency percentiles (p50/p95/p99) +
+throughput — the baseline the rest of Arc D's optimizations are measured
+against. The measurement is the `#[ignore]`d `load_baseline` test
+(`crates/maidan-server/tests/loadgen.rs`), so it never runs as a pass/fail CI
+gate (a hard latency floor would flake across runner hardware); the percentile
+math is pure and unit-tested and *does* run in CI.
+
+```sh
+# in-process server (SQLite), defaults (8 workers × 50 iterations):
+scripts/loadgen.sh
+
+# tune concurrency + switch to a timed soak:
+MAIDAN_LOADGEN_CONCURRENCY=32 MAIDAN_LOADGEN_DURATION_SECS=60 scripts/loadgen.sh
+
+# point at a live/scaled deployment (bring your own ids + bearer):
+MAIDAN_LOADGEN_URL=http://localhost:8080 \
+  MAIDAN_LOADGEN_BEARER=<token> \
+  MAIDAN_LOADGEN_IDS='<workspace>|<channel>|<thread>|<member>' \
+  scripts/loadgen.sh
+```
+
+The report is one row per op kind with `count/min/mean/p50/p95/p99/max` (ms) and
+an overall `ops/s`. Capture a baseline before an Arc D optimization and re-run
+after to show the change.
+
 ## PR flow (the long version)
 
 ### 1. Pick the next item

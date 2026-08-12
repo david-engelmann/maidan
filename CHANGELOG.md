@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [198.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 1 (the
+baseline). No new gate tag.
+
+### Added
+
+- **Load / soak harness.** Arc D optimizes performance & scale (sharded fan-out,
+  filtered-ANN search, batched context assembly), and those need a *baseline* to
+  be measured against. `scripts/loadgen.sh` drives concurrent REST traffic (post
+  message / read thread / search) at the server and reports per-op latency
+  percentiles (min/mean/p50/p95/p99/max, ms) + overall throughput. The
+  measurement is the `#[ignore]`d `load_baseline` test
+  (`crates/maidan-server/tests/loadgen.rs`) — it never runs as a pass/fail CI gate
+  (a hard latency floor would flake across runner hardware); it targets an
+  in-process SQLite server by default, or a live/scaled deployment via
+  `MAIDAN_LOADGEN_URL` + `_BEARER` + `_IDS`. Concurrency, per-worker iterations,
+  and a timed-soak duration are env-tunable. The percentile math is a pure
+  nearest-rank function that **is** unit-tested in CI. Baseline on the in-process
+  path: ~1.8k ops/s at 6×20 with sub-10ms p99s.
+
 ## [197.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 8 (the
