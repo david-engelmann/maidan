@@ -1,5 +1,6 @@
 //! Subset of the [A2A protocol](https://a2a-protocol.org/v1.0.0/specification) v1.0 JSON-RPC surface.
 
+use maidan_types::ContentBlock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -184,6 +185,23 @@ pub fn message_text(message: &A2aMessage) -> Option<String> {
     }
 }
 
+/// Structured content blocks from the message's text parts (Cluster 194): one
+/// [`ContentBlock::Text`] per text part, so an A2A message carries the same
+/// structured `content` as REST/MCP posts (Cluster 173) instead of dropping it.
+/// `None` when there are no text parts (mirrors [`message_text`]); `body` stays
+/// the joined searchable projection.
+pub fn message_content(message: &A2aMessage) -> Option<Vec<ContentBlock>> {
+    let blocks: Vec<ContentBlock> = message
+        .parts
+        .iter()
+        .filter(|p| p.kind == "text")
+        .map(|p| ContentBlock::Text {
+            text: p.text.clone(),
+        })
+        .collect();
+    (!blocks.is_empty()).then_some(blocks)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PushNotificationConfig {
@@ -302,6 +320,51 @@ mod tests {
             metadata: None,
         };
         assert_eq!(message_text(&msg), None);
+    }
+
+    #[test]
+    fn message_content_maps_text_parts_to_blocks() {
+        let msg = A2aMessage {
+            role: "agent".into(),
+            parts: vec![
+                TextPart {
+                    kind: "text".into(),
+                    text: "first".into(),
+                },
+                TextPart {
+                    kind: "image".into(),
+                    text: "ignored".into(),
+                },
+                TextPart {
+                    kind: "text".into(),
+                    text: "second".into(),
+                },
+            ],
+            metadata: None,
+        };
+        let content = message_content(&msg).expect("some content");
+        assert_eq!(content.len(), 2, "only the two text parts become blocks");
+        assert_eq!(
+            content,
+            vec![
+                ContentBlock::Text {
+                    text: "first".into()
+                },
+                ContentBlock::Text {
+                    text: "second".into()
+                },
+            ]
+        );
+        // No text parts → None, mirroring message_text.
+        let no_text = A2aMessage {
+            role: "agent".into(),
+            parts: vec![TextPart {
+                kind: "image".into(),
+                text: "x".into(),
+            }],
+            metadata: None,
+        };
+        assert_eq!(message_content(&no_text), None);
     }
 
     #[test]

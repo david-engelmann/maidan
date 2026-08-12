@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v194.0.0 — Agentic: A2A ingest preserves parts as structured content
+
+| Change | Where |
+|--------|-------|
+| A2A `POST /a2a/v1/rpc` ingest maps text parts to `ContentBlock::Text` (was `content: None`), so A2A messages carry the same structured content as REST/MCP (Cluster 173); `body` unchanged | `maidan-a2a/src/protocol.rs` + `a2a_agent.rs` |
+
 ## v193.0.0 — Agentic: the `roots/list` tool
 
 | Change | Where |

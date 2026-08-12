@@ -9,7 +9,7 @@ use axum::{extract::State, Extension, Json};
 use chrono::Utc;
 use futures::StreamExt;
 use maidan_a2a::{
-    is_terminal_task_state, maidan_context_from_metadata, message_text,
+    is_terminal_task_state, maidan_context_from_metadata, message_content, message_text,
     GetPushNotificationConfigResponse, GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse,
     SendMessageRequest, SendMessageResponse, SetPushNotificationConfigRequest,
     StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
@@ -233,6 +233,9 @@ async fn post_a2a_message(
     let body_text = message_text(&req.message).ok_or_else(|| {
         JsonRpcResponse::error(id.clone(), ERR_PARAMS, "message must include a text part")
     })?;
+    // Preserve the A2A message's parts as structured content (Cluster 194); A2A
+    // ingest previously dropped them (`content: None`), unlike REST/MCP posts.
+    let content = message_content(&req.message);
     let thread_ctx = resolve_thread_context(state.store.as_ref(), ThreadId(ctx.thread_id))
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_PARAMS, e.to_string()))?;
@@ -255,7 +258,7 @@ async fn post_a2a_message(
             author_id: MemberId(ctx.author_id),
             body: body_text,
             metadata: serde_json::json!({ "a2a": true }),
-            content: None,
+            content,
         })
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
