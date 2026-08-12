@@ -60,6 +60,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_pins"
         | "get_artifact_metadata"
         | "get_thread_context"
+        | "get_tool_transcript"
         | "get_workspace_context"
         | "summarize_thread"
         | "request_approval"
@@ -121,9 +122,18 @@ async fn enforce_channel_access(
                     .await?;
             }
         }
-        "list_messages" | "post_message" | "get_thread_context" | "summarize_thread"
-        | "pin_message" | "unpin_message" | "list_pins" | "assign_thread" | "claim_thread"
-        | "unassign_thread" | "renew_claim" => {
+        "list_messages"
+        | "post_message"
+        | "get_thread_context"
+        | "get_tool_transcript"
+        | "summarize_thread"
+        | "pin_message"
+        | "unpin_message"
+        | "list_pins"
+        | "assign_thread"
+        | "claim_thread"
+        | "unassign_thread"
+        | "renew_claim" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -186,6 +196,7 @@ pub async fn dispatch(
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, args).await,
         "list_threads" => thread::list_threads(store, args).await,
+        "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, args).await,
         "claim_thread" => thread::claim_thread(server, args).await,
         "unassign_thread" => thread::unassign_thread(server, args).await,

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v197.0.0 — Agentic: tool-call transcripts (Arc C finale)
+
+| Change | Where |
+|--------|-------|
+| `tool_transcript` — walks a thread's messages, pairs every `ToolUse` with its `ToolResult` by id (order-independent), returns a token-lean `ToolTranscript` (ordered calls + `orphan_results`, drops text/code/body); tombstoned messages skipped | `maidan-types/src/models.rs` |
+| REST `GET /threads/:id/tool-transcript` + MCP `get_tool_transcript` (both `workspace:read`, thread-RBAC, `limit` 1..=500 default 200) | `routes/thread.rs`, `tools/thread.rs` + OpenAPI + contracts |
+
 ## v196.0.0 — Agentic: `wait_for_mention` (blocking long-poll)
 
 | Change | Where |

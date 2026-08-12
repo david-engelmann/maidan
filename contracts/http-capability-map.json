@@ -210,6 +210,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/threads/{id}/tool-transcript",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/assignee",
     "capability": "thread:transition",

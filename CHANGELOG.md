@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [197.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 8 (the
+finale). No new gate tag.
+
+### Added
+
+- **Tool-call transcripts.** Cluster 173 gave messages structured `content` with
+  `ToolUse`/`ToolResult` blocks, but nothing correlated them — a multi-step
+  agent's tool calls were scattered across message bodies. `tool_transcript`
+  (maidan-types) walks a thread's messages, pairs every `ToolUse` with its
+  `ToolResult` by id (order-independent — a result may land in a later message),
+  and returns a `ToolTranscript`: the ordered tool calls each with `{name, input,
+  result?}` and their message context, plus any `orphan_results` whose call is
+  outside the scanned window. It's a **token-lean projection** — `Text`/`Code`
+  blocks and `body` are dropped. Exposed as REST `GET /threads/:id/tool-transcript`
+  and MCP `get_tool_transcript` (both `workspace:read`, thread-RBAC enforced,
+  `limit` clamped 1..=500, default 200). Tombstoned messages are skipped.
+
+### Notes
+
+- **Arc C (agentic task-queue depth) is complete** (190 assignment read-side, 191
+  MCP tools, 192 claim leases, 193 `list_roots`, 194 A2A `parts→content`, 195
+  handoff notes, 196 `wait_for_mention`, 197 tool-call transcripts). Next: Arc D
+  (performance & scale).
+
 ## [196.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 7. No

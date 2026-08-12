@@ -173,6 +173,13 @@ pub struct ThreadContextQuery {
     pub include_edits: bool,
 }
 
+/// Query for `GET /threads/:id/tool-transcript` (Cluster 197).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ToolTranscriptQuery {
+    /// Max messages to scan (default 200, clamped 1..=500).
+    pub limit: Option<i64>,
+}
+
 fn default_transition_limit() -> i64 {
     50
 }
