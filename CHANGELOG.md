@@ -7,6 +7,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [201.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 4. No new
+gate tag.
+
+### Changed
+
+- **Workspace-sharded event fan-out.** The event bus (both `InMemoryBus` and the
+  `PostgresBus` local broadcast) used a single broadcast channel: every publish
+  woke *every* subscriber, which then filter-and-discarded the events for other
+  workspaces — O(total subscribers) per event regardless of relevance. A new
+  `ShardedBroadcast` routes a publish only to the subscribers that could match
+  it: the event's **workspace shard** plus a **global shard** for cross-workspace
+  subscribers (operators, or any filter without a `workspace_id`). A
+  workspace-scoped subscriber reads its workspace's shard and never sees another
+  tenant's traffic. This is an optimization *under* the existing `EventFilter`
+  (the filter still narrows by channel/thread/kind, just on far fewer events), so
+  behavior is unchanged — a workspace-scoped filter never matched another
+  workspace's events anyway. Shards are created lazily on first subscribe and
+  pruned when their last receiver drops (bounded memory). Delivery, presence, and
+  resource-notify (separate channels) are unaffected.
+
+### Notes
+
+- **Batched `pg_notify` declined** (Arc D item): the listener hydrates a single
+  pointer per NOTIFY and the hot path publishes per-event with no natural batch
+  to coalesce (only the latency-tolerant fallback relay batches), so a correct
+  version needs range-hydration surgery on the delivery core for a win that only
+  helps the non-hot path. **Read-replica routing deferred** — needs a read-pool
+  threaded through `Store` + read-after-write handling and a real replica to
+  validate. Both logged in Open Work.
+
 ## [200.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 3. No new
