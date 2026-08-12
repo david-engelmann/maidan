@@ -9,9 +9,17 @@ pub struct SearchFilters {
     pub channel_id: Option<ChannelId>,
     /// Restrict to messages whose author has this [`MemberKind`].
     pub author_kind: Option<MemberKind>,
+    /// RBAC pre-filter (Cluster 200): channels whose messages must be excluded at
+    /// the query level — the private channels the caller isn't a member of. Not a
+    /// user-settable facet; the server computes it so inaccessible hits never
+    /// crowd out the requested `limit` (the thread-level post-filter stays the
+    /// authoritative, DM-aware check). Empty = no restriction.
+    pub deny_channels: Vec<ChannelId>,
 }
 
 impl SearchFilters {
+    /// `true` when no **user** facet is set. The RBAC `deny_channels` pre-filter is
+    /// deliberately excluded — it is applied by the query regardless.
     pub fn is_empty(&self) -> bool {
         self.author_id.is_none() && self.channel_id.is_none() && self.author_kind.is_none()
     }

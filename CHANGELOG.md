@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [200.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 3. No new
+gate tag.
+
+### Changed
+
+- **Filtered-ANN search: RBAC channel-deny pushed into the query.** Message
+  search fetched the top-K hits and then dropped the ones the caller couldn't
+  access (a per-thread post-filter). That both wasted work ranking inaccessible
+  rows and — worse — **under-filled the requested `limit`**: ask for 10, get 4
+  because 6 top hits were in a private channel. The server now computes the
+  caller's private-channel deny-set (`maidan_auth::private_channel_deny_set` —
+  private, non-DM channels the caller isn't a member of) and passes it as
+  `SearchFilters::deny_channels`; both backends exclude those channels **in the
+  query** (SQLite `NOT IN (…)`, Postgres `<> ALL($n)`), across lexical +
+  semantic (hybrid composes them). So a full page of *accessible* hits comes
+  back, and private-channel content is excluded at the source. The thread-level
+  post-filter stays the authoritative, DM-participant-aware check (DMs live in
+  the shared `__dm__` channel, so they're intentionally excluded from the
+  channel-level pre-filter). Applied to REST `GET …/search` and the MCP
+  `search_messages` tool; `bypass` callers get an empty deny-set (unchanged).
+
 ## [199.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 2. No new

@@ -41,6 +41,7 @@ async fn full_text_search_against_postgres() {
     let fx = common::seed(&*store).await;
     common::run_search_suite(&search, &fx).await;
     common::assert_faceted_search(&search, &fx).await;
+    common::assert_deny_channels_filter(&search, &fx).await;
 }
 
 #[tokio::test]

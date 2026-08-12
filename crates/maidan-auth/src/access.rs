@@ -8,7 +8,7 @@
 //! `has_capability` / `ensure_workspace`.
 
 use maidan_store::Store;
-use maidan_types::{ChannelId, MessageId, ThreadId, DM_CHANNEL_NAME};
+use maidan_types::{ChannelId, MessageId, ThreadId, WorkspaceId, DM_CHANNEL_NAME};
 
 use crate::{AuthContext, AuthError};
 
@@ -50,6 +50,33 @@ pub async fn can_access_channel(
         Err(AuthError::Forbidden(_)) => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// The private (non-DM) channels in `workspace_id` the caller is **not** a member
+/// of (Cluster 200) — the set to exclude at the query level so inaccessible hits
+/// don't crowd out a search's requested `limit`. `bypass` callers get an empty
+/// set (they see everything). DM threads are intentionally excluded: DM access is
+/// participant-based, not channel-membership, so it stays with the authoritative
+/// thread-level post-filter. This is a *pre-filter*, never the sole check.
+pub async fn private_channel_deny_set(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<ChannelId>, AuthError> {
+    if auth.bypass {
+        return Ok(Vec::new());
+    }
+    let channels = store.list_channels(workspace_id).await?;
+    let mut deny = Vec::new();
+    for channel in channels {
+        if channel.private
+            && channel.name != DM_CHANNEL_NAME
+            && !store.channel_is_member(channel.id, auth.member_id).await?
+        {
+            deny.push(channel.id);
+        }
+    }
+    Ok(deny)
 }
 
 /// Ensure the caller participates in the DM / group-DM conversation backing
