@@ -29,6 +29,9 @@ struct AssignThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,
     assignee_id: uuid::Uuid,
+    /// Optional handoff note for the assignee (Cluster 195).
+    #[serde(default)]
+    note: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -50,6 +53,7 @@ async fn publish_assignment(
     thread: &Thread,
     actor_id: MemberId,
     previous_assignee_id: Option<MemberId>,
+    note: Option<String>,
 ) -> Result<(), McpError> {
     if server.event_bus.is_none() {
         return Ok(());
@@ -66,6 +70,7 @@ async fn publish_assignment(
             actor_id,
             previous_assignee_id,
             assignee_id: thread.assignee_id,
+            note,
             thread: thread.clone(),
         })
         .await;
@@ -83,7 +88,7 @@ pub(super) async fn assign_thread(
         .store
         .assign_thread(thread_id, MemberId(a.assignee_id))
         .await?;
-    publish_assignment(server, &thread, MemberId(a.actor_id), previous).await?;
+    publish_assignment(server, &thread, MemberId(a.actor_id), previous, a.note).await?;
     Ok(content_json(&thread))
 }
 
@@ -96,7 +101,7 @@ pub(super) async fn claim_thread(
     let member_id = MemberId(a.member_id);
     let result = server.store.claim_thread(thread_id, member_id).await?;
     if result.claimed {
-        publish_assignment(server, &result.thread, member_id, None).await?;
+        publish_assignment(server, &result.thread, member_id, None, None).await?;
     }
     Ok(content_json(&result))
 }
@@ -109,7 +114,7 @@ pub(super) async fn unassign_thread(
     let thread_id = ThreadId(a.thread_id);
     let previous = server.store.get_thread(thread_id).await?.assignee_id;
     let thread = server.store.unassign_thread(thread_id).await?;
-    publish_assignment(server, &thread, MemberId(a.actor_id), previous).await?;
+    publish_assignment(server, &thread, MemberId(a.actor_id), previous, None).await?;
     Ok(content_json(&thread))
 }
 
@@ -168,7 +173,7 @@ pub(super) async fn claim_next_thread(
         .claim_next_thread(ChannelId(a.channel_id), member_id, a.lease_secs)
         .await?;
     if let Some(thread) = &claimed {
-        publish_assignment(server, thread, member_id, None).await?;
+        publish_assignment(server, thread, member_id, None, None).await?;
     }
     Ok(content_json(&claimed))
 }

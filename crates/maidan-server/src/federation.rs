@@ -258,6 +258,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             actor_id,
             previous_assignee_id,
             assignee_id,
+            note,
             thread,
         } => ThreadAssignmentChanged {
             occurred_at,
@@ -267,6 +268,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             actor_id,
             previous_assignee_id,
             assignee_id,
+            note,
             thread,
         },
         MessagePosted {
