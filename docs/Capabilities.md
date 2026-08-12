@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v198.0.0 — Perf: load / soak harness (Arc D opener)
+
+| Change | Where |
+|--------|-------|
+| `scripts/loadgen.sh` + `#[ignore]`d `load_baseline` test — concurrent REST load (post/read/search), reports per-op latency percentiles + throughput; in-process (SQLite) or external (`MAIDAN_LOADGEN_URL`); env-tunable concurrency/iterations/soak-duration; pure nearest-rank percentile math unit-tested in CI | `crates/maidan-server/tests/loadgen.rs`, `scripts/loadgen.sh` |
+
 ## v197.0.0 — Agentic: tool-call transcripts (Arc C finale)
 
 | Change | Where |
