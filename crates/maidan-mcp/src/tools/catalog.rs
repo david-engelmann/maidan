@@ -595,7 +595,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "list_roots",
-            "description": "List the roots (filesystem/workspace boundaries) the connected MCP client exposes, via the server→client roots/list request over the GET /mcp/streamable stream. Requires a streamable session whose client declared the roots capability. Returns the client's {roots: [...]}.",
+            "description": "List the roots (filesystem/workspace boundaries) the connected MCP client exposes, via the server→client roots/list request over the GET /mcp/streamable stream. Requires a streamable session whose client declared the roots capability. Returns the client's roots array.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
