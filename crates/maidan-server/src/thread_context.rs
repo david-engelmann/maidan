@@ -3,10 +3,17 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use futures::stream::{self, StreamExt, TryStreamExt};
 use maidan_store::Store;
 use maidan_types::*;
 
 use crate::error::ApiError;
+
+/// Max concurrent per-thread context builds inside a workspace-context pack
+/// (Cluster 199). Each build is ~7 store round-trips; bounding the fan-out keeps
+/// a single request from saturating the connection pool while still collapsing
+/// the sequential per-thread latency of a page.
+const CONTEXT_THREAD_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct ThreadFsmContext {
@@ -218,10 +225,17 @@ pub async fn build_workspace_context(
     } else {
         None
     };
-    let mut threads = Vec::new();
-    for thread in page {
-        threads.push(build_thread_context(store, thread.id, limits).await?);
-    }
+    // Build each thread's context concurrently (bounded), preserving page order
+    // (Cluster 199). Each build is ~7 independent store round-trips; a page of up
+    // to 50 threads built sequentially stacked that latency linearly. `buffered`
+    // keeps the output in page order and short-circuits on the first error, so
+    // the response contract (and the tombstone-mid-build 404) is unchanged.
+    let thread_ids: Vec<ThreadId> = page.iter().map(|t| t.id).collect();
+    let threads: Vec<ThreadContext> = stream::iter(thread_ids)
+        .map(|tid| build_thread_context(store, tid, limits))
+        .buffered(CONTEXT_THREAD_CONCURRENCY)
+        .try_collect()
+        .await?;
     Ok(WorkspaceContext {
         workspace,
         channels,

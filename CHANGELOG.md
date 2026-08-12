@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [199.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 2. No new
+gate tag.
+
+### Changed
+
+- **Workspace-context pack builds its threads concurrently.**
+  `build_workspace_context` built each page thread's context in a sequential
+  `for` loop, and each `build_thread_context` is ~7 independent store
+  round-trips — so a page of up to 50 threads stacked that latency linearly. It
+  now builds them with a bounded-concurrency `buffered` stream
+  (`CONTEXT_THREAD_CONCURRENCY = 8`), collapsing the wall-clock from
+  `Σ per-thread` toward `ceil(N/8) ×` a single build while capping fan-out so one
+  request can't saturate the connection pool. `buffered` preserves page order and
+  short-circuits on the first error, so the response contract (and the
+  tombstoned-mid-build 404) is unchanged — verified by the query-count guard
+  (query *count* is identical, only concurrency changed) and a new
+  no-cross-contamination correctness test.
+
 ## [198.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 1 (the
