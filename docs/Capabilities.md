@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v196.0.0 — Agentic: `wait_for_mention` (blocking long-poll)
+
+| Change | Where |
+|--------|-------|
+| MCP `wait_for_mention` — subscribes to the event bus filtered to the member's `MentionRecorded` events and blocks until one arrives or `timeout_ms` lapses (default 30 s, clamp 1 ms–300 s); returns the mention or `null`. Live-only (drain existing with `get_inbox` first); RBAC-filtered by `can_access_thread`. Requires `workspace:read` | `crates/maidan-mcp/src/tools/member.rs` + `mod.rs` + `catalog.rs` + both `contracts/mcp-*.json` |
+
 ## v195.0.0 — Agentic: handoff notes on thread assignment
 
 | Change | Where |

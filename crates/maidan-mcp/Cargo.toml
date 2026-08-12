@@ -19,6 +19,7 @@ maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
 async-trait.workspace = true
 base64 = "0.22"
+futures = "0.3"
 bytes.workspace = true
 chrono.workspace = true
 serde.workspace = true
