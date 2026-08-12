@@ -215,6 +215,18 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "wait_for_mention",
+            "description": "Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Live-only: it sees mentions recorded after the call subscribes, so drain existing ones with get_inbox first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {

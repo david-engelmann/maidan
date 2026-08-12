@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [196.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 7. No
+new gate tag.
+
+### Added
+
+- **`wait_for_mention` — a blocking MCP long-poll for the next @mention.** An
+  MCP-native agent can now *await* work instead of polling: `wait_for_mention`
+  subscribes to the event bus filtered to the member's `MentionRecorded` events
+  and blocks until one arrives (or a `timeout_ms` window lapses, default 30 s,
+  clamped 1 ms–300 s), returning the mention event or `null` on timeout. It is a
+  **live** primitive — it only sees mentions recorded after the call subscribes,
+  so an agent drains existing ones with `get_inbox`/`list_mentions` first, then
+  blocks for new ones; the resumable `GET /mcp/stream` SSE transport remains the
+  at-least-once alternative. A mention in a private channel the caller can't
+  access is filtered (RBAC via `can_access_thread`), so the tool never reveals
+  activity in a thread the caller couldn't otherwise see. Requires
+  `workspace:read`.
+
 ## [195.0.0] — 2026-08-11
 
 Post-gate hardening (Phase XXIV). Agentic task-queue depth — arc C, part 6. No

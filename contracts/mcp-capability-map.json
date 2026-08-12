@@ -43,5 +43,6 @@
   "unassign_thread": "thread:transition",
   "unpin_message": "workspace:write",
   "upload_artifact": "artifact:upload",
-  "upload_artifact_multipart_part": "artifact:upload"
+  "upload_artifact_multipart_part": "artifact:upload",
+  "wait_for_mention": "workspace:read"
 }

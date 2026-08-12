@@ -66,6 +66,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_mentions"
         | "get_inbox"
         | "mark_inbox_read"
+        | "wait_for_mention"
         | "list_assigned_threads"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
@@ -194,6 +195,7 @@ pub async fn dispatch(
         "list_mentions" => member::list_mentions(store, args).await,
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
+        "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,

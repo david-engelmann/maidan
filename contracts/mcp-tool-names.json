@@ -43,5 +43,6 @@
   "unassign_thread",
   "unpin_message",
   "upload_artifact",
-  "upload_artifact_multipart_part"
+  "upload_artifact_multipart_part",
+  "wait_for_mention"
 ]
