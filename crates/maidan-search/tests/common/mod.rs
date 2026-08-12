@@ -266,3 +266,45 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
         .unwrap();
     assert_eq!(hits.len(), 1, "bot authored one deployment message");
 }
+
+/// Cluster 200: the RBAC `deny_channels` pre-filter excludes a channel's hits at
+/// the query level (exercised on both backends via `assert_faceted_search`'s
+/// callers is not enough — this is its own suite entry).
+#[allow(dead_code)]
+pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
+    // Baseline: "rust" matches messages in both channels.
+    let all = search
+        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .await
+        .unwrap();
+    assert!(
+        all.iter().any(|h| h.channel_id == fx.general_channel_id)
+            && all.iter().any(|h| h.channel_id == fx.release_channel_id),
+        "baseline search spans both channels"
+    );
+
+    // Deny `general` → no hit comes from it, and `release` hits survive.
+    let deny_general = SearchFilters {
+        deny_channels: vec![fx.general_channel_id],
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &deny_general)
+        .await
+        .unwrap();
+    assert!(
+        !hits.is_empty() && hits.iter().all(|h| h.channel_id == fx.release_channel_id),
+        "denying general leaves only release hits, got {hits:?}"
+    );
+
+    // Deny both → the pre-filter empties the result.
+    let deny_both = SearchFilters {
+        deny_channels: vec![fx.general_channel_id, fx.release_channel_id],
+        ..SearchFilters::default()
+    };
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 10, &deny_both)
+        .await
+        .unwrap();
+    assert!(hits.is_empty(), "denying every channel yields no hits");
+}

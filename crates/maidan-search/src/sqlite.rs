@@ -46,7 +46,10 @@ impl Search for SqliteSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
-        let rows = sqlx::query(
+        // RBAC pre-filter (Cluster 200): drop hits in denied channels at the
+        // query level. SQLite has no array binding — expand `NOT IN (?, …)`.
+        let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
+        let sql = format!(
             r#"
             SELECT
                 m.id            AS message_id,
@@ -70,21 +73,24 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
+              {deny_clause}
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT ?
-            "#,
-        )
-        .bind(workspace_id.0)
-        .bind(&fts_query)
-        .bind(author_id)
-        .bind(author_id)
-        .bind(channel_id)
-        .bind(channel_id)
-        .bind(author_kind.as_deref())
-        .bind(author_kind.as_deref())
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+            "#
+        );
+        let mut q = sqlx::query(&sql)
+            .bind(workspace_id.0)
+            .bind(&fts_query)
+            .bind(author_id)
+            .bind(author_id)
+            .bind(channel_id)
+            .bind(channel_id)
+            .bind(author_kind.as_deref())
+            .bind(author_kind.as_deref());
+        for cid in &filters.deny_channels {
+            q = q.bind(cid.0);
+        }
+        let rows = q.bind(limit).fetch_all(&self.pool).await?;
 
         let mut hits: Vec<SearchHit> = rows.iter().map(row_to_hit).collect();
         normalize_lexical_scores(&mut hits);
@@ -140,9 +146,10 @@ impl Search for SqliteSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
+        let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
         if sqlite_vec::vec_available(&self.pool).await {
             let query_bytes = embedding_bytes(embedding);
-            let rows = sqlx::query(&format!(
+            let sql = format!(
                 r#"
                 SELECT
                     m.id            AS message_id,
@@ -163,22 +170,28 @@ impl Search for SqliteSearch {
                   AND (? IS NULL OR m.author_id = ?)
                   AND (? IS NULL OR t.channel_id = ?)
                   AND (? IS NULL OR mem.kind = ?)
+                  {deny_clause}
                 ORDER BY vec_distance_cosine(e.embedding, ?)
                 LIMIT ?
                 "#
-            ))
-            .bind(&query_bytes)
-            .bind(workspace_id.0)
-            .bind(author_id)
-            .bind(author_id)
-            .bind(channel_id)
-            .bind(channel_id)
-            .bind(author_kind.as_deref())
-            .bind(author_kind.as_deref())
-            .bind(&query_bytes)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await?;
+            );
+            let mut q = sqlx::query(&sql)
+                .bind(&query_bytes)
+                .bind(workspace_id.0)
+                .bind(author_id)
+                .bind(author_id)
+                .bind(channel_id)
+                .bind(channel_id)
+                .bind(author_kind.as_deref())
+                .bind(author_kind.as_deref());
+            for cid in &filters.deny_channels {
+                q = q.bind(cid.0);
+            }
+            let rows = q
+                .bind(&query_bytes)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?;
 
             let mut hits: Vec<SearchHit> = rows
                 .iter()
@@ -188,7 +201,7 @@ impl Search for SqliteSearch {
             return Ok(hits);
         }
 
-        let rows = sqlx::query(&format!(
+        let sql = format!(
             r#"
             SELECT
                 m.id            AS message_id,
@@ -209,17 +222,21 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
+              {deny_clause}
             "#
-        ))
-        .bind(workspace_id.0)
-        .bind(author_id)
-        .bind(author_id)
-        .bind(channel_id)
-        .bind(channel_id)
-        .bind(author_kind.as_deref())
-        .bind(author_kind.as_deref())
-        .fetch_all(&self.pool)
-        .await?;
+        );
+        let mut q = sqlx::query(&sql)
+            .bind(workspace_id.0)
+            .bind(author_id)
+            .bind(author_id)
+            .bind(channel_id)
+            .bind(channel_id)
+            .bind(author_kind.as_deref())
+            .bind(author_kind.as_deref());
+        for cid in &filters.deny_channels {
+            q = q.bind(cid.0);
+        }
+        let rows = q.fetch_all(&self.pool).await?;
 
         let mut hits: Vec<SearchHit> = rows
             .iter()
@@ -308,6 +325,18 @@ fn embedding_bytes(embedding: &[f32]) -> Vec<u8> {
         out.extend_from_slice(&value.to_le_bytes());
     }
     out
+}
+
+/// `AND t.channel_id NOT IN (?, …)` for the RBAC deny pre-filter, or empty when
+/// there is nothing to deny (Cluster 200). SQLite has no array binding, so the
+/// caller binds each `ChannelId` in `deny` after the fixed facet binds.
+fn deny_channels_clause_sqlite(deny: &[ChannelId]) -> String {
+    if deny.is_empty() {
+        String::new()
+    } else {
+        let placeholders = vec!["?"; deny.len()].join(", ");
+        format!("AND t.channel_id NOT IN ({placeholders})")
+    }
 }
 
 fn row_to_hit(row: &sqlx::sqlite::SqliteRow) -> SearchHit {

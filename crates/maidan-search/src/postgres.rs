@@ -65,6 +65,9 @@ impl Search for PostgresSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
         let websearch = use_websearch_to_tsquery(query);
+        // RBAC pre-filter (Cluster 200): exclude denied channels. An empty array
+        // makes `<> ALL($8)` vacuously true, so no dynamic SQL is needed.
+        let deny = deny_channel_uuids(filters);
 
         let rows = sqlx::query(
             r#"
@@ -99,6 +102,7 @@ impl Search for PostgresSearch {
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)
+              AND t.channel_id <> ALL($8)
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT $3
             "#,
@@ -110,6 +114,7 @@ impl Search for PostgresSearch {
         .bind(channel_id)
         .bind(author_kind)
         .bind(websearch)
+        .bind(deny)
         .fetch_all(&self.pool)
         .await?;
 
@@ -191,6 +196,7 @@ impl Search for PostgresSearch {
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
+        let deny = deny_channel_uuids(filters);
 
         let sql = format!(
             r#"
@@ -214,6 +220,7 @@ impl Search for PostgresSearch {
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)
+              AND t.channel_id <> ALL($7)
             ORDER BY e.embedding <=> $2
             LIMIT $3
             "#
@@ -224,7 +231,8 @@ impl Search for PostgresSearch {
             .bind(limit)
             .bind(author_id)
             .bind(channel_id)
-            .bind(author_kind);
+            .bind(author_kind)
+            .bind(deny);
         // When `ef_search` is configured, set it for this query only via a
         // transaction-scoped `SET LOCAL` (pooled connections are reused, so a
         // session-level SET would leak to other queries).
@@ -266,6 +274,12 @@ impl Search for PostgresSearch {
         .await?;
         Ok(())
     }
+}
+
+/// The RBAC deny-channel set as raw UUIDs for a `<> ALL($n)` array bind
+/// (Cluster 200). An empty vec makes the clause vacuously true.
+fn deny_channel_uuids(filters: &SearchFilters) -> Vec<Uuid> {
+    filters.deny_channels.iter().map(|c| c.0).collect()
 }
 
 fn row_to_lexical_hit(row: &sqlx::postgres::PgRow) -> SearchHit {

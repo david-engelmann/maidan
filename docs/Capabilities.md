@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v200.0.0 — Perf + security: filtered-ANN search (RBAC deny in the query)
+
+| Change | Where |
+|--------|-------|
+| Search excludes the caller's inaccessible private channels **in the query** (`SearchFilters::deny_channels`; SQLite `NOT IN`, Postgres `<> ALL($n)`; lexical + semantic) so a full page of accessible hits is returned instead of a post-filtered short page — DMs stay with the authoritative thread-level post-filter | `maidan-search/src/{sqlite,postgres}.rs` |
+| `maidan_auth::private_channel_deny_set` — the private, non-DM channels the caller isn't a member of; wired into REST `GET …/search` + MCP `search_messages` | `maidan-auth/src/access.rs`, `routes/search.rs`, `tools/search.rs` |
+
 ## v199.0.0 — Perf: concurrent workspace-context assembly
 
 | Change | Where |

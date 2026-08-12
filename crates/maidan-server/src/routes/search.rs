@@ -21,10 +21,16 @@ pub async fn search_messages(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SEARCH_QUERY)?;
     ensure_workspace(&auth, workspace_id)?;
+    // Exclude private channels the caller can't see at the query level (Cluster
+    // 200), so inaccessible hits don't crowd out the requested `limit`. The
+    // per-hit post-filter below stays the authoritative, DM-aware check.
+    let deny_channels =
+        maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
     let filters = maidan_search::SearchFilters {
         author_id: q.author.map(MemberId),
         channel_id: q.channel.map(ChannelId),
         author_kind: q.kind,
+        deny_channels,
     };
     let mut hits = match q.mode {
         SearchMode::Lexical => {
