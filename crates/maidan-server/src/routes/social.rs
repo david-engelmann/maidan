@@ -13,7 +13,7 @@ use maidan_auth::{
 use maidan_router::{resolve_message_chain, resolve_thread_context};
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish, ApiResult};
+use super::{cap, ensure_workspace, publish, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::ApiJson;
 use crate::state::AppState;
@@ -29,26 +29,17 @@ pub async fn cast_vote(
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
-    state
+    // Cluster 206: vote row + `VoteCast` event commit atomically (transactional
+    // outbox); `publish_stored` then notifies the bus.
+    let stored = state
         .store
-        .cast_vote(NewVote {
+        .cast_vote_with_event(NewVote {
             message_id: MessageId(message_id),
             member_id: MemberId(body.member_id),
             kind: body.kind.clone(),
         })
         .await?;
-    publish(
-        &state,
-        Event::VoteCast {
-            occurred_at: Utc::now(),
-            workspace_id: chain.workspace_id,
-            thread_id: chain.thread_id,
-            message_id: MessageId(message_id),
-            member_id: MemberId(body.member_id),
-            vote_kind: body.kind,
-        },
-    )
-    .await;
+    publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), MessageId(message_id))
             .await;
@@ -87,26 +78,16 @@ pub async fn add_reaction(
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
-    state
+    // Cluster 206: reaction row + `ReactionAdded` event commit atomically.
+    let stored = state
         .store
-        .add_reaction(NewReaction {
-            message_id,
-            member_id,
-            emoji: emoji.clone(),
-        })
-        .await?;
-    publish(
-        &state,
-        Event::ReactionAdded {
-            occurred_at: Utc::now(),
-            workspace_id: chain.workspace_id,
-            thread_id: chain.thread_id,
+        .add_reaction_with_event(NewReaction {
             message_id,
             member_id,
             emoji,
-        },
-    )
-    .await;
+        })
+        .await?;
+    publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message_id).await;
     state.mcp.publish_resource_uris(uris).await;
@@ -127,23 +108,14 @@ pub async fn remove_reaction(
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
-    if state
+    // Cluster 206: the DELETE + `ReactionRemoved` event commit atomically; the
+    // event is only produced when a row was actually removed.
+    let (_removed, stored) = state
         .store
-        .remove_reaction(message_id, member_id, &emoji)
-        .await?
-    {
-        publish(
-            &state,
-            Event::ReactionRemoved {
-                occurred_at: Utc::now(),
-                workspace_id: chain.workspace_id,
-                thread_id: chain.thread_id,
-                message_id,
-                member_id,
-                emoji,
-            },
-        )
-        .await;
+        .remove_reaction_with_event(message_id, member_id, &emoji)
+        .await?;
+    if let Some(stored) = stored {
+        publish_stored(&state, stored).await;
         let uris =
             maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message_id).await;
         state.mcp.publish_resource_uris(uris).await;

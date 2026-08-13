@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v206.0.0 — Correctness: transactional outbox (votes + reactions)
+
+| Change | Where |
+|--------|-------|
+| `cast_vote_with_event` / `add_reaction_with_event` / `remove_reaction_with_event` — row + event in one tx (shared `events::message_scope_in_tx` resolver; remove emits only when a row was removed); routes use them + `publish_stored`. Continues the 205 outbox migration | `store/*/{votes,reactions,events}.rs`, `routes/social.rs` |
+
 ## v205.0.0 — Correctness: transactional outbox (foundation)
 
 | Change | Where |

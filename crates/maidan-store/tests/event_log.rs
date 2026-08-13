@@ -257,3 +257,100 @@ async fn create_with_event_commits_row_and_event() {
         .iter()
         .any(|e| e.id == th_event.id && e.kind == EventKind::ThreadCreated));
 }
+
+/// Cluster 206: the social `*_with_event` mutations append their event in the
+/// same tx as the row — a cast vote / added reaction produces a durable event.
+#[tokio::test]
+async fn social_with_event_appends_atomically() {
+    use maidan_types::{MemberId, NewReaction, NewThread, NewVote};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "social-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let msg = store
+        .post_message(maidan_types::NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "hi".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("msg");
+
+    let vote_event = store
+        .cast_vote_with_event(NewVote {
+            message_id: msg.id,
+            member_id: MemberId(author.id.0),
+            kind: "up".to_string(),
+        })
+        .await
+        .expect("vote");
+    assert_eq!(vote_event.kind, EventKind::VoteCast);
+
+    let react_event = store
+        .add_reaction_with_event(NewReaction {
+            message_id: msg.id,
+            member_id: MemberId(author.id.0),
+            emoji: "👍".to_string(),
+        })
+        .await
+        .expect("reaction");
+    assert_eq!(react_event.kind, EventKind::ReactionAdded);
+
+    // A removal that hits nothing produces no event; a real one does.
+    let (removed_none, none_event) = store
+        .remove_reaction_with_event(msg.id, MemberId(author.id.0), "🚫")
+        .await
+        .expect("remove miss");
+    assert!(!removed_none && none_event.is_none());
+    let (removed, some_event) = store
+        .remove_reaction_with_event(msg.id, MemberId(author.id.0), "👍")
+        .await
+        .expect("remove hit");
+    assert!(removed && some_event.is_some());
+
+    // All the produced events are durably in the log.
+    let events = store.list_events_after(ws.id, 0, 100).await.expect("events");
+    for id in [vote_event.id, react_event.id, some_event.unwrap().id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

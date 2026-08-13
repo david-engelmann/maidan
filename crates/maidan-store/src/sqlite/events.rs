@@ -1,8 +1,34 @@
-use maidan_types::{Event, StoredEvent, WorkspaceId};
+use maidan_types::{ChannelId, Event, MessageId, StoredEvent, ThreadId, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
 use crate::sqlite::outbox;
+
+/// Resolve a message's (workspace, channel, thread) inside a transaction
+/// (Cluster 206) — used by the message-scoped `*_with_event` mutations to build
+/// their event's context in the same tx as the mutation. `NotFound` if the
+/// message doesn't exist.
+pub async fn message_scope_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    message_id: MessageId,
+) -> Result<(WorkspaceId, ChannelId, ThreadId), StoreError> {
+    let row = sqlx::query(
+        "SELECT c.workspace_id AS ws, t.channel_id AS ch, m.thread_id AS th
+         FROM maidan_messages m
+         JOIN maidan_threads t ON t.id = m.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE m.id = ?",
+    )
+    .bind(message_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok((
+        WorkspaceId(row.get::<uuid::Uuid, _>("ws")),
+        ChannelId(row.get::<uuid::Uuid, _>("ch")),
+        ThreadId(row.get::<uuid::Uuid, _>("th")),
+    ))
+}
 
 pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;

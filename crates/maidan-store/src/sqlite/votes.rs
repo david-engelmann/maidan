@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberId, MessageId, NewVote, Vote};
+use maidan_types::{Event, MemberId, MessageId, NewVote, StoredEvent, Vote};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 pub async fn cast(pool: &SqlitePool, new: NewVote) -> Result<(), StoreError> {
     let now = Utc::now();
@@ -19,6 +20,35 @@ pub async fn cast(pool: &SqlitePool, new: NewVote) -> Result<(), StoreError> {
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Cast a vote and append its `VoteCast` event in one transaction (Cluster 206).
+pub async fn cast_with_event(pool: &SqlitePool, new: NewVote) -> Result<StoredEvent, StoreError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO maidan_votes (message_id, member_id, kind, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(new.message_id.0)
+    .bind(new.member_id.0)
+    .bind(&new.kind)
+    .bind(Utc::now())
+    .execute(&mut *tx)
+    .await?;
+    let (workspace_id, _channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, new.message_id).await?;
+    let event = Event::VoteCast {
+        occurred_at: Utc::now(),
+        workspace_id,
+        thread_id,
+        message_id: new.message_id,
+        member_id: new.member_id,
+        vote_kind: new.kind.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok(stored)
 }
 
 pub async fn list(pool: &SqlitePool, message_id: MessageId) -> Result<Vec<Vote>, StoreError> {
