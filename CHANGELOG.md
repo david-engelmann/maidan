@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [203.0.0] — 2026-08-13
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 2. No new gate tag.
+
+### Security
+
+- **DM / group-DM participation on subscribe + metadata reads.** Cluster 180
+  closed DM reads on the generic thread *route*, but the real-time **subscribe**
+  path and the DM **metadata** routes still had no participant check:
+  - **Subscribe (the leak of DM *content*):** `expand_event_filter` fetched a DM
+    by a caller-supplied `dm_conversation_id` with no participant check and
+    filled in its `thread_id`, so anyone with `event:subscribe` could tail any
+    DM/group-DM's live messages on `GET /mcp/stream` (or WS) — by the
+    `dm_conversation_id` *or* the `__dm__` `thread_id` directly. It now runs
+    `ensure_thread_access` (DM-participant-aware, Cluster 180; bypass-exempt) on
+    the resolved `thread_id`, closing both paths across WS + MCP-SSE.
+  - **Metadata reads:** `GET /dm/:id` and `GET /group-dms/:id` returned a
+    conversation's roster + thread to any workspace member; `list` enumerated any
+    member's DM graph. A **session** caller must now be a participant to read a
+    conversation and may only list its *own* (via the Cluster 202
+    `ensure_acting_member` rule). A **bearer** is the orchestrator model and may
+    still read/list on behalf of any member (unchanged); bypass unrestricted.
+
 ## [202.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). **Security & correctness round 2 — the new
