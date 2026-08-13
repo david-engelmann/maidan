@@ -374,11 +374,9 @@ async fn read_subscribe(
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
     let (mut filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
-    crate::dm::expand_event_filter(state, &mut filter)
-        .await
-        .map_err(|e| (1008u16, format!("{e:?}")))?;
-    // Resolve the caller's identity *before* applying channel grants so the
-    // grant verification (Cluster 163) can check real membership.
+    // Resolve the caller's identity *before* expanding the filter / applying
+    // channel grants, so the DM-participant check (Cluster 203) and the grant
+    // verification (Cluster 163) can both check real membership.
     let ctx = if state.auth_disabled {
         AuthContext::bypass()
     } else if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
@@ -401,6 +399,9 @@ async fn read_subscribe(
             "missing token in subscribe frame or browser session".into(),
         ));
     };
+    crate::dm::expand_event_filter(state, &mut filter, &ctx)
+        .await
+        .map_err(|e| (1008u16, format!("{e:?}")))?;
     if !state.auth_disabled {
         ctx.require_capability(EVENT_SUBSCRIBE)
             .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;

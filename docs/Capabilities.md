@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v203.0.0 — Security: DM/group-DM participation (subscribe + metadata)
+
+| Change | Where |
+|--------|-------|
+| Subscribe gate: `expand_event_filter` runs `ensure_thread_access` (DM-participant-aware) on the resolved `thread_id` — a non-participant can no longer tail a DM/group-DM via `dm_conversation_id` or `thread_id` (WS + MCP-SSE) | `dm.rs`, `ws.rs`, `mcp_stream.rs` |
+| Metadata reads: `GET /dm/:id` + `/group-dms/:id` require participation for a session caller; `list` is self-only (session). Bearer = orchestrator (act-as-any), bypass unrestricted | `dm.rs`, `group_dm.rs` |
+
 ## v202.0.0 — Security: session-bound acting identity (anti-spoofing)
 
 | Change | Where |
