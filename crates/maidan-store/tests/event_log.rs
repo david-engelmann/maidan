@@ -349,7 +349,10 @@ async fn social_with_event_appends_atomically() {
     assert!(removed && some_event.is_some());
 
     // All the produced events are durably in the log.
-    let events = store.list_events_after(ws.id, 0, 100).await.expect("events");
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
     for id in [vote_event.id, react_event.id, some_event.unwrap().id] {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
