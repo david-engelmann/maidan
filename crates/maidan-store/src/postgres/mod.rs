@@ -479,6 +479,22 @@ impl Store for PostgresStore {
         artifacts::get_by_sha(&self.pool, sha256).await
     }
 
+    async fn record_artifact_ref(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<(), StoreError> {
+        artifacts::record_ref(&self.pool, workspace_id, sha256).await
+    }
+
+    async fn artifact_ref_exists(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<bool, StoreError> {
+        artifacts::ref_exists(&self.pool, workspace_id, sha256).await
+    }
+
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
         audit::append(&self.pool, new).await
     }

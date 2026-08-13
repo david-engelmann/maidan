@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Artifact, ArtifactId, ArtifactKind, MemberId, NewArtifact};
+use maidan_types::{Artifact, ArtifactId, ArtifactKind, MemberId, NewArtifact, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -38,6 +38,34 @@ pub async fn get_by_sha(pool: &SqlitePool, sha256: &str) -> Result<Artifact, Sto
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_artifact(&row)
+}
+
+pub async fn record_ref(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+) -> Result<(), StoreError> {
+    sqlx::query("INSERT OR IGNORE INTO maidan_artifact_refs (workspace_id, sha256) VALUES (?, ?)")
+        .bind(workspace_id.0)
+        .bind(sha256)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn ref_exists(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+) -> Result<bool, StoreError> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM maidan_artifact_refs WHERE workspace_id = ? AND sha256 = ?)",
+    )
+    .bind(workspace_id.0)
+    .bind(sha256)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
 }
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> Result<Artifact, StoreError> {

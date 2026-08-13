@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [204.0.0] — 2026-08-13
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 3. No new gate tag.
+
+### Security
+
+- **Cross-tenant artifact isolation.** Artifacts are content-addressed and
+  **deduped across workspaces** (`maidan_artifacts` has no `workspace_id`), and
+  `GET /artifacts/:sha` + `/artifacts/:sha/meta` gated only on `workspace:read` —
+  so any caller who knew (or guessed) a SHA-256 could download another tenant's
+  blob, and dedup was a known-plaintext oracle. A new `maidan_artifact_refs`
+  table records which workspaces may access each SHA: a ref is written on upload
+  (single-shot + multipart) to the uploader's workspace, and `get_artifact*` now
+  requires a matching ref for the caller's workspace — returning **404** (not
+  403) when absent, so a cross-tenant SHA can't even be confirmed to exist. Two
+  workspaces that upload the *same* bytes each get their own ref and both keep
+  access (dedup preserved). Migration backfills refs from each existing
+  artifact's uploader's workspace. `bypass` (auth disabled) is unrestricted.
+  Purge cleanup rides the ref FK's `ON DELETE CASCADE`; ref-counted blob GC
+  (delete the shared blob only when no workspace still references it) is a
+  documented follow-up.
+
 ## [203.0.0] — 2026-08-13
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

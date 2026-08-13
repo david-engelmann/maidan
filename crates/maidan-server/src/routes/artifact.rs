@@ -108,6 +108,13 @@ pub async fn complete_multipart_artifact(
             uploaded_by: body.uploaded_by.map(MemberId),
         })
         .await?;
+    // Cluster 204: link the completed multipart blob to the uploader's workspace.
+    if !auth.bypass {
+        state
+            .store
+            .record_artifact_ref(auth.workspace_id, &artifact.sha256)
+            .await?;
+    }
     publish(
         &state,
         Event::ArtifactUpserted {
@@ -153,6 +160,14 @@ pub async fn upload_artifact(
             uploaded_by: q.uploaded_by.map(MemberId),
         })
         .await?;
+    // Cluster 204: link this SHA to the uploader's workspace so it (and only it)
+    // can fetch the deduped blob later.
+    if !auth.bypass {
+        state
+            .store
+            .record_artifact_ref(auth.workspace_id, &artifact.sha256)
+            .await?;
+    }
     publish(
         &state,
         Event::ArtifactUpserted {
@@ -164,6 +179,24 @@ pub async fn upload_artifact(
     Ok((StatusCode::CREATED, Json(artifact)))
 }
 
+/// Cluster 204: 404 (not 403) when the caller's workspace has no access link to
+/// `sha` — a missing link and a missing artifact are indistinguishable to the
+/// caller, so a cross-tenant SHA can't be confirmed to exist.
+async fn ensure_artifact_ref(state: &AppState, auth: &AuthContext, sha256: &str) -> ApiResult<()> {
+    if auth.bypass {
+        return Ok(());
+    }
+    if state
+        .store
+        .artifact_ref_exists(auth.workspace_id, sha256)
+        .await?
+    {
+        Ok(())
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 pub async fn get_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -171,6 +204,7 @@ pub async fn get_artifact(
 ) -> ApiResult<Response> {
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    ensure_artifact_ref(&state, &auth, &sha_hex).await?;
     let meta = state.store.get_artifact_by_sha(&sha_hex).await?;
     let bytes = state.artifacts.get(&sha).await?;
     let mut headers = HeaderMap::new();
@@ -192,5 +226,6 @@ pub async fn get_artifact_metadata(
 ) -> ApiResult<Json<Artifact>> {
     cap(&auth, WORKSPACE_READ)?;
     Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    ensure_artifact_ref(&state, &auth, &sha_hex).await?;
     Ok(Json(state.store.get_artifact_by_sha(&sha_hex).await?))
 }

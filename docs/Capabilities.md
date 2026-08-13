@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v204.0.0 — Security: cross-tenant artifact isolation
+
+| Change | Where |
+|--------|-------|
+| `maidan_artifact_refs` (workspace_id, sha256) link table — a ref is written on upload; `get_artifact*` requires a matching ref for the caller's workspace (404 if absent, no existence oracle). Closes cross-tenant blob reads over the deduped store; dedup preserved (two workspaces uploading the same bytes each get a ref). Migration backfills from the uploader's workspace | `migrations/*/…artifact_workspace_refs.sql`, `store/*/artifacts.rs`, `routes/artifact.rs` |
+
 ## v203.0.0 — Security: DM/group-DM participation (subscribe + metadata)
 
 | Change | Where |

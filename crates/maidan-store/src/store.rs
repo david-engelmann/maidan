@@ -324,6 +324,22 @@ pub trait Store: Send + Sync {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError>;
 
+    /// Record that `workspace_id` may access the artifact `sha256` (Cluster 204).
+    /// Idempotent. Written on upload; enforced on fetch by [`Self::artifact_ref_exists`].
+    async fn record_artifact_ref(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<(), StoreError>;
+
+    /// Whether `workspace_id` has an access link to the artifact `sha256`
+    /// (Cluster 204) — the per-tenant gate over the deduped blob store.
+    async fn artifact_ref_exists(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError>;
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError>;
     async fn list_audit_for_workspace(
