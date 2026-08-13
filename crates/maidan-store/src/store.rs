@@ -45,6 +45,14 @@ pub trait Store: Send + Sync {
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
 
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
+
+    /// Insert a channel and append its `ChannelCreated` event **atomically** in
+    /// one transaction (Cluster 205 transactional outbox). Returns the channel and
+    /// the durable event; the caller notifies the bus with the returned event.
+    async fn create_channel_with_event(
+        &self,
+        new: NewChannel,
+    ) -> Result<(Channel, StoredEvent), StoreError>;
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
 
@@ -116,6 +124,13 @@ pub trait Store: Send + Sync {
     ) -> Result<bool, StoreError>;
 
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError>;
+
+    /// Insert a thread and append its `ThreadCreated` event **atomically** in one
+    /// transaction (Cluster 205 transactional outbox).
+    async fn create_thread_with_event(
+        &self,
+        new: NewThread,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 

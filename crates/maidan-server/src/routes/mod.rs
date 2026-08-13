@@ -210,6 +210,36 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     Some(stored.id)
 }
 
+/// Notify the bus for an event that was **already appended durably** inside the
+/// mutation's transaction (Cluster 205 transactional outbox). Unlike [`publish`],
+/// there is no durable append here — the domain row and the event were committed
+/// atomically by the `*_with_event` store method — so this is purely the
+/// best-effort live notification, and a bus/relay hiccup can never undo a
+/// committed mutation.
+pub(crate) async fn publish_stored(state: &AppState, stored: StoredEvent) {
+    if state.outbox_relay {
+        if let Some(nudge) = &state.outbox_nudge {
+            let _ = nudge.try_send(());
+        }
+        return;
+    }
+    // In-memory / notify bus: hydrate the event from the stored payload.
+    match serde_json::from_value::<Event>(stored.payload) {
+        Ok(event) => {
+            let envelope = BusEnvelope {
+                log_id: stored.id,
+                event,
+            };
+            if let Err(err) = state.bus.publish(envelope).await {
+                tracing::warn!(error = %err, "bus publish failed");
+            }
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "publish_stored: event payload deserialize failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod publish_tests {
     use std::sync::Arc;

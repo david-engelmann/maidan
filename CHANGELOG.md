@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [205.0.0] — 2026-08-13
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 4: transactional outbox, **foundation** (multi-cluster refactor begins). No
+new gate tag.
+
+### Changed
+
+- **Atomic domain-write + event-append (transactional outbox) — the pattern +
+  first mutations.** A mutation committed its domain row in one transaction and
+  then `publish()` appended the durable `Event` in a *separate* one, so a crash
+  in that window committed the row but lost the event forever (no notification,
+  delivery, or indexing). Cluster 184 only hardened this with a retry + loud
+  metric. This cluster lands the real fix's foundation: a reusable
+  `events::append_in_tx(&mut tx, event)` (both backends, extracted from
+  `append`), and `create_channel_with_event` / `create_thread_with_event` store
+  methods that insert the domain row **and** append its event (+ outbox row) in
+  **one transaction** — they commit atomically or not at all. The routes call the
+  `*_with_event` variants and a new `publish_stored` helper does the best-effort
+  bus notification *after* the durable commit (a bus/relay hiccup can no longer
+  undo a committed mutation). Behaviour is unchanged (the same events still reach
+  the stream); only the crash-consistency guarantee is new. Remaining mutations
+  (social/reactions/pins, thread transitions, and the slash-edit-entangled
+  message-post path) migrate to `*_with_event` in follow-up clusters — until then
+  they keep the retry-hardened `publish()` (a temporary, tracked mixed-atomicity
+  during the migration).
+
 ## [204.0.0] — 2026-08-13
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

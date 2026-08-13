@@ -5,8 +5,19 @@ use crate::error::StoreError;
 use crate::postgres::outbox;
 
 pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreError> {
-    let payload = serde_json::to_value(event)?;
     let mut tx = pool.begin().await?;
+    let stored = append_in_tx(&mut tx, event).await?;
+    tx.commit().await?;
+    Ok(stored)
+}
+
+/// Append the event + its outbox row on a caller-supplied transaction, without
+/// committing (Cluster 205 transactional outbox) — see the SQLite twin.
+pub async fn append_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    event: &Event,
+) -> Result<StoredEvent, StoreError> {
+    let payload = serde_json::to_value(event)?;
     // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
     // distinct from the caller-supplied `occurred_at`.
     let row = sqlx::query(
@@ -21,11 +32,10 @@ pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreEr
     .bind(payload)
     .bind(event.occurred_at())
     .bind(chrono::Utc::now())
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let stored = row_to_stored(&row)?;
-    outbox::enqueue_in_tx(&mut tx, stored.id).await?;
-    tx.commit().await?;
+    outbox::enqueue_in_tx(tx, stored.id).await?;
     Ok(stored)
 }
 

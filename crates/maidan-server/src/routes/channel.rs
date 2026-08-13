@@ -5,14 +5,13 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish, ApiResult};
+use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::ApiJson;
 use crate::state::AppState;
@@ -26,9 +25,11 @@ pub async fn create_channel(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    let c = state
+    // Cluster 205: the channel row and its `ChannelCreated` event commit
+    // atomically (transactional outbox); `publish_stored` then notifies the bus.
+    let (c, stored) = state
         .store
-        .create_channel(NewChannel {
+        .create_channel_with_event(NewChannel {
             workspace_id,
             name: body.name,
             topic: body.topic,
@@ -43,15 +44,7 @@ pub async fn create_channel(
             .add_channel_member(c.id, auth.member_id, ChannelMemberRole::Admin)
             .await?;
     }
-    publish(
-        &state,
-        Event::ChannelCreated {
-            occurred_at: Utc::now(),
-            workspace_id,
-            channel: c.clone(),
-        },
-    )
-    .await;
+    publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(c)))
 }
 
