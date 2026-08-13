@@ -432,12 +432,18 @@ impl Store for PostgresStore {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError> {
         votes::cast(&self.pool, new).await
     }
+    async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError> {
+        votes::cast_with_event(&self.pool, new).await
+    }
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError> {
         votes::list(&self.pool, message_id).await
     }
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError> {
         reactions::add(&self.pool, new).await
+    }
+    async fn add_reaction_with_event(&self, new: NewReaction) -> Result<StoredEvent, StoreError> {
+        reactions::add_with_event(&self.pool, new).await
     }
     async fn remove_reaction(
         &self,
@@ -446,6 +452,14 @@ impl Store for PostgresStore {
         emoji: &str,
     ) -> Result<bool, StoreError> {
         reactions::remove(&self.pool, message_id, member_id, emoji).await
+    }
+    async fn remove_reaction_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: &str,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+        reactions::remove_with_event(&self.pool, message_id, member_id, emoji).await
     }
     async fn list_reactions_for_message(
         &self,

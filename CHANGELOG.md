@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [206.0.0] — 2026-08-13
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 5: transactional-outbox migration (social mutations). No new gate tag.
+
+### Changed
+
+- **Votes + reactions join the transactional outbox.** `cast_vote`,
+  `add_reaction`, and `remove_reaction` now have `*_with_event` store variants
+  that write the row **and** append their `VoteCast` / `ReactionAdded` /
+  `ReactionRemoved` event in one transaction (Cluster 205 pattern), with a shared
+  `events::message_scope_in_tx` resolving the message's (workspace, channel,
+  thread) in the same tx. `remove_reaction_with_event` appends the event **only
+  when a row was actually removed** (idempotent no-op otherwise). The routes call
+  the `*_with_event` variants + `publish_stored`. Behaviour unchanged; these
+  events are now crash-consistent with their mutation. Pins + mentions migrate
+  next; the remaining `publish()` callers shrink further.
+
 ## [205.0.0] — 2026-08-13
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

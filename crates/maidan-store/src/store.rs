@@ -298,15 +298,27 @@ pub trait Store: Send + Sync {
     ) -> Result<MemberInbox, StoreError>;
 
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
+    /// Cast a vote and append its `VoteCast` event atomically (Cluster 206).
+    async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError>;
+    /// Add a reaction and append its `ReactionAdded` event atomically (Cluster 206).
+    async fn add_reaction_with_event(&self, new: NewReaction) -> Result<StoredEvent, StoreError>;
     async fn remove_reaction(
         &self,
         message_id: MessageId,
         member_id: MemberId,
         emoji: &str,
     ) -> Result<bool, StoreError>;
+    /// Remove a reaction, appending `ReactionRemoved` atomically **iff** a row was
+    /// removed (Cluster 206). `(removed, event)`.
+    async fn remove_reaction_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        emoji: &str,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError>;
     async fn list_reactions_for_message(
         &self,
         message_id: MessageId,
