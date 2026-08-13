@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, MemberId, NewThread, Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
+    ChannelId, Event, MemberId, NewThread, StoredEvent, Thread, ThreadClaimResult, ThreadId,
+    ThreadState, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::postgres::events;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
@@ -22,6 +24,43 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     .fetch_one(pool)
     .await?;
     row_to_thread(&row)
+}
+
+/// Insert a thread and append its `ThreadCreated` event in one transaction
+/// (Cluster 205 transactional outbox) — see the SQLite twin.
+pub async fn create_with_event(
+    pool: &PgPool,
+    new: NewThread,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
+    let id = Uuid::new_v4();
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+    )
+    .bind(id)
+    .bind(new.channel_id.0)
+    .bind(new.parent_thread_id.map(|p| p.0))
+    .bind(new.title.as_deref())
+    .fetch_one(&mut *tx)
+    .await?;
+    let thread = row_to_thread(&row)?;
+    let workspace_id: Uuid =
+        sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = $1")
+            .bind(new.channel_id.0)
+            .fetch_one(&mut *tx)
+            .await?;
+    let event = Event::ThreadCreated {
+        occurred_at: Utc::now(),
+        workspace_id: WorkspaceId(workspace_id),
+        channel_id: new.channel_id,
+        thread: thread.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((thread, stored))
 }
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v205.0.0 — Correctness: transactional outbox (foundation)
+
+| Change | Where |
+|--------|-------|
+| `events::append_in_tx(&mut tx, event)` (both backends) + `create_channel_with_event` / `create_thread_with_event` — insert the domain row **and** append its event (+ outbox) in one transaction (atomic dual-write); routes use them + `publish_stored` for the post-commit bus notify. First step of the multi-cluster transactional-outbox refactor (the 184 deferral); remaining mutations follow | `store/*/{events,channels,threads}.rs`, `routes/{mod,channel,thread}.rs` |
+
 ## v204.0.0 — Security: cross-tenant artifact isolation
 
 | Change | Where |

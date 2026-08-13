@@ -15,7 +15,7 @@ use maidan_fsm::ThreadAction;
 use maidan_router::{resolve_channel_context, resolve_thread_context};
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish, ApiResult};
+use super::{cap, ensure_workspace, publish, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -30,24 +30,17 @@ pub async fn create_thread(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
-    let t = state
+    // Cluster 205: the thread row and its `ThreadCreated` event commit atomically
+    // (transactional outbox); `publish_stored` then notifies the bus.
+    let (t, stored) = state
         .store
-        .create_thread(NewThread {
+        .create_thread_with_event(NewThread {
             channel_id: ChannelId(channel_id),
             parent_thread_id: body.parent_thread_id.map(ThreadId),
             title: body.title,
         })
         .await?;
-    publish(
-        &state,
-        Event::ThreadCreated {
-            occurred_at: Utc::now(),
-            workspace_id: ctx.workspace_id,
-            channel_id: ChannelId(channel_id),
-            thread: t.clone(),
-        },
-    )
-    .await;
+    publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }
 

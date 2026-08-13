@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Channel, ChannelId, NewChannel, WorkspaceId};
+use maidan_types::{Channel, ChannelId, Event, NewChannel, StoredEvent, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 pub async fn create(pool: &SqlitePool, new: NewChannel) -> Result<Channel, StoreError> {
     let id = Uuid::new_v4();
@@ -24,6 +25,41 @@ pub async fn create(pool: &SqlitePool, new: NewChannel) -> Result<Channel, Store
     .await
     .map_err(map_channel_err)?;
     Ok(row_to_channel(&row))
+}
+
+/// Insert a channel and append its `ChannelCreated` event in one transaction
+/// (Cluster 205 transactional outbox) — the row and the event commit atomically.
+pub async fn create_with_event(
+    pool: &SqlitePool,
+    new: NewChannel,
+) -> Result<(Channel, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_channels (id, workspace_id, name, topic, private, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, workspace_id, name, topic, private, created_at, updated_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(new.workspace_id.0)
+    .bind(&new.name)
+    .bind(new.topic.as_deref())
+    .bind(new.private)
+    .bind(now)
+    .bind(now)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_channel_err)?;
+    let channel = row_to_channel(&row);
+    let event = Event::ChannelCreated {
+        occurred_at: Utc::now(),
+        workspace_id: channel.workspace_id,
+        channel: channel.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((channel, stored))
 }
 
 pub async fn get(pool: &SqlitePool, id: ChannelId) -> Result<Channel, StoreError> {

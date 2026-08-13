@@ -135,6 +135,13 @@ impl Store for SqliteStore {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError> {
         channels::create(&self.pool, new).await
     }
+
+    async fn create_channel_with_event(
+        &self,
+        new: NewChannel,
+    ) -> Result<(Channel, StoredEvent), StoreError> {
+        channels::create_with_event(&self.pool, new).await
+    }
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError> {
         channels::get(&self.pool, id).await
     }
@@ -236,6 +243,13 @@ impl Store for SqliteStore {
 
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError> {
         threads::create(&self.pool, new).await
+    }
+
+    async fn create_thread_with_event(
+        &self,
+        new: NewThread,
+    ) -> Result<(Thread, StoredEvent), StoreError> {
+        threads::create_with_event(&self.pool, new).await
     }
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
         threads::get(&self.pool, id).await

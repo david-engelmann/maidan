@@ -5,8 +5,22 @@ use crate::error::StoreError;
 use crate::sqlite::outbox;
 
 pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, StoreError> {
-    let payload = serde_json::to_string(event)?;
     let mut tx = pool.begin().await?;
+    let stored = append_in_tx(&mut tx, event).await?;
+    tx.commit().await?;
+    Ok(stored)
+}
+
+/// Append the event + its outbox row on a caller-supplied transaction, without
+/// committing (Cluster 205 transactional outbox). A `*_with_event` store method
+/// calls this in the SAME tx as its domain mutation so the domain row and the
+/// event are committed atomically — a crash can no longer leave one without the
+/// other.
+pub async fn append_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    event: &Event,
+) -> Result<StoredEvent, StoreError> {
+    let payload = serde_json::to_string(event)?;
     // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
     // distinct from the caller-supplied `occurred_at`.
     let row = sqlx::query(
@@ -21,11 +35,10 @@ pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, Sto
     .bind(payload)
     .bind(event.occurred_at().to_rfc3339())
     .bind(chrono::Utc::now().to_rfc3339())
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let stored = row_to_stored(&row)?;
-    outbox::enqueue_in_tx(&mut tx, stored.id).await?;
-    tx.commit().await?;
+    outbox::enqueue_in_tx(tx, stored.id).await?;
     Ok(stored)
 }
 

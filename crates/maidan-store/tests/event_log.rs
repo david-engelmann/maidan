@@ -195,3 +195,65 @@ async fn get_stored_event_returns_row_and_missing_is_not_found() {
     let err = store.get_stored_event(999_999).await.unwrap_err();
     assert!(matches!(err, maidan_store::StoreError::NotFound));
 }
+
+/// Cluster 205: `*_with_event` commits the domain row and its event atomically —
+/// after the single call, both the row and the durable event exist.
+#[tokio::test]
+async fn create_with_event_commits_row_and_event() {
+    use maidan_types::NewThread;
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "tx-outbox".to_string(),
+        })
+        .await
+        .expect("ws");
+
+    let (ch, ch_event) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: ws.id,
+            name: "atomic".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel + event");
+    assert_eq!(ch_event.kind, EventKind::ChannelCreated);
+    // The channel row committed.
+    assert_eq!(
+        store.get_channel(ch.id).await.expect("get channel").id,
+        ch.id
+    );
+
+    let (th, th_event) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread + event");
+    assert_eq!(th_event.kind, EventKind::ThreadCreated);
+    assert_eq!(store.get_thread(th.id).await.expect("get thread").id, th.id);
+
+    // Both events are durably in the log — the returned events are the logged ones.
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    assert!(events
+        .iter()
+        .any(|e| e.id == ch_event.id && e.kind == EventKind::ChannelCreated));
+    assert!(events
+        .iter()
+        .any(|e| e.id == th_event.id && e.kind == EventKind::ThreadCreated));
+}
