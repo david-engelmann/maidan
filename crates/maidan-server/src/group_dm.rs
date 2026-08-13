@@ -89,6 +89,7 @@ pub async fn post_group_dm_message(
     let group = state.store.get_group_dm_conversation(group_id).await?;
     ensure_workspace(&auth, group.workspace_id)?;
     let author_id = MemberId(body.author_id);
+    crate::routes::ensure_acting_member(&auth, author_id)?;
     if !state.store.group_dm_has_member(group_id, author_id).await? {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),

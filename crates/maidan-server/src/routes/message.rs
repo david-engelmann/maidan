@@ -31,11 +31,7 @@ pub async fn post_message(
     let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
-    if !auth.bypass && auth.token_id.is_none() && MemberId(body.author_id) != auth.member_id {
-        return Err(ApiError::Forbidden(
-            "author_id must match the signed-in session member".into(),
-        ));
-    }
+    super::ensure_acting_member(&auth, MemberId(body.author_id))?;
     // Cluster 173: a content-only post derives its searchable `body` from the
     // blocks; an explicit `body` is respected verbatim.
     let content = body.content.clone();
@@ -132,6 +128,7 @@ pub async fn edit_message(
         return Err(ApiError::BadRequest("message is tombstoned".into()));
     }
     let editor_id = MemberId(body.editor_id);
+    super::ensure_acting_member(&auth, editor_id)?;
     ensure_message_edit(&auth, editor_id, existing.author_id)?;
     let metadata = body.metadata.unwrap_or(existing.metadata);
     // Cluster 173: omitted content keeps the existing blocks; a content edit

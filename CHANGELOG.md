@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [202.0.0] — 2026-08-12
+
+Post-gate hardening (Phase XXIV). **Security & correctness round 2 — the new
+four-program arc opens (from a 5-agent research sweep).** No new gate tag.
+
+### Security
+
+- **Session callers can no longer act as another member (anti-spoofing).** Only
+  `post_message` pinned a **session** caller (browser/OIDC login, no API token)
+  to its own member; every other member-attributed write trusted a
+  caller-supplied `member_id`/`author_id`/`actor_id`/`editor_id` — so a `/ui`
+  session user could post DMs / group-DM messages, edit messages, vote, react,
+  pin/unpin, and transition/assign/claim/renew threads **as any member** in the
+  workspace. The guard is now a shared `ensure_acting_member(auth, claimed)` and
+  is applied on every member-attributed write surface. A **bearer token** is the
+  orchestrator model and may still act as any member in its workspace
+  (unchanged); `bypass` (auth disabled / tests) is unrestricted. The mention
+  *target* (not an actor) and the assignee (a target, not the actor) are
+  correctly left unguarded.
+
 ## [201.0.0] — 2026-08-12
 
 Post-gate hardening (Phase XXIV). Performance & scale — arc D, part 4. No new

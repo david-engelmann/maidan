@@ -150,6 +150,7 @@ pub async fn transition_thread(
     let channel_id = ctx.channel_id;
     ensure_workspace(&auth, workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let result = state
         .store
         .transition_thread(thread_id, MemberId(body.actor_id), action)
@@ -214,6 +215,7 @@ pub async fn assign_thread(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let previous = state.store.get_thread(thread_id).await?.assignee_id;
     let thread = state
         .store
@@ -243,6 +245,7 @@ pub async fn unassign_thread(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let previous = state.store.get_thread(thread_id).await?.assignee_id;
     let thread = state.store.unassign_thread(thread_id).await?;
     publish_assignment(
@@ -270,6 +273,7 @@ pub async fn claim_thread(
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     let result = state.store.claim_thread(thread_id, member_id).await?;
     if result.claimed {
         publish_assignment(
@@ -327,6 +331,7 @@ pub async fn claim_next_thread(
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let member_id = MemberId(body.member_id);
+    super::ensure_acting_member(&auth, member_id)?;
     let claimed = state
         .store
         .claim_next_thread(channel.id, member_id, body.lease_secs)
@@ -359,6 +364,7 @@ pub async fn renew_claim(
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let thread = state
         .store
         .renew_claim(thread_id, MemberId(body.member_id), body.lease_secs)
