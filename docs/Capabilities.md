@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v215.0.0 — Security: federation ingest trust policy
+
+| Change | Where |
+|--------|-------|
+| `EventKind::federatable()` allowlist (allowlist-by-default via exhaustive match; `ArtifactUpserted` excluded — blobs aren't federated) enforced on ingest (`403` for non-federatable, both push endpoint + pull worker); `MemberJoined` remap now re-scopes the nested `member.workspace_id` to local (no remote-id leak) | `maidan-types/src/events.rs`, `federation.rs` |
+
 ## v214.0.0 — Correctness: transactional outbox (references + artifacts; domain migration complete)
 
 | Change | Where |

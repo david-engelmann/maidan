@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [215.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 14: federation ingest trust policy. No new gate tag.
+
+### Security
+
+- **Federation ingest event-kind allowlist.** A federated peer's pushed (or
+  pulled-and-ingested) events are now checked against `EventKind::federatable()` —
+  an **allowlist-by-default** predicate (exhaustive `match`, so a new event kind
+  won't compile until consciously classified). All collaboration-content kinds are
+  federatable; **`ArtifactUpserted` is excluded** — federation replicates events,
+  not artifact blobs, so an ingested `ArtifactUpserted` would announce a `sha256`
+  whose bytes never arrive (a dangling reference / content-addressed existence
+  oracle). Non-federatable kinds are rejected with `403` at `ingest_envelope`
+  (covering both the push endpoint and the pull worker).
+- **`MemberJoined` nested-workspace re-scope fix.** `remap_event_workspace`
+  re-scopes an ingested event to the local peer workspace, and already remapped the
+  nested `channel.workspace_id` for `ChannelCreated` — but `MemberJoined` passed its
+  `member` through untouched, leaking the peer's *remote* `member.workspace_id` into
+  the local view. It now re-scopes the nested member too.
+
 ## [214.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
