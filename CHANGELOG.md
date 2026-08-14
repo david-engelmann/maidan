@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [209.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 8: transactional-outbox migration (thread assignments). No new gate tag.
+
+### Changed
+
+- **Thread assignments join the transactional outbox.** `assign_thread`,
+  `unassign_thread`, `claim_thread`, and `claim_next_thread` now have
+  `*_with_event` store variants that commit the assignee change **and** append
+  their `ThreadAssignmentChanged` event in one transaction, reusing Cluster 208's
+  `events::thread_scope_in_tx` (a shared per-backend `append_assignment_event`
+  builds the event). assign/unassign capture the **previous** assignee inside the
+  same tx (a consistent read that replaces the route's separate `get_thread` —
+  closing a read-then-write race on `previous_assignee_id`); claim/claim_next are
+  conditional (`(result, Option<StoredEvent>)`), emitting only when the CAS
+  actually claimed. The route's `publish_assignment` helper is removed;
+  `renew_claim` is unchanged (no event). With this the thread-scoped batch is done;
+  DM/group-DM posts and the slash-edit-entangled message post still use the
+  retry-hardened `publish()`.
+
 ## [208.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

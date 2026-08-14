@@ -183,6 +183,15 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
         assignee_id: MemberId,
     ) -> Result<Thread, StoreError>;
+    /// Assign a thread and append its `ThreadAssignmentChanged` event atomically
+    /// (Cluster 209). Captures the previous assignee in the same tx.
+    async fn assign_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        assignee_id: MemberId,
+        actor_id: MemberId,
+        note: Option<String>,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
 
     /// Atomically claim an unassigned thread for `member_id` (Cluster 171). The
     /// compare-and-set (`WHERE assignee_id IS NULL`) makes concurrent claims
@@ -193,9 +202,23 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
         member_id: MemberId,
     ) -> Result<ThreadClaimResult, StoreError>;
+    /// Claim a thread, appending `ThreadAssignmentChanged` atomically **iff** the
+    /// CAS actually claimed (Cluster 209). `(result, event)`.
+    async fn claim_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError>;
 
     /// Clear a thread's assignee (Cluster 171). `NotFound` if it doesn't exist.
     async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError>;
+    /// Clear a thread's assignee and append its `ThreadAssignmentChanged` event
+    /// atomically (Cluster 209).
+    async fn unassign_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
 
     /// Threads in `workspace_id` assigned to `member_id` — the agent's work queue
     /// (Cluster 190). Live threads only, oldest first.
@@ -217,6 +240,14 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError>;
+    /// Claim the next thread, appending `ThreadAssignmentChanged` atomically
+    /// **iff** a thread was claimed (Cluster 209). `(thread, event)`.
+    async fn claim_next_thread_with_event(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        lease_secs: Option<i64>,
+    ) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError>;
 
     /// Extend a claimed thread's lease (heartbeat), only for the current assignee
     /// (Cluster 192). `NotFound` if the thread is gone or the caller isn't the

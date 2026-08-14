@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v209.0.0 — Correctness: transactional outbox (thread assignments)
+
+| Change | Where |
+|--------|-------|
+| `assign/unassign/claim/claim_next_thread_with_event` — assignee change + `ThreadAssignmentChanged` in one tx (reuses 208's `thread_scope_in_tx`; shared `append_assignment_event`); assign/unassign capture previous in-tx (fixes a read-then-write race), claim/claim_next conditional. Routes use them + `publish_stored`; `publish_assignment` helper removed. Completes the thread-scoped outbox batch | `store/*/threads.rs`, `routes/thread.rs` |
+
 ## v208.0.0 — Correctness: transactional outbox (thread transitions)
 
 | Change | Where |

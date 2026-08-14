@@ -114,6 +114,43 @@ pub async fn assign(
     row_to_thread(&row)
 }
 
+/// Assign a thread and append its `ThreadAssignmentChanged` event in one
+/// transaction (Cluster 209). The previous assignee is captured in the same tx
+/// (a consistent read, not a separate `get_thread` + race window).
+pub async fn assign_with_event(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    assignee_id: MemberId,
+    actor_id: MemberId,
+    note: Option<String>,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let previous = sqlx::query(
+        "SELECT assignee_id FROM maidan_threads WHERE id = ? AND tombstoned_at IS NULL",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?
+    .get::<Option<Uuid>, _>("assignee_id")
+    .map(MemberId);
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+         WHERE id = ? AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+    )
+    .bind(assignee_id.0)
+    .bind(Utc::now().to_rfc3339())
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let thread = row_to_thread(&row)?;
+    let stored = append_assignment_event(&mut tx, &thread, actor_id, previous, note).await?;
+    tx.commit().await?;
+    Ok((thread, stored))
+}
+
 /// Clear the assignee (Cluster 171). `NotFound` if absent.
 pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
@@ -127,6 +164,61 @@ pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, 
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_thread(&row)
+}
+
+/// Clear the assignee and append its `ThreadAssignmentChanged` event in one
+/// transaction (Cluster 209). No handoff note (unassign carries none).
+pub async fn unassign_with_event(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let previous = sqlx::query("SELECT assignee_id FROM maidan_threads WHERE id = ?")
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StoreError::NotFound)?
+        .get::<Option<Uuid>, _>("assignee_id")
+        .map(MemberId);
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = NULL, updated_at = ?
+         WHERE id = ?
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let thread = row_to_thread(&row)?;
+    let stored = append_assignment_event(&mut tx, &thread, actor_id, previous, None).await?;
+    tx.commit().await?;
+    Ok((thread, stored))
+}
+
+/// Build + append a `ThreadAssignmentChanged` event on a caller-supplied tx
+/// (Cluster 209). Shared by the assignment `*_with_event` mutations.
+async fn append_assignment_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: &Thread,
+    actor_id: MemberId,
+    previous_assignee_id: Option<MemberId>,
+    note: Option<String>,
+) -> Result<StoredEvent, StoreError> {
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread.id).await?;
+    let event = Event::ThreadAssignmentChanged {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: thread.id,
+        actor_id,
+        previous_assignee_id,
+        assignee_id: thread.assignee_id,
+        note,
+        thread: thread.clone(),
+    };
+    events::append_in_tx(tx, &event).await
 }
 
 /// Atomic compare-and-set claim (Cluster 171): `assignee_id IS NULL` guards the
@@ -156,6 +248,54 @@ pub async fn claim(
             thread: get(pool, thread_id).await?,
             claimed: false,
         }),
+    }
+}
+
+/// Atomic claim + its `ThreadAssignmentChanged` event in one tx (Cluster 209).
+/// Conditional: the event is appended **only** when the CAS actually claimed
+/// (`(result, Some)`); an already-assigned thread yields `(result{claimed:false},
+/// None)` — no event. `previous_assignee_id` is `None` (plain claim guards on
+/// unassigned).
+pub async fn claim_with_event(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+         WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+    )
+    .bind(member_id.0)
+    .bind(Utc::now().to_rfc3339())
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    match row {
+        Some(row) => {
+            let thread = row_to_thread(&row)?;
+            let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
+            tx.commit().await?;
+            Ok((
+                ThreadClaimResult {
+                    thread,
+                    claimed: true,
+                },
+                Some(stored),
+            ))
+        }
+        None => {
+            tx.commit().await?;
+            let thread = get(pool, thread_id).await?;
+            Ok((
+                ThreadClaimResult {
+                    thread,
+                    claimed: false,
+                },
+                None,
+            ))
+        }
     }
 }
 
@@ -214,6 +354,52 @@ pub async fn claim_next(
     .fetch_optional(pool)
     .await?;
     row.as_ref().map(row_to_thread).transpose()
+}
+
+/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx (Cluster
+/// 209). Conditional: the event is appended **only** when a thread was claimed
+/// (`(Some(thread), Some(event))`); an empty channel yields `(None, None)`.
+/// `previous_assignee_id` is `None` (behaviour-preserving — matches the old
+/// route; a lease-expiry reclaim does not surface the prior holder).
+pub async fn claim_next_with_event(
+    pool: &SqlitePool,
+    channel_id: ChannelId,
+    member_id: MemberId,
+    lease_secs: Option<i64>,
+) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError> {
+    let mut tx = pool.begin().await?;
+    let now = Utc::now();
+    let expires = lease_secs.map(|s| (now + chrono::Duration::seconds(s)).to_rfc3339());
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, updated_at = ?
+         WHERE id = (
+             SELECT id FROM maidan_threads
+             WHERE channel_id = ? AND tombstoned_at IS NULL
+               AND (assignee_id IS NULL OR (assignment_expires_at IS NOT NULL AND assignment_expires_at < ?))
+             ORDER BY created_at ASC, id ASC
+             LIMIT 1
+         )
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+    )
+    .bind(member_id.0)
+    .bind(&expires)
+    .bind(now.to_rfc3339())
+    .bind(channel_id.0)
+    .bind(now.to_rfc3339())
+    .fetch_optional(&mut *tx)
+    .await?;
+    match row {
+        Some(row) => {
+            let thread = row_to_thread(&row)?;
+            let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
+            tx.commit().await?;
+            Ok((Some(thread), Some(stored)))
+        }
+        None => {
+            tx.commit().await?;
+            Ok((None, None))
+        }
+    }
 }
 
 /// Extend a claim's lease (heartbeat), only for the current assignee (Cluster
