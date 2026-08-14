@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [214.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 13: transactional-outbox migration (references + artifacts — the last domain
+mutations). No new gate tag.
+
+### Changed
+
+- **References + artifacts join the transactional outbox — completing the
+  domain-mutation migration.** `add_reference_with_event` (`ReferenceAdded`) is
+  scope-less like the creation events. `upsert_artifact_with_event(new,
+  ref_workspace)` is the widest fold in the migration: the upload route did three
+  dependent writes (`upsert_artifact` → conditional `record_artifact_ref`, the
+  Cluster-204 per-workspace access link → `publish(ArtifactUpserted)`), now folded
+  into **one transaction** (via a new `record_ref_in_tx`), preserving the upsert →
+  ref → event ordering. `ref_workspace` is `Some(auth.workspace_id)` for a
+  non-bypass caller (route computes `(!auth.bypass).then_some(auth.workspace_id)`);
+  both the single-shot and multipart upload routes use it. This *strengthens*
+  Cluster-204 isolation — the access ref now commits atomically with the upsert.
+- **`publish()` correctly remains** (no rename/delete). Its remaining callers
+  append **standalone events** with no domain-table row to be atomic with — the
+  federation **relay** (`federation.rs`, re-publishing remote events onto the local
+  bus) and `publish_routed_mentions` (fanning a durable `MentionRecorded` to each
+  auto-parsed @mention for realtime routing). `publish()` = "durably append a
+  standalone event + notify" is the right primitive for both, so the
+  transactional-outbox refactor concludes at 214.
+
 ## [213.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

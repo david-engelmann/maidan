@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v214.0.0 — Correctness: transactional outbox (references + artifacts; domain migration complete)
+
+| Change | Where |
+|--------|-------|
+| `add_reference_with_event` (`ReferenceAdded`, scope-less) + `upsert_artifact_with_event(new, ref_workspace)` — upsert + Cluster-204 access ref + `ArtifactUpserted` in ONE tx (new `record_ref_in_tx`; preserves upsert→ref→event ordering, strengthens 204 isolation). Both upload routes use it. **Completes the domain-mutation outbox migration** — `publish()`'s only remaining caller is the federation relay | `store/*/{refs,artifacts}.rs`, `routes/{reference,artifact}.rs` |
+
 ## v213.0.0 — Correctness: transactional outbox (A2A ingest + member/workspace creation)
 
 | Change | Where |

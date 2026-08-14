@@ -11,7 +11,6 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store, Sha256};
 use maidan_auth::{
     capability::{ARTIFACT_UPLOAD, WORKSPACE_READ},
@@ -19,7 +18,7 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, publish, ApiResult};
+use super::{cap, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -98,31 +97,23 @@ pub async fn complete_multipart_artifact(
         .complete_multipart_upload(&upload, &parts)
         .await?;
     let bytes = state.artifacts.get(&sha).await?;
-    let artifact = state
+    // Cluster 214: upsert + the Cluster-204 per-workspace ref + the ArtifactUpserted
+    // event commit atomically (ref only for a non-bypass caller, as before).
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let (artifact, stored) = state
         .store
-        .upsert_artifact(NewArtifact {
-            sha256: sha.to_string(),
-            size_bytes: bytes.len() as i64,
-            mime_type: body.mime_type,
-            kind: body.kind,
-            uploaded_by: body.uploaded_by.map(MemberId),
-        })
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha.to_string(),
+                size_bytes: bytes.len() as i64,
+                mime_type: body.mime_type,
+                kind: body.kind,
+                uploaded_by: body.uploaded_by.map(MemberId),
+            },
+            ref_workspace,
+        )
         .await?;
-    // Cluster 204: link the completed multipart blob to the uploader's workspace.
-    if !auth.bypass {
-        state
-            .store
-            .record_artifact_ref(auth.workspace_id, &artifact.sha256)
-            .await?;
-    }
-    publish(
-        &state,
-        Event::ArtifactUpserted {
-            occurred_at: Utc::now(),
-            artifact: artifact.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
 }
 
@@ -150,32 +141,24 @@ pub async fn upload_artifact(
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
     let sha = state.artifacts.put(body.clone()).await?;
-    let artifact = state
+    // Cluster 214: upsert + the Cluster-204 per-workspace ref (so only the
+    // uploader's workspace can fetch the deduped blob) + the ArtifactUpserted event
+    // commit atomically; the ref is recorded only for a non-bypass caller.
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let (artifact, stored) = state
         .store
-        .upsert_artifact(NewArtifact {
-            sha256: sha.to_string(),
-            size_bytes: body.len() as i64,
-            mime_type: q.mime_type,
-            kind: q.kind,
-            uploaded_by: q.uploaded_by.map(MemberId),
-        })
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha.to_string(),
+                size_bytes: body.len() as i64,
+                mime_type: q.mime_type,
+                kind: q.kind,
+                uploaded_by: q.uploaded_by.map(MemberId),
+            },
+            ref_workspace,
+        )
         .await?;
-    // Cluster 204: link this SHA to the uploader's workspace so it (and only it)
-    // can fetch the deduped blob later.
-    if !auth.bypass {
-        state
-            .store
-            .record_artifact_ref(auth.workspace_id, &artifact.sha256)
-            .await?;
-    }
-    publish(
-        &state,
-        Event::ArtifactUpserted {
-            occurred_at: Utc::now(),
-            artifact: artifact.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
 }
 

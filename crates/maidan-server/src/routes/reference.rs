@@ -5,14 +5,13 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
 
-use super::{cap, publish, ApiResult};
+use super::{cap, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -41,9 +40,9 @@ pub async fn create_reference(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_ref_access(state.store.as_ref(), &auth, body.src_kind, body.src_id).await?;
     ensure_ref_access(state.store.as_ref(), &auth, body.dst_kind, body.dst_id).await?;
-    let r = state
+    let (r, stored) = state
         .store
-        .add_reference(NewReference {
+        .add_reference_with_event(NewReference {
             src_kind: body.src_kind,
             src_id: body.src_id,
             dst_kind: body.dst_kind,
@@ -51,14 +50,7 @@ pub async fn create_reference(
             relation: body.relation,
         })
         .await?;
-    publish(
-        &state,
-        Event::ReferenceAdded {
-            occurred_at: Utc::now(),
-            reference: r.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(r)))
 }
 
