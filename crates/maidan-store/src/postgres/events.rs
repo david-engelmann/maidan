@@ -28,6 +28,28 @@ pub async fn message_scope_in_tx(
     ))
 }
 
+/// Resolve a thread's (workspace, channel) inside a transaction (Cluster 208) —
+/// see the SQLite twin.
+pub async fn thread_scope_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(WorkspaceId, ChannelId), StoreError> {
+    let row = sqlx::query(
+        "SELECT c.workspace_id AS ws, t.channel_id AS ch
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE t.id = $1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok((
+        WorkspaceId(row.get::<uuid::Uuid, _>("ws")),
+        ChannelId(row.get::<uuid::Uuid, _>("ch")),
+    ))
+}
+
 pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
     let stored = append_in_tx(&mut tx, event).await?;

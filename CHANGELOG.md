@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [208.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 7: transactional-outbox migration (thread transitions). No new gate tag.
+
+### Changed
+
+- **Thread FSM transitions join the transactional outbox.** `transition_thread`
+  now has a `transition_thread_with_event` store variant that commits the state
+  change **and** appends its `ThreadStateChanged` event in one transaction, over a
+  new shared `events::thread_scope_in_tx` resolver (a thread's `(workspace,
+  channel)`, the thread-scoped twin of the message-scoped resolver from 206). The
+  existing FSM step is refactored into a private `transition_in_tx` core so
+  `transition` (commit only) and `transition_with_event` (append event + commit)
+  share one copy of the read → validate → HSM-parent-check → insert → update
+  logic. The route (`thread.rs`) calls it + `publish_stored`. Migration continues:
+  the assignment mutations (assign/unassign/claim/claim_next), DM/group-DM posts,
+  and the entangled message-post path still use the retry-hardened `publish()`.
+
 ## [207.0.0] — 2026-08-13
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

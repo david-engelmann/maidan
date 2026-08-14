@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v208.0.0 — Correctness: transactional outbox (thread transitions)
+
+| Change | Where |
+|--------|-------|
+| `transition_thread_with_event` — FSM state change + `ThreadStateChanged` event in one tx, over a new `events::thread_scope_in_tx` resolver (thread-scoped twin of 206's message resolver); the FSM step is extracted into a shared `transition_in_tx` core so the non-event path is unchanged. Route uses it + `publish_stored`. Continues the 205–207 outbox migration | `store/*/{thread_transitions,events}.rs`, `routes/thread.rs` |
+
 ## v207.0.0 — Correctness: transactional outbox (pins + mentions)
 
 | Change | Where |

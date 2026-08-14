@@ -467,3 +467,76 @@ async fn pins_and_mentions_with_event_append_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 208: thread transitions migrated to the transactional-outbox pattern.
+/// A transition appends its `ThreadStateChanged` event in the same tx as the
+/// state change, over the new `thread_scope_in_tx` resolver.
+#[tokio::test]
+async fn transition_with_event_appends_atomically() {
+    use maidan_fsm::ThreadAction;
+    use maidan_types::{MemberId, NewThread, ThreadState};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "transition-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+
+    let (result, stored) = store
+        .transition_thread_with_event(th.id, MemberId(actor.id.0), ThreadAction::StartReview)
+        .await
+        .expect("transition");
+    assert_eq!(stored.kind, EventKind::ThreadStateChanged);
+    assert_eq!(result.from_state, ThreadState::Open);
+    assert_eq!(result.to_state, ThreadState::InReview);
+    // The state change committed.
+    assert_eq!(
+        store.get_thread(th.id).await.expect("get").state,
+        ThreadState::InReview
+    );
+    // The event is durably in the log.
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    assert!(
+        events.iter().any(|e| e.id == stored.id),
+        "ThreadStateChanged durable"
+    );
+}
