@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [212.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 11: transactional-outbox migration (message edit + tombstone). No new gate
+tag.
+
+### Changed
+
+- **Message edit + tombstone join the transactional outbox.**
+  `edit_message_with_event` (`MessageEdited`) and `tombstone_message_with_event`
+  (`MessageTombstoned`) commit the mutation **and** append its event in one
+  transaction. The edit SQL is extracted into a private `edit_in_tx` shared with
+  Cluster 211's `edit_with_posted_event` (same mutation, different event).
+  `tombstone_with_event` keeps the existing `NotFound`-on-no-op guard, so a
+  re-tombstone appends no event. Both events carry `dm_conversation_id` (route
+  parameter). The `edit_message` / `tombstone_message` routes call them +
+  `publish_stored`; `message.rs` no longer calls `publish()` at all. `publish()`
+  now serves only the A2A ingest post and the member / workspace / reference /
+  artifact events (+ the federation relay).
+
 ## [211.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
