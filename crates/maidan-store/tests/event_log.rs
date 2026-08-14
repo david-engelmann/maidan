@@ -663,3 +663,94 @@ async fn assignment_with_event_appends_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 210: DM/group-DM posts migrated to the transactional-outbox pattern.
+/// `post_message_with_event` inserts the message and appends `MessagePosted` in
+/// one tx, threading `dm_conversation_id` (Some for a 1:1 DM, None for a group).
+#[tokio::test]
+async fn dm_post_with_event_appends_atomically() {
+    use maidan_types::{DmConversationId, NewMessage, NewThread};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "dm-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let new = |body: &str| NewMessage {
+        thread_id: th.id,
+        author_id: author.id,
+        body: body.to_string(),
+        metadata: serde_json::json!({}),
+        content: None,
+    };
+
+    // 1:1 DM → dm_conversation_id carried through to the event payload.
+    let dm_id = DmConversationId(uuid::Uuid::from_u128(1));
+    let (m1, dm_ev) = store
+        .post_message_with_event(new("hi"), Some(dm_id))
+        .await
+        .expect("dm post");
+    assert_eq!(dm_ev.kind, EventKind::MessagePosted);
+    match serde_json::from_value::<Event>(dm_ev.payload.clone()).expect("event") {
+        Event::MessagePosted {
+            dm_conversation_id,
+            message,
+            ..
+        } => {
+            assert_eq!(dm_conversation_id, Some(dm_id));
+            assert_eq!(message.id, m1.id);
+        }
+        other => panic!("expected MessagePosted, got {other:?}"),
+    }
+
+    // Group DM → dm_conversation_id None.
+    let (_m2, grp_ev) = store
+        .post_message_with_event(new("yo"), None)
+        .await
+        .expect("group post");
+    assert_eq!(grp_ev.kind, EventKind::MessagePosted);
+
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [dm_ev.id, grp_ev.id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

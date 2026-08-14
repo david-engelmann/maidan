@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [210.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 9: transactional-outbox migration (DM / group-DM posts). No new gate tag.
+
+### Changed
+
+- **DM / group-DM posts join the transactional outbox.** A new
+  `post_message_with_event(new, dm_conversation_id)` store method inserts the
+  message **and** appends its `MessagePosted` event in one transaction, resolving
+  `(workspace, channel, thread)` via `message_scope_in_tx` and threading the
+  caller-supplied `dm_conversation_id` (`Some` for a 1:1 DM, `None` for a group
+  DM). The DM (`dm.rs`) and group-DM (`group_dm.rs`) post routes call it +
+  `publish_stored`, dropping their hand-built `MessagePosted` literal and the
+  now-redundant `resolve_thread_context`. The **regular** message-post path stays
+  on `publish()` — it runs a slash-command edit after insert, so its event must
+  reflect the final message (the last, entangled step of the refactor).
+
 ## [209.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

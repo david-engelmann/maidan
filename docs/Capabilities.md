@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v210.0.0 — Correctness: transactional outbox (DM / group-DM posts)
+
+| Change | Where |
+|--------|-------|
+| `post_message_with_event(new, dm_conversation_id)` — message insert + `MessagePosted` in one tx (via `message_scope_in_tx`; `dm_conversation_id` Some for 1:1 / None for group). DM + group-DM post routes use it + `publish_stored`. The regular slash-editing post path is the last `publish()` holdout | `store/*/messages.rs`, `dm.rs`, `group_dm.rs` |
+
 ## v209.0.0 — Correctness: transactional outbox (thread assignments)
 
 | Change | Where |

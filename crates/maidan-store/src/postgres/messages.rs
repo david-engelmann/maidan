@@ -1,9 +1,13 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{EditMessage, MemberId, Message, MessageId, NewMessage, ThreadId};
+use maidan_types::{
+    DmConversationId, EditMessage, Event, MemberId, Message, MessageId, NewMessage, StoredEvent,
+    ThreadId,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::postgres::events;
 
 pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreError> {
     let id = Uuid::new_v4();
@@ -22,6 +26,47 @@ pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreErro
     .fetch_one(pool)
     .await?;
     Ok(row_to_message(&row))
+}
+
+/// Insert a message and append its `MessagePosted` event in one transaction
+/// (Cluster 210 transactional outbox) — see the SQLite twin. Used by the DM /
+/// group-DM post paths (no post-insert slash edit). `dm_conversation_id` is
+/// `Some` for a 1:1 DM, `None` for a group DM.
+pub async fn create_with_event(
+    pool: &PgPool,
+    new: NewMessage,
+    dm_conversation_id: Option<DmConversationId>,
+) -> Result<(Message, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let content = new.content.as_ref().map(serde_json::to_value).transpose()?;
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(new.thread_id.0)
+    .bind(new.author_id.0)
+    .bind(&new.body)
+    .bind(&new.metadata)
+    .bind(content)
+    .fetch_one(&mut *tx)
+    .await?;
+    let message = row_to_message(&row);
+    let (workspace_id, channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message.id).await?;
+    let event = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        dm_conversation_id,
+        message: message.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((message, stored))
 }
 
 pub async fn get(pool: &PgPool, id: MessageId) -> Result<Message, StoreError> {
