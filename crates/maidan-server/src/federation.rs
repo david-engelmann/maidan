@@ -154,6 +154,15 @@ pub(crate) async fn ingest_envelope(
     }
 
     let mut event = event_from_stored(&envelope.event)?;
+    // Cluster 215 federation ingest trust policy: only accept event kinds a peer
+    // is allowed to push (allowlist-by-default; artifact-existence claims are
+    // rejected since blob bytes aren't federated).
+    if !event.kind().federatable() {
+        return Err(ApiError::Forbidden(format!(
+            "event kind {} is not accepted from federated peers",
+            event.kind().as_str()
+        )));
+    }
     event = remap_event_workspace(event, peer.workspace_id);
     let Some(log_id) = publish(state, event).await else {
         return Err(ApiError::Internal("event log append failed".into()));
@@ -201,13 +210,20 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
         }
         MemberJoined {
             occurred_at,
-            member,
+            mut member,
             ..
-        } => MemberJoined {
-            occurred_at,
-            workspace_id,
-            member,
-        },
+        } => {
+            // Cluster 215: re-scope the nested member to the local workspace too —
+            // otherwise `member.workspace_id` leaks the peer's remote workspace id
+            // into the local view (`ChannelCreated` already remaps its nested
+            // `channel.workspace_id`; `MemberJoined` was inconsistent).
+            member.workspace_id = workspace_id;
+            MemberJoined {
+                occurred_at,
+                workspace_id,
+                member,
+            }
+        }
         ChannelCreated {
             occurred_at,
             mut channel,
@@ -571,5 +587,50 @@ pub async fn peer_auth_middleware(
             next.run(req).await
         }
         Err(_) => ApiError::Unauthorized.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod remap_tests {
+    use super::*;
+    use maidan_types::{Member, MemberId, MemberKind};
+
+    /// Cluster 215: the `MemberJoined` remap must re-scope the **nested** member to
+    /// the local workspace, not just the event's top-level `workspace_id` — else a
+    /// federated member leaks the peer's remote workspace id.
+    #[test]
+    fn member_joined_remap_rescopes_nested_workspace() {
+        let remote = WorkspaceId(uuid::Uuid::from_u128(1));
+        let local = WorkspaceId(uuid::Uuid::from_u128(2));
+        let now = chrono::Utc::now();
+        let member = Member {
+            id: MemberId(uuid::Uuid::from_u128(3)),
+            workspace_id: remote,
+            handle: "a".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+            created_at: now,
+            updated_at: now,
+            tombstoned_at: None,
+        };
+        let event = Event::MemberJoined {
+            occurred_at: now,
+            workspace_id: remote,
+            member,
+        };
+        match remap_event_workspace(event, local) {
+            Event::MemberJoined {
+                workspace_id,
+                member,
+                ..
+            } => {
+                assert_eq!(workspace_id, local, "event workspace remapped");
+                assert_eq!(
+                    member.workspace_id, local,
+                    "nested member workspace remapped (no remote-id leak)"
+                );
+            }
+            other => panic!("expected MemberJoined, got {other:?}"),
+        }
     }
 }

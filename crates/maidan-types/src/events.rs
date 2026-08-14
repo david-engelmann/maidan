@@ -119,6 +119,40 @@ impl EventKind {
         Self::ReferenceAdded,
         Self::ArtifactUpserted,
     ];
+
+    /// Whether a federated peer may push this event kind on ingest (Cluster 215
+    /// federation ingest trust policy). **Allowlist-by-default via an exhaustive
+    /// match**: a new event kind fails to compile here until it is consciously
+    /// classified, so a peer can never inject an unreviewed kind into the local
+    /// event log.
+    ///
+    /// All collaboration-content kinds are federatable — federation replicates the
+    /// content event stream. **`ArtifactUpserted` is the exception**: federation
+    /// replicates *events*, not artifact *blobs*, so an ingested `ArtifactUpserted`
+    /// would announce a `sha256` whose bytes never arrive — a dangling reference.
+    /// We therefore do not accept artifact-existence claims from peers.
+    pub fn federatable(self) -> bool {
+        match self {
+            Self::WorkspaceCreated
+            | Self::MemberJoined
+            | Self::ChannelCreated
+            | Self::ThreadCreated
+            | Self::ThreadStateChanged
+            | Self::ThreadAssignmentChanged
+            | Self::MessagePosted
+            | Self::MessageEdited
+            | Self::MessageTombstoned
+            | Self::MentionRecorded
+            | Self::VoteCast
+            | Self::ReactionAdded
+            | Self::ReactionRemoved
+            | Self::MessagePinned
+            | Self::MessageUnpinned
+            | Self::ReferenceAdded => true,
+            // Blob bytes are not federated — an ingested claim would dangle.
+            Self::ArtifactUpserted => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -636,5 +670,23 @@ mod kind_tests {
     #[test]
     fn unknown_kind_does_not_parse() {
         assert_eq!(EventKind::parse("not_a_real_kind"), None);
+    }
+
+    /// Cluster 215: the federation ingest allowlist. Collaboration-content kinds
+    /// are federatable; `ArtifactUpserted` is not (blob bytes aren't federated).
+    #[test]
+    fn federatable_allowlist_excludes_only_artifacts() {
+        for &kind in EventKind::ALL {
+            let expected = kind != EventKind::ArtifactUpserted;
+            assert_eq!(
+                kind.federatable(),
+                expected,
+                "unexpected federatable() for {kind:?}"
+            );
+        }
+        // Representative content kinds are accepted; artifacts are not.
+        assert!(EventKind::MessagePosted.federatable());
+        assert!(EventKind::MemberJoined.federatable());
+        assert!(!EventKind::ArtifactUpserted.federatable());
     }
 }

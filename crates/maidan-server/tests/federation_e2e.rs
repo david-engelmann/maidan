@@ -18,8 +18,8 @@ use maidan_auth::{
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{
-    Event, EventKind, MemberKind, NewApiToken, NewMember, NewWorkspace, PeerId, StoredEvent,
-    WorkspaceId,
+    Artifact, ArtifactId, ArtifactKind, Event, EventKind, MemberId, MemberKind, NewApiToken,
+    NewMember, NewWorkspace, PeerId, StoredEvent, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::json;
@@ -266,6 +266,78 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
         .await
         .unwrap();
     assert_eq!(card.status(), StatusCode::OK);
+
+    h.shutdown().await;
+}
+
+/// Cluster 215: the federation ingest allowlist rejects a non-federatable event
+/// kind. `ArtifactUpserted` is not federatable (blob bytes aren't transferred), so
+/// a peer pushing one is `403`ed rather than injecting a dangling reference.
+#[tokio::test]
+async fn federation_ingest_rejects_non_federatable_artifact_event() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-art".to_string(),
+        })
+        .await
+        .unwrap();
+    let admin = mint_admin_token(h.store.as_ref(), ws.id).await;
+
+    let create = h
+        .client
+        .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
+        .bearer_auth(&admin)
+        .json(&json!({ "name": "remote-art", "base_url": "https://remote.example" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let body: serde_json::Value = create.json().await.unwrap();
+    let peer_id = PeerId(uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap());
+    let peer_secret = body["secret"].as_str().unwrap().to_string();
+
+    let now = chrono::Utc::now();
+    let event = Event::ArtifactUpserted {
+        occurred_at: now,
+        artifact: Artifact {
+            id: ArtifactId(uuid::Uuid::from_u128(9)),
+            sha256: "a".repeat(64),
+            size_bytes: 3,
+            mime_type: Some("text/plain".to_string()),
+            kind: ArtifactKind::Attachment,
+            uploaded_by: Some(MemberId(uuid::Uuid::from_u128(10))),
+            created_at: now,
+            tombstoned_at: None,
+        },
+    };
+    let stored = StoredEvent {
+        id: 1,
+        kind: EventKind::ArtifactUpserted,
+        workspace_id: None,
+        channel_id: None,
+        thread_id: None,
+        payload: serde_json::to_value(&event).unwrap(),
+        occurred_at: now,
+    };
+    let batch = FederatedEventBatch {
+        events: vec![FederationEnvelope {
+            origin_peer_id: peer_id,
+            remote_event_id: 1,
+            event: stored,
+        }],
+    };
+
+    let ingest = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(&peer_secret)
+        .json(&batch)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ingest.status(), StatusCode::FORBIDDEN);
 
     h.shutdown().await;
 }
