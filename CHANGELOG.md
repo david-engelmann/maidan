@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [211.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 10: transactional-outbox migration (regular message post). No new gate tag.
+
+### Changed
+
+- **The regular message-post path joins the transactional outbox.** The route now
+  branches: a no-slash post uses `post_message_with_event` (insert + event in one
+  tx, fully atomic); a slash post does a provisional insert, runs the (possibly
+  external) slash-command dispatch, then a new `edit_message_with_posted_event`
+  that commits the finalizing edit **and** its `MessagePosted` event (carrying the
+  edited message) in one tx. Added `message_edits::append_in_tx` so the
+  finalization records edit history on the same tx when the body changes.
+- **`publish()` is not deleted.** The message-post hold-out is closed, but the
+  outbox migration is larger than earlier notes implied: `publish()` still serves
+  message edit/tombstone, the A2A ingest post, and the member / workspace /
+  reference / artifact events, plus the federation relay (not a local domain
+  write). Those migrate in follow-up clusters.
+
 ## [210.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

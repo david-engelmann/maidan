@@ -44,71 +44,76 @@ pub async fn post_message(
         body.body.clone()
     };
     let parsed_slash = maidan_router::parse_slash_command(&post_body);
-    let m = state
-        .store
-        .post_message(NewMessage {
-            thread_id: ThreadId(thread_id),
-            author_id: MemberId(body.author_id),
-            body: post_body,
-            metadata: body.metadata.clone(),
-            content,
-        })
-        .await?;
-    let mut message = m;
-    if let Some(ref parsed) = parsed_slash {
-        if state
+    // A registered slash command will fire → the message gets edited after insert,
+    // so its `MessagePosted` must reflect the post-edit message. Resolve this
+    // before inserting so we can pick the atomic path.
+    let slash_will_run = match &parsed_slash {
+        Some(parsed) => state
             .store
             .get_slash_command_by_name(ctx.workspace_id, &parsed.name)
             .await
-            .is_ok()
-        {
-            let slash_result = crate::slash_commands::dispatch_slash_command(
-                &state,
-                &auth,
-                parsed,
-                ctx.workspace_id,
-                ctx.channel_id,
-                ThreadId(thread_id),
+            .is_ok(),
+        None => false,
+    };
+    let dm_conversation_id = state
+        .store
+        .dm_conversation_for_thread(ThreadId(thread_id))
+        .await
+        .ok()
+        .flatten()
+        .map(|d| d.id);
+    let new_message = NewMessage {
+        thread_id: ThreadId(thread_id),
+        author_id: MemberId(body.author_id),
+        body: post_body,
+        metadata: body.metadata.clone(),
+        content,
+    };
+
+    // Cluster 211: both paths commit the message and its `MessagePosted` event in
+    // one transaction. No slash → insert + event atomically. Slash → provisional
+    // insert, run the (possibly external) dispatch, then edit + event atomically
+    // so the event carries the post-slash message.
+    let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
+        let m = state.store.post_message(new_message).await?;
+        let slash_result = crate::slash_commands::dispatch_slash_command(
+            &state,
+            &auth,
+            &parsed,
+            ctx.workspace_id,
+            ctx.channel_id,
+            ThreadId(thread_id),
+            MemberId(body.author_id),
+            m.id,
+        )
+        .await;
+        let metadata = crate::slash_commands::merge_metadata(
+            m.metadata.clone(),
+            crate::slash_commands::slash_metadata(&parsed, &slash_result),
+        );
+        let (message, stored) = state
+            .store
+            .edit_message_with_posted_event(
+                m.id,
                 MemberId(body.author_id),
-                message.id,
+                EditMessage {
+                    body: m.body.clone(),
+                    metadata,
+                    content: m.content.clone(),
+                },
+                dm_conversation_id,
             )
-            .await;
-            let metadata = crate::slash_commands::merge_metadata(
-                message.metadata.clone(),
-                crate::slash_commands::slash_metadata(parsed, &slash_result),
-            );
-            message = state
-                .store
-                .edit_message(
-                    message.id,
-                    MemberId(body.author_id),
-                    EditMessage {
-                        body: message.body.clone(),
-                        metadata,
-                        content: message.content.clone(),
-                    },
-                )
-                .await?;
-        }
-    }
-    publish(
-        &state,
-        Event::MessagePosted {
-            occurred_at: Utc::now(),
-            workspace_id: ctx.workspace_id,
-            channel_id: ctx.channel_id,
-            thread_id: ThreadId(thread_id),
-            dm_conversation_id: state
-                .store
-                .dm_conversation_for_thread(ThreadId(thread_id))
-                .await
-                .ok()
-                .flatten()
-                .map(|d| d.id),
-            message: message.clone(),
-        },
-    )
-    .await;
+            .await?;
+        super::publish_stored(&state, stored).await;
+        message
+    } else {
+        let (message, stored) = state
+            .store
+            .post_message_with_event(new_message, dm_conversation_id)
+            .await?;
+        super::publish_stored(&state, stored).await;
+        message
+    };
     publish_routed_mentions(&state, ctx.thread_id, ctx.workspace_id, &message).await;
     Ok((StatusCode::CREATED, Json(message)))
 }

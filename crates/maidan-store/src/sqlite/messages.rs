@@ -200,6 +200,69 @@ pub async fn edit(
     row_to_message(&row)
 }
 
+/// Edit a just-posted message and append its `MessagePosted` event reflecting the
+/// **edited** message, in one transaction (Cluster 211). This is the atomic tail
+/// of the regular message-post path: the route inserts a provisional message, runs
+/// (possibly external) slash-command dispatch, then calls this to finalize — so
+/// the event carries the post-slash message. Mirrors `edit` (including the
+/// edit-history row when the body changes), plus the in-tx event append.
+pub async fn edit_with_posted_event(
+    pool: &SqlitePool,
+    id: MessageId,
+    editor_id: MemberId,
+    edit: EditMessage,
+    dm_conversation_id: Option<DmConversationId>,
+) -> Result<(Message, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let existing_row = sqlx::query(
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
+         FROM maidan_messages WHERE id = ?",
+    )
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let existing = row_to_message(&existing_row)?;
+    let now = Utc::now();
+    if existing.body != edit.body {
+        super::message_edits::append_in_tx(&mut tx, id, editor_id, &existing.body, &edit.body, now)
+            .await?;
+    }
+    let metadata_text = serde_json::to_string(&edit.metadata)?;
+    let content_text = edit
+        .content
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let row = sqlx::query(
+        "UPDATE maidan_messages SET body = ?, metadata = ?, content = ?, edited_at = ?
+         WHERE id = ? AND tombstoned_at IS NULL
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+    )
+    .bind(&edit.body)
+    .bind(&metadata_text)
+    .bind(&content_text)
+    .bind(now)
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let message = row_to_message(&row)?;
+    let (workspace_id, channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message.id).await?;
+    let event = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        dm_conversation_id,
+        message: message.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((message, stored))
+}
+
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
     let now = Utc::now();
     let res = sqlx::query(

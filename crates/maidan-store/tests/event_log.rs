@@ -754,3 +754,123 @@ async fn dm_post_with_event_appends_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 211: the regular message-post path's slash finalization —
+/// `edit_message_with_posted_event` commits the edit and a `MessagePosted` event
+/// reflecting the **edited** message in one tx, and records edit history when the
+/// body changes.
+#[tokio::test]
+async fn message_post_finalize_with_event_appends_atomically() {
+    use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "post-finalize".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+
+    // Provisional insert (as the route does before slash dispatch).
+    let m = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "/deploy prod".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("provisional");
+
+    // Metadata-only finalization (body unchanged — the slash path's shape).
+    let (finalized, stored) = store
+        .edit_message_with_posted_event(
+            m.id,
+            MemberId(author.id.0),
+            EditMessage {
+                body: m.body.clone(),
+                metadata: serde_json::json!({"slash_command": "deploy"}),
+                content: m.content.clone(),
+            },
+            None,
+        )
+        .await
+        .expect("finalize");
+    assert_eq!(stored.kind, EventKind::MessagePosted);
+    // The event carries the post-edit message.
+    match serde_json::from_value::<Event>(stored.payload.clone()).expect("event") {
+        Event::MessagePosted { message, .. } => {
+            assert_eq!(message.id, finalized.id);
+            assert_eq!(message.metadata["slash_command"], "deploy");
+        }
+        other => panic!("expected MessagePosted, got {other:?}"),
+    }
+    // No body change → no edit-history row.
+    assert!(store
+        .list_message_edits(m.id, 10)
+        .await
+        .expect("edits")
+        .is_empty());
+
+    // A body-changing finalize records edit history (still one MessagePosted).
+    let (_m2, stored2) = store
+        .edit_message_with_posted_event(
+            m.id,
+            MemberId(author.id.0),
+            EditMessage {
+                body: "deployed".to_string(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .expect("finalize2");
+    assert_eq!(stored2.kind, EventKind::MessagePosted);
+    let edits = store.list_message_edits(m.id, 10).await.expect("edits2");
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0].body_after, "deployed");
+
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [stored.id, stored2.id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

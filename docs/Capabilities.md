@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v211.0.0 — Correctness: transactional outbox (regular message post)
+
+| Change | Where |
+|--------|-------|
+| Regular `post_message` route branches — no-slash → `post_message_with_event` (atomic insert+event); slash → provisional insert, external dispatch, then `edit_message_with_posted_event` (edit + `MessagePosted` of the edited message in one tx, via new `message_edits::append_in_tx`). Closes the message-post hold-out; `publish()` retained for edit/tombstone/A2A/member/workspace/reference/artifact + federation relay | `store/*/{messages,message_edits}.rs`, `routes/message.rs` |
+
 ## v210.0.0 — Correctness: transactional outbox (DM / group-DM posts)
 
 | Change | Where |
