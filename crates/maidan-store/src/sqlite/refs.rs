@@ -1,9 +1,19 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{NewReference, RefSide, Reference};
+use maidan_types::{Event, NewReference, RefSide, Reference, StoredEvent};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
+
+fn map_ref_err(err: sqlx::Error) -> StoreError {
+    match err {
+        sqlx::Error::Database(ref db) if db.is_unique_violation() => {
+            StoreError::Conflict("reference already exists".into())
+        }
+        other => StoreError::Database(other),
+    }
+}
 
 pub async fn create(pool: &SqlitePool, new: NewReference) -> Result<Reference, StoreError> {
     let id = Uuid::new_v4();
@@ -22,13 +32,42 @@ pub async fn create(pool: &SqlitePool, new: NewReference) -> Result<Reference, S
     .bind(now)
     .fetch_one(pool)
     .await
-    .map_err(|err| match err {
-        sqlx::Error::Database(ref db) if db.is_unique_violation() => {
-            StoreError::Conflict("reference already exists".into())
-        }
-        other => StoreError::Database(other),
-    })?;
+    .map_err(map_ref_err)?;
     row_to_reference(&row)
+}
+
+/// Insert a reference and append its `ReferenceAdded` event in one transaction
+/// (Cluster 214 transactional outbox).
+pub async fn create_with_event(
+    pool: &SqlitePool,
+    new: NewReference,
+) -> Result<(Reference, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, src_kind, src_id, dst_kind, dst_id, relation, created_at",
+    )
+    .bind(id)
+    .bind(new.src_kind.as_str())
+    .bind(new.src_id)
+    .bind(new.dst_kind.as_str())
+    .bind(new.dst_id)
+    .bind(&new.relation)
+    .bind(now)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_ref_err)?;
+    let reference = row_to_reference(&row)?;
+    let event = Event::ReferenceAdded {
+        occurred_at: Utc::now(),
+        reference: reference.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((reference, stored))
 }
 
 pub async fn list_from(

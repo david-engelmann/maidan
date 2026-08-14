@@ -436,6 +436,12 @@ pub trait Store: Send + Sync {
     async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError>;
 
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError>;
+    /// Add a reference and append its `ReferenceAdded` event atomically (Cluster
+    /// 214).
+    async fn add_reference_with_event(
+        &self,
+        new: NewReference,
+    ) -> Result<(Reference, StoredEvent), StoreError>;
     async fn list_references_from(
         &self,
         src_kind: RefSide,
@@ -452,6 +458,14 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<Reference>, StoreError>;
 
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
+    /// Upsert an artifact, optionally record its per-workspace access ref, and
+    /// append its `ArtifactUpserted` event — all atomically (Cluster 214).
+    /// `ref_workspace` is `Some` when the caller would record a ref (non-bypass).
+    async fn upsert_artifact_with_event(
+        &self,
+        new: NewArtifact,
+        ref_workspace: Option<WorkspaceId>,
+    ) -> Result<(Artifact, StoredEvent), StoreError>;
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError>;
 
     /// Record that `workspace_id` may access the artifact `sha256` (Cluster 204).

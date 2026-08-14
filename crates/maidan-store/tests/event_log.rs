@@ -1027,3 +1027,133 @@ async fn create_workspace_and_member_with_event_append_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 214: references + artifacts migrated to the transactional-outbox
+/// pattern. `add_reference_with_event` appends `ReferenceAdded`;
+/// `upsert_artifact_with_event` appends `ArtifactUpserted` and — for a non-bypass
+/// caller (`ref_workspace = Some`) — records the Cluster-204 access ref in the
+/// same tx.
+#[tokio::test]
+async fn reference_and_artifact_with_event_append_atomically() {
+    use maidan_types::{
+        ArtifactKind, MemberId, NewArtifact, NewMessage, NewReference, NewThread, RefSide,
+    };
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "ref-art-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let msg = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "hi".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("msg");
+
+    // Reference → ReferenceAdded.
+    let (reference, ref_ev) = store
+        .add_reference_with_event(NewReference {
+            src_kind: RefSide::Message,
+            src_id: msg.id.0,
+            dst_kind: RefSide::Thread,
+            dst_id: th.id.0,
+            relation: "derived_from".to_string(),
+        })
+        .await
+        .expect("reference");
+    assert_eq!(ref_ev.kind, EventKind::ReferenceAdded);
+    assert_eq!(reference.src_id, msg.id.0);
+
+    // Artifact with a ref (non-bypass) → ArtifactUpserted + a recorded ref.
+    let sha_a = "a".repeat(64);
+    let (_artifact, art_ev) = store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha_a.clone(),
+                size_bytes: 3,
+                mime_type: Some("text/plain".to_string()),
+                kind: ArtifactKind::Attachment,
+                uploaded_by: Some(MemberId(author.id.0)),
+            },
+            Some(ws.id),
+        )
+        .await
+        .expect("artifact + ref");
+    assert_eq!(art_ev.kind, EventKind::ArtifactUpserted);
+    assert!(store
+        .artifact_ref_exists(ws.id, &sha_a)
+        .await
+        .expect("ref exists"));
+
+    // Artifact without a ref (bypass) → event only, no ref for this workspace.
+    let sha_b = "b".repeat(64);
+    let (_artifact2, art_ev2) = store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha_b.clone(),
+                size_bytes: 3,
+                mime_type: None,
+                kind: ArtifactKind::Attachment,
+                uploaded_by: None,
+            },
+            None,
+        )
+        .await
+        .expect("artifact no ref");
+    assert_eq!(art_ev2.kind, EventKind::ArtifactUpserted);
+    assert!(!store
+        .artifact_ref_exists(ws.id, &sha_b)
+        .await
+        .expect("no ref"));
+
+    // ReferenceAdded / ArtifactUpserted are workspace-less events, so verify
+    // durability via the by-id read rather than a workspace-scoped list.
+    for stored in [&ref_ev, &art_ev, &art_ev2] {
+        assert!(
+            store.get_stored_event(stored.id).await.is_ok(),
+            "event {} durable",
+            stored.id
+        );
+    }
+}

@@ -592,6 +592,12 @@ impl Store for SqliteStore {
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError> {
         refs::create(&self.pool, new).await
     }
+    async fn add_reference_with_event(
+        &self,
+        new: NewReference,
+    ) -> Result<(Reference, StoredEvent), StoreError> {
+        refs::create_with_event(&self.pool, new).await
+    }
     async fn list_references_from(
         &self,
         src_kind: RefSide,
@@ -609,6 +615,13 @@ impl Store for SqliteStore {
 
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError> {
         artifacts::upsert(&self.pool, new).await
+    }
+    async fn upsert_artifact_with_event(
+        &self,
+        new: NewArtifact,
+        ref_workspace: Option<WorkspaceId>,
+    ) -> Result<(Artifact, StoredEvent), StoreError> {
+        artifacts::upsert_with_event(&self.pool, new, ref_workspace).await
     }
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError> {
         artifacts::get_by_sha(&self.pool, sha256).await
