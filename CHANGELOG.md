@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [216.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 15 (final): the RLS spike. No new gate tag.
+
+### Changed
+
+- **Row-Level Security assessed and deferred (decision ADR).** Program A's last
+  item was a spike evaluating Postgres RLS as database-enforced tenant isolation
+  beneath the app-layer RBAC. Outcome: **defer** — app-layer RBAC stays
+  authoritative. A new `## Security` ADR in `docs/Decisions.md` records the RLS
+  design (per-connection `SET LOCAL app.current_workspace` GUC + policies), the
+  blockers (shared pool with no per-request tenant binding; workspace-agnostic
+  `Store` trait; SQLite has no RLS → parity break; cross-workspace bearer
+  orchestrator model; duplicates an already-comprehensive control), and the trigger
+  conditions for revisiting. Docs-only. **With this, Program A (security &
+  correctness round 2, Clusters 202–216) is complete.**
+
 ## [215.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

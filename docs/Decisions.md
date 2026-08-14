@@ -397,6 +397,73 @@ Semantic: `score = rank`. Lexical: min-max normalize ranks within the response.
 **Why this:** clients can compare hit quality across Postgres and SQLite within
 one mode without parsing backend-specific `rank` ranges.
 
+## Security
+
+### Postgres Row-Level Security assessed, deferred; app-layer RBAC is authoritative (`v216.0.0`)
+
+**Decision.** Do **not** adopt Postgres Row-Level Security (RLS). Tenant isolation
+and channel/thread access control stay enforced entirely at the application layer —
+the `maidan_auth::access` helpers (`ensure_channel_access` / `ensure_thread_access`
+/ `ensure_message_access` and the `can_access_*` / `*_deny_set` filters), applied on
+every REST + MCP content route, the WS/MCP subscribe grants, the search + context
+filters, and the federation/A2A ingress (the Cluster 160–165 arc plus 179–183,
+202–204). This ADR is the Program-A "RLS spike": it records the assessment and the
+conditions under which RLS would be revisited.
+
+**How RLS would work here.** RLS keys each row-visibility policy on a
+per-connection session GUC — e.g. `SET LOCAL app.current_workspace = '<uuid>'` at
+the start of a request's transaction, with policies like
+`USING (workspace_id = current_setting('app.current_workspace')::uuid)` on every
+tenant-scoped table. The database then denies cross-tenant rows even if an
+application query forgets a `WHERE workspace_id = …`.
+
+**Alternatives considered.**
+
+1. **Full RLS.** Enable RLS on every tenant-scoped table + thread the current
+   workspace through a per-request GUC.
+2. **RLS on a subset** (e.g. only `maidan_messages`).
+3. **No RLS — app-layer RBAC only** (chosen).
+
+**Why defer.**
+
+- **The connection pool has no per-request tenant binding.** The `PgPool` is a
+  shared 16-connection pool whose only per-connection setup is `statement_timeout`
+  (`main.rs` `after_connect`). `SET LOCAL` is transaction-scoped, so RLS would
+  require wrapping **every** read in a request-bound transaction that first sets the
+  GUC — today most `Store` reads run directly on `&pool` outside any transaction.
+- **The `Store` trait is workspace-agnostic.** Its methods take entity ids, not a
+  request/workspace context; RLS needs that context at query time. Supplying it
+  means threading a "current workspace" (and the bypass/orchestrator distinction)
+  through every `Store` method and both backends — a large, cross-cutting refactor.
+- **SQLite has no RLS.** The store is dual-backend with enforced parity (both
+  backends run the same suite). RLS would be Postgres-only, so the SQLite path would
+  still rely solely on app-layer RBAC — an asymmetry that weakens the "both backends
+  are equivalent" guarantee the project leans on.
+- **The bearer/orchestrator model is cross-workspace by design.** A bearer token is
+  an act-as-any orchestrator (Cluster 202–203); a single `current_workspace` GUC
+  doesn't fit an operation that legitimately spans workspaces without per-operation
+  GUC juggling or a broad bypass role — which reintroduces the app layer as the real
+  policy.
+- **It duplicates an already-comprehensive, tested control.** The app-layer RBAC
+  gates reads, writes, events, management, references, artifacts, search, and
+  federation ingress, with e2e coverage. RLS would be defense-in-depth *over* that —
+  real value only against an app-layer bug, at a high refactor + parity cost.
+
+**Why this (app-layer only).** The authoritative control is where the domain
+context lives (auth + entity graph), it is uniform across both backends, and it
+already covers every surface. RLS's marginal benefit (catching a missed `WHERE`)
+does not justify a pool + `Store`-context refactor that only protects the Postgres
+half.
+
+**To revisit** — adopt RLS if **any** of these hold: (a) a multi-tenant compliance
+requirement mandates database-enforced isolation; (b) the `Store` gains a
+per-request context object (for read-replica routing or query tracing) that could
+carry the workspace GUC cheaply — at which point RLS becomes incremental; (c)
+Postgres becomes the sole supported backend, removing the parity concern. If
+adopted, start with `maidan_messages` + `maidan_channels` behind a
+`SET LOCAL`-in-transaction wrapper and a `bypass` role for orchestrator/federation
+paths, and keep the app-layer checks as the primary control.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)
