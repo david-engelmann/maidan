@@ -26,6 +26,30 @@ pub async fn append(
     Ok(())
 }
 
+/// Append an edit-history row on a caller-supplied transaction (Cluster 211) —
+/// used by the atomic edit-then-`MessagePosted` finalization.
+pub async fn append_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    message_id: MessageId,
+    editor_id: MemberId,
+    body_before: &str,
+    body_after: &str,
+    edited_at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_message_edits (message_id, editor_id, body_before, body_after, edited_at)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(message_id.0)
+    .bind(editor_id.0)
+    .bind(body_before)
+    .bind(body_after)
+    .bind(edited_at)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 pub async fn list(
     pool: &PgPool,
     message_id: MessageId,

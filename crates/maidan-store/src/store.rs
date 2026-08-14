@@ -268,6 +268,17 @@ pub trait Store: Send + Sync {
         new: NewMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError>;
+    /// Edit a just-posted message and append its `MessagePosted` event (reflecting
+    /// the edited message) atomically (Cluster 211) — the regular post path's
+    /// slash-command finalization, where the event must carry the post-edit
+    /// message.
+    async fn edit_message_with_posted_event(
+        &self,
+        id: MessageId,
+        editor_id: MemberId,
+        edit: EditMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError>;
     async fn edit_message(
         &self,
         id: MessageId,
