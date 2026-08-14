@@ -357,3 +357,113 @@ async fn social_with_event_appends_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 207: pins + mentions migrated to the transactional-outbox pattern.
+/// A pin/mention appends its event in the same tx; an unpin miss produces no
+/// event, a real unpin does.
+#[tokio::test]
+async fn pins_and_mentions_with_event_append_atomically() {
+    use maidan_types::{MemberId, NewMessage, NewPin, NewThread};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "pin-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let msg = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "hi".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("msg");
+
+    let pin_event = store
+        .pin_message_with_event(NewPin {
+            thread_id: th.id,
+            message_id: msg.id,
+            member_id: MemberId(author.id.0),
+        })
+        .await
+        .expect("pin");
+    assert_eq!(pin_event.kind, EventKind::MessagePinned);
+
+    let mention_event = store
+        .record_mention_with_event(msg.id, MemberId(author.id.0))
+        .await
+        .expect("mention");
+    assert_eq!(mention_event.kind, EventKind::MentionRecorded);
+
+    // Unpin a message that was never pinned → no event; the real one → event.
+    let other = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "bye".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("other msg");
+    let (removed_none, none_event) = store
+        .unpin_message_with_event(th.id, other.id, MemberId(author.id.0))
+        .await
+        .expect("unpin miss");
+    assert!(!removed_none && none_event.is_none());
+    let (removed, some_event) = store
+        .unpin_message_with_event(th.id, msg.id, MemberId(author.id.0))
+        .await
+        .expect("unpin hit");
+    assert!(removed && some_event.is_some());
+    assert_eq!(
+        some_event.as_ref().unwrap().kind,
+        EventKind::MessageUnpinned
+    );
+
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [pin_event.id, mention_event.id, some_event.unwrap().id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

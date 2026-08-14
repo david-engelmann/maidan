@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -13,7 +12,7 @@ use maidan_auth::{
 use maidan_router::{resolve_message_chain, resolve_thread_context};
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish, publish_stored, ApiResult};
+use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::ApiJson;
 use crate::state::AppState;
@@ -154,26 +153,15 @@ pub async fn pin_message(
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
-    state
+    let stored = state
         .store
-        .pin_message(NewPin {
+        .pin_message_with_event(NewPin {
             thread_id,
             message_id,
             member_id,
         })
         .await?;
-    publish(
-        &state,
-        Event::MessagePinned {
-            occurred_at: Utc::now(),
-            workspace_id: ctx.workspace_id,
-            channel_id: ctx.channel_id,
-            thread_id,
-            message_id,
-            member_id,
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_thread_transition(state.store.as_ref(), thread_id)
             .await;
@@ -195,19 +183,14 @@ pub async fn unpin_message(
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
-    if state.store.unpin_message(thread_id, message_id).await? {
-        publish(
-            &state,
-            Event::MessageUnpinned {
-                occurred_at: Utc::now(),
-                workspace_id: ctx.workspace_id,
-                channel_id: ctx.channel_id,
-                thread_id,
-                message_id,
-                member_id,
-            },
-        )
-        .await;
+    let (removed, stored) = state
+        .store
+        .unpin_message_with_event(thread_id, message_id, member_id)
+        .await?;
+    if removed {
+        if let Some(stored) = stored {
+            super::publish_stored(&state, stored).await;
+        }
         let uris = maidan_mcp::resource_updates::uris_for_thread_transition(
             state.store.as_ref(),
             thread_id,

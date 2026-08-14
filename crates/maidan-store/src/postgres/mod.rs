@@ -398,6 +398,13 @@ impl Store for PostgresStore {
     ) -> Result<(), StoreError> {
         mentions::record(&self.pool, message_id, member_id).await
     }
+    async fn record_mention_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+    ) -> Result<StoredEvent, StoreError> {
+        mentions::record_with_event(&self.pool, message_id, member_id).await
+    }
     async fn list_mentions_for_member(
         &self,
         member_id: MemberId,
@@ -471,12 +478,23 @@ impl Store for PostgresStore {
     async fn pin_message(&self, new: NewPin) -> Result<(), StoreError> {
         pins::pin(&self.pool, new).await
     }
+    async fn pin_message_with_event(&self, new: NewPin) -> Result<StoredEvent, StoreError> {
+        pins::pin_with_event(&self.pool, new).await
+    }
     async fn unpin_message(
         &self,
         thread_id: ThreadId,
         message_id: MessageId,
     ) -> Result<bool, StoreError> {
         pins::unpin(&self.pool, thread_id, message_id).await
+    }
+    async fn unpin_message_with_event(
+        &self,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+        pins::unpin_with_event(&self.pool, thread_id, message_id, member_id).await
     }
     async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError> {
         pins::list_for_thread(&self.pool, thread_id).await
