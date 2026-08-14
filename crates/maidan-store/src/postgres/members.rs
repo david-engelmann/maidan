@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Member, MemberId, MemberKind, NewMember, WorkspaceId};
+use maidan_types::{Event, Member, MemberId, MemberKind, NewMember, StoredEvent, WorkspaceId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::postgres::events;
 
 pub async fn create(pool: &PgPool, new: NewMember) -> Result<Member, StoreError> {
     let id = Uuid::new_v4();
@@ -21,6 +22,39 @@ pub async fn create(pool: &PgPool, new: NewMember) -> Result<Member, StoreError>
     .await
     .map_err(map_member_err)?;
     row_to_member(&row)
+}
+
+/// Insert a member and append its `MemberJoined` event in one transaction
+/// (Cluster 213) — see the SQLite twin.
+pub async fn create_with_event(
+    pool: &PgPool,
+    new: NewMember,
+) -> Result<(Member, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let workspace_id = new.workspace_id;
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_members (id, workspace_id, handle, display_name, kind)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(new.workspace_id.0)
+    .bind(&new.handle)
+    .bind(new.display_name.as_deref())
+    .bind(new.kind.as_str())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_member_err)?;
+    let member = row_to_member(&row)?;
+    let event = Event::MemberJoined {
+        occurred_at: Utc::now(),
+        workspace_id,
+        member: member.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((member, stored))
 }
 
 pub async fn get(pool: &PgPool, id: MemberId) -> Result<Member, StoreError> {

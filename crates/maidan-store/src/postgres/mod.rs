@@ -71,6 +71,12 @@ impl Store for PostgresStore {
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
         workspaces::create(&self.pool, new).await
     }
+    async fn create_workspace_with_event(
+        &self,
+        new: NewWorkspace,
+    ) -> Result<(Workspace, StoredEvent), StoreError> {
+        workspaces::create_with_event(&self.pool, new).await
+    }
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError> {
         workspaces::get(&self.pool, id).await
     }
@@ -83,6 +89,12 @@ impl Store for PostgresStore {
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
         members::create(&self.pool, new).await
+    }
+    async fn create_member_with_event(
+        &self,
+        new: NewMember,
+    ) -> Result<(Member, StoredEvent), StoreError> {
+        members::create_with_event(&self.pool, new).await
     }
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError> {
         members::get(&self.pool, id).await

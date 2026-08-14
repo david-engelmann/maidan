@@ -1,9 +1,12 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{NewWorkspace, WebhookSubscriptionId, Workspace, WorkspaceId, WorkspaceUsage};
+use maidan_types::{
+    Event, NewWorkspace, StoredEvent, WebhookSubscriptionId, Workspace, WorkspaceId, WorkspaceUsage,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 pub async fn create(pool: &SqlitePool, new: NewWorkspace) -> Result<Workspace, StoreError> {
     let id = Uuid::new_v4();
@@ -20,6 +23,36 @@ pub async fn create(pool: &SqlitePool, new: NewWorkspace) -> Result<Workspace, S
     .fetch_one(pool)
     .await?;
     Ok(row_to_workspace(&row))
+}
+
+/// Insert a workspace and append its `WorkspaceCreated` event in one transaction
+/// (Cluster 213 transactional outbox).
+pub async fn create_with_event(
+    pool: &SqlitePool,
+    new: NewWorkspace,
+) -> Result<(Workspace, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_workspaces (id, name, created_at, updated_at)
+         VALUES (?, ?, ?, ?)
+         RETURNING id, name, created_at, updated_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(&new.name)
+    .bind(now)
+    .bind(now)
+    .fetch_one(&mut *tx)
+    .await?;
+    let workspace = row_to_workspace(&row);
+    let event = Event::WorkspaceCreated {
+        occurred_at: Utc::now(),
+        workspace: workspace.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((workspace, stored))
 }
 
 pub async fn count(pool: &SqlitePool) -> Result<i64, StoreError> {
