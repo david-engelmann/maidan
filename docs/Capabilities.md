@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v207.0.0 — Correctness: transactional outbox (pins + mentions)
+
+| Change | Where |
+|--------|-------|
+| `pin_message_with_event` / `unpin_message_with_event` / `record_mention_with_event` — row + event in one tx over the shared `events::message_scope_in_tx` resolver (pins carry the channel; unpin emits `MessageUnpinned` only when a row was removed); routes use them + `publish_stored`. Continues the 205/206 outbox migration | `store/*/{pins,mentions,events}.rs`, `routes/{social,message}.rs` |
+
 ## v206.0.0 — Correctness: transactional outbox (votes + reactions)
 
 | Change | Where |

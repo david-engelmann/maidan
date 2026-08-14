@@ -297,21 +297,11 @@ pub async fn create_mention(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
-    state
+    let stored = state
         .store
-        .record_mention(MessageId(message_id), MemberId(body.member_id))
+        .record_mention_with_event(MessageId(message_id), MemberId(body.member_id))
         .await?;
-    publish(
-        &state,
-        Event::MentionRecorded {
-            occurred_at: Utc::now(),
-            workspace_id: chain.workspace_id,
-            thread_id: chain.thread_id,
-            message_id: MessageId(message_id),
-            member_id: MemberId(body.member_id),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), MessageId(message_id))
             .await;

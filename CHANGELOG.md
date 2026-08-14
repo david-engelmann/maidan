@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [207.0.0] — 2026-08-13
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 6: transactional-outbox migration (pins + mentions). No new gate tag.
+
+### Changed
+
+- **Pins + mentions join the transactional outbox.** `pin_message`,
+  `unpin_message`, and `record_mention` now have `*_with_event` store variants
+  that write the row **and** append their `MessagePinned` / `MessageUnpinned` /
+  `MentionRecorded` event in one transaction (Cluster 205 pattern), over the
+  shared `events::message_scope_in_tx` resolver (pins need the channel too;
+  mentions discard it). `unpin_message_with_event` is conditional — it returns
+  `(removed, Option<StoredEvent>)` and appends `MessageUnpinned` only when a row
+  was removed. Routes (`social.rs` pin/unpin, `message.rs` mention) call them +
+  `publish_stored`. Migration continues: thread transitions/assignments,
+  DM/group-DM posts, and the entangled message-post path still use the
+  retry-hardened `publish()`.
+
 ## [206.0.0] — 2026-08-13
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberId, Mention, MessageId};
+use maidan_types::{Event, MemberId, Mention, MessageId, StoredEvent};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 pub async fn record(
     pool: &SqlitePool,
@@ -22,6 +23,38 @@ pub async fn record(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Record a mention and append its `MentionRecorded` event in one transaction
+/// (Cluster 207). `member_id` is the mentioned party.
+pub async fn record_with_event(
+    pool: &SqlitePool,
+    message_id: MessageId,
+    member_id: MemberId,
+) -> Result<StoredEvent, StoreError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO maidan_mentions (message_id, member_id, created_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(message_id.0)
+    .bind(member_id.0)
+    .bind(Utc::now())
+    .execute(&mut *tx)
+    .await?;
+    let (workspace_id, _channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message_id).await?;
+    let event = Event::MentionRecorded {
+        occurred_at: Utc::now(),
+        workspace_id,
+        thread_id,
+        message_id,
+        member_id,
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok(stored)
 }
 
 pub async fn list_for_member(

@@ -274,6 +274,13 @@ pub trait Store: Send + Sync {
         message_id: MessageId,
         member_id: MemberId,
     ) -> Result<(), StoreError>;
+    /// Record a mention and append its `MentionRecorded` event atomically
+    /// (Cluster 207). `member_id` is the mentioned party.
+    async fn record_mention_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+    ) -> Result<StoredEvent, StoreError>;
     async fn list_mentions_for_member(
         &self,
         member_id: MemberId,
@@ -325,11 +332,21 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<Reaction>, StoreError>;
 
     async fn pin_message(&self, new: NewPin) -> Result<(), StoreError>;
+    /// Pin a message and append its `MessagePinned` event atomically (Cluster 207).
+    async fn pin_message_with_event(&self, new: NewPin) -> Result<StoredEvent, StoreError>;
     async fn unpin_message(
         &self,
         thread_id: ThreadId,
         message_id: MessageId,
     ) -> Result<bool, StoreError>;
+    /// Unpin a message, appending `MessageUnpinned` atomically **iff** a row was
+    /// removed (Cluster 207). `member_id` is the actor. `(removed, event)`.
+    async fn unpin_message_with_event(
+        &self,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError>;
     async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError>;
 
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError>;
