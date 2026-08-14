@@ -305,6 +305,15 @@ impl Store for SqliteStore {
     ) -> Result<Thread, StoreError> {
         threads::assign(&self.pool, thread_id, assignee_id).await
     }
+    async fn assign_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        assignee_id: MemberId,
+        actor_id: MemberId,
+        note: Option<String>,
+    ) -> Result<(Thread, StoredEvent), StoreError> {
+        threads::assign_with_event(&self.pool, thread_id, assignee_id, actor_id, note).await
+    }
 
     async fn claim_thread(
         &self,
@@ -313,9 +322,23 @@ impl Store for SqliteStore {
     ) -> Result<ThreadClaimResult, StoreError> {
         threads::claim(&self.pool, thread_id, member_id).await
     }
+    async fn claim_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
+        threads::claim_with_event(&self.pool, thread_id, member_id).await
+    }
 
     async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError> {
         threads::unassign(&self.pool, thread_id).await
+    }
+    async fn unassign_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+    ) -> Result<(Thread, StoredEvent), StoreError> {
+        threads::unassign_with_event(&self.pool, thread_id, actor_id).await
     }
     async fn list_assigned_threads(
         &self,
@@ -331,6 +354,14 @@ impl Store for SqliteStore {
         lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError> {
         threads::claim_next(&self.pool, channel_id, member_id, lease_secs).await
+    }
+    async fn claim_next_thread_with_event(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        lease_secs: Option<i64>,
+    ) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError> {
+        threads::claim_next_with_event(&self.pool, channel_id, member_id, lease_secs).await
     }
     async fn renew_claim(
         &self,

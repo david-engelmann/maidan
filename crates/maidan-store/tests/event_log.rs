@@ -540,3 +540,126 @@ async fn transition_with_event_appends_atomically() {
         "ThreadStateChanged durable"
     );
 }
+
+/// Cluster 209: thread assignments migrated to the transactional-outbox pattern.
+/// assign/unassign always emit; claim/claim_next emit only when they claimed.
+#[tokio::test]
+async fn assignment_with_event_appends_atomically() {
+    use maidan_types::{MemberId, NewThread};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "assign-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let actor_id = MemberId(actor.id.0);
+
+    // assign → ThreadAssignmentChanged with previous None, note carried.
+    let (assigned, assign_ev) = store
+        .assign_thread_with_event(th.id, actor_id, actor_id, Some("take it".to_string()))
+        .await
+        .expect("assign");
+    assert_eq!(assign_ev.kind, EventKind::ThreadAssignmentChanged);
+    assert_eq!(assigned.assignee_id, Some(actor_id));
+
+    // unassign → event, assignee cleared.
+    let (unassigned, unassign_ev) = store
+        .unassign_thread_with_event(th.id, actor_id)
+        .await
+        .expect("unassign");
+    assert_eq!(unassign_ev.kind, EventKind::ThreadAssignmentChanged);
+    assert_eq!(unassigned.assignee_id, None);
+
+    // claim on the now-unassigned thread → event.
+    let (claim_res, claim_ev) = store
+        .claim_thread_with_event(th.id, actor_id)
+        .await
+        .expect("claim");
+    assert!(claim_res.claimed && claim_ev.is_some());
+    // claim again (already assigned) → no event.
+    let (claim_res2, claim_ev2) = store
+        .claim_thread_with_event(th.id, actor_id)
+        .await
+        .expect("claim2");
+    assert!(!claim_res2.claimed && claim_ev2.is_none());
+
+    // claim_next in a fresh channel with one unassigned thread → event, then null.
+    let ch2 = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c2".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch2");
+    let (th2, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch2.id,
+            parent_thread_id: None,
+            title: Some("t2".to_string()),
+        })
+        .await
+        .expect("thread2");
+    let (next, next_ev) = store
+        .claim_next_thread_with_event(ch2.id, actor_id, None)
+        .await
+        .expect("claim_next");
+    assert_eq!(next.map(|t| t.id), Some(th2.id));
+    assert!(next_ev.is_some());
+    let (none_next, none_ev) = store
+        .claim_next_thread_with_event(ch2.id, actor_id, None)
+        .await
+        .expect("claim_next empty");
+    assert!(none_next.is_none() && none_ev.is_none());
+
+    // All emitted events are durably in the log.
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [
+        assign_ev.id,
+        unassign_ev.id,
+        claim_ev.unwrap().id,
+        next_ev.unwrap().id,
+    ] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}
