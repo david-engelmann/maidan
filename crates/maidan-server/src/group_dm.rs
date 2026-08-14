@@ -5,14 +5,12 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 use maidan_auth::AuthContext;
-use maidan_router::resolve_thread_context;
 use maidan_types::*;
 
 use crate::error::ApiError;
-use crate::routes::{publish, publish_routed_mentions};
+use crate::routes::publish_routed_mentions;
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -107,29 +105,20 @@ pub async fn post_group_dm_message(
         ));
     }
     let metadata = body.metadata.unwrap_or_else(|| serde_json::json!({}));
-    let m = state
+    let (m, stored) = state
         .store
-        .post_message(NewMessage {
-            thread_id: group.thread_id,
-            author_id,
-            body: body.body,
-            metadata,
-            content: None,
-        })
+        .post_message_with_event(
+            NewMessage {
+                thread_id: group.thread_id,
+                author_id,
+                body: body.body,
+                metadata,
+                content: None,
+            },
+            None,
+        )
         .await?;
-    let ctx = resolve_thread_context(state.store.as_ref(), group.thread_id).await?;
-    publish(
-        &state,
-        Event::MessagePosted {
-            occurred_at: Utc::now(),
-            workspace_id: group.workspace_id,
-            channel_id: ctx.channel_id,
-            thread_id: group.thread_id,
-            dm_conversation_id: None,
-            message: m.clone(),
-        },
-    )
-    .await;
+    crate::routes::publish_stored(&state, stored).await;
     publish_routed_mentions(&state, group.thread_id, group.workspace_id, &m).await;
     Ok((StatusCode::CREATED, Json(m)))
 }

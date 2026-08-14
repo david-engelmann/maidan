@@ -260,6 +260,14 @@ pub trait Store: Send + Sync {
     ) -> Result<Thread, StoreError>;
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
+    /// Insert a message and append its `MessagePosted` event atomically
+    /// (Cluster 210). For the DM / group-DM post paths, which do no post-insert
+    /// slash edit. `dm_conversation_id` is `Some` for a 1:1 DM, `None` otherwise.
+    async fn post_message_with_event(
+        &self,
+        new: NewMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError>;
     async fn edit_message(
         &self,
         id: MessageId,

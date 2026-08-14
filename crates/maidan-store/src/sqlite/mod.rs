@@ -375,6 +375,13 @@ impl Store for SqliteStore {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await
     }
+    async fn post_message_with_event(
+        &self,
+        new: NewMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError> {
+        messages::create_with_event(&self.pool, new, dm_conversation_id).await
+    }
     async fn edit_message(
         &self,
         id: MessageId,

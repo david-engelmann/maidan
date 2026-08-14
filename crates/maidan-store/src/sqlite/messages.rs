@@ -1,9 +1,13 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{EditMessage, MemberId, Message, MessageId, NewMessage, ThreadId};
+use maidan_types::{
+    DmConversationId, EditMessage, Event, MemberId, Message, MessageId, NewMessage, StoredEvent,
+    ThreadId,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, StoreError> {
     let id = Uuid::new_v4();
@@ -29,6 +33,55 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
     .fetch_one(pool)
     .await?;
     row_to_message(&row)
+}
+
+/// Insert a message and append its `MessagePosted` event in one transaction
+/// (Cluster 210 transactional outbox). Used by the DM / group-DM post paths,
+/// which — unlike the regular route — do no post-insert slash-command edit, so
+/// the event reflects the final message. `dm_conversation_id` is `Some` for a 1:1
+/// DM, `None` for a group DM (matching the pre-migration events).
+pub async fn create_with_event(
+    pool: &SqlitePool,
+    new: NewMessage,
+    dm_conversation_id: Option<DmConversationId>,
+) -> Result<(Message, StoredEvent), StoreError> {
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+    let metadata_text = serde_json::to_string(&new.metadata)?;
+    let content_text = new
+        .content
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(new.thread_id.0)
+    .bind(new.author_id.0)
+    .bind(&new.body)
+    .bind(&metadata_text)
+    .bind(&content_text)
+    .bind(now)
+    .fetch_one(&mut *tx)
+    .await?;
+    let message = row_to_message(&row)?;
+    let (workspace_id, channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message.id).await?;
+    let event = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        dm_conversation_id,
+        message: message.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((message, stored))
 }
 
 pub async fn get(pool: &SqlitePool, id: MessageId) -> Result<Message, StoreError> {
