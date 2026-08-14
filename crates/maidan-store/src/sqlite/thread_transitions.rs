@@ -1,26 +1,30 @@
 use chrono::Utc;
 use maidan_fsm::ThreadAction;
-use maidan_types::{MemberId, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult};
+use maidan_types::{
+    Event, MemberId, StoredEvent, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult,
+};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use super::threads::row_to_thread;
 use crate::error::StoreError;
+use crate::sqlite::events;
 
-pub async fn transition(
-    pool: &SqlitePool,
+/// The FSM transition on a caller-supplied tx, without committing (Cluster 208).
+/// Shared by `transition` (commit only) and `transition_with_event` (append the
+/// `ThreadStateChanged` event in the same tx, then commit).
+async fn transition_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
     actor_id: MemberId,
     action: ThreadAction,
 ) -> Result<ThreadTransitionResult, StoreError> {
-    let mut tx = pool.begin().await?;
-
     let row = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at
          FROM maidan_threads WHERE id = ?",
     )
     .bind(thread_id.0)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
 
@@ -44,7 +48,7 @@ pub async fn transition(
              FROM maidan_threads WHERE id = ?",
         )
         .bind(parent_id.0)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?
         .ok_or(StoreError::NotFound)?;
         let parent = row_to_thread(&parent_row)?;
@@ -66,7 +70,7 @@ pub async fn transition(
     .bind(to_state.as_str())
     .bind(actor_id.0)
     .bind(&now)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
 
     let row = sqlx::query(
@@ -77,10 +81,8 @@ pub async fn transition(
     .bind(to_state.as_str())
     .bind(&now)
     .bind(thread_id.0)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
-
-    tx.commit().await?;
 
     let thread = row_to_thread(&row)?;
     Ok(ThreadTransitionResult {
@@ -88,6 +90,44 @@ pub async fn transition(
         from_state,
         to_state,
     })
+}
+
+pub async fn transition(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+    action: ThreadAction,
+) -> Result<ThreadTransitionResult, StoreError> {
+    let mut tx = pool.begin().await?;
+    let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
+    tx.commit().await?;
+    Ok(result)
+}
+
+/// Transition a thread's state and append its `ThreadStateChanged` event in one
+/// transaction (Cluster 208 transactional outbox).
+pub async fn transition_with_event(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+    action: ThreadAction,
+) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let event = Event::ThreadStateChanged {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        actor_id,
+        from_state: result.from_state,
+        to_state: result.to_state,
+        thread: result.thread.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((result, stored))
 }
 
 pub async fn list(

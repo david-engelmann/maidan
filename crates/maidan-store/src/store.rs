@@ -161,6 +161,14 @@ pub trait Store: Send + Sync {
         actor_id: MemberId,
         action: maidan_fsm::ThreadAction,
     ) -> Result<ThreadTransitionResult, StoreError>;
+    /// Transition a thread's state and append its `ThreadStateChanged` event
+    /// atomically (Cluster 208).
+    async fn transition_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        action: maidan_fsm::ThreadAction,
+    ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError>;
 
     async fn list_thread_transitions(
         &self,

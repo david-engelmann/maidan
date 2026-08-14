@@ -30,6 +30,30 @@ pub async fn message_scope_in_tx(
     ))
 }
 
+/// Resolve a thread's (workspace, channel) inside a transaction (Cluster 208) —
+/// used by the thread-scoped `*_with_event` mutations (transitions, assignments)
+/// to build their event's context in the same tx. `NotFound` if the thread
+/// doesn't exist.
+pub async fn thread_scope_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<(WorkspaceId, ChannelId), StoreError> {
+    let row = sqlx::query(
+        "SELECT c.workspace_id AS ws, t.channel_id AS ch
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE t.id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok((
+        WorkspaceId(row.get::<uuid::Uuid, _>("ws")),
+        ChannelId(row.get::<uuid::Uuid, _>("ch")),
+    ))
+}
+
 pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
     let stored = append_in_tx(&mut tx, event).await?;

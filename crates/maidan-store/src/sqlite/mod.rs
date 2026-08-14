@@ -281,6 +281,14 @@ impl Store for SqliteStore {
     ) -> Result<ThreadTransitionResult, StoreError> {
         thread_transitions::transition(&self.pool, thread_id, actor_id, action).await
     }
+    async fn transition_thread_with_event(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        action: maidan_fsm::ThreadAction,
+    ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
+        thread_transitions::transition_with_event(&self.pool, thread_id, actor_id, action).await
+    }
 
     async fn list_thread_transitions(
         &self,

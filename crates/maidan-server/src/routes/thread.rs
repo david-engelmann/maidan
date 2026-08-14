@@ -139,29 +139,14 @@ pub async fn transition_thread(
     })?;
     let thread_id = ThreadId(id);
     let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    let workspace_id = ctx.workspace_id;
-    let channel_id = ctx.channel_id;
-    ensure_workspace(&auth, workspace_id)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
-    let result = state
+    let (result, stored) = state
         .store
-        .transition_thread(thread_id, MemberId(body.actor_id), action)
+        .transition_thread_with_event(thread_id, MemberId(body.actor_id), action)
         .await?;
-    publish(
-        &state,
-        Event::ThreadStateChanged {
-            occurred_at: Utc::now(),
-            workspace_id,
-            channel_id,
-            thread_id,
-            actor_id: MemberId(body.actor_id),
-            from_state: result.from_state,
-            to_state: result.to_state,
-            thread: result.thread.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_thread_transition(state.store.as_ref(), thread_id)
             .await;
