@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [213.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
+part 12: transactional-outbox migration (A2A ingest + member/workspace creation).
+No new gate tag.
+
+### Changed
+
+- **A2A ingest + member/workspace creation join the transactional outbox.** The
+  A2A ingest post reuses `post_message_with_event(new, None)` (it's the DM-post
+  shape — a plain insert + `MessagePosted`, no post-insert edit). New
+  `create_member_with_event` (`MemberJoined`) and `create_workspace_with_event`
+  (`WorkspaceCreated`) commit the row **and** append its event in one transaction —
+  the simplest `*_with_event` methods in the migration, since the created entity is
+  the event's subject (no scope resolution). The routes call `*_with_event` +
+  `publish_stored` (member/workspace are `#[cfg(feature = "bootstrap")]`; their
+  gated `publish`/`Utc` imports go with the change). `publish()` now serves only the
+  reference and artifact events (+ the federation relay).
+
 ## [212.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —

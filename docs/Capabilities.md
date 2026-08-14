@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v213.0.0 — Correctness: transactional outbox (A2A ingest + member/workspace creation)
+
+| Change | Where |
+|--------|-------|
+| A2A ingest post reuses `post_message_with_event(new, None)` (DM-post shape); `create_member_with_event` (`MemberJoined`) + `create_workspace_with_event` (`WorkspaceCreated`) — insert + event in one tx (no scope resolution; the created entity is the subject). Routes use them + `publish_stored`. `publish()` remains only for reference/artifact events (+ federation relay) | `a2a_agent.rs`, `store/*/{members,workspaces}.rs` |
+
 ## v212.0.0 — Correctness: transactional outbox (message edit + tombstone)
 
 | Change | Where |

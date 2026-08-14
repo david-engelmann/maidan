@@ -977,3 +977,53 @@ async fn edit_and_tombstone_with_event_append_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 213: workspace + member creation migrated to the transactional-outbox
+/// pattern — `create_workspace_with_event` / `create_member_with_event` commit the
+/// row and its `WorkspaceCreated` / `MemberJoined` event in one tx.
+#[tokio::test]
+async fn create_workspace_and_member_with_event_append_atomically() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+
+    let (ws, ws_ev) = store
+        .create_workspace_with_event(NewWorkspace {
+            name: "created-tx".to_string(),
+        })
+        .await
+        .expect("workspace + event");
+    assert_eq!(ws_ev.kind, EventKind::WorkspaceCreated);
+    // The workspace row committed.
+    assert_eq!(store.get_workspace(ws.id).await.expect("get").id, ws.id);
+
+    let (member, member_ev) = store
+        .create_member_with_event(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member + event");
+    assert_eq!(member_ev.kind, EventKind::MemberJoined);
+    assert_eq!(
+        store.get_member(member.id).await.expect("get").id,
+        member.id
+    );
+
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [ws_ev.id, member_ev.id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

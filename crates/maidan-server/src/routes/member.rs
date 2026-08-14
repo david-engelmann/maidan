@@ -6,8 +6,6 @@ use axum::{
     extract::{Path, Query, State},
     Extension, Json,
 };
-#[cfg(feature = "bootstrap")]
-use chrono::Utc;
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_types::*;
 
@@ -22,24 +20,16 @@ pub async fn create_member(
     Path(workspace_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMember>,
 ) -> ApiResult<(StatusCode, Json<Member>)> {
-    let m = state
+    let (m, stored) = state
         .store
-        .create_member(NewMember {
+        .create_member_with_event(NewMember {
             workspace_id: WorkspaceId(workspace_id),
             handle: body.handle,
             display_name: body.display_name,
             kind: body.kind,
         })
         .await?;
-    super::publish(
-        &state,
-        Event::MemberJoined {
-            occurred_at: Utc::now(),
-            workspace_id: WorkspaceId(workspace_id),
-            member: m.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(m)))
 }
 

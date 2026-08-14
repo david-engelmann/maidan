@@ -6,8 +6,6 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-#[cfg(feature = "bootstrap")]
-use chrono::Utc;
 use maidan_auth::{
     capability::{AUDIT_READ_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -15,7 +13,7 @@ use maidan_auth::{
 use maidan_types::*;
 
 #[cfg(feature = "bootstrap")]
-use super::publish;
+use super::publish_stored;
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
@@ -36,18 +34,11 @@ pub async fn create_workspace(
             ));
         }
     }
-    let ws = state
+    let (ws, stored) = state
         .store
-        .create_workspace(NewWorkspace { name: body.name })
+        .create_workspace_with_event(NewWorkspace { name: body.name })
         .await?;
-    publish(
-        &state,
-        Event::WorkspaceCreated {
-            occurred_at: Utc::now(),
-            workspace: ws.clone(),
-        },
-    )
-    .await;
+    publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(ws)))
 }
 

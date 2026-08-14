@@ -6,7 +6,6 @@ use std::time::Duration;
 use axum::response::sse::Event as SseEvent;
 use axum::response::{IntoResponse, Response, Sse};
 use axum::{extract::State, Extension, Json};
-use chrono::Utc;
 use futures::StreamExt;
 use maidan_a2a::{
     is_terminal_task_state, maidan_context_from_metadata, message_content, message_text,
@@ -22,11 +21,10 @@ use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
 use maidan_auth::AuthContext;
 use maidan_router::resolve_thread_context;
-use maidan_types::{Event, *};
+use maidan_types::*;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::routes::publish;
 use crate::state::AppState;
 
 const ERR_PARSE: i32 = -32700;
@@ -251,29 +249,21 @@ async fn post_a2a_message(
     {
         return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
     }
-    let posted = state
+    let (posted, stored) = state
         .store
-        .post_message(NewMessage {
-            thread_id: ThreadId(ctx.thread_id),
-            author_id: MemberId(ctx.author_id),
-            body: body_text,
-            metadata: serde_json::json!({ "a2a": true }),
-            content,
-        })
+        .post_message_with_event(
+            NewMessage {
+                thread_id: ThreadId(ctx.thread_id),
+                author_id: MemberId(ctx.author_id),
+                body: body_text,
+                metadata: serde_json::json!({ "a2a": true }),
+                content,
+            },
+            None,
+        )
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
-    publish(
-        state,
-        Event::MessagePosted {
-            occurred_at: Utc::now(),
-            workspace_id: thread_ctx.workspace_id,
-            channel_id: thread_ctx.channel_id,
-            thread_id: ThreadId(ctx.thread_id),
-            dm_conversation_id: None,
-            message: posted.clone(),
-        },
-    )
-    .await;
+    crate::routes::publish_stored(state, stored).await;
     Ok(PostedA2a {
         task_id: uuid::Uuid::new_v4().to_string(),
         workspace_id: thread_ctx.workspace_id,

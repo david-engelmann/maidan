@@ -15,6 +15,12 @@ pub trait Store: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
+    /// Create a workspace and append its `WorkspaceCreated` event atomically
+    /// (Cluster 213).
+    async fn create_workspace_with_event(
+        &self,
+        new: NewWorkspace,
+    ) -> Result<(Workspace, StoredEvent), StoreError>;
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError>;
     async fn count_workspaces(&self) -> Result<i64, StoreError>;
     /// Live per-workspace usage counts (members/channels/threads/messages,
@@ -22,6 +28,12 @@ pub trait Store: Send + Sync {
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError>;
+    /// Create a member and append its `MemberJoined` event atomically (Cluster
+    /// 213).
+    async fn create_member_with_event(
+        &self,
+        new: NewMember,
+    ) -> Result<(Member, StoredEvent), StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;
     async fn get_member_by_handle(
         &self,
