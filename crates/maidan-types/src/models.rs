@@ -53,6 +53,12 @@ impl ThreadState {
             _ => None,
         }
     }
+
+    /// A terminal state — no further transitions, so a task in it counts as done
+    /// for dependency readiness (Cluster 217).
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Closed | Self::Archived)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,6 +320,17 @@ pub struct ThreadTransition {
     pub to_state: ThreadState,
     pub actor_id: MemberId,
     pub occurred_at: DateTime<Utc>,
+}
+
+/// A task-dependency DAG edge (Cluster 217): the task `thread_id` depends on
+/// `depends_on_thread_id` — i.e. it is blocked until that dependency reaches a
+/// terminal state. Edges are directed; the pair is unique.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadDependency {
+    pub thread_id: ThreadId,
+    pub depends_on_thread_id: ThreadId,
+    pub created_at: DateTime<Utc>,
 }
 
 /// A typed part of a message's structured content (Cluster 173). The wire form

@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [217.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). **Program B (agentic orchestration)** begins.
+No new gate tag.
+
+### Added
+
+- **Task-dependency DAG (store foundation).** A new `maidan_thread_dependencies`
+  table (both backends; pg 0037 / sqlite 0036) records directed edges — a thread
+  (task) `thread_id` depends on `depends_on_thread_id` — with a self-loop `CHECK`
+  and FK-cascade on both threads. New `ThreadDependency` model, a
+  `ThreadState::is_terminal()` helper (closed/archived), and five store methods:
+  `add_thread_dependency` (idempotent; self-dep rejected), `remove_thread_dependency`
+  (conditional), `list_thread_dependencies` (what a task waits on),
+  `list_thread_dependents` (what a task blocks), and `thread_dependencies_satisfied`
+  (true iff every dependency is terminal — a task with no deps is ready). Landed as
+  a zero-blast-radius foundation (no routes yet); the REST/MCP surface + a
+  readiness-aware `claim_next` follow. Program B reuses the existing thread-as-task
+  model (FSM + assignee/claim/lease from Clusters 171, 190–192).
+
 ## [216.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Security & correctness round 2 (Program A) —
