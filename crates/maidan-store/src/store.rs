@@ -285,6 +285,15 @@ pub trait Store: Send + Sync {
         editor_id: MemberId,
         edit: EditMessage,
     ) -> Result<Message, StoreError>;
+    /// Edit a message and append its `MessageEdited` event atomically (Cluster
+    /// 212).
+    async fn edit_message_with_event(
+        &self,
+        id: MessageId,
+        editor_id: MemberId,
+        edit: EditMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError>;
     async fn list_message_edits(
         &self,
         message_id: MessageId,
@@ -314,6 +323,13 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Message>, StoreError>;
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError>;
+    /// Tombstone a message and append its `MessageTombstoned` event atomically
+    /// (Cluster 212).
+    async fn tombstone_message_with_event(
+        &self,
+        id: MessageId,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<StoredEvent, StoreError>;
     /// Hard-delete a tombstoned message (GDPR erasure). Fails if not tombstoned.
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;
     /// Tombstone then hard-delete all messages in a workspace (GDPR erasure).

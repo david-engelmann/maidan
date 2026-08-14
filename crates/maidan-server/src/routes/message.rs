@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::Utc;
 use maidan_auth::{
     capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -14,9 +13,7 @@ use maidan_auth::{
 use maidan_router::{resolve_message_chain, resolve_thread_context};
 use maidan_types::*;
 
-use super::{
-    cap, ensure_message_edit, ensure_workspace, publish, publish_routed_mentions, ApiResult,
-};
+use super::{cap, ensure_message_edit, ensure_workspace, publish_routed_mentions, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -147,9 +144,11 @@ pub async fn edit_message(
     } else {
         body.body
     };
-    let updated = state
+    let dm_conversation_id =
+        crate::dm::dm_conversation_id_for_thread(state.store.as_ref(), chain.thread_id).await;
+    let (updated, stored) = state
         .store
-        .edit_message(
+        .edit_message_with_event(
             message_id,
             editor_id,
             EditMessage {
@@ -157,25 +156,10 @@ pub async fn edit_message(
                 metadata,
                 content,
             },
+            dm_conversation_id,
         )
         .await?;
-    publish(
-        &state,
-        Event::MessageEdited {
-            occurred_at: Utc::now(),
-            workspace_id: chain.workspace_id,
-            channel_id: chain.channel_id,
-            thread_id: chain.thread_id,
-            dm_conversation_id: crate::dm::dm_conversation_id_for_thread(
-                state.store.as_ref(),
-                chain.thread_id,
-            )
-            .await,
-            editor_id,
-            message: updated.clone(),
-        },
-    )
-    .await;
+    super::publish_stored(&state, stored).await;
     let uris =
         maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message_id).await;
     state.mcp.publish_resource_uris(uris).await;
@@ -238,23 +222,13 @@ pub async fn tombstone_message(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
-    state.store.tombstone_message(MessageId(id)).await?;
-    publish(
-        &state,
-        Event::MessageTombstoned {
-            occurred_at: Utc::now(),
-            workspace_id: chain.workspace_id,
-            channel_id: chain.channel_id,
-            thread_id: chain.thread_id,
-            dm_conversation_id: crate::dm::dm_conversation_id_for_thread(
-                state.store.as_ref(),
-                chain.thread_id,
-            )
-            .await,
-            message_id: MessageId(id),
-        },
-    )
-    .await;
+    let dm_conversation_id =
+        crate::dm::dm_conversation_id_for_thread(state.store.as_ref(), chain.thread_id).await;
+    let stored = state
+        .store
+        .tombstone_message_with_event(MessageId(id), dm_conversation_id)
+        .await?;
+    super::publish_stored(&state, stored).await;
     let uris = maidan_mcp::resource_updates::uris_for_message_tombstone(
         state.store.as_ref(),
         MessageId(id),

@@ -874,3 +874,106 @@ async fn message_post_finalize_with_event_appends_atomically() {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }
 }
+
+/// Cluster 212: message edit + tombstone migrated to the transactional-outbox
+/// pattern. Each appends its event in the same tx; a re-tombstone is `NotFound`.
+#[tokio::test]
+async fn edit_and_tombstone_with_event_append_atomically() {
+    use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::new(pool);
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "edit-tomb-tx".to_string(),
+        })
+        .await
+        .expect("ws");
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".to_string(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".to_string()),
+        })
+        .await
+        .expect("thread");
+    let m = store
+        .post_message(NewMessage {
+            thread_id: th.id,
+            author_id: author.id,
+            body: "hi".to_string(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("msg");
+
+    // Edit → MessageEdited, body changed, one history row.
+    let (edited, edit_ev) = store
+        .edit_message_with_event(
+            m.id,
+            MemberId(author.id.0),
+            EditMessage {
+                body: "hello".to_string(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .expect("edit");
+    assert_eq!(edit_ev.kind, EventKind::MessageEdited);
+    assert_eq!(edited.body, "hello");
+    assert_eq!(
+        store
+            .list_message_edits(m.id, 10)
+            .await
+            .expect("edits")
+            .len(),
+        1
+    );
+
+    // Tombstone → MessageTombstoned; re-tombstone → NotFound (no event).
+    let tomb_ev = store
+        .tombstone_message_with_event(m.id, None)
+        .await
+        .expect("tombstone");
+    assert_eq!(tomb_ev.kind, EventKind::MessageTombstoned);
+    assert!(matches!(
+        store.tombstone_message_with_event(m.id, None).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
+
+    let events = store
+        .list_events_after(ws.id, 0, 100)
+        .await
+        .expect("events");
+    for id in [edit_ev.id, tomb_ev.id] {
+        assert!(events.iter().any(|e| e.id == id), "event {id} durable");
+    }
+}

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v212.0.0 — Correctness: transactional outbox (message edit + tombstone)
+
+| Change | Where |
+|--------|-------|
+| `edit_message_with_event` (`MessageEdited`) + `tombstone_message_with_event` (`MessageTombstoned`) — mutation + event in one tx; shared `edit_in_tx` core (with 211's posted variant); tombstone keeps its `NotFound`-on-no-op guard. Routes use them + `publish_stored` → `message.rs` is now `publish()`-free. `publish()` remains only for A2A ingest + member/workspace/reference/artifact (+ federation relay) | `store/*/messages.rs`, `routes/message.rs` |
+
 ## v211.0.0 — Correctness: transactional outbox (regular message post)
 
 | Change | Where |

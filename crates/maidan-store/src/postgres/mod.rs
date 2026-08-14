@@ -393,6 +393,15 @@ impl Store for PostgresStore {
     ) -> Result<Message, StoreError> {
         messages::edit(&self.pool, id, editor_id, edit).await
     }
+    async fn edit_message_with_event(
+        &self,
+        id: MessageId,
+        editor_id: MemberId,
+        edit: EditMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError> {
+        messages::edit_with_event(&self.pool, id, editor_id, edit, dm_conversation_id).await
+    }
     async fn list_message_edits(
         &self,
         message_id: MessageId,
@@ -429,6 +438,13 @@ impl Store for PostgresStore {
 
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError> {
         messages::tombstone(&self.pool, id).await
+    }
+    async fn tombstone_message_with_event(
+        &self,
+        id: MessageId,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<StoredEvent, StoreError> {
+        messages::tombstone_with_event(&self.pool, id, dm_conversation_id).await
     }
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError> {
         messages::purge(&self.pool, id).await

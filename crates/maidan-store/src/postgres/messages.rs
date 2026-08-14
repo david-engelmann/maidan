@@ -196,18 +196,42 @@ pub async fn edit_with_posted_event(
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
+    let message = edit_in_tx(&mut tx, id, editor_id, &edit).await?;
+    let (workspace_id, channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message.id).await?;
+    let event = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        dm_conversation_id,
+        message: message.clone(),
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((message, stored))
+}
+
+/// The edit mutation on a caller-supplied tx, without committing (Cluster 212) —
+/// see the SQLite twin. Shared by `edit_with_event` and `edit_with_posted_event`.
+async fn edit_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    id: MessageId,
+    editor_id: MemberId,
+    edit: &EditMessage,
+) -> Result<Message, StoreError> {
     let existing_row = sqlx::query(
         "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
          FROM maidan_messages WHERE id = $1",
     )
     .bind(id.0)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
     let existing = row_to_message(&existing_row);
     if existing.body != edit.body {
         super::message_edits::append_in_tx(
-            &mut tx,
+            tx,
             id,
             editor_id,
             &existing.body,
@@ -231,18 +255,32 @@ pub async fn edit_with_posted_event(
     .bind(&edit.body)
     .bind(metadata)
     .bind(content)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
-    let message = row_to_message(&row);
+    Ok(row_to_message(&row))
+}
+
+/// Edit a message and append its `MessageEdited` event in one transaction
+/// (Cluster 212).
+pub async fn edit_with_event(
+    pool: &PgPool,
+    id: MessageId,
+    editor_id: MemberId,
+    edit: EditMessage,
+    dm_conversation_id: Option<DmConversationId>,
+) -> Result<(Message, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let message = edit_in_tx(&mut tx, id, editor_id, &edit).await?;
     let (workspace_id, channel_id, thread_id) =
         events::message_scope_in_tx(&mut tx, message.id).await?;
-    let event = Event::MessagePosted {
+    let event = Event::MessageEdited {
         occurred_at: Utc::now(),
         workspace_id,
         channel_id,
         thread_id,
         dm_conversation_id,
+        editor_id,
         message: message.clone(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
@@ -261,6 +299,38 @@ pub async fn tombstone(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
         return Err(StoreError::NotFound);
     }
     Ok(())
+}
+
+/// Tombstone a message and append its `MessageTombstoned` event in one
+/// transaction (Cluster 212) — see the SQLite twin. `NotFound` if already
+/// tombstoned or absent.
+pub async fn tombstone_with_event(
+    pool: &PgPool,
+    id: MessageId,
+    dm_conversation_id: Option<DmConversationId>,
+) -> Result<StoredEvent, StoreError> {
+    let mut tx = pool.begin().await?;
+    let res = sqlx::query(
+        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL WHERE id = $1 AND tombstoned_at IS NULL",
+    )
+    .bind(id.0)
+    .execute(&mut *tx)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    let (workspace_id, channel_id, thread_id) = events::message_scope_in_tx(&mut tx, id).await?;
+    let event = Event::MessageTombstoned {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        dm_conversation_id,
+        message_id: id,
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok(stored)
 }
 
 fn row_to_message(row: &sqlx::postgres::PgRow) -> Message {
