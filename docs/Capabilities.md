@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v217.0.0 — Program B: task-dependency DAG (store foundation)
+
+| Change | Where |
+|--------|-------|
+| `maidan_thread_dependencies` edge table (both backends; pg 0037 / sqlite 0036) + `ThreadDependency` model + `ThreadState::is_terminal()` + store methods (add/remove/list-dependencies/list-dependents/dependencies-satisfied — readiness = all deps terminal). Zero-blast-radius foundation (no routes yet); reuses the thread-as-task model. Opens **Program B (agentic orchestration)** | migrations, `store/*/thread_deps.rs` |
+
 ## v216.0.0 — Security: RLS spike (deferred); Program A complete
 
 | Change | Where |

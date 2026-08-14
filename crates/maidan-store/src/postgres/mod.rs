@@ -30,6 +30,7 @@ mod reindex_jobs;
 mod retention;
 mod sessions;
 mod slash_commands;
+mod thread_deps;
 mod thread_transitions;
 mod threads;
 mod token_quotas;
@@ -376,6 +377,36 @@ impl Store for PostgresStore {
         lease_secs: i64,
     ) -> Result<Thread, StoreError> {
         threads::renew_claim(&self.pool, thread_id, member_id, lease_secs).await
+    }
+
+    async fn add_thread_dependency(
+        &self,
+        thread_id: ThreadId,
+        depends_on: ThreadId,
+    ) -> Result<(), StoreError> {
+        thread_deps::add(&self.pool, thread_id, depends_on).await
+    }
+    async fn remove_thread_dependency(
+        &self,
+        thread_id: ThreadId,
+        depends_on: ThreadId,
+    ) -> Result<bool, StoreError> {
+        thread_deps::remove(&self.pool, thread_id, depends_on).await
+    }
+    async fn list_thread_dependencies(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadDependency>, StoreError> {
+        thread_deps::list_dependencies(&self.pool, thread_id).await
+    }
+    async fn list_thread_dependents(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadDependency>, StoreError> {
+        thread_deps::list_dependents(&self.pool, thread_id).await
+    }
+    async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        thread_deps::dependencies_satisfied(&self.pool, thread_id).await
     }
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {

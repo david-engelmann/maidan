@@ -271,6 +271,33 @@ pub trait Store: Send + Sync {
         lease_secs: i64,
     ) -> Result<Thread, StoreError>;
 
+    /// Add a task-dependency edge: `thread_id` depends on `depends_on` (Cluster
+    /// 217). Idempotent; a self-dependency is rejected; both threads must exist.
+    async fn add_thread_dependency(
+        &self,
+        thread_id: ThreadId,
+        depends_on: ThreadId,
+    ) -> Result<(), StoreError>;
+    /// Remove a dependency edge; `true` when a row was deleted (Cluster 217).
+    async fn remove_thread_dependency(
+        &self,
+        thread_id: ThreadId,
+        depends_on: ThreadId,
+    ) -> Result<bool, StoreError>;
+    /// Edges `thread_id` depends on — what this task is blocked by (Cluster 217).
+    async fn list_thread_dependencies(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadDependency>, StoreError>;
+    /// Edges that depend on `thread_id` — what this task blocks (Cluster 217).
+    async fn list_thread_dependents(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadDependency>, StoreError>;
+    /// Whether every dependency of `thread_id` is terminal (closed/archived) — the
+    /// task is ready to run (Cluster 217). A task with no dependencies is ready.
+    async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     /// Insert a message and append its `MessagePosted` event atomically
     /// (Cluster 210). For the DM / group-DM post paths, which do no post-insert
