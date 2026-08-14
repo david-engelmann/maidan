@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v216.0.0 — Security: RLS spike (deferred); Program A complete
+
+| Change | Where |
+|--------|-------|
+| Row-Level Security assessed as defense-in-depth beneath app-layer RBAC → **deferred** (decision ADR: RLS design, blockers — shared pool/workspace-agnostic Store/SQLite-no-RLS/orchestrator model — and trigger conditions). App-layer RBAC stays authoritative. Concludes **Program A (202–216)** | `docs/Decisions.md` (`## Security`) |
+
 ## v215.0.0 — Security: federation ingest trust policy
 
 | Change | Where |
