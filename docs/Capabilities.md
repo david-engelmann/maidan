@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v218.0.0 — Program B: readiness-aware `claim_next`
+
+| Change | Where |
+|--------|-------|
+| `claim_next` / `claim_next_with_event` (both backends) skip tasks with a non-terminal dependency (a `NOT EXISTS` clause in the candidate subquery/CTE) — the "pull next task" primitive respects the DAG. Existing REST `claim-next` route + MCP `claim_next_thread` tool become dependency-aware with no new API | `store/*/threads.rs` |
+
 ## v217.0.0 — Program B: task-dependency DAG (store foundation)
 
 | Change | Where |

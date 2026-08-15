@@ -338,10 +338,15 @@ pub async fn claim_next(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, updated_at = ?
          WHERE id = (
-             SELECT id FROM maidan_threads
-             WHERE channel_id = ? AND tombstoned_at IS NULL
-               AND (assignee_id IS NULL OR (assignment_expires_at IS NOT NULL AND assignment_expires_at < ?))
-             ORDER BY created_at ASC, id ASC
+             SELECT t.id FROM maidan_threads t
+             WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
+               AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_dependencies d
+                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                   WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
+               )
+             ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
@@ -373,10 +378,15 @@ pub async fn claim_next_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, updated_at = ?
          WHERE id = (
-             SELECT id FROM maidan_threads
-             WHERE channel_id = ? AND tombstoned_at IS NULL
-               AND (assignee_id IS NULL OR (assignment_expires_at IS NOT NULL AND assignment_expires_at < ?))
-             ORDER BY created_at ASC, id ASC
+             SELECT t.id FROM maidan_threads t
+             WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
+               AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_dependencies d
+                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                   WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
+               )
+             ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
