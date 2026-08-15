@@ -215,6 +215,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/threads/") {
         return template
             .replace("{tid}", &f.thread)
+            .replace("{dep_id}", &f.thread)
             .replace("{id}", &f.thread);
     }
     if template.starts_with("/messages/") {
@@ -331,6 +332,9 @@ fn apply_route_defaults(
     }
     if path == "/threads/{id}/claim/renew" && method == "POST" {
         return b.json(&json!({ "member_id": f.member, "lease_secs": 60 }));
+    }
+    if path == "/threads/{id}/dependencies" && method == "POST" {
+        return b.json(&json!({ "depends_on_thread_id": f.thread }));
     }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({

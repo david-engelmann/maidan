@@ -293,3 +293,88 @@ pub async fn renew_claim(
         .await?;
     Ok(Json(thread))
 }
+
+/// Add a task-dependency edge (Cluster 219): the path thread depends on
+/// `depends_on_thread_id`. Both threads must be in the same workspace and visible
+/// to the caller. `thread:transition` — dependency wiring is a workflow op.
+pub async fn add_thread_dependency(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<AddThreadDependency>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let depends_on = ThreadId(body.depends_on_thread_id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    // The dependency must be in the same workspace and visible to the caller too.
+    let dep_ctx = resolve_thread_context(state.store.as_ref(), depends_on).await?;
+    if dep_ctx.workspace_id != ctx.workspace_id {
+        return Err(ApiError::BadRequest(
+            "dependency thread is in a different workspace".into(),
+        ));
+    }
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, depends_on).await?;
+    state
+        .store
+        .add_thread_dependency(thread_id, depends_on)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A task's dependencies + whether it is ready (all deps terminal) — Cluster 219.
+pub async fn list_thread_dependencies(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadDependenciesView>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let dependencies = state.store.list_thread_dependencies(thread_id).await?;
+    let ready = state.store.thread_dependencies_satisfied(thread_id).await?;
+    Ok(Json(ThreadDependenciesView {
+        dependencies,
+        ready,
+    }))
+}
+
+/// Remove a dependency edge (Cluster 219). `NotFound` if the edge doesn't exist.
+pub async fn remove_thread_dependency(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, dep_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state
+        .store
+        .remove_thread_dependency(thread_id, ThreadId(dep_id))
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// The tasks blocked by this thread — its dependents (Cluster 219).
+pub async fn list_thread_dependents(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ThreadDependency>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_thread_dependents(thread_id).await?))
+}
