@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v219.0.0 — Program B: task-dependency DAG management API (REST)
+
+| Change | Where |
+|--------|-------|
+| REST DAG management: `POST/GET /threads/:id/dependencies` (add; list + `ready`), `DELETE /threads/:id/dependencies/:dep_id`, `GET /threads/:id/dependents`. RBAC on both edge threads + same-workspace; `thread:transition` mutations / `workspace:read` reads. Full new-route preflight (OpenAPI paths+schemas, http-capability-map, matrix) | `routes/thread.rs`, `app.rs`, `dto.rs`, `openapi/*` |
+
 ## v218.0.0 — Program B: readiness-aware `claim_next`
 
 | Change | Where |

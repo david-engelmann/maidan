@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [219.0.0] — 2026-08-15
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 3. No new
+gate tag.
+
+### Added
+
+- **Task-dependency DAG management API.** Four REST routes on the thread surface:
+  `POST /threads/:id/dependencies` `{ depends_on_thread_id }` adds an edge (`204`;
+  `thread:transition`; both threads must share a workspace and be visible to the
+  caller — cross-workspace or self dependency is `400`); `GET
+  /threads/:id/dependencies` returns `{ dependencies, ready }` (the readiness flag —
+  all deps terminal — rides the list; `workspace:read`); `DELETE
+  /threads/:id/dependencies/:dep_id` removes an edge (`204`/`404`;
+  `thread:transition`); `GET /threads/:id/dependents` lists the tasks blocked by
+  this one (`workspace:read`). New DTOs `AddThreadDependency` /
+  `ThreadDependenciesView`, OpenAPI paths + schemas, `http-capability-map` entries,
+  and capability-matrix coverage. MCP dependency-management tools follow (agents can
+  already *respect* the DAG via the readiness-aware `claim_next` from 218).
+
 ## [218.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 2. No new

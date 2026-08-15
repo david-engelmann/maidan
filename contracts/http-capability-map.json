@@ -252,6 +252,30 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/dependencies",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/dependencies",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/dependencies/{dep_id}",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/dependents",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/threads/{tid}/messages",
     "capability": "workspace:read",

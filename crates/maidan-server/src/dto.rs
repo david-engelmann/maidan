@@ -91,6 +91,22 @@ pub struct RenewClaim {
     pub lease_secs: i64,
 }
 
+/// Add a task-dependency edge — the thread in the path depends on
+/// `depends_on_thread_id` (Cluster 219).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddThreadDependency {
+    pub depends_on_thread_id: uuid::Uuid,
+}
+
+/// A task's dependency edges plus whether it is ready to run (Cluster 219).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadDependenciesView {
+    pub dependencies: Vec<maidan_types::ThreadDependency>,
+    /// True when every dependency is terminal (closed/archived) — the task is
+    /// ready to claim.
+    pub ready: bool,
+}
+
 /// Clear a thread's assignee (Cluster 171). `actor_id` records who unassigned it.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnassignThread {

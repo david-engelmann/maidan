@@ -506,6 +506,34 @@ pub fn unpin_message() {}
     responses((status = 200, body = Vec<Pin>)))]
 pub fn list_pins() {}
 
+#[utoipa::path(post, path = "/threads/{id}/dependencies", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = AddThreadDependency,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn add_thread_dependency() {}
+
+#[utoipa::path(get, path = "/threads/{id}/dependencies", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadDependenciesView)))]
+pub fn list_thread_dependencies() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/dependencies/{dep_id}", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ("dep_id" = Uuid, Path, description = "Dependency thread id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn remove_thread_dependency() {}
+
+#[utoipa::path(get, path = "/threads/{id}/dependents", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadDependency>)))]
+pub fn list_thread_dependents() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",

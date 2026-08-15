@@ -174,6 +174,18 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/assignee/claim", post(routes::claim_thread))
         .route(
+            "/threads/:id/dependencies",
+            post(routes::add_thread_dependency).get(routes::list_thread_dependencies),
+        )
+        .route(
+            "/threads/:id/dependencies/:dep_id",
+            delete(routes::remove_thread_dependency),
+        )
+        .route(
+            "/threads/:id/dependents",
+            get(routes::list_thread_dependents),
+        )
+        .route(
             "/threads/:tid/messages",
             post(routes::post_message).get(routes::list_messages),
         )
