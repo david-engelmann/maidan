@@ -322,10 +322,15 @@ pub async fn claim_next(
     // Cluster 192). FOR UPDATE SKIP LOCKED keeps concurrent claimers distinct.
     let row = sqlx::query(
         "WITH next AS (
-             SELECT id FROM maidan_threads
-             WHERE channel_id = $2 AND tombstoned_at IS NULL
-               AND (assignee_id IS NULL OR (assignment_expires_at IS NOT NULL AND assignment_expires_at < NOW()))
-             ORDER BY created_at ASC, id ASC
+             SELECT c.id FROM maidan_threads c
+             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
+               AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_dependencies d
+                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                   WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
+               )
+             ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
              FOR UPDATE SKIP LOCKED
          )
@@ -355,10 +360,15 @@ pub async fn claim_next_with_event(
     let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
     let row = sqlx::query(
         "WITH next AS (
-             SELECT id FROM maidan_threads
-             WHERE channel_id = $2 AND tombstoned_at IS NULL
-               AND (assignee_id IS NULL OR (assignment_expires_at IS NOT NULL AND assignment_expires_at < NOW()))
-             ORDER BY created_at ASC, id ASC
+             SELECT c.id FROM maidan_threads c
+             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
+               AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_dependencies d
+                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                   WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
+               )
+             ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
              FOR UPDATE SKIP LOCKED
          )

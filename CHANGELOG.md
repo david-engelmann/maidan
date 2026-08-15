@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [218.0.0] — 2026-08-14
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 2. No new
+gate tag.
+
+### Changed
+
+- **`claim_next` is now readiness-aware.** The claim candidate query (the SQLite
+  subquery and the Postgres `FOR UPDATE SKIP LOCKED` CTE, in both `claim_next` and
+  the Cluster-209 `claim_next_with_event`, both backends) gains a `NOT EXISTS` clause
+  that excludes any task with a non-terminal dependency. So the "pull the next task"
+  primitive returns the oldest *ready* claimable task — an agent is never handed work
+  blocked on an unfinished dependency, and picks it up once the dependency closes.
+  Because the REST `POST /channels/:cid/threads/claim-next` route and the MCP
+  `claim_next_thread` tool both call the same store method, this pure store change
+  makes both dependency-aware with **no new API**. Dependency-free claiming is
+  unchanged (`assignment_readside` regression green).
+
 ## [217.0.0] — 2026-08-14
 
 Post-gate hardening (Phase XXIV). **Program B (agentic orchestration)** begins.

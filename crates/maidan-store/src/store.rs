@@ -242,10 +242,11 @@ pub trait Store: Send + Sync {
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
     /// `member_id` — the "pull the next task" primitive (Cluster 190). Claimable =
-    /// unassigned **or** its lease has expired (Cluster 192 dead-agent recovery).
-    /// `lease_secs` sets a lease deadline (`None` = durable, no lease). `None`
-    /// return when there is no claimable work. Concurrent claimers get distinct
-    /// threads.
+    /// unassigned **or** its lease has expired (Cluster 192 dead-agent recovery),
+    /// **and** every task-dependency is terminal (Cluster 218 readiness — a task
+    /// blocked by an unfinished dependency is skipped). `lease_secs` sets a lease
+    /// deadline (`None` = durable, no lease). `None` return when there is no
+    /// claimable *ready* work. Concurrent claimers get distinct threads.
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,

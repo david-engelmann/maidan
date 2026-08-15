@@ -143,10 +143,86 @@ async fn run_dag_suite(store: &dyn Store) {
     );
 }
 
+/// Cluster 218: `claim_next` skips a task whose dependencies aren't all terminal,
+/// and picks it up once they are.
+async fn run_readiness_claim_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "ready".into(),
+        })
+        .await
+        .expect("ws");
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("agent");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "queue".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    // `blocked` is created first (oldest), but depends on `dep`.
+    let blocked = store.create_thread(mk("blocked")).await.expect("blocked");
+    let dep = store.create_thread(mk("dep")).await.expect("dep");
+    store
+        .add_thread_dependency(blocked.id, dep.id)
+        .await
+        .expect("add dep");
+
+    // claim_next skips the older-but-blocked task and takes the ready one (`dep`).
+    let first = store
+        .claim_next_thread(channel.id, agent.id, None)
+        .await
+        .expect("claim1")
+        .expect("some ready work");
+    assert_eq!(
+        first.id, dep.id,
+        "the blocked task is skipped for the ready one"
+    );
+
+    // Now `dep` is assigned but still Open, so `blocked` is still not ready.
+    assert!(store
+        .claim_next_thread(channel.id, agent.id, None)
+        .await
+        .expect("claim2")
+        .is_none());
+
+    // Close `dep` -> `blocked` becomes ready and is claimed next.
+    store
+        .transition_thread(dep.id, agent.id, ThreadAction::StartReview)
+        .await
+        .expect("dep review");
+    store
+        .transition_thread(dep.id, agent.id, ThreadAction::Close)
+        .await
+        .expect("dep close");
+    let second = store
+        .claim_next_thread(channel.id, agent.id, None)
+        .await
+        .expect("claim3")
+        .expect("blocked is now ready");
+    assert_eq!(second.id, blocked.id);
+}
+
 #[tokio::test]
 async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     let store = sqlite().await;
     run_dag_suite(&store).await;
+    run_readiness_claim_suite(&store).await;
 }
 
 #[tokio::test]
@@ -181,4 +257,5 @@ async fn thread_dependency_dag_edges_and_readiness_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_dag_suite(&store).await;
+    run_readiness_claim_suite(&store).await;
 }
