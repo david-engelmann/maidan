@@ -223,6 +223,62 @@ pub(super) async fn renew_claim(
 }
 
 #[derive(Deserialize)]
+struct AddThreadDependencyArgs {
+    thread_id: uuid::Uuid,
+    depends_on_thread_id: uuid::Uuid,
+}
+
+/// Add a task-dependency edge (Cluster 220): the path/`thread_id` task depends on
+/// `depends_on_thread_id`. The primary `thread_id`'s channel access is enforced
+/// pre-dispatch; the `depends_on` thread is checked here (the gate covers only one
+/// id), plus a same-workspace guard. Idempotent; a self-dependency is rejected.
+pub(super) async fn add_thread_dependency(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AddThreadDependencyArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let depends_on = ThreadId(a.depends_on_thread_id);
+    let ctx = resolve_thread_context(store.as_ref(), thread_id)
+        .await
+        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    let dep_ctx = resolve_thread_context(store.as_ref(), depends_on)
+        .await
+        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    if dep_ctx.workspace_id != ctx.workspace_id {
+        return Err(McpError::InvalidParams(
+            "dependency thread is in a different workspace".into(),
+        ));
+    }
+    if !auth.bypass {
+        maidan_auth::ensure_thread_access(store.as_ref(), auth, depends_on).await?;
+    }
+    store.add_thread_dependency(thread_id, depends_on).await?;
+    Ok(content_json(&json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct ThreadDepsArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// A task's dependencies + whether it is ready (all deps terminal) — Cluster 220.
+/// Channel access is enforced pre-dispatch (the `thread_id` arg).
+pub(super) async fn list_thread_dependencies(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadDepsArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let dependencies = store.list_thread_dependencies(thread_id).await?;
+    let ready = store.thread_dependencies_satisfied(thread_id).await?;
+    Ok(content_json(
+        &json!({ "dependencies": dependencies, "ready": ready }),
+    ))
+}
+
+#[derive(Deserialize)]
 struct SummarizeThreadArgs {
     thread_id: uuid::Uuid,
     #[serde(default = "default_summary_limit")]

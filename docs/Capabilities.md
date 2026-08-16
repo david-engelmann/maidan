@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v220.0.0 — Program B: task-dependency DAG MCP tools
+
+| Change | Where |
+|--------|-------|
+| MCP `add_thread_dependency` (`thread:transition`; both-thread RBAC + same-workspace) + `list_thread_dependencies` (`workspace:read`; returns `{dependencies, ready}`). Full 5-place wiring (handlers, dispatch, capability, pre-dispatch gate, catalog, both `contracts/mcp-*.json`). Completes the DAG read/write surface over REST + MCP | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v219.0.0 — Program B: task-dependency DAG management API (REST)
 
 | Change | Where |

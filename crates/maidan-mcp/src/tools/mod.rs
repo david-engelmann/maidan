@@ -69,6 +69,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mark_inbox_read"
         | "wait_for_mention"
         | "list_assigned_threads"
+        | "list_thread_dependencies"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -88,8 +89,12 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "add_channel_member" | "list_channel_members" | "remove_channel_member" => {
             Ok(maidan_auth::capability::CHANNEL_ADMIN)
         }
-        "assign_thread" | "claim_thread" | "unassign_thread" | "claim_next_thread"
-        | "renew_claim" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        "assign_thread"
+        | "claim_thread"
+        | "unassign_thread"
+        | "claim_next_thread"
+        | "renew_claim"
+        | "add_thread_dependency" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -133,7 +138,9 @@ async fn enforce_channel_access(
         | "assign_thread"
         | "claim_thread"
         | "unassign_thread"
-        | "renew_claim" => {
+        | "renew_claim"
+        | "add_thread_dependency"
+        | "list_thread_dependencies" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -203,6 +210,8 @@ pub async fn dispatch(
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
         "renew_claim" => thread::renew_claim(server, args).await,
+        "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
+        "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,
         "list_mentions" => member::list_mentions(store, args).await,
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,

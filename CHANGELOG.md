@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [220.0.0] — 2026-08-15
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 4. No new
+gate tag.
+
+### Added
+
+- **Task-dependency DAG MCP tools.** `add_thread_dependency` (`thread_id`,
+  `depends_on_thread_id`; `thread:transition`) and `list_thread_dependencies`
+  (`thread_id`; `workspace:read`, returns `{ dependencies, ready }`) — so an MCP
+  agent can build and inspect the DAG, not just respect it (the readiness-aware
+  `claim_next` from 218). The primary `thread_id`'s access is enforced by the
+  pre-dispatch channel gate; `add_thread_dependency` additionally checks
+  `ensure_thread_access` on the `depends_on` thread (the gate resolves only one id)
+  plus a same-workspace guard. Full MCP 5-place wiring (handlers, dispatch,
+  capability, gate, catalog, both `contracts/mcp-*.json`). The DAG's read/write
+  surface is now complete over REST + MCP.
+
 ## [219.0.0] — 2026-08-15
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 3. No new
