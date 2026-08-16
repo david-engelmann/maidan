@@ -19,6 +19,22 @@ async fn sqlite() -> SqliteStore {
     SqliteStore::new(pool)
 }
 
+/// Drive a thread all the way to a terminal state (open -> in_review -> closed).
+async fn close_thread(
+    store: &dyn Store,
+    id: maidan_types::ThreadId,
+    actor: maidan_types::MemberId,
+) {
+    store
+        .transition_thread(id, actor, ThreadAction::StartReview)
+        .await
+        .expect("review");
+    store
+        .transition_thread(id, actor, ThreadAction::Close)
+        .await
+        .expect("close");
+}
+
 async fn run_dag_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "dag".into() })
@@ -291,12 +307,98 @@ async fn run_cycle_prevention_suite(store: &dyn Store) {
         .all(|dep| dep.depends_on_thread_id == c.id));
 }
 
+/// Cluster 222: `newly_ready_dependents(dep)` returns the dependents that became
+/// ready because `dep` reached a terminal state — empty while another dependency
+/// still blocks, the unblocked task once it's the last one, and never a dependent
+/// that is itself terminal.
+async fn run_ready_dependents_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "ready-ev".into(),
+        })
+        .await
+        .expect("ws");
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "actor".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("actor");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "q".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    let task = store.create_thread(mk("task")).await.expect("task");
+    let dep1 = store.create_thread(mk("dep1")).await.expect("dep1");
+    let dep2 = store.create_thread(mk("dep2")).await.expect("dep2");
+    store
+        .add_thread_dependency(task.id, dep1.id)
+        .await
+        .expect("task->dep1");
+    store
+        .add_thread_dependency(task.id, dep2.id)
+        .await
+        .expect("task->dep2");
+
+    // Closing dep1 leaves task still blocked on dep2 -> not newly ready.
+    close_thread(store, dep1.id, actor.id).await;
+    assert!(
+        store
+            .newly_ready_dependents(dep1.id)
+            .await
+            .expect("after dep1")
+            .is_empty(),
+        "task still blocked on dep2"
+    );
+
+    // Closing dep2 (the last blocker) makes task ready.
+    close_thread(store, dep2.id, actor.id).await;
+    let ready = store
+        .newly_ready_dependents(dep2.id)
+        .await
+        .expect("after dep2");
+    assert_eq!(ready.len(), 1, "task is now ready");
+    assert_eq!(ready[0].id, task.id);
+
+    // A dependent that is itself terminal is never reported as ready. Close task,
+    // then a fresh dependency of it going terminal must not resurface it.
+    close_thread(store, task.id, actor.id).await;
+    let late = store.create_thread(mk("late")).await.expect("late");
+    store
+        .add_thread_dependency(task.id, late.id)
+        .await
+        .expect("task->late");
+    close_thread(store, late.id, actor.id).await;
+    assert!(
+        store
+            .newly_ready_dependents(late.id)
+            .await
+            .expect("after late")
+            .is_empty(),
+        "a terminal dependent is never ready"
+    );
+}
+
 #[tokio::test]
 async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     let store = sqlite().await;
     run_dag_suite(&store).await;
     run_readiness_claim_suite(&store).await;
     run_cycle_prevention_suite(&store).await;
+    run_ready_dependents_suite(&store).await;
 }
 
 #[tokio::test]
@@ -333,4 +435,5 @@ async fn thread_dependency_dag_edges_and_readiness_postgres() {
     run_dag_suite(&store).await;
     run_readiness_claim_suite(&store).await;
     run_cycle_prevention_suite(&store).await;
+    run_ready_dependents_suite(&store).await;
 }

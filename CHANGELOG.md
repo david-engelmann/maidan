@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [222.0.0] — 2026-08-16
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 6. No new
+gate tag.
+
+### Added
+
+- **`ThreadReady` event — reactive task readiness.** When a thread transitions
+  into a terminal state (closed/archived) and thereby unblocks its dependents, the
+  transition route now publishes a `ThreadReady` event for each task that just
+  became ready (all its dependencies terminal). This is the reactive counterpart to
+  the pull-only `dependencies_satisfied` readiness query (Cluster 217) — an agent
+  waiting on the DAG can subscribe (`kinds=thread_ready`) instead of polling. New
+  `EventKind::ThreadReady` + `Event::ThreadReady { workspace_id, channel_id,
+  thread_id, thread }`; a `Store::newly_ready_dependents(thread_id)` query (both
+  backends) returns the non-terminal dependents now fully unblocked. Emitted only
+  on a non-terminal → terminal edge (so a closed→archived move doesn't re-emit);
+  best-effort (a failed emit never undoes the committed transition — readiness
+  stays queryable). Derived + local-only: **not federatable** (a peer must not
+  inject a readiness signal — each deployment computes its own).
+
 ## [221.0.0] — 2026-08-16
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 5. No new

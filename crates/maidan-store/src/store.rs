@@ -298,6 +298,11 @@ pub trait Store: Send + Sync {
     /// Whether every dependency of `thread_id` is terminal (closed/archived) — the
     /// task is ready to run (Cluster 217). A task with no dependencies is ready.
     async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    /// Non-terminal dependents of `thread_id` whose dependencies are now *all*
+    /// terminal — i.e. the tasks that just became ready because `thread_id` reached
+    /// a terminal state (Cluster 222). Callers invoke this right after transitioning
+    /// `thread_id` into a terminal state to emit `ThreadReady` for each result.
+    async fn newly_ready_dependents(&self, thread_id: ThreadId) -> Result<Vec<Thread>, StoreError>;
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     /// Insert a message and append its `MessagePosted` event atomically

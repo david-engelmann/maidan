@@ -287,6 +287,21 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             note,
             thread,
         },
+        // Non-federatable (rejected before remap on ingest); the exhaustive match
+        // still needs an arm. Remap defensively for consistency.
+        ThreadReady {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            thread,
+        } => ThreadReady {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            thread,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

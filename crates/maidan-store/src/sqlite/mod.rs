@@ -414,6 +414,9 @@ impl Store for SqliteStore {
     async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
         thread_deps::dependencies_satisfied(&self.pool, thread_id).await
     }
+    async fn newly_ready_dependents(&self, thread_id: ThreadId) -> Result<Vec<Thread>, StoreError> {
+        thread_deps::newly_ready_dependents(&self.pool, thread_id).await
+    }
 
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await

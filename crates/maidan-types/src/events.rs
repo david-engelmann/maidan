@@ -35,6 +35,7 @@ pub enum EventKind {
     ThreadCreated,
     ThreadStateChanged,
     ThreadAssignmentChanged,
+    ThreadReady,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -57,6 +58,7 @@ impl EventKind {
             Self::ThreadCreated => "thread_created",
             Self::ThreadStateChanged => "thread_state_changed",
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
+            Self::ThreadReady => "thread_ready",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -79,6 +81,7 @@ impl EventKind {
             "thread_created" => Some(Self::ThreadCreated),
             "thread_state_changed" => Some(Self::ThreadStateChanged),
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
+            "thread_ready" => Some(Self::ThreadReady),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -107,6 +110,7 @@ impl EventKind {
         Self::ThreadCreated,
         Self::ThreadStateChanged,
         Self::ThreadAssignmentChanged,
+        Self::ThreadReady,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -151,6 +155,9 @@ impl EventKind {
             | Self::ReferenceAdded => true,
             // Blob bytes are not federated — an ingested claim would dangle.
             Self::ArtifactUpserted => false,
+            // Readiness is a *locally derived* signal (this deployment's dependency
+            // graph + thread states); a peer must not inject it — we compute our own.
+            Self::ThreadReady => false,
         }
     }
 }
@@ -201,6 +208,17 @@ pub enum Event {
         /// `assign`; a pull-claim or unassign has none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
+        thread: Thread,
+    },
+    /// A thread whose last blocking dependency just reached a terminal state, so
+    /// it is now ready to be claimed (Cluster 222). Derived, not stored — a
+    /// reactive push of the readiness that `dependencies_satisfied` computes on
+    /// demand, so a waiting agent needn't poll.
+    ThreadReady {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
         thread: Thread,
     },
     MessagePosted {
@@ -297,6 +315,7 @@ impl Event {
             Self::ThreadCreated { .. } => EventKind::ThreadCreated,
             Self::ThreadStateChanged { .. } => EventKind::ThreadStateChanged,
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
+            Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -319,6 +338,7 @@ impl Event {
             | Self::ThreadCreated { occurred_at, .. }
             | Self::ThreadStateChanged { occurred_at, .. }
             | Self::ThreadAssignmentChanged { occurred_at, .. }
+            | Self::ThreadReady { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -341,6 +361,7 @@ impl Event {
             | Self::ThreadCreated { workspace_id, .. }
             | Self::ThreadStateChanged { workspace_id, .. }
             | Self::ThreadAssignmentChanged { workspace_id, .. }
+            | Self::ThreadReady { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -360,6 +381,7 @@ impl Event {
             Self::ThreadCreated { channel_id, .. }
             | Self::ThreadStateChanged { channel_id, .. }
             | Self::ThreadAssignmentChanged { channel_id, .. }
+            | Self::ThreadReady { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -374,6 +396,7 @@ impl Event {
             Self::ThreadCreated { thread, .. } => Some(thread.id),
             Self::ThreadStateChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
+            Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -636,6 +659,7 @@ mod kind_tests {
                 | EventKind::ThreadCreated
                 | EventKind::ThreadStateChanged
                 | EventKind::ThreadAssignmentChanged
+                | EventKind::ThreadReady
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -673,20 +697,23 @@ mod kind_tests {
     }
 
     /// Cluster 215: the federation ingest allowlist. Collaboration-content kinds
-    /// are federatable; `ArtifactUpserted` is not (blob bytes aren't federated).
+    /// are federatable; `ArtifactUpserted` is not (blob bytes aren't federated),
+    /// and `ThreadReady` is not (a locally-derived signal, Cluster 222).
     #[test]
     fn federatable_allowlist_excludes_only_artifacts() {
+        let non_federatable = [EventKind::ArtifactUpserted, EventKind::ThreadReady];
         for &kind in EventKind::ALL {
-            let expected = kind != EventKind::ArtifactUpserted;
+            let expected = !non_federatable.contains(&kind);
             assert_eq!(
                 kind.federatable(),
                 expected,
                 "unexpected federatable() for {kind:?}"
             );
         }
-        // Representative content kinds are accepted; artifacts are not.
+        // Representative content kinds are accepted; artifacts + readiness are not.
         assert!(EventKind::MessagePosted.federatable());
         assert!(EventKind::MemberJoined.federatable());
         assert!(!EventKind::ArtifactUpserted.federatable());
+        assert!(!EventKind::ThreadReady.federatable());
     }
 }

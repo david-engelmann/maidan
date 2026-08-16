@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v222.0.0 — Program B: reactive task readiness (`ThreadReady`)
+
+| Change | Where |
+|--------|-------|
+| New `ThreadReady` event: a terminal thread transition that unblocks dependents publishes `ThreadReady { workspace_id, channel_id, thread_id, thread }` for each newly-ready task, so an agent can subscribe (`kinds=thread_ready`) instead of polling `dependencies_satisfied`. Backed by `Store::newly_ready_dependents` (both backends); emitted only on a non-terminal → terminal edge; best-effort; **non-federatable** (locally-derived signal) | `events.rs`, `store/*/thread_deps.rs`, `routes/thread.rs`, `federation.rs`, `contracts/event-kinds.json` |
+
 ## v221.0.0 — Program B: task-DAG transitive cycle prevention
 
 | Change | Where |

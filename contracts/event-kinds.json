@@ -13,6 +13,7 @@
   "reference_added",
   "thread_assignment_changed",
   "thread_created",
+  "thread_ready",
   "thread_state_changed",
   "vote_cast",
   "workspace_created"
