@@ -218,11 +218,85 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
     assert_eq!(second.id, blocked.id);
 }
 
+/// Cluster 221: a dependency edge that would close a cycle is rejected — direct
+/// (A depends on B, then B depends on A) and transitive (A->B->C, then C->A) —
+/// while a valid DAG (a diamond) is accepted.
+async fn run_cycle_prevention_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "cycles".into(),
+        })
+        .await
+        .expect("ws");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "dag".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    let a = store.create_thread(mk("a")).await.expect("a");
+    let b = store.create_thread(mk("b")).await.expect("b");
+    let c = store.create_thread(mk("c")).await.expect("c");
+    let d = store.create_thread(mk("d")).await.expect("d");
+
+    // a depends on b.
+    store.add_thread_dependency(a.id, b.id).await.expect("a->b");
+    // Direct cycle: b depends on a would loop.
+    assert!(
+        matches!(
+            store.add_thread_dependency(b.id, a.id).await,
+            Err(maidan_store::StoreError::InvalidInput(_))
+        ),
+        "a direct cycle is rejected"
+    );
+
+    // b depends on c, so a->b->c.
+    store.add_thread_dependency(b.id, c.id).await.expect("b->c");
+    // Transitive cycle: c depends on a would close a->b->c->a.
+    assert!(
+        matches!(
+            store.add_thread_dependency(c.id, a.id).await,
+            Err(maidan_store::StoreError::InvalidInput(_))
+        ),
+        "a transitive cycle is rejected"
+    );
+
+    // Valid DAG (diamond): a->d and c->d — a shared descendant, no cycle.
+    store.add_thread_dependency(a.id, d.id).await.expect("a->d");
+    store.add_thread_dependency(c.id, d.id).await.expect("c->d");
+
+    // The rejected edges were never inserted; the accepted ones survived.
+    assert_eq!(
+        store
+            .list_thread_dependencies(a.id)
+            .await
+            .expect("a deps")
+            .len(),
+        2,
+        "a depends on b and d"
+    );
+    assert!(store
+        .list_thread_dependencies(b.id)
+        .await
+        .expect("b deps")
+        .iter()
+        .all(|dep| dep.depends_on_thread_id == c.id));
+}
+
 #[tokio::test]
 async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     let store = sqlite().await;
     run_dag_suite(&store).await;
     run_readiness_claim_suite(&store).await;
+    run_cycle_prevention_suite(&store).await;
 }
 
 #[tokio::test]
@@ -258,4 +332,5 @@ async fn thread_dependency_dag_edges_and_readiness_postgres() {
     let store = PostgresStore::new(pool);
     run_dag_suite(&store).await;
     run_readiness_claim_suite(&store).await;
+    run_cycle_prevention_suite(&store).await;
 }

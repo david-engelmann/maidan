@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [221.0.0] — 2026-08-16
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 5. No new
+gate tag.
+
+### Changed
+
+- **Transitive cycle prevention in the task DAG.** `add_thread_dependency` now
+  rejects any edge that would close a cycle — direct (A→B then B→A) or transitive
+  (A→B→C then C→A) — not just self-loops. Before inserting `thread_id →
+  depends_on`, a recursive-CTE reachability walk from `depends_on` (following
+  depends-on edges) checks whether `thread_id` is already reachable; if so the add
+  fails with `InvalidInput` (REST `400`, MCP `InvalidParams`). The check and insert
+  share a transaction so a concurrent add can't interleave. A cycle can never
+  become ready — this closes a deadlock foot-gun rather than corruption. Both
+  backends; no schema, route, tool, or contract change.
+
 ## [220.0.0] — 2026-08-15
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 4. No new

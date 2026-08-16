@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v221.0.0 — Program B: task-DAG transitive cycle prevention
+
+| Change | Where |
+|--------|-------|
+| `add_thread_dependency` rejects any edge that would close a cycle (direct or transitive), not just self-loops — a recursive-CTE reachability check before insert, check + insert in one transaction, `InvalidInput` (REST `400` / MCP `InvalidParams`). Both backends; no schema/route/tool/contract change. The task-dependency DAG is now actually acyclic | `store/{sqlite,postgres}/thread_deps.rs` |
+
 ## v220.0.0 — Program B: task-dependency DAG MCP tools
 
 | Change | Where |
