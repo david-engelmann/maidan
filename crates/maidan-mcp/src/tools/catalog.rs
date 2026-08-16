@@ -191,6 +191,29 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "add_thread_dependency",
+            "description": "Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "the dependent task"},
+                    "depends_on_thread_id": {"type": "string", "format": "uuid", "description": "the task it depends on"}
+                },
+                "required": ["thread_id", "depends_on_thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_dependencies",
+            "description": "List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {
