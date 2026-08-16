@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ThreadDependency, ThreadId};
+use maidan_types::{Thread, ThreadDependency, ThreadId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -129,6 +129,33 @@ pub async fn dependencies_satisfied(
     .fetch_one(pool)
     .await?;
     Ok(row.get::<i64, _>("pending") == 0)
+}
+
+/// Non-terminal dependents of `thread_id` whose dependencies are all terminal now
+/// (Cluster 222). Called right after `thread_id` transitions to terminal: each row
+/// is a task that just became ready. A dependent is included when it is itself
+/// non-terminal AND has no non-terminal dependency remaining.
+pub async fn newly_ready_dependents(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.* FROM maidan_threads t
+         JOIN maidan_thread_dependencies d ON d.thread_id = t.id
+         WHERE d.depends_on_thread_id = ?
+           AND t.state NOT IN ('closed', 'archived')
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_dependencies dd
+               JOIN maidan_threads dep ON dep.id = dd.depends_on_thread_id
+               WHERE dd.thread_id = t.id
+                 AND dep.state NOT IN ('closed', 'archived')
+           )
+         ORDER BY t.created_at ASC",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(super::threads::row_to_thread).collect()
 }
 
 fn row_to_dep(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadDependency, StoreError> {

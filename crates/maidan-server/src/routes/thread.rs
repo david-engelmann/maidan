@@ -146,6 +146,33 @@ pub async fn transition_thread(
         .transition_thread_with_event(thread_id, MemberId(body.actor_id), action)
         .await?;
     super::publish_stored(&state, stored).await;
+    // Cluster 222: entering a terminal state can unblock dependents. Push a
+    // `ThreadReady` for each task that just became ready, so an agent waiting on
+    // the DAG needn't poll `dependencies_satisfied`. Derived + best-effort: a
+    // failed emit doesn't undo the committed transition (readiness stays
+    // queryable), so a store error here is logged, not surfaced.
+    if !result.from_state.is_terminal() && result.to_state.is_terminal() {
+        match state.store.newly_ready_dependents(thread_id).await {
+            Ok(ready) => {
+                for dep in ready {
+                    super::publish(
+                        &state,
+                        Event::ThreadReady {
+                            occurred_at: chrono::Utc::now(),
+                            workspace_id: ctx.workspace_id,
+                            channel_id: dep.channel_id,
+                            thread_id: dep.id,
+                            thread: dep,
+                        },
+                    )
+                    .await;
+                }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "thread_ready: newly_ready_dependents failed");
+            }
+        }
+    }
     let uris =
         maidan_mcp::resource_updates::uris_for_thread_transition(state.store.as_ref(), thread_id)
             .await;
