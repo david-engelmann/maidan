@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [223.0.0] — 2026-08-16
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 7. No new
+gate tag.
+
+### Added
+
+- **`wait_for_ready` MCP tool — block until a task becomes claimable.** The
+  `wait_for_mention` analogue for the DAG: a long-poll (`workspace:read`) that
+  subscribes to `ThreadReady` (Cluster 222) and returns the first ready task, or
+  `null` on timeout (default 30 s, clamped 1 ms–300 s). Optional `channel_id` scopes
+  it to one channel (access-checked pre-dispatch when present); otherwise it awaits
+  any thread in the caller's workspace, RBAC-filtered per event via
+  `can_access_thread` (a ready task in a private channel the caller can't see is
+  skipped). Live-only — it sees readiness signalled after it subscribes, so pick up
+  already-ready work with `claim_next_thread` first; `GET /mcp/stream`
+  (`kinds=thread_ready`) is the resumable alternative. Full MCP 5-place wiring.
+
 ## [222.0.0] — 2026-08-16
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 6. No new

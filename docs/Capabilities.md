@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v223.0.0 — Program B: `wait_for_ready` MCP long-poll
+
+| Change | Where |
+|--------|-------|
+| MCP `wait_for_ready` (`workspace:read`): blocks until a task becomes claimable (subscribes to `ThreadReady`), returning the ready thread or `null` on timeout (default 30 s, clamp 1 ms–300 s). Optional `channel_id` scope (access-checked pre-dispatch); else any accessible thread in the workspace, RBAC-filtered per event. The `wait_for_mention` analogue for the DAG; completes the DAG surface end-to-end | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v222.0.0 — Program B: reactive task readiness (`ThreadReady`)
 
 | Change | Where |

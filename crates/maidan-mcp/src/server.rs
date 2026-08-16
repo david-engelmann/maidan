@@ -1039,6 +1039,117 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_for_ready_returns_next_ready_and_filters_private() {
+        use chrono::Utc;
+        use maidan_auth::capability::WORKSPACE_READ;
+        use maidan_bus::InMemoryBus;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "wr".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let public = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "open".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let secret = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "secret".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        let mk_thread = |channel_id, store: Arc<dyn Store>| async move {
+            store
+                .create_thread(NewThread {
+                    channel_id,
+                    parent_thread_id: None,
+                    title: Some("t".into()),
+                })
+                .await
+                .unwrap()
+        };
+        let pub_thread = mk_thread(public.id, store.clone()).await;
+        let secret_thread = mk_thread(secret.id, store.clone()).await;
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        // Not a member of the private channel — public is workspace-open.
+        let auth = AuthContext::from_session(agent.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let ready = |thread: Thread| Event::ThreadReady {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            thread,
+        };
+
+        // A ready task in the public thread wakes the workspace-wide waiter.
+        let live_args = json!({ "timeout_ms": 5000 });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_ready", &live_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                server.publish_event(ready(pub_thread.clone())).await;
+            }
+        );
+        let got = unwrap_content(out.unwrap());
+        assert_eq!(got["kind"], json!("thread_ready"));
+        assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+
+        // A ready task in a private channel the agent can't access is skipped, so
+        // the waiter times out to null despite a matching event being published.
+        let filtered_args = json!({ "timeout_ms": 400 });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_ready", &filtered_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                server.publish_event(ready(secret_thread.clone())).await;
+            }
+        );
+        assert!(
+            unwrap_content(out.unwrap()).is_null(),
+            "a ready task in an inaccessible private channel is filtered → timeout"
+        );
+    }
+
+    #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
         let auth = AuthContext::bypass();
