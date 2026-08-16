@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a task-dependency edge (Cluster 217) — see the SQLite twin.
+/// Add a task-dependency edge (Cluster 217; cycle guard Cluster 221) — see the
+/// SQLite twin.
 pub async fn add(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -16,6 +17,26 @@ pub async fn add(
             "a thread cannot depend on itself".into(),
         ));
     }
+    let mut tx = pool.begin().await?;
+    let cycle = sqlx::query(
+        "WITH RECURSIVE reachable(id) AS (
+             SELECT depends_on_thread_id FROM maidan_thread_dependencies WHERE thread_id = $1
+             UNION
+             SELECT d.depends_on_thread_id
+             FROM maidan_thread_dependencies d
+             JOIN reachable r ON d.thread_id = r.id
+         )
+         SELECT 1 AS hit FROM reachable WHERE id = $2 LIMIT 1",
+    )
+    .bind(depends_on.0)
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if cycle.is_some() {
+        return Err(StoreError::InvalidInput(
+            "adding this dependency would create a cycle".into(),
+        ));
+    }
     sqlx::query(
         "INSERT INTO maidan_thread_dependencies (thread_id, depends_on_thread_id)
          VALUES ($1, $2)
@@ -23,8 +44,9 @@ pub async fn add(
     )
     .bind(thread_id.0)
     .bind(depends_on.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
