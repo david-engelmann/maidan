@@ -13,6 +13,7 @@
   "edit_message",
   "get_artifact_metadata",
   "get_inbox",
+  "get_queue_depth",
   "get_thread_context",
   "get_tool_transcript",
   "get_workspace_context",

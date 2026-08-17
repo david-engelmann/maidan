@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [225.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 9. No new
+gate tag.
+
+### Added
+
+- **`get_queue_depth` MCP tool.** The MCP twin of `GET /channels/:cid/queue-depth`
+  (Cluster 224): `{ channel_id }` → `{ open, ready, assigned, blocked }` over the
+  shared `Store::channel_queue_depth`, so an MCP-only orchestrator can read a
+  channel's task-queue depth to decide whether to scale workers. `workspace:read`;
+  channel access enforced pre-dispatch (the `channel_id` arg). Full MCP 5-place
+  wiring.
+
 ## [224.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 8. No new

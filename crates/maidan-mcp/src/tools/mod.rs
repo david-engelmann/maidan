@@ -69,6 +69,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mark_inbox_read"
         | "wait_for_mention"
         | "wait_for_ready"
+        | "get_queue_depth"
         | "list_assigned_threads"
         | "list_thread_dependencies"
         | "list_roots" => Ok(WORKSPACE_READ),
@@ -122,7 +123,7 @@ async fn enforce_channel_access(
             .and_then(|s| s.parse().ok())
     };
     match name {
-        "list_threads" | "claim_next_thread" | "wait_for_ready" => {
+        "list_threads" | "claim_next_thread" | "wait_for_ready" | "get_queue_depth" => {
             // `wait_for_ready`'s channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
             if let Some(id) = field("channel_id") {
@@ -220,6 +221,7 @@ pub async fn dispatch(
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
+        "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,
