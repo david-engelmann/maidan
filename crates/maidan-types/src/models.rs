@@ -235,6 +235,19 @@ pub struct ThreadRequiredSkill {
     pub created_at: DateTime<Utc>,
 }
 
+/// The structured result an agent attaches to a task when it's done (Cluster
+/// 234). One per thread (a re-set overwrites). A requester — or a parent task
+/// that depends on it — reads this back; coordination waits block on it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadResult {
+    pub thread_id: ThreadId,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub result: serde_json::Value,
+    pub produced_by: MemberId,
+    pub produced_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

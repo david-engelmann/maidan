@@ -73,6 +73,20 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadRequiredSkill>, StoreError>;
 
+    /// A task's structured result (Cluster 234): `set` upserts (a re-set
+    /// overwrites), `get` returns `None` until one is produced. No worker/routes
+    /// yet — a zero-blast-radius foundation.
+    async fn set_thread_result(
+        &self,
+        thread_id: ThreadId,
+        produced_by: MemberId,
+        result: &serde_json::Value,
+    ) -> Result<ThreadResult, StoreError>;
+    async fn get_thread_result(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadResult>, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,
