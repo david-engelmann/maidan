@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [226.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 10 — the
+scheduled/recurring-task subsystem opens. No new gate tag.
+
+### Added
+
+- **Task-schedule store foundation.** A `maidan_task_schedules` table (pg 0038 /
+  sqlite 0037) + `TaskSchedule` / `NewTaskSchedule` models + `TaskScheduleId`, and
+  five `Store` methods (both backends): `create_task_schedule`, `get_task_schedule`,
+  `list_task_schedules`, `delete_task_schedule`, and `due_task_schedules(now, limit)`
+  (the sweeper's due-scan — active schedules with `next_run_at <= now`, oldest
+  first). A schedule materializes a task thread when due: `interval_secs = NULL` is
+  one-shot (fires once, then deactivates); a positive value is recurring (re-arm
+  `next_run_at += interval_secs`). **No worker or routes yet** — a zero-blast-radius
+  foundation (the Cluster 159 / 217 pattern); the background sweeper, REST, and MCP
+  follow in later clusters.
+
 ## [225.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 9. No new

@@ -30,6 +30,7 @@ mod reindex_jobs;
 mod retention;
 mod sessions;
 mod slash_commands;
+mod task_schedules;
 mod thread_deps;
 mod thread_transitions;
 mod threads;
@@ -307,6 +308,29 @@ impl Store for PostgresStore {
 
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
         threads::channel_queue_depth(&self.pool, channel_id).await
+    }
+
+    async fn create_task_schedule(&self, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError> {
+        task_schedules::create(&self.pool, new).await
+    }
+    async fn get_task_schedule(&self, id: TaskScheduleId) -> Result<TaskSchedule, StoreError> {
+        task_schedules::get(&self.pool, id).await
+    }
+    async fn list_task_schedules(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<TaskSchedule>, StoreError> {
+        task_schedules::list(&self.pool, workspace_id).await
+    }
+    async fn delete_task_schedule(&self, id: TaskScheduleId) -> Result<bool, StoreError> {
+        task_schedules::delete(&self.pool, id).await
+    }
+    async fn due_task_schedules(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<TaskSchedule>, StoreError> {
+        task_schedules::due(&self.pool, now, limit).await
     }
 
     async fn assign_thread(
