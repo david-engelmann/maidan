@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [224.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 8. No new
+gate tag.
+
+### Added
+
+- **Channel task-queue depth.** `GET /channels/:cid/queue-depth` (`workspace:read`
+  + channel access) → `{ open, ready, assigned, blocked }`: a point-in-time
+  partition of a channel's open (non-terminal, non-tombstoned) task threads, so an
+  orchestrator can decide whether to scale workers. `ready` uses the exact
+  `claim_next` claimability predicate (unassigned or lease-expired, and every
+  dependency terminal); `assigned` counts threads with a live, non-expired lease;
+  `blocked` counts those waiting on a non-terminal dependency; the three partition
+  `open`. One aggregate query per backend (`Store::channel_queue_depth`). Per-tenant
+  on-demand DB aggregate, not a per-channel Prometheus label (the Cluster 188
+  cardinality decision).
+
 ## [223.0.0] — 2026-08-16
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 7. No new

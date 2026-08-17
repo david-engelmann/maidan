@@ -305,6 +305,10 @@ impl Store for PostgresStore {
         thread_transitions::list(&self.pool, thread_id, limit).await
     }
 
+    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
+        threads::channel_queue_depth(&self.pool, channel_id).await
+    }
+
     async fn assign_thread(
         &self,
         thread_id: ThreadId,

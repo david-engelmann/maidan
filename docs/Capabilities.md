@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v224.0.0 — Program B: channel task-queue depth
+
+| Change | Where |
+|--------|-------|
+| `GET /channels/:cid/queue-depth` (`workspace:read` + channel access) → `{ open, ready, assigned, blocked }`: a point-in-time partition of a channel's open task threads for scaling decisions. `ready` = the `claim_next` predicate; one aggregate query per backend (`Store::channel_queue_depth`); on-demand DB aggregate, not a per-channel metric (Cluster 188 cardinality decision) | `models.rs`, `store/*/threads.rs`, `routes/channel.rs` |
+
 ## v223.0.0 — Program B: `wait_for_ready` MCP long-poll
 
 | Change | Where |

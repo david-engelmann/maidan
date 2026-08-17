@@ -311,6 +311,22 @@ pub struct ThreadClaimResult {
     pub claimed: bool,
 }
 
+/// A channel's task-queue depth (Cluster 224) — a point-in-time partition of its
+/// **open** (non-terminal, non-tombstoned) task threads, for an orchestrator
+/// deciding whether to scale workers. The three sub-counts partition `open`:
+/// - `assigned`: actively held (an assignee with a live, non-expired lease).
+/// - `ready`: claimable now — unassigned or lease-expired, and every dependency
+///   terminal (the `claim_next` predicate).
+/// - `blocked`: unassigned/lease-expired but waiting on a non-terminal dependency.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct QueueDepth {
+    pub open: i64,
+    pub ready: i64,
+    pub assigned: i64,
+    pub blocked: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadTransition {
