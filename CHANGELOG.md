@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [229.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 13 — the
+scheduler MCP tools; the scheduler subsystem is now surfaced over REST + MCP. No new
+gate tag.
+
+### Added
+
+- **Task-schedule MCP tools.** `create_task_schedule` (`workspace:write`,
+  channel-gated: `{channel_id, title, interval_secs?, first_run_at?}`) and
+  `list_task_schedules` (`workspace:read`; the caller's workspace, filtered to
+  channels the caller can access) — so an MCP-only agent can schedule its own
+  recurring/one-shot work and inspect what's scheduled. The MCP twin of the Cluster
+  228 REST endpoints, over the shared store; full 5-place wiring. The schedule is
+  owned by the caller (`created_by = auth.member_id`).
+
 ## [228.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 12 — the

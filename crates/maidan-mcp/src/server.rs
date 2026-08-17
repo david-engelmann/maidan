@@ -1209,6 +1209,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn task_schedule_tools_create_and_list() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sch".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "q".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // A real member session so `created_by` satisfies its FK.
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let created = content(
+            server
+                .call_tool(
+                    &auth,
+                    "create_task_schedule",
+                    &json!({ "channel_id": channel.id.0, "title": "nightly", "interval_secs": 3600 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(created["title"], json!("nightly"));
+        assert_eq!(created["interval_secs"], json!(3600));
+        assert_eq!(created["active"], json!(true));
+
+        let list = content(
+            server
+                .call_tool(&auth, "list_task_schedules", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["id"], created["id"]);
+    }
+
+    #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
         let auth = AuthContext::bypass();
