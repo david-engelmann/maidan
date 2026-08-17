@@ -143,6 +143,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/channels/:id", get(routes::get_channel))
         .route(
+            "/channels/:cid/queue-depth",
+            get(routes::get_channel_queue_depth),
+        )
+        .route(
             "/channels/:cid/members",
             post(routes::add_channel_member).get(routes::list_channel_members),
         )

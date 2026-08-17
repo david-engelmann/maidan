@@ -392,6 +392,98 @@ async fn run_ready_dependents_suite(store: &dyn Store) {
     );
 }
 
+/// Cluster 224: `channel_queue_depth` partitions a channel's open task threads
+/// into ready / assigned / blocked, and excludes terminal threads.
+async fn run_queue_depth_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "qd".into() })
+        .await
+        .expect("ws");
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "actor".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("actor");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "queue".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+
+    // Empty channel: all zero.
+    let d0 = store.channel_queue_depth(channel.id).await.expect("d0");
+    assert_eq!(
+        d0,
+        maidan_types::QueueDepth {
+            open: 0,
+            ready: 0,
+            assigned: 0,
+            blocked: 0
+        }
+    );
+
+    // ready1 (no deps), dep (no deps) → both ready. blocked1 depends on dep.
+    let ready1 = store.create_thread(mk("ready1")).await.expect("ready1");
+    let dep = store.create_thread(mk("dep")).await.expect("dep");
+    let blocked1 = store.create_thread(mk("blocked1")).await.expect("blocked1");
+    store
+        .add_thread_dependency(blocked1.id, dep.id)
+        .await
+        .expect("blocked1->dep");
+    // assigned1: durable assignment (no lease) → live-assigned.
+    let assigned1 = store
+        .create_thread(mk("assigned1"))
+        .await
+        .expect("assigned1");
+    store
+        .assign_thread(assigned1.id, actor.id)
+        .await
+        .expect("assign");
+    // closed1: terminal → excluded entirely.
+    let closed1 = store.create_thread(mk("closed1")).await.expect("closed1");
+    close_thread(store, closed1.id, actor.id).await;
+    let _ = ready1;
+
+    let d = store.channel_queue_depth(channel.id).await.expect("depth");
+    assert_eq!(
+        d,
+        maidan_types::QueueDepth {
+            open: 4,     // ready1 + dep + blocked1 + assigned1 (closed1 excluded)
+            ready: 2,    // ready1 + dep
+            assigned: 1, // assigned1
+            blocked: 1,  // blocked1
+        },
+        "queue-depth partitions open threads"
+    );
+
+    // Closing `dep` unblocks blocked1: blocked -> ready.
+    close_thread(store, dep.id, actor.id).await;
+    let d2 = store.channel_queue_depth(channel.id).await.expect("depth2");
+    assert_eq!(
+        d2,
+        maidan_types::QueueDepth {
+            open: 3,     // dep is now terminal
+            ready: 2,    // ready1 + blocked1 (now unblocked)
+            assigned: 1, // assigned1
+            blocked: 0,
+        },
+        "closing the dependency moves blocked1 to ready"
+    );
+}
+
 #[tokio::test]
 async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     let store = sqlite().await;
@@ -399,6 +491,7 @@ async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     run_readiness_claim_suite(&store).await;
     run_cycle_prevention_suite(&store).await;
     run_ready_dependents_suite(&store).await;
+    run_queue_depth_suite(&store).await;
 }
 
 #[tokio::test]
@@ -436,4 +529,5 @@ async fn thread_dependency_dag_edges_and_readiness_postgres() {
     run_readiness_claim_suite(&store).await;
     run_cycle_prevention_suite(&store).await;
     run_ready_dependents_suite(&store).await;
+    run_queue_depth_suite(&store).await;
 }

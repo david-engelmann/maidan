@@ -188,6 +188,11 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadTransition>, StoreError>;
 
+    /// Point-in-time task-queue depth for a channel (Cluster 224): counts of its
+    /// open task threads partitioned into ready / assigned / blocked, using the
+    /// same claimability predicate as `claim_next`. One aggregate query.
+    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
     async fn assign_thread(

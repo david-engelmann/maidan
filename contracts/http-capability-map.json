@@ -73,6 +73,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{cid}/queue-depth",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/dm/{id}",
     "capability": "workspace:read",
     "surface": "http"

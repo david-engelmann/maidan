@@ -86,6 +86,22 @@ pub async fn get_channel(
     Ok(Json(channel))
 }
 
+/// Task-queue depth for a channel (Cluster 224): ready / assigned / blocked
+/// counts of its open task threads, for an orchestrator deciding whether to scale
+/// workers. `workspace:read` + channel access.
+pub async fn get_channel_queue_depth(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<QueueDepth>> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    let depth = state.store.channel_queue_depth(channel.id).await?;
+    Ok(Json(depth))
+}
+
 pub async fn add_channel_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

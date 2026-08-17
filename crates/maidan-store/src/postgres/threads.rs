@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, Event, MemberId, NewThread, StoredEvent, Thread, ThreadClaimResult, ThreadId,
-    ThreadState, WorkspaceId,
+    ChannelId, Event, MemberId, NewThread, QueueDepth, StoredEvent, Thread, ThreadClaimResult,
+    ThreadId, ThreadState, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -344,6 +344,47 @@ pub async fn claim_next(
     .fetch_optional(pool)
     .await?;
     row.as_ref().map(row_to_thread).transpose()
+}
+
+/// Task-queue depth for a channel (Cluster 224) — see the SQLite twin. Uses
+/// `NOW()` inline (as `claim_next` does) so `ready` matches its claimability
+/// predicate exactly.
+pub async fn channel_queue_depth(
+    pool: &PgPool,
+    channel_id: ChannelId,
+) -> Result<QueueDepth, StoreError> {
+    let row = sqlx::query(
+        "SELECT
+             COUNT(*) AS open_count,
+             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
+                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= NOW())
+                     THEN 1 ELSE 0 END), 0) AS assigned_count,
+             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
+                       AND NOT EXISTS (
+                           SELECT 1 FROM maidan_thread_dependencies d
+                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                     THEN 1 ELSE 0 END), 0) AS ready_count,
+             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
+                       AND EXISTS (
+                           SELECT 1 FROM maidan_thread_dependencies d
+                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                     THEN 1 ELSE 0 END), 0) AS blocked_count
+         FROM maidan_threads t
+         WHERE t.channel_id = $1
+           AND t.state NOT IN ('closed', 'archived')
+           AND t.tombstoned_at IS NULL",
+    )
+    .bind(channel_id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(QueueDepth {
+        open: row.get::<i64, _>("open_count"),
+        ready: row.get::<i64, _>("ready_count"),
+        assigned: row.get::<i64, _>("assigned_count"),
+        blocked: row.get::<i64, _>("blocked_count"),
+    })
 }
 
 /// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx (Cluster

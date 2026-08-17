@@ -311,6 +311,12 @@ pub fn mark_member_inbox_read() {}
     responses((status = 200, body = Channel)))]
 pub fn get_channel() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/queue-depth", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = QueueDepth)))]
+pub fn get_channel_queue_depth() {}
+
 #[utoipa::path(post, path = "/channels/{cid}/members", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = AddChannelMember,
