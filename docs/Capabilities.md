@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v233.0.0 — Program B (Arc E complete): capability-registry MCP tools
+
+| Change | Where |
+|--------|-------|
+| MCP `add_member_skill` / `list_member_skills` (`workspace:write`/`read`) + `add_thread_required_skill` / `list_thread_required_skills` (`thread:transition` + channel access / `workspace:read`) over the shared store — the MCP twin of Cluster 232's REST. **Arc E complete**: skill routing surfaced over REST + MCP, enforced in `claim_next` | `tools/skill.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v232.0.0 — Program B (Arc E): capability-registry REST
 
 | Change | Where |

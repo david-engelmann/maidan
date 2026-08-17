@@ -225,6 +225,52 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "add_member_skill",
+            "description": "Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "skill": {"type": "string"}
+                },
+                "required": ["member_id", "skill"]
+            }
+        }),
+        json!({
+            "name": "list_member_skills",
+            "description": "List a member's declared skills.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "add_thread_required_skill",
+            "description": "Add a required skill to a task. Only a member holding every required skill can claim the task via claim_next_thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "skill": {"type": "string"}
+                },
+                "required": ["thread_id", "skill"]
+            }
+        }),
+        json!({
+            "name": "list_thread_required_skills",
+            "description": "List a task's required skills.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "create_task_schedule",
             "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id`. interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
             "inputSchema": {
