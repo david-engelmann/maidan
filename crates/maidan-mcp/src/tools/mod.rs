@@ -23,6 +23,7 @@ mod member;
 mod message;
 mod reference;
 mod roots;
+mod schedule;
 mod search;
 mod social;
 mod thread;
@@ -72,12 +73,19 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_queue_depth"
         | "list_assigned_threads"
         | "list_thread_dependencies"
+        | "list_task_schedules"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
-        "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction" | "pin_message"
-        | "unpin_message" | "add_reference" => Ok(WORKSPACE_WRITE),
+        "record_mention"
+        | "cast_vote"
+        | "add_reaction"
+        | "remove_reaction"
+        | "pin_message"
+        | "unpin_message"
+        | "add_reference"
+        | "create_task_schedule" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -123,7 +131,11 @@ async fn enforce_channel_access(
             .and_then(|s| s.parse().ok())
     };
     match name {
-        "list_threads" | "claim_next_thread" | "wait_for_ready" | "get_queue_depth" => {
+        "list_threads"
+        | "claim_next_thread"
+        | "wait_for_ready"
+        | "get_queue_depth"
+        | "create_task_schedule" => {
             // `wait_for_ready`'s channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
             if let Some(id) = field("channel_id") {
@@ -222,6 +234,8 @@ pub async fn dispatch(
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
+        "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
+        "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,

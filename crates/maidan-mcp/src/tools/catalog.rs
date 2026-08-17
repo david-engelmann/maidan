@@ -225,6 +225,28 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "create_task_schedule",
+            "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id`. interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "title": {"type": "string"},
+                    "interval_secs": {"type": "integer", "description": "recurrence period in seconds; omit for a one-shot"},
+                    "first_run_at": {"type": "string", "format": "date-time", "description": "when to first fire (default: now)"}
+                },
+                "required": ["channel_id", "title"]
+            }
+        }),
+        json!({
+            "name": "list_task_schedules",
+            "description": "List the caller's workspace task schedules (filtered to channels the caller can access).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
             "name": "wait_for_ready",
             "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees readiness signalled after the call subscribes, so pick up already-ready work with claim_next_thread first.",
             "inputSchema": {

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v229.0.0 — Program B: task-schedule MCP tools
+
+| Change | Where |
+|--------|-------|
+| MCP `create_task_schedule` (`workspace:write`, channel-gated) + `list_task_schedules` (`workspace:read`, channel-filtered) over the shared store — so an MCP-only agent schedules its own recurring/one-shot work. The MCP twin of the Cluster 228 REST endpoints; completes the scheduler subsystem (store 226 → worker 227 → REST 228 → MCP 229) | `tools/schedule.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v228.0.0 — Program B: task-schedule REST management API
 
 | Change | Where |
