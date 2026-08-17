@@ -239,6 +239,10 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/operator/") {
         return template.replace("{job_id}", &f.workspace);
     }
+    if template.starts_with("/task-schedules/") {
+        // Any UUID works — the cap() check 403s before the id is looked up.
+        return template.replace("{id}", &f.workspace);
+    }
     template.to_string()
 }
 
@@ -335,6 +339,12 @@ fn apply_route_defaults(
     }
     if path == "/threads/{id}/dependencies" && method == "POST" {
         return b.json(&json!({ "depends_on_thread_id": f.thread }));
+    }
+    if path == "/workspaces/{wid}/task-schedules" && method == "POST" {
+        return b.json(&json!({ "channel_id": f.channel, "title": "cap matrix" }));
+    }
+    if path == "/task-schedules/{id}" && method == "PUT" {
+        return b.json(&json!({ "active": false }));
     }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({

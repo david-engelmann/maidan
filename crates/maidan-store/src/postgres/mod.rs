@@ -338,6 +338,13 @@ impl Store for PostgresStore {
     ) -> Result<Option<TaskSchedule>, StoreError> {
         task_schedules::claim_next_due(&self.pool, now).await
     }
+    async fn set_task_schedule_active(
+        &self,
+        id: TaskScheduleId,
+        active: bool,
+    ) -> Result<TaskSchedule, StoreError> {
+        task_schedules::set_active(&self.pool, id, active).await
+    }
 
     async fn assign_thread(
         &self,

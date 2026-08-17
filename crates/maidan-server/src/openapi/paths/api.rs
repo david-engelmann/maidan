@@ -540,6 +540,34 @@ pub fn remove_thread_dependency() {}
     responses((status = 200, body = Vec<ThreadDependency>)))]
 pub fn list_thread_dependents() {}
 
+// --- task schedules ---
+
+#[utoipa::path(post, path = "/workspaces/{wid}/task-schedules", tag = "schedules",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateTaskSchedule,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = TaskSchedule)))]
+pub fn create_task_schedule() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/task-schedules", tag = "schedules",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<TaskSchedule>)))]
+pub fn list_task_schedules() {}
+
+#[utoipa::path(put, path = "/task-schedules/{id}", tag = "schedules",
+    params(("id" = Uuid, Path, description = "Task schedule id")),
+    request_body = SetTaskScheduleActive,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = TaskSchedule)))]
+pub fn set_task_schedule_active() {}
+
+#[utoipa::path(delete, path = "/task-schedules/{id}", tag = "schedules",
+    params(("id" = Uuid, Path, description = "Task schedule id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn delete_task_schedule() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",

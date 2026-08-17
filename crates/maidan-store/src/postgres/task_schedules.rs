@@ -113,6 +113,25 @@ pub async fn claim_next_due(
     Ok(row.as_ref().map(row_to_schedule))
 }
 
+/// Pause / resume a schedule (Cluster 228) — see the SQLite twin.
+pub async fn set_active(
+    pool: &PgPool,
+    id: TaskScheduleId,
+    active: bool,
+) -> Result<TaskSchedule, StoreError> {
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_task_schedules SET active = $1, updated_at = now()
+         WHERE id = $2
+         RETURNING {COLS}"
+    ))
+    .bind(active)
+    .bind(id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok(row_to_schedule(&row))
+}
+
 fn row_to_schedule(row: &sqlx::postgres::PgRow) -> TaskSchedule {
     TaskSchedule {
         id: TaskScheduleId(row.get::<Uuid, _>("id")),

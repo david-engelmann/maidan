@@ -115,6 +115,18 @@ async fn run_suite(store: &dyn Store) {
         Err(maidan_store::StoreError::NotFound)
     ));
 
+    // Pause / resume (Cluster 228).
+    let paused = store
+        .set_task_schedule_active(due_sched.id, false)
+        .await
+        .expect("pause");
+    assert!(!paused.active);
+    let resumed = store
+        .set_task_schedule_active(due_sched.id, true)
+        .await
+        .expect("resume");
+    assert!(resumed.active);
+
     // Clean up the remaining schedule: `claim_next_due` (Cluster 227) scans
     // globally, not per-workspace, so an active leftover would pollute a later
     // suite's claim ordering on the shared store.
