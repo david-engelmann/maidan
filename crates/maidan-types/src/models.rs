@@ -225,6 +225,16 @@ pub struct MemberSkill {
     pub created_at: DateTime<Utc>,
 }
 
+/// A skill a task (thread) requires (Cluster 231). A task is claimable by a
+/// member only if every required skill is one the member has declared.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadRequiredSkill {
+    pub thread_id: ThreadId,
+    pub skill: String,
+    pub created_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

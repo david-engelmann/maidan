@@ -37,6 +37,7 @@ mod sessions;
 mod slash_commands;
 mod task_schedules;
 mod thread_deps;
+mod thread_skills;
 mod thread_transitions;
 mod threads;
 mod token_quotas;
@@ -134,6 +135,26 @@ impl Store for SqliteStore {
         member_id: MemberId,
     ) -> Result<Vec<MemberSkill>, StoreError> {
         member_skills::list(&self.pool, member_id).await
+    }
+    async fn add_thread_required_skill(
+        &self,
+        thread_id: ThreadId,
+        skill: &str,
+    ) -> Result<(), StoreError> {
+        thread_skills::add(&self.pool, thread_id, skill).await
+    }
+    async fn remove_thread_required_skill(
+        &self,
+        thread_id: ThreadId,
+        skill: &str,
+    ) -> Result<bool, StoreError> {
+        thread_skills::remove(&self.pool, thread_id, skill).await
+    }
+    async fn list_thread_required_skills(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadRequiredSkill>, StoreError> {
+        thread_skills::list(&self.pool, thread_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

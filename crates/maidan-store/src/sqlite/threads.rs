@@ -346,6 +346,14 @@ pub async fn claim_next(
                    JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                    WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_required_skills trs
+                   WHERE trs.thread_id = t.id
+                     AND NOT EXISTS (
+                         SELECT 1 FROM maidan_member_skills ms
+                         WHERE ms.member_id = ? AND ms.skill = trs.skill
+                     )
+               )
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
@@ -356,6 +364,7 @@ pub async fn claim_next(
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
+    .bind(member_id.0)
     .fetch_optional(pool)
     .await?;
     row.as_ref().map(row_to_thread).transpose()
@@ -431,6 +440,14 @@ pub async fn claim_next_with_event(
                    JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                    WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_required_skills trs
+                   WHERE trs.thread_id = t.id
+                     AND NOT EXISTS (
+                         SELECT 1 FROM maidan_member_skills ms
+                         WHERE ms.member_id = ? AND ms.skill = trs.skill
+                     )
+               )
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
@@ -441,6 +458,7 @@ pub async fn claim_next_with_event(
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
+    .bind(member_id.0)
     .fetch_optional(&mut *tx)
     .await?;
     match row {

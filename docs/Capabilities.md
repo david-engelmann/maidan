@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v231.0.0 — Program B (Arc E): skill-aware claim
+
+| Change | Where |
+|--------|-------|
+| `maidan_thread_required_skills` table (pg 0040 / sqlite 0039) + `ThreadRequiredSkill` + store CRUD, **and** `claim_next`/`claim_next_with_event` skip a task whose required skills the claimer lacks (a `NOT EXISTS` clause beside the readiness one; 4 SQL sites, both backends). Set containment — no-requirement tasks claimable by anyone. The existing claim route + `claim_next_thread` MCP become skill-routing for free | `migrations/*`, `models.rs`, `store/*/thread_skills.rs`, `store/*/threads.rs` |
+
 ## v230.0.0 — Program B (Arc E): capability-registry foundation
 
 | Change | Where |

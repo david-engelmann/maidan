@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [231.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 15 — Arc E
+skill-aware claim. No new gate tag.
+
+### Added
+
+- **Skill routing — `claim_next` matches a task's required skills.** A
+  `maidan_thread_required_skills` table (pg 0040 / sqlite 0039) + `ThreadRequiredSkill`
+  model + store CRUD (`add`/`remove`/`list`, both backends), **and** `claim_next` /
+  `claim_next_with_event` now skip a task whose required skills the claimer doesn't
+  hold — one `NOT EXISTS (required skill NOT IN member's skills)` clause beside the
+  Cluster-218 readiness clause (4 SQL sites, both backends). A task with no required
+  skills is claimable by anyone (set containment). The existing claim route
+  (`POST /channels/:cid/threads/claim-next`) and the `claim_next_thread` MCP tool
+  become skill-routing for free. No new claim API.
+
 ## [230.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 14 — opens
