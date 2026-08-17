@@ -45,6 +45,7 @@ pub mod reindex_ops;
 pub mod request_id;
 pub mod retention;
 pub mod routes;
+pub mod scheduler;
 pub mod session;
 pub mod slash_commands;
 pub mod state;

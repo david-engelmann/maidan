@@ -372,6 +372,16 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Background scheduled/recurring-task sweeper (Cluster 227): opt-in via
+    // `MAIDAN_SCHEDULER_TICK_SECS`. Materializes a task thread for each schedule
+    // that comes due.
+    if let Some(scheduler_cfg) = maidan_server::scheduler::config_from_env() {
+        let scheduler_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::scheduler::run(scheduler_state, scheduler_cfg).await;
+        });
+    }
+
     let app = router(state.clone());
 
     if outbox_relay {

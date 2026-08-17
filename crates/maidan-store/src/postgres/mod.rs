@@ -332,6 +332,12 @@ impl Store for PostgresStore {
     ) -> Result<Vec<TaskSchedule>, StoreError> {
         task_schedules::due(&self.pool, now, limit).await
     }
+    async fn claim_next_due_schedule(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Option<TaskSchedule>, StoreError> {
+        task_schedules::claim_next_due(&self.pool, now).await
+    }
 
     async fn assign_thread(
         &self,

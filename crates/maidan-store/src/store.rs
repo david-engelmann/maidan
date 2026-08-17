@@ -210,6 +210,17 @@ pub trait Store: Send + Sync {
         now: DateTime<Utc>,
         limit: i64,
     ) -> Result<Vec<TaskSchedule>, StoreError>;
+    /// Atomically claim the oldest due active schedule and advance it (Cluster
+    /// 227): a recurring schedule re-arms `next_run_at = now + interval_secs`
+    /// (fire-once-per-tick, no catch-up storm); a one-shot deactivates. Returns
+    /// the advanced row, or `None` when nothing is due. Postgres uses `FOR UPDATE
+    /// SKIP LOCKED` so concurrent replicas claim distinct schedules; SQLite
+    /// serializes writers. The caller creates the task thread *after* the claim
+    /// commits (at-most-once on crash — a missed firing, never a double).
+    async fn claim_next_due_schedule(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Option<TaskSchedule>, StoreError>;
 
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).

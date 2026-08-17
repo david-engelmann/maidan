@@ -81,6 +81,38 @@ pub async fn due(
     Ok(rows.iter().map(row_to_schedule).collect())
 }
 
+/// Atomically claim + advance the oldest due schedule (Cluster 227). `FOR UPDATE
+/// SKIP LOCKED` lets concurrent replicas each claim a distinct row. Recurring →
+/// `next_run_at = now + interval` (fire-once-per-tick); one-shot → `active =
+/// false`. See the SQLite twin.
+pub async fn claim_next_due(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+) -> Result<Option<TaskSchedule>, StoreError> {
+    let row = sqlx::query(
+        "WITH due AS (
+             SELECT id FROM maidan_task_schedules
+             WHERE active AND next_run_at <= $1
+             ORDER BY next_run_at ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+         )
+         UPDATE maidan_task_schedules t
+         SET last_run_at = $1,
+             updated_at = now(),
+             active = (t.interval_secs IS NOT NULL),
+             next_run_at = CASE WHEN t.interval_secs IS NULL THEN t.next_run_at
+                                ELSE $1 + make_interval(secs => t.interval_secs) END
+         FROM due
+         WHERE t.id = due.id
+         RETURNING t.id, t.workspace_id, t.channel_id, t.title, t.interval_secs, t.next_run_at, t.last_run_at, t.active, t.created_by, t.created_at, t.updated_at",
+    )
+    .bind(now)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_schedule))
+}
+
 fn row_to_schedule(row: &sqlx::postgres::PgRow) -> TaskSchedule {
     TaskSchedule {
         id: TaskScheduleId(row.get::<Uuid, _>("id")),
