@@ -55,6 +55,23 @@ pub trait Store: Send + Sync {
     ) -> Result<bool, StoreError>;
     async fn list_member_skills(&self, member_id: MemberId)
         -> Result<Vec<MemberSkill>, StoreError>;
+    /// Skills a task (thread) requires (Cluster 231). `add` idempotent + empty-
+    /// reject; `remove` conditional; `list` ordered by skill. Skill routing:
+    /// `claim_next` only takes a task whose required skills the claimer holds.
+    async fn add_thread_required_skill(
+        &self,
+        thread_id: ThreadId,
+        skill: &str,
+    ) -> Result<(), StoreError>;
+    async fn remove_thread_required_skill(
+        &self,
+        thread_id: ThreadId,
+        skill: &str,
+    ) -> Result<bool, StoreError>;
+    async fn list_thread_required_skills(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadRequiredSkill>, StoreError>;
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(

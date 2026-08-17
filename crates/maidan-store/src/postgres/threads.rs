@@ -330,6 +330,14 @@ pub async fn claim_next(
                    JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                    WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_required_skills trs
+                   WHERE trs.thread_id = c.id
+                     AND NOT EXISTS (
+                         SELECT 1 FROM maidan_member_skills ms
+                         WHERE ms.member_id = $1 AND ms.skill = trs.skill
+                     )
+               )
              ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
              FOR UPDATE SKIP LOCKED
@@ -408,6 +416,14 @@ pub async fn claim_next_with_event(
                    SELECT 1 FROM maidan_thread_dependencies d
                    JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                    WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_required_skills trs
+                   WHERE trs.thread_id = c.id
+                     AND NOT EXISTS (
+                         SELECT 1 FROM maidan_member_skills ms
+                         WHERE ms.member_id = $1 AND ms.skill = trs.skill
+                     )
                )
              ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
