@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v228.0.0 — Program B: task-schedule REST management API
+
+| Change | Where |
+|--------|-------|
+| `POST/GET /workspaces/:wid/task-schedules` + `PUT/DELETE /task-schedules/:id` — create/list/pause-resume/delete schedules. Writes gated on `workspace:write` + target-channel access; list on `workspace:read`. `Store::set_task_schedule_active`. Full new-route preflight | `routes/task_schedule.rs`, `app.rs`, `store/*/task_schedules.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v227.0.0 — Program B: scheduler sweeper worker
 
 | Change | Where |

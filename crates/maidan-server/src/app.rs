@@ -247,6 +247,15 @@ pub fn router(state: AppState) -> Router {
             delete(federation::delete_peer),
         )
         .route(
+            "/workspaces/:wid/task-schedules",
+            post(routes::create_task_schedule).get(routes::list_task_schedules),
+        )
+        .route(
+            "/task-schedules/:id",
+            axum::routing::put(routes::set_task_schedule_active)
+                .delete(routes::delete_task_schedule),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

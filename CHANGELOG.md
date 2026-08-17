@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [228.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 12 — the
+scheduler management API. No new gate tag.
+
+### Added
+
+- **Task-schedule REST management API.** `POST /workspaces/:wid/task-schedules`
+  (`workspace:write` + target-channel access) creates a schedule
+  (`{channel_id, title, interval_secs?, first_run_at?}` — `interval_secs` omitted =
+  one-shot; `first_run_at` omitted = next tick); `GET /workspaces/:wid/task-schedules`
+  (`workspace:read`) lists; `PUT /task-schedules/:id` (`workspace:write`) pauses /
+  resumes via `{active}`; `DELETE /task-schedules/:id` (`workspace:write`) removes.
+  Management surfaces resolve the schedule and enforce workspace + target-channel
+  access. New `Store::set_task_schedule_active`. So an operator can drive the
+  scheduler (Cluster 227) without touching the store directly.
+
 ## [227.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 11 — the

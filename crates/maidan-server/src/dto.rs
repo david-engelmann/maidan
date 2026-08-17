@@ -98,6 +98,26 @@ pub struct AddThreadDependency {
     pub depends_on_thread_id: uuid::Uuid,
 }
 
+/// Create a task schedule (Cluster 228). When due, the sweeper creates a thread
+/// titled `title` in `channel_id`. `interval_secs` omitted (or null) = one-shot;
+/// a positive value = recurring. `first_run_at` omitted = fire on the next tick
+/// (defaults to now).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateTaskSchedule {
+    pub channel_id: uuid::Uuid,
+    pub title: String,
+    #[serde(default)]
+    pub interval_secs: Option<i64>,
+    #[serde(default)]
+    pub first_run_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Pause (`false`) or resume (`true`) a schedule (Cluster 228).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetTaskScheduleActive {
+    pub active: bool,
+}
+
 /// A task's dependency edges plus whether it is ready to run (Cluster 219).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadDependenciesView {

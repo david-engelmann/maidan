@@ -655,6 +655,30 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/task-schedules",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/task-schedules",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/task-schedules/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/task-schedules/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
     "surface": "http"

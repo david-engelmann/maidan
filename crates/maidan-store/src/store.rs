@@ -221,6 +221,13 @@ pub trait Store: Send + Sync {
         &self,
         now: DateTime<Utc>,
     ) -> Result<Option<TaskSchedule>, StoreError>;
+    /// Pause (`false`) or resume (`true`) a schedule (Cluster 228). `NotFound` if
+    /// the id doesn't exist. Resuming does not re-arm `next_run_at`.
+    async fn set_task_schedule_active(
+        &self,
+        id: TaskScheduleId,
+        active: bool,
+    ) -> Result<TaskSchedule, StoreError>;
 
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
