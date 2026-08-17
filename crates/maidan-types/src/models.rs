@@ -215,6 +215,16 @@ pub struct ChannelMember {
     pub created_at: DateTime<Utc>,
 }
 
+/// A free-form skill tag a member (agent) declares (Cluster 230). Skill routing
+/// matches a task's required skills against a member's declared skills.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberSkill {
+    pub member_id: MemberId,
+    pub skill: String,
+    pub created_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 
