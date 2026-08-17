@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [234.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 18 — opens
+**Arc F (coordination waits + structured results)**. No new gate tag.
+
+### Added
+
+- **Thread-result store foundation.** A `maidan_thread_results` table (pg 0041 /
+  sqlite 0040; `thread_id` PK, `result` JSONB/TEXT, `produced_by`, `produced_at`) +
+  `ThreadResult` model + `Store::set_thread_result` (upsert — one result per thread,
+  a re-set overwrites) / `Store::get_thread_result` (`None` until produced), both
+  backends. An agent attaches a structured result when it finishes a task; a
+  requester (or a parent task that depends on it) reads it back. **No worker or
+  routes yet** — the zero-blast-radius foundation pattern (Clusters 159 / 217 / 226 /
+  230). Coordination waits (a `ThreadResultSet` event + `wait_for_result`) follow.
+
 ## [233.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 17 —

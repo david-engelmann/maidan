@@ -33,6 +33,7 @@ mod sessions;
 mod slash_commands;
 mod task_schedules;
 mod thread_deps;
+mod thread_results;
 mod thread_skills;
 mod thread_transitions;
 mod threads;
@@ -149,6 +150,20 @@ impl Store for PostgresStore {
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadRequiredSkill>, StoreError> {
         thread_skills::list(&self.pool, thread_id).await
+    }
+    async fn set_thread_result(
+        &self,
+        thread_id: ThreadId,
+        produced_by: MemberId,
+        result: &serde_json::Value,
+    ) -> Result<ThreadResult, StoreError> {
+        thread_results::set(&self.pool, thread_id, produced_by, result).await
+    }
+    async fn get_thread_result(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadResult>, StoreError> {
+        thread_results::get(&self.pool, thread_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

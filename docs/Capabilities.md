@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v234.0.0 — Program B (Arc F): structured-results foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_thread_results` table (pg 0041 / sqlite 0040; `thread_id` PK, `result` JSONB/TEXT, `produced_by`, `produced_at`) + `ThreadResult` + `Store::set_thread_result` (upsert) / `get_thread_result`, both backends. A task's structured output; a requester or parent task reads it back. **Zero-blast-radius foundation** — no worker/routes yet | `migrations/*`, `models.rs`, `store/*/thread_results.rs` |
+
 ## v233.0.0 — Program B (Arc E complete): capability-registry MCP tools
 
 | Change | Where |
