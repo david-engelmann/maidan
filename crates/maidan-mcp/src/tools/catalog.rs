@@ -214,6 +214,17 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_queue_depth",
+            "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked}, for deciding whether to scale workers. ready is what claim_next_thread could take now.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
             "name": "wait_for_ready",
             "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees readiness signalled after the call subscribes, so pick up already-ready work with claim_next_thread first.",
             "inputSchema": {

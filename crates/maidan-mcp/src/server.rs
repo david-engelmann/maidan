@@ -1150,6 +1150,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_queue_depth_tool_reports_counts() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "qd".into() })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "queue".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let mk = |title: &str| NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        };
+        // t1 has no deps → ready; t2 depends on t1 → blocked.
+        let t1 = store.create_thread(mk("t1")).await.unwrap();
+        let t2 = store.create_thread(mk("t2")).await.unwrap();
+        store.add_thread_dependency(t2.id, t1.id).await.unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let out = server
+            .call_tool(
+                &auth,
+                "get_queue_depth",
+                &json!({ "channel_id": channel.id.0 }),
+            )
+            .await
+            .unwrap();
+        let depth: Value =
+            serde_json::from_str(out["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(depth["open"], json!(2));
+        assert_eq!(depth["ready"], json!(1), "t1 has no deps");
+        assert_eq!(depth["blocked"], json!(1), "t2 waits on t1");
+        assert_eq!(depth["assigned"], json!(0));
+    }
+
+    #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
         let auth = AuthContext::bypass();

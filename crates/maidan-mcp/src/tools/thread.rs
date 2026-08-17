@@ -285,6 +285,23 @@ pub(super) async fn list_thread_dependencies(
 }
 
 #[derive(Deserialize)]
+struct QueueDepthArgs {
+    channel_id: uuid::Uuid,
+}
+
+/// A channel's task-queue depth (Cluster 225): `{open, ready, assigned, blocked}`
+/// counts of its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`
+/// (Cluster 224). Channel access is enforced pre-dispatch (the `channel_id` arg).
+pub(super) async fn get_queue_depth(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
+    let depth = store.channel_queue_depth(ChannelId(a.channel_id)).await?;
+    Ok(content_json(&depth))
+}
+
+#[derive(Deserialize)]
 struct WaitForReadyArgs {
     /// Optional channel to scope readiness to; omit to await any accessible ready
     /// thread in the caller's workspace.

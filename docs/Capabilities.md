@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v225.0.0 — Program B: `get_queue_depth` MCP tool
+
+| Change | Where |
+|--------|-------|
+| MCP `get_queue_depth` (`workspace:read`, channel-gated): `{channel_id}` → `{open, ready, assigned, blocked}` over the shared `Store::channel_queue_depth` — the MCP twin of Cluster 224's REST endpoint, so an MCP-only orchestrator can read queue depth | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v224.0.0 — Program B: channel task-queue depth
 
 | Change | Where |

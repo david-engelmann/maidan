@@ -13,6 +13,7 @@
   "edit_message": "message:post",
   "get_artifact_metadata": "workspace:read",
   "get_inbox": "workspace:read",
+  "get_queue_depth": "workspace:read",
   "get_thread_context": "workspace:read",
   "get_tool_transcript": "workspace:read",
   "get_workspace_context": "workspace:read",
