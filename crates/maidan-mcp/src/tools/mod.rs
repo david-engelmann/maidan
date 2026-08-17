@@ -25,6 +25,7 @@ mod reference;
 mod roots;
 mod schedule;
 mod search;
+mod skill;
 mod social;
 mod thread;
 
@@ -74,6 +75,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_assigned_threads"
         | "list_thread_dependencies"
         | "list_task_schedules"
+        | "list_member_skills"
+        | "list_thread_required_skills"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -85,7 +88,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "pin_message"
         | "unpin_message"
         | "add_reference"
-        | "create_task_schedule" => Ok(WORKSPACE_WRITE),
+        | "create_task_schedule"
+        | "add_member_skill" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -104,7 +108,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "unassign_thread"
         | "claim_next_thread"
         | "renew_claim"
-        | "add_thread_dependency" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "add_thread_dependency"
+        | "add_thread_required_skill" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -156,7 +161,9 @@ async fn enforce_channel_access(
         | "unassign_thread"
         | "renew_claim"
         | "add_thread_dependency"
-        | "list_thread_dependencies" => {
+        | "list_thread_dependencies"
+        | "add_thread_required_skill"
+        | "list_thread_required_skills" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -236,6 +243,10 @@ pub async fn dispatch(
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
         "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
+        "add_member_skill" => skill::add_member_skill(store, args).await,
+        "list_member_skills" => skill::list_member_skills(store, args).await,
+        "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,
+        "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,

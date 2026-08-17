@@ -1287,6 +1287,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn skill_tools_declare_and_list() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sk".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "q".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        server
+            .call_tool(
+                &auth,
+                "add_member_skill",
+                &json!({ "member_id": member.id.0, "skill": "rust" }),
+            )
+            .await
+            .unwrap();
+        let skills = content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_member_skills",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(skills.as_array().unwrap().len(), 1);
+        assert_eq!(skills[0]["skill"], json!("rust"));
+
+        server
+            .call_tool(
+                &auth,
+                "add_thread_required_skill",
+                &json!({ "thread_id": thread.id.0, "skill": "code-review" }),
+            )
+            .await
+            .unwrap();
+        let reqs = content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_thread_required_skills",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(reqs.as_array().unwrap().len(), 1);
+        assert_eq!(reqs[0]["skill"], json!("code-review"));
+    }
+
+    #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
         let auth = AuthContext::bypass();

@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [233.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 17 —
+completes **Arc E (capability registry + skill routing)**. No new gate tag.
+
+### Added
+
+- **Capability-registry MCP tools.** `add_member_skill` / `list_member_skills`
+  (member skills; `workspace:write` / `workspace:read`) and
+  `add_thread_required_skill` / `list_thread_required_skills` (task requirements;
+  `thread:transition` + channel access / `workspace:read`) — the MCP twin of the
+  Cluster 232 REST endpoints, over the shared store, so an MCP-only agent can
+  declare its skills and set a task's requirements. Full 5-place wiring. **Arc E is
+  complete**: skill routing is surfaced over REST + MCP and enforced in `claim_next`
+  (Cluster 231).
+
 ## [232.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 16 — Arc E
