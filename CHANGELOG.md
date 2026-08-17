@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [230.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 14 — opens
+**Arc E (capability registry + skill routing)**. No new gate tag.
+
+### Added
+
+- **Member-skills store foundation.** A `maidan_member_skills` table (pg 0039 /
+  sqlite 0038) + `MemberSkill` model + three `Store` methods (both backends):
+  `add_member_skill` (idempotent, rejects an empty skill), `remove_member_skill`
+  (conditional), `list_member_skills` (ordered by skill). Skills are free-form tags
+  an agent declares it can do; skill routing (later clusters) matches a task's
+  required skills against these (set containment). **No worker or routes yet** — the
+  zero-blast-radius foundation pattern (Clusters 159 / 217 / 226).
+
 ## [229.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 13 — the

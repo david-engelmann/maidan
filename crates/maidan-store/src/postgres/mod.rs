@@ -14,6 +14,7 @@ pub mod events;
 mod fsm_hooks;
 mod group_dm;
 mod inbox;
+mod member_skills;
 mod members;
 mod mentions;
 mod message_edits;
@@ -110,6 +111,23 @@ impl Store for PostgresStore {
         handle: &str,
     ) -> Result<Member, StoreError> {
         members::get_by_handle(&self.pool, workspace_id, handle).await
+    }
+
+    async fn add_member_skill(&self, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
+        member_skills::add(&self.pool, member_id, skill).await
+    }
+    async fn remove_member_skill(
+        &self,
+        member_id: MemberId,
+        skill: &str,
+    ) -> Result<bool, StoreError> {
+        member_skills::remove(&self.pool, member_id, skill).await
+    }
+    async fn list_member_skills(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<MemberSkill>, StoreError> {
+        member_skills::list(&self.pool, member_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

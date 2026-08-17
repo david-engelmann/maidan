@@ -42,6 +42,20 @@ pub trait Store: Send + Sync {
     ) -> Result<Member, StoreError>;
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
 
+    /// Capability registry (Cluster 230): the free-form skill tags a member
+    /// declares. `add` is idempotent and rejects an empty skill; `remove` returns
+    /// `true` when a row was deleted; `list` is ordered by skill. Skill routing
+    /// (Cluster 231+) reads these. No worker/routes yet — a zero-blast-radius
+    /// foundation.
+    async fn add_member_skill(&self, member_id: MemberId, skill: &str) -> Result<(), StoreError>;
+    async fn remove_member_skill(
+        &self,
+        member_id: MemberId,
+        skill: &str,
+    ) -> Result<bool, StoreError>;
+    async fn list_member_skills(&self, member_id: MemberId)
+        -> Result<Vec<MemberSkill>, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,

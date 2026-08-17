@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v230.0.0 — Program B (Arc E): capability-registry foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_member_skills` table (pg 0039 / sqlite 0038) + `MemberSkill` + 3 store methods (add idempotent / remove conditional / list), both backends. Free-form skill tags an agent declares; skill routing (231+) matches a task's required skills by set containment. **Zero-blast-radius foundation** — no worker/routes yet (159/217/226 pattern) | `migrations/*`, `models.rs`, `store/*/member_skills.rs` |
+
 ## v229.0.0 — Program B: task-schedule MCP tools
 
 | Change | Where |
