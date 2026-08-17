@@ -87,6 +87,54 @@ pub async fn due(
     Ok(rows.iter().map(row_to_schedule).collect())
 }
 
+/// Atomically claim + advance the oldest due schedule (Cluster 227). SQLite
+/// serializes writers, so selecting the candidate then updating it inside one
+/// transaction cannot double-claim. Recurring → `next_run_at = now + interval`
+/// (fire-once-per-tick); one-shot → `active = 0`.
+pub async fn claim_next_due(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+) -> Result<Option<TaskSchedule>, StoreError> {
+    let now_s = now.to_rfc3339();
+    let mut tx = pool.begin().await?;
+    let candidate = sqlx::query(
+        "SELECT id, interval_secs, next_run_at FROM maidan_task_schedules
+         WHERE active = 1 AND next_run_at <= ?
+         ORDER BY next_run_at ASC
+         LIMIT 1",
+    )
+    .bind(&now_s)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(cand) = candidate else {
+        return Ok(None);
+    };
+    let id: Uuid = cand.get("id");
+    let interval_secs: Option<i64> = cand.get("interval_secs");
+    let (next_run_at, active) = match interval_secs {
+        Some(secs) => ((now + chrono::Duration::seconds(secs)).to_rfc3339(), true),
+        None => (
+            cand.get::<DateTime<Utc>, _>("next_run_at").to_rfc3339(),
+            false,
+        ),
+    };
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_task_schedules
+         SET next_run_at = ?, last_run_at = ?, active = ?, updated_at = ?
+         WHERE id = ?
+         RETURNING {COLS}"
+    ))
+    .bind(&next_run_at)
+    .bind(&now_s)
+    .bind(active)
+    .bind(&now_s)
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Some(row_to_schedule(&row)))
+}
+
 fn row_to_schedule(row: &sqlx::sqlite::SqliteRow) -> TaskSchedule {
     TaskSchedule {
         id: TaskScheduleId(row.get::<Uuid, _>("id")),

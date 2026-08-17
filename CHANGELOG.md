@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [227.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 11 — the
+scheduler worker. No new gate tag.
+
+### Added
+
+- **Scheduler sweeper worker.** A background loop (opt-in via
+  `MAIDAN_SCHEDULER_TICK_SECS`) that materializes a task thread for each schedule
+  that comes due (Cluster 226). Each tick drains the due set: it **atomically
+  claims and advances** a schedule (`Store::claim_next_due_schedule` — `FOR UPDATE
+  SKIP LOCKED` on Postgres so concurrent replicas never double-fire one schedule;
+  SQLite serializes writers) and then creates the task thread via
+  `create_thread_with_event` + publishes it. A recurring schedule re-arms to `now +
+  interval_secs` (fire-once-per-tick — no catch-up storm when far overdue); a
+  one-shot deactivates. The claim commits before the thread is created, so a crash
+  in between drops that firing (at-most-once) rather than duplicating it. Bounded to
+  1000 firings/tick. New `maidan_task_schedules_fired_total{outcome}` metric.
+  Disabled by default (unset env → the sweeper never starts).
+
 ## [226.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 10 — the

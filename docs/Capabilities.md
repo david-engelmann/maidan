@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v227.0.0 — Program B: scheduler sweeper worker
+
+| Change | Where |
+|--------|-------|
+| Background scheduler sweeper (opt-in `MAIDAN_SCHEDULER_TICK_SECS`): each tick fires due schedules — `Store::claim_next_due_schedule` atomically claims + advances (`FOR UPDATE SKIP LOCKED` on pg, so replicas don't double-fire; recurring re-arms to `now + interval`, one-shot deactivates), then creates the task thread. At-most-once on crash (claim commits first). `maidan_task_schedules_fired_total{outcome}` metric. Off by default | `scheduler.rs`, `main.rs`, `store/*/task_schedules.rs`, `metrics.rs` |
+
 ## v226.0.0 — Program B: scheduled/recurring task foundation
 
 | Change | Where |

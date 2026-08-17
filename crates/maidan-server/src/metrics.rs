@@ -149,6 +149,10 @@ pub fn init() {
             "maidan_retention_pruned_total",
             "Rows deleted by the data-retention sweeper, by table"
         );
+        describe_counter!(
+            "maidan_task_schedules_fired_total",
+            "Task schedules fired by the scheduler sweeper (a thread was created), by outcome"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -180,6 +184,12 @@ pub fn record_event_append_failure() {
 /// Rows deleted by the retention sweeper for `table` (Cluster 186).
 pub fn record_retention_pruned(table: &str, count: u64) {
     counter!("maidan_retention_pruned_total", "table" => table.to_string()).increment(count);
+}
+
+/// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
+/// `created` when the task thread was created, `failed` when creation errored.
+pub fn record_task_schedule_fired(outcome: &str) {
+    counter!("maidan_task_schedules_fired_total", "outcome" => outcome.to_string()).increment(1);
 }
 
 fn sync_hydrate_counters(current: HydrateSnapshot) {
