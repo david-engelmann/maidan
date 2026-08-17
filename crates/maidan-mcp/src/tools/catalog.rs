@@ -214,6 +214,17 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "wait_for_ready",
+            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees readiness signalled after the call subscribes, so pick up already-ready work with claim_next_thread first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                }
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {

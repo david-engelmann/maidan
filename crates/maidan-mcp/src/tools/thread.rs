@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use futures::StreamExt;
 use maidan_auth::AuthContext;
 use maidan_router::resolve_thread_context;
 use maidan_store::Store;
@@ -12,6 +13,11 @@ use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
+
+/// `wait_for_ready` long-poll window default + ceiling (Cluster 223), mirroring
+/// `wait_for_mention`.
+const DEFAULT_WAIT_MS: i64 = 30_000;
+const MAX_WAIT_MS: i64 = 300_000;
 
 #[derive(Deserialize)]
 struct ListThreadsArgs {
@@ -276,6 +282,77 @@ pub(super) async fn list_thread_dependencies(
     Ok(content_json(
         &json!({ "dependencies": dependencies, "ready": ready }),
     ))
+}
+
+#[derive(Deserialize)]
+struct WaitForReadyArgs {
+    /// Optional channel to scope readiness to; omit to await any accessible ready
+    /// thread in the caller's workspace.
+    #[serde(default)]
+    channel_id: Option<uuid::Uuid>,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+}
+
+/// Block until a task becomes ready — its last blocking dependency reached a
+/// terminal state, emitting `ThreadReady` (Cluster 222) — or the timeout lapses
+/// (Cluster 223). Scoped to `channel_id` when given, else any thread in the
+/// caller's workspace they can access; returns the `ThreadReady` event or `null`
+/// on timeout. This is the `wait_for_mention` analogue for the DAG. **Live**
+/// primitive: it only sees readiness signalled *after* it subscribes, so pick up
+/// already-ready work first with `claim_next_thread` / `list_assigned_threads`
+/// (the `GET /mcp/stream` SSE transport, `kinds=thread_ready`, is the resumable
+/// alternative when a missed signal is unacceptable).
+pub(super) async fn wait_for_ready(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitForReadyArgs = serde_json::from_value(args.clone())?;
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(
+            "wait_for_ready requires an event bus".into(),
+        ));
+    };
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        channel_id: a.channel_id.map(ChannelId),
+        kinds: Some(std::collections::HashSet::from([EventKind::ThreadReady])),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    let store = server.store.as_ref();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            // Timed out or the bus closed → no task became ready in the window.
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        // A lag marker means the buffer overflowed; keep waiting (same deadline).
+        let maidan_bus::BusItem::Event(envelope) = item else {
+            continue;
+        };
+        // Don't reveal readiness of a thread the caller can't access.
+        if !auth.bypass {
+            if let Some(tid) = envelope.event.thread_id() {
+                if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                    continue;
+                }
+            }
+        }
+        return Ok(content_json(&envelope.event));
+    }
 }
 
 #[derive(Deserialize)]
