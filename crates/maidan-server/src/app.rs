@@ -120,6 +120,22 @@ pub fn router(state: AppState) -> Router {
             post(routes::mark_member_inbox_read),
         )
         .route(
+            "/members/:id/skills",
+            post(routes::add_member_skill).get(routes::list_member_skills),
+        )
+        .route(
+            "/members/:id/skills/:skill",
+            axum::routing::delete(routes::remove_member_skill),
+        )
+        .route(
+            "/threads/:id/required-skills",
+            post(routes::add_thread_required_skill).get(routes::list_thread_required_skills),
+        )
+        .route(
+            "/threads/:id/required-skills/:skill",
+            axum::routing::delete(routes::remove_thread_required_skill),
+        )
+        .route(
             "/workspaces/:wid/dm",
             post(dm::open_dm_conversation).get(dm::list_dm_conversations),
         )
