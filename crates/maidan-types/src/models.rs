@@ -327,6 +327,37 @@ pub struct QueueDepth {
     pub blocked: i64,
 }
 
+/// A schedule that materializes a task thread when due (Cluster 226). A one-shot
+/// (`interval_secs == None`) fires once then deactivates; a recurring schedule
+/// (`interval_secs == Some(n)`) re-arms `next_run_at += n s` after each firing.
+/// The background sweeper (a later cluster) creates a thread titled `title` in
+/// `channel_id` when `active && next_run_at <= now`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TaskSchedule {
+    pub id: TaskScheduleId,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub title: String,
+    pub interval_secs: Option<i64>,
+    pub next_run_at: DateTime<Utc>,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub active: bool,
+    pub created_by: MemberId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewTaskSchedule {
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub title: String,
+    pub interval_secs: Option<i64>,
+    pub next_run_at: DateTime<Utc>,
+    pub created_by: MemberId,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadTransition {

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v226.0.0 — Program B: scheduled/recurring task foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_task_schedules` table (pg 0038 / sqlite 0037) + `TaskSchedule`/`NewTaskSchedule` + `TaskScheduleId` + 5 store methods (create/get/list/delete + `due_task_schedules` scan), both backends. A schedule materializes a task thread when due (`interval_secs` NULL = one-shot, positive = recurring). **Zero-blast-radius foundation** — no worker/routes yet (159/217 pattern) | `migrations/*`, `models.rs`, `ids.rs`, `store/*/task_schedules.rs` |
+
 ## v225.0.0 — Program B: `get_queue_depth` MCP tool
 
 | Change | Where |

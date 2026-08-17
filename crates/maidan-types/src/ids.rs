@@ -48,3 +48,4 @@ id_newtype!(WebhookSubscriptionId);
 id_newtype!(SlashCommandId);
 id_newtype!(FsmHookId);
 id_newtype!(OidcIdentityId);
+id_newtype!(TaskScheduleId);

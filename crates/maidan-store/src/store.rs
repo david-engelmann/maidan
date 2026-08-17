@@ -193,6 +193,24 @@ pub trait Store: Send + Sync {
     /// same claimability predicate as `claim_next`. One aggregate query.
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
 
+    /// Scheduled / recurring task foundation (Cluster 226). CRUD plus the
+    /// sweeper's due-scan (`due_task_schedules`). No worker or routes yet — a
+    /// zero-blast-radius foundation.
+    async fn create_task_schedule(&self, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError>;
+    async fn get_task_schedule(&self, id: TaskScheduleId) -> Result<TaskSchedule, StoreError>;
+    async fn list_task_schedules(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<TaskSchedule>, StoreError>;
+    async fn delete_task_schedule(&self, id: TaskScheduleId) -> Result<bool, StoreError>;
+    /// Active schedules whose `next_run_at` has arrived (`<= now`), oldest first,
+    /// bounded by `limit` — the sweeper's batch read.
+    async fn due_task_schedules(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<TaskSchedule>, StoreError>;
+
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
     async fn assign_thread(
