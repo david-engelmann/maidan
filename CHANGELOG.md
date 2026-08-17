@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [232.0.0] — 2026-08-17
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 16 — Arc E
+REST surfaces. No new gate tag.
+
+### Added
+
+- **Capability-registry REST.** Declare / list / remove a member's skills
+  (`POST`/`GET /members/:id/skills`, `DELETE /members/:id/skills/:skill`;
+  `workspace:write` for writes, `workspace:read` for the list) and set / list /
+  remove a task's required skills (`POST`/`GET /threads/:id/required-skills`,
+  `DELETE …/:skill`; `thread:transition` for writes + thread access,
+  `workspace:read` for the list). So an operator (or bearer orchestrator) can drive
+  the skill routing from Cluster 231 without touching the store. Full new-route
+  preflight (6 routes).
+
 ## [231.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 15 — Arc E

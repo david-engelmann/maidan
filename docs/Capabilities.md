@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v232.0.0 — Program B (Arc E): capability-registry REST
+
+| Change | Where |
+|--------|-------|
+| Member-skill CRUD (`POST`/`GET /members/:id/skills`, `DELETE …/:skill`; `workspace:write`/`workspace:read`) + thread required-skill CRUD (`POST`/`GET /threads/:id/required-skills`, `DELETE …/:skill`; `thread:transition` + thread access / `workspace:read`). Drives the Cluster-231 skill routing from outside the store. Full new-route preflight (6 routes) | `routes/skills.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v231.0.0 — Program B (Arc E): skill-aware claim
 
 | Change | Where |

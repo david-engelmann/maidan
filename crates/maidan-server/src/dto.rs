@@ -118,6 +118,12 @@ pub struct SetTaskScheduleActive {
     pub active: bool,
 }
 
+/// Add a skill — to a member (`declares`) or a thread (`requires`) — Cluster 232.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddSkill {
+    pub skill: String,
+}
+
 /// A task's dependency edges plus whether it is ready to run (Cluster 219).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadDependenciesView {

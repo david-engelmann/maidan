@@ -120,6 +120,42 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/members/{id}/skills",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/skills",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/skills/{skill}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/required-skills",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/required-skills",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/required-skills/{skill}",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "DELETE",
     "path": "/messages/{id}",
     "capability": "workspace:write",

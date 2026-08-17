@@ -568,6 +568,52 @@ pub fn set_task_schedule_active() {}
     responses((status = 204)))]
 pub fn delete_task_schedule() {}
 
+// --- skills (capability registry) ---
+
+#[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = AddSkill,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn add_member_skill() {}
+
+#[utoipa::path(get, path = "/members/{id}/skills", tag = "skills",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemberSkill>)))]
+pub fn list_member_skills() {}
+
+#[utoipa::path(delete, path = "/members/{id}/skills/{skill}", tag = "skills",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ("skill" = String, Path, description = "Skill tag"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn remove_member_skill() {}
+
+#[utoipa::path(post, path = "/threads/{id}/required-skills", tag = "skills",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = AddSkill,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn add_thread_required_skill() {}
+
+#[utoipa::path(get, path = "/threads/{id}/required-skills", tag = "skills",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadRequiredSkill>)))]
+pub fn list_thread_required_skills() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/required-skills/{skill}", tag = "skills",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ("skill" = String, Path, description = "Skill tag"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn remove_thread_required_skill() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",

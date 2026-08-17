@@ -204,7 +204,9 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template.replace("{mid}", &f.message);
     }
     if template.starts_with("/members/") {
-        return template.replace("{id}", &f.member);
+        return template
+            .replace("{id}", &f.member)
+            .replace("{skill}", "testskill");
     }
     if template.starts_with("/channels/") {
         return template
@@ -216,6 +218,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{tid}", &f.thread)
             .replace("{dep_id}", &f.thread)
+            .replace("{skill}", "testskill")
             .replace("{id}", &f.thread);
     }
     if template.starts_with("/messages/") {
@@ -345,6 +348,12 @@ fn apply_route_defaults(
     }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
+    }
+    if path.ends_with("/skills") && method == "POST" && path.contains("/members/") {
+        return b.json(&json!({ "skill": "cap-matrix" }));
+    }
+    if path.ends_with("/required-skills") && method == "POST" {
+        return b.json(&json!({ "skill": "cap-matrix" }));
     }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({
