@@ -49,3 +49,4 @@ id_newtype!(SlashCommandId);
 id_newtype!(FsmHookId);
 id_newtype!(OidcIdentityId);
 id_newtype!(TaskScheduleId);
+id_newtype!(NotificationId);

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v237.0.0 — Program C (Arc G): per-recipient notification ledger
+
+| Change | Where |
+|--------|-------|
+| `maidan_notifications` table (pg 0042 / sqlite 0041; one row per recipient × source event — `member_id`, `kind`=`EventKind`, `source_log_id` (no FK), denormalized `channel/thread/message/actor`, `read_at` NULL=unread) + `Notification`/`NewNotification` + store CRUD (create / list / mark-read / mark-all / unread-count), both backends. The per-recipient layer a mention's shared row + single cursor can't express. **Zero-blast-radius foundation** — no router/routes yet; opens Program C | `migrations/*`, `models.rs`, `store/*/notifications.rs` |
+
 ## v236.0.0 — Program B (Arc F complete, Program B complete): structured-results MCP + `wait_for_result`
 
 | Change | Where |

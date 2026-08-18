@@ -22,6 +22,7 @@ mod members;
 mod mentions;
 mod message_edits;
 mod messages;
+mod notifications;
 mod oauth_codes;
 mod oidc;
 pub mod outbox;
@@ -170,6 +171,27 @@ impl Store for SqliteStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(&self.pool, thread_id).await
+    }
+
+    async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError> {
+        notifications::create(&self.pool, new).await
+    }
+    async fn list_notifications(
+        &self,
+        member_id: MemberId,
+        unread_only: bool,
+        limit: i64,
+    ) -> Result<Vec<Notification>, StoreError> {
+        notifications::list_for_member(&self.pool, member_id, unread_only, limit).await
+    }
+    async fn mark_notification_read(&self, id: NotificationId) -> Result<bool, StoreError> {
+        notifications::mark_read(&self.pool, id).await
+    }
+    async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError> {
+        notifications::mark_all_read(&self.pool, member_id).await
+    }
+    async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError> {
+        notifications::unread_count(&self.pool, member_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

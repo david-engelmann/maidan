@@ -87,6 +87,22 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
 
+    /// Per-recipient notifications (Cluster 237, Program C): `create` inserts one
+    /// row for a recipient, `list_for_member` returns newest-first (optionally
+    /// unread-only), `mark_read` stamps `read_at` (idempotent), `unread_count` is
+    /// the badge, `mark_all_read` clears the badge. No router/routes/worker yet —
+    /// a zero-blast-radius foundation.
+    async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError>;
+    async fn list_notifications(
+        &self,
+        member_id: MemberId,
+        unread_only: bool,
+        limit: i64,
+    ) -> Result<Vec<Notification>, StoreError>;
+    async fn mark_notification_read(&self, id: NotificationId) -> Result<bool, StoreError>;
+    async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError>;
+    async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,
