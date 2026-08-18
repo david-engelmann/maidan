@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [240.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 4** —
+**closes Arc G**. No new gate tag.
+
+### Added
+
+- **MCP notification tools + `wait_for_notification`.** `list_notifications` /
+  `get_unread_count` / `mark_notification_read` (the MCP twins of Cluster 239's REST,
+  over the shared store) + **`wait_for_notification`** — a long-poll that blocks until
+  the member's next notification-worthy event (today: mentions), the general form of
+  `wait_for_mention` (both now delegate to a shared `wait_for_member_event` helper). An
+  MCP-native agent can drain its inbox, clear it, and await new notifications. This
+  **completes Arc G** — the per-recipient notification arc (ledger 237 → router 238 →
+  REST 239 → MCP 240).
+
 ## [239.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 3** —

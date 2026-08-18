@@ -80,6 +80,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_result"
         | "wait_for_result"
         | "get_dependency_results"
+        | "list_notifications"
+        | "get_unread_count"
+        | "mark_notification_read"
+        | "wait_for_notification"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -247,6 +251,10 @@ pub async fn dispatch(
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
+        "list_notifications" => member::list_notifications(store, args).await,
+        "get_unread_count" => member::get_unread_count(store, args).await,
+        "mark_notification_read" => member::mark_notification_read(store, args).await,
+        "wait_for_notification" => member::wait_for_notification(server, auth, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
