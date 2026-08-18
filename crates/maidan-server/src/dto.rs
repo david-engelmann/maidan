@@ -342,6 +342,27 @@ pub struct ListInboxQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListNotificationsQuery {
+    /// When true, only unread notifications are returned.
+    #[serde(default)]
+    pub unread_only: bool,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
+/// The unread-notification badge count for a member (Cluster 239).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UnreadCount {
+    pub count: i64,
+}
+
+/// Result of marking all of a member's notifications read (Cluster 239).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MarkAllRead {
+    pub cleared: i64,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,

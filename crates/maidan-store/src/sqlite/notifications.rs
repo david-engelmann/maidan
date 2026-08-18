@@ -95,16 +95,24 @@ pub async fn list_for_member(
     rows.iter().map(row_to_notification).collect()
 }
 
-/// Mark one notification read (Cluster 237). Idempotent — a re-mark preserves the
-/// original `read_at`. Returns whether a row with that id exists.
-pub async fn mark_read(pool: &SqlitePool, id: NotificationId) -> Result<bool, StoreError> {
+/// Mark one notification read, scoped to its recipient (Cluster 237/239). Idempotent
+/// — a re-mark preserves the original `read_at`. Returns whether a `(member_id, id)`
+/// row exists (so a caller can't mark another member's notification).
+pub async fn mark_read(
+    pool: &SqlitePool,
+    member_id: MemberId,
+    id: NotificationId,
+) -> Result<bool, StoreError> {
     let now = Utc::now().to_rfc3339();
-    let res =
-        sqlx::query("UPDATE maidan_notifications SET read_at = COALESCE(read_at, ?) WHERE id = ?")
-            .bind(&now)
-            .bind(id.0)
-            .execute(pool)
-            .await?;
+    let res = sqlx::query(
+        "UPDATE maidan_notifications SET read_at = COALESCE(read_at, ?)
+         WHERE id = ? AND member_id = ?",
+    )
+    .bind(&now)
+    .bind(id.0)
+    .bind(member_id.0)
+    .execute(pool)
+    .await?;
     Ok(res.rows_affected() > 0)
 }
 

@@ -106,7 +106,14 @@ pub trait Store: Send + Sync {
         unread_only: bool,
         limit: i64,
     ) -> Result<Vec<Notification>, StoreError>;
-    async fn mark_notification_read(&self, id: NotificationId) -> Result<bool, StoreError>;
+    /// Mark one notification read, scoped to its recipient (Cluster 239) — a
+    /// member can only mark their own. `false` when no `(member_id, id)` row
+    /// exists.
+    async fn mark_notification_read(
+        &self,
+        member_id: MemberId,
+        id: NotificationId,
+    ) -> Result<bool, StoreError>;
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError>;
     async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError>;
 

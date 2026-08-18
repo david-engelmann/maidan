@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [239.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 3** —
+Arc G. No new gate tag.
+
+### Added
+
+- **REST unified inbox.** `GET /members/:id/notifications` (list; `unread_only`,
+  `limit`), `GET /members/:id/notifications/unread-count` (the badge), `POST
+  /members/:id/notifications/:nid/read` (mark one, returns the new count), and `POST
+  /members/:id/notifications/read-all` (returns `{cleared}`) — all `workspace:read`
+  and **self-only for a session caller** (a member reads their own inbox; a bearer is
+  the act-as-any orchestrator, the Cluster-202/203 model). `mark_notification_read` is
+  now recipient-scoped in the store (`(member_id, id)`), so a mark can't touch another
+  member's notification and a foreign/unknown id returns `404`. The read side of the
+  Cluster-237 ledger + Cluster-238 router; the MCP tools + `wait_for_notification`
+  (240) close Arc G.
+
 ## [238.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 2** —

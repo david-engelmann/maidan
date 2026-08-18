@@ -206,6 +206,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/members/") {
         return template
             .replace("{id}", &f.member)
+            .replace("{nid}", &f.member)
             .replace("{skill}", "testskill");
     }
     if template.starts_with("/channels/") {
