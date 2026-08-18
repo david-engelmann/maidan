@@ -343,6 +343,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/dependencies" && method == "POST" {
         return b.json(&json!({ "depends_on_thread_id": f.thread }));
     }
+    if path == "/threads/{id}/result" && method == "PUT" {
+        return b.json(&json!({ "result": { "ok": true } }));
+    }
     if path == "/workspaces/{wid}/task-schedules" && method == "POST" {
         return b.json(&json!({ "channel_id": f.channel, "title": "cap matrix" }));
     }

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v235.0.0 — Program B (Arc F): structured-results REST + `ThreadResultSet` event
+
+| Change | Where |
+|--------|-------|
+| `PUT /threads/:id/result` (`thread:transition`) upserts a task's structured JSON result + `GET /threads/:id/result` (`workspace:read`) reads it back (`404` until produced), both under DM-participant-aware thread RBAC. Wires the Cluster-234 store foundation | `routes/thread.rs`, `dto.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+| `ThreadResultSet` event on set — a "go fetch" pointer (`{workspace, channel, thread, produced_by}`, no payload inline), observable on WS + MCP-SSE like `ThreadReady`; locally-derived → **non-federatable** (allowlist excludes it with `ArtifactUpserted` + `ThreadReady`) | `maidan-types/src/events.rs`, `federation.rs`, `contracts/event-kinds.json` |
+
 ## v234.0.0 — Program B (Arc F): structured-results foundation
 
 | Change | Where |

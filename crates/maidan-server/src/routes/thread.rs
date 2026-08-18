@@ -180,6 +180,56 @@ pub async fn transition_thread(
     Ok(Json(result.thread))
 }
 
+/// Set (upsert) a task's structured result (Cluster 235). `thread:transition` +
+/// thread access — producing a task's output is managing the task. Emits a
+/// `ThreadResultSet` event so waiters (a parent task, `wait_for_result`) can react.
+pub async fn set_thread_result(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadResult>,
+) -> ApiResult<Json<ThreadResult>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let result = state
+        .store
+        .set_thread_result(thread_id, auth.member_id, &body.result)
+        .await?;
+    super::publish(
+        &state,
+        Event::ThreadResultSet {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ctx.workspace_id,
+            channel_id: ctx.channel_id,
+            thread_id,
+            produced_by: auth.member_id,
+        },
+    )
+    .await;
+    Ok(Json(result))
+}
+
+/// A task's structured result, or `404` if none has been produced (Cluster 235).
+/// `workspace:read` + thread access.
+pub async fn get_thread_result(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadResult>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_result(thread_id).await? {
+        Some(result) => Ok(Json(result)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

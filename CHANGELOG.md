@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [235.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 19 — Arc F
+(coordination waits + structured results). No new gate tag.
+
+### Added
+
+- **Thread-result REST + `ThreadResultSet` event.** `PUT /threads/:id/result`
+  (`thread:transition`) attaches a task's structured JSON result (upsert — a re-set
+  overwrites) and `GET /threads/:id/result` (`workspace:read`) reads it back (`404`
+  until produced); both enforce the DM-participant-aware thread RBAC. Setting a
+  result now publishes a `ThreadResultSet` **event** — a small "go fetch" pointer
+  (`{workspace, channel, thread, produced_by}`, no payload inline; a waiter fetches
+  via `GET …/result`), observable on the WS + MCP-SSE event streams exactly like
+  `ThreadReady` (Cluster 222). Locally-derived, so **non-federatable** (allowlist
+  excludes it alongside `ArtifactUpserted` + `ThreadReady`). Wires the store
+  foundation from Cluster 234; the MCP surface + a `wait_for_result` long-poll follow
+  in 236.
+
 ## [234.0.0] — 2026-08-17
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 18 — opens
