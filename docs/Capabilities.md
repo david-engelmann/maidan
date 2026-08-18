@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v238.0.0 — Program C (Arc G): notification router
+
+| Change | Where |
+|--------|-------|
+| `NotificationRouter` — an always-on, reconnecting event-bus consumer (spawned in `main.rs`, drained on shutdown) that resolves an event to the members it concerns and writes per-recipient rows. Routes `MentionRecorded` → the mentioned member (channel resolved from the thread) | `notification_router.rs`, `lib.rs`, `main.rs` |
+| `create_notification_if_absent` (`ON CONFLICT DO NOTHING`) + `UNIQUE(member_id, source_log_id)` index (pg 0043 / sqlite 0042) — cross-replica/replay-idempotent writes; `maidan_notifications_created_total{kind}` metric | `store/*/notifications.rs`, `migrations/*`, `metrics.rs` |
+
 ## v237.0.0 — Program C (Arc G): per-recipient notification ledger
 
 | Change | Where |

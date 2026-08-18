@@ -33,6 +33,36 @@ pub async fn create(pool: &PgPool, new: NewNotification) -> Result<Notification,
     row_to_notification(&row)
 }
 
+/// Insert unless one already exists for `(member_id, source_log_id)` (Cluster 238) —
+/// see the SQLite twin. `None` = a row already existed (deduped).
+pub async fn create_if_absent(
+    pool: &PgPool,
+    new: NewNotification,
+) -> Result<Option<Notification>, StoreError> {
+    let id = NotificationId::new();
+    let row = sqlx::query(
+        "INSERT INTO maidan_notifications
+            (id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+             message_id, actor_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (member_id, source_log_id) DO NOTHING
+         RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+                   message_id, actor_id, created_at, read_at",
+    )
+    .bind(id.0)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(new.kind.as_str())
+    .bind(new.source_log_id)
+    .bind(new.channel_id.map(|c| c.0))
+    .bind(new.thread_id.map(|t| t.0))
+    .bind(new.message_id.map(|m| m.0))
+    .bind(new.actor_id.map(|a| a.0))
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_notification).transpose()
+}
+
 pub async fn list_for_member(
     pool: &PgPool,
     member_id: MemberId,

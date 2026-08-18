@@ -153,6 +153,10 @@ pub fn init() {
             "maidan_task_schedules_fired_total",
             "Task schedules fired by the scheduler sweeper (a thread was created), by outcome"
         );
+        describe_counter!(
+            "maidan_notifications_created_total",
+            "Per-recipient notifications written by the notification router, by kind"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -184,6 +188,12 @@ pub fn record_event_append_failure() {
 /// Rows deleted by the retention sweeper for `table` (Cluster 186).
 pub fn record_retention_pruned(table: &str, count: u64) {
     counter!("maidan_retention_pruned_total", "table" => table.to_string()).increment(count);
+}
+
+/// A per-recipient notification written by the router (Cluster 238), by the source
+/// event `kind`. Deduped writes (a replay / a second replica) do not increment.
+pub fn record_notification_created(kind: &str) {
+    counter!("maidan_notifications_created_total", "kind" => kind.to_string()).increment(1);
 }
 
 /// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
