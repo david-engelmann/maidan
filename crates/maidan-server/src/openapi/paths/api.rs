@@ -303,6 +303,36 @@ pub fn get_member_inbox() {}
     responses((status = 200, body = MemberInbox)))]
 pub fn mark_member_inbox_read() {}
 
+#[utoipa::path(get, path = "/members/{id}/notifications", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ListNotificationsQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Notification>)))]
+pub fn list_member_notifications() {}
+
+#[utoipa::path(get, path = "/members/{id}/notifications/unread-count", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = UnreadCount)))]
+pub fn member_unread_notification_count() {}
+
+#[utoipa::path(post, path = "/members/{id}/notifications/read-all", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MarkAllRead)))]
+pub fn mark_all_member_notifications_read() {}
+
+#[utoipa::path(post, path = "/members/{id}/notifications/{nid}/read", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ("nid" = Uuid, Path, description = "Notification id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = UnreadCount)))]
+pub fn mark_member_notification_read() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

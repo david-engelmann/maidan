@@ -113,14 +113,25 @@ async fn run_suite(store: &dyn Store) {
         1
     );
 
-    // Mark one read: idempotent, and unread drops.
-    assert!(store.mark_notification_read(n1.id).await.expect("mark n1"));
+    // Mark one read: idempotent, recipient-scoped, and unread drops.
+    assert!(store
+        .mark_notification_read(recipient.id, n1.id)
+        .await
+        .expect("mark n1"));
     assert!(
         store
-            .mark_notification_read(n1.id)
+            .mark_notification_read(recipient.id, n1.id)
             .await
             .expect("re-mark n1"),
         "re-marking an existing notification is idempotent-true"
+    );
+    // A different member can't mark this recipient's notification.
+    assert!(
+        !store
+            .mark_notification_read(actor.id, n2.id)
+            .await
+            .expect("cross-member mark"),
+        "another member cannot mark this recipient's notification"
     );
     assert_eq!(
         store
@@ -138,7 +149,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Marking an unknown id is false, not an error.
     assert!(!store
-        .mark_notification_read(NotificationId::new())
+        .mark_notification_read(recipient.id, NotificationId::new())
         .await
         .expect("mark unknown"));
 

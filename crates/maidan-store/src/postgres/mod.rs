@@ -184,8 +184,12 @@ impl Store for PostgresStore {
     ) -> Result<Vec<Notification>, StoreError> {
         notifications::list_for_member(&self.pool, member_id, unread_only, limit).await
     }
-    async fn mark_notification_read(&self, id: NotificationId) -> Result<bool, StoreError> {
-        notifications::mark_read(&self.pool, id).await
+    async fn mark_notification_read(
+        &self,
+        member_id: MemberId,
+        id: NotificationId,
+    ) -> Result<bool, StoreError> {
+        notifications::mark_read(&self.pool, member_id, id).await
     }
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError> {
         notifications::mark_all_read(&self.pool, member_id).await

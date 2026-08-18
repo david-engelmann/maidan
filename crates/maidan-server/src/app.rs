@@ -120,6 +120,22 @@ pub fn router(state: AppState) -> Router {
             post(routes::mark_member_inbox_read),
         )
         .route(
+            "/members/:id/notifications",
+            get(routes::list_member_notifications),
+        )
+        .route(
+            "/members/:id/notifications/unread-count",
+            get(routes::member_unread_notification_count),
+        )
+        .route(
+            "/members/:id/notifications/read-all",
+            post(routes::mark_all_member_notifications_read),
+        )
+        .route(
+            "/members/:id/notifications/:nid/read",
+            post(routes::mark_member_notification_read),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )

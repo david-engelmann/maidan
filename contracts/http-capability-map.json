@@ -115,6 +115,30 @@
   },
   {
     "method": "GET",
+    "path": "/members/{id}/notifications",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/notifications/unread-count",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/members/{id}/notifications/read-all",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/members/{id}/notifications/{nid}/read",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",
     "surface": "http"

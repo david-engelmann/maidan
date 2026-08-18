@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v239.0.0 — Program C (Arc G): REST unified inbox
+
+| Change | Where |
+|--------|-------|
+| `GET /members/:id/notifications` (list; `unread_only`, `limit`) + `GET …/unread-count` + `POST …/:nid/read` (returns new count) + `POST …/read-all` (`{cleared}`) — all `workspace:read`, **self-only** for sessions (bearer act-as-any). The read side of the Cluster-237 ledger | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+| `mark_notification_read` recipient-scoped in the store (`(member_id, id)`) — safe-by-construction; `404` for a foreign/unknown id | `store/*/notifications.rs`, `store.rs` |
+
 ## v238.0.0 — Program C (Arc G): notification router
 
 | Change | Where |
