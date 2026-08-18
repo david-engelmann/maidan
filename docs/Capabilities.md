@@ -3,6 +3,14 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v236.0.0 — Program B (Arc F complete, Program B complete): structured-results MCP + `wait_for_result`
+
+| Change | Where |
+|--------|-------|
+| MCP `set_thread_result` (`thread:transition`) / `get_thread_result` (`workspace:read`) — the twins of Cluster 235's REST, over the shared store; `set` publishes `ThreadResultSet` | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+| MCP `wait_for_result` (`workspace:read`) — block on a thread's `ThreadResultSet`, return the result payload (or `null` on timeout); the coordination wait, the `wait_for_ready` analogue | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+| MCP `get_dependency_results` (`workspace:read`) — a parent aggregates its dependencies' outputs as `[{thread_id, result}]` (`null` for pending), RBAC-filtered. **Closes Program B** | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v235.0.0 — Program B (Arc F): structured-results REST + `ThreadResultSet` event
 
 | Change | Where |

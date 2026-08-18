@@ -15,9 +15,11 @@
   "create_task_schedule": "workspace:write",
   "edit_message": "message:post",
   "get_artifact_metadata": "workspace:read",
+  "get_dependency_results": "workspace:read",
   "get_inbox": "workspace:read",
   "get_queue_depth": "workspace:read",
   "get_thread_context": "workspace:read",
+  "get_thread_result": "workspace:read",
   "get_tool_transcript": "workspace:read",
   "get_workspace_context": "workspace:read",
   "list_assigned_threads": "workspace:read",
@@ -49,11 +51,13 @@
   "renew_claim": "thread:transition",
   "request_approval": "workspace:read",
   "search_messages": "search:query",
+  "set_thread_result": "thread:transition",
   "summarize_thread": "workspace:read",
   "unassign_thread": "thread:transition",
   "unpin_message": "workspace:write",
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload",
   "wait_for_mention": "workspace:read",
-  "wait_for_ready": "workspace:read"
+  "wait_for_ready": "workspace:read",
+  "wait_for_result": "workspace:read"
 }

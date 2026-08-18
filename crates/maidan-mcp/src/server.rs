@@ -1150,6 +1150,160 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn result_tools_set_get_wait_and_aggregate() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_bus::InMemoryBus;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "res".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "tasks".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let mk = |title: &str| NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        };
+        // parent depends on dep1 + dep2.
+        let parent = store.create_thread(mk("parent")).await.unwrap();
+        let dep1 = store.create_thread(mk("dep1")).await.unwrap();
+        let dep2 = store.create_thread(mk("dep2")).await.unwrap();
+        store
+            .add_thread_dependency(parent.id, dep1.id)
+            .await
+            .unwrap();
+        store
+            .add_thread_dependency(parent.id, dep2.id)
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        // A real session member so `produced_by` (a NOT-NULL FK) resolves — the
+        // bypass nil member would FK-fail set_thread_result.
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // No result yet → null.
+        let miss = server
+            .call_tool(
+                &auth,
+                "get_thread_result",
+                &json!({ "thread_id": dep1.id.0 }),
+            )
+            .await
+            .unwrap();
+        assert!(unwrap_content(miss).is_null());
+
+        // Set dep1's result, then read it back.
+        let payload = json!({ "answer": 42, "ok": true });
+        let set = server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &json!({ "thread_id": dep1.id.0, "result": payload }),
+            )
+            .await
+            .unwrap();
+        let set = unwrap_content(set);
+        assert_eq!(set["result"], payload);
+        assert_eq!(set["produced_by"], json!(agent.id.0));
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_result",
+                    &json!({ "thread_id": dep1.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["result"], payload);
+
+        // wait_for_result on dep2 wakes when its result is produced after subscribe.
+        let dep2_payload = json!({ "answer": 7 });
+        let wait_args = json!({ "thread_id": dep2.id.0, "timeout_ms": 5000 });
+        let set_args = json!({ "thread_id": dep2.id.0, "result": dep2_payload });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_result", &wait_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                server
+                    .call_tool(&auth, "set_thread_result", &set_args)
+                    .await
+                    .unwrap();
+            }
+        );
+        let woke = unwrap_content(out.unwrap());
+        assert_eq!(
+            woke["result"], dep2_payload,
+            "wait_for_result returns the payload"
+        );
+
+        // The parent aggregates both dependencies' results.
+        let agg = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_dependency_results",
+                    &json!({ "thread_id": parent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let deps = agg["dependencies"].as_array().unwrap();
+        assert_eq!(deps.len(), 2);
+        let by_id = |tid: uuid::Uuid| {
+            deps.iter()
+                .find(|d| d["thread_id"] == json!(tid))
+                .expect("dependency present")["result"]
+                .clone()
+        };
+        assert_eq!(by_id(dep1.id.0), payload);
+        assert_eq!(by_id(dep2.id.0), dep2_payload);
+    }
+
+    #[tokio::test]
     async fn get_queue_depth_tool_reports_counts() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

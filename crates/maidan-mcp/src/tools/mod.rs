@@ -77,6 +77,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_task_schedules"
         | "list_member_skills"
         | "list_thread_required_skills"
+        | "get_thread_result"
+        | "wait_for_result"
+        | "get_dependency_results"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -109,7 +112,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "claim_next_thread"
         | "renew_claim"
         | "add_thread_dependency"
-        | "add_thread_required_skill" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "add_thread_required_skill"
+        | "set_thread_result" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -163,7 +167,11 @@ async fn enforce_channel_access(
         | "add_thread_dependency"
         | "list_thread_dependencies"
         | "add_thread_required_skill"
-        | "list_thread_required_skills" => {
+        | "list_thread_required_skills"
+        | "set_thread_result"
+        | "get_thread_result"
+        | "wait_for_result"
+        | "get_dependency_results" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -241,6 +249,10 @@ pub async fn dispatch(
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
+        "set_thread_result" => thread::set_thread_result(server, auth, args).await,
+        "get_thread_result" => thread::get_thread_result(store, args).await,
+        "wait_for_result" => thread::wait_for_result(server, auth, args).await,
+        "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
         "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
         "add_member_skill" => skill::add_member_skill(store, args).await,

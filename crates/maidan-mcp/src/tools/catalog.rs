@@ -225,6 +225,52 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_thread_result",
+            "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "result": {"description": "arbitrary JSON result payload"}
+                },
+                "required": ["thread_id", "result"]
+            }
+        }),
+        json!({
+            "name": "get_thread_result",
+            "description": "Read a task's structured result, or null if none has been produced yet.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "wait_for_result",
+            "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Live-only: read get_thread_result first for an already-produced result.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "timeout_ms": {"type": "integer", "description": "wait window ms (default 30000, clamped 1000-300000)"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_dependency_results",
+            "description": "Gather the structured results of a parent task's dependencies as [{thread_id, result}] (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "the parent task"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "add_member_skill",
             "description": "Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.",
             "inputSchema": {

@@ -15,9 +15,11 @@
   "create_task_schedule",
   "edit_message",
   "get_artifact_metadata",
+  "get_dependency_results",
   "get_inbox",
   "get_queue_depth",
   "get_thread_context",
+  "get_thread_result",
   "get_tool_transcript",
   "get_workspace_context",
   "list_assigned_threads",
@@ -49,11 +51,13 @@
   "renew_claim",
   "request_approval",
   "search_messages",
+  "set_thread_result",
   "summarize_thread",
   "unassign_thread",
   "unpin_message",
   "upload_artifact",
   "upload_artifact_multipart_part",
   "wait_for_mention",
-  "wait_for_ready"
+  "wait_for_ready",
+  "wait_for_result"
 ]
