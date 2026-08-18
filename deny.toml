@@ -16,6 +16,10 @@ id = "RUSTSEC-2025-0111"
 reason = "tokio-tar via testcontainers build context upload; trusted CI path only"
 
 [[advisories.ignore]]
+id = "RUSTSEC-2026-0258"
+reason = "h2 0.3.27 empty-DATA-frame DoS via aws-sdk client stack (patched only in h2 >=0.4.16, a major bump the AWS SDK controls; bumping the AWS stack pulls aws-smithy-types 1.6.2 requiring Rust 1.94.1 > our pinned 1.91). Our first-party server (hyper 1.x) is patched to h2 0.4.16; residual 0.3.27 is the S3 client to a trusted endpoint, not an untrusted-peer surface — see skip-tree aws-config note"
+
+[[advisories.ignore]]
 id = "RUSTSEC-2026-0104"
 reason = "rustls-webpki 0.101 via aws-sdk; CRL path unused for MinIO HTTP"
 
