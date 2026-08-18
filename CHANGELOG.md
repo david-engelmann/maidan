@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [236.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 20 —
+**closes Arc F and Program B**. No new gate tag.
+
+### Added
+
+- **Structured-result MCP surface + coordination wait.** MCP `set_thread_result`
+  (`thread:transition`) / `get_thread_result` (`workspace:read`) — the twins of the
+  Cluster-235 REST endpoints, over the shared store; `set` publishes the
+  `ThreadResultSet` event. **`wait_for_result`** (`workspace:read`) blocks until a
+  thread's result is produced (a `ThreadResultSet` for that thread) and returns the
+  result payload, or `null` on timeout — the coordination wait for the "spawn
+  sub-tasks, wait, aggregate" pattern (the `wait_for_ready` analogue; live-only, read
+  `get_thread_result` first for an already-produced result). **`get_dependency_results`**
+  (`workspace:read`) lets a parent task gather its dependencies' outputs as
+  `[{thread_id, result}]` (result `null` for a dependency that hasn't produced one),
+  skipping dependencies in channels the caller can't access. **This closes Program B**
+  (agentic orchestration: task-DAG + queue 217–225, scheduled tasks 226–229,
+  capability registry + skill routing 230–233, coordination waits + structured
+  results 234–236).
+
 ## [235.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 19 — Arc F

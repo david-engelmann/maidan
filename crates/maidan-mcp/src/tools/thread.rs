@@ -302,6 +302,164 @@ pub(super) async fn get_queue_depth(
 }
 
 #[derive(Deserialize)]
+struct SetThreadResultArgs {
+    thread_id: uuid::Uuid,
+    result: Value,
+}
+
+/// Attach a task's structured result (Cluster 236, the MCP twin of
+/// `PUT /threads/:id/result`). Upserts one result per thread (`produced_by` is
+/// the caller) and publishes a `ThreadResultSet` event so waiters
+/// (`wait_for_result`) wake. Thread access is enforced pre-dispatch (the
+/// `thread_id` arg).
+pub(super) async fn set_thread_result(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadResultArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let result = server
+        .store
+        .set_thread_result(thread_id, auth.member_id, &a.result)
+        .await?;
+    if server.event_bus.is_some() {
+        let ctx = resolve_thread_context(server.store.as_ref(), thread_id)
+            .await
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        server
+            .publish_event(Event::ThreadResultSet {
+                occurred_at: Utc::now(),
+                workspace_id: ctx.workspace_id,
+                channel_id: ctx.channel_id,
+                thread_id,
+                produced_by: auth.member_id,
+            })
+            .await;
+    }
+    Ok(content_json(&result))
+}
+
+#[derive(Deserialize)]
+struct GetThreadResultArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// Read a task's structured result, or `null` if none has been produced
+/// (Cluster 236, the MCP twin of `GET /threads/:id/result`). Thread access is
+/// enforced pre-dispatch.
+pub(super) async fn get_thread_result(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetThreadResultArgs = serde_json::from_value(args.clone())?;
+    let result = store.get_thread_result(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&result))
+}
+
+#[derive(Deserialize)]
+struct WaitForResultArgs {
+    thread_id: uuid::Uuid,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+}
+
+/// Block until a task's structured result is produced — a `ThreadResultSet`
+/// event (Cluster 235) for `thread_id` — or the timeout lapses (Cluster 236).
+/// Returns the `ThreadResult` (the payload, fetched after the signal) or `null`
+/// on timeout. The coordination wait for the "spawn sub-tasks, wait, aggregate"
+/// pattern; the `wait_for_ready` analogue. Thread access is enforced
+/// pre-dispatch. **Live** primitive: it only sees results produced *after* it
+/// subscribes, so read the current result with `get_thread_result` first (the
+/// `GET /mcp/stream` SSE transport, `kinds=thread_result_set`, is the resumable
+/// alternative when a missed signal is unacceptable).
+pub(super) async fn wait_for_result(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitForResultArgs = serde_json::from_value(args.clone())?;
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(
+            "wait_for_result requires an event bus".into(),
+        ));
+    };
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+    let thread_id = ThreadId(a.thread_id);
+
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        thread_id: Some(thread_id),
+        kinds: Some(std::collections::HashSet::from([
+            EventKind::ThreadResultSet,
+        ])),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    // Access to `thread_id` is enforced by the pre-dispatch gate; the filter pins
+    // the thread, so any event that arrives is the one we're waiting on.
+    let store = server.store.as_ref();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            // Timed out or the bus closed → no result produced in the window.
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        // A lag marker means the buffer overflowed; keep waiting (same deadline).
+        let maidan_bus::BusItem::Event(_) = item else {
+            continue;
+        };
+        let result = store.get_thread_result(thread_id).await?;
+        return Ok(content_json(&result));
+    }
+}
+
+#[derive(Deserialize)]
+struct DependencyResultsArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// Gather the structured results of a parent task's dependencies (Cluster 236) —
+/// the "spawn sub-tasks, wait, aggregate their outputs" read. For each
+/// dependency edge of `thread_id`, returns `{thread_id, result}` (result `null`
+/// if that dependency hasn't produced one yet), skipping dependencies in
+/// channels the caller can't access. The parent's access is enforced
+/// pre-dispatch; the dependencies (which may live in other channels) are
+/// filtered here, like `list_assigned_threads`.
+pub(super) async fn get_dependency_results(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DependencyResultsArgs = serde_json::from_value(args.clone())?;
+    let deps = store
+        .list_thread_dependencies(ThreadId(a.thread_id))
+        .await?;
+    let mut out = Vec::with_capacity(deps.len());
+    for dep in deps {
+        let dep_id = dep.depends_on_thread_id;
+        if !auth.bypass && !maidan_auth::can_access_thread(store.as_ref(), auth, dep_id).await? {
+            continue;
+        }
+        // Project to the raw payload (or null) — the parent wants each
+        // dependency's output, not the provenance envelope. `null` marks a
+        // dependency that hasn't produced a result yet.
+        let result = store.get_thread_result(dep_id).await?.map(|r| r.result);
+        out.push(json!({ "thread_id": dep_id, "result": result }));
+    }
+    Ok(content_json(&json!({ "dependencies": out })))
+}
+
+#[derive(Deserialize)]
 struct WaitForReadyArgs {
     /// Optional channel to scope readiness to; omit to await any accessible ready
     /// thread in the caller's workspace.
