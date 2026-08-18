@@ -248,6 +248,46 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// A per-recipient notification (Cluster 237, Program C). Where a mention is one
+/// shared `maidan_mentions` row read through a single inbox cursor, this is one
+/// row per (recipient, source event): *who* should know, *what* triggered it
+/// (`kind` = the source [`EventKind`] + `source_log_id` = the event-log row),
+/// denormalized context (`channel/thread/message/actor`) so the inbox renders
+/// without re-fetching the event, and per-recipient read state. The
+/// zero-blast-radius foundation for the notification router + unified inbox that
+/// follow — nothing writes rows yet.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Notification {
+    pub id: NotificationId,
+    pub workspace_id: WorkspaceId,
+    /// The recipient.
+    pub member_id: MemberId,
+    pub kind: crate::EventKind,
+    /// The `maidan_events` row that triggered this notification.
+    pub source_log_id: i64,
+    pub channel_id: Option<ChannelId>,
+    pub thread_id: Option<ThreadId>,
+    pub message_id: Option<MessageId>,
+    /// Who caused it (e.g. the mentioner), when applicable.
+    pub actor_id: Option<MemberId>,
+    pub created_at: DateTime<Utc>,
+    /// `None` = unread.
+    pub read_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewNotification {
+    pub workspace_id: WorkspaceId,
+    pub member_id: MemberId,
+    pub kind: crate::EventKind,
+    pub source_log_id: i64,
+    pub channel_id: Option<ChannelId>,
+    pub thread_id: Option<ThreadId>,
+    pub message_id: Option<MessageId>,
+    pub actor_id: Option<MemberId>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

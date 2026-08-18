@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [237.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 1** —
+opens **Arc G (per-recipient notification ledger + router + unified inbox)**. No new
+gate tag.
+
+### Added
+
+- **Per-recipient notification ledger.** A `maidan_notifications` table (pg 0042 /
+  sqlite 0041; one row per recipient × source event — `member_id` recipient, `kind`
+  = the triggering `EventKind`, `source_log_id` = the event-log row (no FK, so it
+  survives retention pruning), denormalized `channel/thread/message/actor` for
+  rendering, `read_at` NULL = unread) + `Notification` / `NewNotification` model +
+  store CRUD (`create_notification`, `list_notifications` newest-first / unread-only,
+  `mark_notification_read` idempotent, `mark_all_notifications_read`,
+  `unread_notification_count`), both backends. Where a mention was one shared row read
+  through a single inbox cursor, this is the per-recipient delivery/read layer the
+  notification router + unified inbox build on. **No router or routes yet** — the
+  zero-blast-radius foundation pattern (Clusters 159 / 217 / 226 / 230 / 234). Opens
+  Program C after Program B (agentic orchestration) completed at Cluster 236.
+
 ## [236.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). Program B (agentic orchestration), part 20 —
