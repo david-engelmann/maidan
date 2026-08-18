@@ -318,6 +318,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/result",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/result",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/threads/{tid}/messages",
     "capability": "workspace:read",

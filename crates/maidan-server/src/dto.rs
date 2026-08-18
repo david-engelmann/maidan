@@ -124,6 +124,13 @@ pub struct AddSkill {
     pub skill: String,
 }
 
+/// Set a task's structured result (Cluster 235). `result` is arbitrary JSON.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadResult {
+    #[schema(value_type = Object)]
+    pub result: serde_json::Value,
+}
+
 /// A task's dependency edges plus whether it is ready to run (Cluster 219).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadDependenciesView {

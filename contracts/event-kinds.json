@@ -14,6 +14,7 @@
   "thread_assignment_changed",
   "thread_created",
   "thread_ready",
+  "thread_result_set",
   "thread_state_changed",
   "vote_cast",
   "workspace_created"

@@ -136,6 +136,10 @@ pub fn router(state: AppState) -> Router {
             axum::routing::delete(routes::remove_thread_required_skill),
         )
         .route(
+            "/threads/:id/result",
+            axum::routing::put(routes::set_thread_result).get(routes::get_thread_result),
+        )
+        .route(
             "/workspaces/:wid/dm",
             post(dm::open_dm_conversation).get(dm::list_dm_conversations),
         )

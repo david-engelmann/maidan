@@ -36,6 +36,7 @@ pub enum EventKind {
     ThreadStateChanged,
     ThreadAssignmentChanged,
     ThreadReady,
+    ThreadResultSet,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -59,6 +60,7 @@ impl EventKind {
             Self::ThreadStateChanged => "thread_state_changed",
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
+            Self::ThreadResultSet => "thread_result_set",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -82,6 +84,7 @@ impl EventKind {
             "thread_state_changed" => Some(Self::ThreadStateChanged),
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
+            "thread_result_set" => Some(Self::ThreadResultSet),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -111,6 +114,7 @@ impl EventKind {
         Self::ThreadStateChanged,
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
+        Self::ThreadResultSet,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -158,6 +162,8 @@ impl EventKind {
             // Readiness is a *locally derived* signal (this deployment's dependency
             // graph + thread states); a peer must not inject it — we compute our own.
             Self::ThreadReady => false,
+            // A task result is produced locally; a peer must not inject one.
+            Self::ThreadResultSet => false,
         }
     }
 }
@@ -220,6 +226,17 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         thread: Thread,
+    },
+    /// A task produced (or revised) its structured result (Cluster 235). A small
+    /// "go fetch" pointer — a waiter reacts and reads the result via
+    /// `get_thread_result`, so the payload isn't carried inline. Derived + local:
+    /// not federatable.
+    ThreadResultSet {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        produced_by: MemberId,
     },
     MessagePosted {
         occurred_at: DateTime<Utc>,
@@ -316,6 +333,7 @@ impl Event {
             Self::ThreadStateChanged { .. } => EventKind::ThreadStateChanged,
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
+            Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -339,6 +357,7 @@ impl Event {
             | Self::ThreadStateChanged { occurred_at, .. }
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
+            | Self::ThreadResultSet { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -362,6 +381,7 @@ impl Event {
             | Self::ThreadStateChanged { workspace_id, .. }
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
+            | Self::ThreadResultSet { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -382,6 +402,7 @@ impl Event {
             | Self::ThreadStateChanged { channel_id, .. }
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }
+            | Self::ThreadResultSet { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -397,6 +418,7 @@ impl Event {
             Self::ThreadStateChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
+            Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -430,6 +452,7 @@ impl Event {
             Self::MemberJoined { member, .. } => Some(member.id),
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
+            Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
             | Self::ReactionAdded { member_id, .. }
@@ -660,6 +683,7 @@ mod kind_tests {
                 | EventKind::ThreadStateChanged
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
+                | EventKind::ThreadResultSet
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -701,7 +725,11 @@ mod kind_tests {
     /// and `ThreadReady` is not (a locally-derived signal, Cluster 222).
     #[test]
     fn federatable_allowlist_excludes_only_artifacts() {
-        let non_federatable = [EventKind::ArtifactUpserted, EventKind::ThreadReady];
+        let non_federatable = [
+            EventKind::ArtifactUpserted,
+            EventKind::ThreadReady,
+            EventKind::ThreadResultSet,
+        ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);
             assert_eq!(

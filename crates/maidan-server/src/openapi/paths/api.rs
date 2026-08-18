@@ -614,6 +614,21 @@ pub fn list_thread_required_skills() {}
     responses((status = 204)))]
 pub fn remove_thread_required_skill() {}
 
+// --- task results ---
+
+#[utoipa::path(put, path = "/threads/{id}/result", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadResult,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadResult)))]
+pub fn set_thread_result() {}
+
+#[utoipa::path(get, path = "/threads/{id}/result", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadResult)))]
+pub fn get_thread_result() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",
