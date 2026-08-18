@@ -58,6 +58,8 @@ const POSTGRES_UP_V40: &str =
     include_str!("../../../migrations/postgres/0040_thread_required_skills.sql");
 const POSTGRES_UP_V41: &str = include_str!("../../../migrations/postgres/0041_thread_results.sql");
 const POSTGRES_UP_V42: &str = include_str!("../../../migrations/postgres/0042_notifications.sql");
+const POSTGRES_UP_V43: &str =
+    include_str!("../../../migrations/postgres/0043_notification_dedup.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -105,6 +107,7 @@ const SQLITE_UP_V39: &str =
     include_str!("../../../migrations/sqlite/0039_thread_required_skills.sql");
 const SQLITE_UP_V40: &str = include_str!("../../../migrations/sqlite/0040_thread_results.sql");
 const SQLITE_UP_V41: &str = include_str!("../../../migrations/sqlite/0041_notifications.sql");
+const SQLITE_UP_V42: &str = include_str!("../../../migrations/sqlite/0042_notification_dedup.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -199,6 +202,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 40, POSTGRES_UP_V40).await?;
     apply_postgres(pool, 41, POSTGRES_UP_V41).await?;
     apply_postgres(pool, 42, POSTGRES_UP_V42).await?;
+    apply_postgres(pool, 43, POSTGRES_UP_V43).await?;
     Ok(())
 }
 
@@ -254,6 +258,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 39, SQLITE_UP_V39).await?;
     apply_sqlite(pool, 40, SQLITE_UP_V40).await?;
     apply_sqlite(pool, 41, SQLITE_UP_V41).await?;
+    apply_sqlite(pool, 42, SQLITE_UP_V42).await?;
     Ok(())
 }
 

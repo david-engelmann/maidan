@@ -428,6 +428,10 @@ async fn main() -> anyhow::Result<()> {
     let fsm_hook_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
     tracing::info!("fsm hook worker running");
 
+    let notification_router =
+        maidan_server::notification_router::NotificationRouter::spawn(state.clone());
+    tracing::info!("notification router running");
+
     let automation_worker =
         maidan_server::automation_worker::AutomationDeliveryWorker::spawn(state.clone());
     tracing::info!(
@@ -498,6 +502,7 @@ async fn main() -> anyhow::Result<()> {
     webhook_worker.shutdown().await;
     automation_worker.shutdown().await;
     fsm_hook_worker.shutdown().await;
+    notification_router.shutdown().await;
     if let Some(worker) = federation_worker {
         worker.shutdown().await;
     }

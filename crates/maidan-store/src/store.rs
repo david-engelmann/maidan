@@ -93,6 +93,13 @@ pub trait Store: Send + Sync {
     /// the badge, `mark_all_read` clears the badge. No router/routes/worker yet —
     /// a zero-blast-radius foundation.
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError>;
+    /// Insert a notification unless one already exists for `(member_id,
+    /// source_log_id)` — the router's idempotent write across event replays and
+    /// server replicas (Cluster 238). `None` = a row already existed (deduped).
+    async fn create_notification_if_absent(
+        &self,
+        new: NewNotification,
+    ) -> Result<Option<Notification>, StoreError>;
     async fn list_notifications(
         &self,
         member_id: MemberId,

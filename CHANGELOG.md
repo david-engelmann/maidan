@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [238.0.0] — 2026-08-18
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 2** —
+Arc G. No new gate tag.
+
+### Added
+
+- **Notification router.** A `NotificationRouter` background worker (an always-on,
+  reconnecting event-bus consumer spawned in `main.rs`) resolves each relevant event
+  to the members it concerns and writes a per-recipient `maidan_notifications` row.
+  Currently routes `MentionRecorded` → a notification for the mentioned member (with
+  the channel resolved from the thread). Writes go through a new
+  `create_notification_if_absent` (`ON CONFLICT DO NOTHING`) against a new
+  `UNIQUE(member_id, source_log_id)` index (pg 0043 / sqlite 0042), so a replayed
+  event or a second replica running the consumer cannot double-notify. A new
+  `maidan_notifications_created_total{kind}` metric counts real writes. An @mention
+  is now *delivered* to the recipient's ledger the moment it hits the bus, not just
+  recorded and polled — the unified inbox (239) and `wait_for_notification` (240)
+  build on it.
+
 ## [237.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 1** —

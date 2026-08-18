@@ -176,6 +176,12 @@ impl Store for SqliteStore {
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError> {
         notifications::create(&self.pool, new).await
     }
+    async fn create_notification_if_absent(
+        &self,
+        new: NewNotification,
+    ) -> Result<Option<Notification>, StoreError> {
+        notifications::create_if_absent(&self.pool, new).await
+    }
     async fn list_notifications(
         &self,
         member_id: MemberId,

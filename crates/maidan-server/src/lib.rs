@@ -35,6 +35,7 @@ pub mod mcp_quota;
 pub mod mcp_stream;
 pub mod mcp_streamable;
 pub mod metrics;
+pub mod notification_router;
 pub mod oidc;
 pub mod openapi;
 pub mod outbox_relay;

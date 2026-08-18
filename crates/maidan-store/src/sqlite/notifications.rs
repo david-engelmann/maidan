@@ -35,6 +35,38 @@ pub async fn create(pool: &SqlitePool, new: NewNotification) -> Result<Notificat
     row_to_notification(&row)
 }
 
+/// Insert unless one already exists for `(member_id, source_log_id)` (Cluster 238).
+/// `None` = a row already existed (deduped — a replay or a second replica).
+pub async fn create_if_absent(
+    pool: &SqlitePool,
+    new: NewNotification,
+) -> Result<Option<Notification>, StoreError> {
+    let id = NotificationId::new();
+    let now = Utc::now().to_rfc3339();
+    let row = sqlx::query(
+        "INSERT INTO maidan_notifications
+            (id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+             message_id, actor_id, created_at, read_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT (member_id, source_log_id) DO NOTHING
+         RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+                   message_id, actor_id, created_at, read_at",
+    )
+    .bind(id.0)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(new.kind.as_str())
+    .bind(new.source_log_id)
+    .bind(new.channel_id.map(|c| c.0))
+    .bind(new.thread_id.map(|t| t.0))
+    .bind(new.message_id.map(|m| m.0))
+    .bind(new.actor_id.map(|a| a.0))
+    .bind(&now)
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_notification).transpose()
+}
+
 /// A member's notifications, newest first, optionally unread-only (Cluster 237).
 pub async fn list_for_member(
     pool: &SqlitePool,
