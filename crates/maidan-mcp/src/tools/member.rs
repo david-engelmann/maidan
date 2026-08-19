@@ -90,20 +90,39 @@ pub(super) async fn wait_for_mention(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: WaitForMentionArgs = serde_json::from_value(args.clone())?;
-    let member_id = MemberId(a.member_id);
+    wait_for_member_event(
+        server,
+        auth,
+        MemberId(a.member_id),
+        HashSet::from([EventKind::MentionRecorded]),
+        a.timeout_ms,
+    )
+    .await
+}
+
+/// Shared member-addressed long-poll: block until an event of one of `kinds`
+/// addressed to `member_id` arrives, or the timeout lapses. Returns the triggering
+/// event (unless it lives in a thread the caller can't access — then keep waiting),
+/// or `null` on timeout. Backs `wait_for_mention` (Cluster 196) and
+/// `wait_for_notification` (Cluster 240). **Live** — only sees events after
+/// subscribe.
+async fn wait_for_member_event(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    member_id: MemberId,
+    kinds: HashSet<EventKind>,
+    timeout_ms: Option<i64>,
+) -> Result<Value, McpError> {
     let Some(bus) = server.event_bus.as_ref() else {
         return Err(McpError::InvalidParams(
-            "wait_for_mention requires an event bus".into(),
+            "waiting requires an event bus".into(),
         ));
     };
-    let wait = a
-        .timeout_ms
-        .unwrap_or(DEFAULT_WAIT_MS)
-        .clamp(1, MAX_WAIT_MS);
+    let wait = timeout_ms.unwrap_or(DEFAULT_WAIT_MS).clamp(1, MAX_WAIT_MS);
 
     let filter = EventFilter {
         member_id: Some(member_id),
-        kinds: Some(HashSet::from([EventKind::MentionRecorded])),
+        kinds: Some(kinds),
         ..EventFilter::default()
     };
     let mut stream = bus
@@ -115,7 +134,7 @@ pub(super) async fn wait_for_mention(
     let deadline = tokio::time::Instant::now() + Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
-            // Timed out or the bus closed → no mention arrived in the window.
+            // Timed out or the bus closed → nothing arrived in the window.
             Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
             Ok(Some(item)) => item,
         };
@@ -124,11 +143,10 @@ pub(super) async fn wait_for_mention(
         let BusItem::Event(envelope) = item else {
             continue;
         };
-        let thread_id = envelope.event.thread_id();
-        // The mention is addressed to this member, but if it lives in a thread
-        // the caller can't access, don't reveal it — keep waiting.
+        // Addressed to this member, but if it lives in a thread the caller can't
+        // access, don't reveal it — keep waiting.
         if !auth.bypass {
-            if let Some(tid) = thread_id {
+            if let Some(tid) = envelope.event.thread_id() {
                 if !maidan_auth::can_access_thread(store, auth, tid).await? {
                     continue;
                 }
@@ -136,4 +154,93 @@ pub(super) async fn wait_for_mention(
         }
         return Ok(content_json(&envelope.event));
     }
+}
+
+/// The event kinds the notification router (Cluster 238) turns into per-recipient
+/// notifications — the set `wait_for_notification` waits on. Grows as Arc H routes
+/// more kinds; keep in step with `notification_router::route_event`.
+fn notifiable_kinds() -> HashSet<EventKind> {
+    HashSet::from([EventKind::MentionRecorded])
+}
+
+#[derive(Deserialize)]
+struct ListNotificationsArgs {
+    member_id: uuid::Uuid,
+    #[serde(default)]
+    unread_only: bool,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// A member's per-recipient notifications (Cluster 240), newest first, optionally
+/// unread-only — the MCP twin of `GET /members/:id/notifications`. Mirrors the
+/// sibling inbox tools (`get_inbox`/`list_mentions`): a member-scoped read, no
+/// per-channel filter.
+pub(super) async fn list_notifications(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListNotificationsArgs = serde_json::from_value(args.clone())?;
+    let notes = store
+        .list_notifications(MemberId(a.member_id), a.unread_only, clamp_limit(a.limit))
+        .await?;
+    Ok(content_json(&notes))
+}
+
+#[derive(Deserialize)]
+struct MemberIdArg {
+    member_id: uuid::Uuid,
+}
+
+/// A member's unread-notification badge count (Cluster 240).
+pub(super) async fn get_unread_count(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let count = store
+        .unread_notification_count(MemberId(a.member_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "count": count })))
+}
+
+#[derive(Deserialize)]
+struct MarkNotificationReadArgs {
+    member_id: uuid::Uuid,
+    notification_id: uuid::Uuid,
+}
+
+/// Mark one of a member's notifications read (Cluster 240). Recipient-scoped in the
+/// store, so `{marked: false}` when the id isn't this member's.
+pub(super) async fn mark_notification_read(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MarkNotificationReadArgs = serde_json::from_value(args.clone())?;
+    let marked = store
+        .mark_notification_read(MemberId(a.member_id), NotificationId(a.notification_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "marked": marked })))
+}
+
+/// Block until `member_id` gets a new notification-worthy event, or the timeout
+/// lapses (Cluster 240). The general form of `wait_for_mention`: it waits on the
+/// event kinds the notification router acts on (today: mentions), filtered to this
+/// member, and returns the triggering event (RBAC-checked) or `null`. **Live** —
+/// drain existing notifications with `list_notifications`/`get_unread_count` first
+/// (the durable ledger + `GET /mcp/stream` are the at-least-once alternatives).
+pub(super) async fn wait_for_notification(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitForMentionArgs = serde_json::from_value(args.clone())?;
+    wait_for_member_event(
+        server,
+        auth,
+        MemberId(a.member_id),
+        notifiable_kinds(),
+        a.timeout_ms,
+    )
+    .await
 }

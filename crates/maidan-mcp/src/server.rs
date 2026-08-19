@@ -1363,6 +1363,153 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn notification_tools_list_count_mark_and_wait() {
+        use chrono::Utc;
+        use maidan_bus::InMemoryBus;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "n".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "me".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        // Seed two notifications for the member.
+        let mut ids = Vec::new();
+        for log_id in 1..=2 {
+            let n = store
+                .create_notification(NewNotification {
+                    workspace_id: ws.id,
+                    member_id: member.id,
+                    kind: EventKind::MentionRecorded,
+                    source_log_id: log_id,
+                    channel_id: Some(channel.id),
+                    thread_id: Some(thread.id),
+                    message_id: None,
+                    actor_id: None,
+                })
+                .await
+                .unwrap();
+            ids.push(n.id);
+        }
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth = AuthContext::bypass();
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let mid = json!({ "member_id": member.id.0 });
+
+        // Count + list see both.
+        let count = unwrap_content(
+            server
+                .call_tool(&auth, "get_unread_count", &mid)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(count["count"], json!(2));
+        let list = unwrap_content(
+            server
+                .call_tool(&auth, "list_notifications", &mid)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        // Mark one read → count drops, unread_only filters.
+        let marked = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "mark_notification_read",
+                    &json!({ "member_id": member.id.0, "notification_id": ids[0].0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(marked["marked"], json!(true));
+        let count = unwrap_content(
+            server
+                .call_tool(&auth, "get_unread_count", &mid)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(count["count"], json!(1));
+        let unread = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_notifications",
+                    &json!({ "member_id": member.id.0, "unread_only": true }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(unread.as_array().unwrap().len(), 1);
+
+        // wait_for_notification wakes on the member's next mention event.
+        let wait_args = json!({ "member_id": member.id.0, "timeout_ms": 5000 });
+        let mention = Event::MentionRecorded {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            thread_id: thread.id,
+            message_id: MessageId::new(),
+            member_id: member.id,
+        };
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_notification", &wait_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                server.publish_event(mention).await;
+            }
+        );
+        let woke = unwrap_content(out.unwrap());
+        assert_eq!(woke["kind"], json!("mention_recorded"));
+        assert_eq!(woke["member_id"], json!(member.id.0));
+    }
+
+    #[tokio::test]
     async fn task_schedule_tools_create_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 

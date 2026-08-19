@@ -398,6 +398,54 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_notifications",
+            "description": "List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "unread_only": {"type": "boolean", "default": false},
+                    "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "get_unread_count",
+            "description": "A member's unread-notification badge count.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "mark_notification_read",
+            "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "notification_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "notification_id"]
+            }
+        }),
+        json!({
+            "name": "wait_for_notification",
+            "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Live-only: drain existing notifications with list_notifications first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {

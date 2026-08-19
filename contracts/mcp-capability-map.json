@@ -21,6 +21,7 @@
   "get_thread_context": "workspace:read",
   "get_thread_result": "workspace:read",
   "get_tool_transcript": "workspace:read",
+  "get_unread_count": "workspace:read",
   "get_workspace_context": "workspace:read",
   "list_assigned_threads": "workspace:read",
   "list_channel_members": "channel:admin",
@@ -30,6 +31,7 @@
   "list_member_skills": "workspace:read",
   "list_mentions": "workspace:read",
   "list_messages": "workspace:read",
+  "list_notifications": "workspace:read",
   "list_pins": "workspace:read",
   "list_reactions": "workspace:read",
   "list_roots": "workspace:read",
@@ -39,6 +41,7 @@
   "list_thread_required_skills": "workspace:read",
   "list_threads": "workspace:read",
   "mark_inbox_read": "workspace:read",
+  "mark_notification_read": "workspace:read",
   "open_dm_conversation": "message:post",
   "pin_message": "workspace:write",
   "post_dm_message": "message:post",
@@ -58,6 +61,7 @@
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload",
   "wait_for_mention": "workspace:read",
+  "wait_for_notification": "workspace:read",
   "wait_for_ready": "workspace:read",
   "wait_for_result": "workspace:read"
 }

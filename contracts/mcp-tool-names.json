@@ -21,6 +21,7 @@
   "get_thread_context",
   "get_thread_result",
   "get_tool_transcript",
+  "get_unread_count",
   "get_workspace_context",
   "list_assigned_threads",
   "list_channel_members",
@@ -30,6 +31,7 @@
   "list_member_skills",
   "list_mentions",
   "list_messages",
+  "list_notifications",
   "list_pins",
   "list_reactions",
   "list_roots",
@@ -39,6 +41,7 @@
   "list_thread_required_skills",
   "list_threads",
   "mark_inbox_read",
+  "mark_notification_read",
   "open_dm_conversation",
   "pin_message",
   "post_dm_message",
@@ -58,6 +61,7 @@
   "upload_artifact",
   "upload_artifact_multipart_part",
   "wait_for_mention",
+  "wait_for_notification",
   "wait_for_ready",
   "wait_for_result"
 ]

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v240.0.0 — Program C (Arc G complete): MCP inbox tools + `wait_for_notification`
+
+| Change | Where |
+|--------|-------|
+| MCP `list_notifications` / `get_unread_count` / `mark_notification_read` (`workspace:read`) — the twins of Cluster 239's REST, over the shared store | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+| MCP `wait_for_notification` — block on the member's next notification-worthy event (the general form of `wait_for_mention`; shared `wait_for_member_event` helper). **Closes Arc G** (ledger 237 → router 238 → REST 239 → MCP 240) | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v239.0.0 — Program C (Arc G): REST unified inbox
 
 | Change | Where |
