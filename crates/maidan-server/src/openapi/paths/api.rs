@@ -346,6 +346,50 @@ pub fn set_member_notification_pref() {}
     responses((status = 200, body = Vec<NotificationPref>)))]
 pub fn list_member_notification_prefs() {}
 
+#[utoipa::path(post, path = "/members/{id}/channel-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = FollowChannel,
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Following")))]
+pub fn follow_member_channel() {}
+
+#[utoipa::path(delete, path = "/members/{id}/channel-follows/{cid}", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ("cid" = Uuid, Path, description = "Channel id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Unfollowed")))]
+pub fn unfollow_member_channel() {}
+
+#[utoipa::path(get, path = "/members/{id}/channel-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ChannelFollow>)))]
+pub fn list_member_channel_follows() {}
+
+#[utoipa::path(post, path = "/members/{id}/thread-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = FollowThread,
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Following")))]
+pub fn follow_member_thread() {}
+
+#[utoipa::path(delete, path = "/members/{id}/thread-follows/{tid}", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ("tid" = Uuid, Path, description = "Thread id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Unfollowed")))]
+pub fn unfollow_member_thread() {}
+
+#[utoipa::path(get, path = "/members/{id}/thread-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadFollow>)))]
+pub fn list_member_thread_follows() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

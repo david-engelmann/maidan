@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v245.0.0 — Program C (Arc H): follows-aware router + follow REST
+
+| Change | Where |
+|--------|-------|
+| The router fans `MessagePosted` → channel + thread followers (minus the author, mute-aware) via a shared `notify` helper — following delivers new activity to the inbox | `notification_router.rs` |
+| `POST`/`GET /members/:id/channel-follows` + `DELETE …/:cid` and the thread triple — follow/unfollow/list, `workspace:read` + self-only, follow gated on target access | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v244.0.0 — Program C (Arc H): follows/subscription foundation
 
 | Change | Where |

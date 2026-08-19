@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [245.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 9** —
+Arc H. No new gate tag.
+
+### Added
+
+- **Follows-aware router + follow REST.** The notification router now fans a
+  `MessagePosted` to the followers of the message's channel + thread (minus the
+  author, and honoring each recipient's mutes) — following a channel or thread now
+  delivers new activity to the follower's inbox. `POST`/`GET /members/:id/channel-follows`
+  + `DELETE …/:cid` (and the thread triple) let a member follow/unfollow/list, all
+  `workspace:read` and self-only for a session caller; following requires access to
+  the target (`ensure_channel_access` / `ensure_thread_access`). Note: a member
+  mentioned in a channel they also follow gets both a mention and a follow
+  notification (distinct events); per-kind mute (`message_posted`) is the control. The
+  MCP follow tools follow in 246, closing Arc H.
+
 ## [244.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 8** —

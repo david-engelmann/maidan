@@ -1,6 +1,5 @@
 //! Member handlers: list/get members, mentions-for-member, and inbox.
 
-#[cfg(feature = "bootstrap")]
 use axum::http::StatusCode;
 use axum::{
     extract::{Path, Query, State},
@@ -212,4 +211,112 @@ pub async fn list_member_notification_prefs(
     Ok(Json(
         state.store.list_notification_prefs(MemberId(id)).await?,
     ))
+}
+
+/// Follow a channel to be notified of activity there (Cluster 245). Self-only for a
+/// session caller; requires access to the channel being followed.
+pub async fn follow_member_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<FollowChannel>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, body.channel_id).await?;
+    state
+        .store
+        .follow_channel(MemberId(id), body.channel_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unfollow a channel (Cluster 245). Self-only for sessions; `404` if not following.
+pub async fn unfollow_member_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, cid)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if state
+        .store
+        .unfollow_channel(MemberId(id), ChannelId(cid))
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// The channels a member follows (Cluster 245). Self-only for sessions.
+pub async fn list_member_channel_follows(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ChannelFollow>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    Ok(Json(state.store.list_channel_follows(MemberId(id)).await?))
+}
+
+/// Follow a thread to be notified of activity there (Cluster 245). Self-only for a
+/// session caller; requires access to the thread being followed.
+pub async fn follow_member_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<FollowThread>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, body.thread_id).await?;
+    state
+        .store
+        .follow_thread(MemberId(id), body.thread_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unfollow a thread (Cluster 245). Self-only for sessions; `404` if not following.
+pub async fn unfollow_member_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, tid)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if state
+        .store
+        .unfollow_thread(MemberId(id), ThreadId(tid))
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// The threads a member follows (Cluster 245). Self-only for sessions.
+pub async fn list_member_thread_follows(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ThreadFollow>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    Ok(Json(state.store.list_thread_follows(MemberId(id)).await?))
 }

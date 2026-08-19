@@ -176,4 +176,76 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         2,
         "a muted kind is suppressed — no new notification"
     );
+
+    // Cluster 245: a channel follower gets a MessagePosted notification; the author
+    // and non-followers don't.
+    let author = store
+        .create_member(maidan_types::NewMember {
+            workspace_id: ws.id,
+            handle: "author".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let follower = store
+        .create_member(maidan_types::NewMember {
+            workspace_id: ws.id,
+            handle: "follower".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    store.follow_channel(follower.id, channel.id).await.unwrap();
+    store.follow_channel(author.id, channel.id).await.unwrap(); // author follows too
+    let msg = store
+        .post_message(maidan_types::NewMessage {
+            thread_id: thread.id,
+            author_id: author.id,
+            body: "hello followers".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let posted = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: thread.id,
+        dm_conversation_id: None,
+        message: msg,
+    };
+    notification_router::route_event(&state, 5, &posted)
+        .await
+        .unwrap();
+    // The follower is notified; the author (also a follower) is NOT (own message).
+    assert_eq!(
+        store
+            .list_notifications(follower.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a channel follower is notified of the new message"
+    );
+    assert!(
+        store
+            .list_notifications(author.id, false, 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the author is not notified of their own message"
+    );
+    // The mentioned member (not following this channel) gets nothing new from the post.
+    assert_eq!(
+        store
+            .list_notifications(mentioned.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        2,
+        "a non-follower gets no follow notification"
+    );
 }

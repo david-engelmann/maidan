@@ -1,19 +1,27 @@
 //! Subscribes to the event bus and writes per-recipient notification rows
-//! (Cluster 238, Program C — Arc G). Where the webhook worker fans events to
+//! (Cluster 238, Program C — Arc G/H). Where the webhook worker fans events to
 //! per-workspace HTTP sinks, this resolves an event to the *members* it concerns
 //! and writes one `maidan_notifications` row each — the per-recipient delivery
-//! layer the unified inbox reads. Currently routes @mentions; preferences +
-//! follows (Arc H) and more event kinds layer on later.
+//! layer the unified inbox reads. Routes @mentions (Cluster 238) and, for
+//! followers, new messages in a followed channel/thread (Cluster 245), honoring
+//! each recipient's mute preferences (Cluster 242).
 //!
 //! Every server replica runs this consumer, so the same event reaches each; the
 //! write goes through `create_notification_if_absent` (unique on
 //! `(member_id, source_log_id)`), so a replay or a second replica cannot
-//! double-notify.
+//! double-notify. A `MentionRecorded` and a `MessagePosted` are distinct events
+//! (distinct `log_id`s), so a member mentioned in a channel they *also* follow
+//! gets both a mention notification and a message-posted one — per-kind mute
+//! (`message_posted`) is the control for follow-noise.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
-use maidan_types::{Event, EventFilter, EventKind, NewNotification};
+use maidan_types::{
+    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification, ThreadId,
+    WorkspaceId,
+};
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
 use tracing::{info, warn};
@@ -105,55 +113,134 @@ async fn consume_bus(
 }
 
 /// Resolve an event to the members it concerns and write a per-recipient
-/// notification row for each. Currently: `MentionRecorded` → the mentioned member.
-/// Deduped on `(member_id, source_log_id)` via `create_notification_if_absent`, so
-/// event replays and multiple replicas don't double-notify.
+/// notification row for each — `MentionRecorded` → the mentioned member (Cluster
+/// 238); `MessagePosted` → the followers of its channel/thread minus the author
+/// (Cluster 245). Each write is mute-checked (Cluster 242) and deduped on
+/// `(member_id, source_log_id)`, so event replays and multiple replicas don't
+/// double-notify.
 pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result<(), String> {
-    if let Event::MentionRecorded {
-        workspace_id,
-        thread_id,
-        message_id,
-        member_id,
-        ..
-    } = event
-    {
-        // The member's preferences are the routing brain (Cluster 242): skip the
-        // write when they've muted this kind.
-        if state
-            .store
-            .is_notification_muted(*member_id, EventKind::MentionRecorded)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            crate::metrics::record_notification_suppressed("muted");
-            return Ok(());
+    match event {
+        Event::MentionRecorded {
+            workspace_id,
+            thread_id,
+            message_id,
+            member_id,
+            ..
+        } => {
+            // The mention event carries no channel; resolve it (best-effort) so the
+            // inbox can render + RBAC-scope the notification.
+            let channel_id = state
+                .store
+                .get_thread(*thread_id)
+                .await
+                .ok()
+                .map(|t| t.channel_id);
+            notify(
+                state,
+                *workspace_id,
+                *member_id,
+                EventKind::MentionRecorded,
+                log_id,
+                channel_id,
+                Some(*thread_id),
+                Some(*message_id),
+                None,
+            )
+            .await?;
         }
-        // The mention event carries no channel; resolve it (best-effort) so the
-        // inbox can render + RBAC-scope the notification.
-        let channel_id = state
-            .store
-            .get_thread(*thread_id)
-            .await
-            .ok()
-            .map(|t| t.channel_id);
-        let new = NewNotification {
-            workspace_id: *workspace_id,
-            member_id: *member_id,
-            kind: EventKind::MentionRecorded,
-            source_log_id: log_id,
+        Event::MessagePosted {
+            workspace_id,
             channel_id,
-            thread_id: Some(*thread_id),
-            message_id: Some(*message_id),
-            actor_id: None,
-        };
-        let created = state
-            .store
-            .create_notification_if_absent(new)
-            .await
-            .map_err(|e| e.to_string())?;
-        if created.is_some() {
-            crate::metrics::record_notification_created(EventKind::MentionRecorded.as_str());
+            thread_id,
+            dm_conversation_id,
+            message,
+            ..
+        } => {
+            // DMs live in the shared `__dm__` channel and aren't "followed" — skip.
+            if dm_conversation_id.is_some() {
+                return Ok(());
+            }
+            // Followers of the channel and/or the thread, minus the author (you
+            // don't get notified of your own message). The set dedups a member who
+            // follows both; the DB unique index is the cross-replica backstop.
+            let mut recipients: HashSet<MemberId> = HashSet::new();
+            for m in state
+                .store
+                .channel_followers(*channel_id)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                recipients.insert(m);
+            }
+            for m in state
+                .store
+                .thread_followers(*thread_id)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                recipients.insert(m);
+            }
+            recipients.remove(&message.author_id);
+            for member_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    member_id,
+                    EventKind::MessagePosted,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    Some(message.id),
+                    Some(message.author_id),
+                )
+                .await?;
+            }
         }
+        _ => {}
     }
     Ok(())
+}
+
+/// Write one per-recipient notification unless the recipient has muted `kind`
+/// (Cluster 242). Returns whether a row was written (a mute or a dedup collision
+/// returns `false`).
+#[allow(clippy::too_many_arguments)]
+async fn notify(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    kind: EventKind,
+    source_log_id: i64,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    message_id: Option<MessageId>,
+    actor_id: Option<MemberId>,
+) -> Result<bool, String> {
+    if state
+        .store
+        .is_notification_muted(member_id, kind)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        crate::metrics::record_notification_suppressed("muted");
+        return Ok(false);
+    }
+    let created = state
+        .store
+        .create_notification_if_absent(NewNotification {
+            workspace_id,
+            member_id,
+            kind,
+            source_log_id,
+            channel_id,
+            thread_id,
+            message_id,
+            actor_id,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    if created.is_some() {
+        crate::metrics::record_notification_created(kind.as_str());
+    }
+    Ok(created.is_some())
 }

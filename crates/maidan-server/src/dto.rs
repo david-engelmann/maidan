@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ContentBlock, EventKind, MemberId,
-    MemberKind, RefSide, WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ChannelId, ContentBlock, EventKind,
+    MemberId, MemberKind, RefSide, ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -367,6 +367,18 @@ pub struct MarkAllRead {
 pub struct SetNotificationPref {
     pub kind: EventKind,
     pub muted: bool,
+}
+
+/// Follow a channel (Cluster 245).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FollowChannel {
+    pub channel_id: ChannelId,
+}
+
+/// Follow a thread (Cluster 245).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FollowThread {
+    pub thread_id: ThreadId,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
