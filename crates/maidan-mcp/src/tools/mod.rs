@@ -84,6 +84,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_unread_count"
         | "mark_notification_read"
         | "wait_for_notification"
+        | "list_notification_prefs"
+        | "set_notification_pref"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -255,6 +257,8 @@ pub async fn dispatch(
         "get_unread_count" => member::get_unread_count(store, args).await,
         "mark_notification_read" => member::mark_notification_read(store, args).await,
         "wait_for_notification" => member::wait_for_notification(server, auth, args).await,
+        "set_notification_pref" => member::set_notification_pref(store, args).await,
+        "list_notification_prefs" => member::list_notification_prefs(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,

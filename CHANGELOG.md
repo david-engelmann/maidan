@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [243.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 7** —
+Arc H. No new gate tag.
+
+### Added
+
+- **Mute-preference MCP tools.** `set_notification_pref` (upsert a per-`EventKind`
+  mute; `kind` is a snake_case string parsed to `EventKind`) and
+  `list_notification_prefs` — the MCP twins of Cluster 242's REST, over the shared
+  store (`workspace:read`, member-scoped). The **mute** half of Arc H is now complete
+  over REST + MCP; the follows/subscription half is next.
+
 ## [242.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 6** —
