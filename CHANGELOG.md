@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [247.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 11** —
+opens **Arc I (transport + reach)**. No new gate tag.
+
+### Added
+
+- **Email/SMTP transport foundation.** A `MailTransport` trait + a `lettre`-backed
+  `SmtpTransport` + `SmtpConfig::from_env` (`MAIDAN_SMTP_HOST` / `PORT` / `USERNAME` /
+  `PASSWORD` / `FROM` / `STARTTLS`), the first off-platform delivery transport (beyond
+  webhook `deliver_http`). **Config-gated** — no `MAIDAN_SMTP_*` means no mailer is
+  built and nothing is sent — and **not wired into the router yet**. `lettre` uses the
+  existing rustls + tokio stack (no openssl); `cargo deny` passes with `0BSD` added to
+  the licence allow-list (lettre is BSD-Zero-Clause). Recipient email addresses
+  (Cluster 248) and delivery wiring (249) follow.
+
 ## [246.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 10** —

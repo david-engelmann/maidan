@@ -51,6 +51,7 @@ metrics-exporter-prometheus = "0.16"
 metrics-util = { version = "0.20", default-features = false, features = ["layers"] }
 openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname"] }
 rand = "0.8"
 base64 = "0.22"
 urlencoding = "2"
