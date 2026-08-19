@@ -157,6 +157,10 @@ pub fn init() {
             "maidan_notifications_created_total",
             "Per-recipient notifications written by the notification router, by kind"
         );
+        describe_counter!(
+            "maidan_notifications_suppressed_total",
+            "Notifications the router did NOT write, by reason (e.g. a muted preference)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -194,6 +198,12 @@ pub fn record_retention_pruned(table: &str, count: u64) {
 /// event `kind`. Deduped writes (a replay / a second replica) do not increment.
 pub fn record_notification_created(kind: &str) {
     counter!("maidan_notifications_created_total", "kind" => kind.to_string()).increment(1);
+}
+
+/// A notification the router chose NOT to write (Cluster 242), by `reason` — e.g.
+/// `muted` when the recipient has muted the kind.
+pub fn record_notification_suppressed(reason: &str) {
+    counter!("maidan_notifications_suppressed_total", "reason" => reason.to_string()).increment(1);
 }
 
 /// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is

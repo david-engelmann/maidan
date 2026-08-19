@@ -138,6 +138,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/members/{id}/notification-prefs",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/notification-prefs",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",

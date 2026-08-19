@@ -333,6 +333,19 @@ pub fn mark_all_member_notifications_read() {}
     responses((status = 200, body = UnreadCount)))]
 pub fn mark_member_notification_read() {}
 
+#[utoipa::path(put, path = "/members/{id}/notification-prefs", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetNotificationPref,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = NotificationPref)))]
+pub fn set_member_notification_pref() {}
+
+#[utoipa::path(get, path = "/members/{id}/notification-prefs", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<NotificationPref>)))]
+pub fn list_member_notification_prefs() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

@@ -177,3 +177,39 @@ pub async fn mark_all_member_notifications_read(
         .await? as i64;
     Ok(Json(MarkAllRead { cleared }))
 }
+
+/// Set a member's mute preference for an event kind (Cluster 242). Self-only for a
+/// session caller (a member configures their OWN preferences); a bearer is the
+/// act-as-any orchestrator.
+pub async fn set_member_notification_pref(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetNotificationPref>,
+) -> ApiResult<Json<NotificationPref>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    Ok(Json(
+        state
+            .store
+            .set_notification_pref(MemberId(id), body.kind, body.muted)
+            .await?,
+    ))
+}
+
+/// A member's notification preferences (Cluster 242). Self-only for sessions.
+pub async fn list_member_notification_prefs(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<NotificationPref>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    Ok(Json(
+        state.store.list_notification_prefs(MemberId(id)).await?,
+    ))
+}
