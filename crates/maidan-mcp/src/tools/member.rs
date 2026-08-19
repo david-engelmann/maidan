@@ -244,3 +244,42 @@ pub(super) async fn wait_for_notification(
     )
     .await
 }
+
+#[derive(Deserialize)]
+struct SetNotificationPrefArgs {
+    member_id: uuid::Uuid,
+    /// The event kind to (un)mute, snake_case (e.g. `mention_recorded`).
+    kind: String,
+    muted: bool,
+}
+
+/// Set a member's mute preference for an event kind (Cluster 243) — the MCP twin of
+/// `PUT /members/:id/notification-prefs`. The router skips writing notifications of a
+/// muted kind for this member.
+pub(super) async fn set_notification_pref(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetNotificationPrefArgs = serde_json::from_value(args.clone())?;
+    let kind = EventKind::parse(&a.kind)
+        .ok_or_else(|| McpError::InvalidParams(format!("unknown event kind: {}", a.kind)))?;
+    let pref = store
+        .set_notification_pref(MemberId(a.member_id), kind, a.muted)
+        .await?;
+    Ok(content_json(&pref))
+}
+
+#[derive(Deserialize)]
+struct ListNotificationPrefsArgs {
+    member_id: uuid::Uuid,
+}
+
+/// A member's notification preferences (Cluster 243).
+pub(super) async fn list_notification_prefs(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListNotificationPrefsArgs = serde_json::from_value(args.clone())?;
+    let prefs = store.list_notification_prefs(MemberId(a.member_id)).await?;
+    Ok(content_json(&prefs))
+}

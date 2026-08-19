@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v243.0.0 — Program C (Arc H): mute-preference MCP tools
+
+| Change | Where |
+|--------|-------|
+| MCP `set_notification_pref` (upsert a per-`EventKind` mute; `kind` snake_case string) / `list_notification_prefs` — the twins of Cluster 242's REST, over the shared store (`workspace:read`, member-scoped). The mute half of Arc H is now complete over REST + MCP | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v242.0.0 — Program C (Arc H): mute-aware router + preferences REST
 
 | Change | Where |

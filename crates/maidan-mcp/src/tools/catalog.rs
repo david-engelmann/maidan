@@ -446,6 +446,30 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_notification_pref",
+            "description": "Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "description": "event kind, snake_case"},
+                    "muted": {"type": "boolean"}
+                },
+                "required": ["member_id", "kind", "muted"]
+            }
+        }),
+        json!({
+            "name": "list_notification_prefs",
+            "description": "List a member's notification preferences (per-kind mute flags).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {
