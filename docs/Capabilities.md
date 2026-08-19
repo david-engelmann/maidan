@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v246.0.0 — Program C (Arc H complete): follows MCP tools
+
+| Change | Where |
+|--------|-------|
+| MCP `follow_channel` / `unfollow_channel` / `list_channel_follows` + the thread triple — the twins of Cluster 245's REST, over the shared store (`workspace:read`, member-scoped; `follow_*` gate on target access). **Completes Arc H** (mute 241–243, follows 244–246) over REST + MCP | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v245.0.0 — Program C (Arc H): follows-aware router + follow REST
 
 | Change | Where |

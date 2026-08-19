@@ -470,6 +470,76 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "follow_channel",
+            "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "channel_id"]
+            }
+        }),
+        json!({
+            "name": "unfollow_channel",
+            "description": "Stop following a channel (removed=false if not following).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "channel_id"]
+            }
+        }),
+        json!({
+            "name": "list_channel_follows",
+            "description": "List the channels a member follows.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "follow_thread",
+            "description": "Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "thread_id"]
+            }
+        }),
+        json!({
+            "name": "unfollow_thread",
+            "description": "Stop following a thread (removed=false if not following).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_follows",
+            "description": "List the threads a member follows.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {
