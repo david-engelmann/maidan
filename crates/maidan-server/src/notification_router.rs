@@ -117,6 +117,17 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
         ..
     } = event
     {
+        // The member's preferences are the routing brain (Cluster 242): skip the
+        // write when they've muted this kind.
+        if state
+            .store
+            .is_notification_muted(*member_id, EventKind::MentionRecorded)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            crate::metrics::record_notification_suppressed("muted");
+            return Ok(());
+        }
         // The mention event carries no channel; resolve it (best-effort) so the
         // inbox can render + RBAC-scope the notification.
         let channel_id = state

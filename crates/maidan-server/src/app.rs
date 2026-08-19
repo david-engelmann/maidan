@@ -136,6 +136,11 @@ pub fn router(state: AppState) -> Router {
             post(routes::mark_member_notification_read),
         )
         .route(
+            "/members/:id/notification-prefs",
+            axum::routing::put(routes::set_member_notification_pref)
+                .get(routes::list_member_notification_prefs),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )

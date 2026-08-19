@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [242.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 6** —
+Arc H. No new gate tag.
+
+### Added
+
+- **Mute-aware router + preferences REST.** The notification router now consults a
+  member's preferences: `route_event` skips writing a notification when the recipient
+  has muted that `EventKind` (metered as
+  `maidan_notifications_suppressed_total{reason=muted}`). `PUT /members/:id/notification-prefs`
+  (upsert) and `GET /members/:id/notification-prefs` (list) let a member set/read their
+  mutes — `workspace:read` and self-only for a session caller (a member configures
+  their own prefs; a bearer is the act-as-any orchestrator, the Cluster-239 model).
+  Wires the Cluster-241 foundation into the router; the MCP tools follow in 243.
+
 ## [241.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 5** —

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v242.0.0 — Program C (Arc H): mute-aware router + preferences REST
+
+| Change | Where |
+|--------|-------|
+| The notification router skips a muted `(member, kind)` (`route_event` consults `is_notification_muted`; `maidan_notifications_suppressed_total{reason}` metric) | `notification_router.rs`, `metrics.rs` |
+| `PUT`/`GET /members/:id/notification-prefs` — set (upsert) / list a member's mutes; `workspace:read`, self-only for sessions (bearer act-as-any) | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v241.0.0 — Program C (Arc H): notification mute-preferences foundation
 
 | Change | Where |

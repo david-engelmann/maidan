@@ -281,6 +281,9 @@ fn apply_route_defaults(
     if path.contains("/inbox/read") {
         return b.json(&json!({ "read_through": "2026-01-01T00:00:00Z" }));
     }
+    if path.ends_with("/notification-prefs") && method == "PUT" {
+        return b.json(&json!({ "kind": "mention_recorded", "muted": true }));
+    }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
     }

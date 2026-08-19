@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ContentBlock, MemberId, MemberKind,
-    RefSide, WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ContentBlock, EventKind, MemberId,
+    MemberKind, RefSide, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -360,6 +360,13 @@ pub struct UnreadCount {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MarkAllRead {
     pub cleared: i64,
+}
+
+/// Set a member's mute preference for one event kind (Cluster 242).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetNotificationPref {
+    pub kind: EventKind,
+    pub muted: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

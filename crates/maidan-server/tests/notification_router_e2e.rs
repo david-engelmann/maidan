@@ -151,4 +151,29 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         2,
         "a non-mention event produces no notification (yet)"
     );
+
+    // Cluster 242: muting the kind makes the router skip the write.
+    store
+        .set_notification_pref(mentioned.id, EventKind::MentionRecorded, true)
+        .await
+        .unwrap();
+    let muted_mention = Event::MentionRecorded {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        thread_id: thread.id,
+        message_id: maidan_types::MessageId::new(),
+        member_id: mentioned.id,
+    };
+    notification_router::route_event(&state, 4, &muted_mention)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_notifications(mentioned.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        2,
+        "a muted kind is suppressed — no new notification"
+    );
 }
