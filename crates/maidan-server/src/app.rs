@@ -141,6 +141,22 @@ pub fn router(state: AppState) -> Router {
                 .get(routes::list_member_notification_prefs),
         )
         .route(
+            "/members/:id/channel-follows",
+            post(routes::follow_member_channel).get(routes::list_member_channel_follows),
+        )
+        .route(
+            "/members/:id/channel-follows/:cid",
+            axum::routing::delete(routes::unfollow_member_channel),
+        )
+        .route(
+            "/members/:id/thread-follows",
+            post(routes::follow_member_thread).get(routes::list_member_thread_follows),
+        )
+        .route(
+            "/members/:id/thread-follows/:tid",
+            axum::routing::delete(routes::unfollow_member_thread),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )

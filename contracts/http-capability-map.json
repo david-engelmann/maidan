@@ -150,6 +150,42 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/members/{id}/channel-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/channel-follows/{cid}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/channel-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/members/{id}/thread-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/thread-follows/{tid}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/thread-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",

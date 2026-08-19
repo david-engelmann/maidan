@@ -207,6 +207,8 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{id}", &f.member)
             .replace("{nid}", &f.member)
+            .replace("{cid}", &f.channel)
+            .replace("{tid}", &f.thread)
             .replace("{skill}", "testskill");
     }
     if template.starts_with("/channels/") {
@@ -283,6 +285,12 @@ fn apply_route_defaults(
     }
     if path.ends_with("/notification-prefs") && method == "PUT" {
         return b.json(&json!({ "kind": "mention_recorded", "muted": true }));
+    }
+    if path.ends_with("/channel-follows") && method == "POST" {
+        return b.json(&json!({ "channel_id": f.channel }));
+    }
+    if path.ends_with("/thread-follows") && method == "POST" {
+        return b.json(&json!({ "thread_id": f.thread }));
     }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
