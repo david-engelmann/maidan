@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v241.0.0 — Program C (Arc H): notification mute-preferences foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_notification_prefs` table (pg 0044 / sqlite 0043; PK `(member_id, kind)`, `muted` flag; one row per member × `EventKind`, absent = notify) + `NotificationPref` + store `set_notification_pref` (upsert) / `list_notification_prefs` / `is_notification_muted` (router query), both backends. The routing brain the notification router will consult. **Zero-blast-radius foundation** — no router change/routes yet; opens Arc H | `migrations/*`, `models.rs`, `store/*/notification_prefs.rs` |
+
 ## v240.0.0 — Program C (Arc G complete): MCP inbox tools + `wait_for_notification`
 
 | Change | Where |

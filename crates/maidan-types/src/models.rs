@@ -288,6 +288,19 @@ pub struct NewNotification {
     pub actor_id: Option<MemberId>,
 }
 
+/// A member's notification preference for one event kind (Cluster 241, Program C
+/// Arc H). `muted` suppresses router-written notifications of `kind` for this
+/// member; the absence of a row is the default (notify). The routing brain the
+/// notification router consults before writing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct NotificationPref {
+    pub member_id: MemberId,
+    pub kind: crate::EventKind,
+    pub muted: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 
