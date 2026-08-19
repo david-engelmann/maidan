@@ -117,6 +117,26 @@ pub trait Store: Send + Sync {
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError>;
     async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError>;
 
+    /// Per-member notification preferences (Cluster 241, Arc H): `set` upserts a
+    /// mute flag for one event kind, `list` returns a member's prefs, `is_muted`
+    /// answers the router's "should I suppress this?" (absent row = not muted). No
+    /// router change or routes yet — a zero-blast-radius foundation.
+    async fn set_notification_pref(
+        &self,
+        member_id: MemberId,
+        kind: EventKind,
+        muted: bool,
+    ) -> Result<NotificationPref, StoreError>;
+    async fn list_notification_prefs(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<NotificationPref>, StoreError>;
+    async fn is_notification_muted(
+        &self,
+        member_id: MemberId,
+        kind: EventKind,
+    ) -> Result<bool, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,

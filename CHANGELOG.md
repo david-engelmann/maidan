@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [241.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 5** —
+opens **Arc H (preferences + subscription)**. No new gate tag.
+
+### Added
+
+- **Notification mute-preferences foundation.** A `maidan_notification_prefs` table
+  (pg 0044 / sqlite 0043; PK `(member_id, kind)`, a `muted` flag — one row per member
+  × `EventKind`, absent = notify) + `NotificationPref` model + store
+  `set_notification_pref` (upsert) / `list_notification_prefs` /
+  `is_notification_muted` (the router's "should I suppress this?" query, defaulting to
+  not-muted), both backends. The routing brain the notification router will consult
+  before writing. **No router change or routes yet** — the zero-blast-radius
+  foundation pattern (Clusters 159 / 230). Opens Arc H after Arc G (per-recipient
+  notifications) completed at Cluster 240.
+
 ## [240.0.0] — 2026-08-18
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 4** —
