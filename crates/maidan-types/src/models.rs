@@ -301,6 +301,25 @@ pub struct NotificationPref {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A member following a channel (Cluster 244, Arc H) — presence = following. The
+/// notification router notifies followers of activity in the channel, honoring mutes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChannelFollow {
+    pub member_id: MemberId,
+    pub channel_id: ChannelId,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A member following a thread (Cluster 244, Arc H) — presence = following.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadFollow {
+    pub member_id: MemberId,
+    pub thread_id: ThreadId,
+    pub created_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

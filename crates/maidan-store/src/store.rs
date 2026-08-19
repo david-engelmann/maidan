@@ -137,6 +137,42 @@ pub trait Store: Send + Sync {
         kind: EventKind,
     ) -> Result<bool, StoreError>;
 
+    /// Subscription / follows (Cluster 244, Arc H): a member follows a channel or
+    /// thread to be notified of activity there even without a mention. `follow_*` is
+    /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*` is a
+    /// member's follows; `*_followers` is the router's fan-out set. No router change
+    /// or routes yet — a zero-blast-radius foundation.
+    async fn follow_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<(), StoreError>;
+    async fn unfollow_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError>;
+    async fn list_channel_follows(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<ChannelFollow>, StoreError>;
+    async fn channel_followers(&self, channel_id: ChannelId) -> Result<Vec<MemberId>, StoreError>;
+    async fn follow_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<(), StoreError>;
+    async fn unfollow_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError>;
+    async fn list_thread_follows(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<ThreadFollow>, StoreError>;
+    async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,

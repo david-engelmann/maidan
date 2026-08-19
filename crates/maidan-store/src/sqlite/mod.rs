@@ -14,6 +14,7 @@ pub mod delivery_cursor;
 mod dm;
 mod erase_workspace;
 pub mod events;
+mod follows;
 mod fsm_hooks;
 mod group_dm;
 mod inbox;
@@ -225,6 +226,53 @@ impl Store for SqliteStore {
         kind: EventKind,
     ) -> Result<bool, StoreError> {
         notification_prefs::is_muted(&self.pool, member_id, kind).await
+    }
+
+    async fn follow_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<(), StoreError> {
+        follows::follow_channel(&self.pool, member_id, channel_id).await
+    }
+    async fn unfollow_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError> {
+        follows::unfollow_channel(&self.pool, member_id, channel_id).await
+    }
+    async fn list_channel_follows(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<ChannelFollow>, StoreError> {
+        follows::list_channel_follows(&self.pool, member_id).await
+    }
+    async fn channel_followers(&self, channel_id: ChannelId) -> Result<Vec<MemberId>, StoreError> {
+        follows::channel_followers(&self.pool, channel_id).await
+    }
+    async fn follow_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<(), StoreError> {
+        follows::follow_thread(&self.pool, member_id, thread_id).await
+    }
+    async fn unfollow_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError> {
+        follows::unfollow_thread(&self.pool, member_id, thread_id).await
+    }
+    async fn list_thread_follows(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<ThreadFollow>, StoreError> {
+        follows::list_thread_follows(&self.pool, member_id).await
+    }
+    async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
+        follows::thread_followers(&self.pool, thread_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {
