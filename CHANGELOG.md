@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [246.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 10** —
+**closes Arc H**. No new gate tag.
+
+### Added
+
+- **Follows MCP tools.** `follow_channel` / `unfollow_channel` / `list_channel_follows`
+  + the thread triple — the MCP twins of Cluster 245's REST, over the shared store
+  (`workspace:read`, member-scoped). `follow_channel` / `follow_thread` gate on access
+  to the target (they join the pre-dispatch channel/thread access gates); unfollow and
+  list don't. **This completes Arc H** — preferences + subscription (mute 241–243,
+  follows 244–246) over REST + MCP, the routing brain the notification router consults.
+
 ## [245.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 9** —

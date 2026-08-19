@@ -86,6 +86,12 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_notification"
         | "list_notification_prefs"
         | "set_notification_pref"
+        | "follow_channel"
+        | "unfollow_channel"
+        | "list_channel_follows"
+        | "follow_thread"
+        | "unfollow_thread"
+        | "list_thread_follows"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -150,7 +156,8 @@ async fn enforce_channel_access(
         | "claim_next_thread"
         | "wait_for_ready"
         | "get_queue_depth"
-        | "create_task_schedule" => {
+        | "create_task_schedule"
+        | "follow_channel" => {
             // `wait_for_ready`'s channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
             if let Some(id) = field("channel_id") {
@@ -177,7 +184,8 @@ async fn enforce_channel_access(
         | "set_thread_result"
         | "get_thread_result"
         | "wait_for_result"
-        | "get_dependency_results" => {
+        | "get_dependency_results"
+        | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
@@ -259,6 +267,12 @@ pub async fn dispatch(
         "wait_for_notification" => member::wait_for_notification(server, auth, args).await,
         "set_notification_pref" => member::set_notification_pref(store, args).await,
         "list_notification_prefs" => member::list_notification_prefs(store, args).await,
+        "follow_channel" => member::follow_channel(store, args).await,
+        "unfollow_channel" => member::unfollow_channel(store, args).await,
+        "list_channel_follows" => member::list_channel_follows(store, args).await,
+        "follow_thread" => member::follow_thread(store, args).await,
+        "unfollow_thread" => member::unfollow_thread(store, args).await,
+        "list_thread_follows" => member::list_thread_follows(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,

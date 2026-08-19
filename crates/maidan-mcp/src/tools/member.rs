@@ -283,3 +283,84 @@ pub(super) async fn list_notification_prefs(
     let prefs = store.list_notification_prefs(MemberId(a.member_id)).await?;
     Ok(content_json(&prefs))
 }
+
+#[derive(Deserialize)]
+struct FollowChannelArgs {
+    member_id: uuid::Uuid,
+    channel_id: uuid::Uuid,
+}
+
+/// Follow a channel to be notified of activity there (Cluster 246). Channel access
+/// is enforced pre-dispatch (the `channel_id` arg). Idempotent.
+pub(super) async fn follow_channel(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FollowChannelArgs = serde_json::from_value(args.clone())?;
+    store
+        .follow_channel(MemberId(a.member_id), ChannelId(a.channel_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "following": true })))
+}
+
+/// Unfollow a channel (Cluster 246). `removed` is false if not following.
+pub(super) async fn unfollow_channel(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FollowChannelArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .unfollow_channel(MemberId(a.member_id), ChannelId(a.channel_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "removed": removed })))
+}
+
+/// The channels a member follows (Cluster 246).
+pub(super) async fn list_channel_follows(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    Ok(content_json(
+        &store.list_channel_follows(MemberId(a.member_id)).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct FollowThreadArgs {
+    member_id: uuid::Uuid,
+    thread_id: uuid::Uuid,
+}
+
+/// Follow a thread to be notified of activity there (Cluster 246). Thread access is
+/// enforced pre-dispatch (the `thread_id` arg). Idempotent.
+pub(super) async fn follow_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: FollowThreadArgs = serde_json::from_value(args.clone())?;
+    store
+        .follow_thread(MemberId(a.member_id), ThreadId(a.thread_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "following": true })))
+}
+
+/// Unfollow a thread (Cluster 246). `removed` is false if not following.
+pub(super) async fn unfollow_thread(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FollowThreadArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .unfollow_thread(MemberId(a.member_id), ThreadId(a.thread_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "removed": removed })))
+}
+
+/// The threads a member follows (Cluster 246).
+pub(super) async fn list_thread_follows(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    Ok(content_json(
+        &store.list_thread_follows(MemberId(a.member_id)).await?,
+    ))
+}

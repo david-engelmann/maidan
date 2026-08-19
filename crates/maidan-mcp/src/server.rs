@@ -1587,6 +1587,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn follow_tools_channel_and_thread() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "f".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let args = json!({ "member_id": member.id.0, "channel_id": channel.id.0 });
+
+        // Follow → list shows it → unfollow removes it.
+        let followed = unwrap_content(
+            server
+                .call_tool(&auth, "follow_channel", &args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(followed["following"], json!(true));
+        let list = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_channel_follows",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        let removed = unwrap_content(
+            server
+                .call_tool(&auth, "unfollow_channel", &args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(removed["removed"], json!(true));
+        let empty = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_channel_follows",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(empty.as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn task_schedule_tools_create_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
