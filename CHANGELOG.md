@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [244.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 8** —
+Arc H. No new gate tag.
+
+### Added
+
+- **Follows/subscription foundation.** `maidan_channel_follows` +
+  `maidan_thread_follows` tables (pg 0045 / sqlite 0044; PK `(member, target)`, reverse
+  index on the target — presence of a row = following) + `ChannelFollow` /
+  `ThreadFollow` models + store `follow_channel` / `unfollow_channel` /
+  `list_channel_follows` / `channel_followers` and the thread quartet, both backends. A
+  member follows a channel or thread to be notified of activity there even without a
+  mention; `*_followers` is the router's fan-out set. **No router change or routes
+  yet** — the zero-blast-radius foundation pattern (Cluster 230). Opens the
+  follows half of Arc H (the mute half completed at 243).
+
 ## [243.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 7** —

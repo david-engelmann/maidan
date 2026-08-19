@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v244.0.0 — Program C (Arc H): follows/subscription foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_channel_follows` + `maidan_thread_follows` tables (pg 0045 / sqlite 0044; PK `(member, target)`, reverse index; presence = following) + `ChannelFollow`/`ThreadFollow` + store follow/unfollow/list/`*_followers` (the router's fan-out set), both backends. A member follows a channel or thread to be notified of activity there. **Zero-blast-radius foundation** — no router change/routes yet | `migrations/*`, `models.rs`, `store/*/follows.rs` |
+
 ## v243.0.0 — Program C (Arc H): mute-preference MCP tools
 
 | Change | Where |
