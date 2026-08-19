@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v247.0.0 — Program C (Arc I): email/SMTP transport foundation
+
+| Change | Where |
+|--------|-------|
+| `MailTransport` trait + `lettre`-backed `SmtpTransport` + `SmtpConfig::from_env` (`MAIDAN_SMTP_*`) — the first off-platform delivery transport, config-gated (no config → no mailer → nothing sent) and unwired. `lettre` on the existing rustls+tokio stack; `cargo deny` green with `0BSD` allowed | `mail.rs`, `lib.rs`, `Cargo.toml`, `deny.toml` |
+
 ## v246.0.0 — Program C (Arc H complete): follows MCP tools
 
 | Change | Where |
