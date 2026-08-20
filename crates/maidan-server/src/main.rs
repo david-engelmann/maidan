@@ -362,6 +362,20 @@ async fn main() -> anyhow::Result<()> {
     // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
     state.rate_limit_default_on = true;
 
+    // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
+    // configured — otherwise the notification router sends no email.
+    if let Some(smtp) = maidan_server::mail::SmtpConfig::from_env() {
+        match maidan_server::mail::SmtpTransport::from_config(&smtp) {
+            Ok(transport) => {
+                state.attach_mail(std::sync::Arc::new(transport));
+                tracing::info!(host = %smtp.host, "email transport configured");
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "email transport config invalid; email disabled");
+            }
+        }
+    }
+
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
     // delivery watermark), audit trail, and delivery tables past their age.

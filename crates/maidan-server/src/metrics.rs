@@ -161,6 +161,10 @@ pub fn init() {
             "maidan_notifications_suppressed_total",
             "Notifications the router did NOT write, by reason (e.g. a muted preference)"
         );
+        describe_counter!(
+            "maidan_email_delivered_total",
+            "Notification emails the router attempted to send, by outcome (sent/failed)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -204,6 +208,12 @@ pub fn record_notification_created(kind: &str) {
 /// `muted` when the recipient has muted the kind.
 pub fn record_notification_suppressed(reason: &str) {
     counter!("maidan_notifications_suppressed_total", "reason" => reason.to_string()).increment(1);
+}
+
+/// A notification-email delivery attempt (Cluster 249), by `outcome` — `sent` or
+/// `failed`. Best-effort: a `failed` send is logged + counted, not retried.
+pub fn record_email_delivered(outcome: &str) {
+    counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
 
 /// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
