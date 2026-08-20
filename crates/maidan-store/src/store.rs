@@ -173,6 +173,21 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<ThreadFollow>, StoreError>;
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
 
+    /// A member's delivery email address (Cluster 248, Arc I): where email
+    /// notifications go. `set` upserts, `get` returns `None` when unset, `delete`
+    /// removes it. A separate table, so the shared member row-mapping is untouched.
+    /// No delivery wiring yet — a zero-blast-radius foundation.
+    async fn set_member_email(
+        &self,
+        member_id: MemberId,
+        email: &str,
+    ) -> Result<MemberEmail, StoreError>;
+    async fn get_member_email(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<MemberEmail>, StoreError>;
+    async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,

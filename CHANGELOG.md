@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [248.0.0] — 2026-08-19
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 12** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Member delivery-email store.** A `maidan_member_emails` table (pg 0046 / sqlite
+  0045; `member_id` PK, `email`, one per member) + `MemberEmail` model + store
+  `set_member_email` (upsert) / `get_member_email` / `delete_member_email`, both
+  backends. Where a member's email notifications go — the recipient-address
+  prerequisite for the Cluster-247 SMTP transport. A separate table (not a column on
+  `maidan_members`) to avoid the shared-member-row ripple. **No delivery wiring yet**
+  — the router/worker + delivery preference + REST/MCP follow in Cluster 249.
+
 ## [247.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 11** —

@@ -18,6 +18,7 @@ mod follows;
 mod fsm_hooks;
 mod group_dm;
 mod inbox;
+mod member_emails;
 mod member_skills;
 mod members;
 mod mentions;
@@ -273,6 +274,23 @@ impl Store for SqliteStore {
     }
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_followers(&self.pool, thread_id).await
+    }
+
+    async fn set_member_email(
+        &self,
+        member_id: MemberId,
+        email: &str,
+    ) -> Result<MemberEmail, StoreError> {
+        member_emails::set(&self.pool, member_id, email).await
+    }
+    async fn get_member_email(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<MemberEmail>, StoreError> {
+        member_emails::get(&self.pool, member_id).await
+    }
+    async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError> {
+        member_emails::delete(&self.pool, member_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

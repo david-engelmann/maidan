@@ -261,7 +261,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_dependency_results",
-            "description": "Gather the structured results of a parent task's dependencies as [{thread_id, result}] (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.",
+            "description": "Gather the structured results of a parent task's dependencies as a list of {thread_id, result} objects (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
