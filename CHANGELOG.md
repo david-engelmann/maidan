@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [255.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 19** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Digest sweeper + router honors digest mode.** The notification router now skips
+  the immediate per-notification email for a member in `Digest` delivery mode
+  (Cluster 254), metered `maidan_email_delivered_total{outcome="skipped_digest"}`;
+  and a new opt-in background digest sweeper (`MAIDAN_DIGEST_TICK_SECS`) drains
+  `members_due_for_digest`, emails each digest-mode member an unread-count rollup,
+  and advances their digest watermark **only on a successful send** (so a transient
+  failure retries next tick, at-least-once). The alternative-mode digest now works
+  end-to-end. The sweeper is a no-op without a mail transport and — deliberately,
+  unlike the scheduler's `SKIP LOCKED` claim — is not single-flighted across
+  replicas (a duplicate digest is low-harm; run it on one replica for exactly-once).
+
 ## [254.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 18** —
