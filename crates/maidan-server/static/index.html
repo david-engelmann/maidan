@@ -313,6 +313,7 @@
         <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
+        <button type="button" data-tab="notifications">Notifications</button>
         <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="dms">DMs</button>
         <button type="button" data-tab="group-dms">Group DMs</button>
@@ -387,6 +388,23 @@
         <h4>Online now</h4>
         <ul id="presence-list" class="muted">
           <li>Connect the WebSocket to populate.</li>
+        </ul>
+      </section>
+      <section id="panel-notifications" class="panel">
+        <p class="muted">
+          Your per-recipient notifications — @mentions plus activity in channels
+          and threads you follow. Requires a signed-in session (yours is the acting
+          member). <span id="notif-unread"></span>
+        </p>
+        <div>
+          <button id="notif-refresh" type="button">Refresh</button>
+          <button id="notif-read-all" type="button">Mark all read</button>
+          <label
+            ><input type="checkbox" id="notif-unread-only" /> Unread only</label
+          >
+        </div>
+        <ul id="notification-list" class="muted">
+          <li>Sign in and refresh to load your notifications.</li>
         </ul>
       </section>
       <section id="panel-dms" class="panel">
@@ -1526,6 +1544,91 @@
         }
       }
 
+      async function loadNotifications() {
+        const list = document.getElementById("notification-list");
+        const badge = document.getElementById("notif-unread");
+        if (!sessionMemberId) {
+          list.innerHTML =
+            "<li class='muted'>Sign in (session) to see your notifications.</li>";
+          badge.textContent = "";
+          return;
+        }
+        const unreadOnly = document.getElementById("notif-unread-only").checked;
+        try {
+          const cres = await fetch(
+            uiReadPath(`/members/${sessionMemberId}/notifications/unread-count`),
+            { headers: headers(), credentials: "include" },
+          );
+          badge.textContent = cres.ok
+            ? `— ${(await cres.json()).count} unread`
+            : "";
+          const suffix = `/members/${sessionMemberId}/notifications?unread_only=${unreadOnly}&limit=50`;
+          const res = await fetch(uiReadPath(suffix), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed to load (HTTP ${res.status}).</li>`;
+            return;
+          }
+          renderNotifications(await res.json());
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
+      function renderNotifications(items) {
+        const list = document.getElementById("notification-list");
+        list.innerHTML = "";
+        if (!items.length) {
+          list.innerHTML = "<li class='muted'>No notifications.</li>";
+          return;
+        }
+        for (const n of items) {
+          const li = document.createElement("li");
+          const where = n.thread_id ? ` in thread ${n.thread_id}` : "";
+          const readMark = n.read_at ? " (read)" : "";
+          li.textContent = `${n.kind}${where}${readMark}`;
+          if (!n.read_at) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Mark read";
+            btn.style.marginLeft = "0.5rem";
+            btn.onclick = () => markNotificationRead(n.id);
+            li.appendChild(btn);
+          }
+          list.appendChild(li);
+        }
+      }
+
+      async function markNotificationRead(nid) {
+        if (!requireAuthForWrite()) return;
+        try {
+          const res = await fetch(
+            apiWritePath(`/members/${sessionMemberId}/notifications/${nid}/read`),
+            { method: "POST", headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+        await loadNotifications();
+      }
+
+      async function markAllNotificationsRead() {
+        if (!requireAuthForWrite()) return;
+        try {
+          const res = await fetch(
+            apiWritePath(`/members/${sessionMemberId}/notifications/read-all`),
+            { method: "POST", headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+        await loadNotifications();
+      }
+
       document.querySelectorAll(".tabs button").forEach((btn) => {
         btn.onclick = () => {
           document.querySelectorAll(".tabs button").forEach((b) => {
@@ -1534,6 +1637,7 @@
           btn.setAttribute("aria-selected", "true");
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+          if (btn.dataset.tab === "notifications") loadNotifications();
         };
       });
 
@@ -1830,6 +1934,11 @@
       document.getElementById("ws-disconnect").onclick = disconnectWs;
       document.getElementById("presence-online").onclick = () => setPresence("online");
       document.getElementById("presence-away").onclick = () => setPresence("away");
+      document.getElementById("notif-refresh").onclick = () => loadNotifications();
+      document.getElementById("notif-read-all").onclick = () =>
+        markAllNotificationsRead();
+      document.getElementById("notif-unread-only").onchange = () =>
+        loadNotifications();
       document.getElementById("ws-clear").onclick = () => {
         document.getElementById("live-feed").textContent = "";
       };

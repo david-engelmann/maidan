@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v251.0.0 — Program C (Arc I): /ui notification center
+
+| Change | Where |
+|--------|-------|
+| A "Notifications" tab in the `/ui` (list + unread badge + mark-read/read-all + unread-only filter) over four new `/ui/api/members/:id/notifications*` routes reusing the Cluster-239 handlers under the session middleware. `sessionMemberId` = self; no capability-map/OpenAPI churn (`/ui/api` curated subset); `ui_js_contract` green | `app.rs`, `static/index.html` |
+
 ## v250.0.0 — Program C (Arc I): member delivery-email REST
 
 | Change | Where |

@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [251.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 15** —
+Arc I. No new gate tag.
+
+### Added
+
+- **`/ui` notification center.** A "Notifications" tab in the `/ui` lists the
+  signed-in member's notifications (with an unread-count badge, an unread-only
+  filter, per-item "Mark read", and "Mark all read"), over four new
+  `/ui/api/members/:id/notifications*` routes that reuse the Cluster-239 handlers
+  under the session middleware. `sessionMemberId` is passed as `:id`, so the
+  self-only guard lets a session user see only their own inbox. No new handlers,
+  capability-map, or OpenAPI churn (`/ui/api` is a curated subset absent from
+  OpenAPI); the JS uses only established helpers so the `ui_js_contract` guard stays
+  green. The whole notification system now has a human face.
+
 ## [250.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 14** —
