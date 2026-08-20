@@ -9,6 +9,7 @@ mod channel_members;
 mod channels;
 pub mod delivery_cursor;
 mod dm;
+mod email_digest;
 mod erase_workspace;
 pub mod events;
 mod follows;
@@ -296,6 +297,30 @@ impl Store for PostgresStore {
         member_id: MemberId,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
         member_last_seen::get(&self.pool, member_id).await
+    }
+
+    async fn set_delivery_mode(
+        &self,
+        member_id: MemberId,
+        mode: EmailDeliveryMode,
+    ) -> Result<(), StoreError> {
+        email_digest::set_delivery_mode(&self.pool, member_id, mode).await
+    }
+    async fn get_delivery_mode(
+        &self,
+        member_id: MemberId,
+    ) -> Result<EmailDeliveryMode, StoreError> {
+        email_digest::get_delivery_mode(&self.pool, member_id).await
+    }
+    async fn set_last_digest_at(
+        &self,
+        member_id: MemberId,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError> {
+        email_digest::set_last_digest_at(&self.pool, member_id, now).await
+    }
+    async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError> {
+        email_digest::members_due_for_digest(&self.pool, limit).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

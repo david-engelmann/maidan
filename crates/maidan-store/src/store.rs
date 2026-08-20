@@ -198,6 +198,26 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError>;
 
+    /// Email digest data model (Cluster 254, Arc I): a per-member delivery mode
+    /// (`set`/`get`, default `Immediate` when unset), a digest watermark
+    /// (`set_last_digest_at`, advanced after a digest is sent), and the sweeper's
+    /// enumeration (`members_due_for_digest` — digest-mode members with an address
+    /// and unread notifications since their last digest). No worker/routes yet — a
+    /// zero-blast-radius foundation.
+    async fn set_delivery_mode(
+        &self,
+        member_id: MemberId,
+        mode: EmailDeliveryMode,
+    ) -> Result<(), StoreError>;
+    async fn get_delivery_mode(&self, member_id: MemberId)
+        -> Result<EmailDeliveryMode, StoreError>;
+    async fn set_last_digest_at(
+        &self,
+        member_id: MemberId,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,
