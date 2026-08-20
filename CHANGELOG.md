@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [250.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 14** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Member delivery-email REST.** `PUT /members/:id/email` (set — opt in),
+  `GET /members/:id/email` (read; `404` when unset), and `DELETE /members/:id/email`
+  (clear — opt out), all `workspace:read` and self-only for a session caller. With the
+  Cluster-249 router wiring, the email feature now works end-to-end over REST: a
+  member registers an address and their notifications arrive by email (when SMTP is
+  configured). `PUT` does a light `@` sanity check (`400` on obvious garbage); full
+  validation stays at the transport. MCP email tools are an optional low-value
+  follow-up.
+
 ## [249.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 13** —

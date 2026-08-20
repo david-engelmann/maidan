@@ -381,6 +381,12 @@ pub struct FollowThread {
     pub thread_id: ThreadId,
 }
 
+/// Set a member's delivery email address (Cluster 250).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetEmail {
+    pub email: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,

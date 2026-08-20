@@ -390,6 +390,25 @@ pub fn unfollow_member_thread() {}
     responses((status = 200, body = Vec<ThreadFollow>)))]
 pub fn list_member_thread_follows() {}
 
+#[utoipa::path(put, path = "/members/{id}/email", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetEmail,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberEmail)))]
+pub fn set_member_email() {}
+
+#[utoipa::path(get, path = "/members/{id}/email", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberEmail)))]
+pub fn get_member_email() {}
+
+#[utoipa::path(delete, path = "/members/{id}/email", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Cleared")))]
+pub fn delete_member_email() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

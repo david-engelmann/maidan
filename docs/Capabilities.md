@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v250.0.0 — Program C (Arc I): member delivery-email REST
+
+| Change | Where |
+|--------|-------|
+| `PUT`/`GET`/`DELETE /members/:id/email` — set (opt-in) / read (`404` unset) / clear (opt-out), `workspace:read` + self-only. Makes email opt-in usable over HTTP; light `@` check at the edge, full validation at the transport | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v249.0.0 — Program C (Arc I): email delivery wired into the router
 
 | Change | Where |

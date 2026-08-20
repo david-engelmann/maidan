@@ -157,6 +157,12 @@ pub fn router(state: AppState) -> Router {
             axum::routing::delete(routes::unfollow_member_thread),
         )
         .route(
+            "/members/:id/email",
+            axum::routing::put(routes::set_member_email)
+                .get(routes::get_member_email)
+                .delete(routes::delete_member_email),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )
