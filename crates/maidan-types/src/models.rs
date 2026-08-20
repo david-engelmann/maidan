@@ -320,6 +320,16 @@ pub struct ThreadFollow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A member's delivery email address (Cluster 248, Arc I) — where email
+/// notifications go. One per member.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberEmail {
+    pub member_id: MemberId,
+    pub email: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

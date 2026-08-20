@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v248.0.0 — Program C (Arc I): member delivery-email store
+
+| Change | Where |
+|--------|-------|
+| `maidan_member_emails` table (pg 0046 / sqlite 0045; `member_id` PK, `email`, one per member) + `MemberEmail` + store `set`/`get`/`delete`, both backends. Where a member's email notifications go — the recipient-address prerequisite for the SMTP transport. A separate table (not a member column) to avoid the row ripple. **Foundation** — no delivery wiring yet | `migrations/*`, `models.rs`, `store/*/member_emails.rs` |
+
 ## v247.0.0 — Program C (Arc I): email/SMTP transport foundation
 
 | Change | Where |
