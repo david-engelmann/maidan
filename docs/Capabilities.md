@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v255.0.0 — Program C (Arc I): digest sweeper + router honors digest mode
+
+| Change | Where |
+|--------|-------|
+| Router skips the immediate email for a `Digest`-mode member (metered `skipped_digest`) | `notification_router.rs` |
+| Opt-in digest sweeper (`MAIDAN_DIGEST_TICK_SECS`): drains `members_due_for_digest`, emails an unread-count rollup, advances `set_last_digest_at` on success (at-least-once, self-healing); no-op without a transport; not single-flighted (low-harm duplicate — run on one replica for exactly-once) | `digest.rs`, `main.rs`, `lib.rs`, `metrics.rs` |
+
 ## v254.0.0 — Program C (Arc I): email digest data model (store foundation)
 
 | Change | Where |

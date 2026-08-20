@@ -210,10 +210,16 @@ pub fn record_notification_suppressed(reason: &str) {
     counter!("maidan_notifications_suppressed_total", "reason" => reason.to_string()).increment(1);
 }
 
-/// A notification-email delivery attempt (Cluster 249), by `outcome` — `sent`,
-/// `failed`, or `skipped_present` (Cluster 253: the recipient was seen within the
-/// presence window, so the email was suppressed as redundant). Best-effort: a
-/// `failed` send is logged + counted, not retried.
+/// A notification-email delivery attempt, by `outcome`:
+/// - `sent` / `failed` — an immediate per-notification email (Cluster 249).
+/// - `skipped_present` — suppressed because the recipient was seen within the
+///   presence window (Cluster 253).
+/// - `skipped_digest` — suppressed because the recipient is in digest mode
+///   (Cluster 255); the digest sweeper emails them instead.
+/// - `digest` / `digest_failed` — a periodic digest rollup send (Cluster 255).
+///
+/// Best-effort: a `failed` send is logged + counted, not retried (a `digest_failed`
+/// leaves the watermark so the next sweep retries).
 pub fn record_email_delivered(outcome: &str) {
     counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }

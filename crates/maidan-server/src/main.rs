@@ -396,6 +396,15 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Background email-digest sweeper (Cluster 255): opt-in via
+    // `MAIDAN_DIGEST_TICK_SECS`. Emails digest-mode members an unread rollup.
+    if let Some(digest_cfg) = maidan_server::digest::config_from_env() {
+        let digest_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::digest::run(digest_state, digest_cfg).await;
+        });
+    }
+
     let app = router(state.clone());
 
     if outbox_relay {

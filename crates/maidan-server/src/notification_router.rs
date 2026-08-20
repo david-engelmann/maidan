@@ -290,6 +290,20 @@ pub async fn deliver_notification_email(
             return;
         }
     };
+    // Digest mode (Cluster 255): a member in digest mode gets a periodic rollup
+    // from the sweeper instead of a per-notification email — the two are mutually
+    // exclusive, so suppress the immediate send here. A lookup error falls through
+    // and sends (the immediate email is the safer default on an uncertain mode).
+    match state.store.get_delivery_mode(member_id).await {
+        Ok(maidan_types::EmailDeliveryMode::Digest) => {
+            crate::metrics::record_email_delivered("skipped_digest");
+            return;
+        }
+        Ok(maidan_types::EmailDeliveryMode::Immediate) => {}
+        Err(err) => {
+            warn!(error = %err, "notification email: delivery-mode lookup failed");
+        }
+    }
     // Presence-aware routing (Cluster 253): if the recipient was seen within the
     // configured window, skip the email — they are active and will see the in-app
     // notification. A negative idle (clock skew, last-seen in the future) counts
