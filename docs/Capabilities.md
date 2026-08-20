@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v254.0.0 — Program C (Arc I): email digest data model (store foundation)
+
+| Change | Where |
+|--------|-------|
+| `EmailDeliveryMode` (`Immediate` default / `Digest`) + `DigestDue` | `maidan-types/src/models.rs` |
+| `maidan_member_delivery_prefs` + `maidan_member_digest_state` tables (pg 0048 / sqlite 0047) + store `set/get_delivery_mode` (default `Immediate`), `set_last_digest_at` (watermark), `members_due_for_digest` (digest-mode members w/ address + unread-since-last-digest, address inline), both backends. The alternative-mode digest data model (immediate OR digest, not both). **Foundation** — unwired | `migrations/*`, `store/*/email_digest.rs` |
+
 ## v253.0.0 — Program C (Arc I): presence-aware email routing
 
 | Change | Where |

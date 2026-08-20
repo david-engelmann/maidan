@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [254.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 18** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Email digest data model (store foundation).** The store layer for scheduled
+  email digests: an `EmailDeliveryMode` (`Immediate` default / `Digest`) and a
+  `DigestDue` enumeration row in maidan-types; two per-member tables
+  (`maidan_member_delivery_prefs`, `maidan_member_digest_state`; pg 0048 / sqlite
+  0047); and store `set_delivery_mode` / `get_delivery_mode` (default `Immediate`
+  when unset) / `set_last_digest_at` (the digest watermark) / `members_due_for_digest`
+  (digest-mode members with an address and unread notifications created since their
+  last digest, address carried inline), both backends. Implements the chosen
+  alternative-mode product — a member picks immediate per-notification emails *or* a
+  periodic digest, not both. **Foundation** — no router change, sweeper, or routes
+  yet, so zero behaviour change until Cluster 255.
+
 ## [253.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 17** —

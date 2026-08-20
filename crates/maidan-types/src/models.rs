@@ -330,6 +330,47 @@ pub struct MemberEmail {
     pub updated_at: DateTime<Utc>,
 }
 
+/// How a member wants notification emails delivered (Cluster 254, Arc I). The
+/// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
+/// `Digest` opts out of per-notification emails in favour of a periodic rollup
+/// from the digest sweeper; the two are mutually exclusive by design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum EmailDeliveryMode {
+    #[default]
+    Immediate,
+    Digest,
+}
+
+impl EmailDeliveryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Immediate => "immediate",
+            Self::Digest => "digest",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "immediate" => Some(Self::Immediate),
+            "digest" => Some(Self::Digest),
+            _ => None,
+        }
+    }
+}
+
+/// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
+/// row — a digest-mode member with an address who has unread notifications created
+/// since their last digest. Carries the address so the sweeper needs no extra
+/// per-member lookup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestDue {
+    pub member_id: MemberId,
+    pub email: String,
+    pub unread_count: i64,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 
