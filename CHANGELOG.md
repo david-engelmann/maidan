@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [252.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 16** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Durable member last-seen (store foundation).** A `maidan_member_last_seen`
+  table (pg 0047 / sqlite 0046; `member_id` PK, `last_seen_at`) + store
+  `touch_member_last_seen` (idempotent upsert to `now()`) and `get_member_last_seen`
+  (→ `Option<DateTime<Utc>>`), both backends. Presence is in-memory only today, so it
+  can't say "was this member recently active?" after a restart or across replicas;
+  this gives presence-aware email routing (Cluster 253) a persistent signal. A
+  separate one-row-per-member table (not a column on `maidan_members`) avoids the
+  member-row schema ripple; no `MemberLastSeen` model (the row is just a timestamp).
+  **Foundation** — nothing calls `touch` or reads `get` yet, so zero behaviour
+  change until 253.
+
 ## [251.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 15** —
