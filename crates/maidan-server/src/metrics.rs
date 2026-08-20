@@ -210,8 +210,10 @@ pub fn record_notification_suppressed(reason: &str) {
     counter!("maidan_notifications_suppressed_total", "reason" => reason.to_string()).increment(1);
 }
 
-/// A notification-email delivery attempt (Cluster 249), by `outcome` — `sent` or
-/// `failed`. Best-effort: a `failed` send is logged + counted, not retried.
+/// A notification-email delivery attempt (Cluster 249), by `outcome` — `sent`,
+/// `failed`, or `skipped_present` (Cluster 253: the recipient was seen within the
+/// presence window, so the email was suppressed as redundant). Best-effort: a
+/// `failed` send is logged + counted, not retried.
 pub fn record_email_delivered(outcome: &str) {
     counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }

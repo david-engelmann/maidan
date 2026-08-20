@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [253.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 17** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Presence-aware email routing.** The WS `/ws/subscribe` handler now records a
+  member's last-seen (`touch_member_last_seen`) on presence registration —
+  best-effort and spawned, so it never blocks the connect — and
+  `deliver_notification_email` consults it: with `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS`
+  set to a positive value, a notification email is suppressed when the recipient was
+  seen within the window (they are active and will see the in-app notification),
+  metered as `maidan_email_delivered_total{outcome="skipped_present"}`. **Opt-in:**
+  unset or `0` disables the guard and every opted-in recipient is emailed, exactly
+  the Cluster-249 behaviour — a positive window is required to enable suppression.
+  A lookup error falls through and sends (a transient read never drops an email).
+  Wires the Cluster-252 durable last-seen store end-to-end.
+
 ## [252.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 16** —

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v253.0.0 — Program C (Arc I): presence-aware email routing
+
+| Change | Where |
+|--------|-------|
+| WS `/ws/subscribe` touches `last_seen` on presence registration (best-effort, spawned — never blocks the connect) | `ws.rs` |
+| `deliver_notification_email` skips the send when the recipient was seen within `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS` (opt-in; unset/0 = send as before); `maidan_email_delivered_total{outcome="skipped_present"}`; fail-open on a read error. Wires the Cluster-252 store end-to-end | `notification_router.rs`, `metrics.rs` |
+
 ## v252.0.0 — Program C (Arc I): durable member last-seen (store foundation)
 
 | Change | Where |

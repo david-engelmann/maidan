@@ -254,6 +254,20 @@ async fn notify(
     Ok(created.is_some())
 }
 
+/// The "recently active" window for presence-aware email routing (Cluster 253),
+/// in seconds, from `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS`. When a positive value is
+/// set, a notification email is skipped if the recipient was last seen within the
+/// window — they are online and will see the in-app notification, so the email
+/// would be redundant. Unset or `0` disables the guard: every opted-in recipient
+/// is emailed, the Cluster-249 behaviour (so this is a zero-change opt-in). Read
+/// per call — cheap, and the send is already off the event-routing hot path.
+fn presence_skip_window_secs() -> Option<i64> {
+    std::env::var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS")
+        .ok()
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|&s| s > 0)
+}
+
 /// Deliver one notification to a member by email, if a transport is configured and
 /// the member has a delivery address on file (Cluster 249). Best-effort: a send
 /// failure is logged + metered, never retried (a durable retrying queue is a
@@ -276,6 +290,26 @@ pub async fn deliver_notification_email(
             return;
         }
     };
+    // Presence-aware routing (Cluster 253): if the recipient was seen within the
+    // configured window, skip the email — they are active and will see the in-app
+    // notification. A negative idle (clock skew, last-seen in the future) counts
+    // as active too. A lookup error falls through and sends (never drop an email
+    // over a transient read). Opt-in: unset/0 window sends as before.
+    if let Some(window_secs) = presence_skip_window_secs() {
+        match state.store.get_member_last_seen(member_id).await {
+            Ok(Some(last_seen)) => {
+                let idle = chrono::Utc::now().signed_duration_since(last_seen);
+                if idle.num_seconds() < window_secs {
+                    crate::metrics::record_email_delivered("skipped_present");
+                    return;
+                }
+            }
+            Ok(None) => {} // never seen -> not active -> send
+            Err(err) => {
+                warn!(error = %err, "notification email: last-seen lookup failed");
+            }
+        }
+    }
     let subject = "New Maidan notification".to_string();
     let body = format!(
         "You have a new notification in Maidan ({}). Open Maidan to view it.\n\n\
