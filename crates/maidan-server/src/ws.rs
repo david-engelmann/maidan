@@ -252,6 +252,19 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
 
     let _presence_reg = match (request.filter.workspace_id, request.member_id) {
         (Some(workspace_id), Some(member_id)) => {
+            // Durable last-seen (Cluster 253): record that this member is
+            // connected right now, so presence-aware email routing can tell
+            // whether they are active — a signal that survives a restart and is
+            // visible across replicas, unlike the in-memory `PresenceHub`.
+            // Best-effort + spawned so a store hiccup never blocks the connect.
+            {
+                let store = state.store.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = store.touch_member_last_seen(member_id).await {
+                        tracing::warn!(error = %err, "presence last-seen touch failed");
+                    }
+                });
+            }
             let (mut ephemeral_rx, reg, snapshot) =
                 state.presence.register(workspace_id, member_id);
             let _ = text_tx.send(snapshot).await;
