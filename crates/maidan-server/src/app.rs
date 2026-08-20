@@ -163,6 +163,11 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::delete_member_email),
         )
         .route(
+            "/members/:id/delivery-mode",
+            axum::routing::put(routes::set_member_delivery_mode)
+                .get(routes::get_member_delivery_mode),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )

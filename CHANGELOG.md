@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [256.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 20** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Delivery-mode REST.** `PUT /members/:id/delivery-mode` (set) and
+  `GET /members/:id/delivery-mode` (read; `immediate` when never set), both
+  `workspace:read` and self-only for a session caller. A member can now choose
+  between immediate per-notification emails and a periodic digest over the API
+  (previously store-only). The request DTO wraps `EmailDeliveryMode` directly, so an
+  unknown mode is a `400` at the extractor. Full new-route preflight (OpenAPI +
+  capability-map + matrix).
+
 ## [255.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 19** —
