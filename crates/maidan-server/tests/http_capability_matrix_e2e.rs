@@ -292,6 +292,9 @@ fn apply_route_defaults(
     if path.ends_with("/thread-follows") && method == "POST" {
         return b.json(&json!({ "thread_id": f.thread }));
     }
+    if path.ends_with("/email") && method == "PUT" {
+        return b.json(&json!({ "email": "user@example.com" }));
+    }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
     }

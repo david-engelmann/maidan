@@ -320,3 +320,59 @@ pub async fn list_member_thread_follows(
     ensure_acting_member(&auth, MemberId(id))?;
     Ok(Json(state.store.list_thread_follows(MemberId(id)).await?))
 }
+
+/// Set a member's delivery email address (Cluster 250) — opting in to email
+/// notifications. Self-only for a session caller. A light `@` sanity check rejects
+/// obvious garbage; the transport validates fully on send.
+pub async fn set_member_email(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetEmail>,
+) -> ApiResult<Json<MemberEmail>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    let email = body.email.trim();
+    if !email.contains('@') || email.len() < 3 {
+        return Err(ApiError::BadRequest("email must be a valid address".into()));
+    }
+    Ok(Json(
+        state.store.set_member_email(MemberId(id), email).await?,
+    ))
+}
+
+/// A member's delivery email, or `404` if unset (Cluster 250). Self-only for sessions.
+pub async fn get_member_email(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<MemberEmail>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    match state.store.get_member_email(MemberId(id)).await? {
+        Some(e) => Ok(Json(e)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
+/// Clear a member's delivery email (Cluster 250) — opting out. Self-only; `404` if
+/// none was set.
+pub async fn delete_member_email(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if state.store.delete_member_email(MemberId(id)).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
