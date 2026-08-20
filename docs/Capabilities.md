@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v252.0.0 — Program C (Arc I): durable member last-seen (store foundation)
+
+| Change | Where |
+|--------|-------|
+| `maidan_member_last_seen` table (pg 0047 / sqlite 0046; `member_id` PK, `last_seen_at`) + store `touch` (upsert `now()`) / `get` → `Option<DateTime<Utc>>`, both backends. The durable presence signal for presence-aware email routing (Cluster 253) — presence is in-memory only today. A separate table (not a member column) to avoid the row ripple; no model type. **Foundation** — unwired | `migrations/*`, `store/*/member_last_seen.rs` |
+
 ## v251.0.0 — Program C (Arc I): /ui notification center
 
 | Change | Where |

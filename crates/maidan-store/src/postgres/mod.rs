@@ -16,6 +16,7 @@ mod fsm_hooks;
 mod group_dm;
 mod inbox;
 mod member_emails;
+mod member_last_seen;
 mod member_skills;
 mod members;
 mod mentions;
@@ -285,6 +286,16 @@ impl Store for PostgresStore {
     }
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError> {
         member_emails::delete(&self.pool, member_id).await
+    }
+
+    async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {
+        member_last_seen::touch(&self.pool, member_id).await
+    }
+    async fn get_member_last_seen(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
+        member_last_seen::get(&self.pool, member_id).await
     }
 
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {

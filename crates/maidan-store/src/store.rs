@@ -188,6 +188,16 @@ pub trait Store: Send + Sync {
     ) -> Result<Option<MemberEmail>, StoreError>;
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError>;
 
+    /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
+    /// (called on presence registration), `get` returns the instant or `None`. A
+    /// cross-replica signal for presence-aware email routing. No wiring yet — a
+    /// zero-blast-radius foundation.
+    async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError>;
+    async fn get_member_last_seen(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError>;
+
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,
