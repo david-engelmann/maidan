@@ -241,6 +241,53 @@ async fn notify(
         .map_err(|e| e.to_string())?;
     if created.is_some() {
         crate::metrics::record_notification_created(kind.as_str());
+        // Off-platform email (Cluster 249), only when a transport is configured.
+        // Spawned so a slow/failing SMTP send never blocks event routing —
+        // best-effort (a failure is logged + metered, not retried).
+        if state.mail.is_some() {
+            let st = state.clone();
+            tokio::spawn(async move {
+                deliver_notification_email(&st, member_id, kind, source_log_id).await;
+            });
+        }
     }
     Ok(created.is_some())
+}
+
+/// Deliver one notification to a member by email, if a transport is configured and
+/// the member has a delivery address on file (Cluster 249). Best-effort: a send
+/// failure is logged + metered, never retried (a durable retrying queue is a
+/// follow-up). Extracted so a test can await it directly rather than racing the
+/// spawned task in [`notify`].
+pub async fn deliver_notification_email(
+    state: &AppState,
+    member_id: MemberId,
+    kind: EventKind,
+    source_log_id: i64,
+) {
+    let Some(mail) = state.mail.as_ref() else {
+        return;
+    };
+    let address = match state.store.get_member_email(member_id).await {
+        Ok(Some(a)) => a.email,
+        Ok(None) => return, // member hasn't opted in / provided an address
+        Err(err) => {
+            warn!(error = %err, "notification email: address lookup failed");
+            return;
+        }
+    };
+    let subject = "New Maidan notification".to_string();
+    let body = format!(
+        "You have a new notification in Maidan ({}). Open Maidan to view it.\n\n\
+         (event #{})",
+        kind.as_str(),
+        source_log_id
+    );
+    match mail.send(&address, &subject, &body).await {
+        Ok(()) => crate::metrics::record_email_delivered("sent"),
+        Err(err) => {
+            warn!(error = %err, "notification email delivery failed");
+            crate::metrics::record_email_delivered("failed");
+        }
+    }
 }

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v249.0.0 — Program C (Arc I): email delivery wired into the router
+
+| Change | Where |
+|--------|-------|
+| The notification router now delivers a per-recipient notification by email to members with an address (Cluster 248), when an SMTP transport is configured (247). `AppState.mail` + `attach_mail`, built from `SmtpConfig::from_env` in `main.rs`; spawned best-effort (never blocks routing), `maidan_email_delivered_total{outcome}` metric. Presence of an address = opt-in | `state.rs`, `main.rs`, `notification_router.rs`, `metrics.rs` |
+
 ## v248.0.0 — Program C (Arc I): member delivery-email store
 
 | Change | Where |

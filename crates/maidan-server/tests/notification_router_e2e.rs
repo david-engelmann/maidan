@@ -249,3 +249,96 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         "a non-follower gets no follow notification"
     );
 }
+
+/// Cluster 249: a recording transport that captures what would be emailed.
+struct RecordingMailer {
+    sent: std::sync::Mutex<Vec<(String, String)>>,
+}
+
+#[async_trait::async_trait]
+impl maidan_server::mail::MailTransport for RecordingMailer {
+    async fn send(
+        &self,
+        to: &str,
+        subject: &str,
+        _body: &str,
+    ) -> Result<(), maidan_server::mail::MailError> {
+        self.sent
+            .lock()
+            .unwrap()
+            .push((to.to_string(), subject.to_string()));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn email_delivery_when_configured_and_address_present() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(16));
+    let mut state = AppState::for_tests(store.clone(), artifacts, bus, search);
+    let mailer = Arc::new(RecordingMailer {
+        sent: std::sync::Mutex::new(Vec::new()),
+    });
+    state.attach_mail(mailer.clone());
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "e".into() })
+        .await
+        .unwrap();
+    let with_addr = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "has-email".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let no_addr = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "no-email".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    store
+        .set_member_email(with_addr.id, "user@example.com")
+        .await
+        .unwrap();
+
+    // A member with an address on file gets emailed.
+    notification_router::deliver_notification_email(
+        &state,
+        with_addr.id,
+        EventKind::MentionRecorded,
+        1,
+    )
+    .await;
+    // A member without one does not.
+    notification_router::deliver_notification_email(
+        &state,
+        no_addr.id,
+        EventKind::MentionRecorded,
+        2,
+    )
+    .await;
+
+    let sent = mailer.sent.lock().unwrap();
+    assert_eq!(sent.len(), 1, "only the member with an address is emailed");
+    assert_eq!(sent[0].0, "user@example.com");
+}

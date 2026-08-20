@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [249.0.0] — 2026-08-20
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 13** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Email delivery wired into the notification router.** When the router writes a
+  per-recipient notification, it now also delivers it by email to members who have a
+  delivery address (Cluster 248) — if an SMTP transport is configured (Cluster 247).
+  `AppState.mail` is built from `SmtpConfig::from_env` in `main.rs` (`None`, so no
+  email, unless `MAIDAN_SMTP_*` is set and in tests); the send is spawned best-effort
+  after the in-app notification write so a slow/failing SMTP server never blocks
+  routing (a failure is logged + counted via `maidan_email_delivered_total{outcome}`,
+  not retried). Presence of an address is the opt-in. The REST/MCP surface to set an
+  address (Cluster 250) and a durable retrying delivery queue are follow-ups.
+
 ## [248.0.0] — 2026-08-19
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 12** —

@@ -136,6 +136,11 @@ pub struct AppState {
     /// cadence for `at_least_once` subscriptions. Read from env once at startup.
     pub delivery_stability: std::time::Duration,
     pub delivery_reconcile_interval: std::time::Duration,
+    /// Off-platform email transport (Cluster 249), built from `MAIDAN_SMTP_*` at
+    /// startup. `None` when SMTP isn't configured — the config gate: no transport,
+    /// no email. Set only by the server binary via [`AppState::attach_mail`], so
+    /// tests/embedders (which build via [`AppState::new`]) never send email.
+    pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
 }
 
 impl AppState {
@@ -187,7 +192,14 @@ impl AppState {
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
+            mail: None,
         }
+    }
+
+    /// Wire the email transport (Cluster 249). Called by the server binary when
+    /// `MAIDAN_SMTP_*` is configured; left `None` (no email) otherwise and in tests.
+    pub fn attach_mail(&mut self, transport: Arc<dyn crate::mail::MailTransport>) {
+        self.mail = Some(transport);
     }
 
     /// Wire cross-replica MCP resource-update notifications (Cluster 102).
