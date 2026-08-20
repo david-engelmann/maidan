@@ -468,6 +468,14 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/app-installations",
             get(apps::list_app_installations),
         )
+        .route(
+            "/ui/api/members/:id/notifications",
+            get(routes::list_member_notifications),
+        )
+        .route(
+            "/ui/api/members/:id/notifications/unread-count",
+            get(routes::member_unread_notification_count),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
@@ -519,6 +527,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/operator/reindex-embeddings/:job_id",
             get(reindex_ops::get_reindex_embeddings_job),
+        )
+        .route(
+            "/ui/api/members/:id/notifications/:nid/read",
+            post(routes::mark_member_notification_read),
+        )
+        .route(
+            "/ui/api/members/:id/notifications/read-all",
+            post(routes::mark_all_member_notifications_read),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
