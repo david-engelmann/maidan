@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v257.0.0 — Program C (Arc I): delivery-mode MCP tools
+
+| Change | Where |
+|--------|-------|
+| `set_delivery_mode` / `get_delivery_mode` MCP tools (`workspace:read`, member-scoped, no gate arm) — the twins of the 256 REST; `set` parses snake_case `immediate`/`digest` → `InvalidParams` on unknown, both return `{mode}`. Closes the core of Arc I (digest reachable over REST + MCP) | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v256.0.0 — Program C (Arc I): delivery-mode REST
 
 | Change | Where |

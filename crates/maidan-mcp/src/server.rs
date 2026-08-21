@@ -1587,6 +1587,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delivery_mode_tools_get_and_set() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "d".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Default is immediate.
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_delivery_mode",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["mode"], json!("immediate"));
+
+        // Switch to digest.
+        let set = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_delivery_mode",
+                    &json!({ "member_id": member.id.0, "mode": "digest" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["mode"], json!("digest"));
+
+        // Get reflects it.
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_delivery_mode",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["mode"], json!("digest"));
+
+        // An unknown mode is rejected.
+        assert!(server
+            .call_tool(
+                &auth,
+                "set_delivery_mode",
+                &json!({ "member_id": member.id.0, "mode": "carrier-pigeon" }),
+            )
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
     async fn follow_tools_channel_and_thread() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
