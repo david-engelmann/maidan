@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [260.0.0] — 2026-08-21
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 3.** No new
+gate tag.
+
+### Added
+
+- **Backup / restore + disaster-recovery runbook.** `scripts/backup.sh` (`pg_dump
+  -Fc` of `DATABASE_URL` + a `tar` of the `localfs` artifact root + a manifest) and
+  `scripts/restore.sh` (`pg_restore` into the target + untar; refuses a non-empty
+  target unless `--force`, then restores with `--clean --if-exists`), plus a
+  "Backup & disaster recovery" section in `docs/Production.md` documenting coverage,
+  the secrets that must be restored out of band (`MAIDAN_SESSION_SECRET`, the
+  `FEDERATION_ENCRYPTION_KEY` keyring, SMTP/OIDC creds), S3 as its own durable store,
+  RPO/RTO guidance (periodic backup vs WAL/PITR), and the step-by-step recovery
+  sequence. Operator tools like `loadgen`/`chaos` — `bash -n`-clean, not CI-gated.
+
 ## [259.0.0] — 2026-08-21
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 2.** No new

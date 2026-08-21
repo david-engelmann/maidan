@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v260.0.0 — Program D: backup / restore + DR runbook
+
+| Change | Where |
+|--------|-------|
+| `scripts/backup.sh` (`pg_dump -Fc` + tar of the localfs artifact root + manifest) + `scripts/restore.sh` (`pg_restore`, refuses a non-empty target without `--force`) + a "Backup & disaster recovery" runbook (coverage, out-of-band secrets, S3-is-durable, RPO/RTO, recovery steps). Operator tools like `loadgen`/`chaos` | `scripts/backup.sh`, `scripts/restore.sh`, `docs/Production.md` |
+
 ## v259.0.0 — Program D: chaos / fault-injection harness
 
 | Change | Where |
