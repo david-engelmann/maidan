@@ -409,6 +409,19 @@ pub fn get_member_email() {}
     responses((status = 204, description = "Cleared")))]
 pub fn delete_member_email() {}
 
+#[utoipa::path(put, path = "/members/{id}/delivery-mode", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetDeliveryMode,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = DeliveryModeView)))]
+pub fn set_member_delivery_mode() {}
+
+#[utoipa::path(get, path = "/members/{id}/delivery-mode", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = DeliveryModeView)))]
+pub fn get_member_delivery_mode() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

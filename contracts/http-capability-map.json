@@ -204,6 +204,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/members/{id}/delivery-mode",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/delivery-mode",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",

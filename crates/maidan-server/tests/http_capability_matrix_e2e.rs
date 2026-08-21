@@ -295,6 +295,9 @@ fn apply_route_defaults(
     if path.ends_with("/email") && method == "PUT" {
         return b.json(&json!({ "email": "user@example.com" }));
     }
+    if path.ends_with("/delivery-mode") && method == "PUT" {
+        return b.json(&json!({ "mode": "digest" }));
+    }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
     }

@@ -376,3 +376,38 @@ pub async fn delete_member_email(
         Err(ApiError::NotFound)
     }
 }
+
+/// Set a member's email delivery mode (Cluster 256) — `immediate` per-notification
+/// emails or a periodic `digest`. Self-only for a session caller. An unknown mode
+/// is a `400` (the enum fails deserialization at the extractor).
+pub async fn set_member_delivery_mode(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetDeliveryMode>,
+) -> ApiResult<Json<DeliveryModeView>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    state
+        .store
+        .set_delivery_mode(MemberId(id), body.mode)
+        .await?;
+    Ok(Json(DeliveryModeView { mode: body.mode }))
+}
+
+/// A member's email delivery mode (Cluster 256) — `immediate` when never set.
+/// Self-only for a session caller.
+pub async fn get_member_delivery_mode(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<DeliveryModeView>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    let mode = state.store.get_delivery_mode(MemberId(id)).await?;
+    Ok(Json(DeliveryModeView { mode }))
+}

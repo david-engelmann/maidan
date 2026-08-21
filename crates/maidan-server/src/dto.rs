@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ChannelId, ContentBlock, EventKind,
-    MemberId, MemberKind, RefSide, ThreadId, WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ChannelId, ContentBlock, EmailDeliveryMode,
+    EventKind, MemberId, MemberKind, RefSide, ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -385,6 +385,19 @@ pub struct FollowThread {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetEmail {
     pub email: String,
+}
+
+/// Set a member's email delivery mode (Cluster 256). An unknown `mode` fails
+/// deserialization → `400`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetDeliveryMode {
+    pub mode: EmailDeliveryMode,
+}
+
+/// A member's current email delivery mode (Cluster 256).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeliveryModeView {
+    pub mode: EmailDeliveryMode,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

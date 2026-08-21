@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v256.0.0 — Program C (Arc I): delivery-mode REST
+
+| Change | Where |
+|--------|-------|
+| `PUT`/`GET /members/:id/delivery-mode` — set / read a member's email delivery mode (`immediate` or `digest`; `immediate` default), `workspace:read` + self-only. Request DTO wraps `EmailDeliveryMode` so an unknown mode is a `400`. Full new-route preflight | `routes/member.rs`, `dto.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+
 ## v255.0.0 — Program C (Arc I): digest sweeper + router honors digest mode
 
 | Change | Where |
