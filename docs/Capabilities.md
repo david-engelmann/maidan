@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v259.0.0 — Program D: chaos / fault-injection harness
+
+| Change | Where |
+|--------|-------|
+| An `#[ignore]`d chaos soak that publishes under load while killing the `LISTEN` backend (`pg_terminate_backend`), asserting no published event is lost — validates the Cluster-258 floor end-to-end (measured: 40/40 delivered across 5 kills). Pure `fault_due` cadence helper unit-tested in CI; the soak is a manual tool like `loadgen` (Docker + timing-sensitive). `scripts/chaos.sh` runner | `crates/maidan-bus/tests/chaos.rs`, `scripts/chaos.sh` |
+
 ## v258.0.0 — Program D: event-bus self-healing NOTIFY floor
 
 | Change | Where |

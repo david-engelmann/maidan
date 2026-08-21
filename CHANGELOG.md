@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [259.0.0] — 2026-08-21
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 2.** No new
+gate tag.
+
+### Added
+
+- **Chaos / fault-injection harness.** `crates/maidan-bus/tests/chaos.rs` +
+  `scripts/chaos.sh`: an `#[ignore]`d soak that publishes at a `PostgresBus` under
+  load while repeatedly killing the `LISTEN` backend connection
+  (`pg_terminate_backend` on connections running a `LISTEN`), then asserts every
+  published event still reached the local broadcast — validating that the
+  Cluster-258 self-healing NOTIFY floor back-fills what the dropped notifications
+  would have delivered. Measured locally: 40 published, 40 delivered, 5 listener
+  kills, 0 missing. Like the Cluster-198 load harness, the soak is `#[ignore]`d (it
+  needs Docker and is timing-sensitive — a resilience tool, not a CI gate); the pure
+  `fault_due` schedule helper is unit-tested in CI. Env knobs `MAIDAN_CHAOS_OPS` /
+  `MAIDAN_CHAOS_KILL_EVERY` / `MAIDAN_CHAOS_DELAY_MS`.
+
 ## [258.0.0] — 2026-08-21
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 1.** No new
