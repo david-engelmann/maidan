@@ -8,6 +8,9 @@ pub enum HydrateResult {
     NotFound,
     Failed,
     InvalidPayload,
+    /// An event delivered via the self-healing back-fill (Cluster 258) — a gap or
+    /// a reconnect drained the missed range from the log rather than a live NOTIFY.
+    Backfilled,
 }
 
 #[derive(Debug, Default)]
@@ -16,6 +19,7 @@ pub struct HydrateStats {
     not_found: AtomicU64,
     failed: AtomicU64,
     invalid_payload: AtomicU64,
+    backfilled: AtomicU64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -24,6 +28,7 @@ pub struct HydrateSnapshot {
     pub not_found: u64,
     pub failed: u64,
     pub invalid_payload: u64,
+    pub backfilled: u64,
 }
 
 impl HydrateStats {
@@ -33,6 +38,7 @@ impl HydrateStats {
             HydrateResult::NotFound => &self.not_found,
             HydrateResult::Failed => &self.failed,
             HydrateResult::InvalidPayload => &self.invalid_payload,
+            HydrateResult::Backfilled => &self.backfilled,
         };
         counter.fetch_add(1, Ordering::Relaxed);
     }
@@ -43,6 +49,7 @@ impl HydrateStats {
             not_found: self.not_found.load(Ordering::Relaxed),
             failed: self.failed.load(Ordering::Relaxed),
             invalid_payload: self.invalid_payload.load(Ordering::Relaxed),
+            backfilled: self.backfilled.load(Ordering::Relaxed),
         }
     }
 }
