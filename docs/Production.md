@@ -504,6 +504,46 @@ mid-migration.
 **Not covered:** load/throughput benchmarking (bench harness, Cluster 109),
 autoscaling/HPA tuning, multi-region active-active (out of scope).
 
+## Backup & disaster recovery (`v260.0.0`)
+
+Maidan's durable state is two things, and the backup story follows the same split:
+
+| What | Store | Backed up by |
+|------|-------|--------------|
+| System of record — every workspace, member, channel, thread, message, event log, audit trail, token, follow/pref/schedule | **Postgres** (`DATABASE_URL`) | `pg_dump -Fc` |
+| Content-addressed artifact blobs (immutable, deduped) | `localfs` root **or** an object store (`ARTIFACT_BACKEND=s3`) | a tar of the localfs root; for S3 the bucket itself is the durable copy |
+
+Two operator scripts implement it:
+
+- **`scripts/backup.sh [BACKUP_DIR]`** — `pg_dump` (custom format) plus, for
+  `localfs`, a `tar` of `ARTIFACT_LOCALFS_ROOT`; writes a `MANIFEST.txt`. For
+  `s3`, the bucket is the durable copy — enable **bucket versioning** and/or
+  cross-region replication there rather than copying blobs into the backup.
+- **`scripts/restore.sh <backup-dir> [--force]`** — `pg_restore` into the target
+  `DATABASE_URL` (+ untar artifacts). It **refuses a non-empty target** unless
+  `--force`, so a restore can't silently clobber a live database; `--force` restores
+  with `--clean --if-exists`.
+
+**Not in the data backup — restore these from your secret manager, out of band:**
+`DATABASE_URL`, `MAIDAN_SESSION_SECRET` (subscribe-resume/session signing),
+`FEDERATION_ENCRYPTION_KEY` (+ any `FEDERATION_DECRYPT_KEYS` — see the Cluster-189
+rotation keyring), and SMTP/OIDC credentials. A DB dump without the session secret
+still restores all data; only signed-token continuity needs the same secret.
+
+**RPO / RTO.** A periodic `backup.sh` (e.g. hourly cron) gives an RPO of one backup
+interval. For a tighter RPO, run Postgres with **WAL archiving / PITR** (or a managed
+Postgres with continuous backup) — the logical dump is the portable floor, not the
+lower bound. RTO is a `restore.sh` run plus a `/health/ready` check before the load
+balancer is pointed at the restored instance.
+
+**Recovery outline.** Provision Postgres + the artifact store → set the out-of-band
+secrets → `DATABASE_URL=… ARTIFACT_LOCALFS_ROOT=… scripts/restore.sh <dir> --force`
+→ start one replica and confirm `/health/ready` is `200` (it gates on DB + object
+store + indexer + the `LISTEN` bus) → scale out. Because artifacts are
+content-addressed, a message referencing a blob that predates the artifact backup is
+still consistent after restore; a blob written *after* the last artifact archive is
+the only thing a stale artifact backup can miss.
+
 ## API stability
 
 From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases
