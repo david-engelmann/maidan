@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [258.0.0] — 2026-08-21
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 1.** No new
+gate tag.
+
+### Added
+
+- **Event-bus self-healing NOTIFY floor.** The Postgres `LISTEN`/`NOTIFY` bus now
+  tracks a high-water `log_id` and back-fills the missed range from the event log on
+  a detected gap (a pointer id above `high_water + 1`) or on a listener reconnect
+  (drain to head after an error) — so events appended while the `LISTEN` was
+  disconnected still reach the local broadcast instead of being silently dropped on
+  the optimistic path. The pointer's own id is always hydrated (never skipped on
+  `<= high_water`, so a concurrently-committed lower id is never lost); back-fill is
+  batched and best-effort. New cross-workspace log reads `list_after_global` /
+  `max_event_id`, a `Backfilled` hydrate stat +
+  `maidan_bus_notify_hydrate_total{result="backfilled"}`, and a `PostgresBus::backfill`
+  heal hook. This is an optimistic-path resilience improvement; the transactional
+  outbox + at-least-once cursor remain the durable delivery path.
+
 ## [257.0.0] — 2026-08-21
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 21** —

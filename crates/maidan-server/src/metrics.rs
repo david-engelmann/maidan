@@ -236,6 +236,7 @@ fn sync_hydrate_counters(current: HydrateSnapshot) {
     increment_hydrate_delta("ok", current.ok, last.ok);
     increment_hydrate_delta("not_found", current.not_found, last.not_found);
     increment_hydrate_delta("failed", current.failed, last.failed);
+    increment_hydrate_delta("backfilled", current.backfilled, last.backfilled);
     increment_hydrate_delta(
         "invalid_payload",
         current.invalid_payload,

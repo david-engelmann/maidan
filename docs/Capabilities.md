@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v258.0.0 — Program D: event-bus self-healing NOTIFY floor
+
+| Change | Where |
+|--------|-------|
+| The PG `LISTEN`/`NOTIFY` bus tracks a high-water `log_id` and back-fills the missed range from the log on a gap (pointer id > `high_water+1`) or reconnect (drain to head) — the optimistic local broadcast no longer silently drops events appended during a `LISTEN` disconnect. Always hydrates the pointer's own id (no skip on `<= high_water`, so a concurrent late lower id isn't lost); batched, best-effort. `list_after_global`/`max_event_id`; `Backfilled` stat + `{result="backfilled"}` metric; `backfill()` heal hook | `maidan-bus/src/postgres.rs`, `maidan-store/src/postgres/events.rs`, `maidan-bus/src/hydrate_stats.rs`, `maidan-server/src/metrics.rs` |
+
 ## v257.0.0 — Program C (Arc I): delivery-mode MCP tools
 
 | Change | Where |

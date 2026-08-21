@@ -148,6 +148,40 @@ pub async fn list_after_stable(
     rows.iter().map(row_to_stored).collect()
 }
 
+/// Cross-workspace events with `id > after_id`, in `id` order, capped at `limit`.
+/// The bus's self-healing NOTIFY floor (Cluster 258) uses this to back-fill the
+/// range missed while its `LISTEN` was disconnected — unlike [`list_after`], it is
+/// not workspace-scoped, because the listener hydrates every workspace's events
+/// onto the local broadcast (which then routes by workspace shard).
+pub async fn list_after_global(
+    pool: &PgPool,
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE id > $1
+         ORDER BY id ASC
+         LIMIT $2",
+    )
+    .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_stored).collect()
+}
+
+/// The highest event-log id (`0` when empty). The bus seeds its high-water mark
+/// from this at startup so it back-fills only events appended *after* it began
+/// listening, not the entire history (Cluster 258).
+pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
+    let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM maidan_events")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get::<i64, _>("max_id"))
+}
+
 fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError> {
     let kind_str: String = row.get("kind");
     let kind = parse_kind(&kind_str)?;

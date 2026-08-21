@@ -216,3 +216,68 @@ async fn pointer_delivery_for_large_persisted_event() {
         other => panic!("expected MessagePosted, got {other:?}"),
     }
 }
+
+/// The self-healing NOTIFY floor (Cluster 258): in polled mode (no LISTEN task),
+/// events appended to the log are NOT on the local broadcast until `backfill`
+/// drains the missed range — which reproduces what a reconnect does after a
+/// `LISTEN` disconnect drops the intervening NOTIFYs.
+#[tokio::test]
+async fn backfill_drains_the_missed_range_onto_the_broadcast() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+    let store = PostgresStore::new(pool.clone());
+    // Polled mode: no listener, so nothing auto-hydrates — the gap is explicit.
+    let bus = PostgresBus::connect_with(
+        pool,
+        maidan_bus::PostgresBusOptions {
+            notify_on_publish: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
+
+    // Append three events straight to the log (no bus publish → no delivery).
+    let mut ids = Vec::new();
+    for name in ["a", "b", "c"] {
+        let event = Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(uuid::Uuid::new_v4()),
+                name: name.into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        };
+        ids.push(store.append_event(&event).await.unwrap().id);
+    }
+
+    // Heal from a high-water below the first id: all three back-fill, in order.
+    let before = bus.hydrate_stats().snapshot();
+    let high_water = bus.backfill(ids[0] - 1).await;
+    assert_eq!(high_water, *ids.last().unwrap(), "advances to the log head");
+
+    for expected in &ids {
+        let item = tokio::time::timeout(Duration::from_secs(5), sub.next())
+            .await
+            .expect("timeout")
+            .expect("stream closed");
+        let BusItem::Event(env) = item else {
+            panic!("expected event item");
+        };
+        assert_eq!(env.log_id, *expected, "back-filled in id order");
+    }
+
+    let after = bus.hydrate_stats().snapshot();
+    assert_eq!(
+        after.backfilled - before.backfilled,
+        3,
+        "all three counted as backfilled"
+    );
+
+    // A second heal from the new high-water is a no-op (nothing new committed).
+    assert_eq!(bus.backfill(high_water).await, high_water);
+}
