@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [257.0.0] — 2026-08-21
+
+Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 21** —
+Arc I. No new gate tag.
+
+### Added
+
+- **Delivery-mode MCP tools.** `set_delivery_mode` and `get_delivery_mode`
+  (`workspace:read`, member-scoped) — the MCP twins of the Cluster-256 REST, so an
+  MCP-only agent can read and switch a member between immediate per-notification
+  emails and a periodic digest. `set_delivery_mode` parses a snake_case `mode`
+  (`immediate` / `digest`) and returns `InvalidParams` on an unknown one; both return
+  `{mode}`. Standard 5-place wiring + both sorted contract JSONs. Closes the core of
+  Arc I — the digest feature is now reachable over REST and MCP.
+
 ## [256.0.0] — 2026-08-20
 
 Post-gate hardening (Phase XXIV). **Program C (notifications & reach), part 20** —

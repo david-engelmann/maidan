@@ -470,6 +470,29 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_delivery_mode",
+            "description": "Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "mode": {"type": "string", "enum": ["immediate", "digest"]}
+                },
+                "required": ["member_id", "mode"]
+            }
+        }),
+        json!({
+            "name": "get_delivery_mode",
+            "description": "Get a member's email delivery mode (immediate when never set).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "follow_channel",
             "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
             "inputSchema": {

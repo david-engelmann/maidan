@@ -285,6 +285,42 @@ pub(super) async fn list_notification_prefs(
 }
 
 #[derive(Deserialize)]
+struct SetDeliveryModeArgs {
+    member_id: uuid::Uuid,
+    /// `immediate` (per-notification emails) or `digest` (a periodic rollup).
+    mode: String,
+}
+
+/// Set a member's email delivery mode (Cluster 257) — the MCP twin of
+/// `PUT /members/:id/delivery-mode`. `digest` opts out of per-notification emails
+/// in favour of the sweeper's periodic rollup.
+pub(super) async fn set_delivery_mode(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetDeliveryModeArgs = serde_json::from_value(args.clone())?;
+    let mode = EmailDeliveryMode::parse(&a.mode)
+        .ok_or_else(|| McpError::InvalidParams(format!("unknown delivery mode: {}", a.mode)))?;
+    store.set_delivery_mode(MemberId(a.member_id), mode).await?;
+    Ok(content_json(&serde_json::json!({ "mode": mode.as_str() })))
+}
+
+#[derive(Deserialize)]
+struct GetDeliveryModeArgs {
+    member_id: uuid::Uuid,
+}
+
+/// A member's email delivery mode (Cluster 257) — `immediate` when never set.
+pub(super) async fn get_delivery_mode(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetDeliveryModeArgs = serde_json::from_value(args.clone())?;
+    let mode = store.get_delivery_mode(MemberId(a.member_id)).await?;
+    Ok(content_json(&serde_json::json!({ "mode": mode.as_str() })))
+}
+
+#[derive(Deserialize)]
 struct FollowChannelArgs {
     member_id: uuid::Uuid,
     channel_id: uuid::Uuid,
