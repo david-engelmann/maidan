@@ -34,6 +34,7 @@ mod purge_workspace;
 mod reactions;
 mod refs;
 mod reindex_jobs;
+pub mod replication;
 mod retention;
 mod sessions;
 mod slash_commands;

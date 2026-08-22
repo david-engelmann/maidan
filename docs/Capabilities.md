@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v261.0.0 — Program D (read-replica arc): LSN primitives + replication harness
+
+| Change | Where |
+|--------|-------|
+| `Lsn` causality-token type (`u64`-backed, `pg_lsn` parse/display, numeric `Ord`) + CI unit tests; store `current_wal_lsn`/`replica_replay_lsn`/`replica_caught_up`; `scripts/replica-harness.sh` (local pgvector primary + streaming standby); an `#[ignore]`d test validating the helpers against real replication. Validate-first keystone for LSN read-replica routing — inert (no read routed yet) | `maidan-types/src/lsn.rs`, `maidan-store/src/postgres/replication.rs`, `scripts/replica-harness.sh`, `maidan-store/tests/replication.rs` |
+
 ## v260.0.0 — Program D: backup / restore + DR runbook
 
 | Change | Where |

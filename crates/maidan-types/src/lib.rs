@@ -7,6 +7,7 @@
 pub mod erase;
 pub mod events;
 pub mod ids;
+pub mod lsn;
 pub mod models;
 pub mod purge;
 pub mod usage;
@@ -14,6 +15,7 @@ pub mod usage;
 pub use erase::*;
 pub use events::*;
 pub use ids::*;
+pub use lsn::*;
 pub use models::*;
 pub use purge::*;
 pub use usage::*;
