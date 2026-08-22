@@ -104,6 +104,10 @@ impl Store for PostgresStore {
         Ok(())
     }
 
+    async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
+        Ok(Some(replication::current_wal_lsn(&self.pool).await?))
+    }
+
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
         workspaces::create(&self.pool, new).await
     }

@@ -85,6 +85,10 @@ impl Store for SqliteStore {
         Ok(())
     }
 
+    async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
+        Ok(None) // SQLite has no streaming replication / WAL LSN token.
+    }
+
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
         workspaces::create(&self.pool, new).await
     }
