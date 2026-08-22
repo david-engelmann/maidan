@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v262.0.0 — Program D (read-replica arc): reader-pool split (inert)
+
+| Change | Where |
+|--------|-------|
+| `PostgresStore { pool, reader }` + `with_replica_reader` (`new` defaults reader=primary, no ripple to ~62 call sites); `MAIDAN_DB_REPLICA_URL` config + boot wiring (connects a real reader pool, fail-fast on a bad URL, same connection setup as primary). Reads still on the primary — the token-aware selector is a later cluster. Unset → zero behaviour change | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/config.rs`, `main.rs` |
+
 ## v261.0.0 — Program D (read-replica arc): LSN primitives + replication harness
 
 | Change | Where |

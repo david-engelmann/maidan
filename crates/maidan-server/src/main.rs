@@ -63,26 +63,31 @@ async fn main() -> anyhow::Result<()> {
 
     match dialect {
         Dialect::Postgres => {
-            let mut pg_opts = PgPoolOptions::new()
-                .max_connections(config.db.max_connections.unwrap_or(16))
-                .acquire_timeout(std::time::Duration::from_secs(
-                    config.db.acquire_timeout_secs,
-                ));
+            let max_connections = config.db.max_connections.unwrap_or(16);
+            let acquire_timeout_secs = config.db.acquire_timeout_secs;
             let statement_timeout_ms = config.db.statement_timeout_ms;
-            if statement_timeout_ms > 0 {
-                // Cap every pooled connection's queries. Boot migrations exempt
-                // their own connection (they reset statement_timeout under the
-                // advisory lock); large reindexes should use the CLI's own pool.
-                pg_opts = pg_opts.after_connect(move |conn, _meta| {
-                    Box::pin(async move {
-                        sqlx::query(&format!("SET statement_timeout = {statement_timeout_ms}"))
-                            .execute(conn)
-                            .await?;
-                        Ok(())
-                    })
-                });
-            }
-            let pool = pg_opts
+            // Build a pool options with the same connection setup for the primary
+            // and (when configured) the read replica. Caps every pooled
+            // connection's queries; boot migrations exempt their own connection
+            // (they reset statement_timeout under the advisory lock), and large
+            // reindexes should use the CLI's own pool.
+            let make_pg_opts = || {
+                let mut o = PgPoolOptions::new()
+                    .max_connections(max_connections)
+                    .acquire_timeout(std::time::Duration::from_secs(acquire_timeout_secs));
+                if statement_timeout_ms > 0 {
+                    o = o.after_connect(move |conn, _meta| {
+                        Box::pin(async move {
+                            sqlx::query(&format!("SET statement_timeout = {statement_timeout_ms}"))
+                                .execute(conn)
+                                .await?;
+                            Ok(())
+                        })
+                    });
+                }
+                o
+            };
+            let pool = make_pg_opts()
                 .connect(&config.database_url)
                 .await
                 .context("connect to postgres")?;
@@ -107,7 +112,20 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("search: postgres tsvector");
             outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
             outbox_relay = outbox_relay_enabled;
-            store = Arc::new(PostgresStore::new(pool.clone()));
+            // Read-replica pool (Cluster 262): when MAIDAN_DB_REPLICA_URL is set,
+            // connect a separate reader pool (validating replica reachability at
+            // boot) so LSN-token read routing (Cluster 264) can send eligible reads
+            // there. Unset → reads stay on the primary (unchanged).
+            store = Arc::new(if let Some(replica_url) = config.replica_url.as_deref() {
+                let reader = make_pg_opts()
+                    .connect(replica_url)
+                    .await
+                    .context("connect to postgres read replica (MAIDAN_DB_REPLICA_URL)")?;
+                tracing::info!("read replica: connected (MAIDAN_DB_REPLICA_URL)");
+                PostgresStore::with_replica_reader(pool.clone(), reader)
+            } else {
+                PostgresStore::new(pool.clone())
+            });
             bus = Arc::new(pg_bus);
             resource_notifier = if notify_on_publish {
                 Arc::new(

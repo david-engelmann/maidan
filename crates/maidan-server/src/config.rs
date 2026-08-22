@@ -95,6 +95,10 @@ impl DbConfig {
 pub struct Config {
     pub bind: SocketAddr,
     pub database_url: String,
+    /// Optional read-replica connection string (`MAIDAN_DB_REPLICA_URL`). When set,
+    /// the store gets a separate reader pool for LSN-token read routing (Cluster
+    /// 262+); unset means reads stay on the primary (unchanged).
+    pub replica_url: Option<String>,
     pub artifact_backend: ArtifactBackend,
     pub log_filter: String,
     pub db: DbConfig,
@@ -166,6 +170,9 @@ impl Config {
 
         let database_url =
             std::env::var("DATABASE_URL").map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
+        let replica_url = std::env::var("MAIDAN_DB_REPLICA_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
 
         let backend = std::env::var("ARTIFACT_BACKEND").unwrap_or_else(|_| "localfs".to_string());
         let artifact_backend = match backend.as_str() {
@@ -204,6 +211,7 @@ impl Config {
         Ok(Self {
             bind,
             database_url,
+            replica_url,
             artifact_backend,
             log_filter,
             db,
