@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [261.0.0] — 2026-08-22
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 4 —
+read-replica arc, part 1.** No new gate tag.
+
+### Added
+
+- **LSN causality-token primitives + a real streaming-replication harness.** The
+  foundation of LSN-token read-replica routing: an `Lsn` type (`maidan-types`,
+  `u64`-backed so `pg_lsn` values order numerically — `0/9 < 0/10` — with
+  `from_pg_str`/`to_pg_str`), store helpers `current_wal_lsn` / `replica_replay_lsn`
+  / `replica_caught_up` (`maidan-store::postgres::replication`, called directly like
+  the bus's `get_by_id` — no `Store`-trait/SQLite ripple), and
+  `scripts/replica-harness.sh` that stands up a local pgvector primary + streaming
+  standby. An `#[ignore]`d test (`maidan-store/tests/replication.rs`, connects via
+  `MAIDAN_PRIMARY_URL`/`MAIDAN_REPLICA_URL`) validates the helpers against real
+  replication — the standby catches up to the primary's write LSN and replicated
+  rows are visible. The `Lsn` unit tests run in CI; the replication test is a manual
+  tool (needs Docker). Inert — nothing routes reads yet.
+
 ## [260.0.0] — 2026-08-21
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 3.** No new
