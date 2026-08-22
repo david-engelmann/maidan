@@ -61,15 +61,39 @@ use crate::store::Store;
 #[derive(Debug, Clone)]
 pub struct PostgresStore {
     pool: PgPool,
+    /// Read pool for LSN-token read routing (Cluster 262). Defaults to a clone of
+    /// the writer `pool` (so `new` callers are unaffected and reads stay on the
+    /// primary); a real read-replica is supplied via [`PostgresStore::with_replica_reader`].
+    /// The read router (Cluster 264) selects between `pool` and `reader` per call —
+    /// until then this is dormant.
+    #[allow(dead_code)]
+    reader: PgPool,
 }
 
 impl PostgresStore {
+    /// Single-pool store: reads and writes both use `pool` (reader defaults to it).
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            reader: pool.clone(),
+            pool,
+        }
+    }
+
+    /// Store with a distinct read-replica pool (Cluster 262). Writes use `pool`;
+    /// the read router (Cluster 264) sends replica-eligible reads to `reader`.
+    pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
+        Self { pool, reader }
     }
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// The read pool (replica when configured, else the primary). Consumed by the
+    /// token-aware read router (Cluster 264).
+    #[allow(dead_code)]
+    pub fn reader(&self) -> &PgPool {
+        &self.reader
     }
 }
 

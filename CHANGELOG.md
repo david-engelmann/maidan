@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [262.0.0] — 2026-08-22
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
+arc, part 2.** No new gate tag.
+
+### Added
+
+- **Reader-pool split (inert).** `PostgresStore` now holds a distinct `reader` pool
+  (`with_replica_reader` constructor; `new` defaults `reader` to a clone of the
+  writer pool, so the ~62 existing call sites and default behaviour are unchanged),
+  and the server connects a real read replica at boot when `MAIDAN_DB_REPLICA_URL`
+  is set (validating reachability, with the same connection setup as the primary).
+  Reads still go to the primary — the token-aware `read_pool` selector arrives in a
+  later cluster. Unset `MAIDAN_DB_REPLICA_URL` → zero behaviour change.
+
 ## [261.0.0] — 2026-08-22
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability), part 4 —
