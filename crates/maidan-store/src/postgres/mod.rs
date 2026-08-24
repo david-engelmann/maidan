@@ -50,6 +50,10 @@ mod votes;
 mod webhooks;
 mod workspaces;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_types::*;
@@ -58,43 +62,144 @@ use sqlx::PgPool;
 use crate::error::StoreError;
 use crate::store::Store;
 
+tokio::task_local! {
+    /// The read-consistency scope for the current request (Cluster 264). Present
+    /// only inside a [`with_read_consistency`] scope (set by the server for GET/HEAD
+    /// requests); `Some(lsn)` carries the client's causality token, `None` means the
+    /// request has no causality requirement. Absent (not in scope — mutation
+    /// handlers, background workers) routes reads to the primary.
+    static READ_CONSISTENCY: Option<Lsn>;
+}
+
+/// Run `fut` with the request's read-consistency scope so `PostgresStore`'s reads
+/// can route to a replica (Cluster 264). The server wraps GET/HEAD handling in this
+/// (with the parsed `Maidan-Consistency-Token`, or `None`); everything outside a
+/// scope reads from the primary.
+pub async fn with_read_consistency<F>(token: Option<Lsn>, fut: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    READ_CONSISTENCY.scope(token, fut).await
+}
+
 #[derive(Debug, Clone)]
 pub struct PostgresStore {
     pool: PgPool,
     /// Read pool for LSN-token read routing (Cluster 262). Defaults to a clone of
-    /// the writer `pool` (so `new` callers are unaffected and reads stay on the
-    /// primary); a real read-replica is supplied via [`PostgresStore::with_replica_reader`].
-    /// The read router (Cluster 264) selects between `pool` and `reader` per call —
-    /// until then this is dormant.
-    #[allow(dead_code)]
+    /// the writer `pool`; a real read-replica is supplied via
+    /// [`PostgresStore::with_replica_reader`].
     reader: PgPool,
+    /// Whether `reader` is a genuine replica (else it aliases `pool`). When false,
+    /// [`PostgresStore::read_pool`] always returns the primary.
+    has_replica: bool,
+    /// The replica's last-known replay LSN as a raw `u64`, refreshed by a background
+    /// poller (Cluster 264). `read_pool` compares a request's causality token
+    /// against this — a cheap atomic load, no per-read query. A stale value is only
+    /// ever *behind* the true replay position, so it can only route to the primary
+    /// unnecessarily, never serve a stale read.
+    replica_replay: Arc<AtomicU64>,
 }
 
+/// How often the background poller refreshes the cached replica replay LSN.
+const REPLICA_LSN_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
 impl PostgresStore {
-    /// Single-pool store: reads and writes both use `pool` (reader defaults to it).
+    /// Single-pool store: reads and writes both use `pool` (reader aliases it).
     pub fn new(pool: PgPool) -> Self {
         Self {
             reader: pool.clone(),
             pool,
+            has_replica: false,
+            replica_replay: Arc::new(AtomicU64::new(0)),
         }
     }
 
-    /// Store with a distinct read-replica pool (Cluster 262). Writes use `pool`;
-    /// the read router (Cluster 264) sends replica-eligible reads to `reader`.
+    /// Store with a distinct read-replica pool (Cluster 262/264). Writes use `pool`;
+    /// token-eligible reads route to `reader`. Spawns a background poller that keeps
+    /// the replica's replay LSN cached for cheap per-read routing decisions.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
-        Self { pool, reader }
+        let replica_replay = Arc::new(AtomicU64::new(0));
+        spawn_replica_lsn_poller(reader.clone(), replica_replay.clone());
+        Self {
+            pool,
+            reader,
+            has_replica: true,
+            replica_replay,
+        }
     }
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
 
-    /// The read pool (replica when configured, else the primary). Consumed by the
-    /// token-aware read router (Cluster 264).
-    #[allow(dead_code)]
     pub fn reader(&self) -> &PgPool {
         &self.reader
     }
+
+    /// The pool a read should use, honoring the current request's read-consistency
+    /// scope (Cluster 264):
+    /// - no replica, or not inside a [`with_read_consistency`] scope (mutation
+    ///   handlers, background workers) → the **primary** (safe default);
+    /// - in scope with no token → the **replica** (no causality requirement);
+    /// - in scope with a token → the **replica** iff its cached replay LSN has
+    ///   reached the token, else the **primary** (read-your-writes).
+    fn read_pool(&self) -> &PgPool {
+        let scope = READ_CONSISTENCY.try_with(|t| *t).ok();
+        let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
+        match route_decision(self.has_replica, scope, cached) {
+            RouteDecision::Replica => &self.reader,
+            RouteDecision::Primary => &self.pool,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouteDecision {
+    Primary,
+    Replica,
+}
+
+/// Pure read-routing decision (Cluster 264), factored out for unit testing:
+/// - no replica, or not inside a read-consistency scope (`scope == None`) → primary;
+/// - in scope with no token (`Some(None)`) → replica (no causality need);
+/// - in scope with a token (`Some(Some(t))`) → replica iff the cached replay LSN has
+///   reached `t`, else primary (read-your-writes). A cached LSN is only ever behind
+///   the true replay position, so `cached >= t` guarantees the replica is caught up.
+fn route_decision(
+    has_replica: bool,
+    scope: Option<Option<Lsn>>,
+    cached_replay: Lsn,
+) -> RouteDecision {
+    if !has_replica {
+        return RouteDecision::Primary;
+    }
+    match scope {
+        None => RouteDecision::Primary,
+        Some(None) => RouteDecision::Replica,
+        Some(Some(token)) => {
+            if cached_replay >= token {
+                RouteDecision::Replica
+            } else {
+                RouteDecision::Primary
+            }
+        }
+    }
+}
+
+/// Poll the replica's `pg_last_wal_replay_lsn()` into `cache` on a fixed cadence, so
+/// [`PostgresStore::read_pool`] can decide primary-vs-replica without a per-read
+/// query. A poll error / non-standby result leaves the cache unchanged low → reads
+/// route to the primary until the next good poll (fail-safe).
+fn spawn_replica_lsn_poller(reader: PgPool, cache: Arc<AtomicU64>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
+        loop {
+            tick.tick().await;
+            if let Ok(Some(lsn)) = replication::replica_replay_lsn(&reader).await {
+                cache.store(lsn.0, Ordering::Relaxed);
+            }
+        }
+    });
 }
 
 #[async_trait]
@@ -118,7 +223,7 @@ impl Store for PostgresStore {
         workspaces::create_with_event(&self.pool, new).await
     }
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError> {
-        workspaces::get(&self.pool, id).await
+        workspaces::get(self.read_pool(), id).await
     }
     async fn count_workspaces(&self) -> Result<i64, StoreError> {
         workspaces::count(&self.pool).await
@@ -137,17 +242,17 @@ impl Store for PostgresStore {
         members::create_with_event(&self.pool, new).await
     }
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError> {
-        members::get(&self.pool, id).await
+        members::get(self.read_pool(), id).await
     }
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError> {
-        members::list(&self.pool, workspace_id).await
+        members::list(self.read_pool(), workspace_id).await
     }
     async fn get_member_by_handle(
         &self,
         workspace_id: WorkspaceId,
         handle: &str,
     ) -> Result<Member, StoreError> {
-        members::get_by_handle(&self.pool, workspace_id, handle).await
+        members::get_by_handle(self.read_pool(), workspace_id, handle).await
     }
 
     async fn add_member_skill(&self, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
@@ -391,10 +496,10 @@ impl Store for PostgresStore {
         channels::create_with_event(&self.pool, new).await
     }
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError> {
-        channels::get(&self.pool, id).await
+        channels::get(self.read_pool(), id).await
     }
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError> {
-        channels::list(&self.pool, workspace_id).await
+        channels::list(self.read_pool(), workspace_id).await
     }
 
     async fn add_channel_member(
@@ -500,16 +605,16 @@ impl Store for PostgresStore {
         threads::create_with_event(&self.pool, new).await
     }
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
-        threads::get(&self.pool, id).await
+        threads::get(self.read_pool(), id).await
     }
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
-        threads::list(&self.pool, channel_id).await
+        threads::list(self.read_pool(), channel_id).await
     }
     async fn list_threads_for_workspace(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<Thread>, StoreError> {
-        threads::list_for_workspace(&self.pool, workspace_id).await
+        threads::list_for_workspace(self.read_pool(), workspace_id).await
     }
 
     async fn page_threads_for_workspace(
@@ -744,14 +849,14 @@ impl Store for PostgresStore {
         message_edits::list_for_messages(&self.pool, message_ids, limit_per).await
     }
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
-        messages::get(&self.pool, id).await
+        messages::get(self.read_pool(), id).await
     }
     async fn list_messages(
         &self,
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<Message>, StoreError> {
-        messages::list(&self.pool, thread_id, limit).await
+        messages::list(self.read_pool(), thread_id, limit).await
     }
 
     async fn list_messages_after(
@@ -760,7 +865,7 @@ impl Store for PostgresStore {
         after: Option<MessageId>,
         limit: i64,
     ) -> Result<Vec<Message>, StoreError> {
-        messages::list_after(&self.pool, thread_id, after, limit).await
+        messages::list_after(self.read_pool(), thread_id, after, limit).await
     }
 
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError> {
@@ -1465,5 +1570,57 @@ impl Store for PostgresStore {
         task_id: &str,
     ) -> Result<Option<WorkspaceId>, StoreError> {
         a2a::get_task_workspace(&self.pool, task_id).await
+    }
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::{route_decision, RouteDecision};
+    use maidan_types::Lsn;
+
+    #[test]
+    fn no_replica_always_primary() {
+        for scope in [None, Some(None), Some(Some(Lsn(10)))] {
+            assert_eq!(
+                route_decision(false, scope, Lsn(u64::MAX)),
+                RouteDecision::Primary
+            );
+        }
+    }
+
+    #[test]
+    fn outside_a_read_scope_uses_primary() {
+        // Mutation handlers / background workers are not in a read scope.
+        assert_eq!(
+            route_decision(true, None, Lsn(u64::MAX)),
+            RouteDecision::Primary
+        );
+    }
+
+    #[test]
+    fn in_scope_without_a_token_uses_replica() {
+        assert_eq!(
+            route_decision(true, Some(None), Lsn(0)),
+            RouteDecision::Replica
+        );
+    }
+
+    #[test]
+    fn token_routes_to_replica_only_once_caught_up() {
+        let token = Lsn(100);
+        // Replica behind the token -> primary (read-your-writes).
+        assert_eq!(
+            route_decision(true, Some(Some(token)), Lsn(99)),
+            RouteDecision::Primary
+        );
+        // Replica exactly at / past the token -> replica.
+        assert_eq!(
+            route_decision(true, Some(Some(token)), Lsn(100)),
+            RouteDecision::Replica
+        );
+        assert_eq!(
+            route_decision(true, Some(Some(token)), Lsn(101)),
+            RouteDecision::Replica
+        );
     }
 }

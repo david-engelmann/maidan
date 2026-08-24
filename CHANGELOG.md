@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [264.0.0] — 2026-08-24
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
+arc, part 4.** No new gate tag.
+
+### Added
+
+- **Token-aware read routing.** GET/HEAD requests now run inside a read-consistency
+  scope (a `tokio` task-local carrying the parsed `Maidan-Consistency-Token`), and
+  `PostgresStore` routes the core entity reads (workspace/member/channel/thread/
+  message get + list) to the replica **only once it has replayed past the token** —
+  otherwise the primary (read-your-writes). A background poller caches the replica's
+  `pg_last_wal_replay_lsn()` in an atomic, so the per-read decision is a cheap
+  compare with no extra round-trip (a stale cache is safe — it can only route to the
+  primary unnecessarily, never serve a stale read). Mutation handlers and background
+  workers are not scoped, so their reads always hit the primary (no read-then-write
+  staleness). Validated end-to-end against real streaming replication; inert without
+  a replica. Remaining read families + metrics come in Cluster 265.
+
 ## [263.0.0] — 2026-08-22
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
