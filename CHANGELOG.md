@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [265.0.0] — 2026-08-24
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
+arc, part 5.** No new gate tag.
+
+### Added
+
+- **Remaining read families routed + a routing metric.** The rest of the
+  content/collaboration reads (skills, thread results, notifications, follows,
+  emails, last-seen, channel members, DMs/group DMs, thread transitions, queue
+  depth, task schedules, assignments, dependencies, message edits, mentions, inbox,
+  votes, reactions, workspace usage — 28 delegations) now route to the read replica
+  under a request's consistency token, completing the member-facing read surface
+  begun in Cluster 264. Auth-path reads (sessions, API tokens, OIDC, federation
+  peers) and control-plane/config reads (webhooks, slash commands, fsm hooks,
+  automation deliveries, reindex jobs, audit, token quotas) deliberately **stay on
+  the primary** — the auth middleware runs on GETs, so a just-minted credential must
+  not be read from a lagging replica. New `maidan_replica_reads_total{outcome=primary|replica}`
+  metric (a store-side `ReadRoutingMetrics` counter surfaced by the server). Inert
+  without a replica.
+
 ## [264.0.0] — 2026-08-24
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica

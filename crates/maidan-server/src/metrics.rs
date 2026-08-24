@@ -29,6 +29,7 @@ static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
 static OTLP_METER: OnceLock<MeterGuard> = OnceLock::new();
 static INIT: Once = Once::new();
 static LAST_HYDRATE: Mutex<Option<HydrateSnapshot>> = Mutex::new(None);
+static LAST_READ_ROUTING: Mutex<(u64, u64)> = Mutex::new((0, 0));
 
 fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
     std::thread::spawn(move || loop {
@@ -154,6 +155,10 @@ pub fn init() {
             "Task schedules fired by the scheduler sweeper (a thread was created), by outcome"
         );
         describe_counter!(
+            "maidan_replica_reads_total",
+            "Store reads routed to the primary vs a read replica (LSN-token read routing)"
+        );
+        describe_counter!(
             "maidan_notifications_created_total",
             "Per-recipient notifications written by the notification router, by kind"
         );
@@ -245,6 +250,23 @@ fn sync_hydrate_counters(current: HydrateSnapshot) {
     *guard = Some(current);
 }
 
+fn sync_read_routing_counters(current: (u64, u64)) {
+    let mut guard = LAST_READ_ROUTING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let (last_primary, last_replica) = *guard;
+    let (primary, replica) = current;
+    let dp = primary.saturating_sub(last_primary);
+    if dp > 0 {
+        counter!("maidan_replica_reads_total", "outcome" => "primary").increment(dp);
+    }
+    let dr = replica.saturating_sub(last_replica);
+    if dr > 0 {
+        counter!("maidan_replica_reads_total", "outcome" => "replica").increment(dr);
+    }
+    *guard = current;
+}
+
 fn increment_hydrate_delta(result: &str, current: u64, last: u64) {
     let delta = current.saturating_sub(last);
     if delta > 0 {
@@ -283,6 +305,10 @@ async fn refresh_runtime_gauges(state: &AppState) {
 
     if let Some(stats) = state.bus_hydrate_stats.as_ref() {
         sync_hydrate_counters(stats.snapshot());
+    }
+
+    if let Some(routing) = state.read_routing_metrics.as_ref() {
+        sync_read_routing_counters(routing.snapshot());
     }
 
     if let Some(backend) = state.outbox_backend.as_ref() {
