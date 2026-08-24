@@ -504,6 +504,47 @@ mid-migration.
 **Not covered:** load/throughput benchmarking (bench harness, Cluster 109),
 autoscaling/HPA tuning, multi-region active-active (out of scope).
 
+## Read replicas (`v264.0.0`)
+
+Maidan can offload reads to a Postgres streaming **read replica**, with a causality
+token that guarantees a client never reads staler than its own writes.
+
+**Enable it.** Set `MAIDAN_DB_REPLICA_URL` to a hot-standby's connection string.
+The server connects it at boot (fail-fast on a bad URL) and a background task polls
+the standby's replay position every 200 ms, so each read's primary-vs-replica choice
+is a cheap in-memory compare (no extra round-trip). Unset → every read uses the
+primary (unchanged).
+
+**The consistency token.** A successful mutating request returns a
+`Maidan-Consistency-Token` response header (the primary's WAL LSN at that point). A
+client that wants read-your-writes echoes it on a later request as the
+`Maidan-Consistency-Token` request header. That read is served from the replica only
+once the replica has replayed past the token; until then it falls back to the
+primary. A read with no token may be served from the replica immediately (the caller
+has asserted no causality requirement).
+
+**What routes, and what never does.**
+
+- **Routed** (only for `GET`/`HEAD`): content and collaboration reads — messages,
+  threads, channels, members, DMs, social (votes/reactions/pins/mentions),
+  notifications, follows, skills, assignments, dependencies, queue depth, and usage.
+- **Always the primary:** every write; **auth-path reads** (sessions, API tokens,
+  OIDC, federation peers) — the auth middleware runs on `GET`s, so a just-minted
+  credential must be read fresh; **control-plane/config reads** (webhooks, slash
+  commands, FSM hooks, deliveries, reindex jobs, audit, token quotas); and any read
+  inside a mutation handler (those requests are never in a read-routing scope, so a
+  read-then-write decision is always on primary data).
+
+**Observability.** `maidan_replica_reads_total{outcome="primary"|"replica"}` counts
+the split; `maidan_replica_lag_bytes` is the replica's WAL lag (primary write LSN
+minus replica replay LSN). Complement with Postgres's own `pg_stat_replication`.
+
+**Testing.** `scripts/replica-harness.sh up` stands up a local pgvector primary +
+streaming standby and prints `MAIDAN_PRIMARY_URL` / `MAIDAN_REPLICA_URL`; the
+`#[ignore]`d `read_routing` / `replication` store tests validate routing and
+read-your-writes against it (`cargo test -p maidan-store --test read_routing --
+--ignored`).
+
 ## Backup & disaster recovery (`v260.0.0`)
 
 Maidan's durable state is two things, and the backup story follows the same split:

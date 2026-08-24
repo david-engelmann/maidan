@@ -85,15 +85,29 @@ async fn token_read_is_never_stale_and_replica_serves_reads() {
         .expect("count on replica");
     assert_eq!(n, 1, "the write is present on the standby");
 
-    // The routing counters saw both outcomes: the token read went to the primary
-    // (replica behind), the no-token read went to the replica (Cluster 265 metric).
-    let (primary, replica_reads) = store.read_routing_metrics().snapshot();
+    // Routing counters register both outcomes deterministically (Cluster 265 metric).
+    // An unreachably-high token can never be satisfied by the replica → forced to the
+    // primary; a no-token read → the replica. (The earlier read-your-write read races
+    // the poller on localhost, so assert on these two controlled reads instead.)
+    let (p0, r0) = store.read_routing_metrics().snapshot();
+    let _ = with_read_consistency(
+        Some(maidan_types::Lsn(u64::MAX)),
+        store.get_workspace(ws.id),
+    )
+    .await
+    .expect("forced-primary read");
+    let _ = with_read_consistency(None, store.get_workspace(ws.id))
+        .await
+        .expect("forced-replica read");
+    let (p1, r1) = store.read_routing_metrics().snapshot();
+    assert!(p1 > p0, "the high-token read was routed to the primary");
+    assert!(r1 > r0, "the no-token read was routed to the replica");
+
+    // The lag gauge (Cluster 266) is populated by the poller; having caught up, it
+    // reports a sane byte count (not garbage).
+    let lag = store.read_routing_metrics().lag_bytes();
     assert!(
-        primary >= 1,
-        "a read was routed to the primary (got {primary})"
-    );
-    assert!(
-        replica_reads >= 1,
-        "a read was routed to the replica (got {replica_reads})"
+        lag < 10_000_000,
+        "replica lag is a sane byte count (got {lag})"
     );
 }
