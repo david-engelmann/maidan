@@ -26,10 +26,10 @@ pub fn max_body_bytes_from_env() -> usize {
 #[cfg(feature = "bootstrap")]
 use crate::bootstrap;
 use crate::{
-    a2a_agent, app_oauth, apps, auth, automation_deliveries, delivery_ops, dm, federation,
-    fsm_hooks, group_dm, health, mcp, mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc,
-    openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slash_commands,
-    state::AppState, webhooks, ws,
+    a2a_agent, app_oauth, apps, auth, automation_deliveries, consistency, delivery_ops, dm,
+    federation, fsm_hooks, group_dm, health, mcp, mcp_notifications, mcp_stream, mcp_streamable,
+    metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session,
+    slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -395,6 +395,10 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            consistency::middleware,
         ))
         .layer(TraceLayer::new_for_http());
 

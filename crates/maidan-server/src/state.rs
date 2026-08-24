@@ -141,6 +141,12 @@ pub struct AppState {
     /// no email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
+    /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server should
+    /// stamp a `Maidan-Consistency-Token` on writes and route replica-eligible
+    /// reads (Cluster 263+). Left `false` in [`AppState::new`]; the server binary
+    /// sets it when it builds the store with a replica reader, so tests/embedders
+    /// (no replica) skip the token round-trip and behave exactly as before.
+    pub read_replica_enabled: bool,
 }
 
 impl AppState {
@@ -193,6 +199,7 @@ impl AppState {
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
+            read_replica_enabled: false,
         }
     }
 

@@ -379,6 +379,9 @@ async fn main() -> anyhow::Result<()> {
     // Default-on global rate limit (Cluster 183): a deployment that configures
     // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
     state.rate_limit_default_on = true;
+    // Read-replica routing (Cluster 263+): when a replica is configured, stamp the
+    // consistency token on writes and route replica-eligible reads.
+    state.read_replica_enabled = config.replica_url.is_some();
 
     // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
     // configured — otherwise the notification router sends no email.

@@ -14,6 +14,11 @@ use crate::error::StoreError;
 pub trait Store: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
 
+    /// The primary's current WAL write position — the read-replica causality token
+    /// stamped on a write (Cluster 263). `Some` on Postgres (`pg_current_wal_lsn()`),
+    /// `None` on SQLite (no streaming replication, so no token).
+    async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
+
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     /// Create a workspace and append its `WorkspaceCreated` event atomically
     /// (Cluster 213).

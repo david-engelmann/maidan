@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v263.0.0 — Program D (read-replica arc): consistency token on writes
+
+| Change | Where |
+|--------|-------|
+| `Store::write_lsn()` (Postgres `pg_current_wal_lsn()`, SQLite `None`) + `AppState.read_replica_enabled` + `consistency::middleware` stamping `Maidan-Consistency-Token: <lsn>` on successful mutations when a replica is configured (captured after the handler — safely over-approximating; gated on the replica so no-replica deploys pay nothing). The write half of the causality contract — 264 routes on it | `store.rs`, `postgres/mod.rs`, `sqlite/mod.rs`, `state.rs`, `main.rs`, `consistency.rs`, `app.rs` |
+
 ## v262.0.0 — Program D (read-replica arc): reader-pool split (inert)
 
 | Change | Where |

@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [263.0.0] — 2026-08-22
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
+arc, part 3.** No new gate tag.
+
+### Added
+
+- **Consistency token on writes.** After a successful mutation, when a read replica
+  is configured (`MAIDAN_DB_REPLICA_URL`), the server stamps the primary's WAL LSN on
+  the response as `Maidan-Consistency-Token` — the causality token a client echoes on
+  a later read so replica reads never go staler than the client's own writes.
+  Backed by a new `Store::write_lsn()` (Postgres `pg_current_wal_lsn()`; SQLite
+  `None`), an `AppState.read_replica_enabled` flag, and a response middleware. The
+  LSN is captured after the handler (safely over-approximating — never behind the
+  write). No replica configured → no token and no extra round-trip (unchanged).
+  Cluster 264 will ingest the token and route reads.
+
 ## [262.0.0] — 2026-08-22
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
