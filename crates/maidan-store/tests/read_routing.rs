@@ -84,4 +84,16 @@ async fn token_read_is_never_stale_and_replica_serves_reads() {
         .await
         .expect("count on replica");
     assert_eq!(n, 1, "the write is present on the standby");
+
+    // The routing counters saw both outcomes: the token read went to the primary
+    // (replica behind), the no-token read went to the replica (Cluster 265 metric).
+    let (primary, replica_reads) = store.read_routing_metrics().snapshot();
+    assert!(
+        primary >= 1,
+        "a read was routed to the primary (got {primary})"
+    );
+    assert!(
+        replica_reads >= 1,
+        "a read was routed to the replica (got {replica_reads})"
+    );
 }

@@ -98,6 +98,29 @@ pub struct PostgresStore {
     /// ever *behind* the true replay position, so it can only route to the primary
     /// unnecessarily, never serve a stale read.
     replica_replay: Arc<AtomicU64>,
+    /// How many reads `read_pool` sent to the replica vs the primary (Cluster 265),
+    /// for the `maidan_replica_reads_total` metric. Counted only when a replica is
+    /// configured (a single-pool store leaves it at zero).
+    read_routing: Arc<ReadRoutingMetrics>,
+}
+
+/// Cumulative read-routing outcomes (Cluster 265). The server snapshots this into
+/// `maidan_replica_reads_total{outcome}`; the store stays metrics-agnostic (the
+/// `HydrateStats` pattern).
+#[derive(Debug, Default)]
+pub struct ReadRoutingMetrics {
+    primary: AtomicU64,
+    replica: AtomicU64,
+}
+
+impl ReadRoutingMetrics {
+    /// `(primary, replica)` cumulative read counts.
+    pub fn snapshot(&self) -> (u64, u64) {
+        (
+            self.primary.load(Ordering::Relaxed),
+            self.replica.load(Ordering::Relaxed),
+        )
+    }
 }
 
 /// How often the background poller refreshes the cached replica replay LSN.
@@ -111,6 +134,7 @@ impl PostgresStore {
             pool,
             has_replica: false,
             replica_replay: Arc::new(AtomicU64::new(0)),
+            read_routing: Arc::new(ReadRoutingMetrics::default()),
         }
     }
 
@@ -125,6 +149,7 @@ impl PostgresStore {
             reader,
             has_replica: true,
             replica_replay,
+            read_routing: Arc::new(ReadRoutingMetrics::default()),
         }
     }
 
@@ -134,6 +159,11 @@ impl PostgresStore {
 
     pub fn reader(&self) -> &PgPool {
         &self.reader
+    }
+
+    /// Read-routing counters for the `maidan_replica_reads_total` metric (Cluster 265).
+    pub fn read_routing_metrics(&self) -> Arc<ReadRoutingMetrics> {
+        self.read_routing.clone()
     }
 
     /// The pool a read should use, honoring the current request's read-consistency
@@ -146,7 +176,15 @@ impl PostgresStore {
     fn read_pool(&self) -> &PgPool {
         let scope = READ_CONSISTENCY.try_with(|t| *t).ok();
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
-        match route_decision(self.has_replica, scope, cached) {
+        let decision = route_decision(self.has_replica, scope, cached);
+        if self.has_replica {
+            let counter = match decision {
+                RouteDecision::Replica => &self.read_routing.replica,
+                RouteDecision::Primary => &self.read_routing.primary,
+            };
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+        match decision {
             RouteDecision::Replica => &self.reader,
             RouteDecision::Primary => &self.pool,
         }
@@ -229,7 +267,7 @@ impl Store for PostgresStore {
         workspaces::count(&self.pool).await
     }
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
-        workspaces::usage(&self.pool, id).await
+        workspaces::usage(self.read_pool(), id).await
     }
 
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
@@ -269,7 +307,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Vec<MemberSkill>, StoreError> {
-        member_skills::list(&self.pool, member_id).await
+        member_skills::list(self.read_pool(), member_id).await
     }
     async fn add_thread_required_skill(
         &self,
@@ -289,7 +327,7 @@ impl Store for PostgresStore {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadRequiredSkill>, StoreError> {
-        thread_skills::list(&self.pool, thread_id).await
+        thread_skills::list(self.read_pool(), thread_id).await
     }
     async fn set_thread_result(
         &self,
@@ -303,7 +341,7 @@ impl Store for PostgresStore {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError> {
-        thread_results::get(&self.pool, thread_id).await
+        thread_results::get(self.read_pool(), thread_id).await
     }
 
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError> {
@@ -321,7 +359,7 @@ impl Store for PostgresStore {
         unread_only: bool,
         limit: i64,
     ) -> Result<Vec<Notification>, StoreError> {
-        notifications::list_for_member(&self.pool, member_id, unread_only, limit).await
+        notifications::list_for_member(self.read_pool(), member_id, unread_only, limit).await
     }
     async fn mark_notification_read(
         &self,
@@ -349,7 +387,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Vec<NotificationPref>, StoreError> {
-        notification_prefs::list(&self.pool, member_id).await
+        notification_prefs::list(self.read_pool(), member_id).await
     }
     async fn is_notification_muted(
         &self,
@@ -377,7 +415,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Vec<ChannelFollow>, StoreError> {
-        follows::list_channel_follows(&self.pool, member_id).await
+        follows::list_channel_follows(self.read_pool(), member_id).await
     }
     async fn channel_followers(&self, channel_id: ChannelId) -> Result<Vec<MemberId>, StoreError> {
         follows::channel_followers(&self.pool, channel_id).await
@@ -400,7 +438,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Vec<ThreadFollow>, StoreError> {
-        follows::list_thread_follows(&self.pool, member_id).await
+        follows::list_thread_follows(self.read_pool(), member_id).await
     }
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_followers(&self.pool, thread_id).await
@@ -417,7 +455,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Option<MemberEmail>, StoreError> {
-        member_emails::get(&self.pool, member_id).await
+        member_emails::get(self.read_pool(), member_id).await
     }
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError> {
         member_emails::delete(&self.pool, member_id).await
@@ -430,7 +468,7 @@ impl Store for PostgresStore {
         &self,
         member_id: MemberId,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
-        member_last_seen::get(&self.pool, member_id).await
+        member_last_seen::get(self.read_pool(), member_id).await
     }
 
     async fn set_delivery_mode(
@@ -521,7 +559,7 @@ impl Store for PostgresStore {
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ChannelMember>, StoreError> {
-        channel_members::list(&self.pool, channel_id).await
+        channel_members::list(self.read_pool(), channel_id).await
     }
     async fn channel_is_member(
         &self,
@@ -543,14 +581,14 @@ impl Store for PostgresStore {
         &self,
         id: DmConversationId,
     ) -> Result<DmConversation, StoreError> {
-        dm::get(&self.pool, id).await
+        dm::get(self.read_pool(), id).await
     }
     async fn list_dm_conversations_for_member(
         &self,
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<DmConversation>, StoreError> {
-        dm::list_for_member(&self.pool, workspace_id, member_id).await
+        dm::list_for_member(self.read_pool(), workspace_id, member_id).await
     }
     async fn dm_conversation_for_thread(
         &self,
@@ -571,14 +609,14 @@ impl Store for PostgresStore {
         &self,
         id: GroupDmConversationId,
     ) -> Result<GroupDmConversation, StoreError> {
-        group_dm::get(&self.pool, id).await
+        group_dm::get(self.read_pool(), id).await
     }
     async fn list_group_dm_conversations_for_member(
         &self,
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<GroupDmConversation>, StoreError> {
-        group_dm::list_for_member(&self.pool, workspace_id, member_id).await
+        group_dm::list_for_member(self.read_pool(), workspace_id, member_id).await
     }
     async fn group_dm_conversation_for_thread(
         &self,
@@ -648,24 +686,24 @@ impl Store for PostgresStore {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<ThreadTransition>, StoreError> {
-        thread_transitions::list(&self.pool, thread_id, limit).await
+        thread_transitions::list(self.read_pool(), thread_id, limit).await
     }
 
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
-        threads::channel_queue_depth(&self.pool, channel_id).await
+        threads::channel_queue_depth(self.read_pool(), channel_id).await
     }
 
     async fn create_task_schedule(&self, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError> {
         task_schedules::create(&self.pool, new).await
     }
     async fn get_task_schedule(&self, id: TaskScheduleId) -> Result<TaskSchedule, StoreError> {
-        task_schedules::get(&self.pool, id).await
+        task_schedules::get(self.read_pool(), id).await
     }
     async fn list_task_schedules(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<TaskSchedule>, StoreError> {
-        task_schedules::list(&self.pool, workspace_id).await
+        task_schedules::list(self.read_pool(), workspace_id).await
     }
     async fn delete_task_schedule(&self, id: TaskScheduleId) -> Result<bool, StoreError> {
         task_schedules::delete(&self.pool, id).await
@@ -738,7 +776,7 @@ impl Store for PostgresStore {
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError> {
-        threads::list_assigned(&self.pool, workspace_id, member_id).await
+        threads::list_assigned(self.read_pool(), workspace_id, member_id).await
     }
     async fn claim_next_thread(
         &self,
@@ -783,13 +821,13 @@ impl Store for PostgresStore {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadDependency>, StoreError> {
-        thread_deps::list_dependencies(&self.pool, thread_id).await
+        thread_deps::list_dependencies(self.read_pool(), thread_id).await
     }
     async fn list_thread_dependents(
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadDependency>, StoreError> {
-        thread_deps::list_dependents(&self.pool, thread_id).await
+        thread_deps::list_dependents(self.read_pool(), thread_id).await
     }
     async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
         thread_deps::dependencies_satisfied(&self.pool, thread_id).await
@@ -839,14 +877,14 @@ impl Store for PostgresStore {
         message_id: MessageId,
         limit: i64,
     ) -> Result<Vec<MessageEdit>, StoreError> {
-        message_edits::list(&self.pool, message_id, limit).await
+        message_edits::list(self.read_pool(), message_id, limit).await
     }
     async fn list_message_edits_for_messages(
         &self,
         message_ids: &[MessageId],
         limit_per: i64,
     ) -> Result<Vec<MessageEdit>, StoreError> {
-        message_edits::list_for_messages(&self.pool, message_ids, limit_per).await
+        message_edits::list_for_messages(self.read_pool(), message_ids, limit_per).await
     }
     async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
         messages::get(self.read_pool(), id).await
@@ -913,7 +951,7 @@ impl Store for PostgresStore {
         member_id: MemberId,
         limit: i64,
     ) -> Result<Vec<Mention>, StoreError> {
-        mentions::list_for_member(&self.pool, member_id, limit).await
+        mentions::list_for_member(self.read_pool(), member_id, limit).await
     }
 
     async fn get_inbox_last_read_at(
@@ -936,7 +974,7 @@ impl Store for PostgresStore {
         member_id: MemberId,
         limit: i64,
     ) -> Result<MemberInbox, StoreError> {
-        inbox::list_for_member(&self.pool, member_id, limit).await
+        inbox::list_for_member(self.read_pool(), member_id, limit).await
     }
 
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError> {
@@ -946,7 +984,7 @@ impl Store for PostgresStore {
         votes::cast_with_event(&self.pool, new).await
     }
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError> {
-        votes::list(&self.pool, message_id).await
+        votes::list(self.read_pool(), message_id).await
     }
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError> {
@@ -975,7 +1013,7 @@ impl Store for PostgresStore {
         &self,
         message_id: MessageId,
     ) -> Result<Vec<Reaction>, StoreError> {
-        reactions::list(&self.pool, message_id).await
+        reactions::list(self.read_pool(), message_id).await
     }
 
     async fn pin_message(&self, new: NewPin) -> Result<(), StoreError> {

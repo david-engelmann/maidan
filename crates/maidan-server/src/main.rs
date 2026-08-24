@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let use_embedding_indexer: bool;
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
     let bus_hydrate_stats: Option<Arc<maidan_bus::HydrateStats>>;
+    let read_routing_metrics: Option<Arc<maidan_store::postgres::ReadRoutingMetrics>>;
     let outbox_relay_enabled = maidan_server::outbox_relay::relay_enabled_from_env();
     let outbox_relay_mode = maidan_server::outbox_relay::relay_mode_from_env();
     maidan_server::outbox_relay::validate_startup(
@@ -116,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
             // connect a separate reader pool (validating replica reachability at
             // boot) so LSN-token read routing (Cluster 264) can send eligible reads
             // there. Unset → reads stay on the primary (unchanged).
-            store = Arc::new(if let Some(replica_url) = config.replica_url.as_deref() {
+            let pg_store = if let Some(replica_url) = config.replica_url.as_deref() {
                 let reader = make_pg_opts()
                     .connect(replica_url)
                     .await
@@ -125,7 +126,12 @@ async fn main() -> anyhow::Result<()> {
                 PostgresStore::with_replica_reader(pool.clone(), reader)
             } else {
                 PostgresStore::new(pool.clone())
-            });
+            };
+            read_routing_metrics = config
+                .replica_url
+                .is_some()
+                .then(|| pg_store.read_routing_metrics());
+            store = Arc::new(pg_store);
             bus = Arc::new(pg_bus);
             resource_notifier = if notify_on_publish {
                 Arc::new(
@@ -177,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
             use_embedding_indexer = false;
             bus_listener_health = None;
             bus_hydrate_stats = None;
+            read_routing_metrics = None;
         }
     };
 
@@ -382,6 +389,7 @@ async fn main() -> anyhow::Result<()> {
     // Read-replica routing (Cluster 263+): when a replica is configured, stamp the
     // consistency token on writes and route replica-eligible reads.
     state.read_replica_enabled = config.replica_url.is_some();
+    state.read_routing_metrics = read_routing_metrics;
 
     // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
     // configured — otherwise the notification router sends no email.

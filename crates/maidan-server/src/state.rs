@@ -147,6 +147,10 @@ pub struct AppState {
     /// sets it when it builds the store with a replica reader, so tests/embedders
     /// (no replica) skip the token round-trip and behave exactly as before.
     pub read_replica_enabled: bool,
+    /// Read-routing counters (Cluster 265) for `maidan_replica_reads_total`, captured
+    /// from the `PostgresStore` when a replica is configured. `None` otherwise (SQLite
+    /// / single-pool), so the metric simply isn't emitted.
+    pub read_routing_metrics: Option<std::sync::Arc<maidan_store::postgres::ReadRoutingMetrics>>,
 }
 
 impl AppState {
@@ -200,6 +204,7 @@ impl AppState {
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
             read_replica_enabled: false,
+            read_routing_metrics: None,
         }
     }
 

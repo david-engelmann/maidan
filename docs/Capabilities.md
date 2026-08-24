@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v265.0.0 — Program D (read-replica arc): remaining read families + routing metric
+
+| Change | Where |
+|--------|-------|
+| 28 more content/collaboration read delegations routed to `read_pool()` (skills/results/notifications/follows/emails/last-seen/channel-members/dm/group-dm/transitions/queue-depth/schedules/assigned/deps/edits/mentions/inbox/votes/reactions/usage), completing the member-facing read surface. Auth + control-plane/config reads deliberately stay on the primary. `maidan_replica_reads_total{outcome}` via a store-side `ReadRoutingMetrics`. Validated vs real replication | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/{state,main,metrics}.rs` |
+
 ## v264.0.0 — Program D (read-replica arc): token ingestion + read routing
 
 | Change | Where |
