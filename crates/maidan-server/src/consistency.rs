@@ -17,6 +17,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use maidan_types::Lsn;
 
 use crate::state::AppState;
 
@@ -30,14 +31,37 @@ fn is_mutation(method: &Method) -> bool {
     )
 }
 
-/// Stamp `Maidan-Consistency-Token` on successful mutations when a read replica is
-/// configured. A no-op otherwise (no replica → the token is unused, so skip the
-/// extra `pg_current_wal_lsn()` round-trip entirely).
+/// Read-replica causality middleware (Clusters 263–264):
+/// - **GET/HEAD** requests run inside a read-consistency scope so store reads can
+///   route to the replica, honoring the client's `Maidan-Consistency-Token` (a
+///   token routes to the replica only once it has replayed that far, else the
+///   primary — read-your-writes). Mutation handlers are *not* scoped, so any
+///   read-then-write inside them stays on the primary.
+/// - **mutations** stamp the primary's current WAL LSN on a 2xx response as
+///   `Maidan-Consistency-Token`, the token a client echoes on its next read.
+///
+/// All of this is gated on a configured read replica (`read_replica_enabled`); with
+/// no replica it is a pure pass-through (no header parse, no LSN round-trip).
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    let mutation = is_mutation(req.method());
-    let mut resp = next.run(req).await;
+    if !state.read_replica_enabled {
+        return next.run(req).await;
+    }
 
-    if state.read_replica_enabled && mutation && resp.status().is_success() {
+    let method = req.method().clone();
+
+    if matches!(method, Method::GET | Method::HEAD) {
+        // Scope reads to the client's causality token (if any) so the store can
+        // route them to the replica when it has caught up.
+        let token = req
+            .headers()
+            .get(CONSISTENCY_TOKEN_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(Lsn::from_pg_str);
+        return maidan_store::postgres::with_read_consistency(token, next.run(req)).await;
+    }
+
+    let mut resp = next.run(req).await;
+    if is_mutation(&method) && resp.status().is_success() {
         match state.store.write_lsn().await {
             Ok(Some(lsn)) => {
                 if let Ok(value) = HeaderValue::from_str(&lsn.to_pg_str()) {

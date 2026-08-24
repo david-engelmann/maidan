@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v264.0.0 — Program D (read-replica arc): token ingestion + read routing
+
+| Change | Where |
+|--------|-------|
+| `READ_CONSISTENCY` task-local + `with_read_consistency` (GET/HEAD-only scope) + `read_pool()`/pure `route_decision` + a background replay-LSN poller (cached in an atomic) + entity-read delegations routed to the replica once it has replayed past the client's token (else primary). Mutation/background reads stay on the primary. Validated vs real streaming replication; inert without a replica | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/consistency.rs` |
+
 ## v263.0.0 — Program D (read-replica arc): consistency token on writes
 
 | Change | Where |
