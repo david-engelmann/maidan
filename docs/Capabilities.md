@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v266.0.0 — Program D (read-replica arc closer): lag gauge + docs
+
+| Change | Where |
+|--------|-------|
+| `maidan_replica_lag_bytes` gauge (poller samples the primary write LSN too → `current − replay`) + a Production.md "Read replicas" section (config, `Maidan-Consistency-Token` contract, routing policy, metrics, test harness). **Closes the LSN read-replica arc (261–266) and Program D** | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/metrics.rs`, `docs/Production.md` |
+
 ## v265.0.0 — Program D (read-replica arc): remaining read families + routing metric
 
 | Change | Where |

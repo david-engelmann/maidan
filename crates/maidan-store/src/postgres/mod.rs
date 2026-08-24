@@ -111,6 +111,9 @@ pub struct PostgresStore {
 pub struct ReadRoutingMetrics {
     primary: AtomicU64,
     replica: AtomicU64,
+    /// Replica lag in WAL bytes (primary write LSN − replica replay LSN), refreshed
+    /// by the poller (Cluster 266). `0` when caught up / not yet sampled.
+    replica_lag_bytes: AtomicU64,
 }
 
 impl ReadRoutingMetrics {
@@ -120,6 +123,11 @@ impl ReadRoutingMetrics {
             self.primary.load(Ordering::Relaxed),
             self.replica.load(Ordering::Relaxed),
         )
+    }
+
+    /// Current replica lag in WAL bytes (Cluster 266), for `maidan_replica_lag_bytes`.
+    pub fn lag_bytes(&self) -> u64 {
+        self.replica_lag_bytes.load(Ordering::Relaxed)
     }
 }
 
@@ -143,13 +151,19 @@ impl PostgresStore {
     /// the replica's replay LSN cached for cheap per-read routing decisions.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
-        spawn_replica_lsn_poller(reader.clone(), replica_replay.clone());
+        let read_routing = Arc::new(ReadRoutingMetrics::default());
+        spawn_replica_lsn_poller(
+            pool.clone(),
+            reader.clone(),
+            replica_replay.clone(),
+            read_routing.clone(),
+        );
         Self {
             pool,
             reader,
             has_replica: true,
             replica_replay,
-            read_routing: Arc::new(ReadRoutingMetrics::default()),
+            read_routing,
         }
     }
 
@@ -224,17 +238,29 @@ fn route_decision(
     }
 }
 
-/// Poll the replica's `pg_last_wal_replay_lsn()` into `cache` on a fixed cadence, so
-/// [`PostgresStore::read_pool`] can decide primary-vs-replica without a per-read
-/// query. A poll error / non-standby result leaves the cache unchanged low → reads
-/// route to the primary until the next good poll (fail-safe).
-fn spawn_replica_lsn_poller(reader: PgPool, cache: Arc<AtomicU64>) {
+/// Poll the replica's `pg_last_wal_replay_lsn()` into `replay_cache` on a fixed
+/// cadence, so [`PostgresStore::read_pool`] can decide primary-vs-replica without a
+/// per-read query, and refresh the replica-lag gauge (Cluster 266) from the primary's
+/// current write LSN minus the replay position. A poll error / non-standby result
+/// leaves the cache unchanged low → reads route to the primary until the next good
+/// poll (fail-safe).
+fn spawn_replica_lsn_poller(
+    primary: PgPool,
+    reader: PgPool,
+    replay_cache: Arc<AtomicU64>,
+    metrics: Arc<ReadRoutingMetrics>,
+) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
         loop {
             tick.tick().await;
-            if let Ok(Some(lsn)) = replication::replica_replay_lsn(&reader).await {
-                cache.store(lsn.0, Ordering::Relaxed);
+            if let Ok(Some(replay)) = replication::replica_replay_lsn(&reader).await {
+                replay_cache.store(replay.0, Ordering::Relaxed);
+                if let Ok(current) = replication::current_wal_lsn(&primary).await {
+                    metrics
+                        .replica_lag_bytes
+                        .store(current.0.saturating_sub(replay.0), Ordering::Relaxed);
+                }
             }
         }
     });

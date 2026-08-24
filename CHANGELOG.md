@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [266.0.0] — 2026-08-24
+
+Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica
+arc, part 6 (closer).** No new gate tag.
+
+### Added
+
+- **Replica-lag gauge + read-replica docs.** `maidan_replica_lag_bytes` (the LSN
+  poller now also samples the primary's `pg_current_wal_lsn()` and reports
+  `current − replay` in WAL bytes), and a "Read replicas" section in
+  `docs/Production.md` documenting `MAIDAN_DB_REPLICA_URL`, the `Maidan-Consistency-Token`
+  read-your-writes contract, what routes to the replica (content GETs) vs what
+  always hits the primary (writes, auth reads, control-plane reads), the metrics,
+  and the local test harness. **Completes the LSN causality-token read-replica arc
+  (Clusters 261–266) and Program D (scale & durability).**
+
 ## [265.0.0] — 2026-08-24
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica

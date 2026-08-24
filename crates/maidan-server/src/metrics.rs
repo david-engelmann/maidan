@@ -158,6 +158,10 @@ pub fn init() {
             "maidan_replica_reads_total",
             "Store reads routed to the primary vs a read replica (LSN-token read routing)"
         );
+        describe_gauge!(
+            "maidan_replica_lag_bytes",
+            "Read-replica lag in WAL bytes (primary write LSN minus replica replay LSN)"
+        );
         describe_counter!(
             "maidan_notifications_created_total",
             "Per-recipient notifications written by the notification router, by kind"
@@ -309,6 +313,7 @@ async fn refresh_runtime_gauges(state: &AppState) {
 
     if let Some(routing) = state.read_routing_metrics.as_ref() {
         sync_read_routing_counters(routing.snapshot());
+        gauge!("maidan_replica_lag_bytes").set(routing.lag_bytes() as f64);
     }
 
     if let Some(backend) = state.outbox_backend.as_ref() {
