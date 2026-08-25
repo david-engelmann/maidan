@@ -61,6 +61,7 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/:id", delete(routes::erase_workspace))
         .route("/workspaces/:id/audit", get(routes::list_workspace_audit))
         .route("/workspaces/:id/export", get(routes::export_workspace))
+        .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
         .route("/workspaces/:wid/events", get(routes::list_events))
         .route(

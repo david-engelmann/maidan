@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v270.0.0 — Optional deferrals: workspace import (REST)
+
+| Change | Where |
+|--------|-------|
+| `POST /workspaces/import` (`token:admin`) — write-side inverse of the 187 export over the 269 store. Body = the export bundle (`WorkspaceExport` now `Deserialize`). `?mode=new` (default) remaps every id → fresh workspace; `?mode=restore` preserves ids (409 if it exists, unless `&force=true` erases first). Pure `import::remap` (fresh ids + full FK rewrite) + `import::flatten` unit-tested; route proven e2e | `maidan-server/src/routes/workspace.rs`, `src/import.rs`, `src/export.rs`, `src/dto.rs`, `src/app.rs`, `openapi/`, `contracts/http-capability-map.json` |
+
 ## v269.0.0 — Optional deferrals: workspace import (store)
 
 | Change | Where |

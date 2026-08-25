@@ -31,6 +31,7 @@ pub mod fsm_hook_worker;
 pub mod fsm_hooks;
 pub mod group_dm;
 pub mod health;
+pub mod import;
 pub mod mail;
 pub mod mcp;
 pub mod mcp_notifications;

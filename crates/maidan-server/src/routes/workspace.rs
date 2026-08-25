@@ -10,6 +10,7 @@ use maidan_auth::{
     capability::{AUDIT_READ_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
+use maidan_store::StoreError;
 use maidan_types::*;
 
 #[cfg(feature = "bootstrap")]
@@ -68,6 +69,63 @@ pub async fn export_workspace(
     Ok(Json(
         crate::export::build(&state.store, workspace_id).await?,
     ))
+}
+
+/// Import a workspace content bundle (Cluster 270) — the write-side inverse of
+/// [`export_workspace`]. Gated on `token:admin` (it creates or overwrites a whole
+/// workspace). `mode=new` (default) remaps every id and lands a fresh workspace;
+/// `mode=restore` preserves the bundle's ids — 409 if that workspace already
+/// exists, unless `force=true` erases it first.
+pub async fn import_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Query(q): Query<crate::dto::ImportQuery>,
+    ApiJson(bundle): ApiJson<crate::export::WorkspaceExport>,
+) -> ApiResult<Json<crate::dto::ImportResult>> {
+    use crate::dto::ImportMode;
+    cap(&auth, TOKEN_ADMIN)?;
+
+    let flat = crate::import::flatten(bundle);
+    let to_write = match q.mode {
+        ImportMode::New => crate::import::remap(flat, uuid::Uuid::new_v4),
+        ImportMode::Restore => {
+            let existing = state.store.get_workspace(flat.workspace.id).await;
+            match existing {
+                Ok(_) if !q.force => {
+                    return Err(ApiError::Conflict(format!(
+                        "workspace {} already exists; retry with force=true to overwrite",
+                        flat.workspace.id.0
+                    )));
+                }
+                Ok(_) => {
+                    // force: erase the existing workspace so the restore lands cleanly.
+                    state.store.erase_workspace(flat.workspace.id).await?;
+                }
+                Err(StoreError::NotFound) => {}
+                Err(e) => return Err(e.into()),
+            }
+            flat
+        }
+    };
+
+    let workspace_id = to_write.workspace.id;
+    state.store.import_workspace(&to_write).await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "workspace.import".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({ "mode": q.mode, "force": q.force }),
+        },
+    )
+    .await;
+
+    Ok(Json(crate::dto::ImportResult {
+        workspace_id: workspace_id.0,
+        mode: q.mode,
+    }))
 }
 
 /// Live per-workspace usage counts for metering / quota visibility (Cluster

@@ -14,15 +14,15 @@ use std::sync::Arc;
 
 use maidan_store::{Store, StoreError};
 use maidan_types::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Bump when the bundle shape changes in a way an importer must notice.
-const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 1;
 
 /// Cap on messages fetched per page while paginating a thread to completeness.
 const PAGE: i64 = 500;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceExport {
     pub format_version: u32,
     pub exported_at: chrono::DateTime<chrono::Utc>,
@@ -36,7 +36,7 @@ pub struct WorkspaceExport {
     pub references: Vec<Reference>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExportChannel {
     pub channel: Channel,
     pub members: Vec<ChannelMember>,
