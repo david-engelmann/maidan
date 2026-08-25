@@ -88,6 +88,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_notification_pref"
         | "set_delivery_mode"
         | "get_delivery_mode"
+        | "set_member_email"
+        | "get_member_email"
+        | "delete_member_email"
         | "follow_channel"
         | "unfollow_channel"
         | "list_channel_follows"
@@ -271,6 +274,9 @@ pub async fn dispatch(
         "list_notification_prefs" => member::list_notification_prefs(store, args).await,
         "set_delivery_mode" => member::set_delivery_mode(store, args).await,
         "get_delivery_mode" => member::get_delivery_mode(store, args).await,
+        "set_member_email" => member::set_member_email(store, args).await,
+        "get_member_email" => member::get_member_email(store, args).await,
+        "delete_member_email" => member::delete_member_email(store, args).await,
         "follow_channel" => member::follow_channel(store, args).await,
         "unfollow_channel" => member::unfollow_channel(store, args).await,
         "list_channel_follows" => member::list_channel_follows(store, args).await,
