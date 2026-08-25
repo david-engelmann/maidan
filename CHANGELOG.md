@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [272.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 6 (final) — search
+read-routing observability.** No new gate tag.
+
+### Added
+
+- **`maidan_search_replica_reads_total{outcome="primary"|"replica"}`** — the
+  search-side twin of `maidan_replica_reads_total`, so the primary-vs-replica split for
+  message search is visible independently of store reads. `PostgresSearch` gets a
+  metrics-agnostic `SearchReadMetrics` (two atomics) incremented in `read_pool()` only
+  when a replica is configured; `main.rs` captures the handle (when
+  `MAIDAN_DB_REPLICA_URL` is set) onto `AppState`, and `metrics.rs` delta-syncs it into
+  the counter each tick. No separate lag gauge — the store's poller already emits
+  `maidan_replica_lag_bytes` for the same replica. Counter assertions added to the
+  `#[ignore]`d real-replica `replica_routing` test. **Closes the optional-deferrals
+  sweep (267–272) and the LSN read-replica program end-to-end.**
+
 ## [271.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 5 — search

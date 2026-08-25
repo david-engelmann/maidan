@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let bus_listener_health: Option<Arc<maidan_bus::ListenerHealth>>;
     let bus_hydrate_stats: Option<Arc<maidan_bus::HydrateStats>>;
     let read_routing_metrics: Option<Arc<maidan_store::postgres::ReadRoutingMetrics>>;
+    let search_read_routing_metrics: Option<Arc<maidan_search::SearchReadMetrics>>;
     let outbox_relay_enabled = maidan_server::outbox_relay::relay_enabled_from_env();
     let outbox_relay_mode = maidan_server::outbox_relay::relay_mode_from_env();
     maidan_server::outbox_relay::validate_startup(
@@ -156,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
             // Search gets its own replica reader pool (Cluster 271) so search reads
             // honor the same per-request consistency token as store reads. A separate
             // pool from the store's reader (pools are not shared across the Arc).
-            search = Arc::new(match config.replica_url.as_deref() {
+            let pg_search = match config.replica_url.as_deref() {
                 Some(replica_url) => {
                     let search_reader = make_pg_opts().connect(replica_url).await.context(
                         "connect to postgres read replica for search (MAIDAN_DB_REPLICA_URL)",
@@ -164,7 +165,14 @@ async fn main() -> anyhow::Result<()> {
                     PostgresSearch::with_replica_reader(pool, search_reader)
                 }
                 None => PostgresSearch::new(pool),
-            });
+            };
+            // Capture the search routing counters for `maidan_search_replica_reads_total`
+            // when a replica is configured (Cluster 272); `None` otherwise.
+            search_read_routing_metrics = config
+                .replica_url
+                .is_some()
+                .then(|| pg_search.read_routing_metrics());
+            search = Arc::new(pg_search);
             use_embedding_indexer = true;
         }
         Dialect::Sqlite => {
@@ -191,6 +199,7 @@ async fn main() -> anyhow::Result<()> {
             resource_notifier = Arc::new(InMemoryResourceNotifier::new());
             presence_notifier = None; // single process: legacy local-only presence
             search = Arc::new(SqliteSearch::new(pool));
+            search_read_routing_metrics = None;
             use_embedding_indexer = false;
             bus_listener_health = None;
             bus_hydrate_stats = None;
@@ -401,6 +410,7 @@ async fn main() -> anyhow::Result<()> {
     // consistency token on writes and route replica-eligible reads.
     state.read_replica_enabled = config.replica_url.is_some();
     state.read_routing_metrics = read_routing_metrics;
+    state.search_read_routing_metrics = search_read_routing_metrics;
 
     // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
     // configured — otherwise the notification router sends no email.
