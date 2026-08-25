@@ -7,6 +7,8 @@
 - [Integrating with Maidan](docs/Integration.md)
 - [Capability map](docs/Capability-Map.md)
 - [Agent integration (alias)](docs/Agent-Integration.md)
+- [Provider matrix](docs/Providers.md)
+- [Integration protocols](docs/Protocols.md)
 
 # Reference
 
@@ -22,6 +24,11 @@
 
 # Design (maintainers)
 
+- [Handoff (post-D pack)](docs/Handoff.md)
+- [Pre-public hardening](docs/Pre-Public-Hardening.md)
+- [Path to impressive](docs/Path-to-Impressive.md)
+- [Expansion bets](docs/Expansion-Bets.md)
+- [Launch](docs/Launch.md)
 - [Architecture](docs/Architecture.md)
 - [Capabilities by release](docs/Capabilities.md)
 - [Decisions](docs/Decisions.md)

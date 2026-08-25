@@ -26,9 +26,14 @@ single source of truth for *how* to operate in this codebase. The
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v268.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v273.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
-  handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)).
+  handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). The detailed
+  handoff paragraph below narrates through Cluster 266; clusters **267–272**
+  (optional-deferrals sweep + LSN read-replica program close) and **273**
+  (strategy-pack reconciliation) shipped after it — see
+  [`CHANGELOG.md`](CHANGELOG.md) and [`docs/Open Work.md`](docs/Open%20Work.md)
+  for the current state and forward work.
 - **CI:** GitHub Actions, 8 required-status-checks on `main`
   (`lint`, `secrets scan`, `unit tests`, `integration
   (testcontainers)`, `docker compose smoke`, `scale-out smoke`,
@@ -50,7 +55,7 @@ single source of truth for *how* to operate in this codebase. The
 4. [`docs/Capabilities.md`](docs/Capabilities.md) — what ships in which release.
 5. [`docs/Decisions.md`](docs/Decisions.md) — load-bearing ADRs.
 6. [`docs/Operations.md`](docs/Operations.md) — PR flow, CI, releases.
-7. [`docs/Open Work.md`](docs/Open%20Work.md) — backlog and risks.
+7. [`docs/Open Work.md`](docs/Open%20Work.md) — the single canonical backlog and risks (post-272 forward work is folded here; [`docs/Handoff.md`](docs/Handoff.md) is the strategy index behind those items, not a separate backlog).
 8. [`docs/Roadmap.md`](docs/Roadmap.md) / [`docs/Retros/`](docs/Retros/) — when doing cluster work.
 
 ## The cluster model in one paragraph

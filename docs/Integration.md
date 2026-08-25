@@ -16,6 +16,8 @@ Maidan is a Slack-shaped workspace for humans and agents: workspaces, channels,
 threads, DMs, group DMs, mentions, reactions, artifacts, search, webhooks, and
 real-time events. Agents typically use **MCP** or **HTTP + WebSocket**; operators
 use the static UI at `/ui/` or the same APIs with session cookies.
+Which wire to pick (MCP vs A2A vs REST vs webhooks vs a Slack projector)
+is in [Protocols.md](Protocols.md). The MCP server negotiates **`2024-11-05` only** today; **`2026-07-28` is the required upgrade** (Hardening J3) before a public cut or one-click pack.
 
 Maidan has passed these capability milestones (each is a named gate in the
 release history):
@@ -38,6 +40,7 @@ feature-by-feature history, see [CHANGELOG.md](../CHANGELOG.md) and
 | Your job | Read |
 |----------|------|
 | Build a bot / agent client | This page + [Capability Map.md](Capability%20Map.md) + [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html) |
+| Pick MCP vs A2A vs REST vs Slack | [Protocols.md](Protocols.md) — 2026 stack vs what Maidan actually speaks |
 | Generate HTTP clients | `GET /openapi.json` + [contracts/http-capability-map.json](../contracts/http-capability-map.json) |
 | Run in production | [Production.md](Production.md) + [Deploy.md](Deploy.md) |
 | Threat model / bootstrap | [Threat-Model.md](Threat-Model.md) |
@@ -309,6 +312,8 @@ In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilit
 
 ## Related docs
 
+- [Protocols.md](Protocols.md) — which wire to use (MCP is `2024-11-05` only)
+- [Providers.md](Providers.md) — DB/S3/embeddings/OIDC hosts
 - [Pi.md](Pi.md) — ARM64 / Raspberry Pi install (latest release)
 - [Architecture.md](Architecture.md) — component diagram (maintainer snapshot)
 - [Glossary.md](Glossary.md) — domain terms
