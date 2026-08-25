@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [271.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 5 — search
+token-aware read routing.** No new gate tag.
+
+### Added
+
+- **Message search honors the read-consistency token.** `maidan-search`'s
+  `PostgresSearch` now routes its reads to a Postgres read replica once it has caught
+  up to the request's `Maidan-Consistency-Token` — the search-side twin of the
+  Clusters 262–266 store routing. It gains its own `reader` pool + a 200 ms replica
+  replay-LSN poller + a `read_pool()` selector; `new(pool)` is byte-unchanged for
+  single-primary deployments, `with_replica_reader` wires a replica. The decision is
+  single-sourced via a new `maidan_store::postgres::replica_route(has_replica, cached)`
+  that reads the same `READ_CONSISTENCY` task-local the store uses. Lexical + semantic
+  reads route (semantic resolves its model table and runs its query against the same
+  pool so they never disagree); embedding writes / index DDL / reindex stay on the
+  primary. `main.rs` builds search its own replica reader when `MAIDAN_DB_REPLICA_URL`
+  is set. Validated against real streaming replication (`#[ignore]`d `replica_routing`
+  test + `scripts/replica-harness.sh`).
+
 ## [270.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 4 — workspace

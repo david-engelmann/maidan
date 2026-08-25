@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v271.0.0 — Optional deferrals: search token-aware read routing
+
+| Change | Where |
+|--------|-------|
+| `PostgresSearch` routes reads to a replica once caught up to the request's `Maidan-Consistency-Token` — own reader pool + 200 ms replay poller + `read_pool()`; single-sourced via new `maidan_store::postgres::replica_route` (reads the shared `READ_CONSISTENCY` task-local). Lexical + semantic reads route (semantic resolve + query share one pool); embedding writes/DDL/reindex stay primary. Wired at boot on `MAIDAN_DB_REPLICA_URL`; validated vs real streaming replication (`#[ignore]`d `replica_routing`) | `maidan-search/src/postgres.rs`, `maidan-store/src/postgres/mod.rs`, `maidan-server/src/main.rs`, `docs/Production.md` |
+
 ## v270.0.0 — Optional deferrals: workspace import (REST)
 
 | Change | Where |
