@@ -280,6 +280,26 @@ fn apply_route_defaults(
     if path.contains("/purge") && method == "POST" {
         return b.json(&json!({ "confirm_workspace_id": f.workspace }));
     }
+    if path == "/workspaces/import" && method == "POST" {
+        return b.json(&json!({
+            "format_version": 1,
+            "exported_at": "2026-01-01T00:00:00Z",
+            "workspace": {
+                "id": f.workspace,
+                "name": "x",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "tombstoned_at": null
+            },
+            "members": [],
+            "channels": [],
+            "threads": [],
+            "messages": [],
+            "message_edits": [],
+            "pins": [],
+            "references": []
+        }));
+    }
     if path.contains("/inbox/read") {
         return b.json(&json!({ "read_through": "2026-01-01T00:00:00Z" }));
     }

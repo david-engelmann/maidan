@@ -27,6 +27,19 @@ pub fn purge_workspace() {}
 pub fn export_workspace() {}
 
 #[utoipa::path(
+    post,
+    path = "/workspaces/import",
+    tag = "workspaces",
+    params(ImportQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ImportResult, description = "Imported; body is the workspace content bundle produced by export"),
+        (status = 409, description = "restore mode: a workspace with the bundle's id already exists (retry with force=true)")
+    )
+)]
+pub fn import_workspace() {}
+
+#[utoipa::path(
     get,
     path = "/workspaces/{id}/usage",
     tag = "workspaces",

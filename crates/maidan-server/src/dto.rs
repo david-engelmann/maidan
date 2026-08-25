@@ -356,6 +356,38 @@ pub struct UnreadCount {
     pub count: i64,
 }
 
+/// Query params for workspace import (Cluster 270).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ImportQuery {
+    /// `new` (default) remaps every id to a fresh one and lands the content as a
+    /// brand-new workspace; `restore` preserves the bundle's ids verbatim.
+    #[serde(default)]
+    pub mode: ImportMode,
+    /// For `restore` only: overwrite an existing workspace with the same id by
+    /// erasing it first. Ignored in `new` mode. A no-op if nothing exists.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Import mode (Cluster 270).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportMode {
+    /// Remap all ids; land as a new workspace.
+    #[default]
+    New,
+    /// Preserve ids; restore into the same identities.
+    Restore,
+}
+
+/// Result of a workspace import (Cluster 270): the id of the workspace that now
+/// holds the content (a fresh id in `new` mode, the bundle's id in `restore`).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ImportResult {
+    pub workspace_id: uuid::Uuid,
+    pub mode: ImportMode,
+}
+
 /// Result of marking all of a member's notifications read (Cluster 239).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MarkAllRead {

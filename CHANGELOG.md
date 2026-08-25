@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [270.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 4 — workspace
+import, the route.** No new gate tag.
+
+### Added
+
+- **`POST /workspaces/import`** (`token:admin`) — the write-side inverse of the
+  Cluster-187 export, over the Cluster-269 `Store::import_workspace`. The body is
+  exactly the `GET /workspaces/{id}/export` bundle (`WorkspaceExport` gained
+  `Deserialize`), so export → import round-trips. Two modes (`?mode=`): **new**
+  (default) remaps every id to a fresh one and lands a brand-new workspace (never
+  collides); **restore** preserves the bundle's ids — **409** if that workspace
+  already exists, unless `&force=true` erases it first and restores over it (disaster
+  recovery). The pure `import::remap` (fresh ids + full FK rewrite) and `import::flatten`
+  are unit-tested for referential integrity; the route is proven end-to-end
+  (`workspace_import_e2e`). Reactions/votes and artifact blobs remain outside the
+  bundle (Cluster-187 scope), so a round-trip drops them — documented.
+
 ## [269.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 3 — workspace
