@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [267.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 1.** No new gate tag.
+
+### Added
+
+- **A2A egress: content → parts.** `message_parts_from_content` (the inverse of
+  Cluster-194's `message_content`), and the A2A `SendMessage` agent now renders its
+  outbound message from the stored message's canonical structured `content` (each
+  block projected to text, mirroring `derive_body`) instead of echoing the request —
+  so an A2A consumer sees Maidan's stored representation. Behaviour-preserving for
+  A2A-ingested (text) messages, which round-trip faithfully. Closes the federation
+  egress deferral (event relay already carried `content`).
+
 ## [266.0.0] — 2026-08-24
 
 Post-gate hardening (Phase XXIV). **Program D (scale & durability) — read-replica

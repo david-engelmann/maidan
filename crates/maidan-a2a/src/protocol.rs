@@ -202,6 +202,39 @@ pub fn message_content(message: &A2aMessage) -> Option<Vec<ContentBlock>> {
     (!blocks.is_empty()).then_some(blocks)
 }
 
+/// Render structured content blocks back to A2A text parts (Cluster 267) — the
+/// egress inverse of [`message_content`]. A2A parts are text-only, so each block
+/// projects to its text form, mirroring `maidan_types::derive_body`'s per-block
+/// rendering: `Text` → its text, `Code` → a fenced block, `ToolResult` → its
+/// content, `ResourceLink` → its title or URI. A `ToolUse` block has no text
+/// projection and is skipped. The common case (Text blocks from an A2A-ingested
+/// message) round-trips faithfully back to the original parts.
+pub fn message_parts_from_content(content: &[ContentBlock]) -> Vec<TextPart> {
+    content
+        .iter()
+        .filter_map(content_block_text)
+        .map(|text| TextPart {
+            kind: "text".to_string(),
+            text,
+        })
+        .collect()
+}
+
+fn content_block_text(block: &ContentBlock) -> Option<String> {
+    match block {
+        ContentBlock::Text { text } => Some(text.clone()),
+        ContentBlock::Code { language, code } => Some(format!(
+            "```{}\n{code}\n```",
+            language.as_deref().unwrap_or("")
+        )),
+        ContentBlock::ToolResult { content, .. } => Some(content.clone()),
+        ContentBlock::ResourceLink { uri, title, .. } => {
+            Some(title.clone().unwrap_or_else(|| uri.clone()))
+        }
+        ContentBlock::ToolUse { .. } => None,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PushNotificationConfig {
@@ -365,6 +398,63 @@ mod tests {
             metadata: None,
         };
         assert_eq!(message_content(&no_text), None);
+    }
+
+    #[test]
+    fn message_parts_from_content_round_trips_text_and_projects_other_blocks() {
+        // Text blocks (the A2A-ingested case) round-trip faithfully back to parts.
+        let blocks = message_content(&A2aMessage {
+            role: "agent".into(),
+            parts: vec![
+                TextPart {
+                    kind: "text".into(),
+                    text: "one".into(),
+                },
+                TextPart {
+                    kind: "text".into(),
+                    text: "two".into(),
+                },
+            ],
+            metadata: None,
+        })
+        .unwrap();
+        let parts = message_parts_from_content(&blocks);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].kind, "text");
+        assert_eq!(parts[0].text, "one");
+        assert_eq!(parts[1].text, "two");
+
+        // Non-text blocks project to their text form; ToolUse (no projection) is skipped.
+        let mixed = vec![
+            ContentBlock::Code {
+                language: Some("rust".into()),
+                code: "fn a() {}".into(),
+            },
+            ContentBlock::ToolUse {
+                id: "u1".into(),
+                name: "search".into(),
+                input: serde_json::json!({"q": "x"}),
+            },
+            ContentBlock::ToolResult {
+                tool_use_id: "u1".into(),
+                content: "hit".into(),
+                is_error: false,
+            },
+            ContentBlock::ResourceLink {
+                uri: "maidan://a/1".into(),
+                mime_type: None,
+                title: Some("Doc".into()),
+            },
+        ];
+        let parts = message_parts_from_content(&mixed);
+        assert_eq!(
+            parts.len(),
+            3,
+            "ToolUse has no text projection and is skipped"
+        );
+        assert_eq!(parts[0].text, "```rust\nfn a() {}\n```");
+        assert_eq!(parts[1].text, "hit");
+        assert_eq!(parts[2].text, "Doc");
     }
 
     #[test]

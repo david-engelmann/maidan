@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v267.0.0 — Optional deferrals: A2A egress content → parts
+
+| Change | Where |
+|--------|-------|
+| `message_parts_from_content` (egress inverse of `message_content`) + the A2A agent renders its outbound message from the stored message's canonical content (per-block text projection, mirroring `derive_body`) instead of echoing the request. Closes the federation egress deferral | `maidan-a2a/src/protocol.rs`, `maidan-server/src/a2a_agent.rs` |
+
 ## v266.0.0 — Program D (read-replica arc closer): lag gauge + docs
 
 | Change | Where |
