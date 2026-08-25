@@ -1674,6 +1674,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn email_tools_set_get_delete() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "e".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Unset → null.
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_member_email",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(got.is_null());
+
+        // Set, then get returns it.
+        let set = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_member_email",
+                    &json!({ "member_id": member.id.0, "email": "m@example.com" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["email"], json!("m@example.com"));
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_member_email",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["email"], json!("m@example.com"));
+
+        // A garbage address is rejected.
+        assert!(server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": member.id.0, "email": "nope" }),
+            )
+            .await
+            .is_err());
+
+        // Delete → {deleted:true}, then get is null again.
+        let del = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "delete_member_email",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(del["deleted"], json!(true));
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_member_email",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(got.is_null());
+    }
+
+    #[tokio::test]
     async fn follow_tools_channel_and_thread() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

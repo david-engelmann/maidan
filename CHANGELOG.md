@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [268.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 2.** No new gate tag.
+
+### Added
+
+- **MCP email-address tools.** `set_member_email` / `get_member_email` /
+  `delete_member_email` (`workspace:read`, member-scoped) — the MCP twins of the
+  Cluster-250 REST over the Cluster-248 store, so an MCP-only agent can manage a
+  member's delivery address. `set` does a light `@` check (→ `InvalidParams`), `get`
+  returns the address or `null`, `delete` returns `{deleted}`. No new store logic.
+
 ## [267.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 1.** No new gate tag.

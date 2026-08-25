@@ -321,6 +321,54 @@ pub(super) async fn get_delivery_mode(
 }
 
 #[derive(Deserialize)]
+struct SetMemberEmailArgs {
+    member_id: uuid::Uuid,
+    email: String,
+}
+
+/// Set a member's delivery email (Cluster 268) — the MCP twin of
+/// `PUT /members/:id/email`. Light `@` sanity check; full validation at the transport.
+pub(super) async fn set_member_email(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetMemberEmailArgs = serde_json::from_value(args.clone())?;
+    let email = a.email.trim();
+    if !email.contains('@') || email.len() < 3 {
+        return Err(McpError::InvalidParams(
+            "email must be a valid address".to_string(),
+        ));
+    }
+    let stored = store.set_member_email(MemberId(a.member_id), email).await?;
+    Ok(content_json(&stored))
+}
+
+#[derive(Deserialize)]
+struct MemberEmailArgs {
+    member_id: uuid::Uuid,
+}
+
+/// A member's delivery email, or `null` if unset (Cluster 268).
+pub(super) async fn get_member_email(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberEmailArgs = serde_json::from_value(args.clone())?;
+    let email = store.get_member_email(MemberId(a.member_id)).await?;
+    Ok(content_json(&email))
+}
+
+/// Clear a member's delivery email (Cluster 268) — opting out. Returns `{deleted}`.
+pub(super) async fn delete_member_email(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberEmailArgs = serde_json::from_value(args.clone())?;
+    let deleted = store.delete_member_email(MemberId(a.member_id)).await?;
+    Ok(content_json(&serde_json::json!({ "deleted": deleted })))
+}
+
+#[derive(Deserialize)]
 struct FollowChannelArgs {
     member_id: uuid::Uuid,
     channel_id: uuid::Uuid,

@@ -493,6 +493,40 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_member_email",
+            "description": "Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "email": {"type": "string"}
+                },
+                "required": ["member_id", "email"]
+            }
+        }),
+        json!({
+            "name": "get_member_email",
+            "description": "Get a member's delivery email address (null when unset).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "delete_member_email",
+            "description": "Clear a member's delivery email address (opt out of email). Returns {deleted}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "follow_channel",
             "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
             "inputSchema": {

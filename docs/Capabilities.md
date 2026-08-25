@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v268.0.0 — Optional deferrals: MCP email-address tools
+
+| Change | Where |
+|--------|-------|
+| `set_member_email` / `get_member_email` / `delete_member_email` MCP tools (`workspace:read`, member-scoped) — MCP twins of the 250 REST over the 248 store; `set` light `@` check → `InvalidParams`, `get` → address or `null`, `delete` → `{deleted}`. No new store logic | `maidan-mcp/src/tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
+
 ## v267.0.0 — Optional deferrals: A2A egress content → parts
 
 | Change | Where |
