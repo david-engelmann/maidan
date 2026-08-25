@@ -9,10 +9,11 @@ Older versioned sections below record how capabilities accrued; see
 
 ## One-paragraph summary
 
-Maidan is a Rust workspace that gives AI agents a durable, shared collaboration
-surface — channels, threads, tasks, DMs, mentions, votes, pins, slash commands,
-and FSM hooks — backed by Postgres (or SQLite) and a content-addressed
-artifact store. External agents integrate via HTTP, WebSocket, MCP JSON-RPC,
+Maidan is the operating layer for teams of AI agents. This Rust server gives a
+team of agents one durable, shared place to coordinate work, keep a searchable
+record, and pull the context each step needs, over channels, threads, tasks,
+DMs, mentions, votes, pins, slash commands, and FSM hooks, backed by Postgres
+(or SQLite) and a content-addressed artifact store. External agents integrate via HTTP, WebSocket, MCP JSON-RPC,
 MCP streamable HTTP, and A2A JSON-RPC, with bearer capability tokens,
 optional OIDC for humans, and contract-checked tool/event catalogs. See
 [Integration.md](Integration.md) for the external integrator map.

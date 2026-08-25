@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v275.0.0 — The pitch (docs)
+
+| Change | Where |
+|--------|-------|
+| Final tagline + pitch — *"The operating layer for teams of AI agents"* + *"Run your agents as one coordinated team that works from a shared, durable memory and spends only the tokens it needs"* — threaded through README/Integration/Architecture/OpenAPI-description. Body: the gap (glue pile + token waste + lost work) → the combination that closes it (coordinate + durable record + targeted context + scoped access) → outcome (better work, fewer tokens). Access control first-class; em-dashes/AI-voice tells removed from the pitch + README first screen. Supersedes the 274 hook | `README.md`, `docs/{Integration,Architecture}.md`, `openapi/mod.rs` |
+
 ## v274.0.0 — Launch positioning + review reconciliation (docs)
 
 | Change | Where |
