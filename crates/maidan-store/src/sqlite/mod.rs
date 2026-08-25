@@ -18,6 +18,7 @@ pub mod events;
 mod follows;
 mod fsm_hooks;
 mod group_dm;
+mod import;
 mod inbox;
 mod member_emails;
 mod member_last_seen;
@@ -87,6 +88,10 @@ impl Store for SqliteStore {
 
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
         Ok(None) // SQLite has no streaming replication / WAL LSN token.
+    }
+
+    async fn import_workspace(&self, i: &WorkspaceImport) -> Result<(), StoreError> {
+        import::import_workspace(&self.pool, i).await
     }
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {

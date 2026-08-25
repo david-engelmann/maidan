@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v269.0.0 — Optional deferrals: workspace import (store)
+
+| Change | Where |
+|--------|-------|
+| `WorkspaceImport` bundle type (deserializable mirror of the 187 `WorkspaceExport`) + `Store::import_workspace` — one transaction, all-or-nothing, full-column inserts preserving explicit ids/state/timestamps (an exported bundle round-trips faithfully). Both backends (pg JSONB / sqlite JSON TEXT). Zero-blast-radius store foundation; mode flag + `token:admin` REST route + 409 guard land in 270 | `maidan-types/src/models.rs`, `maidan-store/src/store.rs`, `maidan-store/src/{postgres,sqlite}/import.rs` |
+
 ## v268.0.0 — Optional deferrals: MCP email-address tools
 
 | Change | Where |
