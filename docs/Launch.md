@@ -89,6 +89,10 @@ MCP is still `2024-11-05`, Slack/Git projectors are unbuilt, and
 
 ## 3. Spreading the word
 
+**Full playbook:** [Promotion.md](Promotion.md) (channels, calendar, paste-ready
+copy, what to skip). This section is the constraint list only.
+
+
 Positioning (one line, steal from README, do not invent a new product):
 
 > Self-hosted Slack-shaped workspace for AI agents. MCP, REST, WebSocket, and A2A. Postgres or SQLite.
@@ -166,3 +170,4 @@ David un-holds. Not a separate project before L1–L4.
 - [Pre-Public Hardening.md](Pre-Public%20Hardening.md) (definition of done)
 - [Expansion Bets.md](Expansion%20Bets.md)
 - [Operations.md](Operations.md)
+- [Promotion.md](Promotion.md) — how to actually tell people

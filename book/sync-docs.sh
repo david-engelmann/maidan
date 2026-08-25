@@ -40,7 +40,7 @@ top_pages=(
   "Production" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "Architecture" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README"
-  "Providers" "Protocols" "Handoff" "Launch"
+  "Providers" "Protocols" "Handoff" "Launch" "Promotion"
   "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"
 )
 for name in "${top_pages[@]}"; do

@@ -14,11 +14,12 @@ strategy pack into the canonical backlog.** No new gate tag. Docs-only.
 
 ### Changed
 
-- **Single source of truth for the backlog restored.** A separate agent's 7-doc
+- **Single source of truth for the backlog restored.** A separate agent's 8-doc
   strategy pack (Handoff, Pre-Public Hardening, Path to Impressive, Expansion Bets,
-  Launch, Protocols, Providers) had installed a competing backlog (Handoff.md said "do
-  not start from Open Work/Roadmap"; CLAUDE.md/README were edited to enforce it). A
-  5-agent review found the content accurate and tree-grounded, so the pack is **kept**
+  Launch, Promotion, Protocols, Providers) had installed a competing backlog (Handoff.md
+  said "do not start from Open Work/Roadmap"; CLAUDE.md/README were edited to enforce
+  it). A per-doc agent review found the content accurate and tree-grounded, so the pack
+  is **kept**
   — but the redirect is reverted: Open Work.md / Roadmap.md remain canonical, and
   Handoff.md is reframed as the *strategy index* that feeds them. The pack's
   genuinely-open items are folded into a new "Post-272 forward work" section in Open
@@ -35,7 +36,9 @@ strategy pack into the canonical backlog.** No new gate tag. Docs-only.
   same-day staleness (the pack was drafted while 270–272 were in flight): refreshed the
   "v269 / in-flight" snapshots, Open Work's "latest v251" + "269–272 remaining", and
   CLAUDE.md's "latest v268" orientation pointer, to reflect 267–272 shipped (tags
-  through `v273`).
+  through `v273`). Reframed the unregistered `maidan.world` domain (verified `NXDOMAIN`)
+  as *planned* rather than the live "Published/canonical" site in AGENTS.md/README.md/
+  Promotion.md — GitHub Pages stays the live site today.
 
 ## [272.0.0] — 2026-08-25
 

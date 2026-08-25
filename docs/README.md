@@ -3,7 +3,7 @@
 Documentation for Maidan is **GitHub-native Markdown**: standard links, headings, and
 Mermaid fenced blocks. It renders correctly on GitHub, in mdBook, and in editors.
 
-**Published site (recommended for reading):** [https://david-engelmann.github.io/maidan/](https://david-engelmann.github.io/maidan/)
+**Published site:** [https://david-engelmann.github.io/maidan/](https://david-engelmann.github.io/maidan/) (mdBook). A `maidan.world` product domain (landing + `/docs` + `/blog`) is **planned** for the public preview but is not registered/live yet — the cutover plan is in [Promotion.md](Promotion.md); use the GitHub Pages URL today.
 
 > **External integrators:** [Integration.md](Integration.md) — do not start with cluster plans.
 >
@@ -46,7 +46,8 @@ Live API: `GET /openapi.json` on your server.
 | [Dependencies.md](Dependencies.md) | Dependency currency + duplicate-version policy (`deny.toml`) |
 | [Gates/maidan-scale-1.0.md](Gates/maidan-scale-1.0.md) | Scale product gate (`v120.0.0`): criteria → evidence |
 | [Handoff.md](Handoff.md) | Strategy index for post-272 forward work (feeds [Open Work.md](Open%20Work.md); IDs, try-out matrix, rationale) |
-| [Launch.md](Launch.md) | Production-ready extras, public-preview cut, spreading the word |
+| [Launch.md](Launch.md) | Production-ready extras, public-preview cut, when you may announce |
+| [Promotion.md](Promotion.md) | Get the word out: **maidan.world**, docs hub, Show HN, Reddit, LinkedIn, Medium |
 | [Pre-Public Hardening.md](Pre-Public%20Hardening.md) | Cleanup/refactor/tests/docs before a public launch |
 | [Path to Impressive.md](Path%20to%20Impressive.md) | Strategy: UI assurance, adoption gaps, usefulness bets |
 | [Expansion Bets.md](Expansion%20Bets.md) | Researched feature bets after 270-272 (Slack teammate, MCP pack, SDKs, mail queue) |

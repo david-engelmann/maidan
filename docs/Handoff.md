@@ -62,7 +62,8 @@ scopes.
 | [Pre-Public Hardening.md](Pre-Public%20Hardening.md) | Polish before public: residue, tests, examples, perf **H**, providers **I**, protocols **J** | Executing A–J |
 | [Path to Impressive.md](Path%20to%20Impressive.md) | Strategy: north star, 90-day sequence, why not Slack-clone | Deciding, not implementing |
 | [Expansion Bets.md](Expansion%20Bets.md) | Features after 270–272: Slack, Git, MCP pack, SDK, mail | Executing Bet 1–4, 6 |
-| [Launch.md](Launch.md) | Production-ready extras, public-preview cut, Show HN | When the question is announce |
+| [Launch.md](Launch.md) | Production-ready extras, public-preview cut, when you may announce | When the question is announce |
+| [Promotion.md](Promotion.md) | Get the word out: site, GitHub, Show HN, Reddit, LinkedIn, Medium | Tag week |
 | [Providers.md](Providers.md) | Operator host matrix (where it runs) | Recipes, env vars |
 | [Protocols.md](Protocols.md) | Operator wire matrix (how it talks) | MCP vs A2A vs REST |
 | `docs/README.md`, `docs/Integration.md` | Index + integrator freeze sentence | Linking only |

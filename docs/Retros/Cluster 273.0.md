@@ -6,12 +6,12 @@
 
 ## What shipped
 
-A separate agent ("grokbot") drafted a 7-doc strategy pack (Handoff, Pre-Public
-Hardening, Path to Impressive, Expansion Bets, Launch, Protocols, Providers) plus
-integration edits, left uncommitted on `main`. A 5-agent review verified the content
-is **tree-grounded and accurate** (no hallucinated features, no shipped-work-as-TODO,
-no violated Decisions) but found three problems. This cluster keeps the pack and fixes
-all three, committing it cleanly.
+A separate agent ("grokbot") drafted an **8-doc** strategy pack (Handoff, Pre-Public
+Hardening, Path to Impressive, Expansion Bets, Launch, Protocols, Providers, and —
+added mid-cluster — Promotion) plus integration edits, left uncommitted on `main`. A
+per-doc agent review verified the content is **tree-grounded and accurate** (no
+hallucinated features, no shipped-work-as-TODO, no violated Decisions) but found
+problems. This cluster keeps the pack and fixes them, committing it cleanly.
 
 - **Single source of truth restored.** The pack had installed a *competing* backlog:
   Handoff.md said "do not start from Open Work/Roadmap," and CLAUDE.md/README were
@@ -33,6 +33,14 @@ all three, committing it cleanly.
   flight; refreshed the "v269 / in-flight" snapshots to reflect that 267–272 shipped
   (tags through `v273`), and updated Open Work's stale "latest v251" + "269–272
   remaining", CLAUDE.md's "latest v268" orientation pointer, and the Roadmap.
+- **`maidan.world` honesty.** The grokbot added a `Promotion.md` launch playbook and
+  edited AGENTS.md/README.md to call `https://maidan.world` the "Published /
+  canonical" site with an active github.io "301". The domain is **unregistered**
+  (verified `NXDOMAIN`), so the integrator-facing docs pointed at a dead URL. Reframed
+  it as a *planned* domain (github.io stays the live site today); softened
+  Promotion.md's top/§3 present-tense assertions to conditional. Promotion.md itself is
+  accurate, linkcheck-clean, and correctly gates every announce action on the
+  maintainer's go — kept.
 
 ## Surprises / decisions
 
@@ -45,6 +53,11 @@ all three, committing it cleanly.
 - **Empirical build beats static reasoning.** A review agent reasoned `Providers.md`
   was linkcheck-clean; the actual `mdbook build` proved otherwise (`- [x]` at line 111).
   The real build is the authority — always run it for a docs-gate question.
+- **The grokbot was editing concurrently.** Mid-cluster it added `Promotion.md` and
+  re-wired several docs on the same working tree — a live two-agents-one-tree hazard.
+  Handled by waiting for the tree to go quiet (a 2-min-idle watcher) before folding its
+  additions in, rather than racing it. Lesson: when another agent shares the tree,
+  reconcile from a quiesced snapshot, not a moving one.
 - **Kept, didn't discard.** The pack surfaced real value: a genuinely-scoped next
   program, plus real small cleanup findings (stale `mail.rs:5` "Not wired" comment,
   stale `extensions.rs:1` banner, outbox `list_pending` missing `FOR UPDATE SKIP

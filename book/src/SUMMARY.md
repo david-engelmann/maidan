@@ -29,6 +29,7 @@
 - [Path to impressive](docs/Path-to-Impressive.md)
 - [Expansion bets](docs/Expansion-Bets.md)
 - [Launch](docs/Launch.md)
+- [Promotion](docs/Promotion.md)
 - [Architecture](docs/Architecture.md)
 - [Capabilities by release](docs/Capabilities.md)
 - [Decisions](docs/Decisions.md)

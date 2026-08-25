@@ -7,7 +7,7 @@ PR prepends a new section so the latest is always at the top.
 
 | Change | Where |
 |--------|-------|
-| Committed a separate agent's 7-doc strategy pack (Handoff/Pre-Public Hardening/Path to Impressive/Expansion Bets/Launch/Protocols/Providers) after a 5-agent accuracy review; restored Open Work.md/Roadmap.md as the single canonical backlog (reverted the "Handoff.md is the backlog" redirect in CLAUDE.md/README) and folded the pack's genuinely-open items into a new "Post-272 forward work" section (MCP `2026-07-28` upgrade, durable mail retry queue, MCP example pack, SDKs, Slack/Git projectors, cleanup nits, launch). Fixed 2 mdbook linkcheck breakers + same-day staleness. Docs-only | `docs/{Open Work,Roadmap,Handoff,README,Providers,Expansion Bets, …}.md`, `CLAUDE.md` |
+| Committed a separate agent's 8-doc strategy pack (Handoff/Pre-Public Hardening/Path to Impressive/Expansion Bets/Launch/Promotion/Protocols/Providers) after a per-doc accuracy review; restored Open Work.md/Roadmap.md as the single canonical backlog (reverted the "Handoff.md is the backlog" redirect in CLAUDE.md/README) and folded the pack's genuinely-open items into a new "Post-272 forward work" section (MCP `2026-07-28` upgrade, durable mail retry queue, MCP example pack, SDKs, Slack/Git projectors, cleanup nits, launch). Fixed 2 mdbook linkcheck breakers, reframed the unregistered `maidan.world` domain as planned (not live), + same-day staleness. Docs-only | `docs/{Open Work,Roadmap,Handoff,README,Providers,Expansion Bets, …}.md`, `CLAUDE.md` |
 
 ## v272.0.0 — Optional deferrals: search replica-reads metric (sweep closes)
 
