@@ -8,10 +8,11 @@ use axum::response::{IntoResponse, Response, Sse};
 use axum::{extract::State, Extension, Json};
 use futures::StreamExt;
 use maidan_a2a::{
-    is_terminal_task_state, maidan_context_from_metadata, message_content, message_text,
-    GetPushNotificationConfigResponse, GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse,
-    SendMessageRequest, SendMessageResponse, SetPushNotificationConfigRequest,
-    StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
+    is_terminal_task_state, maidan_context_from_metadata, message_content,
+    message_parts_from_content, message_text, A2aMessage, GetPushNotificationConfigResponse,
+    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest,
+    SendMessageResponse, SetPushNotificationConfigRequest, StreamResponseStatusUpdate,
+    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, TextPart,
     METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK, METHOD_SEND_MESSAGE,
     METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG, METHOD_SUBSCRIBE_TO_TASK,
     METHOD_TASKS_CANCEL, METHOD_TASKS_RESUBSCRIBE, TASK_STATE_CANCELED, TASK_STATE_COMPLETED,
@@ -264,12 +265,30 @@ async fn post_a2a_message(
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     crate::routes::publish_stored(state, stored).await;
+    // Egress (Cluster 267): render the outbound A2A message from the STORED message's
+    // canonical content (content → parts), not a raw echo of the request — so an A2A
+    // consumer sees Maidan's stored representation. Falls back to the body when there
+    // are no content blocks. Faithful round-trip for A2A-ingested (text) messages.
+    let out_parts = message_parts_from_content(posted.content.as_deref().unwrap_or(&[]));
+    let out_parts = if out_parts.is_empty() {
+        vec![TextPart {
+            kind: "text".to_string(),
+            text: posted.body.clone(),
+        }]
+    } else {
+        out_parts
+    };
+    let agent_message = A2aMessage {
+        role: req.message.role.clone(),
+        parts: out_parts,
+        metadata: req.message.metadata.clone(),
+    };
     Ok(PostedA2a {
         task_id: uuid::Uuid::new_v4().to_string(),
         workspace_id: thread_ctx.workspace_id,
         thread_id: ctx.thread_id,
         message: posted,
-        agent_message: req.message,
+        agent_message,
     })
 }
 
