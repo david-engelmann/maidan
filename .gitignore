@@ -52,8 +52,12 @@ maidan.toml
 *.log
 /logs/
 
-# Docker
+# Docker — local compose overrides (auto-merged by `docker compose`; per-machine,
+# may hold dev secrets/ports). Both the legacy and modern Compose file names.
 docker-compose.override.yml
+docker-compose.override.yaml
+compose.override.yml
+compose.override.yaml
 
 # IDE / editor
 .idea/
