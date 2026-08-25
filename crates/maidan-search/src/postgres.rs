@@ -1,12 +1,20 @@
 //! Postgres tsvector + ts_headline lexical search, plus pgvector-backed
 //! semantic search.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_types::*;
 use pgvector::Vector;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
+
+/// How often the replica-replay-LSN cache is refreshed (Cluster 271). Matches the
+/// store's poller cadence so search and store see the replica advance in lockstep.
+const REPLICA_LSN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 use crate::embedding_provider::EmbeddingProvider;
 use crate::embedding_tables;
@@ -24,6 +32,15 @@ pub use crate::embedding_tables::DEFAULT_EMBEDDING_DIM as EMBEDDING_DIM;
 #[derive(Debug, Clone)]
 pub struct PostgresSearch {
     pool: PgPool,
+    /// Read-replica pool for search reads (Cluster 271). Equals `pool` (and
+    /// `has_replica` is false) unless a replica is configured, so single-primary
+    /// deployments and tests are byte-unchanged.
+    reader: PgPool,
+    has_replica: bool,
+    /// Cached replica `pg_last_wal_replay_lsn()`, refreshed by a background poller,
+    /// so [`read_pool`](Self::read_pool) decides primary-vs-replica without a
+    /// per-read query. Only meaningful when `has_replica`.
+    replica_replay: Arc<AtomicU64>,
     hnsw: crate::hnsw::HnswParams,
     /// Cache of resolved `model → table_name` so a steady-state embedding upsert
     /// skips the `maidan_embedding_models` SELECT + `CREATE TABLE IF NOT EXISTS`
@@ -35,7 +52,28 @@ pub struct PostgresSearch {
 impl PostgresSearch {
     pub fn new(pool: PgPool) -> Self {
         Self {
+            reader: pool.clone(),
+            has_replica: false,
+            replica_replay: Arc::new(AtomicU64::new(0)),
             pool,
+            hnsw: crate::hnsw::HnswParams::from_env(),
+            model_tables: std::sync::Arc::default(),
+        }
+    }
+
+    /// Route search reads to `reader` once it has caught up to the request's
+    /// `Maidan-Consistency-Token` (Cluster 271) — the search-side twin of the
+    /// store's replica routing, sharing the same task-local + decision via
+    /// [`maidan_store::postgres::replica_route`]. Writes (embedding upserts, DDL,
+    /// reindex) always stay on the primary. Spawns the replica-LSN poller.
+    pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
+        let replica_replay = Arc::new(AtomicU64::new(0));
+        spawn_replica_lsn_poller(reader.clone(), replica_replay.clone());
+        Self {
+            reader,
+            has_replica: true,
+            replica_replay,
+            pool: pool.clone(),
             hnsw: crate::hnsw::HnswParams::from_env(),
             model_tables: std::sync::Arc::default(),
         }
@@ -46,6 +84,38 @@ impl PostgresSearch {
         self.hnsw = hnsw;
         self
     }
+
+    /// The pool a search read should use, honoring the current request's
+    /// read-consistency scope (Cluster 271): the replica once its cached replay LSN
+    /// has reached the request's token (or when there is no causality requirement),
+    /// otherwise the primary. Mirrors `PostgresStore::read_pool`.
+    fn read_pool(&self) -> &PgPool {
+        let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
+        if maidan_store::postgres::replica_route(self.has_replica, cached) {
+            &self.reader
+        } else {
+            &self.pool
+        }
+    }
+}
+
+/// Poll the replica's `pg_last_wal_replay_lsn()` into `replay_cache` on a fixed
+/// cadence (Cluster 271), reusing the store's replication helper. A poll error /
+/// non-standby result leaves the cache unchanged low → reads route to the primary
+/// until the next good poll (fail-safe). The replica-lag gauge is already emitted by
+/// the store's poller against the same replica, so this one does not duplicate it.
+fn spawn_replica_lsn_poller(reader: PgPool, replay_cache: Arc<AtomicU64>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
+        loop {
+            tick.tick().await;
+            if let Ok(Some(replay)) =
+                maidan_store::postgres::replication::replica_replay_lsn(&reader).await
+            {
+                replay_cache.store(replay.0, Ordering::Relaxed);
+            }
+        }
+    });
 }
 
 #[async_trait]
@@ -115,7 +185,7 @@ impl Search for PostgresSearch {
         .bind(author_kind)
         .bind(websearch)
         .bind(deny)
-        .fetch_all(&self.pool)
+        .fetch_all(self.read_pool())
         .await?;
 
         let mut hits: Vec<SearchHit> = rows.iter().map(row_to_lexical_hit).collect();
@@ -181,8 +251,12 @@ impl Search for PostgresSearch {
         filters: &SearchFilters,
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError> {
+        // A read: resolve the model table AND run the query against the same pool
+        // (the replica once caught up to the request token, else the primary) so the
+        // table lookup and the query never disagree about what is replicated.
+        let pool = self.read_pool();
         let Some((table, registered_dim)) =
-            embedding_tables::resolve_table_postgres(&self.pool, model).await?
+            embedding_tables::resolve_table_postgres(pool, model).await?
         else {
             return Ok(vec![]);
         };
@@ -237,7 +311,7 @@ impl Search for PostgresSearch {
         // transaction-scoped `SET LOCAL` (pooled connections are reused, so a
         // session-level SET would leak to other queries).
         let rows = if let Some(ef) = self.hnsw.ef_search {
-            let mut tx = self.pool.begin().await?;
+            let mut tx = pool.begin().await?;
             sqlx::query(&format!("SET LOCAL hnsw.ef_search = {ef}"))
                 .execute(&mut *tx)
                 .await?;
@@ -245,7 +319,7 @@ impl Search for PostgresSearch {
             tx.commit().await?;
             rows
         } else {
-            query.fetch_all(&self.pool).await?
+            query.fetch_all(pool).await?
         };
 
         let mut hits: Vec<SearchHit> = rows

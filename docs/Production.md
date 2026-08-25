@@ -528,6 +528,10 @@ has asserted no causality requirement).
 - **Routed** (only for `GET`/`HEAD`): content and collaboration reads — messages,
   threads, channels, members, DMs, social (votes/reactions/pins/mentions),
   notifications, follows, skills, assignments, dependencies, queue depth, and usage.
+  **Message search** (`v271.0.0`) routes too: `maidan-search`'s `PostgresSearch` has
+  its own replica reader pool + replay poller and honors the same token via the same
+  routing logic, so `GET …/search` reads-your-writes and offloads to the replica
+  identically (embedding writes / index DDL / reindex stay on the primary).
 - **Always the primary:** every write; **auth-path reads** (sessions, API tokens,
   OIDC, federation peers) — the auth middleware runs on `GET`s, so a just-minted
   credential must be read fresh; **control-plane/config reads** (webhooks, slash
@@ -541,9 +545,10 @@ minus replica replay LSN). Complement with Postgres's own `pg_stat_replication`.
 
 **Testing.** `scripts/replica-harness.sh up` stands up a local pgvector primary +
 streaming standby and prints `MAIDAN_PRIMARY_URL` / `MAIDAN_REPLICA_URL`; the
-`#[ignore]`d `read_routing` / `replication` store tests validate routing and
+`#[ignore]`d `read_routing` / `replication` store tests validate store routing and
 read-your-writes against it (`cargo test -p maidan-store --test read_routing --
---ignored`).
+--ignored`), and the `#[ignore]`d `replica_routing` search test proves the same for
+message search (`cargo test -p maidan-search --test replica_routing -- --ignored`).
 
 ## Backup & disaster recovery (`v260.0.0`)
 

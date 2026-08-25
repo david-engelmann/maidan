@@ -189,9 +189,8 @@ impl PostgresStore {
     /// - in scope with a token → the **replica** iff its cached replay LSN has
     ///   reached the token, else the **primary** (read-your-writes).
     fn read_pool(&self) -> &PgPool {
-        let scope = READ_CONSISTENCY.try_with(|t| *t).ok();
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
-        let decision = route_decision(self.has_replica, scope, cached);
+        let decision = route_now(self.has_replica, cached);
         if self.has_replica {
             let counter = match decision {
                 RouteDecision::Replica => &self.read_routing.replica,
@@ -210,6 +209,27 @@ impl PostgresStore {
 enum RouteDecision {
     Primary,
     Replica,
+}
+
+/// Read the current request's read-consistency scope from the task-local and apply
+/// [`route_decision`]. Shared by [`PostgresStore::read_pool`] and exposed as a bool
+/// via [`replica_route`] for read pools outside this struct.
+fn route_now(has_replica: bool, cached_replay: Lsn) -> RouteDecision {
+    let scope = READ_CONSISTENCY.try_with(|t| *t).ok();
+    route_decision(has_replica, scope, cached_replay)
+}
+
+/// Whether a read keyed on the **current request's** consistency scope should go to
+/// a replica (`true`) or the primary (`false`) — the same task-local + routing logic
+/// [`PostgresStore::read_pool`] uses, exposed so another read pool (maidan-search's
+/// `PostgresSearch`, Cluster 271) can honor the same `Maidan-Consistency-Token`
+/// without duplicating the decision or re-reading the task-local. `cached_replay` is
+/// that pool's own cached replica replay LSN.
+pub fn replica_route(has_replica: bool, cached_replay: Lsn) -> bool {
+    matches!(
+        route_now(has_replica, cached_replay),
+        RouteDecision::Replica
+    )
 }
 
 /// Pure read-routing decision (Cluster 264), factored out for unit testing:

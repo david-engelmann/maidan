@@ -153,7 +153,18 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 None
             };
-            search = Arc::new(PostgresSearch::new(pool));
+            // Search gets its own replica reader pool (Cluster 271) so search reads
+            // honor the same per-request consistency token as store reads. A separate
+            // pool from the store's reader (pools are not shared across the Arc).
+            search = Arc::new(match config.replica_url.as_deref() {
+                Some(replica_url) => {
+                    let search_reader = make_pg_opts().connect(replica_url).await.context(
+                        "connect to postgres read replica for search (MAIDAN_DB_REPLICA_URL)",
+                    )?;
+                    PostgresSearch::with_replica_reader(pool, search_reader)
+                }
+                None => PostgresSearch::new(pool),
+            });
             use_embedding_indexer = true;
         }
         Dialect::Sqlite => {
