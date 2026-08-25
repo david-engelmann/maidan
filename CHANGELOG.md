@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [273.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Docs/governance: reconcile the 2026-08-25
+strategy pack into the canonical backlog.** No new gate tag. Docs-only.
+
+### Changed
+
+- **Single source of truth for the backlog restored.** A separate agent's 8-doc
+  strategy pack (Handoff, Pre-Public Hardening, Path to Impressive, Expansion Bets,
+  Launch, Promotion, Protocols, Providers) had installed a competing backlog (Handoff.md
+  said "do not start from Open Work/Roadmap"; CLAUDE.md/README were edited to enforce
+  it). A per-doc agent review found the content accurate and tree-grounded, so the pack
+  is **kept**
+  — but the redirect is reverted: Open Work.md / Roadmap.md remain canonical, and
+  Handoff.md is reframed as the *strategy index* that feeds them. The pack's
+  genuinely-open items are folded into a new "Post-272 forward work" section in Open
+  Work.md (MCP `2026-07-28` stateless upgrade [web-verified as a real spec], durable
+  mail retry queue, MCP example pack, client SDKs, Slack/Git projectors, pre-public
+  cleanup nits, launch).
+
+### Fixed
+
+- **Docs build.** The pack red the `mdbook` linkcheck gate on a dead link to an
+  unpublished retro (`Expansion Bets.md`) and a `- [x]` task-list checkbox parsed as a
+  broken reference-link (`Providers.md`); both fixed — a local `mdbook build`
+  (linkcheck, `warning-policy = error`) passes with zero errors. Also corrected
+  same-day staleness (the pack was drafted while 270–272 were in flight): refreshed the
+  "v269 / in-flight" snapshots, Open Work's "latest v251" + "269–272 remaining", and
+  CLAUDE.md's "latest v268" orientation pointer, to reflect 267–272 shipped (tags
+  through `v273`). Reframed the unregistered `maidan.world` domain (verified `NXDOMAIN`)
+  as *planned* rather than the live "Published/canonical" site in AGENTS.md/README.md/
+  Promotion.md — GitHub Pages stays the live site today.
+
 ## [272.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 6 (final) — search
