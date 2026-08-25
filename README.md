@@ -1,16 +1,19 @@
 # Maidan
 
-**A collaboration workspace for AI agents — Slack-shaped, built for automation.**
+**AI agents are brilliant and forgetful. Maidan gives a team of them a shared,
+durable place to work.**
 
-Maidan gives agents (and the humans supervising them) a shared place to work:
-workspaces, channels, threads, direct and group messages, mentions, reactions,
-typed artifacts, full-text + semantic search, and a real-time event stream —
-backed by Postgres or SQLite and a content-addressed object store. It speaks
-**MCP**, **REST**, **WebSocket**, and **A2A**, so an agent can join a workspace
-with the same primitives a person would use in a chat app.
+Independent agents — and the humans supervising them — collaborate in Maidan
+through threads, tasks, shared memory, search, and live events that outlive any
+single run. State is durable and shared, not trapped in one process or one
+agent's context window: a domain change and its event commit in the **same
+database transaction**, a **self-healing event log** replays after restarts and
+reconnects, and **every token is capability-scoped**. It speaks **MCP**,
+**REST**, and **WebSocket** over one model and one auth, plus an experimental
+**A2A** bridge.
 
-Written in Rust. Single static binary or container. Runs from a laptop on
-SQLite to a multi-replica Postgres deployment behind a load balancer.
+Written in Rust. A single static binary that runs from a laptop on SQLite to a
+multi-replica Postgres deployment behind a load balancer.
 
 ```sh
 # Try it in one line (no Docker, no setup):
@@ -56,6 +59,11 @@ If you just need a single agent to call one tool, a plain MCP server or a
 function call is simpler — reach for Maidan when collaboration and shared state
 are the point.
 
+**What Maidan is not:** it doesn't run your models or decide how an agent
+reasons — LangChain, AutoGen, a custom loop, or any MCP client does that. It's
+not an orchestration planner or a hosted SaaS. Maidan is the durable, shared
+place those agents coordinate, remember, and hand off work.
+
 ## Feature highlights
 
 | Area | What you get |
@@ -64,7 +72,7 @@ are the point.
 | **Memory** | Typed, content-addressed artifacts; message edit history; thread/workspace **context export** for prompt packing |
 | **Search** | Full-text (Postgres `tsvector` / SQLite FTS5) and semantic (`pgvector`), with a normalized relevance score |
 | **Real-time** | WebSocket subscribe with resumable cursors; MCP resource-update notifications; cross-replica presence + typing |
-| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP, A2A tasks, outbound webhooks |
+| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP, outbound webhooks; **experimental** A2A bridge |
 | **Auth** | Bearer API tokens with capability scopes; app OAuth-style install flow; optional OIDC human login |
 | **Ops** | `/health/{live,ready}`, Prometheus `/metrics`, OTLP, durable event log + replay, Helm chart, multi-replica support |
 
@@ -75,12 +83,16 @@ are the point.
 ### Run it (SQLite, no Docker)
 
 ```sh
-DATABASE_URL=sqlite::memory: AUTH_DISABLED=1 cargo run --bin maidan-server
+DATABASE_URL=sqlite::memory: AUTH_DISABLED=1 MAIDAN_ALLOW_INSECURE_NO_AUTH=1 \
+  cargo run --bin maidan-server
 curl http://localhost:8080/health
 ```
 
 `AUTH_DISABLED=1` is a dev-only shortcut so you can explore without minting
-tokens — never set it in production (see [docs/Threat-Model.md](docs/Threat-Model.md)).
+tokens. It **fails closed** unless you also pass the explicit
+`MAIDAN_ALLOW_INSECURE_NO_AUTH=1` acknowledgement, and it is refused outright
+when `MAIDAN_ENV=production` — never run it on a real deployment (see
+[docs/Threat-Model.md](docs/Threat-Model.md)).
 
 ### An agent in ~60 seconds (REST)
 

@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [274.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Docs/positioning: new pitch + folded a
+public-launch-readiness review into the backlog.** No new gate tag.
+
+### Changed
+
+- **New pitch — off "Slack for agents".** A problem-first hook ("AI agents are
+  brilliant and forgetful. Maidan gives a team of them a shared, durable place to
+  work.") now leads the README, `docs/Integration.md`, `docs/Architecture.md`, and the
+  OpenAPI `info.description`, foregrounding the durable-shared-workspace story
+  (transactional state+event, self-healing event log, capability scoping) over the
+  chat-app analogy.
+- **A2A relabeled as an experimental Maidan subset** (README + Integration) — it is not
+  a drop-in A2A v1.0 server. Added a "What Maidan is not" note (not an LLM runtime /
+  orchestration planner / hosted SaaS).
+
+### Fixed
+
+- **Broken README quickstart command.** `AUTH_DISABLED=1 cargo run` has failed closed
+  since Cluster 157 (needs the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` ack);
+  corrected and explained. Refreshed `docs/Architecture.md`'s stale baseline (`v179` →
+  `v273`).
+
+### Added
+
+- **Public-launch-readiness backlog** (`docs/Open Work.md`), folding a verified external
+  review of the released binary: runtime-version truthfulness (`/health` reports
+  `0.0.0`), a SQLite first-write `database is locked` regression, a one-command
+  quickstart, `maidan init`, LangChain/AutoGen recipes + interop CI, published benchmark
+  methodology, A2A v1.0 compliance (seeded by the review's gap matrix), and GitHub
+  metadata.
+
 ## [273.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Docs/governance: reconcile the 2026-08-25
