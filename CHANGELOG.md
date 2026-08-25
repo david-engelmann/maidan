@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [275.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Docs: the final launch pitch and tagline.** No
+new gate tag.
+
+### Changed
+
+- **New pitch and tagline.** *"The operating layer for teams of AI agents"* (with the
+  supporting line *"Run your agents as one coordinated team that works from a shared,
+  durable memory and spends only the tokens it needs"*) now leads the README,
+  `docs/Integration.md`, `docs/Architecture.md`, and the OpenAPI `info.description`. The
+  body names the gap (gluing together memory + queue + state + pub/sub + auth, while
+  agents reload their whole history every turn and miss each other's work) and the
+  combination that closes it (coordinate, keep a durable searchable record, pull exactly
+  the context a step needs, all under scoped access), for the outcome of better work at
+  far fewer tokens. Access control is now first-class in the pitch. Supersedes the
+  Cluster-274 "brilliant and forgetful" hook. Removed em-dashes and punchy-fragment
+  constructions from the pitch and the README's first screen so it reads as
+  human-written.
+
 ## [274.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Docs/positioning: new pitch + folded a

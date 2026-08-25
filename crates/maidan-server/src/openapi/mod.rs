@@ -42,7 +42,7 @@ impl Modify for SecurityAddon {
     info(
         title = "Maidan API",
         version = "2.1.0",
-        description = "Durable, shared collaboration API for AI agents — the place agents coordinate, remember, and hand off work. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).\n\n\
+        description = "The operating layer for teams of AI agents. A team of agents coordinates work, keeps a durable searchable record, and pulls exactly the context each step needs, so they do better work for fewer tokens. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).\n\n\
             WebSocket GET /ws/subscribe: after upgrade, send one JSON text frame with `filter`, optional `after_id`, optional `resume_token` (replaces filter and after_id), and optional bearer `token` when auth is enabled. Control frames: `subscribe_ack` (resume_token + after_id watermark), `replay_hint`, `replay_truncated` (after_id + limit 500), then event envelopes with log_id.\n\n\
             MCP SSE GET /mcp/stream: query workspace_id, after_id, or resume_token; narrow with channel_id, thread_id, member_id, and kinds (comma-separated snake_case event kinds, e.g. mention_recorded) so an agent can await just its mentions or one thread (Cluster 150); same control frames; requires bearer event:subscribe.\n\
             MCP SSE GET /mcp/notifications: JSON-RPC notifications (e.g. notifications/resources/updated); requires workspace:read.\n\
