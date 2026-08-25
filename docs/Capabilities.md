@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v274.0.0 — Launch positioning + review reconciliation (docs)
+
+| Change | Where |
+|--------|-------|
+| New problem-first pitch off "Slack for agents" ("AI agents are brilliant and forgetful…") threaded through README/Integration/Architecture/OpenAPI-description; fixed the broken `AUTH_DISABLED` quickstart command (fails closed since 157); relabeled A2A as an experimental subset + "what Maidan is not"; refreshed Architecture baseline `v179`→`v273`; folded a verified external launch-readiness review into a new Open Work "Public-launch readiness" backlog (version-truthfulness, SQLite first-write lock, quickstart, `maidan init`, LangChain/AutoGen recipes+CI, benchmark, A2A v1.0 compliance, GitHub metadata) | `README.md`, `docs/{Integration,Architecture,Open Work}.md`, `openapi/mod.rs` |
+
 ## v273.0.0 — Strategy-pack reconciliation (docs/governance)
 
 | Change | Where |

@@ -31,6 +31,34 @@ workflow (retro + `vX.0.0` tag each).
 | **Provider recipes** | Doc/compose recipes only (Ollama/TEI embeddings, R2/AWS-S3 next to MinIO, Keycloak + a SaaS OIDC, Neon/RDS/Supabase note, LibSQL/Turso feasibility). | Providers.md (**I2–I6**) |
 | **Public launch** | Public-preview cut, un-hold, announce — **gated on the maintainer's explicit go**; keeps `publish = false` (no crates.io 1.0). | Launch.md (**L1–L6**) |
 
+### Public-launch readiness (external review, 2026-08-25)
+
+An independent agent review ran the released `v272.0.0` binary and audited the repo
+for public-launch readiness. Verdict: the core is strong (it independently praised the
+self-healing NOTIFY floor, workspace-sharded fan-out, LSN causal replica routing, and
+typed IDs — see the "code-backed talking points" below), and the blockers are
+onboarding, honesty, and evidence — not missing features. Verified findings, folded
+here as the canonical backlog:
+
+| Pri | Item | Evidence / why | Notes |
+|-----|------|----------------|-------|
+| **P0** | **Runtime version is `0.0.0`** | `/health` reports `0.0.0` (workspace `Cargo.toml:20` `version = "0.0.0"`) while the release tag is `v272`+ | Derive the package version from the tag (or adopt a real SemVer line) + a CI assertion that binary/health/image-label/tag agree |
+| **P0** | **SQLite first-write `database is locked`** | The default 8-connection SQLite pool hit a lock on the first workspace write while background workers ran (reproduced against the release binary); a 1-connection pool was clean | Add a regression test; serialize SQLite writers or lower the default SQLite pool / harden worker tx+backoff |
+| **P0** | **One-command quickstart** | `docker compose up` starts only Postgres; `--profile full` builds from source + MinIO — no 5-minute path. `cargo run` compiles the whole workspace | Ship a `compose.quickstart.yaml` + `Dockerfile.quickstart` that pulls a **pinned, SHA-verified release binary** (SQLite + localfs + loopback + the `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack) + a two-agent demo script. The review's kit is a starting point — **build + test it before committing** (the reviewer didn't build the image) |
+| **P0** | **`maidan init` for clean bootstrap** | Prod image is `--no-default-features` (bootstrap routes stripped) → "need an admin token to create the first admin token". CI pre-builds a bootstrap image, masking this for a fresh user | Add a one-time `maidan init` that transactionally seeds the first workspace/member/admin token via the store layer, prints the secret once, refuses on an initialized store — removes the need for public bootstrap HTTP routes |
+| **P1** | **A2A v1.0 compliance** | The A2A endpoint is an experimental Maidan subset, not wire-compatible with A2A v1.0 (wire model, Part encoding, Agent Card, version negotiation, operation names, JSON-RPC envelope, task/push semantics) | Relabeled as "experimental" in the docs (Cluster 274). Full compliance is a multi-cluster arc — seed from the review's gap matrix (P0/P1/P2 with acceptance tests). Gate ecosystem promotion on an official A2A SDK/TCK CI job |
+| **P1** | **LangChain + AutoGen recipes + interop CI** | No copy-paste MCP integration examples; no CI proving the current adapters negotiate our `2024-11-05` MCP | Add tested LangChain (`langchain-mcp-adapters`) + AutoGen (`StreamableHttpServerParams`) recipes with pinned versions + a required CI job (init → list tools → one read → one write → denied-channel check) |
+| **P1** | **Published benchmark methodology** | The only baseline is a machine-specific SQLite hot-read microbench (not an SLA); no end-to-end result | Don't claim "high-performance" until a reproducible post→observer latency + sustained msgs/sec benchmark is published (hardware/commit/config named); the loadgen harness (Cluster 198) is the base |
+| **P1** | **Architecture docs currency + split** | `Architecture.md` header said baseline `v179` (fixed to `v273` in 274); it still interleaves current shape with long version history | Split a current, version-neutral conceptual `Architecture.md` from a `Architecture-history.md`; keep internal "cluster" vocabulary out of the first user-facing pages |
+| **P1/P2** | **GitHub metadata + repo polish** | No homepage, no topics — hurts discoverability at launch | Add topics (`rust`, `multi-agent`, `mcp`, `ai-agents`, `agent-infrastructure`, `postgres`, `websocket`) + homepage; a terminal GIF / current screenshot; issue templates (bug / protocol-compat / benchmark) |
+
+**Code-backed talking points the review validated** (use for the launch narrative — all
+shipped, honest): the self-healing Postgres NOTIFY floor (pointer signal + durable log +
+gap backfill, Cluster 258), workspace-sharded Tokio fan-out (Cluster 201), LSN
+causality-token replica reads (Clusters 261–266), and typed non-interchangeable IDs +
+SQLite/Postgres `Store` parity. Positioning moved off "Slack for agents" to the durable
+shared-workspace framing (Cluster 274).
+
 ## Standing risks (still open)
 
 - **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). **Still open:** DM threads readable via the *generic* thread route — the `__dm__` exemption in `ensure_channel_access` preserves this pre-existing behavior; tighten by checking DM participants (**next: Cluster 180**). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`).
