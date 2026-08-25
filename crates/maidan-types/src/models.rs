@@ -320,6 +320,23 @@ pub struct ThreadFollow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A workspace's content graph for import (Cluster 269) — the flat, id-linked
+/// collections of an export bundle, ready to insert. The server flattens its
+/// `WorkspaceExport` (which nests channel members under each channel) into this and
+/// optionally remaps every id for a fresh-workspace import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceImport {
+    pub workspace: Workspace,
+    pub members: Vec<Member>,
+    pub channels: Vec<Channel>,
+    pub channel_members: Vec<ChannelMember>,
+    pub threads: Vec<Thread>,
+    pub messages: Vec<Message>,
+    pub message_edits: Vec<MessageEdit>,
+    pub pins: Vec<Pin>,
+    pub references: Vec<Reference>,
+}
+
 /// A member's delivery email address (Cluster 248, Arc I) — where email
 /// notifications go. One per member.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

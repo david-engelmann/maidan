@@ -19,6 +19,13 @@ pub trait Store: Send + Sync {
     /// `None` on SQLite (no streaming replication, so no token).
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
 
+    /// Insert a whole workspace content graph (Cluster 269) — members, channels,
+    /// threads, messages, edits, pins, references — with explicit ids, state, and
+    /// timestamps preserved, in one transaction. The inverse of the Cluster-187
+    /// export. Id remapping (fresh workspace vs same-id restore) and the
+    /// already-exists guard are the caller's job.
+    async fn import_workspace(&self, import: &WorkspaceImport) -> Result<(), StoreError>;
+
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     /// Create a workspace and append its `WorkspaceCreated` event atomically
     /// (Cluster 213).

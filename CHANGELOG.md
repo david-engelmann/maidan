@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [269.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 3 — workspace
+import, store foundation.** No new gate tag.
+
+### Added
+
+- **Workspace import (store).** `WorkspaceImport` (the deserializable mirror of the
+  Cluster-187 `WorkspaceExport`) + `Store::import_workspace` — one transaction,
+  all-or-nothing, full-column inserts that preserve explicit ids, state, and
+  timestamps, so an exported bundle round-trips faithfully. Both backends
+  (`postgres/import.rs` binds JSONB `metadata`/`content` directly; `sqlite/import.rs`
+  stores them as JSON TEXT); `message_edits.id` (an unreferenced serial) regenerates,
+  every other id is explicit. Zero-blast-radius store foundation — no routes, no
+  remap, no conflict guard yet (those are Cluster 270). Both-backend round-trip test
+  covers a private channel, a closed+assigned thread, structured content, a
+  tombstoned message, an edit, a pin, and a reference.
+
 ## [268.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Optional deferrals sweep, part 2.** No new gate tag.
