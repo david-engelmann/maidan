@@ -531,7 +531,9 @@ has asserted no causality requirement).
   **Message search** (`v271.0.0`) routes too: `maidan-search`'s `PostgresSearch` has
   its own replica reader pool + replay poller and honors the same token via the same
   routing logic, so `GET …/search` reads-your-writes and offloads to the replica
-  identically (embedding writes / index DDL / reindex stay on the primary).
+  identically (embedding writes / index DDL / reindex stay on the primary). Its
+  primary/replica split is counted separately as `maidan_search_replica_reads_total`
+  (`v272.0.0`).
 - **Always the primary:** every write; **auth-path reads** (sessions, API tokens,
   OIDC, federation peers) — the auth middleware runs on `GET`s, so a just-minted
   credential must be read fresh; **control-plane/config reads** (webhooks, slash
@@ -540,8 +542,10 @@ has asserted no causality requirement).
   read-then-write decision is always on primary data).
 
 **Observability.** `maidan_replica_reads_total{outcome="primary"|"replica"}` counts
-the split; `maidan_replica_lag_bytes` is the replica's WAL lag (primary write LSN
-minus replica replay LSN). Complement with Postgres's own `pg_stat_replication`.
+the store split and `maidan_search_replica_reads_total{outcome}` (`v272.0.0`) the
+search split; `maidan_replica_lag_bytes` is the replica's WAL lag (primary write LSN
+minus replica replay LSN, shared by both). Complement with Postgres's own
+`pg_stat_replication`.
 
 **Testing.** `scripts/replica-harness.sh up` stands up a local pgvector primary +
 streaming standby and prints `MAIDAN_PRIMARY_URL` / `MAIDAN_REPLICA_URL`; the

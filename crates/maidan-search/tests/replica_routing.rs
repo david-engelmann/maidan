@@ -136,4 +136,25 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
     .await
     .expect("count on replica");
     assert_eq!(n, 1, "the posted message is present on the standby");
+
+    // The routing counters (Cluster 272) register both outcomes deterministically: an
+    // unreachably-high token can never be satisfied by the replica → forced to the
+    // primary; a no-token search → the replica. (Assert on these two controlled reads
+    // rather than the earlier ones, which race the poller on localhost.)
+    let (p0, r0) = search.read_routing_metrics().snapshot();
+    let _ = with_read_consistency(
+        Some(maidan_types::Lsn(u64::MAX)),
+        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+    )
+    .await
+    .expect("forced-primary search");
+    let _ = with_read_consistency(
+        None,
+        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+    )
+    .await
+    .expect("forced-replica search");
+    let (p1, r1) = search.read_routing_metrics().snapshot();
+    assert!(p1 > p0, "the high-token search was routed to the primary");
+    assert!(r1 > r0, "the no-token search was routed to the replica");
 }

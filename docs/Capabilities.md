@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v272.0.0 — Optional deferrals: search replica-reads metric (sweep closes)
+
+| Change | Where |
+|--------|-------|
+| `maidan_search_replica_reads_total{outcome}` — the search-side twin of `maidan_replica_reads_total`. `PostgresSearch` gets a metrics-agnostic `SearchReadMetrics` incremented in `read_pool` (replica-only); `main.rs` captures the handle onto `AppState`, `metrics.rs` delta-syncs it. No separate lag gauge (store's poller covers the shared replica). **Closes the optional-deferrals sweep (267–272) + the LSN read-replica program end-to-end** | `maidan-search/src/postgres.rs`, `maidan-server/src/{state.rs,main.rs,metrics.rs}`, `docs/Production.md` |
+
 ## v271.0.0 — Optional deferrals: search token-aware read routing
 
 | Change | Where |

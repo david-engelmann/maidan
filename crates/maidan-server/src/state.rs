@@ -151,6 +151,10 @@ pub struct AppState {
     /// from the `PostgresStore` when a replica is configured. `None` otherwise (SQLite
     /// / single-pool), so the metric simply isn't emitted.
     pub read_routing_metrics: Option<std::sync::Arc<maidan_store::postgres::ReadRoutingMetrics>>,
+    /// Search read-routing counters (Cluster 272) for `maidan_search_replica_reads_total`,
+    /// captured from the `PostgresSearch` when a replica is configured. `None` otherwise,
+    /// so the metric simply isn't emitted.
+    pub search_read_routing_metrics: Option<std::sync::Arc<maidan_search::SearchReadMetrics>>,
 }
 
 impl AppState {
@@ -205,6 +209,7 @@ impl AppState {
             mail: None,
             read_replica_enabled: false,
             read_routing_metrics: None,
+            search_read_routing_metrics: None,
         }
     }
 

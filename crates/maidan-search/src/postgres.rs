@@ -47,6 +47,31 @@ pub struct PostgresSearch {
     /// checks on every call (Cluster 167, H6). A model's table never changes once
     /// registered.
     model_tables: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
+    /// How many search reads went to the replica vs the primary (Cluster 272), for
+    /// `maidan_search_replica_reads_total`. Counted only when a replica is configured
+    /// (a single-pool search leaves it at zero). The store's metrics-agnostic
+    /// `ReadRoutingMetrics` pattern.
+    read_routing: Arc<SearchReadMetrics>,
+}
+
+/// Cumulative search read-routing outcomes (Cluster 272). The server snapshots this
+/// into `maidan_search_replica_reads_total{outcome}`; search stays metrics-agnostic
+/// (no lag gauge here — the store's poller already emits `maidan_replica_lag_bytes`
+/// for the same replica).
+#[derive(Debug, Default)]
+pub struct SearchReadMetrics {
+    primary: AtomicU64,
+    replica: AtomicU64,
+}
+
+impl SearchReadMetrics {
+    /// `(primary, replica)` cumulative search read counts.
+    pub fn snapshot(&self) -> (u64, u64) {
+        (
+            self.primary.load(Ordering::Relaxed),
+            self.replica.load(Ordering::Relaxed),
+        )
+    }
 }
 
 impl PostgresSearch {
@@ -58,6 +83,7 @@ impl PostgresSearch {
             pool,
             hnsw: crate::hnsw::HnswParams::from_env(),
             model_tables: std::sync::Arc::default(),
+            read_routing: Arc::new(SearchReadMetrics::default()),
         }
     }
 
@@ -76,6 +102,7 @@ impl PostgresSearch {
             pool: pool.clone(),
             hnsw: crate::hnsw::HnswParams::from_env(),
             model_tables: std::sync::Arc::default(),
+            read_routing: Arc::new(SearchReadMetrics::default()),
         }
     }
 
@@ -85,13 +112,28 @@ impl PostgresSearch {
         self
     }
 
+    /// Read-routing counters for the `maidan_search_replica_reads_total` metric
+    /// (Cluster 272). The server snapshots this on its metrics tick.
+    pub fn read_routing_metrics(&self) -> Arc<SearchReadMetrics> {
+        self.read_routing.clone()
+    }
+
     /// The pool a search read should use, honoring the current request's
     /// read-consistency scope (Cluster 271): the replica once its cached replay LSN
     /// has reached the request's token (or when there is no causality requirement),
     /// otherwise the primary. Mirrors `PostgresStore::read_pool`.
     fn read_pool(&self) -> &PgPool {
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
-        if maidan_store::postgres::replica_route(self.has_replica, cached) {
+        let to_replica = maidan_store::postgres::replica_route(self.has_replica, cached);
+        if self.has_replica {
+            let counter = if to_replica {
+                &self.read_routing.replica
+            } else {
+                &self.read_routing.primary
+            };
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+        if to_replica {
             &self.reader
         } else {
             &self.pool

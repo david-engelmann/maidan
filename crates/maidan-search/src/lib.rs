@@ -36,7 +36,7 @@ pub use filters::SearchFilters;
 pub use hit::SearchHit;
 pub use hnsw::HnswParams;
 pub use indexer::{EventHandler, Indexer, IndexerHandle, LoggingHandler};
-pub use postgres::PostgresSearch;
+pub use postgres::{PostgresSearch, SearchReadMetrics};
 pub use query::use_websearch_to_tsquery;
 pub use reindex::{reindex_postgres, reindex_sqlite, ReindexReport};
 pub use score::{
