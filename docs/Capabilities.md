@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v276.0.0 — Runtime version truthfulness (launch-readiness P0)
+
+| Change | Where |
+|--------|-------|
+| `/health` (and the binary/image) now report the release tag instead of `0.0.0`. The `MAIDAN_VERSION` override already existed; the release pipeline now sets it on every build path — native binaries (`release.yml`), the aarch64 cross build (`Cross.toml` passthrough), and the server image (`Dockerfile` `ARG`/`ENV` + `build-args`). New `build.rs` `rerun-if-env-changed=MAIDAN_VERSION` prevents a warm cache from shipping a stale version. Cargo `version` stays `0.0.0` (`publish = false`) | `crates/maidan-server/{build.rs,Dockerfile}`, `Cross.toml`, `.github/workflows/release.yml` |
+
 ## v275.0.0 — The pitch (docs)
 
 | Change | Where |

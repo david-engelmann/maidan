@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [276.0.0] — 2026-08-25
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P0: runtime version
+truthfulness.** No new gate tag.
+
+### Fixed
+
+- **`/health` reported `0.0.0` instead of the release version.** The `version()`
+  override (`MAIDAN_VERSION`) already existed, but the release pipeline never set it.
+  Now the release tag is baked into every build path: native binaries (`release.yml`
+  sets `MAIDAN_VERSION` on the build step), the aarch64 cross build (new `Cross.toml`
+  `passthrough`), and the server image (`Dockerfile` `ARG`/`ENV` fed by `build-args`).
+  A new `maidan-server/build.rs` declares `rerun-if-env-changed=MAIDAN_VERSION` so a
+  warm build cache can't ship a stale version on a source-unchanged (for example
+  docs-only) release. Cargo `version = "0.0.0"` intentionally stays (`publish = false`);
+  the release identity is the tag, reported at runtime via `MAIDAN_VERSION`. Verified
+  locally (the tag string is baked into the binary); the release paths are proven by
+  the `v276.0.0` release run.
+
 ## [275.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Docs: the final launch pitch and tagline.** No

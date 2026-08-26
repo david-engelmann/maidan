@@ -39,6 +39,13 @@ RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
 
 FROM chef AS builder
 ARG MAIDAN_ENABLE_BOOTSTRAP=0
+# Release tag baked into the binary's reported version (see version() in
+# maidan-server). Placing the ENV right before the build means a changed tag
+# invalidates this layer and forces a recompile, so the image never reports a
+# stale version. Empty by default, in which case version() falls back to the
+# crate version.
+ARG MAIDAN_VERSION=
+ENV MAIDAN_VERSION=$MAIDAN_VERSION
 COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
 COPY . .
