@@ -81,3 +81,21 @@ pub async fn get_task_workspace(
             .await?;
     Ok(row.map(WorkspaceId))
 }
+
+pub async fn list_tasks(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<serde_json::Value>, StoreError> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT task_json FROM maidan_a2a_tasks WHERE workspace_id = ?
+         ORDER BY updated_at DESC, id DESC LIMIT ?",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| serde_json::from_str(&r.0).map_err(StoreError::from))
+        .collect()
+}

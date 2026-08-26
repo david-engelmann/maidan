@@ -677,3 +677,156 @@ async fn dm_thread_not_readable_via_generic_route_by_non_participant() {
 
     ctx.server.abort();
 }
+
+/// Cluster 283: `ListTasks` lists the workspace's A2A tasks and drops those whose
+/// context thread the caller cannot read (per-channel RBAC filter), and
+/// `GetExtendedAgentCard` returns the card to an authenticated client.
+#[tokio::test]
+async fn a2a_list_tasks_filters_private_and_extended_card() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "a2a-list".into(),
+        })
+        .await
+        .unwrap();
+    let mk = |handle: &'static str| {
+        let store = ctx.store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let alice = mk("alice").await;
+    let mallory = mk("mallory").await;
+    let alice_tok = mint(ctx.store.as_ref(), ws.id, alice.id).await;
+    let mallory_tok = mint(ctx.store.as_ref(), ws.id, mallory.id).await;
+    let auth = |t: &str| format!("Bearer {t}");
+
+    // A PUBLIC channel + thread, and a PRIVATE channel + thread (alice member of both).
+    let mk_thread = |private: bool, name: &'static str, title: &'static str| {
+        let client = ctx.client.clone();
+        let base = base.clone();
+        let tok = alice_tok.clone();
+        let ws_id = ws.id.0;
+        async move {
+            let ch: Value = client
+                .post(format!("{base}/workspaces/{ws_id}/channels"))
+                .header("Authorization", auth(&tok))
+                .json(&json!({"name": name, "private": private}))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let cid = ch["id"].as_str().unwrap().to_string();
+            let th: Value = client
+                .post(format!("{base}/channels/{cid}/threads"))
+                .header("Authorization", auth(&tok))
+                .json(&json!({"title": title}))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            th["id"].as_str().unwrap().to_string()
+        }
+    };
+    let public_tid = mk_thread(false, "general", "pub-task").await;
+    let private_tid = mk_thread(true, "secret", "priv-task").await;
+
+    // Alice creates a task in each thread via A2A SendMessage.
+    let send = |tid: &str| {
+        let client = ctx.client.clone();
+        let base = base.clone();
+        let tok = alice_tok.clone();
+        let member = alice.id.0;
+        let tid = tid.to_string();
+        async move {
+            client
+                .post(format!("{base}/a2a/v1/rpc"))
+                .header("Authorization", auth(&tok))
+                .json(&json!({
+                    "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
+                    "params": {
+                        "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
+                        "metadata": {"maidan": {"threadId": tid, "authorId": member}}
+                    }
+                }))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    assert!(send(&public_tid).await["result"].is_object());
+    assert!(send(&private_tid).await["result"].is_object());
+
+    let list = |tok: String| {
+        let client = ctx.client.clone();
+        let base = base.clone();
+        async move {
+            client
+                .post(format!("{base}/a2a/v1/rpc"))
+                .header("Authorization", auth(&tok))
+                .json(&json!({"jsonrpc": "2.0", "id": 2, "method": "ListTasks", "params": {}}))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Alice (member of both channels) sees both tasks.
+    let alice_list = list(alice_tok.clone()).await;
+    assert_eq!(
+        alice_list["result"]["tasks"].as_array().unwrap().len(),
+        2,
+        "alice sees both tasks"
+    );
+
+    // Mallory (not a member of the private channel) sees only the public task.
+    let mallory_list = list(mallory_tok.clone()).await;
+    let mallory_ctxs: Vec<&str> = mallory_list["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["contextId"].as_str().unwrap())
+        .collect();
+    assert_eq!(mallory_ctxs.len(), 1, "mallory sees only the public task");
+    assert_eq!(mallory_ctxs[0], public_tid);
+
+    // GetExtendedAgentCard returns the card (with the method list) to an authed client.
+    let card: Value = ctx
+        .client
+        .post(format!("{base}/a2a/v1/rpc"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"jsonrpc": "2.0", "id": 3, "method": "GetExtendedAgentCard"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let caps = card["result"]["capabilities"].as_array().unwrap();
+    assert!(caps.iter().any(|c| c == "ListTasks"));
+    assert!(caps.iter().any(|c| c == "GetExtendedAgentCard"));
+
+    ctx.server.abort();
+}

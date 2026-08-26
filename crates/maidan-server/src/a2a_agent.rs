@@ -10,12 +10,13 @@ use futures::StreamExt;
 use maidan_a2a::{
     is_terminal_task_state, maidan_context_from_metadata, message_content,
     message_parts_from_content, message_text, A2aMessage, GetPushNotificationConfigResponse,
-    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest,
-    SendMessageResponse, SetPushNotificationConfigRequest, StreamResponseStatusUpdate,
-    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, TextPart, METHOD_CANCEL_TASK,
-    METHOD_CREATE_PUSH_NOTIFICATION_CONFIG, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
-    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, METHOD_SUBSCRIBE_TO_TASK,
-    TASK_STATE_CANCELED, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, ListTasksRequest,
+    ListTasksResponse, SendMessageRequest, SendMessageResponse, SetPushNotificationConfigRequest,
+    StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
+    TextPart, METHOD_CANCEL_TASK, METHOD_CREATE_PUSH_NOTIFICATION_CONFIG,
+    METHOD_GET_EXTENDED_AGENT_CARD, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
+    METHOD_LIST_TASKS, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
+    METHOD_SUBSCRIBE_TO_TASK, TASK_STATE_CANCELED, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -57,6 +58,12 @@ pub async fn json_rpc(
             dispatch_send_streaming_message(&state, &auth, id, body.params).await
         }
         METHOD_GET_TASK => json_response(dispatch_get_task(&state, &auth, id, body.params).await),
+        METHOD_LIST_TASKS => {
+            json_response(dispatch_list_tasks(&state, &auth, id, body.params).await)
+        }
+        METHOD_GET_EXTENDED_AGENT_CARD => {
+            json_response(dispatch_get_extended_agent_card(&auth, id).await)
+        }
         METHOD_CANCEL_TASK => {
             json_response(dispatch_tasks_cancel(&state, &auth, id, body.params).await)
         }
@@ -403,6 +410,97 @@ async fn dispatch_get_task(
     Ok(JsonRpcResponse::success(id, value))
 }
 
+/// A2A `ListTasks`: the authenticated workspace's tasks, most-recently-updated
+/// first, filtered by optional `contextId` and by per-channel access (a task whose
+/// context thread the caller cannot read is dropped). Single-page for now
+/// (`nextPageToken` always empty); `pageSize` defaults to 50, clamped to 1..=200.
+async fn dispatch_list_tasks(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(MESSAGE_POST) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    let req: ListTasksRequest = if params.is_null() {
+        ListTasksRequest::default()
+    } else {
+        serde_json::from_value(params).map_err(|e| {
+            JsonRpcResponse::error(
+                id.clone(),
+                ERR_PARAMS,
+                format!("invalid ListTasks params: {e}"),
+            )
+        })?
+    };
+    let page_size = req.page_size.unwrap_or(50).clamp(1, 200);
+    let raw = state
+        .store
+        .list_a2a_tasks(auth.workspace_id, page_size as i64)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    let mut tasks: Vec<Task> = Vec::new();
+    for value in raw {
+        let Ok(task) = serde_json::from_value::<Task>(value) else {
+            continue;
+        };
+        if let Some(ctx) = &req.context_id {
+            if task.context_id.as_deref() != Some(ctx.as_str()) {
+                continue;
+            }
+        }
+        // Per-channel RBAC: drop tasks whose context thread the caller can't read.
+        if let Some(context_id) = &task.context_id {
+            if let Ok(thread_id) = uuid::Uuid::parse_str(context_id) {
+                match maidan_auth::can_access_thread(
+                    state.store.as_ref(),
+                    auth,
+                    ThreadId(thread_id),
+                )
+                .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(e) => {
+                        return Err(JsonRpcResponse::error(
+                            id.clone(),
+                            ERR_INTERNAL,
+                            e.to_string(),
+                        ))
+                    }
+                }
+            }
+        }
+        tasks.push(task);
+    }
+    let total_size = tasks.len() as i32;
+    let resp = ListTasksResponse {
+        tasks,
+        next_page_token: String::new(),
+        page_size,
+        total_size,
+    };
+    let value = serde_json::to_value(resp)
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
+}
+
+/// A2A `GetExtendedAgentCard`: the Agent Card for an authenticated client. Same
+/// content as the public card today; §4.4.1 schema conformance lands in a later
+/// arc cluster.
+async fn dispatch_get_extended_agent_card(
+    auth: &AuthContext,
+    id: JsonRpcId,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(MESSAGE_POST) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    let value = serde_json::to_value(agent_card_payload())
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
+}
+
 async fn dispatch_set_push_config(
     state: &AppState,
     auth: &AuthContext,
@@ -610,8 +708,8 @@ pub struct AgentCard {
     pub capabilities: Vec<String>,
 }
 
-pub async fn agent_card() -> impl IntoResponse {
-    Json(AgentCard {
+fn agent_card_payload() -> AgentCard {
+    AgentCard {
         name: "maidan".into(),
         version: crate::version().to_string(),
         protocol_version: "1.0".into(),
@@ -621,12 +719,18 @@ pub async fn agent_card() -> impl IntoResponse {
             METHOD_SEND_MESSAGE.into(),
             METHOD_SEND_STREAMING_MESSAGE.into(),
             METHOD_GET_TASK.into(),
+            METHOD_LIST_TASKS.into(),
             METHOD_CREATE_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_SUBSCRIBE_TO_TASK.into(),
             METHOD_CANCEL_TASK.into(),
+            METHOD_GET_EXTENDED_AGENT_CARD.into(),
         ],
-    })
+    }
+}
+
+pub async fn agent_card() -> impl IntoResponse {
+    Json(agent_card_payload())
 }
 
 #[cfg(test)]

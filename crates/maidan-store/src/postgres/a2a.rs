@@ -79,3 +79,19 @@ pub async fn get_task_workspace(
             .await?;
     Ok(row.map(WorkspaceId))
 }
+
+pub async fn list_tasks(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<serde_json::Value>, StoreError> {
+    let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
+        "SELECT task_json FROM maidan_a2a_tasks WHERE workspace_id = $1
+         ORDER BY updated_at DESC, id DESC LIMIT $2",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}

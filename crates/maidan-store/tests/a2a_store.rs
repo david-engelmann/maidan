@@ -58,3 +58,64 @@ async fn a2a_push_config_and_task_persist_in_sqlite() {
         None
     );
 }
+
+#[tokio::test]
+async fn list_a2a_tasks_returns_workspace_tasks_within_limit() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::new(pool);
+
+    let ws_a = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap();
+    let ws_b = store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap();
+
+    for i in 0..3 {
+        let id = format!("a-{i}");
+        store
+            .upsert_a2a_task(
+                ws_a.id,
+                &id,
+                serde_json::json!({"id": id, "status": {"state": "TASK_STATE_WORKING"}}),
+            )
+            .await
+            .unwrap();
+    }
+    store
+        .upsert_a2a_task(
+            ws_b.id,
+            "b-0",
+            serde_json::json!({"id": "b-0", "status": {"state": "TASK_STATE_WORKING"}}),
+        )
+        .await
+        .unwrap();
+
+    // Workspace-scoped: ws_a sees only its 3 tasks, not ws_b's.
+    let a_tasks = store.list_a2a_tasks(ws_a.id, 50).await.unwrap();
+    assert_eq!(a_tasks.len(), 3);
+    assert!(a_tasks
+        .iter()
+        .all(|t| t["id"].as_str().unwrap().starts_with("a-")));
+
+    // Limit is honored.
+    let limited = store.list_a2a_tasks(ws_a.id, 2).await.unwrap();
+    assert_eq!(limited.len(), 2);
+
+    // Empty workspace lists nothing.
+    let empty = store
+        .list_a2a_tasks(WorkspaceId(uuid::Uuid::new_v4()), 50)
+        .await
+        .unwrap();
+    assert!(empty.is_empty());
+}

@@ -12,10 +12,12 @@ pub const JSONRPC_VERSION: &str = "2.0";
 pub const METHOD_SEND_MESSAGE: &str = "SendMessage";
 pub const METHOD_SEND_STREAMING_MESSAGE: &str = "SendStreamingMessage";
 pub const METHOD_GET_TASK: &str = "GetTask";
+pub const METHOD_LIST_TASKS: &str = "ListTasks";
 pub const METHOD_CREATE_PUSH_NOTIFICATION_CONFIG: &str = "CreateTaskPushNotificationConfig";
 pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "GetTaskPushNotificationConfig";
 pub const METHOD_SUBSCRIBE_TO_TASK: &str = "SubscribeToTask";
 pub const METHOD_CANCEL_TASK: &str = "CancelTask";
+pub const METHOD_GET_EXTENDED_AGENT_CARD: &str = "GetExtendedAgentCard";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
@@ -115,6 +117,28 @@ pub struct SendMessageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetTaskRequest {
     pub id: String,
+}
+
+/// `ListTasks` request. Subset of the spec's `ListTasksRequest`: optional
+/// `contextId` filter and `pageSize` (default 50, min 1). The `status` filter and
+/// opaque page tokens are not yet implemented (single-page).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTasksRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
+}
+
+/// `ListTasks` response. `nextPageToken` is always empty until pagination lands.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTasksResponse {
+    pub tasks: Vec<Task>,
+    pub next_page_token: String,
+    pub page_size: i32,
+    pub total_size: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
