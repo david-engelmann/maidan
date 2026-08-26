@@ -212,6 +212,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: validate quickstart stack
+        # No network/build: guards the one-command quickstart files from bit-rot
+        # (compose validity + build-context/dockerfile resolution + script syntax).
+        # The full end-to-end (pulls a pinned release binary) is verified locally.
+        run: |
+          docker compose -f compose.quickstart.yaml config -q
+          bash -n scripts/quickstart-two-agents.sh
       - name: build images
         run: |
           docker build \

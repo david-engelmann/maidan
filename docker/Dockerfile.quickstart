@@ -1,0 +1,47 @@
+# One-command local evaluation image (Cluster 278). Instead of compiling the Rust
+# workspace, this pulls a pinned, SHA-256-verified Maidan release binary, so a first
+# run takes seconds. Development only: pair it with compose.quickstart.yaml, which
+# disables auth and binds to loopback. Do not use this image in production (use
+# crates/maidan-server/Dockerfile, Postgres, and scoped bearer tokens).
+#
+# The release binaries are built on ubuntu-latest (glibc), so the runtime base is
+# ubuntu:24.04 to match that glibc generation.
+FROM ubuntu:24.04
+
+ARG MAIDAN_VERSION=v277.0.0
+# Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
+# both when MAIDAN_VERSION changes: shasum -a 256 maidan-<target>.tar.gz.
+ARG MAIDAN_SHA256_AMD64=3e00f884acde758f533cdca4ad1cd1ed85aea5b080e9035963ad33ea0a568e28
+ARG MAIDAN_SHA256_ARM64=88a98073f111032e921876b35bb9d7387e0273b95a7c1ef0a085f02071eaa3b2
+# Set by buildkit; fall back to the build host's arch for a plain `docker build`.
+ARG TARGETARCH
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN set -eu; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$arch" in \
+      amd64) target="x86_64-unknown-linux-gnu"; sha="${MAIDAN_SHA256_AMD64}" ;; \
+      arm64) target="aarch64-unknown-linux-gnu"; sha="${MAIDAN_SHA256_ARM64}" ;; \
+      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    url="https://github.com/david-engelmann/maidan/releases/download/${MAIDAN_VERSION}/maidan-${target}.tar.gz"; \
+    echo "downloading $url"; \
+    curl -fsSL "$url" -o /tmp/maidan.tar.gz; \
+    echo "${sha}  /tmp/maidan.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/maidan.tar.gz -C /usr/local/bin maidan-server maidan; \
+    rm /tmp/maidan.tar.gz; \
+    chmod +x /usr/local/bin/maidan-server /usr/local/bin/maidan
+
+# Non-root user; pre-create the data dir owned by it so a fresh named volume mounted
+# at /data inherits that ownership (Docker seeds a new volume from the image path).
+RUN useradd --system --uid 10001 --create-home maidan \
+ && mkdir -p /data/artifacts \
+ && chown -R maidan:maidan /data
+USER maidan
+WORKDIR /home/maidan
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/maidan-server"]
