@@ -16,6 +16,7 @@
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](docs/Production.md)
+- [Benchmark](docs/Benchmark.md)
 - [Scale gate (maidan-scale-1.0)](docs/Gates/maidan-scale-1.0.md)
 - [Embeddings & semantic search](docs/Embeddings.md)
 - [Deploy](docs/Deploy.md)

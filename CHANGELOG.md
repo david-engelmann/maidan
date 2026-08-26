@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [281.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: published benchmark
+methodology.** No new gate tag.
+
+### Added
+
+- **Post→observer latency measurement + published benchmark.** New
+  `post_to_observer_latency` in the loadgen harness times realtime propagation
+  (producer posts → WebSocket observer receives), reading the event concurrently with
+  the POST so the sample is fan-out, not the POST round-trip. `docs/Benchmark.md` (in
+  the published book) reports the numbers on named hardware/commit/backend with
+  reproduction commands: on an Apple M3 Max over in-process SQLite (one connection),
+  post→observer p50 0.71 ms / p99 1.00 ms, and mixed throughput 1 586 ops/s at 8
+  workers (post p50 6.2 ms), 666 ops/s at 32 (single-writer SQLite ceiling), zero
+  errors. The `http_to_ws` helper is unit-tested in CI.
+
+### Fixed
+
+- **Loadgen benchmarked a non-shipped SQLite config.** The harness opened SQLite with
+  16 connections; Maidan ships one (Cluster 277) because a multi-connection SQLite
+  pool deadlocks under write contention. The harness now uses
+  `DEFAULT_SQLITE_MAX_CONNECTIONS`, eliminating the spurious deadlock errors and
+  measuring the real product.
+
 ## [280.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: framework integration

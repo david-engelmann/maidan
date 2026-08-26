@@ -189,6 +189,7 @@ cargo test --workspace      # integration tests need Docker (Postgres testcontai
 | Wire up LangChain / AutoGen / REST | [`docs/Framework Integrations.md`](docs/Framework%20Integrations.md) · [`examples/`](examples/) |
 | Browse generated API + MCP reference | [Published docs site](https://david-engelmann.github.io/maidan/) · `GET /openapi.json` on your server |
 | Deploy / operate | [`docs/Production.md`](docs/Production.md) · [`docs/Deploy.md`](docs/Deploy.md) |
+| See reproducible performance numbers | [`docs/Benchmark.md`](docs/Benchmark.md) |
 | Understand the design | [`docs/Architecture.md`](docs/Architecture.md) · [`docs/Decisions.md`](docs/Decisions.md) |
 | See what's available and what changed | [`docs/Capabilities.md`](docs/Capabilities.md) · [`CHANGELOG.md`](CHANGELOG.md) |
 | Contribute to this repo | [`CLAUDE.md`](CLAUDE.md) · [`docs/README.md`](docs/README.md) |
