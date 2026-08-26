@@ -9,6 +9,7 @@
 - [Agent integration (alias)](docs/Agent-Integration.md)
 - [Provider matrix](docs/Providers.md)
 - [Integration protocols](docs/Protocols.md)
+- [Framework integrations](docs/Framework-Integrations.md)
 
 # Reference
 

@@ -42,6 +42,7 @@ top_pages=(
   "Dependencies" "Open Work" "Roadmap" "README"
   "Providers" "Protocols" "Handoff" "Launch" "Promotion"
   "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"
+  "Framework Integrations"
 )
 for name in "${top_pages[@]}"; do
   cp "$repo_root/docs/$name.md" "$src_docs/${name// /-}.md"
@@ -68,6 +69,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{Pre-Public%20Hardening\.md}{Pre-Public-Hardening.md}g' "$f"
   perl -pi -e 's{Path%20to%20Impressive\.md}{Path-to-Impressive.md}g' "$f"
   perl -pi -e 's{Expansion%20Bets\.md}{Expansion-Bets.md}g' "$f"
+  perl -pi -e 's{Framework%20Integrations\.md}{Framework-Integrations.md}g' "$f"
 
   # 3) links to docs/ pages that are NOT in the published set -> GitHub
   perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Post-1\.0\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"

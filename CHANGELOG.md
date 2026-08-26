@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [280.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: framework integration
+recipes.** No new gate tag.
+
+### Added
+
+- **Framework integration recipes (LangChain / AutoGen / REST).** Copy-paste,
+  live-verified clients so an integrator can point an agent framework at Maidan's MCP
+  endpoint in minutes. `examples/langchain_maidan.py` loads all 78 tools via
+  `MultiServerMCPClient` over Streamable HTTP; `examples/autogen_maidan.py` via
+  `StreamableHttpServerParams` + `mcp_server_tools`; `examples/rest_maidan.py` is a
+  framework-independent `httpx` client. New `docs/Framework Integrations.md` (in the
+  published book) carries the endpoint/token contract, the load-bearing `mcp>=1.9,<2`
+  pin (the SDK 2.x stateless rewrite drops modules the current adapters import), and
+  AutoGen's every-parameter-needs-a-`type` requirement. Verified against a live Maidan.
+
+### Fixed
+
+- **Every MCP catalog tool parameter now declares a JSON-Schema `type`.**
+  `set_thread_result`'s `result` parameter was untyped; AutoGen converts each tool
+  schema to a strict Pydantic model and rejected it. Given `"type": "object"`.
+
 ## [279.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P0: production-safe first-admin
