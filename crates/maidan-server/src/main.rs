@@ -180,7 +180,16 @@ async fn main() -> anyhow::Result<()> {
             // in the pool's after_connect (Cluster 166) so every pooled connection
             // enforces them — not just the first.
             let pool = maidan_search::sqlite_pool_options_with(config.db.busy_timeout_ms)
-                .max_connections(config.db.max_connections.unwrap_or(8))
+                // Serialize through one connection by default: a multi-connection SQLite
+                // pool deadlocks concurrent read-modify-write transactions (Cluster 277,
+                // see maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS). Overridable via
+                // MAIDAN_DB_MAX_CONNECTIONS.
+                .max_connections(
+                    config
+                        .db
+                        .max_connections
+                        .unwrap_or(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS),
+                )
                 .acquire_timeout(std::time::Duration::from_secs(
                     config.db.acquire_timeout_secs,
                 ))
