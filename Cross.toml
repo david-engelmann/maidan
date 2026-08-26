@@ -1,0 +1,6 @@
+# `cross` runs the compiler inside a container, which does not inherit the host
+# environment by default. The release pipeline sets MAIDAN_VERSION to the tag so
+# the built binary reports it from `/health` (see version() in maidan-server);
+# forward it into the cross build so the aarch64 tarball is not stuck at 0.0.0.
+[build.env]
+passthrough = ["MAIDAN_VERSION"]

@@ -56,7 +56,19 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cross
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
       - name: build
+        env:
+          # Baked into the binary's reported version (see version() in
+          # maidan-server); forwarded into the cross container via Cross.toml.
+          MAIDAN_VERSION: ${{ steps.tag.outputs.tag }}
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release --bin maidan-server --bin maidan --target ${{ matrix.target }}
@@ -157,6 +169,8 @@ jobs:
           file: crates/maidan-server/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            MAIDAN_VERSION=${{ steps.tag.outputs.tag }}
           tags: ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
           cache-from: type=gha,scope=maidan-server-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=maidan-server-${{ matrix.arch }}
