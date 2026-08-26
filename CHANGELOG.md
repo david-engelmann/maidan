@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [278.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P0: one-command quickstart.** No
+new gate tag.
+
+### Added
+
+- **One-command quickstart.** `docker compose -f compose.quickstart.yaml up -d --build`
+  then `./scripts/quickstart-two-agents.sh` takes a clean machine to two agents
+  collaborating in minutes, with no Rust toolchain. `docker/Dockerfile.quickstart`
+  pulls a pinned, SHA-256-verified `v277.0.0` release binary (per-arch) onto
+  `ubuntu:24.04`, runs non-root, and pre-chowns `/data` so a fresh SQLite/localfs volume
+  is writable; `compose.quickstart.yaml` runs one SQLite service on loopback with the
+  dev `AUTH_DISABLED` + `MAIDAN_ALLOW_INSECURE_NO_AUTH` acknowledgement; the demo script
+  creates a workspace, two agent members, a channel and thread, then posts/reads/replies
+  to show durable shared state. Built and run end-to-end locally (`/health` reports the
+  real version, no SQLite lock). The compose-smoke CI job validates the quickstart files
+  (`compose config` + `bash -n`).
+
 ## [277.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P0: SQLite write-contention

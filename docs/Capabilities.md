@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v278.0.0 — One-command quickstart (launch-readiness P0)
+
+| Change | Where |
+|--------|-------|
+| `docker compose -f compose.quickstart.yaml up -d --build` + `scripts/quickstart-two-agents.sh` = clean machine → two agents collaborating, no Rust toolchain. Pinned, SHA-verified `v277.0.0` release binary on `ubuntu:24.04`, non-root, SQLite + localfs + loopback + dev auth-disabled ack; demo posts/reads/replies to show durable shared state. Built + run end-to-end locally; CI guards file validity (`compose config` + `bash -n`) | `docker/Dockerfile.quickstart`, `compose.quickstart.yaml`, `scripts/quickstart-two-agents.sh`, `README.md`, `.github/workflows/ci.yml` |
+
 ## v277.0.0 — SQLite write-contention fix (launch-readiness P0)
 
 | Change | Where |

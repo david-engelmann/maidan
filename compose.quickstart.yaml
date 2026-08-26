@@ -1,0 +1,33 @@
+name: maidan-quickstart
+
+# One-command local evaluation stack (Cluster 278). Runs a single Maidan server on
+# SQLite + local-filesystem artifacts, bound to loopback.
+#
+# Development only: authentication is deliberately disabled (both AUTH_DISABLED and
+# the explicit MAIDAN_ALLOW_INSECURE_NO_AUTH acknowledgement, required since Cluster
+# 157). Never expose this to a network or use it in production. For an authenticated
+# deployment use compose.yaml (Postgres + object store) or the Helm chart.
+services:
+  maidan:
+    build:
+      context: docker
+      dockerfile: Dockerfile.quickstart
+      args:
+        MAIDAN_VERSION: ${MAIDAN_VERSION:-v277.0.0}
+    environment:
+      DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      # Dev-only: explore without minting tokens. Both are required together.
+      AUTH_DISABLED: "1"
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - maidan_quickstart_data:/data
+    restart: unless-stopped
+
+volumes:
+  maidan_quickstart_data:
