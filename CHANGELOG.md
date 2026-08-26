@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [285.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 4.** No new gate tag.
+
+### Changed
+
+- **The A2A Agent Card is now the spec §4.4.1 `AgentCard` object.** Served at
+  `/.well-known/agent-card.json` and returned by `GetExtendedAgentCard`, it now carries
+  `name`, `description`, `supportedInterfaces` (each `{ url, protocolBinding,
+  protocolVersion }` — the JSON-RPC binding, `protocolVersion` `"1.0"`), `provider`,
+  `version`, a `capabilities` object (`streaming`/`pushNotifications`/
+  `extendedAgentCard`), `defaultInputModes`/`defaultOutputModes`, and `skills` — instead
+  of the previous flat `{ rpcUrl, ingressUrl, capabilities: [method-names] }`. Interface
+  URLs are host-relative pending a configurable public origin.
+
 ## [284.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

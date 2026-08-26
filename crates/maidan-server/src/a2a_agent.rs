@@ -809,36 +809,97 @@ async fn dispatch_subscribe_to_task(
     Sse::new(stream).into_response()
 }
 
+/// The A2A protocol version Maidan's interfaces expose (spec `AgentInterface`
+/// `protocolVersion`; the proto examples use "0.3"/"1.0").
+const A2A_PROTOCOL_VERSION: &str = "1.0";
+
+/// One transport binding advertised in the Agent Card's `supportedInterfaces`.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInterface {
+    pub url: String,
+    pub protocol_binding: String,
+    pub protocol_version: String,
+}
+
+/// A2A `AgentCapabilities` (spec §4.4.1).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCapabilities {
+    pub streaming: bool,
+    pub push_notifications: bool,
+    pub extended_agent_card: bool,
+}
+
+/// A2A `AgentProvider`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProvider {
+    pub url: String,
+    pub organization: String,
+}
+
+/// A2A `AgentSkill`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSkill {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tags: Vec<String>,
+}
+
+/// A2A v1.0 Agent Card (spec §4.4.1 shape). Served at
+/// `/.well-known/agent-card.json` and returned by `GetExtendedAgentCard`. The
+/// interface URLs are host-relative; a deployment behind a fixed public origin
+/// can front them with an absolute HTTPS URL (see the transport-negotiation work).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentCard {
     pub name: String,
+    pub description: String,
+    pub supported_interfaces: Vec<AgentInterface>,
+    pub provider: AgentProvider,
     pub version: String,
-    pub protocol_version: String,
-    pub rpc_url: String,
-    pub ingress_url: String,
-    pub capabilities: Vec<String>,
+    pub capabilities: AgentCapabilities,
+    pub default_input_modes: Vec<String>,
+    pub default_output_modes: Vec<String>,
+    pub skills: Vec<AgentSkill>,
 }
 
 fn agent_card_payload() -> AgentCard {
     AgentCard {
         name: "maidan".into(),
+        description:
+            "Maidan — the operating layer for teams of AI agents. Exposes A2A tasks over a \
+             shared, durable workspace."
+                .into(),
+        supported_interfaces: vec![AgentInterface {
+            url: "/a2a/v1/rpc".into(),
+            protocol_binding: "JSONRPC".into(),
+            protocol_version: A2A_PROTOCOL_VERSION.into(),
+        }],
+        provider: AgentProvider {
+            url: "https://github.com/david-engelmann/maidan".into(),
+            organization: "Maidan".into(),
+        },
         version: crate::version().to_string(),
-        protocol_version: "1.0".into(),
-        rpc_url: "/a2a/v1/rpc".into(),
-        ingress_url: "/a2a/v1/events".into(),
-        capabilities: vec![
-            METHOD_SEND_MESSAGE.into(),
-            METHOD_SEND_STREAMING_MESSAGE.into(),
-            METHOD_GET_TASK.into(),
-            METHOD_LIST_TASKS.into(),
-            METHOD_CREATE_PUSH_NOTIFICATION_CONFIG.into(),
-            METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
-            METHOD_LIST_PUSH_NOTIFICATION_CONFIGS.into(),
-            METHOD_DELETE_PUSH_NOTIFICATION_CONFIG.into(),
-            METHOD_SUBSCRIBE_TO_TASK.into(),
-            METHOD_CANCEL_TASK.into(),
-            METHOD_GET_EXTENDED_AGENT_CARD.into(),
-        ],
+        capabilities: AgentCapabilities {
+            streaming: true,
+            push_notifications: true,
+            extended_agent_card: true,
+        },
+        default_input_modes: vec!["text/plain".into()],
+        default_output_modes: vec!["text/plain".into()],
+        skills: vec![AgentSkill {
+            id: "collaborate".into(),
+            name: "Workspace collaboration".into(),
+            description:
+                "Post and read messages in shared threads, and drive long-running A2A tasks \
+                 (send/get/list/cancel, subscribe, push configs) within a Maidan workspace."
+                    .into(),
+            tags: vec!["messaging".into(), "tasks".into(), "collaboration".into()],
+        }],
     }
 }
 

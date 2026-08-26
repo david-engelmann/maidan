@@ -812,7 +812,7 @@ async fn a2a_list_tasks_filters_private_and_extended_card() {
     assert_eq!(mallory_ctxs.len(), 1, "mallory sees only the public task");
     assert_eq!(mallory_ctxs[0], public_tid);
 
-    // GetExtendedAgentCard returns the card (with the method list) to an authed client.
+    // GetExtendedAgentCard returns a spec-shaped Agent Card to an authed client.
     let card: Value = ctx
         .client
         .post(format!("{base}/a2a/v1/rpc"))
@@ -824,9 +824,21 @@ async fn a2a_list_tasks_filters_private_and_extended_card() {
         .json()
         .await
         .unwrap();
-    let caps = card["result"]["capabilities"].as_array().unwrap();
-    assert!(caps.iter().any(|c| c == "ListTasks"));
-    assert!(caps.iter().any(|c| c == "GetExtendedAgentCard"));
+    let result = &card["result"];
+    assert_eq!(result["name"].as_str(), Some("maidan"));
+    assert_eq!(
+        result["supportedInterfaces"][0]["protocolBinding"].as_str(),
+        Some("JSONRPC")
+    );
+    assert_eq!(
+        result["supportedInterfaces"][0]["protocolVersion"].as_str(),
+        Some("1.0")
+    );
+    assert_eq!(
+        result["capabilities"]["extendedAgentCard"].as_bool(),
+        Some(true)
+    );
+    assert!(result["skills"].as_array().is_some_and(|s| !s.is_empty()));
 
     ctx.server.abort();
 }
