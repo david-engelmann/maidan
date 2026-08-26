@@ -48,6 +48,20 @@ enum Commands {
         #[arg(long)]
         workspace_id: Option<uuid::Uuid>,
     },
+    /// One-time first-admin bootstrap: create the initial workspace, an admin
+    /// member, and an admin bearer token (printed once). Refuses if the database
+    /// already has a workspace. Removes the need for public bootstrap HTTP routes
+    /// or `AUTH_DISABLED` on a production deployment.
+    Init {
+        #[arg(long, env = "DATABASE_URL", default_value = "sqlite::memory:")]
+        database_url: String,
+        /// Name for the initial workspace.
+        #[arg(long, default_value = "maidan")]
+        workspace: String,
+        /// Handle for the initial admin member.
+        #[arg(long, default_value = "admin")]
+        admin_handle: String,
+    },
 }
 
 #[tokio::main]
@@ -68,7 +82,101 @@ async fn main() -> anyhow::Result<()> {
             embedding_provider,
             workspace_id,
         } => run_reindex_embeddings(&database_url, &embedding_provider, workspace_id).await,
+        Commands::Init {
+            database_url,
+            workspace,
+            admin_handle,
+        } => run_init(&database_url, &workspace, &admin_handle).await,
     }
+}
+
+async fn run_init(
+    database_url: &str,
+    workspace_name: &str,
+    admin_handle: &str,
+) -> anyhow::Result<()> {
+    let dialect = Dialect::from_url(database_url).context("detect dialect")?;
+    let store: Arc<dyn Store> = match dialect {
+        Dialect::Sqlite => {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
+                .connect(database_url)
+                .await
+                .context("connect sqlite")?;
+            maidan_store::configure_sqlite_pool(&pool)
+                .await
+                .context("configure sqlite pragmas")?;
+            run_sqlite_migrations(&pool)
+                .await
+                .context("migrate sqlite")?;
+            Arc::new(SqliteStore::new(pool))
+        }
+        Dialect::Postgres => {
+            let pool = PgPoolOptions::new()
+                .max_connections(4)
+                .connect(database_url)
+                .await
+                .context("connect postgres")?;
+            run_postgres_migrations(&pool)
+                .await
+                .context("migrate postgres")?;
+            Arc::new(PostgresStore::new(pool))
+        }
+    };
+
+    // Init is a one-time bootstrap: refuse if the store is already populated so it
+    // can never clobber an existing deployment or mint a second root token.
+    let existing = store.count_workspaces().await.context("count workspaces")?;
+    if existing > 0 {
+        anyhow::bail!(
+            "refusing to init: the database already has {existing} workspace(s). \
+             `maidan init` is a one-time first-admin bootstrap; mint further tokens via the API."
+        );
+    }
+
+    let (workspace, _) = store
+        .create_workspace_with_event(maidan_types::NewWorkspace {
+            name: workspace_name.to_string(),
+        })
+        .await
+        .context("create workspace")?;
+    let (member, _) = store
+        .create_member_with_event(maidan_types::NewMember {
+            workspace_id: workspace.id,
+            handle: admin_handle.to_string(),
+            display_name: None,
+            kind: maidan_types::MemberKind::Human,
+        })
+        .await
+        .context("create admin member")?;
+
+    let secret = maidan_auth::TokenSecret::generate();
+    store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: workspace.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: Some("maidan init (admin)".to_string()),
+            capabilities: maidan_auth::capability::all(),
+            expires_at: None,
+        })
+        .await
+        .context("mint admin token")?;
+
+    // The secret goes to stdout (logs go to stderr); it is shown exactly once.
+    println!();
+    println!("Maidan initialized.");
+    println!("  workspace: {}  ({})", workspace.name, workspace.id.0);
+    println!("  admin:     {}  ({})", member.handle, member.id.0);
+    println!();
+    println!("Admin bearer token (shown once — save it now):");
+    println!();
+    println!("    {}", secret.as_str());
+    println!();
+    println!("Send it as `Authorization: Bearer <token>`. It holds all capabilities;");
+    println!("mint narrower per-agent tokens from it via the API. Do not run init again.");
+    Ok(())
 }
 
 async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Result<()> {

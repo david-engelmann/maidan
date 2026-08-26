@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v279.0.0 — `maidan init` production-safe bootstrap (launch-readiness P0)
+
+| Change | Where |
+|--------|-------|
+| `maidan init` CLI: one-time first-admin bootstrap (workspace + admin member + all-capabilities token, printed once) through the store; runs migrations, refuses on an already-initialized database. Removes the bootstrap chicken-and-egg so production needs no `AUTH_DISABLED` or public bootstrap routes. New `capability::all()`; documented in Production.md; integration-tested | `crates/maidan-cli/src/main.rs`, `crates/maidan-auth/src/capability.rs`, `crates/maidan-cli/tests/init.rs`, `docs/Production.md` |
+
 ## v278.0.0 — One-command quickstart (launch-readiness P0)
 
 | Change | Where |

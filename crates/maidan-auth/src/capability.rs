@@ -34,6 +34,12 @@ const KNOWN: &[&str] = &[
     CHANNEL_ADMIN,
 ];
 
+/// Every known capability — the superuser set for a bootstrap/root token
+/// (`maidan init`, Cluster 279). Scoped tokens are minted from it thereafter.
+pub fn all() -> Vec<String> {
+    KNOWN.iter().map(|c| (*c).to_string()).collect()
+}
+
 /// Default capabilities for tokens minted by the admin API in tests and docs.
 pub fn default_minted() -> Vec<String> {
     vec![

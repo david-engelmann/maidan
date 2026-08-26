@@ -89,12 +89,29 @@ completion. Point `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` at your server's
 
 ## Bootstrap
 
-When bearer auth is enabled, unauthenticated `POST /workspaces` and
-`POST /workspaces/:wid/members` require `MAIDAN_BOOTSTRAP=1`. Only the **first**
-workspace may be created via bootstrap; a second `POST /workspaces` returns
-`403`.
+### `maidan init` (recommended)
 
-Typical production seed (private network):
+The `maidan` CLI seeds the first admin directly through the store, so a production
+deployment needs no unauthenticated HTTP routes and no `AUTH_DISABLED`:
+
+```sh
+DATABASE_URL=postgres://… maidan init --workspace my-team --admin-handle david
+```
+
+It runs migrations, creates the initial workspace and an admin member, mints an
+all-capabilities bearer token, and prints that token **once** (to stdout; save it).
+It **refuses if the database already has a workspace**, so it can never clobber an
+existing deployment or mint a second root token. Use the printed token to mint
+narrower per-agent tokens via the API. The production image can stay
+bootstrap-stripped (`--no-default-features`), since `init` writes through the store
+rather than the bootstrap HTTP routes.
+
+### HTTP bootstrap (alternative)
+
+When bearer auth is enabled, unauthenticated `POST /workspaces` and
+`POST /workspaces/:wid/members` require `MAIDAN_BOOTSTRAP=1` **and** an image built
+with the `bootstrap` Cargo feature. Only the **first** workspace may be created via
+bootstrap; a second `POST /workspaces` returns `403`. Typical seed (private network):
 
 1. Set `MAIDAN_BOOTSTRAP=1`, `AUTH_DISABLED=1`, and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement — `AUTH_DISABLED` alone now refuses to boot).
 2. Create workspace + member, mint admin token.
