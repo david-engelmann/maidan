@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v283.0.0 — A2A `ListTasks` + `GetExtendedAgentCard` (compliance arc, part 2)
+
+| Change | Where |
+|--------|-------|
+| A2A `ListTasks` op: workspace-scoped task list, `contextId`/`pageSize` filters, per-channel RBAC-filtered (drops tasks whose context thread the caller can't read); new `Store::list_a2a_tasks` both backends. Single-page (status filter/pagination deferred) | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-store/src/{postgres,sqlite}/a2a.rs`, `crates/maidan-server/src/a2a_agent.rs` |
+| A2A `GetExtendedAgentCard` op (shared `agent_card_payload()`); both ops advertised in the Agent Card | `crates/maidan-server/src/a2a_agent.rs` |
+
 ## v282.0.0 — A2A v1.0 method names (compliance arc, part 1)
 
 | Change | Where |

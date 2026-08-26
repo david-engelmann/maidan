@@ -1452,4 +1452,12 @@ impl Store for SqliteStore {
     ) -> Result<Option<WorkspaceId>, StoreError> {
         a2a::get_task_workspace(&self.pool, task_id).await
     }
+
+    async fn list_a2a_tasks(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<serde_json::Value>, StoreError> {
+        a2a::list_tasks(&self.pool, workspace_id, limit).await
+    }
 }

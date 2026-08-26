@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [283.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 2.** No new gate tag.
+
+### Added
+
+- **A2A `ListTasks` JSON-RPC operation** — lists the authenticated workspace's tasks
+  (most-recently-updated first), with an optional `contextId` filter and `pageSize`
+  (default 50, clamped 1..=200). New `Store::list_a2a_tasks` (both backends). Results
+  are **per-channel RBAC-filtered**: a task whose context thread the caller cannot read
+  is dropped. Single-page for now (`nextPageToken` empty; `status` filter deferred).
+- **A2A `GetExtendedAgentCard` JSON-RPC operation** — returns the Agent Card to an
+  authenticated client. The card builder is now a shared `agent_card_payload()` used by
+  both the `/.well-known/agent-card.json` route and this op. Both new ops are advertised
+  in the Agent Card method list.
+
 ## [282.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

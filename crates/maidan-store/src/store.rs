@@ -1054,4 +1054,11 @@ pub trait Store: Send + Sync {
         &self,
         task_id: &str,
     ) -> Result<Option<WorkspaceId>, StoreError>;
+    /// List a workspace's A2A task JSON blobs, most-recently-updated first, up to
+    /// `limit`. The A2A `ListTasks` operation filters + paginates over this.
+    async fn list_a2a_tasks(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<serde_json::Value>, StoreError>;
 }
