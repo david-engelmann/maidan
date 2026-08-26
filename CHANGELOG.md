@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [279.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P0: production-safe first-admin
+bootstrap.** No new gate tag.
+
+### Added
+
+- **`maidan init`.** A one-time CLI bootstrap that seeds the first workspace, an admin
+  member, and an all-capabilities bearer token directly through the store (running
+  migrations first), prints the token **once**, and **refuses if the database already
+  has a workspace**. This removes the "need an admin token to create the first admin
+  token" chicken-and-egg: a production deployment needs no `AUTH_DISABLED` and no public
+  bootstrap HTTP routes (the image can stay `--no-default-features`). New
+  `maidan_auth::capability::all()` exposes the full capability set as the superuser
+  grant. Documented in Production.md; guarded by a `maidan-cli` integration test.
+
 ## [278.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P0: one-command quickstart.** No
