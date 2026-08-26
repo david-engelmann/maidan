@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v277.0.0 — SQLite write-contention fix (launch-readiness P0)
+
+| Change | Where |
+|--------|-------|
+| SQLite no longer deadlocks on concurrent writes ("database is locked"). Root cause: single-writer SQLite + sqlx deferred `pool.begin()` on a multi-connection pool → read-then-write upgrade deadlock (`busy_timeout` can't resolve it; a harness showed ~90% of contended writes failing at 8 connections). Fix: SQLite backend defaults to 1 connection (`DEFAULT_SQLITE_MAX_CONNECTIONS`, override `MAIDAN_DB_MAX_CONNECTIONS`); Postgres unaffected. Regression guard `sqlite_write_contention` | `maidan-store/src/lib.rs`, `maidan-server/src/main.rs`, `maidan-store/tests/sqlite_write_contention.rs` |
+
 ## v276.0.0 — Runtime version truthfulness (launch-readiness P0)
 
 | Change | Where |

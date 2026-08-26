@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [277.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P0: SQLite write-contention
+deadlock.** No new gate tag.
+
+### Fixed
+
+- **SQLite "database is locked" on concurrent writes.** SQLite is single-writer and
+  sqlx's `pool.begin()` is deferred, so a multi-connection pool lets two writers each
+  take a read snapshot and race to upgrade — a genuine deadlock `busy_timeout` cannot
+  resolve (a contention harness showed a warm 8-connection pool failing ~90% of
+  read-modify-write transactions; one connection is clean). The SQLite backend now
+  defaults to **one connection** (`maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS`,
+  overridable via `MAIDAN_DB_MAX_CONNECTIONS`); WAL keeps it fast, and Postgres
+  (production/HA) is unaffected. Guarded by a new `sqlite_write_contention` test that
+  runs the harness at the shipped default and asserts zero lock failures.
+
 ## [276.0.0] — 2026-08-25
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P0: runtime version
