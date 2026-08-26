@@ -6,14 +6,16 @@ use serde_json::Value;
 use uuid::Uuid;
 
 pub const JSONRPC_VERSION: &str = "2.0";
+// A2A v1.0 JSON-RPC method strings are the canonical operation names from the
+// spec's §5.3 Method Mapping Reference (identical to the gRPC method names),
+// not the older `message/send`-style paths and not an `a2a.`-prefixed form.
 pub const METHOD_SEND_MESSAGE: &str = "SendMessage";
 pub const METHOD_SEND_STREAMING_MESSAGE: &str = "SendStreamingMessage";
 pub const METHOD_GET_TASK: &str = "GetTask";
-pub const METHOD_SET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/set";
-pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "tasks/pushNotificationConfig/get";
+pub const METHOD_CREATE_PUSH_NOTIFICATION_CONFIG: &str = "CreateTaskPushNotificationConfig";
+pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "GetTaskPushNotificationConfig";
 pub const METHOD_SUBSCRIBE_TO_TASK: &str = "SubscribeToTask";
-pub const METHOD_TASKS_RESUBSCRIBE: &str = "tasks/resubscribe";
-pub const METHOD_TASKS_CANCEL: &str = "tasks/cancel";
+pub const METHOD_CANCEL_TASK: &str = "CancelTask";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v282.0.0 — A2A v1.0 method names (compliance arc, part 1)
+
+| Change | Where |
+|--------|-------|
+| A2A JSON-RPC method strings canonicalized to the A2A v1.0 spec (§5.3 Method Mapping): `tasks/cancel`→`CancelTask`, `tasks/pushNotificationConfig/{set,get}`→`{Create,Get}TaskPushNotificationConfig`; dropped the non-spec `tasks/resubscribe` alias. `SendMessage`/`SendStreamingMessage`/`GetTask`/`SubscribeToTask` + `TASK_STATE_*` were already spec-correct. First step of the full multi-transport + TCK A2A arc | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-server/src/a2a_agent.rs`, `docs/Integration.md` |
+
 ## v281.0.0 — Published benchmark methodology (launch-readiness P1)
 
 | Change | Where |
