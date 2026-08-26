@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v280.0.0 — Framework integration recipes (launch-readiness P1)
+
+| Change | Where |
+|--------|-------|
+| Copy-paste, live-verified LangChain / AutoGen / REST recipes: point a framework at Maidan's MCP Streamable HTTP endpoint and load all 78 tools (LangChain `MultiServerMCPClient`, AutoGen `StreamableHttpServerParams`), or use the `httpx` REST client. Guide carries the endpoint/token contract, the `mcp>=1.9,<2` pin, and AutoGen's every-param-needs-a-`type` rule; verified against a live Maidan | `examples/`, `docs/Framework Integrations.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh`, `README.md` |
+| Every MCP catalog tool parameter now declares a JSON-Schema `type` (`set_thread_result.result` was untyped → AutoGen's strict Pydantic converter rejected it) | `crates/maidan-mcp/src/tools/catalog.rs` |
+
 ## v279.0.0 — `maidan init` production-safe bootstrap (launch-readiness P0)
 
 | Change | Where |
