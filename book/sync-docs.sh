@@ -37,7 +37,7 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros"
 # under hyphenated names (space -> hyphen).
 top_pages=(
   "Integration" "Capability Map" "Agent Integration"
-  "Production" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
+  "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "Architecture" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README"
   "Providers" "Protocols" "Handoff" "Launch" "Promotion"

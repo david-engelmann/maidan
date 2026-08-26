@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v281.0.0 — Published benchmark methodology (launch-readiness P1)
+
+| Change | Where |
+|--------|-------|
+| Post→observer realtime-propagation latency measurement (`post_to_observer_latency`): times producer-post → WebSocket-observer-receive, reading the event concurrently with the POST. Plus `docs/Benchmark.md` (published): named hardware/commit/backend, reproduction commands, honest caveats. Measured on Apple M3 Max / in-process SQLite: post→observer p50 0.71 ms/p99 1.00 ms; mixed throughput 1 586 ops/s (8 workers) / 666 ops/s (32, single-writer ceiling), 0 errors | `crates/maidan-server/tests/loadgen.rs`, `docs/Benchmark.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh`, `README.md` |
+| Loadgen SQLite target now uses the shipped 1-connection default (was 16 → the write-contention deadlock Cluster 277 fixed) | `crates/maidan-server/tests/loadgen.rs` |
+
 ## v280.0.0 — Framework integration recipes (launch-readiness P1)
 
 | Change | Where |

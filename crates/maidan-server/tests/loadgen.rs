@@ -29,6 +29,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
@@ -36,6 +37,10 @@ use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 
 /// Latency summary for one operation kind, in milliseconds.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +86,17 @@ fn env_u64(key: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+/// Derive the WebSocket base from an HTTP base URL (`http`→`ws`, `https`→`wss`).
+fn http_to_ws(base: &str) -> String {
+    if let Some(rest) = base.strip_prefix("https://") {
+        format!("wss://{rest}")
+    } else if let Some(rest) = base.strip_prefix("http://") {
+        format!("ws://{rest}")
+    } else {
+        base.to_string()
+    }
+}
+
 struct InProcess {
     _server: tokio::task::JoinHandle<()>,
     _dir: tempfile::TempDir,
@@ -92,8 +108,14 @@ struct InProcess {
 /// channel, thread, and a full-capability token — the default target when
 /// `MAIDAN_LOADGEN_URL` is unset.
 async fn spawn_in_process() -> (InProcess, String) {
+    // Match the shipped SQLite default (Cluster 277): one connection. A
+    // multi-connection SQLite pool deadlocks under write contention, so
+    // benchmarking 16 connections would measure a configuration Maidan does not
+    // ship. `min_connections(1)` keeps the single `sqlite::memory:` connection
+    // (and its in-memory database) alive for the whole run.
     let pool = SqlitePoolOptions::new()
-        .max_connections(16)
+        .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
+        .min_connections(1)
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -198,6 +220,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
                 capability::WORKSPACE_WRITE.into(),
                 capability::MESSAGE_POST.into(),
                 capability::SEARCH_QUERY.into(),
+                capability::EVENT_SUBSCRIBE.into(),
             ],
             expires_at: None,
         })
@@ -366,6 +389,139 @@ async fn load_baseline() {
     assert!(total > 0, "load run produced no successful operations");
 }
 
+/// Measure **post→observer latency**: the time from a producer initiating a
+/// message post to a subscribed observer receiving that message over the
+/// realtime WebSocket. This is the propagation number a real-time claim rests
+/// on (distinct from `load_baseline`'s per-op REST latency + throughput).
+///
+/// Each iteration posts a uniquely-tagged message and, *concurrently* with the
+/// POST, reads WebSocket frames until the matching event arrives — so the
+/// sample reflects true fan-out, not the POST round-trip. Serial (one message
+/// in flight) to keep correlation unambiguous. Same target selection as
+/// `load_baseline` (in-process SQLite by default; `MAIDAN_LOADGEN_URL` +
+/// `_BEARER` + `_IDS` for an external deployment).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "post→observer latency measurement — run explicitly with --ignored"]
+async fn post_to_observer_latency() {
+    let ops = env_u64("MAIDAN_LOADGEN_OBSERVER_OPS", 200).max(1);
+
+    let external_url = env::var("MAIDAN_LOADGEN_URL").ok();
+    let (_owned, base, bearer, ids) = match &external_url {
+        Some(url) => {
+            let bearer = env::var("MAIDAN_LOADGEN_BEARER").unwrap_or_default();
+            let ids = env::var("MAIDAN_LOADGEN_IDS").expect(
+                "MAIDAN_LOADGEN_IDS=workspace|channel|thread|member required when targeting a URL",
+            );
+            (None, url.clone(), bearer, ids)
+        }
+        None => {
+            let (proc, ids) = spawn_in_process().await;
+            let (base, bearer) = (proc.base.clone(), proc.bearer.clone());
+            (Some(proc), base, bearer, ids)
+        }
+    };
+    let parts: Vec<&str> = ids.split('|').collect();
+    assert!(
+        parts.len() >= 4,
+        "MAIDAN_LOADGEN_IDS must be workspace|channel|thread|member"
+    );
+    let (tid, mid) = (parts[2].to_string(), parts[3].to_string());
+
+    // Connect the observer. `/ws/subscribe` reads the bearer from the subscribe
+    // frame's `token` field, not an HTTP header, so the upgrade itself is plain.
+    let ws_url = format!("{}/ws/subscribe", http_to_ws(&base));
+    let req = ws_url.into_client_request().unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("observer ws connect");
+
+    // Authenticate + subscribe in one frame. Correlation is by a per-op nonce in
+    // the body, so a kind-only filter is sufficient (independent of the thread
+    // filter). Wait for the ack so the bus subscription is attached before posting.
+    ws.send(Message::Text(
+        json!({"filter": {"kinds": ["message_posted"]}, "token": bearer}).to_string(),
+    ))
+    .await
+    .unwrap();
+    loop {
+        match ws.next().await {
+            Some(Ok(Message::Text(p))) => {
+                let v: serde_json::Value =
+                    serde_json::from_str(&p).unwrap_or(serde_json::Value::Null);
+                if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                    break;
+                }
+            }
+            Some(Ok(_)) => {}
+            other => panic!("observer ws closed before subscribe_ack: {other:?}"),
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let mut samples: Vec<f64> = Vec::with_capacity(ops as usize);
+    let mut errors = 0u64;
+
+    let wall = Instant::now();
+    for seq in 0..ops {
+        let nonce = format!(
+            "obsbench-{seq}-{:x}",
+            (seq.wrapping_mul(2654435761)) & 0xffffff
+        );
+        let t0 = Instant::now();
+        let post = client
+            .post(format!("{base}/threads/{tid}/messages"))
+            .bearer_auth(&bearer)
+            .json(&json!({"author_id": mid, "body": nonce}))
+            .send();
+        // Read frames until the matching event, concurrently with the POST, so
+        // t1 records receipt independent of when the POST response returns.
+        let observe = async {
+            loop {
+                match ws.next().await {
+                    Some(Ok(Message::Text(p))) => {
+                        let v: serde_json::Value = match serde_json::from_str(&p) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        if v.get("type").is_some() {
+                            continue; // control frame
+                        }
+                        let body = v
+                            .get("message")
+                            .and_then(|m| m.get("body"))
+                            .and_then(|b| b.as_str());
+                        if body == Some(nonce.as_str()) {
+                            return Some(Instant::now());
+                        }
+                    }
+                    Some(Ok(_)) => {}
+                    _ => return None, // stream closed
+                }
+            }
+        };
+        let (post_res, observed) = tokio::join!(post, observe);
+        match (post_res, observed) {
+            (Ok(r), Some(t1)) if r.status().is_success() => {
+                samples.push((t1 - t0).as_secs_f64() * 1000.0);
+            }
+            _ => errors += 1,
+        }
+    }
+    let elapsed = wall.elapsed().as_secs_f64();
+
+    let n = samples.len();
+    eprintln!("\n=== post→observer latency ({n} samples, {errors} errors, {elapsed:.2}s) ===",);
+    eprintln!(
+        "{:<14} {:>7} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9}",
+        "metric", "count", "min", "mean", "p50", "p95", "p99", "max"
+    );
+    if let Some(st) = stats(samples) {
+        eprintln!(
+            "{:<14} {:>7} {:>9.2} {:>9.2} {:>9.2} {:>9.2} {:>9.2} {:>9.2}",
+            "post->observer", st.count, st.min, st.mean, st.p50, st.p95, st.p99, st.max
+        );
+    }
+    assert!(n > 0, "no post→observer samples measured");
+}
+
 #[cfg(test)]
 mod stats_tests {
     use super::*;
@@ -395,5 +551,13 @@ mod stats_tests {
         assert_eq!(st.p50, 7.0);
         assert_eq!(st.p99, 7.0);
         assert_eq!(st.max, 7.0);
+    }
+
+    #[test]
+    fn http_to_ws_maps_schemes() {
+        assert_eq!(http_to_ws("http://127.0.0.1:8080"), "ws://127.0.0.1:8080");
+        assert_eq!(http_to_ws("https://maidan.example"), "wss://maidan.example");
+        // Leave an already-ws or unknown scheme untouched.
+        assert_eq!(http_to_ws("ws://host"), "ws://host");
     }
 }
