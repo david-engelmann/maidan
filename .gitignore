@@ -14,6 +14,11 @@ Cargo.lock.bak
 /book/build/
 /book/src/docs/
 
+# Python (examples/ client recipes — bytecode + venvs are never committed)
+__pycache__/
+*.pyc
+.venv/
+
 # Coverage
 *.profraw
 *.profdata

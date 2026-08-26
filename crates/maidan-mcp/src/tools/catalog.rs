@@ -231,7 +231,7 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "result": {"description": "arbitrary JSON result payload"}
+                    "result": {"type": "object", "description": "structured JSON result payload (an object)"}
                 },
                 "required": ["thread_id", "result"]
             }
