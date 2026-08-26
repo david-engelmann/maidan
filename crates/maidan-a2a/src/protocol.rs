@@ -15,6 +15,8 @@ pub const METHOD_GET_TASK: &str = "GetTask";
 pub const METHOD_LIST_TASKS: &str = "ListTasks";
 pub const METHOD_CREATE_PUSH_NOTIFICATION_CONFIG: &str = "CreateTaskPushNotificationConfig";
 pub const METHOD_GET_PUSH_NOTIFICATION_CONFIG: &str = "GetTaskPushNotificationConfig";
+pub const METHOD_LIST_PUSH_NOTIFICATION_CONFIGS: &str = "ListTaskPushNotificationConfigs";
+pub const METHOD_DELETE_PUSH_NOTIFICATION_CONFIG: &str = "DeleteTaskPushNotificationConfig";
 pub const METHOD_SUBSCRIBE_TO_TASK: &str = "SubscribeToTask";
 pub const METHOD_CANCEL_TASK: &str = "CancelTask";
 pub const METHOD_GET_EXTENDED_AGENT_CARD: &str = "GetExtendedAgentCard";
@@ -278,6 +280,44 @@ pub struct SetPushNotificationConfigRequest {
 pub struct GetPushNotificationConfigResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<PushNotificationConfig>,
+}
+
+/// A2A v1.0 per-task push notification config (spec `TaskPushNotificationConfig`).
+/// `id` is the stable config id (server-generated on create if the client omits it).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskPushNotificationConfig {
+    #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+    pub config_id: Option<String>,
+    pub task_id: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTaskPushNotificationConfigRequest {
+    pub task_id: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTaskPushNotificationConfigRequest {
+    pub task_id: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTaskPushNotificationConfigsRequest {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTaskPushNotificationConfigsResponse {
+    pub configs: Vec<TaskPushNotificationConfig>,
+    pub next_page_token: String,
 }
 
 pub fn maidan_context_from_metadata(metadata: &Option<Value>) -> Result<MaidanA2aContext, String> {

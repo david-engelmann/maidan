@@ -9,14 +9,17 @@ use axum::{extract::State, Extension, Json};
 use futures::StreamExt;
 use maidan_a2a::{
     is_terminal_task_state, maidan_context_from_metadata, message_content,
-    message_parts_from_content, message_text, A2aMessage, GetPushNotificationConfigResponse,
-    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, ListTasksRequest,
-    ListTasksResponse, SendMessageRequest, SendMessageResponse, SetPushNotificationConfigRequest,
-    StreamResponseStatusUpdate, StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent,
-    TextPart, METHOD_CANCEL_TASK, METHOD_CREATE_PUSH_NOTIFICATION_CONFIG,
+    message_parts_from_content, message_text, A2aMessage, DeleteTaskPushNotificationConfigRequest,
+    GetTaskPushNotificationConfigRequest, GetTaskRequest, JsonRpcId, JsonRpcRequest,
+    JsonRpcResponse, ListTaskPushNotificationConfigsRequest,
+    ListTaskPushNotificationConfigsResponse, ListTasksRequest, ListTasksResponse,
+    SendMessageRequest, SendMessageResponse, StreamResponseStatusUpdate, StreamResponseTask, Task,
+    TaskPushNotificationConfig, TaskStatus, TaskStatusUpdateEvent, TextPart, METHOD_CANCEL_TASK,
+    METHOD_CREATE_PUSH_NOTIFICATION_CONFIG, METHOD_DELETE_PUSH_NOTIFICATION_CONFIG,
     METHOD_GET_EXTENDED_AGENT_CARD, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
-    METHOD_LIST_TASKS, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
-    METHOD_SUBSCRIBE_TO_TASK, TASK_STATE_CANCELED, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    METHOD_LIST_PUSH_NOTIFICATION_CONFIGS, METHOD_LIST_TASKS, METHOD_SEND_MESSAGE,
+    METHOD_SEND_STREAMING_MESSAGE, METHOD_SUBSCRIBE_TO_TASK, TASK_STATE_CANCELED,
+    TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -68,10 +71,16 @@ pub async fn json_rpc(
             json_response(dispatch_tasks_cancel(&state, &auth, id, body.params).await)
         }
         METHOD_CREATE_PUSH_NOTIFICATION_CONFIG => {
-            json_response(dispatch_set_push_config(&state, &auth, id, body.params).await)
+            json_response(dispatch_create_push_config(&state, &auth, id, body.params).await)
         }
         METHOD_GET_PUSH_NOTIFICATION_CONFIG => {
-            json_response(dispatch_get_push_config(&state, &auth, id).await)
+            json_response(dispatch_get_push_config(&state, &auth, id, body.params).await)
+        }
+        METHOD_LIST_PUSH_NOTIFICATION_CONFIGS => {
+            json_response(dispatch_list_push_configs(&state, &auth, id, body.params).await)
+        }
+        METHOD_DELETE_PUSH_NOTIFICATION_CONFIG => {
+            json_response(dispatch_delete_push_config(&state, &auth, id, body.params).await)
         }
         METHOD_SUBSCRIBE_TO_TASK => {
             dispatch_subscribe_to_task(&state, &auth, id, body.params).await
@@ -103,11 +112,14 @@ async fn persist_task(state: &AppState, workspace_id: WorkspaceId, task: &Task) 
     {
         return;
     }
-    if let Ok(Some(url)) = state.store.get_a2a_push_config(workspace_id).await {
-        let task_id = task.id.clone();
-        tokio::spawn(async move {
-            deliver_a2a_push(&url, &value, &task_id).await;
-        });
+    if let Ok(configs) = state.store.list_a2a_task_push_configs(&task.id).await {
+        for (_config_id, url) in configs {
+            let task_id = task.id.clone();
+            let value = value.clone();
+            tokio::spawn(async move {
+                deliver_a2a_push(&url, &value, &task_id).await;
+            });
+        }
     }
 }
 
@@ -501,7 +513,7 @@ async fn dispatch_get_extended_agent_card(
     Ok(JsonRpcResponse::success(id, value))
 }
 
-async fn dispatch_set_push_config(
+async fn dispatch_create_push_config(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
@@ -510,60 +522,159 @@ async fn dispatch_set_push_config(
     if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
-    let req: SetPushNotificationConfigRequest = serde_json::from_value(params).map_err(|e| {
+    let mut req: TaskPushNotificationConfig = serde_json::from_value(params).map_err(|e| {
         JsonRpcResponse::error(
             id.clone(),
             ERR_PARAMS,
-            format!("invalid push config params: {e}"),
+            format!("invalid CreateTaskPushNotificationConfig params: {e}"),
         )
     })?;
+    if req.task_id.trim().is_empty() {
+        return Err(JsonRpcResponse::error(id, ERR_PARAMS, "taskId is required"));
+    }
     if req.url.trim().is_empty() {
         return Err(JsonRpcResponse::error(id, ERR_PARAMS, "url is required"));
     }
-    if auth.bypass {
-        return Err(JsonRpcResponse::error(
-            id,
-            ERR_PARAMS,
-            "push config requires a workspace-scoped bearer token",
-        ));
-    }
+    let task = load_task(state, &req.task_id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    ensure_task_workspace_access(state, auth, &id, &req.task_id, &task).await?;
+    let config_id = req
+        .config_id
+        .clone()
+        .filter(|c| !c.trim().is_empty())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     state
         .store
-        .upsert_a2a_push_config(auth.workspace_id, &req.url)
+        .create_a2a_task_push_config(&req.task_id, &config_id, &req.url)
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
-    Ok(JsonRpcResponse::success(
-        id,
-        serde_json::json!({ "ok": true }),
-    ))
+    req.config_id = Some(config_id);
+    let value = serde_json::to_value(req)
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
 }
 
 async fn dispatch_get_push_config(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
+    params: serde_json::Value,
 ) -> Result<JsonRpcResponse, JsonRpcResponse> {
     if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
-    if auth.bypass {
+    let req: GetTaskPushNotificationConfigRequest =
+        serde_json::from_value(params).map_err(|e| {
+            JsonRpcResponse::error(
+                id.clone(),
+                ERR_PARAMS,
+                format!("invalid GetTaskPushNotificationConfig params: {e}"),
+            )
+        })?;
+    let task = load_task(state, &req.task_id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    ensure_task_workspace_access(state, auth, &id, &req.task_id, &task).await?;
+    let url = state
+        .store
+        .get_a2a_task_push_config(&req.task_id, &req.id)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    let Some(url) = url else {
         return Err(JsonRpcResponse::error(
             id,
             ERR_PARAMS,
-            "push config requires a workspace-scoped bearer token",
+            "push config not found",
         ));
+    };
+    let cfg = TaskPushNotificationConfig {
+        config_id: Some(req.id),
+        task_id: req.task_id,
+        url,
+    };
+    let value = serde_json::to_value(cfg)
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    Ok(JsonRpcResponse::success(id, value))
+}
+
+async fn dispatch_list_push_configs(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
-    let url = state
+    let req: ListTaskPushNotificationConfigsRequest =
+        serde_json::from_value(params).map_err(|e| {
+            JsonRpcResponse::error(
+                id.clone(),
+                ERR_PARAMS,
+                format!("invalid ListTaskPushNotificationConfigs params: {e}"),
+            )
+        })?;
+    let task = load_task(state, &req.task_id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    ensure_task_workspace_access(state, auth, &id, &req.task_id, &task).await?;
+    let rows = state
         .store
-        .get_a2a_push_config(auth.workspace_id)
+        .list_a2a_task_push_configs(&req.task_id)
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
-    let resp = GetPushNotificationConfigResponse {
-        config: url.map(|url| maidan_a2a::PushNotificationConfig { url }),
+    let configs = rows
+        .into_iter()
+        .map(|(config_id, url)| TaskPushNotificationConfig {
+            config_id: Some(config_id),
+            task_id: req.task_id.clone(),
+            url,
+        })
+        .collect();
+    let resp = ListTaskPushNotificationConfigsResponse {
+        configs,
+        next_page_token: String::new(),
     };
     let value = serde_json::to_value(resp)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
+}
+
+async fn dispatch_delete_push_config(
+    state: &AppState,
+    auth: &AuthContext,
+    id: JsonRpcId,
+    params: serde_json::Value,
+) -> Result<JsonRpcResponse, JsonRpcResponse> {
+    if let Err(e) = auth.require_capability(WORKSPACE_WRITE) {
+        return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
+    }
+    let req: DeleteTaskPushNotificationConfigRequest =
+        serde_json::from_value(params).map_err(|e| {
+            JsonRpcResponse::error(
+                id.clone(),
+                ERR_PARAMS,
+                format!("invalid DeleteTaskPushNotificationConfig params: {e}"),
+            )
+        })?;
+    let task = load_task(state, &req.task_id)
+        .await
+        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
+    ensure_task_workspace_access(state, auth, &id, &req.task_id, &task).await?;
+    let removed = state
+        .store
+        .delete_a2a_task_push_config(&req.task_id, &req.id)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    if !removed {
+        return Err(JsonRpcResponse::error(
+            id,
+            ERR_PARAMS,
+            "push config not found",
+        ));
+    }
+    Ok(JsonRpcResponse::success(id, serde_json::json!({})))
 }
 
 async fn dispatch_tasks_cancel(
@@ -722,6 +833,8 @@ fn agent_card_payload() -> AgentCard {
             METHOD_LIST_TASKS.into(),
             METHOD_CREATE_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
+            METHOD_LIST_PUSH_NOTIFICATION_CONFIGS.into(),
+            METHOD_DELETE_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_SUBSCRIBE_TO_TASK.into(),
             METHOD_CANCEL_TASK.into(),
             METHOD_GET_EXTENDED_AGENT_CARD.into(),

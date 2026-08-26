@@ -8,7 +8,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
@@ -711,4 +711,155 @@ async fn a2a_subscribe_to_task_emits_progress_when_task_becomes_terminal() {
         "expected progress frame, got: {buf}"
     );
     assert!(buf.contains("TASK_STATE_COMPLETED"));
+}
+
+/// Cluster 284: per-task push notification configs — Create/Get/List/Delete over
+/// JSON-RPC against a real task created by SendMessage.
+#[tokio::test]
+async fn a2a_task_push_config_create_get_list_delete() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    // workspace / member / channel / thread
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "pc"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap();
+    let member: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "agent", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let author_id = member["id"].as_str().unwrap();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let th: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "pc"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = th["id"].as_str().unwrap();
+
+    let rpc = |method: &'static str, params: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            client
+                .post(format!("{base}/a2a/v1/rpc"))
+                .json(&json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Create a task via SendMessage.
+    let sent = rpc(
+        "SendMessage",
+        json!({
+            "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
+            "metadata": {"maidan": {"threadId": thread_id, "authorId": author_id}}
+        }),
+    )
+    .await;
+    let task_id = sent["result"]["task"]["id"].as_str().unwrap().to_string();
+
+    // Create a push config (server generates the id).
+    let created = rpc(
+        "CreateTaskPushNotificationConfig",
+        json!({"taskId": task_id, "url": "https://hook.example/a"}),
+    )
+    .await;
+    let config_id = created["result"]["id"].as_str().unwrap().to_string();
+    assert_eq!(created["result"]["taskId"].as_str(), Some(task_id.as_str()));
+    assert_eq!(
+        created["result"]["url"].as_str(),
+        Some("https://hook.example/a")
+    );
+
+    // Get it back.
+    let got = rpc(
+        "GetTaskPushNotificationConfig",
+        json!({"taskId": task_id, "id": config_id}),
+    )
+    .await;
+    assert_eq!(
+        got["result"]["url"].as_str(),
+        Some("https://hook.example/a")
+    );
+
+    // List: exactly one.
+    let listed = rpc(
+        "ListTaskPushNotificationConfigs",
+        json!({"taskId": task_id}),
+    )
+    .await;
+    assert_eq!(listed["result"]["configs"].as_array().unwrap().len(), 1);
+
+    // Delete it, then the list is empty and a re-get errors.
+    let deleted = rpc(
+        "DeleteTaskPushNotificationConfig",
+        json!({"taskId": task_id, "id": config_id}),
+    )
+    .await;
+    assert!(deleted["result"].is_object());
+    let listed2 = rpc(
+        "ListTaskPushNotificationConfigs",
+        json!({"taskId": task_id}),
+    )
+    .await;
+    assert_eq!(listed2["result"]["configs"].as_array().unwrap().len(), 0);
+    let missing = rpc(
+        "GetTaskPushNotificationConfig",
+        json!({"taskId": task_id, "id": config_id}),
+    )
+    .await;
+    assert!(
+        missing["error"].is_object(),
+        "get after delete should error"
+    );
 }
