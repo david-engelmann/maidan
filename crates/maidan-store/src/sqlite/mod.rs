@@ -1460,4 +1460,36 @@ impl Store for SqliteStore {
     ) -> Result<Vec<serde_json::Value>, StoreError> {
         a2a::list_tasks(&self.pool, workspace_id, limit).await
     }
+
+    async fn create_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+        url: &str,
+    ) -> Result<(), StoreError> {
+        a2a::create_task_push_config(&self.pool, task_id, config_id, url).await
+    }
+
+    async fn get_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+    ) -> Result<Option<String>, StoreError> {
+        a2a::get_task_push_config(&self.pool, task_id, config_id).await
+    }
+
+    async fn list_a2a_task_push_configs(
+        &self,
+        task_id: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        a2a::list_task_push_configs(&self.pool, task_id).await
+    }
+
+    async fn delete_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+    ) -> Result<bool, StoreError> {
+        a2a::delete_task_push_config(&self.pool, task_id, config_id).await
+    }
 }

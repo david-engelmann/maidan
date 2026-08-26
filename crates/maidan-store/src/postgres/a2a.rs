@@ -95,3 +95,66 @@ pub async fn list_tasks(
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
+
+pub async fn create_task_push_config(
+    pool: &PgPool,
+    task_id: &str,
+    config_id: &str,
+    url: &str,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_a2a_task_push_configs (task_id, config_id, push_url)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (task_id, config_id) DO UPDATE SET push_url = EXCLUDED.push_url",
+    )
+    .bind(task_id)
+    .bind(config_id)
+    .bind(url)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_task_push_config(
+    pool: &PgPool,
+    task_id: &str,
+    config_id: &str,
+) -> Result<Option<String>, StoreError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT push_url FROM maidan_a2a_task_push_configs WHERE task_id = $1 AND config_id = $2",
+    )
+    .bind(task_id)
+    .bind(config_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.0))
+}
+
+pub async fn list_task_push_configs(
+    pool: &PgPool,
+    task_id: &str,
+) -> Result<Vec<(String, String)>, StoreError> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT config_id, push_url FROM maidan_a2a_task_push_configs
+         WHERE task_id = $1 ORDER BY created_at ASC, config_id ASC",
+    )
+    .bind(task_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn delete_task_push_config(
+    pool: &PgPool,
+    task_id: &str,
+    config_id: &str,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_a2a_task_push_configs WHERE task_id = $1 AND config_id = $2",
+    )
+    .bind(task_id)
+    .bind(config_id)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}

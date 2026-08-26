@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v284.0.0 — A2A per-task push notification configs (compliance arc, part 3)
+
+| Change | Where |
+|--------|-------|
+| A2A push configs are now per-task with a stable `configId` (spec model), not one-per-workspace. New `maidan_a2a_task_push_configs` table + `create`/`get`/`list`/`delete` store methods both backends; delivery fans out to all a task's configs | `migrations/{postgres/0049,sqlite/0048}_a2a_task_push_configs.sql`, `crates/maidan-store/src/{store.rs,postgres/a2a.rs,sqlite/a2a.rs,postgres/mod.rs,sqlite/mod.rs}` |
+| `Create`/`Get`/`List`/`Delete` TaskPushNotificationConfig JSON-RPC ops (per-task, RBAC-checked via `ensure_task_workspace_access`); advertised in the Agent Card | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-server/src/a2a_agent.rs` |
+
 ## v283.0.0 — A2A `ListTasks` + `GetExtendedAgentCard` (compliance arc, part 2)
 
 | Change | Where |

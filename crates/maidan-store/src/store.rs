@@ -1061,4 +1061,29 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<serde_json::Value>, StoreError>;
+
+    /// Per-task A2A push notification configs (A2A v1.0 spec model: many configs per
+    /// task, each with a stable `config_id`). Upsert by `(task_id, config_id)`.
+    async fn create_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+        url: &str,
+    ) -> Result<(), StoreError>;
+    async fn get_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+    ) -> Result<Option<String>, StoreError>;
+    /// Returns `(config_id, url)` pairs for the task, oldest first.
+    async fn list_a2a_task_push_configs(
+        &self,
+        task_id: &str,
+    ) -> Result<Vec<(String, String)>, StoreError>;
+    /// Returns `true` if a config was removed, `false` if none matched.
+    async fn delete_a2a_task_push_config(
+        &self,
+        task_id: &str,
+        config_id: &str,
+    ) -> Result<bool, StoreError>;
 }

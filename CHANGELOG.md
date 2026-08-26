@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [284.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 3.** No new gate tag.
+
+### Changed
+
+- **A2A push notification configs are now per-task with a stable `configId`** (the A2A
+  v1.0 model), replacing the one-config-per-workspace shortcut. New
+  `maidan_a2a_task_push_configs` table (pg 0049 / sqlite 0048) + `create`/`get`/`list`/
+  `delete` store methods (both backends). Task-update notifications now fan out to **all**
+  of a task's push configs.
+
+### Added
+
+- **A2A `ListTaskPushNotificationConfigs` + `DeleteTaskPushNotificationConfig`** JSON-RPC
+  ops, and `Create`/`Get` reworked to the per-task model (`taskId` + server-generated
+  `id`). Each op loads the task and enforces per-channel access. Advertised in the Agent
+  Card.
+
 ## [283.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
