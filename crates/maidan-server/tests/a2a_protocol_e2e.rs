@@ -587,7 +587,7 @@ async fn a2a_tasks_cancel_marks_working_task_canceled() {
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
-            "method": "tasks/cancel",
+            "method": "CancelTask",
             "params": { "id": "cancel-me" }
         }))
         .send()

@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [282.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 1 (full multi-transport + TCK).** No new gate tag.
+
+### Changed
+
+- **A2A JSON-RPC method names are now the canonical A2A v1.0 operation names** (the
+  spec's §5.3 Method Mapping Reference): `tasks/cancel` → `CancelTask`,
+  `tasks/pushNotificationConfig/set` → `CreateTaskPushNotificationConfig`,
+  `tasks/pushNotificationConfig/get` → `GetTaskPushNotificationConfig`. `SendMessage`,
+  `SendStreamingMessage`, `GetTask`, `SubscribeToTask`, and the `TASK_STATE_*` enum were
+  already spec-correct. This is a deliberate pre-1.0 wire break on the experimental A2A
+  endpoint, verified against the authoritative spec (`a2aproject/A2A` `a2a.proto` + the
+  §5.3 mapping) — the backlog's earlier "rename to `message/send`" assumption was wrong.
+
+### Removed
+
+- **Non-spec `tasks/resubscribe` JSON-RPC alias** — A2A v1.0 has no resubscribe
+  operation; `SubscribeToTask` is the only subscribe op.
+
 ## [281.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: published benchmark

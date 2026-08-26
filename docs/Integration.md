@@ -218,9 +218,12 @@ Pagination: messages `posted_at ASC, id ASC`; threads `created_at ASC, id ASC`. 
 
 ### A2A tasks
 
-- `tasks/pushNotificationConfig/set` — persist workspace webhook config (requires `workspace:write`).
-- `SubscribeToTask` / `tasks/resubscribe` — SSE task updates for non-terminal tasks.
-- `tasks/cancel` — cancel non-terminal task.
+A2A JSON-RPC method strings are the canonical A2A v1.0 operation names (the spec's
+§5.3 Method Mapping Reference), sent as the JSON-RPC `method` field on `POST /a2a/v1/rpc`:
+
+- `CreateTaskPushNotificationConfig` — persist workspace webhook config (requires `workspace:write`).
+- `SubscribeToTask` — SSE task updates for non-terminal tasks.
+- `CancelTask` — cancel non-terminal task.
 
 ### Installed apps (OAuth-style)
 

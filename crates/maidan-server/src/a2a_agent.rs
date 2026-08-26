@@ -12,11 +12,10 @@ use maidan_a2a::{
     message_parts_from_content, message_text, A2aMessage, GetPushNotificationConfigResponse,
     GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest,
     SendMessageResponse, SetPushNotificationConfigRequest, StreamResponseStatusUpdate,
-    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, TextPart,
-    METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK, METHOD_SEND_MESSAGE,
-    METHOD_SEND_STREAMING_MESSAGE, METHOD_SET_PUSH_NOTIFICATION_CONFIG, METHOD_SUBSCRIBE_TO_TASK,
-    METHOD_TASKS_CANCEL, METHOD_TASKS_RESUBSCRIBE, TASK_STATE_CANCELED, TASK_STATE_COMPLETED,
-    TASK_STATE_WORKING,
+    StreamResponseTask, Task, TaskStatus, TaskStatusUpdateEvent, TextPart, METHOD_CANCEL_TASK,
+    METHOD_CREATE_PUSH_NOTIFICATION_CONFIG, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
+    METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE, METHOD_SUBSCRIBE_TO_TASK,
+    TASK_STATE_CANCELED, TASK_STATE_COMPLETED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -58,16 +57,16 @@ pub async fn json_rpc(
             dispatch_send_streaming_message(&state, &auth, id, body.params).await
         }
         METHOD_GET_TASK => json_response(dispatch_get_task(&state, &auth, id, body.params).await),
-        METHOD_TASKS_CANCEL => {
+        METHOD_CANCEL_TASK => {
             json_response(dispatch_tasks_cancel(&state, &auth, id, body.params).await)
         }
-        METHOD_SET_PUSH_NOTIFICATION_CONFIG => {
+        METHOD_CREATE_PUSH_NOTIFICATION_CONFIG => {
             json_response(dispatch_set_push_config(&state, &auth, id, body.params).await)
         }
         METHOD_GET_PUSH_NOTIFICATION_CONFIG => {
             json_response(dispatch_get_push_config(&state, &auth, id).await)
         }
-        METHOD_SUBSCRIBE_TO_TASK | METHOD_TASKS_RESUBSCRIBE => {
+        METHOD_SUBSCRIBE_TO_TASK => {
             dispatch_subscribe_to_task(&state, &auth, id, body.params).await
         }
         other => json_response(Ok(JsonRpcResponse::error(
@@ -482,7 +481,7 @@ async fn dispatch_tasks_cancel(
         JsonRpcResponse::error(
             id.clone(),
             ERR_PARAMS,
-            format!("invalid tasks/cancel params: {e}"),
+            format!("invalid CancelTask params: {e}"),
         )
     })?;
     let mut task = load_task(state, &req.id)
@@ -622,11 +621,10 @@ pub async fn agent_card() -> impl IntoResponse {
             METHOD_SEND_MESSAGE.into(),
             METHOD_SEND_STREAMING_MESSAGE.into(),
             METHOD_GET_TASK.into(),
-            METHOD_SET_PUSH_NOTIFICATION_CONFIG.into(),
+            METHOD_CREATE_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_GET_PUSH_NOTIFICATION_CONFIG.into(),
             METHOD_SUBSCRIBE_TO_TASK.into(),
-            METHOD_TASKS_RESUBSCRIBE.into(),
-            METHOD_TASKS_CANCEL.into(),
+            METHOD_CANCEL_TASK.into(),
         ],
     })
 }
