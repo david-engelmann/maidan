@@ -206,6 +206,47 @@ async fn streamable_response_includes_mcp_session_id_header() {
 }
 
 #[tokio::test]
+async fn streamable_2026_request_is_stateless_and_mints_no_session() {
+    // A 2026-07-28 client omits any session id and even accepts SSE, yet the POST
+    // must land cold, return a single JSON-RPC response, and mint NO Mcp-Session-Id
+    // (sessions were removed in the 2026-07-28 revision — Protocols.md J3.3-4).
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} });
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("accept", "text/event-stream")
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("mcp-session-id").is_none(),
+        "a 2026 stateless POST must not mint an Mcp-Session-Id"
+    );
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        content_type.contains("application/json"),
+        "2026 stateless POST should return inline JSON, got {content_type}"
+    );
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["id"], 1);
+    assert!(
+        v["result"]["tools"].is_array(),
+        "tools/list returns a tools array cold, without a session"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn streamable_follow_up_multiplexes_response_on_open_sse_session() {
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");

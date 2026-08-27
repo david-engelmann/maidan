@@ -34,6 +34,20 @@ pub(crate) fn validate_protocol_version(headers: &HeaderMap) -> Result<(), ApiEr
     Ok(())
 }
 
+/// The MCP revision (`2026-07-28`) whose transport is stateless: no protocol-level
+/// sessions, `Mcp-Session-Id` gone, any request lands cold. The streamable POST
+/// uses this to serve such a request inline without minting a session.
+pub(crate) const STATELESS_PROTOCOL_VERSION: &str = "2026-07-28";
+
+/// Whether the request declares the stateless `2026-07-28` revision via the
+/// `MCP-Protocol-Version` header (already validated by [`validate_protocol_version`]).
+pub(crate) fn is_stateless_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("mcp-protocol-version")
+        .and_then(|v| v.to_str().ok())
+        == Some(STATELESS_PROTOCOL_VERSION)
+}
+
 pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
