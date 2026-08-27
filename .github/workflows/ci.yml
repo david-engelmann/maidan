@@ -102,6 +102,31 @@ jobs:
       - name: test (unit only)
         run: cargo test --workspace --lib --bins
 
+  a2a-interop:
+    name: a2a interop (report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Boots a source-built server and runs the external A2A conformance client
+    # (examples/a2a_interop.py). Report-only (continue-on-error) and NOT a required
+    # check: the A2A binding behavior is gated by the required Rust e2e tests
+    # (a2a_protocol_e2e / a2a_grpc_e2e / channel_access_e2e); this job proves a
+    # non-Rust client interops end-to-end, without ever blocking a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install httpx
+        run: pip install "httpx>=0.27"
+      - name: a2a conformance
+        run: scripts/a2a-interop.sh
+
   integration:
     name: integration (testcontainers)
     runs-on: ubuntu-latest

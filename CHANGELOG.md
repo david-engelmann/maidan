@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [289.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+finale.** No new gate tag.
+
+### Added
+
+- **A2A interop conformance client + harness.** `examples/a2a_interop.py` (httpx-only)
+  validates the Agent Card (§4.4.1) and exercises the JSON-RPC + REST bindings with the
+  spec's canonical method names; `scripts/a2a-interop.sh` boots a server and runs it
+  end-to-end. A report-only `a2a interop` CI job runs it on every PR (non-blocking; the
+  binding behavior is gated by the required Rust e2e tests). **This completes the A2A
+  v1.0 compliance arc (Clusters 282–289): all three transports (JSON-RPC, REST, gRPC),
+  the §4.4.1 Agent Card, per-task push configs, and transport negotiation.**
+
 ## [288.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

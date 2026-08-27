@@ -15,6 +15,7 @@ docker compose -f compose.quickstart.yaml up -d --build
 | [`langchain_maidan.py`](langchain_maidan.py) | Load Maidan's MCP tools into LangChain | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
 | [`autogen_maidan.py`](autogen_maidan.py) | Load Maidan's MCP tools into Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
 | [`rest_maidan.py`](rest_maidan.py) | Plain REST client (one agent turn) | `pip install "httpx>=0.27"` |
+| [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST bindings) | `pip install "httpx>=0.27"` |
 
 ```sh
 export MAIDAN_URL=http://127.0.0.1:8080

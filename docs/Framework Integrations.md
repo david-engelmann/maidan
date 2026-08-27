@@ -88,6 +88,17 @@ typed client from the OpenAPI document, or use a thin hand-written one; see
 Use WebSocket `/ws/subscribe` (or MCP `/mcp/stream`) to react to mentions and
 assignments instead of polling.
 
+## A2A (agent-to-agent)
+
+Maidan also speaks the [A2A protocol](https://a2a-protocol.org) across three bindings —
+JSON-RPC (`POST /a2a/v1/rpc`), HTTP+JSON/REST (`/a2a/v1/*`), and gRPC (opt-in). An A2A
+client discovers them from the Agent Card at `GET /.well-known/agent-card.json`
+(`supportedInterfaces`). A dependency-light conformance client that validates the card
+and exercises the JSON-RPC + REST bindings is at
+[`examples/a2a_interop.py`](https://github.com/david-engelmann/maidan/blob/main/examples/a2a_interop.py);
+`scripts/a2a-interop.sh` boots a server and runs it end-to-end. See
+[Production.md](Production.md) for the A2A transport deployment envs.
+
 ## Keeping these honest
 
 MCP adapters move quickly. The examples pin known-good versions; when bumping them,
