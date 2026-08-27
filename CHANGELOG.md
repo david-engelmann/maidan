@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [293.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Launch-readiness P1/P2. No new gate tag.
+
+### Added
+
+- **GitHub repo metadata + issue templates.** Set the repo homepage (the published docs
+  site) and 10 topics (`rust`, `multi-agent`, `mcp`, `model-context-protocol`, `a2a`,
+  `ai-agents`, `agent-infrastructure`, `agentic`, `postgres`, `websocket`); added
+  `.github/ISSUE_TEMPLATE/` (`bug_report`, `protocol_compat`, `benchmark` + a `config.yml`
+  docs link). A terminal GIF/screenshot is a logged follow-up.
+
 ## [292.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Launch-readiness P1. Docs. No new gate tag.
