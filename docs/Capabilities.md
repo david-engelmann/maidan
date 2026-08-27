@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v296.0.0 — Go SDK (0.1.0)
+
+| Change | Where |
+|--------|-------|
+| Third usable language client, to the frozen v1 contract, **dependency-free (stdlib only)**: REST via `net/http`; `Subscribe` via a small hand-rolled RFC-6455 WebSocket client. Service-struct surface (`Workspaces`/`Channels`/`Threads`/`Messages`/`Artifacts`), `ClaimNextThread`/`RenewClaim`, `Subscribe` + `WaitFor{Result,Mention,Ready}`, `APIError` (Status/Body/RetryAfter, IsConflict/IsForbidden/IsRateLimited), `c.MCPURL` string. Responses as `maidan.M` (unknown fields ignored). 0.1.0 | `sdk/go/{client.go,ws.go,README.md}` |
+| `go test` black-box suite (hero loop, claim-next, error surfacing, WS subscribe) via the Cluster-294 harness (`scripts/sdk-test.sh go`); `go vet` + `gofmt` clean | `sdk/go/client_test.go`, `scripts/sdk-test.sh` |
+
 ## v295.0.0 — Python SDK (0.1.0)
 
 | Change | Where |

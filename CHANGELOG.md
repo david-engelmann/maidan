@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [296.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK arc, part 3. No new gate tag.
+
+### Added
+
+- **Go SDK (`sdk/go`, 0.1.0)** — the third usable language client, to the frozen v1 contract,
+  **dependency-free (stdlib only)**: REST via `net/http`, and `Subscribe` via a small
+  hand-rolled RFC-6455 WebSocket client (`ws.go`). Service-struct surface
+  (`Workspaces`/`Channels`/`Threads`/`Messages`/`Artifacts`, PascalCase), `ClaimNextThread` /
+  `RenewClaim`, `Subscribe` + `WaitFor{Result,Mention,Ready}`, an `APIError`
+  (`.Status`/`.Body`/`.RetryAfter`, `.IsConflict()`/`.IsForbidden()`/`.IsRateLimited()`), and a
+  `go test` black-box suite (all pass via `scripts/sdk-test.sh go`; `go vet` + `gofmt` clean).
+  Object responses are `maidan.M` (`map[string]any`) so unknown fields are ignored;
+  `c.MCPURL` is a string (no MCP dependency). Zero-dependency module → no `go.sum`.
+
+### Notes
+
+- Go's stdlib has no WebSocket client, so `Subscribe` ships a small stdlib RFC-6455
+  implementation (verified against the live server by the black-box test).
+- Same result-write constraint as the TS/Python clients (auth-disabled harness has a nil
+  member) — the test exercises the result route via `GetResult` → 404.
+- Not yet tagged for `go get` by version (needs an `sdk-*`/module-path tag).
+
 ## [295.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK arc, part 2. No new gate tag.
