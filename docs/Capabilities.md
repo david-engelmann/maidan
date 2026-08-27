@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v285.0.0 — A2A Agent Card §4.4.1 schema (compliance arc, part 4)
+
+| Change | Where |
+|--------|-------|
+| Agent Card (`/.well-known/agent-card.json` + `GetExtendedAgentCard`) is now the spec §4.4.1 `AgentCard`: `supportedInterfaces` (`{url, protocolBinding, protocolVersion}`), `capabilities` object, `skills`, `provider`, `defaultInput/OutputModes` — not a flat method list. `protocolVersion` is per-interface (`"1.0"`); URLs host-relative pending a configurable origin | `crates/maidan-server/src/a2a_agent.rs` |
+
 ## v284.0.0 — A2A per-task push notification configs (compliance arc, part 3)
 
 | Change | Where |

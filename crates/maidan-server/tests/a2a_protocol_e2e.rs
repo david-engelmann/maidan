@@ -863,3 +863,67 @@ async fn a2a_task_push_config_create_get_list_delete() {
         "get after delete should error"
     );
 }
+
+/// Cluster 285: the public Agent Card is A2A v1.0 spec-shaped (§4.4.1).
+#[tokio::test]
+async fn agent_card_is_spec_shaped() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let card: Value = client
+        .get(format!("{base}/.well-known/agent-card.json"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    // Required §4.4.1 fields.
+    assert_eq!(card["name"].as_str(), Some("maidan"));
+    assert!(card["description"].as_str().is_some_and(|d| !d.is_empty()));
+    assert!(card["version"].as_str().is_some());
+    assert!(card["provider"]["organization"].as_str().is_some());
+    // supportedInterfaces: first entry is the preferred JSON-RPC binding.
+    let iface = &card["supportedInterfaces"][0];
+    assert_eq!(iface["protocolBinding"].as_str(), Some("JSONRPC"));
+    assert_eq!(iface["protocolVersion"].as_str(), Some("1.0"));
+    assert!(iface["url"].as_str().is_some());
+    // capabilities object.
+    assert_eq!(card["capabilities"]["streaming"].as_bool(), Some(true));
+    assert_eq!(
+        card["capabilities"]["pushNotifications"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        card["capabilities"]["extendedAgentCard"].as_bool(),
+        Some(true)
+    );
+    // input/output modes + skills are non-empty.
+    assert!(card["defaultInputModes"]
+        .as_array()
+        .is_some_and(|m| !m.is_empty()));
+    assert!(card["defaultOutputModes"]
+        .as_array()
+        .is_some_and(|m| !m.is_empty()));
+    assert!(card["skills"].as_array().is_some_and(|s| !s.is_empty()));
+}
