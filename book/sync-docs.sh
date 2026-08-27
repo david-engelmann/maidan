@@ -38,7 +38,7 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros"
 top_pages=(
   "Integration" "Capability Map" "Agent Integration"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
-  "Architecture" "Capabilities" "Decisions" "Conventions" "Operations"
+  "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README"
   "Providers" "Protocols" "Handoff" "Launch" "Promotion"
   "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"

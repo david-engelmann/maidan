@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [292.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Launch-readiness P1. Docs. No new gate tag.
+
+### Changed
+
+- **Split `docs/Architecture.md` into a current conceptual doc + a history doc.** The
+  overview is now version-neutral and *current* (it had gone stale ~v104 — the agentic
+  task layer, notifications, three-transport A2A, LSN read-replica, and per-channel RBAC
+  weren't described); the release-by-release accretion moved to
+  `docs/Architecture-history.md` (wired into the book). No `vX.0.0`/cluster vocabulary on
+  the first user-facing page.
+
 ## [291.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Docs/governance. No new gate tag.
