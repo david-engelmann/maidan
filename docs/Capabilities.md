@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v298.0.0 — SDK release workflow
+
+| Change | Where |
+|--------|-------|
+| Publish the four SDKs to their registries on per-language tags (`sdk-ts/py/rs/go-vX.Y.Z` → npm/PyPI/crates.io/`sdk/go/vX.Y.Z` re-tag); per-job version guard (tag must match manifest); auth via `NPM_TOKEN`/`PYPI_TOKEN`/`CRATES_TOKEN` repo secrets. All four verified publish-ready by local dry-run | `.github/workflows/sdk-release.yml`, `docs/SDK Release.md` |
+| Gitignore `release_secrets.txt` (never commit tokens) + `sdk/python/.gitignore`; npm `repository.url` polish | `.gitignore`, `sdk/python/.gitignore`, `sdk/typescript/package.json` |
+
 ## v297.0.0 — Rust SDK (0.1.0), SDK arc finale
 
 | Change | Where |
