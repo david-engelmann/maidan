@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [298.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK publishing. No new gate tag.
+
+### Added
+
+- **SDK release workflow (`.github/workflows/sdk-release.yml`)** — publishes the four client
+  SDKs to their registries on per-language tags: `sdk-ts-vX.Y.Z` → npm, `sdk-py-vX.Y.Z` →
+  PyPI, `sdk-rs-vX.Y.Z` → crates.io, `sdk-go-vX.Y.Z` → re-tag the commit as `sdk/go/vX.Y.Z`
+  (Go's module-path version; no registry). Each job runs only for its tag prefix and fails if
+  the tag version ≠ the package manifest version. Auth via repo secrets `NPM_TOKEN` /
+  `PYPI_TOKEN` / `CRATES_TOKEN`. All four verified publish-ready by local dry-run.
+- **`docs/SDK Release.md`** — tag→registry table, the secrets + how to set them, cut-a-release
+  steps, and local dry-run commands.
+
+### Changed
+
+- **`.gitignore`** ignores `release_secrets.txt` (a plaintext-token file must never be
+  committed); added `sdk/python/.gitignore` (build artifacts); polished the npm
+  `repository.url` in `sdk/typescript/package.json`.
+
 ## [297.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK arc, part 4 (finale). No new gate tag.

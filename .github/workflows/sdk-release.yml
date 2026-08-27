@@ -1,0 +1,135 @@
+name: sdk-release
+
+# Publish the client SDKs to their registries, independently of the server.
+# Trigger by pushing a per-language tag:
+#   sdk-ts-vX.Y.Z  -> npm         (sdk/typescript)
+#   sdk-py-vX.Y.Z  -> PyPI        (sdk/python)
+#   sdk-rs-vX.Y.Z  -> crates.io   (sdk/rust)
+#   sdk-go-vX.Y.Z  -> re-tag as sdk/go/vX.Y.Z (Go modules are consumed by tag; no registry)
+# Each job runs only for its own tag prefix. Registry auth comes from repo secrets
+# (NPM_TOKEN / PYPI_TOKEN / CRATES_TOKEN) — a publish only succeeds once they exist.
+# The tag's version must match the package manifest version (guarded per job).
+
+on:
+  push:
+    tags:
+      - "sdk-ts-v*"
+      - "sdk-py-v*"
+      - "sdk-rs-v*"
+      - "sdk-go-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "sdk-<lang>-vX.Y.Z tag to publish"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  npm:
+    name: publish npm (typescript)
+    if: startsWith(github.ref_name, 'sdk-ts-v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'sdk-ts-v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: version matches tag
+        working-directory: sdk/typescript
+        run: |
+          want="${TAG#sdk-ts-v}"
+          have="$(node -p "require('./package.json').version")"
+          echo "tag=$want manifest=$have"
+          [ "$want" = "$have" ] || { echo "::error::tag $want != package.json $have"; exit 1; }
+      - name: publish
+        working-directory: sdk/typescript
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  pypi:
+    name: publish PyPI (python)
+    if: startsWith(github.ref_name, 'sdk-py-v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'sdk-py-v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - name: version matches tag
+        working-directory: sdk/python
+        run: |
+          want="${TAG#sdk-py-v}"
+          have="$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag=$want manifest=$have"
+          [ "$want" = "$have" ] || { echo "::error::tag $want != pyproject $have"; exit 1; }
+      - name: build + publish
+        working-directory: sdk/python
+        run: |
+          python -m build
+          twine check dist/*
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  crates:
+    name: publish crates.io (rust)
+    if: startsWith(github.ref_name, 'sdk-rs-v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'sdk-rs-v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - name: version matches tag
+        working-directory: sdk/rust
+        run: |
+          want="${TAG#sdk-rs-v}"
+          have="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag=$want manifest=$have"
+          [ "$want" = "$have" ] || { echo "::error::tag $want != Cargo.toml $have"; exit 1; }
+      - name: publish
+        working-directory: sdk/rust
+        run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
+
+  go:
+    name: tag Go module (sdk/go)
+    if: startsWith(github.ref_name, 'sdk-go-v') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'sdk-go-v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: verify
+        working-directory: sdk/go
+        run: |
+          go vet ./...
+          go build ./...
+      - name: create the Go module tag
+        run: |
+          ver="${TAG#sdk-go-}"          # sdk-go-v0.1.0 -> v0.1.0
+          modtag="sdk/go/${ver}"
+          echo "creating $modtag at ${{ github.sha }}"
+          git tag "$modtag" "${{ github.sha }}"
+          git push origin "$modtag"

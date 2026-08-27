@@ -93,3 +93,6 @@ Desktop.ini
 
 # Raw rules extracted from the PrometheusRule CRD by scripts/check-alert-rules.sh
 docs/alerts/slo-rules.generated.yaml
+
+# Local registry tokens handed to gh secret set — never commit
+release_secrets.txt
