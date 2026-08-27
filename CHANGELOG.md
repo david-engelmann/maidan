@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [294.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK arc, part 1. No new gate tag.
+
+### Added
+
+- **TypeScript SDK (`sdk/typescript`, 0.1.0)** — the first usable language client, to the
+  frozen v1 contract (`docs/Client Contract.md`). A dependency-free `Client` (REST +
+  WebSocket; global `fetch` on Node 18+, pluggable WebSocket) with a namespaced surface
+  (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), the hero `claimNextThread` /
+  `renewClaim`, `subscribe` + `waitFor{Result,Mention,Ready}` helpers, a `MaidanError`
+  (`.status`/`.body`/`.retryAfter`, `.isConflict`/`.isForbidden`/`.isRateLimited`), full
+  `index.d.ts` type declarations (branded IDs), and a rewritten README. `client.mcpUrl` is a
+  string (no MCP dependency).
+- **SDK test harness (`scripts/sdk-test.sh`)** — language-agnostic
+  (`typescript`/`python`/`go`/`rust`); builds + boots a source Maidan on SQLite (auth
+  disabled), waits for health, runs the chosen suite, tears down. `sdk/typescript/test.mjs`
+  is a `node --test` black-box suite (hero loop, claim-next, error surfacing, WS subscribe;
+  5/5 pass locally). Python/Go/Rust arms are stubs for 295–297.
+
+### Notes
+
+- A full `setResult` write round-trip needs auth enabled (`produced_by` is a NOT-NULL member
+  FK; `AUTH_DISABLED` is unconditional bypass with a nil member) — the server's
+  `thread_result_e2e` proves the write; the SDK test exercises the result route via
+  `getResult` → 404 on an unset thread.
+- Not yet published to npm (needs an `NPM_TOKEN` secret + an `sdk-*` release tag).
+
 ## [293.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Launch-readiness P1/P2. No new gate tag.
