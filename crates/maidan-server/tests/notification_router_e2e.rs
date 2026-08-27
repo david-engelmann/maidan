@@ -338,6 +338,11 @@ async fn email_delivery_when_configured_and_address_present() {
     )
     .await;
 
+    // Delivery is durable now (Cluster 305): the router enqueues, the mail worker
+    // sends. The address-less member never enqueues, so draining emails only the
+    // member with an address.
+    maidan_server::mail_worker::sweep_once(&state).await;
+
     let sent = mailer.sent.lock().unwrap();
     assert_eq!(sent.len(), 1, "only the member with an address is emailed");
     assert_eq!(sent[0].0, "user@example.com");

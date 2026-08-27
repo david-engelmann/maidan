@@ -124,6 +124,11 @@ async fn router_skips_immediate_email_for_digest_mode_member() {
     )
     .await;
 
+    // Delivery is durable now (Cluster 305): the router enqueues, the mail worker
+    // sends. The digest-mode member was skipped before enqueue, so draining the
+    // outbox emails only the immediate member.
+    maidan_server::mail_worker::sweep_once(&state).await;
+
     let sent = mailer.sent.lock().unwrap();
     assert_eq!(
         sent.len(),

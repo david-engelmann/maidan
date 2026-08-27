@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [305.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Durable mail retry queue, part 2. No new gate tag.
+
+### Changed
+
+- **Notification email is now durable.** The notification router `enqueue_mail`s (after its
+  transport/address/digest/presence suppression checks) instead of a best-effort inline
+  `mail.send` that dropped on a transient SMTP failure. A new **`mail_worker`** background loop
+  drains the outbox: claims due entries (leased), sends via the transport, and marks each
+  `delivered`, `retry` (exponential backoff — base 30s, ×2, cap 1h), or `dead` (after 8 attempts).
+  Spawned in `main.rs` whenever a transport is configured; tick default 5s
+  (`MAIDAN_MAIL_WORKER_TICK_SECS`). Multi-replica-safe (leased `FOR UPDATE SKIP LOCKED` claim).
+  New `maidan_email_delivered_total` outcomes: `enqueued`/`sent`/`retry`/`dead`.
+
 ## [304.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Durable mail retry queue, part 1 (foundation). No new gate tag.
