@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [295.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK arc, part 2. No new gate tag.
+
+### Added
+
+- **Python SDK (`sdk/python`, 0.1.0)** — the second usable language client, to the frozen v1
+  contract, **dependency-free (stdlib only)**: REST via `urllib`, and `subscribe` via a small
+  hand-rolled RFC-6455 WebSocket client (`_WebSocketConn`). Namespaced snake_case surface
+  (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), `claim_next_thread` /
+  `renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, a `MaidanError`
+  (`.status`/`.body`/`.retry_after`, `.is_conflict`/`.is_forbidden`/`.is_rate_limited`), and a
+  `pytest` black-box suite (5/5 pass via `scripts/sdk-test.sh python`). `client.mcp_url` is a
+  string (no MCP dependency). `pyproject.toml` bumped 0.0.1 → 0.1.0.
+
+### Notes
+
+- Python's stdlib has no WebSocket client, so `subscribe` ships a small stdlib RFC-6455
+  implementation (verified against the live server by the black-box test) — keeping
+  `pip install maidan` truly zero-dependency.
+- Same `set_result` write constraint as the TS client (auth-disabled harness has a nil
+  member) — the test exercises the result route via `get_result` → 404.
+- Not yet published to PyPI (needs a token secret + an `sdk-*` release tag).
+
 ## [294.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK arc, part 1. No new gate tag.

@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v295.0.0 — Python SDK (0.1.0)
+
+| Change | Where |
+|--------|-------|
+| Second usable language client, to the frozen v1 contract, **dependency-free (stdlib only)**: REST via `urllib`; `subscribe` via a small hand-rolled RFC-6455 WebSocket client. snake_case surface (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), `claim_next_thread`/`renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, `MaidanError` (status/body/retry_after, is_conflict/is_forbidden/is_rate_limited), `client.mcp_url` string. Bumped 0.0.1 → 0.1.0 | `sdk/python/{src/maidan/,pyproject.toml,README.md}` |
+| `pytest` black-box suite (5/5 pass: hero loop, claim-next, error surfacing, WS subscribe) run via the Cluster-294 harness (`scripts/sdk-test.sh python`) | `sdk/python/tests/test_client.py`, `scripts/sdk-test.sh` |
+
 ## v294.0.0 — TypeScript SDK (0.1.0)
 
 | Change | Where |
