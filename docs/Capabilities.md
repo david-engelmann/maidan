@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v287.0.0 — A2A gRPC binding (compliance arc, part 6)
+
+| Change | Where |
+|--------|-------|
+| A2A gRPC binding (§10): tonic `A2AService` (GetTask/CancelTask/ListTasks) on a config-gated port (`MAIDAN_A2A_GRPC_ADDR`), thin adapters over the shared ops; auth from gRPC metadata. Vendored codegen (minimal self-contained proto → local `tonic-prost-build` → committed `generated.rs`, no build-time protoc). Off by default | `crates/maidan-server/src/a2a_grpc/{mod.rs,generated.rs}`, `crates/maidan-server/proto/a2a.proto`, `crates/maidan-server/src/main.rs`, `crates/maidan-server/Cargo.toml` |
+| deny.toml quarantines tonic-server's axum 0.8 duplicate (skip-tree `axum@0.8.9`) | `deny.toml` |
+
 ## v286.0.0 — A2A HTTP+JSON/REST binding (compliance arc, part 5)
 
 | Change | Where |

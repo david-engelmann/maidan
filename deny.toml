@@ -79,6 +79,7 @@ skip-tree = [
     { crate = "aws-sdk-s3", reason = "AWS SDK crypto stack (hmac 0.12/0.13, sha2 0.10)" },
     { crate = "openidconnect", reason = "v4 pins base64 0.21, rsa (RUSTSEC-2023-0071), oauth2->thiserror 1; clears on v5" },
     { crate = "testcontainers", reason = "dev-only (integration tests); bollard pulls its own http/base64 stack" },
+    { crate = "axum@0.8.9", reason = "tonic 0.14 gRPC server transport (A2A §10 binding) pulls axum 0.8 (+ axum-core, matchit 0.8); maidan-server's HTTP surface is on axum 0.7. Re-evaluate when maidan-server upgrades to axum 0.8" },
 ]
 
 # Cross-cutting ecosystem-transition duplicates pulled from many crates (not

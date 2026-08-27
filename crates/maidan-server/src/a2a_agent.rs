@@ -403,7 +403,7 @@ async fn dispatch_send_streaming_message(
     Sse::new(stream).into_response()
 }
 
-async fn dispatch_get_task(
+pub(crate) async fn dispatch_get_task(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
@@ -432,7 +432,7 @@ async fn dispatch_get_task(
 /// first, filtered by optional `contextId` and by per-channel access (a task whose
 /// context thread the caller cannot read is dropped). Single-page for now
 /// (`nextPageToken` always empty); `pageSize` defaults to 50, clamped to 1..=200.
-async fn dispatch_list_tasks(
+pub(crate) async fn dispatch_list_tasks(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
@@ -683,7 +683,7 @@ async fn dispatch_delete_push_config(
     Ok(JsonRpcResponse::success(id, serde_json::json!({})))
 }
 
-async fn dispatch_tasks_cancel(
+pub(crate) async fn dispatch_tasks_cancel(
     state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
@@ -821,7 +821,7 @@ async fn dispatch_subscribe_to_task(
 // Streaming ops (message:stream, tasks:subscribe) are deferred.
 
 /// A dummy JSON-RPC id for the REST binding (the ops require one; REST discards it).
-fn rest_id() -> JsonRpcId {
+pub(crate) fn rest_id() -> JsonRpcId {
     JsonRpcId::Number(0)
 }
 

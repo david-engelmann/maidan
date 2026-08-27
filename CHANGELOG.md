@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [287.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 6.** No new gate tag.
+
+### Added
+
+- **A2A gRPC binding (§10).** A tonic `A2AService` serving the task read/cancel/list
+  operations (`GetTask`, `CancelTask`, `ListTasks`) on a **config-gated second port**
+  (`MAIDAN_A2A_GRPC_ADDR`), as thin adapters over the shared operation handlers. The
+  proto is compiled locally and the generated code **vendored**
+  (`crates/maidan-server/src/a2a_grpc/generated.rs`), so no build-time `protoc` is
+  needed in CI or the image. Auth is resolved from the gRPC `authorization` metadata.
+  Off by default (unset env → no gRPC server), so existing deployments/CI are unaffected.
+  `SendMessage`, push configs, streaming, and the extended card over gRPC are deferred.
+
+### Changed
+
+- `deny.toml`: quarantine `axum@0.8.9` (a `skip-tree`) — tonic 0.14's gRPC server
+  transport pulls axum 0.8 (+ `axum-core`, `matchit` 0.8), duplicating maidan-server's
+  axum 0.7. Clears when maidan-server upgrades to axum 0.8.
+
 ## [286.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

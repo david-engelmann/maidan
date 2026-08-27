@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+// Minimal, self-contained subset of the A2A v1.0 gRPC service (§10): the task
+// read / cancel / list operations. No google.* imports — the REST HTTP
+// annotations are omitted and well-known types are avoided — so it compiles
+// without external proto include paths. Regenerate with `tonic-prost-build`;
+// the output is vendored at `src/a2a_grpc/generated.rs` (no build-time protoc).
+package a2a.v1;
+
+service A2AService {
+  rpc GetTask(GetTaskRequest) returns (Task);
+  rpc CancelTask(CancelTaskRequest) returns (Task);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+}
+
+message GetTaskRequest {
+  string id = 1;
+}
+
+message CancelTaskRequest {
+  string id = 1;
+}
+
+message ListTasksRequest {
+  string context_id = 1;
+  int32 page_size = 2;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  string next_page_token = 2;
+}
+
+message TaskStatus {
+  string state = 1;
+}
+
+message Task {
+  string id = 1;
+  string context_id = 2;
+  TaskStatus status = 3;
+}

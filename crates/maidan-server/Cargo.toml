@@ -38,6 +38,12 @@ uuid.workspace = true
 axum = { workspace = true, features = ["ws"] }
 tower.workspace = true
 tower-http.workspace = true
+# A2A gRPC binding (§10). Versions match what the OTLP exporter already pulls
+# (tonic 0.14 / prost 0.14), so no new major deps for cargo-deny. The proto is
+# compiled locally and the generated code vendored (no build-time protoc).
+tonic = { version = "0.14", features = ["server"] }
+tonic-prost = "0.14"
+prost = "0.14"
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
