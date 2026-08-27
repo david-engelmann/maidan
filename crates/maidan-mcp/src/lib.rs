@@ -1,6 +1,7 @@
 //! Model Context Protocol (MCP) server surface for Maidan.
 //!
-//! Implements a subset of the MCP 2024-11-05 JSON-RPC 2.0 spec:
+//! Implements a subset of the MCP JSON-RPC 2.0 spec, negotiating `2026-07-28`
+//! (current; stateless Streamable HTTP + SEP-2243 routing headers) or `2024-11-05`:
 //! - `initialize` handshake
 //! - `tools/list` + `tools/call`
 //! - `resources/list` + `resources/read`

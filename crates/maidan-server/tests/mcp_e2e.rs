@@ -74,11 +74,11 @@ async fn full_mcp_flow() {
     let (addr, client, server, _dir) = spawn().await;
     let base = format!("http://{addr}");
 
-    // initialize
+    // initialize — a version-less client negotiates the current default (2026-07-28).
     let init = rpc(&client, &base, 1, "initialize", json!({})).await;
     assert_eq!(init["jsonrpc"], "2.0");
     assert_eq!(init["id"], 1);
-    assert_eq!(init["result"]["protocolVersion"], "2024-11-05");
+    assert_eq!(init["result"]["protocolVersion"], "2026-07-28");
     assert!(init["result"]["capabilities"]["tools"].is_object());
 
     // tools/list
@@ -657,7 +657,7 @@ async fn mcp_initialize_negotiates_protocol_version() {
     )
     .await;
     assert_eq!(ok["result"]["protocolVersion"], "2024-11-05");
-    // An unsupported requested version falls back to a version the server supports.
+    // An unsupported requested version falls back to the server's default (2026-07-28).
     let fallback = rpc(
         &client,
         &base,
@@ -666,7 +666,7 @@ async fn mcp_initialize_negotiates_protocol_version() {
         json!({ "protocolVersion": "1999-01-01" }),
     )
     .await;
-    assert_eq!(fallback["result"]["protocolVersion"], "2024-11-05");
+    assert_eq!(fallback["result"]["protocolVersion"], "2026-07-28");
     server.abort();
 }
 

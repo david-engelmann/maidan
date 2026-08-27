@@ -589,7 +589,7 @@ pub async fn well_known() -> impl IntoResponse {
             streamable: "/mcp/streamable".to_string(),
             notifications: "/mcp/notifications".to_string(),
             stream: "/mcp/stream".to_string(),
-            protocol_version: "2024-11-05".to_string(),
+            protocol_version: maidan_mcp::preferred_protocol_version().to_string(),
         },
         a2a: WellKnownA2a {
             ingress: "/a2a/v1/events".to_string(),

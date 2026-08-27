@@ -12,9 +12,9 @@ pub fn markdown() -> String {
          `prompts/list` catalogs. Regenerate with \
          `cargo run -p maidan-mcp --bin gen-mcp-reference`.\n\n\
          ## Transport\n\n\
-         - **HTTP:** `POST /mcp` (JSON-RPC 2.0, MCP 2024-11-05 subset)\n\
+         - **HTTP:** `POST /mcp` (JSON-RPC 2.0; MCP `2026-07-28`, `2024-11-05` also supported)\n\
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
-         - **Streamable HTTP:** `POST /mcp/streamable` (first request: JSON-RPC response + live notifications on one SSE body; follow-up requests with open `Mcp-Session-Id`: JSON-RPC response returned directly and pushed to the SSE session)\n\
+         - **Streamable HTTP:** `POST /mcp/streamable` — `2026-07-28` is stateless (send `MCP-Protocol-Version: 2026-07-28`; a single JSON-RPC response, no `Mcp-Session-Id`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers). A `2024-11-05` request keeps the SSE-session model (first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Live-wait/server→client ride `GET /mcp/stream`\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
          - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",
