@@ -77,6 +77,17 @@ pub async fn streamable(
         return Ok(Json(resp).into_response());
     }
 
+    // MCP 2026-07-28 is stateless (Protocols.md J3.3-4): sessions are gone, so a
+    // `2026-07-28` request lands cold and gets a single JSON-RPC response — we
+    // never mint or require an `Mcp-Session-Id`, regardless of `Accept`. Live-wait
+    // and server→client requests ride `GET /mcp/stream` / WS / the `wait_for_*`
+    // tools, not a POST session; a 2026 client must not depend on GET-session being
+    // "Streamable HTTP". (The 2024-11-05 SSE-session path below is unchanged.)
+    if crate::mcp::is_stateless_request(&headers) {
+        let response = state.mcp.handle_in_session(request, &auth, None).await;
+        return Ok(Json(response).into_response());
+    }
+
     // Content negotiation: a client that accepts only JSON gets a single
     // response body rather than an SSE session (MCP spec allows either). Pass
     // any open session id through so a tool that issues a server→client request

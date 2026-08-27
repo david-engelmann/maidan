@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v301.0.0 — MCP `2026-07-28` stateless streamable core
+
+| Change | Where |
+|--------|-------|
+| `POST /mcp/streamable` serves a `2026-07-28` request statelessly — inline JSON-RPC, **no `Mcp-Session-Id` minted or required**, regardless of `Accept` (sessions removed in the revision; `is_stateless_request`/`STATELESS_PROTOCOL_VERSION`). The `2024-11-05` SSE-session path is unchanged; live-wait + server→client stay on `GET /mcp/stream`/WS/`wait_for_*` (J3.4). `POST /mcp` was already stateless | `crates/maidan-server/src/{mcp.rs,mcp_streamable.rs}` |
+
 ## v300.0.0 — MCP `2026-07-28` version negotiation
 
 | Change | Where |

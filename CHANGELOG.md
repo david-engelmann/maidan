@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [301.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 2 (Protocols.md J3.3–4). No new gate tag.
+
+### Added
+
+- **Stateless `2026-07-28` core on `POST /mcp/streamable`.** A request carrying
+  `MCP-Protocol-Version: 2026-07-28` now lands cold — served inline as a single JSON-RPC
+  response via `handle_in_session(request, auth, None)`, **never minting or requiring an
+  `Mcp-Session-Id`**, regardless of `Accept` (sessions were removed in the revision). New
+  `crate::mcp::is_stateless_request` / `STATELESS_PROTOCOL_VERSION` gate it. The `2024-11-05`
+  SSE-session path (`open_new_streamable_session`) is unchanged. Live-wait + server→client
+  requests continue to ride `GET /mcp/stream` / WS / the `wait_for_*` tools (J3.4), not a POST
+  session. `POST /mcp` was already stateless. e2e: a 2026 `tools/list` with `Accept:
+  text/event-stream` + no session id returns inline JSON with no `Mcp-Session-Id`.
+
 ## [300.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 1 (Protocols.md J3.1). No new gate tag.
