@@ -348,3 +348,29 @@ pub fn start_reindex_embeddings() {}
     )
 )]
 pub fn get_reindex_embeddings_job() {}
+
+#[utoipa::path(
+    get,
+    path = "/operator/mail/dead",
+    tag = "operator",
+    params(("limit" = Option<i64>, Query, description = "Max entries (default 100, clamped 1..=500)")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Dead-lettered notification emails, newest first"),
+        (status = 403, description = "Missing token:admin capability"),
+    )
+)]
+pub fn list_dead_mail() {}
+
+#[utoipa::path(
+    post,
+    path = "/operator/mail/dead/{id}/requeue",
+    tag = "operator",
+    params(("id" = Uuid, Path, description = "Dead mail-outbox entry id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Requeued for another delivery attempt"),
+        (status = 404, description = "No dead entry with that id"),
+    )
+)]
+pub fn requeue_dead_mail() {}

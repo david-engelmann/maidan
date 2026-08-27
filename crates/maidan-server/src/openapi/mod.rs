@@ -108,6 +108,8 @@ impl Modify for SecurityAddon {
         paths::get_unified_delivery,
         paths::replay_unified_delivery,
         paths::list_global_audit,
+        paths::list_dead_mail,
+        paths::requeue_dead_mail,
         paths::start_reindex_embeddings,
         paths::get_reindex_embeddings_job,
         paths::get_member,

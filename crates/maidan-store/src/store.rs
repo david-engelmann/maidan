@@ -222,6 +222,11 @@ pub trait Store: Send + Sync {
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError>;
     async fn count_dead_mail(&self) -> Result<i64, StoreError>;
+    /// Dead-lettered entries for the operator DLQ view (Cluster 306), newest first.
+    async fn list_dead_mail(&self, limit: i64) -> Result<Vec<DeadMail>, StoreError>;
+    /// Requeue a dead entry (`pending`, due now, `attempts` reset); returns whether
+    /// a dead row was actually requeued.
+    async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError>;
 
     /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
     /// (called on presence registration), `get` returns the instant or `None`. A

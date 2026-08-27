@@ -89,6 +89,26 @@ async fn run_suite(store: &dyn Store) {
         .expect("claim6")
         .is_none());
     assert_eq!(store.count_dead_mail().await.expect("count2"), 1);
+
+    // DLQ ops (Cluster 306): the dead entry (`id`, "gave up") is listed, then
+    // requeued -> pending + due, no longer dead + claimable again.
+    let dead = store.list_dead_mail(10).await.expect("list dead");
+    assert_eq!(dead.len(), 1);
+    assert_eq!(dead[0].id, id);
+    assert_eq!(dead[0].last_error.as_deref(), Some("gave up"));
+    assert!(store.requeue_dead_mail(id).await.expect("requeue"));
+    assert_eq!(store.count_dead_mail().await.expect("count3"), 0);
+    let reclaimed = store
+        .claim_next_due_mail(Utc::now(), 300)
+        .await
+        .expect("claim7")
+        .expect("requeued is claimable");
+    assert_eq!(reclaimed.id, id);
+    assert_eq!(reclaimed.attempts, 1, "requeue reset attempts (claim -> 1)");
+    assert!(
+        !store.requeue_dead_mail(id).await.expect("requeue2"),
+        "requeue only affects a dead entry"
+    );
 }
 
 #[tokio::test]

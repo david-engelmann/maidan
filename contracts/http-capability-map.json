@@ -720,6 +720,18 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/operator/mail/dead",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/mail/dead/{id}/requeue",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/operator/reindex-embeddings",
     "capability": "token:admin",

@@ -20,6 +20,7 @@ use chrono::Utc;
 
 mod artifact;
 mod channel;
+mod mail_ops;
 mod member;
 mod message;
 mod reference;
@@ -33,6 +34,7 @@ mod workspace;
 
 pub use artifact::*;
 pub use channel::*;
+pub use mail_ops::*;
 pub use member::*;
 pub use message::*;
 pub use reference::*;

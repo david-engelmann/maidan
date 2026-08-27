@@ -392,6 +392,11 @@ pub fn router(state: AppState) -> Router {
             get(reindex_ops::get_reindex_embeddings_job),
         )
         .route("/operator/audit", get(routes::list_global_audit))
+        .route("/operator/mail/dead", get(routes::list_dead_mail))
+        .route(
+            "/operator/mail/dead/:id/requeue",
+            post(routes::requeue_dead_mail),
+        )
         .route(
             "/workspaces/:wid/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),
