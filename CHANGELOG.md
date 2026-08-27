@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [303.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 4 / finale (Protocols.md J3.5/J1/J2). No new gate tag.
+
+### Changed
+
+- **MCP default flipped to `2026-07-28`.** `DEFAULT_PROTOCOL_VERSION` is now `2026-07-28`, so a
+  version-less client negotiates the current revision; a client that explicitly requests
+  `2024-11-05` still gets it (fallback retained). The federation card (`.well-known/maidan.json`)
+  now reports `maidan_mcp::preferred_protocol_version()` (in sync automatically); the generated
+  MCP reference + the `maidan-mcp` crate doc describe `2026-07-28` (stateless Streamable HTTP +
+  SEP-2243 routing headers) with `2024-11-05` as the supported fallback.
+- **Docs advertise `2026-07-28`** — `Integration.md` + `Protocols.md` (required-upgrade banner,
+  transport table, streamable how-to, decision tree, J2/J3 rows) updated to "shipped"; the J2
+  "temporary honesty (say 2024-only)" holding pattern is retired. **Closes the MCP `2026-07-28`
+  arc (Clusters 300–303).**
+
 ## [302.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 3 (Protocols.md J3.2). No new gate tag.

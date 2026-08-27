@@ -22,7 +22,7 @@ the static UI at `/ui/` or the same APIs with session cookies. The **A2A**
 endpoint is an experimental Maidan-specific subset, not a drop-in A2A v1.0 server
 (see below).
 Which wire to pick (MCP vs A2A vs REST vs webhooks vs a Slack projector)
-is in [Protocols.md](Protocols.md). The MCP server negotiates **`2024-11-05` only** today; **`2026-07-28` is the required upgrade** (Hardening J3) before a public cut or one-click pack.
+is in [Protocols.md](Protocols.md). The MCP server negotiates **`2026-07-28`** (current — stateless Streamable HTTP + SEP-2243 routing headers) and still accepts **`2024-11-05`** for older clients (Hardening J3 shipped).
 
 Maidan has passed these capability milestones (each is a named gate in the
 release history):
@@ -193,7 +193,14 @@ Human-readable summary: [Capability Map.md](Capability%20Map.md).
 | Federation ingress | `POST /a2a/v1/events` | Peer bearer |
 | Discovery | `GET /.well-known/maidan.json`, `GET /.well-known/agent-card.json` | None |
 
-### MCP streamable session (subset of 2024-11-05)
+### MCP streamable
+
+**`2026-07-28` (current, stateless):** send `MCP-Protocol-Version: 2026-07-28` on `POST /mcp/streamable`
+(or `POST /mcp`) — each request lands cold and returns a single JSON-RPC response; no `initialize`,
+no `Mcp-Session-Id`. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route
+without parsing the body. Live-wait / server→client ride `GET /mcp/stream` / WS / the `wait_for_*` tools.
+
+**`2024-11-05` (session model, still supported):**
 
 1. `POST /mcp/streamable` with `initialize` → SSE response; read `Mcp-Session-Id` header.
 2. Further `POST /mcp/streamable` with same session id → `202 Accepted`; JSON-RPC results on the SSE stream.
@@ -320,7 +327,7 @@ In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilit
 
 ## Related docs
 
-- [Protocols.md](Protocols.md) — which wire to use (MCP is `2024-11-05` only)
+- [Protocols.md](Protocols.md) — which wire to use (MCP negotiates `2026-07-28`; `2024-11-05` supported)
 - [Providers.md](Providers.md) — DB/S3/embeddings/OIDC hosts
 - [Pi.md](Pi.md) — ARM64 / Raspberry Pi install (latest release)
 - [Architecture.md](Architecture.md) — component diagram (maintainer snapshot)

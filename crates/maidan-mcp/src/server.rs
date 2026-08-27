@@ -33,11 +33,11 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2024-11-05"];
 const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
 
 /// The version `initialize` echoes when the client requests none, and the
-/// fallback when it requests an unsupported one. Deliberately held at the
-/// `2024-11-05` baseline (not `SUPPORTED_PROTOCOL_VERSIONS[0]`) so a version-less
-/// or older client keeps the transport it expects while the 2026 revision lands
-/// incrementally; flips to `2026-07-28` once that work is advertised (J3.5).
-const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
+/// fallback when it requests an unsupported one. Now `2026-07-28` (the current
+/// revision — negotiation, stateless streamable, and routing headers all landed:
+/// Protocols.md J3.1–3.4). `2024-11-05` stays fully supported for older clients
+/// that request it explicitly (they still get the SSE-session transport).
+const DEFAULT_PROTOCOL_VERSION: &str = "2026-07-28";
 
 /// See [`DEFAULT_PROTOCOL_VERSION`].
 pub fn preferred_protocol_version() -> &'static str {
@@ -617,9 +617,9 @@ mod tests {
         assert!(is_supported_protocol_version("2024-11-05"));
         assert!(is_supported_protocol_version("2026-07-28"));
         assert!(!is_supported_protocol_version("1999-01-01"));
-        // The version-less/unsupported default deliberately stays the 2024 baseline
-        // while the 2026 transport work lands incrementally (J3.5).
-        assert_eq!(preferred_protocol_version(), "2024-11-05");
+        // The current default is 2026-07-28 (the full revision landed, J3.5); an
+        // older client that explicitly requests 2024-11-05 still gets it.
+        assert_eq!(preferred_protocol_version(), "2026-07-28");
     }
 
     #[tokio::test]

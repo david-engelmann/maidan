@@ -6,7 +6,9 @@
 
 Snapshot: 2026-08-25. Code facts from the local tree (`SUPPORTED_PROTOCOL_VERSIONS`, `POST /a2a/v1/rpc`, Agent Card). Market facts from AAIF / Linux Foundation / MCP spec `2026-07-28` / A2A v1.0. Re-scan before you quote numbers in a blog post.
 
-**Required upgrade:** MCP current must be **`2026-07-28`** (Hardening **J3**). `2024-11-05`-only is not a launch posture. See [Required protocol upgrades](#required-protocol-upgrades).
+**MCP `2026-07-28` shipped (Hardening J3, Clusters 300–303).** The server negotiates the current
+`2026-07-28` revision — stateless Streamable HTTP (no `Mcp-Session-Id`) + SEP-2243 `Mcp-Method`/`Mcp-Name`
+routing headers — and still accepts `2024-11-05` for older clients. See [Required protocol upgrades](#required-protocol-upgrades).
 
 ---
 
@@ -34,8 +36,8 @@ One model, one capability map, four primary transports plus the IT surfaces.
 | Surface | Where | Status | Honest caveat |
 |---------|-------|--------|----------------|
 | REST + OpenAPI 3.0 | `GET /openapi.json`, utoipa | Production | No `workspaces.list`. Create via `POST /workspaces`. Hero bootstrap is REST/CLI, not MCP. |
-| MCP JSON-RPC | `POST /mcp` | Production, **`2024-11-05` only** | `SUPPORTED_PROTOCOL_VERSIONS = ["2024-11-05"]`. A 2026 IDE that sends `2026-07-28` will not negotiate. |
-| MCP Streamable HTTP | `POST/GET/DELETE /mcp/streamable` | Production on the *2024-11-05 session model* | First POST opens SSE + `Mcp-Session-Id`. GET opens server→client notifications. Spec **2026-07-28 removed protocol-level sessions** and requires `Mcp-Method` / `Mcp-Name` headers. Do not advertise 2026 Streamable HTTP until both are true. |
+| MCP JSON-RPC | `POST /mcp` | Production, **negotiates `2026-07-28`** (+ `2024-11-05`) | `SUPPORTED_PROTOCOL_VERSIONS = ["2026-07-28","2024-11-05"]`, default `2026-07-28`. `POST /mcp` is stateless (JSON-RPC in/out). |
+| MCP Streamable HTTP | `POST/GET/DELETE /mcp/streamable` | Production; **`2026-07-28` stateless** (+ `2024-11-05` session) | A `2026-07-28` POST lands cold: single JSON-RPC response, no `Mcp-Session-Id`, optional SEP-2243 `Mcp-Method`/`Mcp-Name` headers. A `2024-11-05` POST keeps the SSE-session model (first POST opens SSE + `Mcp-Session-Id`; GET opens server→client notifications). Live-wait rides `GET /mcp/stream`, not a 2026 POST session. |
 | MCP SSE (legacy-shaped) | `GET /mcp/stream`, `GET /mcp/notifications` | Production | Fine for Maidan live-wait. HTTP+SSE is deprecated in the MCP spec (SEP-2596); migrate *clients* toward Streamable HTTP, not a third Maidan transport. |
 | MCP stdio | `maidan mcp-stdio` | Production | The desktop-client path (Claude Desktop / local Cursor). Same JSON-RPC, SQLite or Postgres. |
 | WebSocket | `GET /ws/subscribe` | Production | Resumable cursors, capability `event:subscribe`. This is Maidan's agent↔UI live path. |
@@ -57,7 +59,7 @@ MCP tool count is **78**. There is **no** MCP create workspace / channel / threa
 
 | They already run | Point them at | Do not |
 |------------------|---------------|--------|
-| Cursor, Claude Desktop, VS Code, Claude Code, ChatGPT connectors | MCP **`2026-07-28`** after J3. Until J3 is green: `POST /mcp` / stdio and **say** `2024-11-05`. | Imply a 2026 deeplink against a 2024-only server. Do not freeze on 2024. |
+| Cursor, Claude Desktop, VS Code, Claude Code, ChatGPT connectors | MCP **`2026-07-28`** (shipped) — `POST /mcp` / Streamable HTTP / stdio; older clients may still request `2024-11-05`. | — |
 | A Python / TS agent they wrote | REST + WS, or MCP if they already have an MCP client. Thin SDK is Bet 3. | An in-process `Crew.kickoff`. Maidan *is* the orchestrator. |
 | LangGraph / CrewAI / OpenAI Agents SDK | Recipe on REST+WS (or MCP tools). Those frameworks speak MCP as of 2026; they do not need a Maidan-native runtime. | A LangGraph checkpointer inside Maidan. |
 | Another vendor's agent (Salesforce, SAP, Bedrock, Foundry) | A2A Agent Card + JSON-RPC. | IBM ACP. It is A2A now. |
@@ -96,7 +98,7 @@ until the upgrade lands is not the same as accepting 2024 forever.
 
 | Protocol | Code today (2026-08-25) | Required | ID |
 |----------|-------------------------|----------|-----|
-| **MCP** | `2024-11-05` only. Streamable HTTP still uses `Mcp-Session-Id` + GET session. | **`2026-07-28` current.** Stateless Streamable HTTP. `Mcp-Method` / `Mcp-Name` headers. No protocol-level sessions. Live-wait stays Maidan SSE/WS, not a fake MCP session. | **J3** (**P0**, cluster-sized) |
+| **MCP** | ✅ **`2026-07-28` shipped** (default; `2024-11-05` still accepted). Stateless Streamable HTTP (no `Mcp-Session-Id`), SEP-2243 `Mcp-Method`/`Mcp-Name` headers, live-wait on `GET /mcp/stream`/WS. | Done in Clusters 300–303. | **J3** ✅ (Clusters 300–303) |
 | **A2A Agent Card** | Custom `{rpc_url, capabilities[]}` | Spec v1.0 `supportedInterfaces` (`JSONRPC`) | J4 |
 | **A2A parts** | Egress text-only (v267) | File/data parts when artifacts exist | J5 |
 | MCP OAuth (RFC 8707) | Capability bearers | Only if a real 2026 host refuses bearer after J3 | J6 |
@@ -129,13 +131,13 @@ pack (M.1) and public cut wait on it. Do not sneak this into a docs PR.
 
 ## Gaps worth closing (Hardening J + existing bets)
 
-Honesty until J3 ships. Then adapters. No new native protocol.
+J3 shipped (`2026-07-28`, Clusters 300–303). The rest is adapters + honesty. No new native protocol.
 
 | ID | Gap | Size | Notes |
 |----|-----|------|-------|
 | **J1** | This page | Docs | **Written 2026-08-25.** Keep true when `SUPPORTED_PROTOCOL_VERSIONS` changes. |
-| **J2** | Temporary honesty until J3 | Docs (C5) | Until J3 is green, README/Integration must say **today 2024-11-05, upgrade required**. Do not ship 2026 deeplinks against the old binary. J2 is a holding pattern, not the destination. |
-| **J3** | MCP `2026-07-28` **required** | **P0 cluster** | See table above. Not a spike. Not "or freeze on 2024." |
+| **J2** | ✅ Retired | Docs | Was: "temporary honesty (today 2024-11-05)". No longer needed — J3 shipped (Clusters 300–303); README/Integration now advertise `2026-07-28`. |
+| **J3** | ✅ MCP `2026-07-28` **shipped** | Done | Clusters 300 (negotiation) → 301 (stateless streamable core) → 302 (SEP-2243 routing headers) → 303 (advertise: default flip + card/reference/Integration). `2024-11-05` still accepted. |
 | **J4** | A2A Agent Card → spec v1.0 `supportedInterfaces` | Small | Keep JSON-RPC URL. Advertise `protocolBinding: JSONRPC`. Do not add gRPC just to fill the array. Signed JWS cards are enterprise-later. |
 | **J5** | A2A file/data parts | Cluster (after 267 text) | Ingress already preserves structured content; egress is text-only. Round-trip files when an artifact already exists. |
 | **J6** | MCP OAuth resource-server (RFC 8707) | Spike, then maybe | Remote Claude/Cursor may insist. Today: capability bearers. Implement only if a real host refuses the bearer. Do not replace workspace capabilities with a second ACL. |
@@ -169,7 +171,7 @@ Honesty until J3 ships. Then adapters. No new native protocol.
 
 ## Integrator decision tree
 
-1. **Single agent, needs Maidan tools** → MCP **`2026-07-28`** after J3 (stdio local, Streamable HTTP remote). Until J3 ships, say 2024-only and do not pretend otherwise.
+1. **Single agent, needs Maidan tools** → MCP **`2026-07-28`** (shipped; stdio local, stateless Streamable HTTP remote). Older clients may request `2024-11-05`.
 2. **Need live events in your own UI** → WebSocket subscribe (or MCP SSE live-wait).
 3. **Need to script / generate a client / talk to n8n** → REST + OpenAPI, optionally webhooks.
 4. **A second *agent* must delegate to Maidan or vice versa** → A2A JSON-RPC + Agent Card (J4).

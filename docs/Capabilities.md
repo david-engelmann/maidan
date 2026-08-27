@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v303.0.0 — advertise MCP `2026-07-28` (arc closer)
+
+| Change | Where |
+|--------|-------|
+| MCP default flipped to `2026-07-28` (`DEFAULT_PROTOCOL_VERSION`); version-less clients negotiate it, explicit `2024-11-05` still honored. Federation card reports `preferred_protocol_version()`; MCP reference + crate doc describe 2026 (stateless + routing headers). **Closes the MCP `2026-07-28` arc (300–303)** | `crates/maidan-mcp/src/{server.rs,reference.rs,lib.rs}`, `crates/maidan-server/src/federation.rs` |
+| `Integration.md` + `Protocols.md` advertise `2026-07-28` (banner/transport table/how-to/decision tree/J-rows); J2 "temporary honesty" retired | `docs/Integration.md`, `docs/Protocols.md` |
+
 ## v302.0.0 — MCP `2026-07-28` routing headers
 
 | Change | Where |
