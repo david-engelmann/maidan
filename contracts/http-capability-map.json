@@ -13,6 +13,60 @@
   },
   {
     "method": "POST",
+    "path": "/a2a/v1/message:send",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "GET",
+    "path": "/a2a/v1/tasks",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "GET",
+    "path": "/a2a/v1/tasks/{id}",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
+    "path": "/a2a/v1/tasks/{id}",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
+    "path": "/a2a/v1/tasks/{id}/pushNotificationConfigs",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "GET",
+    "path": "/a2a/v1/tasks/{id}/pushNotificationConfigs",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "GET",
+    "path": "/a2a/v1/tasks/{id}/pushNotificationConfigs/{config_id}",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "DELETE",
+    "path": "/a2a/v1/tasks/{id}/pushNotificationConfigs/{config_id}",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "GET",
+    "path": "/a2a/v1/extendedAgentCard",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
     "path": "/artifacts",
     "capability": "artifact:upload",
     "surface": "http"

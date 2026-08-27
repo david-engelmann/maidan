@@ -3,9 +3,15 @@
 use std::convert::Infallible;
 use std::time::Duration;
 
+use std::collections::HashMap;
+
+use axum::http::StatusCode;
 use axum::response::sse::Event as SseEvent;
 use axum::response::{IntoResponse, Response, Sse};
-use axum::{extract::State, Extension, Json};
+use axum::{
+    extract::{Path, Query, State},
+    Extension, Json,
+};
 use futures::StreamExt;
 use maidan_a2a::{
     is_terminal_task_state, maidan_context_from_metadata, message_content,
@@ -809,6 +815,149 @@ async fn dispatch_subscribe_to_task(
     Sse::new(stream).into_response()
 }
 
+// ===== HTTP+JSON/REST binding (§11) — thin adapters over the JSON-RPC ops =====
+// Each REST route builds the operation's params from the path/query/body and calls
+// the shared `dispatch_*` handler, then maps the JSON-RPC result/error to HTTP.
+// Streaming ops (message:stream, tasks:subscribe) are deferred.
+
+/// A dummy JSON-RPC id for the REST binding (the ops require one; REST discards it).
+fn rest_id() -> JsonRpcId {
+    JsonRpcId::Number(0)
+}
+
+/// Map an operation result to a REST HTTP response. `result` → 200; error → an
+/// HTTP status for Maidan's JSON-RPC code. NOTE Maidan overloads `-32001` for
+/// auth/capability failures, so it maps to 403 (not the spec's 404 TaskNotFound).
+fn rest_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
+    let resp = match result {
+        Ok(r) => r,
+        Err(r) => r,
+    };
+    if let Some(value) = resp.result {
+        return (StatusCode::OK, Json(value)).into_response();
+    }
+    let (code, message) = resp
+        .error
+        .map(|e| (e.code, e.message))
+        .unwrap_or((ERR_INTERNAL, "internal error".to_string()));
+    let status = match code {
+        -32001 => StatusCode::FORBIDDEN,
+        ERR_PARAMS => StatusCode::BAD_REQUEST,
+        ERR_METHOD => StatusCode::NOT_FOUND,
+        ERR_INTERNAL => StatusCode::INTERNAL_SERVER_ERROR,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (
+        status,
+        Json(serde_json::json!({ "error": { "code": code, "message": message } })),
+    )
+        .into_response()
+}
+
+pub async fn rest_send_message(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    rest_response(dispatch_send_message(&state, &auth, rest_id(), body).await)
+}
+
+pub async fn rest_list_tasks(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
+    let mut params = serde_json::Map::new();
+    if let Some(ctx) = q.get("contextId") {
+        params.insert("contextId".into(), serde_json::Value::String(ctx.clone()));
+    }
+    if let Some(ps) = q.get("pageSize").and_then(|v| v.parse::<i64>().ok()) {
+        params.insert("pageSize".into(), serde_json::Value::from(ps));
+    }
+    rest_response(dispatch_list_tasks(&state, &auth, rest_id(), params.into()).await)
+}
+
+pub async fn rest_get_task(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Response {
+    let params = serde_json::json!({ "id": id });
+    rest_response(dispatch_get_task(&state, &auth, rest_id(), params).await)
+}
+
+/// `POST /a2a/v1/tasks/{id}:cancel` — axum can't capture a partial segment, so the
+/// whole `{id}:cancel` segment is captured and split on ':' (task ids are UUIDs, no
+/// colon). Only the request/response `:cancel` op is handled; `:subscribe` (SSE) is
+/// deferred.
+pub async fn rest_task_custom_method(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(task_action): Path<String>,
+) -> Response {
+    let Some((id, action)) = task_action.rsplit_once(':') else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": { "message": "unknown task method" } })),
+        )
+            .into_response();
+    };
+    match action {
+        "cancel" => {
+            let params = serde_json::json!({ "id": id });
+            rest_response(dispatch_tasks_cancel(&state, &auth, rest_id(), params).await)
+        }
+        other => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": { "message": format!("unsupported task method: {other}") } })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn rest_create_push_config(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(mut body): Json<serde_json::Value>,
+) -> Response {
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("taskId".into(), serde_json::Value::String(id));
+    }
+    rest_response(dispatch_create_push_config(&state, &auth, rest_id(), body).await)
+}
+
+pub async fn rest_get_push_config(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, config_id)): Path<(String, String)>,
+) -> Response {
+    let params = serde_json::json!({ "taskId": id, "id": config_id });
+    rest_response(dispatch_get_push_config(&state, &auth, rest_id(), params).await)
+}
+
+pub async fn rest_list_push_configs(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Response {
+    let params = serde_json::json!({ "taskId": id });
+    rest_response(dispatch_list_push_configs(&state, &auth, rest_id(), params).await)
+}
+
+pub async fn rest_delete_push_config(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, config_id)): Path<(String, String)>,
+) -> Response {
+    let params = serde_json::json!({ "taskId": id, "id": config_id });
+    rest_response(dispatch_delete_push_config(&state, &auth, rest_id(), params).await)
+}
+
+pub async fn rest_extended_agent_card(Extension(auth): Extension<AuthContext>) -> Response {
+    rest_response(dispatch_get_extended_agent_card(&auth, rest_id()).await)
+}
+
 /// The A2A protocol version Maidan's interfaces expose (spec `AgentInterface`
 /// `protocolVersion`; the proto examples use "0.3"/"1.0").
 const A2A_PROTOCOL_VERSION: &str = "1.0";
@@ -874,11 +1023,18 @@ fn agent_card_payload() -> AgentCard {
             "Maidan — the operating layer for teams of AI agents. Exposes A2A tasks over a \
              shared, durable workspace."
                 .into(),
-        supported_interfaces: vec![AgentInterface {
-            url: "/a2a/v1/rpc".into(),
-            protocol_binding: "JSONRPC".into(),
-            protocol_version: A2A_PROTOCOL_VERSION.into(),
-        }],
+        supported_interfaces: vec![
+            AgentInterface {
+                url: "/a2a/v1/rpc".into(),
+                protocol_binding: "JSONRPC".into(),
+                protocol_version: A2A_PROTOCOL_VERSION.into(),
+            },
+            AgentInterface {
+                url: "/a2a/v1".into(),
+                protocol_binding: "HTTP+JSON".into(),
+                protocol_version: A2A_PROTOCOL_VERSION.into(),
+            },
+        ],
         provider: AgentProvider {
             url: "https://github.com/david-engelmann/maidan".into(),
             organization: "Maidan".into(),
