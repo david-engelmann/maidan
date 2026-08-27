@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v294.0.0 — TypeScript SDK (0.1.0)
+
+| Change | Where |
+|--------|-------|
+| First usable language client, to the frozen v1 contract: a dependency-free `Client` (REST + WebSocket) with namespaced methods (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), `claimNextThread`/`renewClaim`, `subscribe` + `waitFor{Result,Mention,Ready}`, `MaidanError` (status/body/retryAfter, isConflict/isForbidden/isRateLimited), full `.d.ts` types (branded IDs), `client.mcpUrl` string. Bumped 0.0.1 → 0.1.0 | `sdk/typescript/{index.js,index.d.ts,package.json,README.md}` |
+| Language-agnostic SDK black-box test harness (build + boot SQLite server + run suite + teardown) + a `node --test` TS suite (5/5 pass: hero loop, claim-next, error surfacing, WS subscribe) | `scripts/sdk-test.sh`, `sdk/typescript/test.mjs` |
+
 ## v289.0.0 — A2A interop conformance (compliance arc finale)
 
 | Change | Where |
