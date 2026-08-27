@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v304.0.0 — durable mail outbox foundation
+
+| Change | Where |
+|--------|-------|
+| `maidan_mail_outbox` table (pg 0050 / sqlite 0049) + `MailOutbox`/`NewMailOutbox`/`MailOutboxId` + store (both backends): `enqueue_mail`, `claim_next_due_mail` (atomic leased claim — `FOR UPDATE SKIP LOCKED` / serialized tx; bumps attempts + leases forward), `mark_mail_delivered`, `mark_mail_failed` (reschedule or dead-letter), `count_dead_mail`. Zero-blast-radius foundation for the durable notification-email retry queue | `migrations/{postgres/0050,sqlite/0049}_mail_outbox.sql`, `crates/maidan-store/src/{postgres,sqlite}/mail_outbox.rs`, `crates/maidan-types/src/{models,ids}.rs` |
+
 ## v303.0.0 — advertise MCP `2026-07-28` (arc closer)
 
 | Change | Where |

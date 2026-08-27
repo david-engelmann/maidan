@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [304.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Durable mail retry queue, part 1 (foundation). No new gate tag.
+
+### Added
+
+- **Durable mail outbox foundation.** `maidan_mail_outbox` table (pg 0050 / sqlite 0049;
+  `status` pending/delivered/dead, `attempts`, `next_attempt_at`, `last_error`, partial due
+  index) + `MailOutbox`/`NewMailOutbox` models + `MailOutboxId` + store methods on both backends:
+  `enqueue_mail`, `claim_next_due_mail(now, lease_secs)` (atomic leased claim — Postgres
+  `FOR UPDATE SKIP LOCKED`, SQLite serialized select-then-update; bumps `attempts`, pushes
+  `next_attempt_at` forward so a crashed worker's row is retried), `mark_mail_delivered`,
+  `mark_mail_failed(id, error, retry_at)` (reschedule or dead-letter), `count_dead_mail`.
+  Zero-blast-radius — no worker/router/route wiring yet (that's 305). The retry/backoff worker
+  will replace the best-effort fire-and-forget notification-email send.
+
 ## [303.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 4 / finale (Protocols.md J3.5/J1/J2). No new gate tag.

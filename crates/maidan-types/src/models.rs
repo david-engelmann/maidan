@@ -347,6 +347,27 @@ pub struct MemberEmail {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A claimed entry from the durable mail outbox (Cluster 304) the retry worker
+/// will attempt to send. `attempts` includes the current claim. Content-only —
+/// the outbox's status / scheduling columns stay internal to the store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailOutbox {
+    pub id: MailOutboxId,
+    pub to_address: String,
+    pub subject: String,
+    pub body: String,
+    pub attempts: i64,
+}
+
+/// A new outbound notification email to enqueue for durable, retryable delivery
+/// (Cluster 304). Enqueued `pending` with `next_attempt_at = now`.
+#[derive(Debug, Clone)]
+pub struct NewMailOutbox {
+    pub to_address: String,
+    pub subject: String,
+    pub body: String,
+}
+
 /// How a member wants notification emails delivered (Cluster 254, Arc I). The
 /// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
 /// `Digest` opts out of per-notification emails in favour of a periodic rollup

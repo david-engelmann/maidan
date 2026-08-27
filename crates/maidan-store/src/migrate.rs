@@ -69,6 +69,7 @@ const POSTGRES_UP_V47: &str =
 const POSTGRES_UP_V48: &str = include_str!("../../../migrations/postgres/0048_email_digest.sql");
 const POSTGRES_UP_V49: &str =
     include_str!("../../../migrations/postgres/0049_a2a_task_push_configs.sql");
+const POSTGRES_UP_V50: &str = include_str!("../../../migrations/postgres/0050_mail_outbox.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -124,6 +125,7 @@ const SQLITE_UP_V46: &str = include_str!("../../../migrations/sqlite/0046_member
 const SQLITE_UP_V47: &str = include_str!("../../../migrations/sqlite/0047_email_digest.sql");
 const SQLITE_UP_V48: &str =
     include_str!("../../../migrations/sqlite/0048_a2a_task_push_configs.sql");
+const SQLITE_UP_V49: &str = include_str!("../../../migrations/sqlite/0049_mail_outbox.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -225,6 +227,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 47, POSTGRES_UP_V47).await?;
     apply_postgres(pool, 48, POSTGRES_UP_V48).await?;
     apply_postgres(pool, 49, POSTGRES_UP_V49).await?;
+    apply_postgres(pool, 50, POSTGRES_UP_V50).await?;
     Ok(())
 }
 
@@ -287,6 +290,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 46, SQLITE_UP_V46).await?;
     apply_sqlite(pool, 47, SQLITE_UP_V47).await?;
     apply_sqlite(pool, 48, SQLITE_UP_V48).await?;
+    apply_sqlite(pool, 49, SQLITE_UP_V49).await?;
     Ok(())
 }
 
