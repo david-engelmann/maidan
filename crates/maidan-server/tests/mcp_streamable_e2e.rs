@@ -247,6 +247,25 @@ async fn streamable_2026_request_is_stateless_and_mints_no_session() {
 }
 
 #[tokio::test]
+async fn streamable_rejects_a_routing_header_that_contradicts_the_body() {
+    // SEP-2243: a gateway that routed on Mcp-Method must not be handed a body with
+    // a different method — the server rejects the mismatch with 400 (J3.2).
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} });
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-method", "tools/call")
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    server.abort();
+}
+
+#[tokio::test]
 async fn streamable_follow_up_multiplexes_response_on_open_sse_session() {
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");

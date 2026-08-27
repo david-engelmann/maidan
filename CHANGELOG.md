@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [302.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 3 (Protocols.md J3.2). No new gate tag.
+
+### Added
+
+- **SEP-2243 routing headers (`Mcp-Method` / `Mcp-Name`) on `POST /mcp` + `/mcp/streamable`.**
+  Both are optional (a gateway adds them to route/authorize without parsing JSON); when present
+  they must match the body — `Mcp-Method` == `request.method`, `Mcp-Name` == the named target
+  (`params.name` for `tools/call`/`prompts/get`, `params.uri` for `resources/read`/`subscribe`/
+  `unsubscribe`) — else `400` (a gateway that routed on a header must not be handed a
+  contradicting body). `crate::mcp::validate_routing_headers` gates it. A batch POST skips
+  validation (one header can't describe many ops); an `Mcp-Name` on a method that names no
+  target is ignored (the body does no more than authorized). Existing header-less traffic is
+  unaffected.
+
 ## [301.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 2 (Protocols.md J3.3–4). No new gate tag.
