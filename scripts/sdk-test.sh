@@ -35,7 +35,7 @@ export MAIDAN_URL="${base}"
 echo "=== running ${lang} SDK tests ==="
 case "$lang" in
   typescript) (cd sdk/typescript && node --test) ;;
-  python)     (cd sdk/python && python3 -m pytest -q) ;;
+  python)     (cd sdk/python && PYTHONPATH="$PWD/src:${PYTHONPATH:-}" python3 -m pytest -q) ;;
   go)         (cd sdk/go && go test ./...) ;;
   rust)       (cd sdk/rust && cargo test) ;;
   *) echo "unknown language: ${lang}" >&2; exit 2 ;;
