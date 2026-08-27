@@ -54,6 +54,25 @@ pub fn router(state: AppState) -> Router {
         .route("/mcp/streamable", get(mcp_streamable::stream_get))
         .route("/mcp/streamable", delete(mcp_streamable::close_session))
         .route("/a2a/v1/rpc", post(a2a_agent::json_rpc))
+        // A2A v1.0 HTTP+JSON/REST binding (§11) — thin adapters over the JSON-RPC ops.
+        .route("/a2a/v1/message:send", post(a2a_agent::rest_send_message))
+        .route("/a2a/v1/tasks", get(a2a_agent::rest_list_tasks))
+        .route(
+            "/a2a/v1/tasks/:id",
+            get(a2a_agent::rest_get_task).post(a2a_agent::rest_task_custom_method),
+        )
+        .route(
+            "/a2a/v1/tasks/:id/pushNotificationConfigs",
+            post(a2a_agent::rest_create_push_config).get(a2a_agent::rest_list_push_configs),
+        )
+        .route(
+            "/a2a/v1/tasks/:id/pushNotificationConfigs/:config_id",
+            get(a2a_agent::rest_get_push_config).delete(a2a_agent::rest_delete_push_config),
+        )
+        .route(
+            "/a2a/v1/extendedAgentCard",
+            get(a2a_agent::rest_extended_agent_card),
+        )
         .route("/mcp/notifications", get(mcp_notifications::stream))
         .route("/mcp/stream", get(mcp_stream::stream))
         .route("/workspaces/:id", get(routes::get_workspace))

@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [286.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 5.** No new gate tag.
+
+### Added
+
+- **A2A HTTP+JSON/REST binding (§11).** The A2A operations are now reachable as REST
+  routes under `/a2a/v1` — `POST /message:send`, `GET /tasks`, `GET /tasks/{id}`,
+  `POST /tasks/{id}:cancel`, the `pushNotificationConfigs` CRUD paths, and
+  `GET /extendedAgentCard` — implemented as thin adapters over the shared JSON-RPC
+  operation handlers (a `rest_response` converter maps the op result/error to HTTP
+  status). The Agent Card now advertises the REST interface as a second
+  `supportedInterfaces` entry (`protocolBinding: "HTTP+JSON"`). Streaming REST endpoints
+  (`message:stream`, `tasks:subscribe`) are deferred.
+
 ## [285.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

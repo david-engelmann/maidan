@@ -927,3 +927,175 @@ async fn agent_card_is_spec_shaped() {
         .is_some_and(|m| !m.is_empty()));
     assert!(card["skills"].as_array().is_some_and(|s| !s.is_empty()));
 }
+
+/// Cluster 286: the HTTP+JSON/REST binding (§11) maps the same operations as the
+/// JSON-RPC endpoint. Exercises message:send → get → list → push-config CRUD →
+/// extendedAgentCard, and confirms the tasks/{id}:cancel custom method routes.
+#[tokio::test]
+async fn a2a_rest_binding_maps_operations() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "rest"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let wid = ws["id"].as_str().unwrap();
+    let member: Value = client
+        .post(format!("{base}/workspaces/{wid}/members"))
+        .json(&json!({"handle": "a", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let author = member["id"].as_str().unwrap();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{wid}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = ch["id"].as_str().unwrap();
+    let th: Value = client
+        .post(format!("{base}/channels/{cid}/threads"))
+        .json(&json!({"title": "rest"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = th["id"].as_str().unwrap();
+
+    // message:send (REST) → 200 with a task.
+    let sent = client
+        .post(format!("{base}/a2a/v1/message:send"))
+        .json(&json!({
+            "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
+            "metadata": {"maidan": {"threadId": tid, "authorId": author}}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sent.status(), reqwest::StatusCode::OK);
+    let sent: Value = sent.json().await.unwrap();
+    let task_id = sent["task"]["id"].as_str().unwrap().to_string();
+
+    // get task.
+    let got = client
+        .get(format!("{base}/a2a/v1/tasks/{task_id}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(got.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        got.json::<Value>().await.unwrap()["id"].as_str(),
+        Some(task_id.as_str())
+    );
+
+    // list tasks: the REST route maps to ListTasks and returns the response shape.
+    // (Non-empty contents under RBAC are proven by the auth-enabled test in
+    // channel_access_e2e; this bypass server has no single workspace to scope by.)
+    let listed_resp = client
+        .get(format!("{base}/a2a/v1/tasks"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed_resp.status(), reqwest::StatusCode::OK);
+    let listed: Value = listed_resp.json().await.unwrap();
+    assert!(listed["tasks"].is_array());
+
+    // push-config create → get → list → delete.
+    let created: Value = client
+        .post(format!(
+            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs"
+        ))
+        .json(&json!({"url": "https://hook.example/x"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let config_id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["url"].as_str(), Some("https://hook.example/x"));
+    let got_pc = client
+        .get(format!(
+            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs/{config_id}"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(got_pc.status(), reqwest::StatusCode::OK);
+    let list_pc: Value = client
+        .get(format!(
+            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list_pc["configs"].as_array().unwrap().len(), 1);
+    let del = client
+        .delete(format!(
+            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs/{config_id}"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del.status(), reqwest::StatusCode::OK);
+
+    // extendedAgentCard (REST) → spec-shaped card.
+    let card: Value = client
+        .get(format!("{base}/a2a/v1/extendedAgentCard"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(card["name"].as_str(), Some("maidan"));
+
+    // tasks/{id}:cancel custom method routes (200 or a mapped 4xx, never a 404 route-miss).
+    let cancel = client
+        .post(format!("{base}/a2a/v1/tasks/{task_id}:cancel"))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        cancel.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "cancel custom-method route should match"
+    );
+}

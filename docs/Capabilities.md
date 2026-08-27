@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v286.0.0 — A2A HTTP+JSON/REST binding (compliance arc, part 5)
+
+| Change | Where |
+|--------|-------|
+| A2A REST binding (§11): 9 request/response routes under `/a2a/v1` (`message:send`, `tasks`, `tasks/{id}`, `tasks/{id}:cancel`, push-config CRUD, `extendedAgentCard`) as thin adapters over the JSON-RPC ops (`rest_response` result/error→HTTP). Agent Card advertises the HTTP+JSON interface. Streaming REST deferred | `crates/maidan-server/src/{a2a_agent.rs,app.rs}`, `contracts/http-capability-map.json` |
+
 ## v285.0.0 — A2A Agent Card §4.4.1 schema (compliance arc, part 4)
 
 | Change | Where |
