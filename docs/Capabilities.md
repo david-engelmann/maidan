@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v289.0.0 — A2A interop conformance (compliance arc finale)
+
+| Change | Where |
+|--------|-------|
+| A2A conformance client (`examples/a2a_interop.py`, httpx): validates the Agent Card §4.4.1 + JSON-RPC + REST bindings against the spec. Harness `scripts/a2a-interop.sh` (boot + run + teardown) + a report-only `a2a interop` CI job. Live-verified. **Completes the A2A v1.0 arc (282–289): all three transports + negotiation** | `examples/a2a_interop.py`, `scripts/a2a-interop.sh`, `.github/workflows/ci.yml`, `docs/Framework Integrations.md` |
+
 ## v288.0.0 — A2A transport negotiation + configurable origin (compliance arc, part 7)
 
 | Change | Where |
