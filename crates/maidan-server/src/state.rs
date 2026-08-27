@@ -141,6 +141,10 @@ pub struct AppState {
     /// no email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
+    /// A2A Agent Card transport advertisement config (Cluster 288): public origin
+    /// for absolute interface URLs + the advertised gRPC address. Default empty
+    /// (host-relative URLs, no gRPC interface); the server binary sets it from env.
+    pub a2a_card: crate::a2a_agent::A2aCardConfig,
     /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server should
     /// stamp a `Maidan-Consistency-Token` on writes and route replica-eligible
     /// reads (Cluster 263+). Left `false` in [`AppState::new`]; the server binary
@@ -207,6 +211,7 @@ impl AppState {
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
+            a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
             search_read_routing_metrics: None,

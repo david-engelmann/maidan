@@ -71,7 +71,7 @@ pub async fn json_rpc(
             json_response(dispatch_list_tasks(&state, &auth, id, body.params).await)
         }
         METHOD_GET_EXTENDED_AGENT_CARD => {
-            json_response(dispatch_get_extended_agent_card(&auth, id).await)
+            json_response(dispatch_get_extended_agent_card(&state, &auth, id).await)
         }
         METHOD_CANCEL_TASK => {
             json_response(dispatch_tasks_cancel(&state, &auth, id, body.params).await)
@@ -508,13 +508,14 @@ pub(crate) async fn dispatch_list_tasks(
 /// content as the public card today; §4.4.1 schema conformance lands in a later
 /// arc cluster.
 async fn dispatch_get_extended_agent_card(
+    state: &AppState,
     auth: &AuthContext,
     id: JsonRpcId,
 ) -> Result<JsonRpcResponse, JsonRpcResponse> {
     if let Err(e) = auth.require_capability(MESSAGE_POST) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
-    let value = serde_json::to_value(agent_card_payload())
+    let value = serde_json::to_value(agent_card_payload(&state.a2a_card))
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
 }
@@ -954,8 +955,11 @@ pub async fn rest_delete_push_config(
     rest_response(dispatch_delete_push_config(&state, &auth, rest_id(), params).await)
 }
 
-pub async fn rest_extended_agent_card(Extension(auth): Extension<AuthContext>) -> Response {
-    rest_response(dispatch_get_extended_agent_card(&auth, rest_id()).await)
+pub async fn rest_extended_agent_card(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> Response {
+    rest_response(dispatch_get_extended_agent_card(&state, &auth, rest_id()).await)
 }
 
 /// The A2A protocol version Maidan's interfaces expose (spec `AgentInterface`
@@ -1016,25 +1020,64 @@ pub struct AgentCard {
     pub skills: Vec<AgentSkill>,
 }
 
-fn agent_card_payload() -> AgentCard {
+/// Deployment-configurable inputs to the Agent Card's transport advertisement
+/// (A2A §5.2). Set once at startup from the environment.
+#[derive(Debug, Clone, Default)]
+pub struct A2aCardConfig {
+    /// Public origin (e.g. `https://maidan.example`) for absolute HTTP interface
+    /// URLs. When unset, the HTTP interface URLs stay host-relative.
+    pub public_origin: Option<String>,
+    /// Advertised gRPC address (`host:port`) for the gRPC `AgentInterface`. When
+    /// set, a `GRPC` interface is added to the card. Distinct from the bind
+    /// address (`MAIDAN_A2A_GRPC_ADDR`) so operators advertise a public endpoint.
+    pub grpc_public_addr: Option<String>,
+}
+
+impl A2aCardConfig {
+    pub fn from_env() -> Self {
+        let non_empty = |k: &str| std::env::var(k).ok().filter(|s| !s.trim().is_empty());
+        Self {
+            public_origin: non_empty("MAIDAN_A2A_PUBLIC_ORIGIN"),
+            grpc_public_addr: non_empty("MAIDAN_A2A_GRPC_PUBLIC_ADDR"),
+        }
+    }
+}
+
+/// Absolute (origin-prefixed) or host-relative interface URL for an HTTP path.
+fn iface_url(origin: &Option<String>, path: &str) -> String {
+    match origin {
+        Some(o) => format!("{}{path}", o.trim_end_matches('/')),
+        None => path.to_string(),
+    }
+}
+
+fn agent_card_payload(config: &A2aCardConfig) -> AgentCard {
+    let mut supported_interfaces = vec![
+        AgentInterface {
+            url: iface_url(&config.public_origin, "/a2a/v1/rpc"),
+            protocol_binding: "JSONRPC".into(),
+            protocol_version: A2A_PROTOCOL_VERSION.into(),
+        },
+        AgentInterface {
+            url: iface_url(&config.public_origin, "/a2a/v1"),
+            protocol_binding: "HTTP+JSON".into(),
+            protocol_version: A2A_PROTOCOL_VERSION.into(),
+        },
+    ];
+    if let Some(grpc) = &config.grpc_public_addr {
+        supported_interfaces.push(AgentInterface {
+            url: grpc.clone(),
+            protocol_binding: "GRPC".into(),
+            protocol_version: A2A_PROTOCOL_VERSION.into(),
+        });
+    }
     AgentCard {
         name: "maidan".into(),
         description:
             "Maidan — the operating layer for teams of AI agents. Exposes A2A tasks over a \
              shared, durable workspace."
                 .into(),
-        supported_interfaces: vec![
-            AgentInterface {
-                url: "/a2a/v1/rpc".into(),
-                protocol_binding: "JSONRPC".into(),
-                protocol_version: A2A_PROTOCOL_VERSION.into(),
-            },
-            AgentInterface {
-                url: "/a2a/v1".into(),
-                protocol_binding: "HTTP+JSON".into(),
-                protocol_version: A2A_PROTOCOL_VERSION.into(),
-            },
-        ],
+        supported_interfaces,
         provider: AgentProvider {
             url: "https://github.com/david-engelmann/maidan".into(),
             organization: "Maidan".into(),
@@ -1059,8 +1102,8 @@ fn agent_card_payload() -> AgentCard {
     }
 }
 
-pub async fn agent_card() -> impl IntoResponse {
-    Json(agent_card_payload())
+pub async fn agent_card(State(state): State<AppState>) -> impl IntoResponse {
+    Json(agent_card_payload(&state.a2a_card))
 }
 
 #[cfg(test)]

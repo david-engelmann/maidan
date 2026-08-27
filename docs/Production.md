@@ -152,6 +152,30 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 |---------------------|------------------------------------------|
 | `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; subscribe/resume protocol summary in `info.description`. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
 
+## A2A transports (`v282.0.0`+)
+
+Maidan speaks the [A2A protocol](https://a2a-protocol.org) across three bindings, all
+over the same operations and auth:
+
+| Binding | Endpoint | Default |
+|---------|----------|---------|
+| JSON-RPC | `POST /a2a/v1/rpc` | always on |
+| HTTP+JSON/REST | `/a2a/v1/*` (e.g. `POST /a2a/v1/message:send`, `GET /a2a/v1/tasks/{id}`) | always on |
+| gRPC | tonic `A2AService` on a separate port | **opt-in** |
+
+The **Agent Card** (`GET /.well-known/agent-card.json`) advertises the available
+interfaces so clients can negotiate a transport (A2A §5.2). Configure it for your
+deployment:
+
+| Env | Effect |
+|-----|--------|
+| `MAIDAN_A2A_GRPC_ADDR` | Bind address for the gRPC server (e.g. `0.0.0.0:50051`). Unset ⇒ gRPC off. |
+| `MAIDAN_A2A_PUBLIC_ORIGIN` | e.g. `https://maidan.example`. Makes the card's HTTP interface URLs absolute. Unset ⇒ host-relative. |
+| `MAIDAN_A2A_GRPC_PUBLIC_ADDR` | The reachable gRPC `host:port` to advertise (distinct from the bind address, so it's correct behind a proxy/LB). Set this to add a `GRPC` interface to the card. |
+
+Expose the gRPC port in your deployment (Kubernetes Service / compose port) when enabling
+it; the HTTP bindings share the main HTTP port.
+
 ## WebSocket and MCP subscribe (`v4.0.0`)
 
 Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/stream`**

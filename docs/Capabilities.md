@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v288.0.0 — A2A transport negotiation + configurable origin (compliance arc, part 7)
+
+| Change | Where |
+|--------|-------|
+| Agent Card advertises transports configurably (§5.2): `MAIDAN_A2A_PUBLIC_ORIGIN` → absolute HTTP interface URLs; `MAIDAN_A2A_GRPC_PUBLIC_ADDR` → a `GRPC` `AgentInterface`. Config in `AppState`, threaded through the well-known card + `GetExtendedAgentCard`. Default card unchanged. Production.md documents A2A deployment | `crates/maidan-server/src/{a2a_agent.rs,state.rs,main.rs}`, `docs/Production.md` |
+
 ## v287.0.0 — A2A gRPC binding (compliance arc, part 6)
 
 | Change | Where |
