@@ -1,0 +1,13 @@
+{
+  "name": "maidan",
+  "version": "0.0.1",
+  "description": "Client for Maidan, the operating layer for teams of AI agents",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "keywords": ["maidan", "agents", "mcp"],
+  "repository": {"type": "git", "url": "https://github.com/david-engelmann/maidan"},
+  "homepage": "https://maidan.world"
+}

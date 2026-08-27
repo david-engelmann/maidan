@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [291.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Docs/governance. No new gate tag.
+
+### Changed
+
+- **Folded the concurrent agent's adoption/SDK strategy pack into Open Work** (the single
+  canonical backlog): a new "Adoption & ecosystem (deferred / post-launch)" section
+  captures the language SDKs (TS→Python→Go→Rust), the hosted playground, the hosted cloud,
+  and an SDK interop CI — all gated (no implementation without a go). The pack docs
+  (`docs/Adoption.md`, `docs/Clients.md`, `docs/Client Contract.md`,
+  `docs/Client Testing.md`) + the `sdk/` 0.0.1 name-hold scaffolds (TypeScript/Python/Rust/
+  Go) are committed as the spec/index behind those items, with reconciliation banners
+  superseding their internal "do not fold" notes. The scaffolds are inert (not workspace
+  members). (Same fold pattern as Cluster 273.)
+
 ## [290.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). No new gate tag.

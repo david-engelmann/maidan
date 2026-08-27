@@ -1,0 +1,12 @@
+[package]
+name = "maidan"
+version = "0.0.1"
+edition = "2021"
+description = "Client for Maidan, the operating layer for teams of AI agents"
+license = "MIT"
+repository = "https://github.com/david-engelmann/maidan"
+homepage = "https://maidan.world"
+readme = "README.md"
+keywords = ["maidan", "agents", "mcp"]
+categories = ["api-bindings"]
+publish = true
