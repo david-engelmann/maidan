@@ -24,17 +24,24 @@ use crate::{prompts, resources, tools};
 
 /// Protocol revisions this server implements, newest first. `initialize`
 /// negotiates against the client's requested version, and the HTTP transports
-/// validate the `MCP-Protocol-Version` header against this set. The streamable
-/// transport features land incrementally; `2024-11-05` is the negotiated
-/// baseline all transports honor.
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05"];
+/// validate the `MCP-Protocol-Version` header against this set. `2026-07-28` is
+/// negotiable now (a current client that requests it gets it echoed); the
+/// stateless-core + routing-header work of that revision lands incrementally
+/// (Protocols.md J3), so the *default* stays the `2024-11-05` baseline
+/// ([`DEFAULT_PROTOCOL_VERSION`]) until 2026 is fully green and advertised.
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2024-11-05"];
 const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
 
 /// The version `initialize` echoes when the client requests none, and the
-/// fallback when it requests an unsupported one (per the MCP spec: respond with
-/// a version the server supports).
+/// fallback when it requests an unsupported one. Deliberately held at the
+/// `2024-11-05` baseline (not `SUPPORTED_PROTOCOL_VERSIONS[0]`) so a version-less
+/// or older client keeps the transport it expects while the 2026 revision lands
+/// incrementally; flips to `2026-07-28` once that work is advertised (J3.5).
+const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
+
+/// See [`DEFAULT_PROTOCOL_VERSION`].
 pub fn preferred_protocol_version() -> &'static str {
-    SUPPORTED_PROTOCOL_VERSIONS[0]
+    DEFAULT_PROTOCOL_VERSION
 }
 
 /// Whether `version` is one this server implements — used to validate the
@@ -597,6 +604,8 @@ mod tests {
     fn protocol_version_negotiation_follows_the_spec_rule() {
         // Supported requested version is echoed; unsupported/absent fall back to preferred.
         assert_eq!(negotiate_protocol_version(Some("2024-11-05")), "2024-11-05");
+        // 2026-07-28 is negotiable: a current client that requests it gets it (J3.1).
+        assert_eq!(negotiate_protocol_version(Some("2026-07-28")), "2026-07-28");
         assert_eq!(
             negotiate_protocol_version(Some("1999-01-01")),
             preferred_protocol_version()
@@ -606,7 +615,11 @@ mod tests {
             preferred_protocol_version()
         );
         assert!(is_supported_protocol_version("2024-11-05"));
+        assert!(is_supported_protocol_version("2026-07-28"));
         assert!(!is_supported_protocol_version("1999-01-01"));
+        // The version-less/unsupported default deliberately stays the 2024 baseline
+        // while the 2026 transport work lands incrementally (J3.5).
+        assert_eq!(preferred_protocol_version(), "2024-11-05");
     }
 
     #[tokio::test]
@@ -2109,6 +2122,21 @@ mod tests {
             .handle(request(2, "notifications/initialized", json!({})), &auth)
             .await;
         assert!(ack.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn initialize_negotiates_the_2026_revision_when_requested() {
+        // A current (2026-07-28) client's initialize is echoed that revision (J3.1);
+        // 2026 clients need not call initialize, but when they do it must negotiate.
+        let (server, _thread, _member) = mk_server().await;
+        let auth = AuthContext::bypass();
+        let init = server
+            .handle(
+                request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),
+                &auth,
+            )
+            .await;
+        assert_eq!(init.result.unwrap()["protocolVersion"], "2026-07-28");
     }
 
     #[tokio::test]

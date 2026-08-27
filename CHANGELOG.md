@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [300.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). MCP `2026-07-28` arc, part 1 (Protocols.md J3.1). No new gate tag.
+
+### Added
+
+- **MCP `2026-07-28` version negotiation (additive).** `SUPPORTED_PROTOCOL_VERSIONS` is now
+  `["2026-07-28", "2024-11-05"]` — a current client that requests `2026-07-28` on `initialize`
+  (or via the `MCP-Protocol-Version` header the HTTP transports validate) gets it echoed;
+  `2024-11-05` stays fully supported. `preferred_protocol_version()` now returns an explicit
+  `DEFAULT_PROTOCOL_VERSION` (held at `2024-11-05`) rather than `SUPPORTED[0]`, so a version-less
+  or older client keeps its expected transport while the rest of the `2026-07-28` revision lands
+  incrementally. The default flip + advertising wait until the stateless-core + routing-header
+  work is green (J3.5).
+
 ## [299.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK interop CI. No new gate tag.

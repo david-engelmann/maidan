@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v300.0.0 — MCP `2026-07-28` version negotiation
+
+| Change | Where |
+|--------|-------|
+| MCP `initialize` + the `MCP-Protocol-Version` header now negotiate `2026-07-28` additively (`SUPPORTED_PROTOCOL_VERSIONS = ["2026-07-28","2024-11-05"]`); `preferred_protocol_version()` returns a new explicit `DEFAULT_PROTOCOL_VERSION` held at `2024-11-05` so version-less/older clients are unchanged. Opens the J3 arc; default-flip + advertising deferred until the stateless-core + routing headers land | `crates/maidan-mcp/src/server.rs` |
+
 ## v299.0.0 — SDK interop CI
 
 | Change | Where |
