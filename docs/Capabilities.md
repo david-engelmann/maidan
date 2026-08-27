@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v302.0.0 — MCP `2026-07-28` routing headers
+
+| Change | Where |
+|--------|-------|
+| SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers on `POST /mcp` + `/mcp/streamable` — optional, but when present must match the body (`Mcp-Method`==method, `Mcp-Name`==tool/prompt name or resource uri) else `400`, so a gateway can route/authorize without parsing JSON (`validate_routing_headers`). Batches skip it; a stray `Mcp-Name` on an unnamed method is ignored | `crates/maidan-server/src/{mcp.rs,mcp_streamable.rs}` |
+
 ## v301.0.0 — MCP `2026-07-28` stateless streamable core
 
 | Change | Where |

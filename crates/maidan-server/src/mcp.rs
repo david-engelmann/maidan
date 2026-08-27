@@ -48,6 +48,49 @@ pub(crate) fn is_stateless_request(headers: &HeaderMap) -> bool {
         == Some(STATELESS_PROTOCOL_VERSION)
 }
 
+/// The name a routing gateway would put in `Mcp-Name` for a request: the tool /
+/// prompt name, or the resource uri. `None` for methods that name no target
+/// (`tools/list`, `initialize`, …).
+fn request_routing_name(request: &JsonRpcRequest) -> Option<&str> {
+    match request.method.as_str() {
+        "tools/call" | "prompts/get" => request.params.get("name").and_then(|v| v.as_str()),
+        "resources/read" | "resources/subscribe" | "resources/unsubscribe" => {
+            request.params.get("uri").and_then(|v| v.as_str())
+        }
+        _ => None,
+    }
+}
+
+/// Validate the SEP-2243 routing headers (`Mcp-Method` / `Mcp-Name`) against the
+/// request body. Both are optional (a gateway adds them so it can route/authorize
+/// without parsing JSON; a direct client may omit them). When present they MUST
+/// match the body — a gateway that routed on a header must not be handed a
+/// contradicting body — so a mismatch is a `400`. An `Mcp-Name` on a method that
+/// names no target is ignored (the body does no more than the header authorized).
+pub(crate) fn validate_routing_headers(
+    headers: &HeaderMap,
+    request: &JsonRpcRequest,
+) -> Result<(), ApiError> {
+    if let Some(m) = headers.get("mcp-method").and_then(|v| v.to_str().ok()) {
+        if m != request.method {
+            return Err(ApiError::BadRequest(format!(
+                "Mcp-Method header {:?} does not match request method {:?}",
+                m, request.method
+            )));
+        }
+    }
+    if let Some(n) = headers.get("mcp-name").and_then(|v| v.to_str().ok()) {
+        if let Some(name) = request_routing_name(request) {
+            if name != n {
+                return Err(ApiError::BadRequest(format!(
+                    "Mcp-Name header {n:?} does not match request target {name:?}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -62,20 +105,26 @@ pub async fn handler(
         Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
     };
     match value {
+        // Routing headers describe a single op; a batch names many, so they are
+        // validated per single request, not against an array.
         serde_json::Value::Array(items) => batch_response(&state, &auth, items).await,
-        other => single_response(&state, &auth, other).await,
+        other => single_response(&state, &auth, &headers, other).await,
     }
 }
 
 async fn single_response(
     state: &AppState,
     auth: &AuthContext,
+    headers: &HeaderMap,
     value: serde_json::Value,
 ) -> Response {
     let request: JsonRpcRequest = match serde_json::from_value(value) {
         Ok(r) => r,
         Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
     };
+    if let Err(err) = validate_routing_headers(headers, &request) {
+        return err.into_response();
+    }
     // A notification (no `id`) is executed for effect and returns no body.
     if request.id.is_none() {
         let _ = state.mcp.handle(request, auth).await;
@@ -130,5 +179,70 @@ async fn batch_response(
         StatusCode::ACCEPTED.into_response()
     } else {
         Json(responses).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+    use serde_json::json;
+
+    fn req(method: &str, params: serde_json::Value) -> JsonRpcRequest {
+        JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(json!(1)),
+            method: method.into(),
+            params,
+        }
+    }
+
+    #[test]
+    fn routing_headers_absent_are_ok() {
+        let r = req("tools/call", json!({ "name": "search" }));
+        assert!(validate_routing_headers(&HeaderMap::new(), &r).is_ok());
+    }
+
+    #[test]
+    fn matching_routing_headers_are_ok() {
+        let mut h = HeaderMap::new();
+        h.insert("mcp-method", HeaderValue::from_static("tools/call"));
+        h.insert("mcp-name", HeaderValue::from_static("search"));
+        let r = req("tools/call", json!({ "name": "search" }));
+        assert!(validate_routing_headers(&h, &r).is_ok());
+    }
+
+    #[test]
+    fn mcp_method_mismatch_is_rejected() {
+        let mut h = HeaderMap::new();
+        h.insert("mcp-method", HeaderValue::from_static("tools/list"));
+        let r = req("tools/call", json!({ "name": "search" }));
+        assert!(validate_routing_headers(&h, &r).is_err());
+    }
+
+    #[test]
+    fn mcp_name_mismatch_is_rejected() {
+        let mut h = HeaderMap::new();
+        h.insert("mcp-name", HeaderValue::from_static("evil"));
+        let r = req("tools/call", json!({ "name": "search" }));
+        assert!(validate_routing_headers(&h, &r).is_err());
+    }
+
+    #[test]
+    fn mcp_name_on_a_method_that_names_no_target_is_ignored() {
+        // A superfluous Mcp-Name on tools/list is safe (the body does no more than
+        // the header authorized), so it's not a mismatch.
+        let mut h = HeaderMap::new();
+        h.insert("mcp-name", HeaderValue::from_static("whatever"));
+        let r = req("tools/list", json!({}));
+        assert!(validate_routing_headers(&h, &r).is_ok());
+    }
+
+    #[test]
+    fn mcp_name_matches_resource_uri() {
+        let mut h = HeaderMap::new();
+        h.insert("mcp-name", HeaderValue::from_static("threads/42"));
+        let r = req("resources/read", json!({ "uri": "threads/42" }));
+        assert!(validate_routing_headers(&h, &r).is_ok());
     }
 }

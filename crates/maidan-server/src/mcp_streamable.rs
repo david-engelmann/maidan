@@ -73,6 +73,9 @@ pub async fn streamable(
         Ok(r) => r,
         Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
     };
+    // SEP-2243 routing headers (Mcp-Method / Mcp-Name), when present, must match
+    // the body so a gateway can route/authorize without parsing JSON (J3.2).
+    crate::mcp::validate_routing_headers(&headers, &request)?;
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
         return Ok(Json(resp).into_response());
     }
