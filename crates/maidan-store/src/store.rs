@@ -200,6 +200,29 @@ pub trait Store: Send + Sync {
     ) -> Result<Option<MemberEmail>, StoreError>;
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError>;
 
+    /// Durable mail outbox (Cluster 304): notification emails are enqueued and
+    /// delivered by a retry/backoff worker instead of a best-effort send.
+    /// `enqueue_mail` queues one; `claim_next_due_mail` atomically leases the
+    /// oldest due `pending` row (bumps `attempts`, pushes `next_attempt_at` forward
+    /// by `lease_secs` so a crashed worker's row is retried); `mark_mail_delivered`
+    /// finishes it; `mark_mail_failed` reschedules (`retry_at = Some`) or
+    /// dead-letters (`None`); `count_dead_mail` is the DLQ depth. No worker/wiring
+    /// yet — a zero-blast-radius foundation.
+    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<MailOutboxId, StoreError>;
+    async fn claim_next_due_mail(
+        &self,
+        now: DateTime<Utc>,
+        lease_secs: i64,
+    ) -> Result<Option<MailOutbox>, StoreError>;
+    async fn mark_mail_delivered(&self, id: MailOutboxId) -> Result<(), StoreError>;
+    async fn mark_mail_failed(
+        &self,
+        id: MailOutboxId,
+        error: &str,
+        retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError>;
+    async fn count_dead_mail(&self) -> Result<i64, StoreError>;
+
     /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
     /// (called on presence registration), `get` returns the instant or `None`. A
     /// cross-replica signal for presence-aware email routing. No wiring yet — a

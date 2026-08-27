@@ -20,6 +20,7 @@ mod fsm_hooks;
 mod group_dm;
 mod import;
 mod inbox;
+mod mail_outbox;
 mod member_emails;
 mod member_last_seen;
 mod member_skills;
@@ -302,6 +303,31 @@ impl Store for SqliteStore {
     }
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError> {
         member_emails::delete(&self.pool, member_id).await
+    }
+
+    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
+        mail_outbox::enqueue(&self.pool, new).await
+    }
+    async fn claim_next_due_mail(
+        &self,
+        now: DateTime<Utc>,
+        lease_secs: i64,
+    ) -> Result<Option<MailOutbox>, StoreError> {
+        mail_outbox::claim_next_due(&self.pool, now, lease_secs).await
+    }
+    async fn mark_mail_delivered(&self, id: MailOutboxId) -> Result<(), StoreError> {
+        mail_outbox::mark_delivered(&self.pool, id).await
+    }
+    async fn mark_mail_failed(
+        &self,
+        id: MailOutboxId,
+        error: &str,
+        retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError> {
+        mail_outbox::mark_failed(&self.pool, id, error, retry_at).await
+    }
+    async fn count_dead_mail(&self) -> Result<i64, StoreError> {
+        mail_outbox::count_dead(&self.pool).await
     }
 
     async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {
