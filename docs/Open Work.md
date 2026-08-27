@@ -59,6 +59,23 @@ causality-token replica reads (Clusters 261–266), and typed non-interchangeabl
 SQLite/Postgres `Store` parity. Positioning moved off "Slack for agents" to the durable
 shared-workspace framing (Cluster 274).
 
+### Adoption & ecosystem (deferred / post-launch)
+
+Folded here from the concurrent agent's adoption/SDK strategy pack (Cluster 291,
+2026-08-27) so Open Work stays the single backlog source. The detailed specs live in
+`docs/Adoption.md` (the funnel + hosted playground/cloud + client program), `docs/Clients.md`
+(SDK implementation plan), `docs/Client Contract.md` (the frozen v1 SDK surface), and
+`docs/Client Testing.md` (black-box scenarios that double as server coverage) — those are
+the spec/index behind these items, not a competing backlog. **All gated: none of this
+starts without an explicit go.**
+
+| Pri | Item | Notes |
+|-----|------|-------|
+| **P1 (adoption)** | **Language SDKs (TypeScript → Python → Go → Rust)** | REST + WebSocket clients under `sdk/`, independent SemVer from the server (publish only on an `sdk-*` tag). Frozen v1 method surface = `docs/Client Contract.md`; black-box scenarios (which also catch server bugs) = `docs/Client Testing.md`. The concurrent agent committed **0.0.1 name-hold scaffolds** in `sdk/{typescript,python,rust,go}` as starting points — the *code* still needs implementation + verification + CI when it gets a go. Rust client must NOT depend on `maidan-server`. MCP stays a URL (the LangChain/AutoGen door, Cluster 280), not a 4th library; A2A stays a recipe (`examples/a2a_interop.py`, Cluster 289) |
+| **P2 (adoption)** | **Hosted playground** (`maidan.world/play`) | A try-it sandbox: ephemeral workspace + the two-agent hero loop (Cluster 278) in the browser. Detail in `docs/Adoption.md` §3 |
+| **P3 (adoption)** | **Hosted cloud** (managed Maidan) | Later; multi-tenant hosting. `docs/Adoption.md` §4 |
+| **P2** | **SDK interop CI** | A CI job running the `docs/Client Testing.md` scenario catalog across the SDKs once they exist (the report-only A2A interop job, Cluster 289, is the pattern) |
+
 ## Standing risks (still open)
 
 - **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). **Still open:** DM threads readable via the *generic* thread route — the `__dm__` exemption in `ensure_channel_access` preserves this pre-existing behavior; tighten by checking DM participants (**next: Cluster 180**). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`).
