@@ -279,9 +279,11 @@ pub async fn deliver_notification_email(
     kind: EventKind,
     source_log_id: i64,
 ) {
-    let Some(mail) = state.mail.as_ref() else {
+    // Only enqueue when a transport is configured — the mail_worker (Cluster 305)
+    // does the actual send, so a queue with no sender would just pile up.
+    if state.mail.is_none() {
         return;
-    };
+    }
     let address = match state.store.get_member_email(member_id).await {
         Ok(Some(a)) => a.email,
         Ok(None) => return, // member hasn't opted in / provided an address
@@ -331,10 +333,21 @@ pub async fn deliver_notification_email(
         kind.as_str(),
         source_log_id
     );
-    match mail.send(&address, &subject, &body).await {
-        Ok(()) => crate::metrics::record_email_delivered("sent"),
+    // Durable delivery (Cluster 305): enqueue to the mail outbox and let the
+    // mail_worker send with retry/backoff + dead-lettering, instead of a
+    // best-effort send that drops the email on a transient SMTP failure.
+    match state
+        .store
+        .enqueue_mail(maidan_types::NewMailOutbox {
+            to_address: address,
+            subject,
+            body,
+        })
+        .await
+    {
+        Ok(_) => crate::metrics::record_email_delivered("enqueued"),
         Err(err) => {
-            warn!(error = %err, "notification email delivery failed");
+            warn!(error = %err, "notification email: enqueue failed");
             crate::metrics::record_email_delivered("failed");
         }
     }

@@ -34,6 +34,7 @@ pub mod group_dm;
 pub mod health;
 pub mod import;
 pub mod mail;
+pub mod mail_worker;
 pub mod mcp;
 pub mod mcp_notifications;
 pub mod mcp_quota;

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v305.0.0 — mail-outbox worker + router enqueue
+
+| Change | Where |
+|--------|-------|
+| Notification email is durable: the router `enqueue_mail`s (after its suppression checks) instead of a best-effort inline send; a new `mail_worker` background loop drains the outbox with retry (exp backoff 30s→1h) + dead-lettering (8 attempts). Spawned when a transport is configured; tick via `MAIDAN_MAIL_WORKER_TICK_SECS` (default 5s). Multi-replica-safe. Metric outcomes `enqueued`/`sent`/`retry`/`dead` | `crates/maidan-server/src/{mail_worker.rs,notification_router.rs,main.rs}` |
+
 ## v304.0.0 — durable mail outbox foundation
 
 | Change | Where |

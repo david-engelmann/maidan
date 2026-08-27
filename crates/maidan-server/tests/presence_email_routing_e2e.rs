@@ -103,6 +103,10 @@ async fn presence_window_skips_email_for_recently_seen_member() {
     notification_router::deliver_notification_email(&state, away.id, EventKind::MentionRecorded, 2)
         .await;
 
+    // Delivery is durable now (Cluster 305): the present member was skipped before
+    // enqueue, so draining the outbox emails only the away member.
+    maidan_server::mail_worker::sweep_once(&state).await;
+
     let sent = mailer.sent.lock().unwrap();
     assert_eq!(
         sent.len(),

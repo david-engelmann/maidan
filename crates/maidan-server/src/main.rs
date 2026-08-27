@@ -438,6 +438,18 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Background mail-outbox worker (Cluster 305): drains the durable mail queue
+    // with retry/backoff + dead-lettering. Runs whenever a transport is
+    // configured (the router enqueues only then). Tick via
+    // `MAIDAN_MAIL_WORKER_TICK_SECS` (default 5s).
+    if state.mail.is_some() {
+        let mail_state = state.clone();
+        let mail_cfg = maidan_server::mail_worker::config_from_env();
+        tokio::spawn(async move {
+            maidan_server::mail_worker::run(mail_state, mail_cfg).await;
+        });
+    }
+
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
     // delivery watermark), audit trail, and delivery tables past their age.
