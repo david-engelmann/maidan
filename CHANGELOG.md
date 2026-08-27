@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [297.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK arc, part 4 (finale). No new gate tag.
+
+### Added
+
+- **Rust SDK (`sdk/rust`, 0.1.0)** — the fourth and final usable language client, to the frozen
+  v1 contract; a **standalone crate that does not depend on any `maidan-*` server crate**.
+  Service-handle surface (`workspaces()`/`channels()`/`threads()`/`messages()`/`artifacts()`),
+  `claim_next_thread` / `renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, a
+  `MaidanError` (`.status`/`.body`/`.retry_after`, `.is_conflict()`/`.is_forbidden()`/
+  `.is_rate_limited()`/`.is_transport()`), responses as `serde_json::Value`, and `client.mcp_url`
+  as a string (no MCP dependency). Verified black-box (5/5 via `scripts/sdk-test.sh rust`);
+  `clippy -D warnings` + `fmt --check` + the doctest clean. Bumped 0.0.1 → 0.1.0.
+- **The SDK arc (294–297) is complete** — TypeScript, Python, Go, and Rust clients, all at
+  0.1.0, each verified black-box against a running server through the shared harness.
+
+### Notes
+
+- Rust's std has no HTTP/TLS client, so this crate takes a small synchronous stack (`ureq` over
+  rustls with the `json` feature + `tungstenite` with rustls + `serde_json`) — the one place the
+  four SDKs diverge from "stdlib only". It's detached from the repo's Cargo workspace via an
+  empty `[workspace]` table, so its dependency tree never touches the strict workspace lint /
+  `cargo deny`.
+- Same result-write constraint as the other three (auth-disabled harness has a nil member) — the
+  test exercises the result route via `get_result` → 404.
+- None of the four SDKs are published to their registries yet (needs token secrets + `sdk-*`
+  release tags); no SDK interop CI yet.
+
 ## [296.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK arc, part 3. No new gate tag.
