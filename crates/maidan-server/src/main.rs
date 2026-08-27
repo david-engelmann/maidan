@@ -415,6 +415,9 @@ async fn main() -> anyhow::Result<()> {
     // Default-on global rate limit (Cluster 183): a deployment that configures
     // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
     state.rate_limit_default_on = true;
+    // A2A Agent Card transport advertisement (Cluster 288): public origin for
+    // absolute interface URLs + the advertised gRPC address (§5.2 negotiation).
+    state.a2a_card = maidan_server::a2a_agent::A2aCardConfig::from_env();
     // Read-replica routing (Cluster 263+): when a replica is configured, stamp the
     // consistency token on writes and route replica-eligible reads.
     state.read_replica_enabled = config.replica_url.is_some();

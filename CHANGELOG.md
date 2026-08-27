@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [288.0.0] — 2026-08-26
+
+Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
+part 7.** No new gate tag.
+
+### Added
+
+- **A2A transport negotiation (§5.2).** The Agent Card now advertises Maidan's
+  transports configurably: `MAIDAN_A2A_PUBLIC_ORIGIN` makes the HTTP interface URLs
+  absolute, and `MAIDAN_A2A_GRPC_PUBLIC_ADDR` adds a `GRPC` `AgentInterface` (so the
+  Cluster-287 gRPC binding is discoverable). Config is read at startup into `AppState`
+  and threaded through the well-known card + `GetExtendedAgentCard`. With no env set the
+  card is unchanged (host-relative URLs, no gRPC entry). `docs/Production.md` documents
+  A2A transport deployment.
+
 ## [287.0.0] — 2026-08-26
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc

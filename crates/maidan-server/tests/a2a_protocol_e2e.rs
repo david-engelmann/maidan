@@ -1099,3 +1099,66 @@ async fn a2a_rest_binding_maps_operations() {
         "cancel custom-method route should match"
     );
 }
+
+/// Cluster 288: with a public origin + advertised gRPC address configured, the
+/// Agent Card advertises absolute HTTP interface URLs and a GRPC interface (§5.2).
+#[tokio::test]
+async fn agent_card_advertises_configured_transports() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let mut state = AppState::for_tests(store, artifacts, bus, search);
+    state.a2a_card = maidan_server::a2a_agent::A2aCardConfig {
+        public_origin: Some("https://maidan.example".into()),
+        grpc_public_addr: Some("grpc.maidan.example:443".into()),
+    };
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let card: Value = client
+        .get(format!("{base}/.well-known/agent-card.json"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ifaces = card["supportedInterfaces"].as_array().unwrap();
+    // HTTP interfaces are absolute (origin-prefixed).
+    let jsonrpc = ifaces
+        .iter()
+        .find(|i| i["protocolBinding"] == "JSONRPC")
+        .unwrap();
+    assert_eq!(
+        jsonrpc["url"].as_str(),
+        Some("https://maidan.example/a2a/v1/rpc")
+    );
+    let rest = ifaces
+        .iter()
+        .find(|i| i["protocolBinding"] == "HTTP+JSON")
+        .unwrap();
+    assert_eq!(rest["url"].as_str(), Some("https://maidan.example/a2a/v1"));
+    // The gRPC interface is advertised at the configured address.
+    let grpc = ifaces
+        .iter()
+        .find(|i| i["protocolBinding"] == "GRPC")
+        .expect("grpc interface advertised");
+    assert_eq!(grpc["url"].as_str(), Some("grpc.maidan.example:443"));
+    assert_eq!(grpc["protocolVersion"].as_str(), Some("1.0"));
+}
