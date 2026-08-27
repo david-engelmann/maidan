@@ -3,6 +3,13 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v297.0.0 — Rust SDK (0.1.0), SDK arc finale
+
+| Change | Where |
+|--------|-------|
+| Fourth/final usable language client, to the frozen v1 contract; a **standalone crate** (no `maidan-*` dependency). Service-handle surface (`workspaces()`/`channels()`/`threads()`/`messages()`/`artifacts()`), `claim_next_thread`/`renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, `MaidanError` (status/body/retry_after, is_conflict/is_forbidden/is_rate_limited/is_transport), responses as `serde_json::Value`, `client.mcp_url` string. Small sync stack (`ureq`+`tungstenite`+`serde_json`; std has no HTTP/TLS). 0.1.0 | `sdk/rust/{Cargo.toml,src/lib.rs,src/subscribe.rs,README.md}` |
+| `cargo test` black-box suite (5/5: hero loop, claim-next, error surfacing, WS subscribe) via the Cluster-294 harness (`scripts/sdk-test.sh rust`); `clippy -D warnings` + `fmt` clean. **Completes the SDK arc (294–297): TS, Python, Go, Rust at 0.1.0** | `sdk/rust/tests/black_box.rs`, `scripts/sdk-test.sh` |
+
 ## v296.0.0 — Go SDK (0.1.0)
 
 | Change | Where |

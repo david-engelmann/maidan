@@ -1,12 +1,27 @@
 [package]
 name = "maidan"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 description = "Client for Maidan, the operating layer for teams of AI agents"
 license = "MIT"
 repository = "https://github.com/david-engelmann/maidan"
-homepage = "https://maidan.world"
+homepage = "https://david-engelmann.github.io/maidan/"
 readme = "README.md"
-keywords = ["maidan", "agents", "mcp"]
+keywords = ["maidan", "agents", "ai-agents", "mcp", "a2a"]
 categories = ["api-bindings"]
 publish = true
+
+# Standalone crate: an empty [workspace] table detaches it from the repo's main
+# Cargo workspace so its (client-only) dependency tree never perturbs the strict
+# workspace lint / cargo-deny. It must NOT depend on any maidan-* server crate.
+[workspace]
+
+[dependencies]
+ureq = { version = "2", features = ["json"] }
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+ureq = { version = "2", features = ["json"] }
+serde_json = "1"
