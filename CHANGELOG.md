@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [299.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). SDK interop CI. No new gate tag.
+
+### Added
+
+- **`sdk-interop` CI job (`.github/workflows/ci.yml`, report-only)** — boots a source-built
+  server (SQLite, auth disabled) and runs each client SDK's black-box suite against it via
+  `scripts/sdk-test.sh` (typescript → python → go → rust; the four toolchains installed, the
+  server build warmed once). `continue-on-error: true` and not a required check — proves the
+  four clients interop end-to-end without blocking a merge (same posture as the `a2a interop`
+  job). Closes the SDK loop (294–299).
+
 ## [298.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). SDK publishing. No new gate tag.

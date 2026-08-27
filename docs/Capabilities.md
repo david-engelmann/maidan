@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v299.0.0 — SDK interop CI
+
+| Change | Where |
+|--------|-------|
+| Report-only `sdk-interop` CI job: boots a source-built server (SQLite, auth disabled) and runs all four SDK black-box suites against it (`scripts/sdk-test.sh` ts→py→go→rust; four toolchains, server build warmed once). `continue-on-error`, not required — proves the clients interop without blocking merges. Closes the SDK loop (294–299) | `.github/workflows/ci.yml` |
+
 ## v298.0.0 — SDK release workflow
 
 | Change | Where |
