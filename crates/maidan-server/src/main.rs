@@ -464,6 +464,26 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // A2A gRPC binding (Cluster 287, §10): opt-in via `MAIDAN_A2A_GRPC_ADDR`
+    // (e.g. `0.0.0.0:50051`). Serves the tonic A2AService on a separate port; the
+    // HTTP surface (REST + JSON-RPC) is unaffected.
+    if let Ok(grpc_addr) = std::env::var("MAIDAN_A2A_GRPC_ADDR") {
+        match grpc_addr.parse::<std::net::SocketAddr>() {
+            Ok(addr) => {
+                let grpc_state = state.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = maidan_server::a2a_grpc::serve(grpc_state, addr).await {
+                        tracing::error!(error = %err, "a2a gRPC server exited");
+                    }
+                });
+                tracing::info!(%addr, "a2a gRPC server listening");
+            }
+            Err(err) => {
+                tracing::error!(error = %err, addr = %grpc_addr, "invalid MAIDAN_A2A_GRPC_ADDR")
+            }
+        }
+    }
+
     let app = router(state.clone());
 
     if outbox_relay {
