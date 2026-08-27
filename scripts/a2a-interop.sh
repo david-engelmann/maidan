@@ -21,25 +21,37 @@ port="${MAIDAN_A2A_PORT:-8080}"
 grpc_port="${MAIDAN_A2A_GRPC_PORT:-50251}"
 base="http://127.0.0.1:${port}"
 
-echo "=== building + booting maidan-server (SQLite, auth disabled) ==="
+# Build first (blocking) so the health-wait below only covers boot, not compile —
+# a cold `cargo run` compile in CI would otherwise outlast the wait and the client
+# would hit a server that isn't up yet.
+echo "=== building maidan-server ==="
+cargo build --quiet --bin maidan-server
+
+echo "=== booting (SQLite, auth disabled) ==="
 DATABASE_URL="sqlite::memory:" \
   AUTH_DISABLED=1 MAIDAN_ALLOW_INSECURE_NO_AUTH=1 \
   MAIDAN_BIND="127.0.0.1:${port}" \
   MAIDAN_A2A_GRPC_ADDR="127.0.0.1:${grpc_port}" \
   MAIDAN_A2A_PUBLIC_ORIGIN="${base}" \
   MAIDAN_A2A_GRPC_PUBLIC_ADDR="127.0.0.1:${grpc_port}" \
-  cargo run --quiet --bin maidan-server &
+  ./target/debug/maidan-server &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 
 echo "=== waiting for /health ==="
-for _ in $(seq 1 120); do
+up=0
+for _ in $(seq 1 60); do
   if curl -sf "${base}/health" >/dev/null 2>&1; then
     echo "server is up"
+    up=1
     break
   fi
   sleep 1
 done
+if [ "$up" -ne 1 ]; then
+  echo "server did not become healthy within 60s" >&2
+  exit 1
+fi
 
 echo "=== running A2A conformance client ==="
 MAIDAN_URL="${base}" python3 examples/a2a_interop.py

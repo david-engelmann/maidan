@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [290.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). No new gate tag.
+
+### Fixed
+
+- **`scripts/a2a-interop.sh` builds before booting.** The report-only `a2a interop` CI job
+  (Cluster 289) went red on a cold cache: the harness used `cargo run` (compile + boot),
+  and the compile outlasted the 120 s health-wait, so the client hit a server that wasn't
+  up yet (`Connection refused`). Now it `cargo build`s first (blocking), runs the built
+  binary, and fails fast with a clear message if `/health` doesn't come up in 60 s.
+
 ## [289.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). **Launch-readiness P1: A2A v1.0 compliance — arc
