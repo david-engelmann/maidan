@@ -1,18 +1,20 @@
-# One-command local evaluation image (Cluster 278). Instead of compiling the Rust
-# workspace, this pulls a pinned, SHA-256-verified Maidan release binary, so a first
-# run takes seconds. Development only: pair it with compose.quickstart.yaml, which
-# disables auth and binds to loopback. Do not use this image in production (use
-# crates/maidan-server/Dockerfile, Postgres, and scoped bearer tokens).
+# One-command local evaluation image (Cluster 278; default-secure since 313). Instead
+# of compiling the Rust workspace, this pulls a pinned, SHA-256-verified Maidan release
+# binary, so a first run takes seconds. Development only: pair it with
+# compose.quickstart.yaml, which runs with auth ON and binds to loopback — the happy
+# path mints a bearer token with `maidan init` (bundled in this image). Do not use this
+# image in production (use crates/maidan-server/Dockerfile, Postgres, and scoped bearer
+# tokens).
 #
 # The release binaries are built on ubuntu-latest (glibc), so the runtime base is
 # ubuntu:24.04 to match that glibc generation.
 FROM ubuntu:24.04
 
-ARG MAIDAN_VERSION=v277.0.0
+ARG MAIDAN_VERSION=v312.0.0
 # Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
 # both when MAIDAN_VERSION changes: shasum -a 256 maidan-<target>.tar.gz.
-ARG MAIDAN_SHA256_AMD64=3e00f884acde758f533cdca4ad1cd1ed85aea5b080e9035963ad33ea0a568e28
-ARG MAIDAN_SHA256_ARM64=88a98073f111032e921876b35bb9d7387e0273b95a7c1ef0a085f02071eaa3b2
+ARG MAIDAN_SHA256_AMD64=b4647dfd3518647a066c5855a3a42b516d3d3afeab9e5f9c43e56ca15d70c104
+ARG MAIDAN_SHA256_ARM64=79a730733578ecd16401d62e8f02ed218d69da77a098f1e07bbcc7d8e197278e
 # Set by buildkit; fall back to the build host's arch for a plain `docker build`.
 ARG TARGETARCH
 

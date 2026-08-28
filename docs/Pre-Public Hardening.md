@@ -401,10 +401,13 @@ Do **not** interleave with 269–272 import/search PRs.
 - [ ] **F3. Threat model vs shipped controls**
   Quick matrix pass: every Threat-Model control cites the code/CI
   evidence (or is marked aspirational).
-- [ ] **F4. Default-secure demo**
-  Quickstart that does *not* teach `AUTH_DISABLED` as normal. Keep
-  `AUTH_DISABLED` in a clearly marked "local only" appendix (already
-  warned — make the happy path token-mint based).
+- **F4. Default-secure demo — ✅ done (Cluster 313)**
+  `compose.quickstart.yaml` now runs auth ON; the README happy path mints a
+  bearer token with `maidan init` (bundled in the quickstart image, bumped to
+  `v312.0.0`), and `scripts/quickstart-two-agents.sh` authenticates with it.
+  `AUTH_DISABLED` moved to a clearly-marked "explore without a token (local
+  only)" appendix backed by `compose.quickstart.insecure.yaml`. Both paths
+  validated end-to-end against a local server; CI validates both compose files.
 
 ### G. Repo hygiene & presentation (**P2**, still do before the blog)
 

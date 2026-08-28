@@ -1,26 +1,37 @@
 name: maidan-quickstart
 
-# One-command local evaluation stack (Cluster 278). Runs a single Maidan server on
-# SQLite + local-filesystem artifacts, bound to loopback.
+# One-command local evaluation stack (Cluster 278; default-secure since 313). Runs a
+# single Maidan server on SQLite + local-filesystem artifacts, bound to loopback.
 #
-# Development only: authentication is deliberately disabled (both AUTH_DISABLED and
-# the explicit MAIDAN_ALLOW_INSECURE_NO_AUTH acknowledgement, required since Cluster
-# 157). Never expose this to a network or use it in production. For an authenticated
-# deployment use compose.yaml (Postgres + object store) or the Helm chart.
+# Default-secure: authentication is ON, exactly like production. Seed the first admin
+# and mint a bearer token with `maidan init` (bundled in the image), then use it:
+#
+#   docker compose -f compose.quickstart.yaml up -d --build
+#   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
+#   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
+#
+# MAIDAN_BOOTSTRAP=1 keeps the unauthenticated member-seed route open so the demo can
+# create its two agents; content operations (post/read) require the token. To explore
+# without minting a token (local only), layer compose.quickstart.insecure.yaml on top.
+# Never expose this to a network or use it in production. For a hardened deployment use
+# compose.yaml (Postgres + object store) or the Helm chart.
 services:
   maidan:
     build:
       context: docker
       dockerfile: Dockerfile.quickstart
       args:
-        MAIDAN_VERSION: ${MAIDAN_VERSION:-v277.0.0}
+        MAIDAN_VERSION: ${MAIDAN_VERSION:-v312.0.0}
     environment:
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      # Dev-only: explore without minting tokens. Both are required together.
-      AUTH_DISABLED: "1"
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
+      # Auth is ON. Dev-only HMAC key for signed session/resume tokens (32+ bytes) —
+      # replace for any real deployment.
+      MAIDAN_SESSION_SECRET: "quickstart-dev-session-secret-32bytes"
+      # Keep the unauthenticated seed routes (workspace/member create) open so the demo
+      # can create its two agents. Unset this once a real deployment has its admin.
+      MAIDAN_BOOTSTRAP: "1"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:

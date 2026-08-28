@@ -69,10 +69,20 @@ Returns `200` when the process and dependencies are ready ([Production.md](Produ
 
 ### 2. Seed workspace (dev / first boot)
 
-With auth enabled, use bootstrap once ([Production.md](Production.md#bootstrap)):
+The production-safe path is the `maidan init` CLI, which writes through the store — no
+unauthenticated HTTP routes, no `AUTH_DISABLED` ([Production.md](Production.md#maidan-init-recommended)):
 
-- `MAIDAN_BOOTSTRAP=1` (and server built with `bootstrap` feature), or
-- `AUTH_DISABLED=1` in dev only.
+```sh
+DATABASE_URL=… maidan init --workspace my-team
+```
+
+It creates the initial workspace + an admin member, mints an all-capabilities bearer
+token (printed once), and refuses if the database already has a workspace. Skip to
+step 4 with that token.
+
+Alternatively, seed over the HTTP bootstrap routes once
+([Production.md](Production.md#bootstrap)) — `MAIDAN_BOOTSTRAP=1` (server built with the
+`bootstrap` feature), or `AUTH_DISABLED=1` in dev only:
 
 ```http
 POST /workspaces
@@ -90,7 +100,8 @@ Content-Type: application/json
 
 ### 3. Mint API token
 
-Requires `token:admin` on the caller (first admin via session mint or bootstrap flow).
+Requires `token:admin` on the caller (the `maidan init` token, or a first admin via
+session mint / bootstrap flow).
 
 ```http
 POST /workspaces/{workspace_id}/members/{member_id}/tokens

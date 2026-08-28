@@ -1,0 +1,18 @@
+name: maidan-quickstart
+
+# LOCAL-ONLY override for compose.quickstart.yaml — DISABLES authentication so you can
+# explore the API without minting a token. This is the "appendix" path; the default
+# (compose.quickstart.yaml alone) runs with auth ON and a `maidan init` token.
+#
+# Layer it on top of the base file:
+#   docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up -d --build
+#   ./scripts/quickstart-two-agents.sh          # no token needed
+#
+# AUTH_DISABLED fails closed unless MAIDAN_ALLOW_INSECURE_NO_AUTH=1 is also set (Cluster
+# 157) and is refused outright when MAIDAN_ENV=production. NEVER expose this to a network
+# or use it in production — it serves every request unauthenticated.
+services:
+  maidan:
+    environment:
+      AUTH_DISABLED: "1"
+      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
