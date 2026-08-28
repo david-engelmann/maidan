@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [312.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Git/GitHub projector, part 3 / finale (egress). Completes the
+bidirectional GitHub projector and the projector arc (Slack + Git). No new gate tag.
+
+### Added
+
+- **GitHub projector egress.** `GithubSender` trait + `GithubApiClient` (`github.rs`) post an
+  issue/PR comment via the GitHub REST API `POST /repos/{repo}/issues/{n}/comments` (bearer token
+  + the required `User-Agent` + `Accept: application/vnd.github+json`); `GithubError`.
+  `route_message_to_github(state, thread_id, message)` relays a Maidan message posted in a linked
+  thread out as a GitHub comment — a no-op unless a `GithubSender` is configured, and it **skips
+  GitHub-sourced messages** (the `metadata.github` tag from 311's ingress) so a projected inbound
+  comment is never echoed back (loop prevention). Hooked into the notification-router
+  `MessagePosted` arm beside the Slack egress (no new bus consumer). `AppState.github_sender` +
+  `attach_github_sender`; `main.rs` attaches a `GithubApiClient` when `MAIDAN_GITHUB_TOKEN` is set.
+  Metered `maidan_github_egress_total{outcome}`. **Completes the bidirectional GitHub projector
+  (310 ingress → 311 links+inbound → 312 egress)** and the whole projector arc (Slack 307–309 +
+  Git 310–312).
+
 ## [311.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Git/GitHub projector, part 2 (issue links + inbound routing). No new gate tag.

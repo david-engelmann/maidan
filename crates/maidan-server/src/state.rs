@@ -153,6 +153,10 @@ pub struct AppState {
     /// startup. `None` when unset — the `/integrations/github/events` route then
     /// returns `404`. Set via [`AppState::attach_github`].
     pub github: Option<Arc<crate::github::GithubConfig>>,
+    /// GitHub projector egress sender (Cluster 312), an issue-comment client set
+    /// when `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
+    /// still works). Set via [`AppState::attach_github_sender`]; tests inject a mock.
+    pub github_sender: Option<Arc<dyn crate::github::GithubSender>>,
     /// A2A Agent Card transport advertisement config (Cluster 288): public origin
     /// for absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from env.
@@ -226,6 +230,7 @@ impl AppState {
             slack: None,
             slack_sender: None,
             github: None,
+            github_sender: None,
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
@@ -256,6 +261,12 @@ impl AppState {
     /// binary when `MAIDAN_GITHUB_WEBHOOK_SECRET` is set; left `None` otherwise.
     pub fn attach_github(&mut self, cfg: Arc<crate::github::GithubConfig>) {
         self.github = Some(cfg);
+    }
+
+    /// Wire the GitHub egress sender (Cluster 312). Called by the server binary
+    /// when `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables egress.
+    pub fn attach_github_sender(&mut self, sender: Arc<dyn crate::github::GithubSender>) {
+        self.github_sender = Some(sender);
     }
 
     /// Wire cross-replica MCP resource-update notifications (Cluster 102).

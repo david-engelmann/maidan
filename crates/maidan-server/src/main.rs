@@ -470,6 +470,14 @@ async fn main() -> anyhow::Result<()> {
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a bot.
     if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
+        // Egress (Cluster 312) needs a token for issue-comment posts; ingress works
+        // without one. The egress runs on the notification-router bus consumer.
+        if let Some(token) = github_cfg.api_token.clone() {
+            state.attach_github_sender(std::sync::Arc::new(
+                maidan_server::github::GithubApiClient::new(token),
+            ));
+            tracing::info!("github projector egress configured");
+        }
         state.attach_github(std::sync::Arc::new(github_cfg));
         tracing::info!("github projector ingress configured");
     }
