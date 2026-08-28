@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [314.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Launch-prep: honest claims sheet, policies, release
+verification (Launch L3/L4/L6 + Pre-Public Hardening F2/G5). No new gate tag.
+
+### Fixed
+
+- **The README headline one-liner didn't boot.** `DATABASE_URL=sqlite::memory: cargo run
+  --bin maidan-server` errored on the required ≥32-byte `MAIDAN_SESSION_SECRET` (auth is
+  on) before `/health` answered — the most-run first command by a newcomer. It now sets a
+  dev signing key and returns `{"status":"ok"}` (verified).
+
+### Added
+
+- **`docs/Claims.md`** (published) — an honest claims sheet mapping every load-bearing
+  README/site claim to a gate, a test/CI job, or an explicit "not yet"; linked from the
+  README. **`SECURITY.md#verifying-a-release`** — copy-paste keyless-cosign verify commands
+  for the image + release binary/SBOM bundles. **`CHANGELOG-highlights.md`** — a human
+  digest since the scale gate + a paste-ready GitHub Release-notes template.
+
+### Changed
+
+- **`CONTRIBUTING.md`** reconciled to the honest model — solo-maintained, admin-merge once
+  the 8 required CI checks pass (dropped "one approval required" + a stale "after Cluster A
+  PR #5" reference).
+
 ## [313.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Launch-prep: default-secure quickstart (Pre-Public

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v314.0.0 — launch honesty: claims sheet, policies, release verification
+
+| Change | Where |
+|--------|-------|
+| Fixed the README headline one-liner (didn't boot: auth on needs a ≥32-byte `MAIDAN_SESSION_SECRET`); published an honest claims sheet mapping every README/site claim → a gate/test/"not yet" (`docs/Claims.md`, on the site + linked from README); added copy-paste keyless-cosign release verification (`SECURITY.md#verifying-a-release`) + a human `CHANGELOG-highlights.md` with a Release-notes template; reconciled `CONTRIBUTING.md` to the solo-maintained/admin-merge/8-required-checks model (Launch L3/L4/L6 + Pre-Public Hardening F2/G5) | `README.md`, `docs/Claims.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG-highlights.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh` |
+
 ## v313.0.0 — default-secure quickstart (launch hardening F4)
 
 | Change | Where |

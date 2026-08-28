@@ -39,7 +39,7 @@ top_pages=(
   "Integration" "Capability Map" "Agent Integration"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
-  "Dependencies" "Open Work" "Roadmap" "README"
+  "Dependencies" "Open Work" "Roadmap" "README" "Claims"
   "Providers" "Protocols" "Handoff" "Launch" "Promotion"
   "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"
   "Framework Integrations"
