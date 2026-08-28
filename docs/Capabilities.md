@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v308.0.0 — Slack projector: channel links + inbound routing
+
+| Change | Where |
+|--------|-------|
+| `maidan_slack_channel_links` table (pg 0051 / sqlite 0050) + `SlackChannelLink` model + store (both backends: link/get/list/unlink) — maps a Slack channel → Maidan channel/thread/member. `slack.rs` routes an inbound Slack `message` in a linked channel into the mapped thread (`"{user}: {text}"` via `post_message_with_event`); skips bot/subtype + stamps `metadata.slack` for loop prevention | `crates/maidan-store/src/{postgres,sqlite}/slack_links.rs`, `crates/maidan-server/src/slack.rs`, `crates/maidan-types/src/models.rs` |
+
 ## v307.0.0 — Slack projector ingress foundation
 
 | Change | Where |

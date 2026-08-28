@@ -228,6 +228,24 @@ pub trait Store: Send + Sync {
     /// a dead row was actually requeued.
     async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError>;
 
+    /// Slack projector channel links (Cluster 308): map a Slack channel to the
+    /// Maidan channel/thread it projects into, and the member inbound messages post
+    /// as. `link` upserts (one per Slack channel); `get` resolves the ingress
+    /// target; `list` is the workspace's links; `unlink` removes one.
+    async fn link_slack_channel(
+        &self,
+        new: NewSlackChannelLink,
+    ) -> Result<SlackChannelLink, StoreError>;
+    async fn get_slack_channel_link(
+        &self,
+        slack_channel_id: &str,
+    ) -> Result<Option<SlackChannelLink>, StoreError>;
+    async fn list_slack_channel_links(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SlackChannelLink>, StoreError>;
+    async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
+
     /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
     /// (called on presence registration), `get` returns the instant or `None`. A
     /// cross-replica signal for presence-aware email routing. No wiring yet — a
