@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v310.0.0 — GitHub projector ingress foundation
+
+| Change | Where |
+|--------|-------|
+| Config-gated GitHub projector ingress (a projector, not a bot): `POST /integrations/github/events` (unauthed; GitHub signs `X-Hub-Signature-256`) — signature verification (reuses `webhooks::verify_signature`; GitHub's `sha256=hex(HMAC)` == Maidan's own scheme) + the `ping` setup handshake; `404` when unconfigured, `401` on bad signature. `GithubConfig::from_env` (`MAIDAN_GITHUB_*`) + `AppState.github`/`attach_github` | `crates/maidan-server/src/{github.rs,app.rs,state.rs,main.rs}` |
+
 ## v309.0.0 — Slack projector egress (arc closer)
 
 | Change | Where |
