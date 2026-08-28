@@ -42,6 +42,7 @@ mod refs;
 mod reindex_jobs;
 mod retention;
 mod sessions;
+mod slack_links;
 mod slash_commands;
 mod task_schedules;
 mod thread_deps;
@@ -334,6 +335,28 @@ impl Store for SqliteStore {
     }
     async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError> {
         mail_outbox::requeue_dead(&self.pool, id).await
+    }
+
+    async fn link_slack_channel(
+        &self,
+        new: NewSlackChannelLink,
+    ) -> Result<SlackChannelLink, StoreError> {
+        slack_links::link(&self.pool, new).await
+    }
+    async fn get_slack_channel_link(
+        &self,
+        slack_channel_id: &str,
+    ) -> Result<Option<SlackChannelLink>, StoreError> {
+        slack_links::get(&self.pool, slack_channel_id).await
+    }
+    async fn list_slack_channel_links(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SlackChannelLink>, StoreError> {
+        slack_links::list(&self.pool, workspace_id).await
+    }
+    async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError> {
+        slack_links::unlink(&self.pool, slack_channel_id).await
     }
 
     async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {

@@ -122,9 +122,59 @@ pub async fn slack_events(
                 .to_string();
             Json(serde_json::json!({ "challenge": challenge })).into_response()
         }
-        // A real event — ACK fast (Slack retries on non-200). Routing a message to
-        // a linked Maidan thread is Cluster 308.
+        // A real event — route it, then ACK fast (Slack retries on non-200).
+        Some("event_callback") => {
+            if let Some(event) = payload.get("event") {
+                route_slack_event(&state, event).await;
+            }
+            StatusCode::OK.into_response()
+        }
         _ => StatusCode::OK.into_response(),
+    }
+}
+
+/// Route an inbound Slack event: a plain user `message` in a linked channel is
+/// posted into the mapped Maidan thread (Cluster 308). Best-effort — the ingress
+/// always ACKs. Bot messages and subtype events (edits/deletes/joins) are skipped:
+/// only plain user messages project, and skipping `bot_id` avoids echoing our own
+/// egress (Cluster 309) back into Maidan.
+async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
+    if event.get("type").and_then(|v| v.as_str()) != Some("message") {
+        return;
+    }
+    if event.get("bot_id").is_some() || event.get("subtype").is_some() {
+        return;
+    }
+    let (Some(slack_channel), Some(text)) = (
+        event.get("channel").and_then(|v| v.as_str()),
+        event.get("text").and_then(|v| v.as_str()),
+    ) else {
+        return;
+    };
+    let user = event
+        .get("user")
+        .and_then(|v| v.as_str())
+        .unwrap_or("slack");
+    let link = match state.store.get_slack_channel_link(slack_channel).await {
+        Ok(Some(l)) => l,
+        Ok(None) => return, // channel not linked — ignore
+        Err(err) => {
+            tracing::warn!(error = %err, "slack ingress: link lookup failed");
+            return;
+        }
+    };
+    let new = maidan_types::NewMessage {
+        thread_id: link.thread_id,
+        author_id: link.member_id,
+        body: format!("{user}: {text}"),
+        // Tag the origin so egress (Cluster 309) never echoes a Slack-sourced
+        // message back to Slack (loop prevention).
+        metadata: serde_json::json!({ "slack": { "user": user, "channel": slack_channel } }),
+        content: None,
+    };
+    match state.store.post_message_with_event(new, None).await {
+        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Err(err) => tracing::warn!(error = %err, "slack ingress: post failed"),
     }
 }
 

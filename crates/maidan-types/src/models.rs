@@ -381,6 +381,30 @@ pub struct DeadMail {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A Slack projector channel link (Cluster 308): a Slack channel projects into the
+/// `thread_id` in `channel_id`/`workspace_id`, with inbound Slack messages posted as
+/// `member_id`. One Maidan thread per Slack channel.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SlackChannelLink {
+    pub slack_channel_id: String,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub member_id: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A new Slack channel link to create (Cluster 308).
+#[derive(Debug, Clone)]
+pub struct NewSlackChannelLink {
+    pub slack_channel_id: String,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub member_id: MemberId,
+}
+
 /// How a member wants notification emails delivered (Cluster 254, Arc I). The
 /// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
 /// `Digest` opts out of per-notification emails in favour of a periodic rollup

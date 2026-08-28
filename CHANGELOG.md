@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [308.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Slack projector, part 2 (channel links + inbound routing). No new gate tag.
+
+### Added
+
+- **Slack channel links + inbound message routing.** `maidan_slack_channel_links` table (pg
+  0051 / sqlite 0050) + `SlackChannelLink`/`NewSlackChannelLink` maps a `slack_channel_id` →
+  the Maidan channel/thread it projects into + the member inbound messages post as; store (both
+  backends): `link_slack_channel` (upsert) / `get_slack_channel_link` / `list_slack_channel_links`
+  / `unlink_slack_channel`. `slack.rs` now routes an `event_callback` plain user `message` in a
+  linked channel into the mapped Maidan thread (`"{user}: {text}"`, via `post_message_with_event`
+  + `publish_stored`). Skips `bot_id`/`subtype` events and stamps `metadata.slack` for loop
+  prevention (egress, 309). Best-effort; the ingress always ACKs. Config-gated (no live wiring).
+
 ## [307.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Slack projector, part 1 (ingress foundation). No new gate tag.
