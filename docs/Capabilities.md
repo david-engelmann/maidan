@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v311.0.0 — GitHub projector: issue links + inbound routing
+
+| Change | Where |
+|--------|-------|
+| `maidan_github_issue_links` table (pg 0052 / sqlite 0051; PK `(repo, issue_number)`) + `GithubIssueLink` model + store (both backends: link/get/by-thread/list/unlink) — maps a GitHub issue/PR → Maidan channel/thread/member. `github.rs` routes an inbound `issue_comment` on a linked issue into the mapped thread (`"{login}: {body}"`); skips `Bot` comments + stamps `metadata.github` for loop prevention | `crates/maidan-store/src/{postgres,sqlite}/github_links.rs`, `crates/maidan-server/src/github.rs`, `crates/maidan-types/src/models.rs` |
+
 ## v310.0.0 — GitHub projector ingress foundation
 
 | Change | Where |

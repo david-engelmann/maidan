@@ -14,6 +14,7 @@ mod erase_workspace;
 pub mod events;
 mod follows;
 mod fsm_hooks;
+mod github_links;
 mod group_dm;
 mod import;
 mod inbox;
@@ -571,6 +572,35 @@ impl Store for PostgresStore {
     }
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError> {
         slack_links::unlink(&self.pool, slack_channel_id).await
+    }
+
+    async fn link_github_issue(
+        &self,
+        new: NewGithubIssueLink,
+    ) -> Result<GithubIssueLink, StoreError> {
+        github_links::link(&self.pool, new).await
+    }
+    async fn get_github_issue_link(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<Option<GithubIssueLink>, StoreError> {
+        github_links::get(&self.pool, repo, issue_number).await
+    }
+    async fn get_github_issue_link_by_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<GithubIssueLink>, StoreError> {
+        github_links::get_by_thread(&self.pool, thread_id).await
+    }
+    async fn list_github_issue_links(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<GithubIssueLink>, StoreError> {
+        github_links::list(&self.pool, workspace_id).await
+    }
+    async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
+        github_links::unlink(&self.pool, repo, issue_number).await
     }
 
     async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {

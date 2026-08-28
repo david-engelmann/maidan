@@ -405,6 +405,33 @@ pub struct NewSlackChannelLink {
     pub member_id: MemberId,
 }
 
+/// A GitHub projector issue/PR link (Cluster 311): a GitHub issue/PR (`repo`
+/// full-name + `issue_number`) projects into the `thread_id` in
+/// `channel_id`/`workspace_id`, with inbound comments posted as `member_id`. One
+/// Maidan thread per GitHub issue/PR.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GithubIssueLink {
+    pub repo: String,
+    pub issue_number: i64,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub member_id: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A new GitHub issue/PR link to create (Cluster 311).
+#[derive(Debug, Clone)]
+pub struct NewGithubIssueLink {
+    pub repo: String,
+    pub issue_number: i64,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub member_id: MemberId,
+}
+
 /// How a member wants notification emails delivered (Cluster 254, Arc I). The
 /// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
 /// `Digest` opts out of per-notification emails in favour of a periodic rollup

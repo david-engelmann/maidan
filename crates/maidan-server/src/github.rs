@@ -70,11 +70,74 @@ pub async fn github_events(
         .get("x-github-event")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
+    let payload: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
     match event {
         // Webhook setup handshake — GitHub sends `ping` once; a 200 confirms it.
         "ping" => Json(serde_json::json!({ "ok": true })).into_response(),
-        // Other events — ACK fast (routing lands in Cluster 311).
+        // A new comment on a linked issue/PR → the mapped Maidan thread (311).
+        "issue_comment" => {
+            route_github_issue_comment(&state, &payload).await;
+            StatusCode::OK.into_response()
+        }
         _ => StatusCode::OK.into_response(),
+    }
+}
+
+/// Route an inbound GitHub `issue_comment` event: a new comment on a linked
+/// issue/PR is posted into the mapped Maidan thread (Cluster 311). Best-effort —
+/// the ingress always ACKs. Only `action == "created"` projects; a `Bot` comment
+/// (our own egress echo, Cluster 312) is skipped to avoid loops.
+async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Value) {
+    if payload.get("action").and_then(|v| v.as_str()) != Some("created") {
+        return;
+    }
+    let comment = payload.get("comment");
+    if comment
+        .and_then(|c| c.get("user"))
+        .and_then(|u| u.get("type"))
+        .and_then(|t| t.as_str())
+        == Some("Bot")
+    {
+        return; // our own egress comment — don't re-ingest (loop prevention)
+    }
+    let (Some(repo), Some(issue_number), Some(text)) = (
+        payload
+            .get("repository")
+            .and_then(|r| r.get("full_name"))
+            .and_then(|v| v.as_str()),
+        payload
+            .get("issue")
+            .and_then(|i| i.get("number"))
+            .and_then(|v| v.as_i64()),
+        comment.and_then(|c| c.get("body")).and_then(|v| v.as_str()),
+    ) else {
+        return;
+    };
+    let author = comment
+        .and_then(|c| c.get("user"))
+        .and_then(|u| u.get("login"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("github");
+    let link = match state.store.get_github_issue_link(repo, issue_number).await {
+        Ok(Some(l)) => l,
+        Ok(None) => return, // issue not linked — ignore
+        Err(err) => {
+            tracing::warn!(error = %err, "github ingress: link lookup failed");
+            return;
+        }
+    };
+    let new = maidan_types::NewMessage {
+        thread_id: link.thread_id,
+        author_id: link.member_id,
+        body: format!("{author}: {text}"),
+        // Tag the origin so egress (Cluster 312) never echoes a GitHub-sourced
+        // message back to GitHub (loop prevention).
+        metadata: serde_json::json!({ "github": { "user": author, "repo": repo, "issue": issue_number } }),
+        content: None,
+    };
+    match state.store.post_message_with_event(new, None).await {
+        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Err(err) => tracing::warn!(error = %err, "github ingress: post failed"),
     }
 }
 
