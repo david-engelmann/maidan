@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [310.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Git/GitHub projector, part 1 (ingress foundation). No new gate tag.
+
+### Added
+
+- **GitHub projector ingress foundation** (config-gated; a projector, not a bot — no LLM in
+  Maidan). `github.rs`: `GithubConfig::from_env` (`MAIDAN_GITHUB_WEBHOOK_SECRET` +optional
+  `MAIDAN_GITHUB_TOKEN`) + the `github_events` handler. **`POST /integrations/github/events`** —
+  unauthed (GitHub authenticates via `X-Hub-Signature-256`, verified in-handler by reusing
+  `webhooks::verify_signature` — GitHub's `sha256=hex(HMAC)` is byte-identical to Maidan's own
+  webhook signature format): `404` when unconfigured, `401` on a bad signature, `200` for the
+  `ping` setup event, ACKs other events (`issue_comment` → thread routing is 311).
+  `AppState.github` + `attach_github`, wired in `main.rs`.
+
 ## [309.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Slack projector, part 3 / finale (egress). No new gate tag.

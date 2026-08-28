@@ -466,6 +466,14 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("slack projector ingress configured");
     }
 
+    // Git/GitHub projector (Cluster 310): wire the ingress config when
+    // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
+    // `/integrations/github/events` stays disabled (404). A projector, not a bot.
+    if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
+        state.attach_github(std::sync::Arc::new(github_cfg));
+        tracing::info!("github projector ingress configured");
+    }
+
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
     // delivery watermark), audit trail, and delivery tables past their age.

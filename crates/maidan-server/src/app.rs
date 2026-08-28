@@ -27,9 +27,9 @@ pub fn max_body_bytes_from_env() -> usize {
 use crate::bootstrap;
 use crate::{
     a2a_agent, app_oauth, apps, auth, automation_deliveries, consistency, delivery_ops, dm,
-    federation, fsm_hooks, group_dm, health, mcp, mcp_notifications, mcp_stream, mcp_streamable,
-    metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slack,
-    slash_commands, state::AppState, webhooks, ws,
+    federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications, mcp_stream,
+    mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes,
+    session, slack, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -588,6 +588,9 @@ pub fn router(state: AppState) -> Router {
         // its request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.
         .route("/integrations/slack/events", post(slack::slack_events))
+        // GitHub projector ingress (Cluster 310): unauthed — GitHub authenticates
+        // via its X-Hub-Signature-256, verified in-handler. 404 unless configured.
+        .route("/integrations/github/events", post(github::github_events))
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))

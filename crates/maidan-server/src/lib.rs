@@ -30,6 +30,7 @@ pub mod federation;
 pub mod federation_worker;
 pub mod fsm_hook_worker;
 pub mod fsm_hooks;
+pub mod github;
 pub mod group_dm;
 pub mod health;
 pub mod import;
