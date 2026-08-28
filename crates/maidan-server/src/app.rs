@@ -28,7 +28,7 @@ use crate::bootstrap;
 use crate::{
     a2a_agent, app_oauth, apps, auth, automation_deliveries, consistency, delivery_ops, dm,
     federation, fsm_hooks, group_dm, health, mcp, mcp_notifications, mcp_stream, mcp_streamable,
-    metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session,
+    metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes, session, slack,
     slash_commands, state::AppState, webhooks, ws,
 };
 
@@ -584,6 +584,10 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan.json", get(federation::well_known))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
+        // Slack projector ingress (Cluster 307): unauthed — Slack authenticates via
+        // its request signature (verified in-handler), not a Maidan bearer. Returns
+        // 404 unless the projector is configured.
+        .route("/integrations/slack/events", post(slack::slack_events))
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))

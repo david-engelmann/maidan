@@ -54,6 +54,7 @@ pub mod retention;
 pub mod routes;
 pub mod scheduler;
 pub mod session;
+pub mod slack;
 pub mod slash_commands;
 pub mod state;
 pub mod subscribe_grants;

@@ -141,6 +141,10 @@ pub struct AppState {
     /// no email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
+    /// Slack projector config (Cluster 307), built from `MAIDAN_SLACK_*` at startup.
+    /// `None` when unset — the config gate: the `/integrations/slack/events` route
+    /// then returns `404`. Set only by the server binary via [`AppState::attach_slack`].
+    pub slack: Option<Arc<crate::slack::SlackConfig>>,
     /// A2A Agent Card transport advertisement config (Cluster 288): public origin
     /// for absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from env.
@@ -211,6 +215,7 @@ impl AppState {
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
+            slack: None,
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
@@ -222,6 +227,13 @@ impl AppState {
     /// `MAIDAN_SMTP_*` is configured; left `None` (no email) otherwise and in tests.
     pub fn attach_mail(&mut self, transport: Arc<dyn crate::mail::MailTransport>) {
         self.mail = Some(transport);
+    }
+
+    /// Wire the Slack projector config (Cluster 307). Called by the server binary
+    /// when `MAIDAN_SLACK_SIGNING_SECRET` is set; left `None` (route disabled)
+    /// otherwise and in tests.
+    pub fn attach_slack(&mut self, cfg: Arc<crate::slack::SlackConfig>) {
+        self.slack = Some(cfg);
     }
 
     /// Wire cross-replica MCP resource-update notifications (Cluster 102).
