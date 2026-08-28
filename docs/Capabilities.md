@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v312.0.0 — GitHub projector egress (arc closer)
+
+| Change | Where |
+|--------|-------|
+| GitHub egress: `GithubSender` trait + `GithubApiClient` (`POST /repos/{repo}/issues/{n}/comments`, bearer + `User-Agent` + `Accept: application/vnd.github+json`); `route_message_to_github` relays a linked-thread Maidan message to a GitHub issue/PR comment, skipping GitHub-sourced messages (`metadata.github`) for loop safety; hooked into the notification-router `MessagePosted` path beside the Slack egress. `AppState.github_sender`/`attach_github_sender`; `get_github_issue_link_by_thread` store lookup; `maidan_github_egress_total` metric. **Completes the bidirectional GitHub projector (310–312)** and the projector arc (Slack 307–309 + Git 310–312) | `crates/maidan-server/src/{github.rs,notification_router.rs,state.rs,main.rs}` |
+
 ## v311.0.0 — GitHub projector: issue links + inbound routing
 
 | Change | Where |

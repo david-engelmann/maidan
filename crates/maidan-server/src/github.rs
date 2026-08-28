@@ -141,6 +141,105 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
     }
 }
 
+/// A failed GitHub API call.
+#[derive(Debug, thiserror::Error)]
+pub enum GithubError {
+    #[error("github http error: {0}")]
+    Http(String),
+    #[error("github api error: status {0}")]
+    Api(u16),
+}
+
+/// Outbound GitHub sender — posts an issue/PR comment in production, a mock in tests.
+#[async_trait::async_trait]
+pub trait GithubSender: Send + Sync {
+    async fn post_comment(
+        &self,
+        repo: &str,
+        issue_number: i64,
+        text: &str,
+    ) -> Result<(), GithubError>;
+}
+
+/// The production [`GithubSender`]: posts via the GitHub REST API
+/// `POST /repos/{repo}/issues/{n}/comments`.
+pub struct GithubApiClient {
+    token: String,
+    http: reqwest::Client,
+}
+
+impl GithubApiClient {
+    pub fn new(token: String) -> Self {
+        Self {
+            token,
+            http: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GithubSender for GithubApiClient {
+    async fn post_comment(
+        &self,
+        repo: &str,
+        issue_number: i64,
+        text: &str,
+    ) -> Result<(), GithubError> {
+        let url = format!("https://api.github.com/repos/{repo}/issues/{issue_number}/comments");
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "maidan-projector") // GitHub requires a User-Agent
+            .json(&serde_json::json!({ "body": text }))
+            .send()
+            .await
+            .map_err(|e| GithubError::Http(e.to_string()))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(GithubError::Api(resp.status().as_u16()))
+        }
+    }
+}
+
+/// GitHub projector egress (Cluster 312): relay a Maidan message posted in a linked
+/// thread out as a GitHub issue/PR comment. No-op unless a [`GithubSender`] is
+/// configured; **skips messages that originated in GitHub** (the `metadata.github`
+/// tag from 311's ingress) so a projected inbound comment is never echoed back —
+/// loop prevention. Best-effort (a failed post is logged + metered, not retried).
+pub async fn route_message_to_github(
+    state: &AppState,
+    thread_id: maidan_types::ThreadId,
+    message: &maidan_types::Message,
+) {
+    let Some(sender) = state.github_sender.as_ref() else {
+        return;
+    };
+    if message.metadata.get("github").is_some() {
+        return; // originated in GitHub — don't echo it back
+    }
+    let link = match state.store.get_github_issue_link_by_thread(thread_id).await {
+        Ok(Some(l)) => l,
+        Ok(None) => return, // thread not linked to a GitHub issue/PR
+        Err(err) => {
+            tracing::warn!(error = %err, "github egress: link lookup failed");
+            return;
+        }
+    };
+    match sender
+        .post_comment(&link.repo, link.issue_number, &message.body)
+        .await
+    {
+        Ok(()) => crate::metrics::record_github_egress("sent"),
+        Err(err) => {
+            tracing::warn!(error = %err, "github egress: comment post failed");
+            crate::metrics::record_github_egress("failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
