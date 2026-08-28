@@ -252,6 +252,29 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<SlackChannelLink>, StoreError>;
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
 
+    /// GitHub projector issue/PR links (Cluster 311): map a GitHub issue/PR
+    /// (`repo`, `issue_number`) to the Maidan channel/thread it projects into.
+    /// `link` upserts; `get` resolves ingress; `get_by_thread` is the egress reverse
+    /// lookup (Cluster 312); `list` is the workspace's links; `unlink` removes one.
+    async fn link_github_issue(
+        &self,
+        new: NewGithubIssueLink,
+    ) -> Result<GithubIssueLink, StoreError>;
+    async fn get_github_issue_link(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<Option<GithubIssueLink>, StoreError>;
+    async fn get_github_issue_link_by_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<GithubIssueLink>, StoreError>;
+    async fn list_github_issue_links(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<GithubIssueLink>, StoreError>;
+    async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError>;
+
     /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
     /// (called on presence registration), `get` returns the instant or `None`. A
     /// cross-replica signal for presence-aware email routing. No wiring yet — a

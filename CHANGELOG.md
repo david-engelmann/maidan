@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [311.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Git/GitHub projector, part 2 (issue links + inbound routing). No new gate tag.
+
+### Added
+
+- **GitHub issue links + inbound comment routing.** `maidan_github_issue_links` table (pg 0052 /
+  sqlite 0051; PK `(repo, issue_number)`) + `GithubIssueLink`/`NewGithubIssueLink` maps a GitHub
+  issue/PR → the Maidan channel/thread it projects into + the member inbound comments post as;
+  store (both backends): `link_github_issue` (upsert) / `get_github_issue_link` /
+  `get_github_issue_link_by_thread` / `list_github_issue_links` / `unlink_github_issue`.
+  `github.rs` now routes an `issue_comment` (`action == "created"`) on a linked issue/PR into the
+  mapped thread (`"{login}: {body}"`, via `post_message_with_event` + `publish_stored`), skipping
+  `Bot` comments and stamping `metadata.github` for egress loop prevention (312). Config-gated.
+
 ## [310.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Git/GitHub projector, part 1 (ingress foundation). No new gate tag.
