@@ -349,6 +349,12 @@ impl Store for SqliteStore {
     ) -> Result<Option<SlackChannelLink>, StoreError> {
         slack_links::get(&self.pool, slack_channel_id).await
     }
+    async fn get_slack_channel_link_by_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<SlackChannelLink>, StoreError> {
+        slack_links::get_by_thread(&self.pool, thread_id).await
+    }
     async fn list_slack_channel_links(
         &self,
         workspace_id: WorkspaceId,

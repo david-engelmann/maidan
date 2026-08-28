@@ -454,6 +454,14 @@ async fn main() -> anyhow::Result<()> {
     // `MAIDAN_SLACK_SIGNING_SECRET` is set — otherwise `/integrations/slack/events`
     // stays disabled (404). A projector, not a bot: no LLM in Maidan.
     if let Some(slack_cfg) = maidan_server::slack::SlackConfig::from_env() {
+        // Egress (Cluster 309) needs a bot token for chat.postMessage; ingress works
+        // without one. The egress runs on the notification-router bus consumer.
+        if let Some(bot_token) = slack_cfg.bot_token.clone() {
+            state.attach_slack_sender(std::sync::Arc::new(
+                maidan_server::slack::SlackWebClient::new(bot_token),
+            ));
+            tracing::info!("slack projector egress configured");
+        }
         state.attach_slack(std::sync::Arc::new(slack_cfg));
         tracing::info!("slack projector ingress configured");
     }

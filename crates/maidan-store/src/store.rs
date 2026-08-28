@@ -240,6 +240,12 @@ pub trait Store: Send + Sync {
         &self,
         slack_channel_id: &str,
     ) -> Result<Option<SlackChannelLink>, StoreError>;
+    /// Resolve the Slack link for a Maidan thread — the egress reverse lookup
+    /// (Cluster 309).
+    async fn get_slack_channel_link_by_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<SlackChannelLink>, StoreError>;
     async fn list_slack_channel_links(
         &self,
         workspace_id: WorkspaceId,

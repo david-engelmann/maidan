@@ -178,6 +178,105 @@ async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
     }
 }
 
+/// A failed Slack Web API call.
+#[derive(Debug, thiserror::Error)]
+pub enum SlackError {
+    #[error("slack http error: {0}")]
+    Http(String),
+    #[error("slack api error: {0}")]
+    Api(String),
+}
+
+/// Outbound Slack sender — `chat.postMessage` in production, a mock in tests.
+#[async_trait::async_trait]
+pub trait SlackSender: Send + Sync {
+    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError>;
+}
+
+/// The production [`SlackSender`]: posts via the Slack Web API `chat.postMessage`.
+pub struct SlackWebClient {
+    bot_token: String,
+    http: reqwest::Client,
+}
+
+impl SlackWebClient {
+    pub fn new(bot_token: String) -> Self {
+        Self {
+            bot_token,
+            http: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl SlackSender for SlackWebClient {
+    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
+        let resp = self
+            .http
+            .post("https://slack.com/api/chat.postMessage")
+            .bearer_auth(&self.bot_token)
+            .json(&serde_json::json!({ "channel": channel, "text": text }))
+            .send()
+            .await
+            .map_err(|e| SlackError::Http(e.to_string()))?;
+        // Slack returns HTTP 200 with `{"ok": false, "error": ...}` on logical errors.
+        let v: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| SlackError::Http(e.to_string()))?;
+        if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+            Ok(())
+        } else {
+            Err(SlackError::Api(
+                v.get("error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+            ))
+        }
+    }
+}
+
+/// Slack projector egress (Cluster 309): relay a Maidan message posted in a linked
+/// thread out to its Slack channel. No-op unless a [`SlackSender`] is configured;
+/// **skips messages that originated in Slack** (the `metadata.slack` tag from the
+/// ingress, Cluster 308) so a projected inbound message is never echoed back —
+/// loop prevention. Best-effort (a failed post is logged + metered, not retried).
+pub async fn route_message_to_slack(
+    state: &AppState,
+    thread_id: maidan_types::ThreadId,
+    message: &maidan_types::Message,
+) {
+    let Some(sender) = state.slack_sender.as_ref() else {
+        return;
+    };
+    if message.metadata.get("slack").is_some() {
+        return; // originated in Slack — don't echo it back
+    }
+    let link = match state
+        .store
+        .get_slack_channel_link_by_thread(thread_id)
+        .await
+    {
+        Ok(Some(l)) => l,
+        Ok(None) => return, // thread not linked to a Slack channel
+        Err(err) => {
+            tracing::warn!(error = %err, "slack egress: link lookup failed");
+            return;
+        }
+    };
+    match sender
+        .post_message(&link.slack_channel_id, &message.body)
+        .await
+    {
+        Ok(()) => crate::metrics::record_slack_egress("sent"),
+        Err(err) => {
+            tracing::warn!(error = %err, "slack egress: post failed");
+            crate::metrics::record_slack_egress("failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
