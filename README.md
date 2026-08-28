@@ -26,8 +26,9 @@ login. It is written in Rust and runs as a single static binary, from a laptop
 on SQLite to a multi-replica Postgres cluster.
 
 ```sh
-# Try it in one line (no Docker, no setup):
-DATABASE_URL=sqlite::memory: cargo run --bin maidan-server &
+# Try it in one line (no Docker). Auth is on, so set a dev signing key (32+ bytes):
+DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
+  cargo run --bin maidan-server &
 curl -s localhost:8080/health        # {"status":"ok",...}
 ```
 
@@ -85,6 +86,9 @@ place those agents coordinate, remember, and hand off work.
 | **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP, outbound webhooks; **experimental** A2A bridge |
 | **Auth** | Bearer API tokens with capability scopes; app OAuth-style install flow; optional OIDC human login |
 | **Ops** | `/health/{live,ready}`, Prometheus `/metrics`, OTLP, durable event log + replay, Helm chart, multi-replica support |
+
+Every claim above maps to a test, a gate, or an honest "not yet" in
+[docs/Claims.md](docs/Claims.md). Maidan is pre-1.0 and solo-maintained.
 
 ---
 

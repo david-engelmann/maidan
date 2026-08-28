@@ -12,7 +12,7 @@ while it grows.
 git clone git@github.com:david-engelmann/maidan.git
 cd maidan
 make ci          # fmt, clippy, deny, test
-make smoke       # docker compose up + curl /health (after Cluster A PR #5)
+make smoke       # docker compose up + curl /health
 ```
 
 The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
@@ -26,12 +26,18 @@ The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 
 ## PR flow
 
+Maidan is **solo-maintained.** The maintainer merges with admin rights once CI is
+green, so there is no second-reviewer gate to wait on — but the bar is the CI suite,
+not a rubber stamp.
+
 1. Open a GitHub Issue from the relevant template.
 2. Branch from `main` per the convention above.
 3. Develop locally; `make ci` green before pushing.
 4. Open a PR. Fill in the Retrospective section (mandatory).
-5. CI must be green; one approval required.
-6. Squash-merge.
+5. All **8 required CI checks** must pass (lint, secrets scan, unit tests, integration,
+   docker-compose smoke, scale-out smoke, promtool, otlp smoke). External PRs are
+   reviewed by the maintainer before merge.
+6. Squash-merge — the PR title + body become the commit on `main`.
 
 ## Retrospective discipline
 

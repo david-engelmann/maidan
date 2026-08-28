@@ -51,6 +51,34 @@ Include in the report:
 - Dependency vulnerabilities with an upstream fix already available
   (upgrade locally and open a routine PR).
 
+## Verifying a release
+
+Every release is signed keyless with [cosign](https://github.com/sigstore/cosign) via
+the build job's GitHub OIDC identity — no private key, each signature self-verifiable
+against the Sigstore transparency log. Verify before you trust a tag.
+
+**Container image** (signed by immutable digest):
+
+```sh
+cosign verify ghcr.io/david-engelmann/maidan-server:v313.0.0 \
+  --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+**Release binary + SBOM** (each artifact ships a `.cosign.bundle` = signature + cert +
+Rekor proof; download the tarball and its bundle from the release page):
+
+```sh
+cosign verify-blob \
+  --bundle maidan-x86_64-unknown-linux-gnu.tar.gz.cosign.bundle \
+  --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  maidan-x86_64-unknown-linux-gnu.tar.gz
+```
+
+A `sbom.json` (CycloneDX) is published and signed the same way. A verification failure
+means the artifact was not produced by this repo's release pipeline — do not run it.
+
 ## Cryptography
 
 Cryptographic bugs (key handling, signature verification, nonce reuse)
