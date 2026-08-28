@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v313.0.0 — default-secure quickstart (launch hardening F4)
+
+| Change | Where |
+|--------|-------|
+| The quickstart happy path is token-based, not `AUTH_DISABLED` (Pre-Public Hardening F4 / Launch L1): `compose.quickstart.yaml` runs auth ON (dev `MAIDAN_SESSION_SECRET` + `MAIDAN_BOOTSTRAP=1`), the README mints a bearer token via `maidan init` and runs the two-agent demo with it, and `scripts/quickstart-two-agents.sh` is auth-aware (`MAIDAN_TOKEN`/`MAIDAN_WORKSPACE`). New `compose.quickstart.insecure.yaml` override demotes `AUTH_DISABLED` to a clearly-labelled local-only appendix. Quickstart image bumped `v277.0.0`→`v312.0.0` (re-pinned tarball SHAs; `maidan init` landed in `v279`). Both paths validated end-to-end; CI validates both compose files | `compose.quickstart.yaml`, `compose.quickstart.insecure.yaml`, `docker/Dockerfile.quickstart`, `scripts/quickstart-two-agents.sh`, `README.md`, `docs/Integration.md`, `.github/workflows/ci.yml` |
+
 ## v312.0.0 — GitHub projector egress (arc closer)
 
 | Change | Where |

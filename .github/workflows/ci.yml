@@ -281,6 +281,7 @@ jobs:
         # The full end-to-end (pulls a pinned release binary) is verified locally.
         run: |
           docker compose -f compose.quickstart.yaml config -q
+          docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml config -q
           bash -n scripts/quickstart-two-agents.sh
       - name: build images
         run: |

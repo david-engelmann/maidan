@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [313.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Launch-prep: default-secure quickstart (Pre-Public
+Hardening F4 / Launch L1). No new gate tag.
+
+### Changed
+
+- **The quickstart is default-secure — the happy path mints a token, not
+  `AUTH_DISABLED`.** `compose.quickstart.yaml` now runs with auth ON (added a dev
+  `MAIDAN_SESSION_SECRET` + `MAIDAN_BOOTSTRAP=1`; removed `AUTH_DISABLED`). The README
+  quickstart mints an all-capabilities bearer token via `maidan init` and runs the
+  two-agent demo with it; `scripts/quickstart-two-agents.sh` is now auth-aware
+  (`MAIDAN_TOKEN` + `MAIDAN_WORKSPACE`) and authenticates every content call.
+  Integration.md's seed section leads with `maidan init`. The quickstart image
+  (`docker/Dockerfile.quickstart`) bumped its pinned, SHA-256-verified release
+  `v277.0.0` → `v312.0.0` (`maidan init` landed in `v279`).
+
+### Added
+
+- **`compose.quickstart.insecure.yaml`** — a clearly-labelled, local-only override that
+  layers `AUTH_DISABLED` back on for "explore without a token" (the demoted appendix
+  path). CI now validates both the base quickstart compose and the base+override merge.
+
 ## [312.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Git/GitHub projector, part 3 / finale (egress). Completes the
