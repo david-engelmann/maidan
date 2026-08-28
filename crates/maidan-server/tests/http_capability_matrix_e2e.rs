@@ -243,7 +243,10 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template.to_string();
     }
     if template.starts_with("/operator/") {
-        return template.replace("{job_id}", &f.workspace);
+        // Any UUID works for {job_id}/{id} — cap() 403s before the id is looked up.
+        return template
+            .replace("{job_id}", &f.workspace)
+            .replace("{id}", &f.workspace);
     }
     if template.starts_with("/task-schedules/") {
         // Any UUID works — the cap() check 403s before the id is looked up.

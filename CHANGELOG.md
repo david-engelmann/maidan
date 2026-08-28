@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [306.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Durable mail retry queue, part 3 / finale. No new gate tag.
+
+### Added
+
+- **Mail DLQ operator ops.** `GET /operator/mail/dead` (`token:admin`) lists dead-lettered
+  notification emails (`DeadMail`: id/to/subject/attempts/last_error/updated_at; `limit`
+  1..=500, default 100), newest first; `POST /operator/mail/dead/{id}/requeue` (`token:admin`)
+  resets a dead entry to `pending`, due now, attempts cleared, so the `mail_worker` retries it
+  (`204`, or `404` if no dead entry has that id). Store: `list_dead_mail` + `requeue_dead_mail`
+  (both backends). **Closes the durable-mail-retry arc (304 outbox → 305 worker → 306 DLQ ops).**
+
 ## [305.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Durable mail retry queue, part 2. No new gate tag.

@@ -8,7 +8,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::StoreError;
-use maidan_types::{MailOutbox, MailOutboxId, NewMailOutbox};
+use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox};
 
 pub async fn enqueue(pool: &SqlitePool, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
     let id = MailOutboxId::new();
@@ -118,6 +118,46 @@ pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
         .fetch_one(pool)
         .await?;
     Ok(row.get::<i64, _>("c"))
+}
+
+pub async fn list_dead(pool: &SqlitePool, limit: i64) -> Result<Vec<DeadMail>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, to_address, subject, attempts, last_error, updated_at
+         FROM maidan_mail_outbox
+         WHERE status = 'dead'
+         ORDER BY updated_at DESC
+         LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_dead).collect())
+}
+
+pub async fn requeue_dead(pool: &SqlitePool, id: MailOutboxId) -> Result<bool, StoreError> {
+    let now = Utc::now().to_rfc3339();
+    let res = sqlx::query(
+        "UPDATE maidan_mail_outbox
+         SET status = 'pending', attempts = 0, next_attempt_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'dead'",
+    )
+    .bind(&now)
+    .bind(&now)
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+fn row_to_dead(row: &sqlx::sqlite::SqliteRow) -> DeadMail {
+    DeadMail {
+        id: MailOutboxId(row.get("id")),
+        to_address: row.get("to_address"),
+        subject: row.get("subject"),
+        attempts: row.get("attempts"),
+        last_error: row.get("last_error"),
+        updated_at: row.get("updated_at"),
+    }
 }
 
 fn row_to_mail(row: &sqlx::sqlite::SqliteRow) -> MailOutbox {

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v306.0.0 — mail DLQ ops (arc closer)
+
+| Change | Where |
+|--------|-------|
+| `GET /operator/mail/dead` + `POST /operator/mail/dead/{id}/requeue` (`token:admin`) — list dead-lettered notification emails (`DeadMail` view) + requeue one for retry (resets to pending, attempts cleared). Store `list_dead_mail`/`requeue_dead_mail` both backends. **Closes the durable-mail-retry arc (304→306)** | `crates/maidan-server/src/routes/mail_ops.rs`, `crates/maidan-store/src/{postgres,sqlite}/mail_outbox.rs`, `crates/maidan-types/src/models.rs`, `contracts/http-capability-map.json` |
+
 ## v305.0.0 — mail-outbox worker + router enqueue
 
 | Change | Where |

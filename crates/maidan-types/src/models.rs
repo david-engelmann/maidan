@@ -368,6 +368,19 @@ pub struct NewMailOutbox {
     pub body: String,
 }
 
+/// A dead-lettered outbox entry for the operator DLQ view (Cluster 306): a message
+/// that exhausted its retries. `last_error` is why the final attempt failed.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeadMail {
+    pub id: MailOutboxId,
+    pub to_address: String,
+    pub subject: String,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// How a member wants notification emails delivered (Cluster 254, Arc I). The
 /// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
 /// `Digest` opts out of per-notification emails in favour of a periodic rollup
