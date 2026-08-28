@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [307.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Slack projector, part 1 (ingress foundation). No new gate tag.
+
+### Added
+
+- **Slack projector ingress foundation** (config-gated; a projector, not a bot — no LLM in
+  Maidan). `slack.rs`: `SlackConfig::from_env` (`MAIDAN_SLACK_SIGNING_SECRET` +optional
+  `MAIDAN_SLACK_BOT_TOKEN`), `verify_slack_signature` (Slack's `v0:{ts}:{body}` HMAC-SHA256,
+  ±5-min replay window, constant-time) + `slack_signature`, and the `slack_events` handler.
+  **`POST /integrations/slack/events`** — unauthed (Slack signs its own requests, verified
+  in-handler), on the public router: `404` when unconfigured, `401` on a bad/stale signature,
+  echoes the `url_verification` setup challenge, ACKs `event_callback`s (message → thread
+  routing is 308). `AppState.slack` + `attach_slack`, wired in `main.rs`.
+
 ## [306.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Durable mail retry queue, part 3 / finale. No new gate tag.

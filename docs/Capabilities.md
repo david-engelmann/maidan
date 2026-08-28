@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v307.0.0 — Slack projector ingress foundation
+
+| Change | Where |
+|--------|-------|
+| Config-gated Slack projector ingress (a projector, not a bot — no LLM in Maidan): `POST /integrations/slack/events` (unauthed; Slack signs its own requests) — signature verification (`v0` HMAC-SHA256, ±5-min replay, constant-time) + the Events-API `url_verification` handshake; `404` when unconfigured, `401` on bad signature. `SlackConfig::from_env` (`MAIDAN_SLACK_*`) + `AppState.slack`/`attach_slack` | `crates/maidan-server/src/{slack.rs,app.rs,state.rs,main.rs}` |
+
 ## v306.0.0 — mail DLQ ops (arc closer)
 
 | Change | Where |

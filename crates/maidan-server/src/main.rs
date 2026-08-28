@@ -450,6 +450,14 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Slack projector (Cluster 307): wire the ingress config when
+    // `MAIDAN_SLACK_SIGNING_SECRET` is set — otherwise `/integrations/slack/events`
+    // stays disabled (404). A projector, not a bot: no LLM in Maidan.
+    if let Some(slack_cfg) = maidan_server::slack::SlackConfig::from_env() {
+        state.attach_slack(std::sync::Arc::new(slack_cfg));
+        tracing::info!("slack projector ingress configured");
+    }
+
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
     // delivery watermark), audit trail, and delivery tables past their age.
