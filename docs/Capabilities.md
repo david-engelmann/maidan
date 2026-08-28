@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v309.0.0 — Slack projector egress (arc closer)
+
+| Change | Where |
+|--------|-------|
+| Slack egress: `SlackSender` trait + `SlackWebClient` (`chat.postMessage`); `route_message_to_slack` relays a linked-thread Maidan message to Slack, skipping Slack-sourced messages (`metadata.slack`) for loop safety; hooked into the notification-router `MessagePosted` path. `AppState.slack_sender`/`attach_slack_sender`; `get_slack_channel_link_by_thread` store lookup; `maidan_slack_egress_total` metric. **Completes the bidirectional Slack projector (307–309)** | `crates/maidan-server/src/{slack.rs,notification_router.rs,state.rs,main.rs}`, `crates/maidan-store/src/{postgres,sqlite}/slack_links.rs` |
+
 ## v308.0.0 — Slack projector: channel links + inbound routing
 
 | Change | Where |

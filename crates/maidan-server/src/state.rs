@@ -145,6 +145,10 @@ pub struct AppState {
     /// `None` when unset — the config gate: the `/integrations/slack/events` route
     /// then returns `404`. Set only by the server binary via [`AppState::attach_slack`].
     pub slack: Option<Arc<crate::slack::SlackConfig>>,
+    /// Slack projector egress sender (Cluster 309), a `chat.postMessage` client set
+    /// when `MAIDAN_SLACK_BOT_TOKEN` is configured. `None` disables egress (inbound
+    /// still works). Set via [`AppState::attach_slack_sender`]; tests inject a mock.
+    pub slack_sender: Option<Arc<dyn crate::slack::SlackSender>>,
     /// A2A Agent Card transport advertisement config (Cluster 288): public origin
     /// for absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from env.
@@ -216,6 +220,7 @@ impl AppState {
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
             slack: None,
+            slack_sender: None,
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
@@ -234,6 +239,12 @@ impl AppState {
     /// otherwise and in tests.
     pub fn attach_slack(&mut self, cfg: Arc<crate::slack::SlackConfig>) {
         self.slack = Some(cfg);
+    }
+
+    /// Wire the Slack egress sender (Cluster 309). Called by the server binary when
+    /// `MAIDAN_SLACK_BOT_TOKEN` is set; tests inject a mock. `None` disables egress.
+    pub fn attach_slack_sender(&mut self, sender: Arc<dyn crate::slack::SlackSender>) {
+        self.slack_sender = Some(sender);
     }
 
     /// Wire cross-replica MCP resource-update notifications (Cluster 102).

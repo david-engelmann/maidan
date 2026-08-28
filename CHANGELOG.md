@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [309.0.0] — 2026-08-27
+
+Post-gate hardening (Phase XXIV). Slack projector, part 3 / finale (egress). No new gate tag.
+
+### Added
+
+- **Slack projector egress** — a Maidan message in a linked thread now appears in Slack,
+  completing the bidirectional projector. `SlackSender` trait + `SlackWebClient` (`chat.postMessage`
+  via `bot_token`); `route_message_to_slack` relays a message's body to the thread's Slack channel
+  (via the new store `get_slack_channel_link_by_thread`), **skipping Slack-sourced messages**
+  (`metadata.slack` tag) so the ingress↔egress loop is closed both ways. Hooked into the existing
+  notification-router `MessagePosted` handling (no new bus consumer). `AppState.slack_sender` +
+  `attach_slack_sender` (wired in `main.rs` from `MAIDAN_SLACK_BOT_TOKEN`); metered
+  `maidan_slack_egress_total{outcome}`. Config-gated. **Completes the Slack projector (307–309).**
+
 ## [308.0.0] — 2026-08-27
 
 Post-gate hardening (Phase XXIV). Slack projector, part 2 (channel links + inbound routing). No new gate tag.

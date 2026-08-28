@@ -238,6 +238,11 @@ pub fn record_email_delivered(outcome: &str) {
     counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// Slack projector egress outcomes (Cluster 309): `sent` / `failed`.
+pub fn record_slack_egress(outcome: &str) {
+    counter!("maidan_slack_egress_total", "outcome" => outcome.to_string()).increment(1);
+}
+
 /// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
 /// `created` when the task thread was created, `failed` when creation errored.
 pub fn record_task_schedule_fired(outcome: &str) {

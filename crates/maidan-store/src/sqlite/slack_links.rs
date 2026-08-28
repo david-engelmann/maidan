@@ -48,6 +48,19 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_link))
 }
 
+pub async fn get_by_thread(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Option<SlackChannelLink>, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {COLS} FROM maidan_slack_channel_links WHERE thread_id = ? LIMIT 1"
+    ))
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_link))
+}
+
 pub async fn list(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

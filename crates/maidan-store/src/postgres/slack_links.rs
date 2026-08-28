@@ -44,6 +44,21 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_link))
 }
 
+/// Resolve the link for a Maidan thread (the egress reverse lookup, Cluster 309).
+/// One Slack channel per thread, so `LIMIT 1`.
+pub async fn get_by_thread(
+    pool: &PgPool,
+    thread_id: ThreadId,
+) -> Result<Option<SlackChannelLink>, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {COLS} FROM maidan_slack_channel_links WHERE thread_id = $1 LIMIT 1"
+    ))
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_link))
+}
+
 pub async fn list(
     pool: &PgPool,
     workspace_id: WorkspaceId,

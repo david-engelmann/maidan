@@ -160,6 +160,10 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             if dm_conversation_id.is_some() {
                 return Ok(());
             }
+            // Slack projector egress (Cluster 309): if this thread is linked to a
+            // Slack channel and the message didn't originate in Slack, relay it out.
+            // Best-effort + a no-op unless a Slack sender is configured.
+            crate::slack::route_message_to_slack(state, *thread_id, message).await;
             // Followers of the channel and/or the thread, minus the author (you
             // don't get notified of your own message). The set dedups a member who
             // follows both; the DB unique index is the cross-replica backstop.
