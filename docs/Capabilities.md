@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v315.0.0 — pre-launch correctness & DX + research-sweep fold
+
+| Change | Where |
+|--------|-------|
+| `hash-v1` embedding default warns at boot ("not semantically meaningful; set `MAIDAN_EMBEDDING_PROVIDER`") so a stranger isn't silently served near-random "semantic" hits; fixed the README no-Docker `MAIDAN_SESSION_SECRET` (was 28 bytes, needs ≥32); `event_stream` replay logs a failed delivery-cursor advance instead of `let _ =`; defensive `ensure_acting_member` on the legacy `/members/:id/mentions`+`/inbox` handlers (the audit's "session can read another's inbox" was a **false positive** — bearer-only routes, no `/ui/api` mount; guards future-proof a later mount). Folded the 2026-08-28 research sweep into Open Work (v314 currency + 315–318 + the fidelity/context flagship arc + anti-goals) | `crates/maidan-server/src/{main.rs,event_stream.rs,routes/member.rs}`, `README.md`, `crates/maidan-server/tests/ui_channels_e2e.rs`, `docs/Open Work.md` |
+
 ## v314.0.0 — launch honesty: claims sheet, policies, release verification
 
 | Change | Where |

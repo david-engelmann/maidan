@@ -63,6 +63,12 @@ pub async fn list_mentions_for_member(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    // Defensive self-only (Cluster 315). These legacy inbox/mentions routes are mounted
+    // ONLY on the bearer-only `protected` router, and a bearer is the act-as-any
+    // orchestrator (Cluster-202/203 model), so this is a strict no-op for every current
+    // caller. It matches the sibling notification handlers and pins a session to self IF
+    // these are ever also session-mounted under `/ui/api` (the Cluster-251 pattern).
+    ensure_acting_member(&auth, MemberId(id))?;
     Ok(Json(
         state
             .store
@@ -80,6 +86,9 @@ pub async fn get_member_inbox(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    // Defensive self-only (Cluster 315; bearer-only route today → no-op for current
+    // callers; guards a future `/ui/api` session mount). See list_mentions_for_member.
+    ensure_acting_member(&auth, MemberId(id))?;
     Ok(Json(
         state.store.list_member_inbox(MemberId(id), q.limit).await?,
     ))
@@ -94,6 +103,9 @@ pub async fn mark_member_inbox_read(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    // Defensive self-only (Cluster 315). `advance_inbox_last_read_at` is a per-member
+    // write; bearer-only route today (act-as-any → no-op), guards a future session mount.
+    ensure_acting_member(&auth, MemberId(id))?;
     state
         .store
         .advance_inbox_last_read_at(MemberId(id), body.read_through)

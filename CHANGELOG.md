@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [315.0.0] — 2026-08-28
+
+Post-gate hardening (Phase XXIV). Pre-launch correctness & DX + the 2026-08-28
+research-sweep fold into Open Work. No new gate tag.
+
+### Fixed
+
+- **`hash-v1` embedding default now warns at boot.** The default provider is a deterministic
+  hash, not a real embedding — "semantic search" silently returns near-random results if
+  `MAIDAN_EMBEDDING_PROVIDER` is unset. A loud boot `warn!` names the issue + the fix
+  (`openai-compatible`); lexical search is unaffected.
+- **README "Run it (SQLite, no Docker)" didn't boot** — a 28-byte `MAIDAN_SESSION_SECRET`
+  (`session/cookie.rs` requires ≥32). Fixed to a ≥32-byte value.
+- **`event_stream` replay** now logs a failed delivery-cursor advance instead of discarding it
+  with `let _ =` (correctness was always safe — a stuck cursor re-delivers; the failure is now
+  observable).
+
+### Changed
+
+- Added defensive `ensure_acting_member` self-only guards to the legacy `/members/:id/mentions`
+  + `/inbox` handlers. **Note:** the audit's "a session can read another member's inbox" was a
+  **false positive** — those routes are bearer-only (`auth::middleware` rejects sessions → 401)
+  with no `/ui/api` mount, and bearers are act-as-any by design. The guards are a no-op for
+  current callers; they future-proof a later `/ui/api` session mount (the Cluster-251 pattern).
+- **Open Work folded to `v314`** (2026-08-28 research sweep): corrected the SDK/mail/projector/
+  atomicity/import/DM staleness and added the sequenced 315–318 + fidelity/context flagship arc
+  with a locked anti-goals block.
+
 ## [314.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Launch-prep: honest claims sheet, policies, release

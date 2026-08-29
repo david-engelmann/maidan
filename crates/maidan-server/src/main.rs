@@ -249,6 +249,17 @@ async fn main() -> anyhow::Result<()> {
         dim = embedding_provider.dimension(),
         "embedding provider configured"
     );
+    // `hash-v1` is a deterministic hash, not a real embedding — semantic search over it
+    // returns near-random results. Warn loudly at boot so a stranger who leaves the
+    // provider unset isn't silently served meaningless "semantic" hits (Cluster 315).
+    if embedding_provider.model_name() == "hash-v1" {
+        tracing::warn!(
+            "embedding provider is `hash-v1`: a deterministic hash, NOT semantically \
+             meaningful — semantic search will return near-random results. Set \
+             MAIDAN_EMBEDDING_PROVIDER=openai-compatible (+ MAIDAN_EMBEDDING_* config) for \
+             real semantic search; lexical/full-text search is unaffected."
+        );
+    }
 
     // Register the active model in the per-model table scheme at boot (Cluster
     // 117) so it's queryable before the first write and a dimension mismatch

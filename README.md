@@ -146,7 +146,7 @@ and is refused outright when `MAIDAN_ENV=production` (see
 ```sh
 # Terminal 1 — run the server with auth on. A file-backed SQLite DB lets `maidan init`
 # and the server share one database.
-MAIDAN_SESSION_SECRET=dev-session-secret-change-me MAIDAN_BOOTSTRAP=1 \
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
 DATABASE_URL="sqlite://maidan.db?mode=rwc" \
   cargo run --bin maidan-server
 

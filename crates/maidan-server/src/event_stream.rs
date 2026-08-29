@@ -199,9 +199,20 @@ pub async fn replay_matching_events(
     if high_water > after_id {
         if let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
         {
-            let _ = store
+            // Best-effort: a failed advance is safe for correctness (a stuck cursor
+            // re-delivers, never skips — at-least-once holds) but must be observable
+            // rather than silently discarded (Cluster 315; the reconcile + flush paths
+            // already log). Not fatal — the reconcile path advances authoritatively.
+            if let Err(err) = store
                 .advance_delivery_cursor(consumer_id, workspace_id, high_water)
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    error = %err,
+                    %consumer_id,
+                    "replay: delivery-cursor advance failed (re-delivery on next replay)"
+                );
+            }
         }
     }
     Ok(ReplayOutcome {

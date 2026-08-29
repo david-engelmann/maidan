@@ -372,3 +372,48 @@ async fn session_cannot_react_as_another_member() {
 
     h.server.abort();
 }
+
+/// Cluster 315: the legacy `/members/:id/mentions` + `/inbox` routes live ONLY on the
+/// bearer-only `protected` router, so a browser session cannot reach them — the audit's
+/// "a session can read another member's inbox" was a false positive on reachability (a
+/// bearer is act-as-any by design). This documents that truth: a session cookie with no
+/// bearer gets `401`, never another member's data. (The handlers still carry a defensive
+/// `ensure_acting_member` guarding a future `/ui/api` session mount — the Cluster-251
+/// pattern; its logic is unit-tested in `routes::ensure_acting_member`.)
+#[tokio::test]
+async fn legacy_inbox_and_mentions_are_bearer_only_not_session_reachable() {
+    let h = spawn_oidc().await;
+    let base = format!("http://{}", h.addr);
+    let cookie = login_session(&h).await;
+    let session: serde_json::Value = h
+        .client
+        .get(format!("{base}/auth/session"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("session")
+        .json()
+        .await
+        .expect("session json");
+    // Even presenting its OWN member id, a session can't use these bearer-only routes.
+    let my_id = session["member_id"].as_str().expect("member_id");
+    for path in [
+        format!("{base}/members/{my_id}/inbox"),
+        format!("{base}/members/{my_id}/mentions"),
+    ] {
+        let resp = h
+            .client
+            .get(&path)
+            .header(reqwest::header::COOKIE, &cookie)
+            .send()
+            .await
+            .expect("session on bearer-only route");
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "a session cookie does not authenticate on the bearer-only route {path}"
+        );
+    }
+
+    h.server.abort();
+}
