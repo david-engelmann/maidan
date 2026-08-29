@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v320.0.0 — reverse-edge + by-type reference queries (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| The traversal payoff for 319's typed relations: `Store::list_references_to` (reverse edge, reuses the existing `idx_references_dst` index — no migration); `GET /references` reshaped to query FROM a source or TO a target + optional `relation` filter (exactly one pair, anchor-gated, same route/cap); new MCP `list_references` tool (MCP could add but not list references). "What refutes X / what references this" is now queryable. **Cluster 2 of the fidelity + context flagship arc** | `crates/maidan-store/src/{store.rs,{postgres,sqlite}/{refs,mod}.rs}`, `crates/maidan-server/src/{dto.rs,routes/reference.rs}`, `crates/maidan-mcp/src/tools/{reference.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
+
 ## v319.0.0 — typed reference relations (flagship arc keystone)
 
 | Change | Where |

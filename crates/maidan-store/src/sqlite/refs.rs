@@ -88,6 +88,26 @@ pub async fn list_from(
     rows.iter().map(row_to_reference).collect()
 }
 
+/// References pointing AT one target — the reverse edge (Cluster 320). Uses the
+/// existing `idx_references_dst` index. Ordered `created_at ASC`.
+pub async fn list_to(
+    pool: &SqlitePool,
+    dst_kind: RefSide,
+    dst_id: Uuid,
+) -> Result<Vec<Reference>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
+         FROM maidan_references
+         WHERE dst_kind = ? AND dst_id = ?
+         ORDER BY created_at ASC",
+    )
+    .bind(dst_kind.as_str())
+    .bind(dst_id)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_reference).collect()
+}
+
 /// SQLite has no array binding, so expand `IN (?, …)` and chunk the id set well
 /// under the variable limit (one slot is reserved for `src_kind`).
 const SQLITE_IN_CHUNK: usize = 400;

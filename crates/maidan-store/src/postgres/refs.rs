@@ -84,6 +84,26 @@ pub async fn list_from(
     rows.iter().map(row_to_reference).collect()
 }
 
+/// References pointing AT one target — the reverse edge (Cluster 320). Uses the
+/// existing `idx_references_dst` index. Ordered `created_at ASC`.
+pub async fn list_to(
+    pool: &PgPool,
+    dst_kind: RefSide,
+    dst_id: Uuid,
+) -> Result<Vec<Reference>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
+         FROM maidan_references
+         WHERE dst_kind = $1 AND dst_id = $2
+         ORDER BY created_at ASC",
+    )
+    .bind(dst_kind.as_str())
+    .bind(dst_id)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_reference).collect()
+}
+
 pub async fn list_from_many(
     pool: &PgPool,
     src_kind: RefSide,

@@ -41,6 +41,7 @@
   "list_notifications": "workspace:read",
   "list_pins": "workspace:read",
   "list_reactions": "workspace:read",
+  "list_references": "workspace:read",
   "list_roots": "workspace:read",
   "list_slash_commands": "workspace:read",
   "list_task_schedules": "workspace:read",
