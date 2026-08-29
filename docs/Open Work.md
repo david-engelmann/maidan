@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v273.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), and again at v273 (Cluster 273, which folded the 2026-08-25 strategy pack into this file — see "Post-272 forward work" below).
+Updated at each cluster retro. **Baseline:** code on `main` at **`v314.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), and again at **v314** (2026-08-28 4-thread research sweep — see "Pre-launch fixes + flagship arc" below).
 
 ## Post-272 forward work (next program)
 
@@ -22,14 +22,154 @@ workflow (retro + `vX.0.0` tag each).
 | Item | What / why | Detail |
 |------|-----------|--------|
 | ✅ **MCP `2026-07-28` upgrade** (headline) — **DONE (Clusters 300–303, tags v300–v303)** | The `2026-07-28` revision (stateless Streamable HTTP; `Mcp-Session-Id` + initialize handshake gone; SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers) is shipped: **300** additive negotiation (`SUPPORTED = ["2026-07-28","2024-11-05"]`), **301** stateless streamable core (a 2026 POST lands cold, no session; live-wait on `GET /mcp/stream`/WS), **302** SEP-2243 routing headers (present ⇒ must match body else 400), **303** advertise (default flipped to `2026-07-28`; federation card/reference/Integration/Protocols updated; J2 retired). `2024-11-05` still accepted on explicit request. **Deferred (niche, non-blocking):** stateless server→client (`request_client`) + per-request `_meta.io.modelcontextprotocol/clientInfo`; `ttlMs`/`cacheScope` on list responses; optional `server/discover`. | Protocols.md (J1–J8); Handoff **J3 / M.0** |
-| **Durable mail retry queue** — **IN PROGRESS (arc from 304)** | Email delivery was **best-effort, no retry** (`notification_router.rs`). **304 DONE:** `maidan_mail_outbox` table + store (both backends). **305 DONE:** router `enqueue_mail`s (after suppression checks) + a `mail_worker` background loop drains with exponential backoff (30s→1h) + dead-lettering (8 attempts); spawned when a transport is configured; multi-replica-safe; metric outcomes enqueued/sent/retry/dead. **306 DONE:** mail DLQ ops — `GET /operator/mail/dead` + `POST /operator/mail/dead/{id}/requeue` (`token:admin`); store `list_dead_mail`/`requeue_dead_mail`. **THE DURABLE-MAIL-RETRY ARC (304–306) IS COMPLETE** (outbox → worker+enqueue → DLQ ops). Follow-up (non-blocking): retention pruning of terminal (delivered/dead) outbox rows — the Cluster-186 sweeper doesn't cover `maidan_mail_outbox` yet. Distinct from `maidan_outbox` (the event outbox). | Expansion Bets **Bet 4** |
-| **MCP example pack + hero demo** | No `examples/` dir; no one-click MCP snippets. Subset the existing 78-tool catalog (`claim_next_thread`, `wait_for_result`, `set_thread_result`, `request_approval`, …) into a copy-paste pack + an offline multi-agent DAG demo. | Expansion Bets **Bet 2** |
-| **Thin client SDKs** | No TS/Python client in-tree. Hand-write a small REST+WS client over a frozen OpenAPI subset (only `POST /workspaces` + `GET /workspaces/{id}` exist — no `workspaces.list`). | Expansion Bets **Bet 3** |
+| ✅ **Durable mail retry queue — DONE (arc 304–306)** | Email delivery was best-effort, no retry. **304** `maidan_mail_outbox` table + store; **305** router `enqueue_mail` + a `mail_worker` (exp. backoff 30s→1h + dead-letter at 8 attempts, multi-replica-safe); **306** DLQ ops (`GET /operator/mail/dead` + `POST …/requeue`, `token:admin`). **THE DURABLE-MAIL-RETRY ARC (304–306) IS COMPLETE.** Follow-up (non-blocking): retention pruning of terminal outbox rows (the 186 sweeper doesn't cover `maidan_mail_outbox`). | Expansion Bets **Bet 4** |
+| **MCP example pack + hero demo → Cluster 317 (Bet 2 snippet pack)** | `examples/` exists (Cluster 280 LangChain/AutoGen recipes, but they `get_tools()`-load all **78**). Ship a copy-paste **hero-6 snippet** (`claim_next_thread`, `post_message`, `get_thread_context`, `set_thread_result`, `wait_for_result`, `wait_for_ready`) + Cursor/Claude MCP JSON (bearer, `2026-07-28`, no session id) + an offline two-agent lease demo (Python SDK + TS SDK; third claim empty while leased) + rewrite LangChain/AutoGen off the 78-tool load. **⚠️ FILTER ONLY — the 78-tool catalog does NOT shrink and the pi 8-method seam (`post_message`, `list_messages`, `list_threads`, `search_messages`, `record_mention`, `cast_vote`, `upload_artifact` + HTTP `poll_events`) stays callable.** Do NOT add `seed_thread_from_message` here. See "Pre-launch fixes + flagship arc" below. | Expansion Bets **Bet 2** |
+| ✅ **Thin client SDKs — DONE + PUBLISHED (arc 294–299)** | TS/Python/Go/Rust clients under `sdk/` at **0.1.0, LIVE on the registries** (verified 2026-08-28: PyPI `maidan` 0.1.0, npm `maidan` 0.1.0, crates.io `maidan` 0.1.0, `sdk-go-v0.1.0` tag; all four `sdk-release` runs succeeded 2026-08-27). Frozen v1 surface = `docs/Client Contract.md`; interop CI = report-only `sdk-interop` (299). **Remaining (small):** typed response models (0.2) + `sdk/README.md` still says "0.0.1 name-hold" (a lie — folded into the 316 honesty scrub). A second 0.1.0 upload is rejected. | Expansion Bets **Bet 3** |
 | **Slack projector** — **IN PROGRESS (arc from 307, config-gated)** | A projector (Slack Events ingress → Maidan thread → streamed egress, **no LLM in Maidan**) — a *projector*, not a product. **307 DONE:** ingress foundation (`POST /integrations/slack/events`, signature-verified + `url_verification`; 404 when unconfigured). **308 DONE:** `maidan_slack_channel_links` (slack channel → Maidan channel/thread/member) + store (link/get/list/unlink) + inbound routing (Slack `message` in a linked channel → Maidan thread; loop-prevention: skips bot/subtype + stamps `metadata.slack`). **309 DONE:** egress — `SlackSender`/`SlackWebClient` (`chat.postMessage`) + `route_message_to_slack` (relays a linked-thread Maidan message to Slack, skips Slack-sourced messages via `metadata.slack`; hooked into the notification-router). **THE BIDIRECTIONAL SLACK PROJECTOR (307–309) IS COMPLETE**, config-gated + loop-safe. Follow-ups (non-blocking): link-management REST/MCP surface (store-level so far), a durable Slack egress outbox (best-effort today), a `thread_id` index on the links table. Live wiring needs David to create a Slack app + set `MAIDAN_SLACK_SIGNING_SECRET`/`MAIDAN_SLACK_BOT_TOKEN`. | Expansion Bets **Bet 1** |
 | **Git / forge projector** — **COMPLETE (arc 310–312, config-gated)** | GitHub App webhook → thread → issue/PR comment (GitLab/Gitea later). Explicitly **not** a Copilot clone. **310 DONE:** ingress foundation (`POST /integrations/github/events`, `X-Hub-Signature-256`-verified + `ping`; 404 when unconfigured). **311 DONE:** `maidan_github_issue_links` ((repo, issue)→Maidan channel/thread/member) + store (link/get/by-thread/list/unlink) + inbound `issue_comment`→thread routing (skips `Bot` comments + stamps `metadata.github`). **312 DONE:** egress — `GithubSender`/`GithubApiClient` (REST `POST /repos/{repo}/issues/{n}/comments`) + `route_message_to_github` (relays a linked-thread Maidan message to a GitHub comment, skips GitHub-sourced messages via `metadata.github`; hooked into the notification-router beside the Slack egress). **THE BIDIRECTIONAL GITHUB PROJECTOR (310–312) IS COMPLETE**, config-gated + loop-safe. Follow-ups (non-blocking): the full GitHub App JWT/installation-token auto-exchange + Check Runs (a configured PAT/installation token works today), link-management REST/MCP surface (store-level so far), a durable egress outbox (best-effort today). Live wiring needs David to create a GitHub App + set `MAIDAN_GITHUB_WEBHOOK_SECRET`/`MAIDAN_GITHUB_TOKEN`. | Expansion Bets **Bet 6** |
-| **Pre-public cleanup nits** | Real, small, verified: stale `mail.rs:5` "Not wired" doc comment (it *is* wired since 249); stale `extensions.rs:1` "Cluster 77" banner; outbox `list_pending` lacks `FOR UPDATE SKIP LOCKED` (`postgres/outbox.rs`); a swallowed cursor-advance in `event_stream.rs` (replay path uses `let _ =` where siblings log); stale `Production.md:504` "load not covered" (loadgen shipped 198). | Pre-Public Hardening.md (**A–K**) |
+| **Pre-public cleanup nits → superseded by Clusters 315 (correctness) + 316 (honesty scrub)** | The real, verified nits (mail.rs "Not wired", outbox `FOR UPDATE SKIP LOCKED`, `event_stream` swallowed cursor, and the full doc-lie list) are now itemized under "Pre-launch fixes + flagship arc" below. This row is retired into those two clusters. | Pre-Public Hardening.md (**A–K**) |
 | **Provider recipes** | Doc/compose recipes only (Ollama/TEI embeddings, R2/AWS-S3 next to MinIO, Keycloak + a SaaS OIDC, Neon/RDS/Supabase note, LibSQL/Turso feasibility). | Providers.md (**I2–I6**) |
 | **Public launch** | Public-preview cut, un-hold, announce — **gated on the maintainer's explicit go**; keeps `publish = false` (no crates.io 1.0). | Launch.md (**L1–L6**) |
+
+## Pre-launch fixes + flagship arc (2026-08-28 research sweep)
+
+A 4-thread research sweep (2026-08-28) audited the tree at **v314** for anything more pressing
+than the docs scrub, and researched the primitives that make Maidan exceptional at being *the
+room*. Folded here. **Lane tags:** `generic-room` (any waiter, incl. pi), `oss-adoption`
+(stars/`/play`/registries), `first-consumer` (pi+soundcheck+bgv3 — lives in **pi**, not a maidan
+cluster; pi SR-1). **Sequence:** correctness first (315) → honesty/no-clone (316) → snippet pack
+(317) → token evidence (318) → the fidelity+context flagship arc. Full rationale: the strategy
+doc `docs/Undeniable Final.md` + the four sweep reports (verdicts in-line here are the canonical
+fold; that doc is the "why").
+
+### Cluster 315 — pre-launch correctness & security (`generic-room`)
+
+Small, verified code fixes. Cleared as NOT findings (stale docs narration, verified fixed in code):
+the `subscribe_grants` self-assertion, the DM generic-route participant gap, and single-tx
+dual-write atomicity are all **closed** — see the standing-risks corrections below.
+
+- **legacy `/members/:id/mentions` + `/inbox` self-only — ✅ DONE, but the "live defect" was a
+  FALSE POSITIVE on verification.** The audit flagged these (`routes/member.rs`) as missing
+  `ensure_acting_member` → "a session can read another member's inbox." **On verification the routes
+  are mounted ONLY on the bearer-only `protected` router (`auth::middleware`, no session cookie
+  accepted → a session gets `401`); there is no `/ui/api` mount** (unlike the notification handlers,
+  which Cluster 251 *did* session-mount — that's why *their* guard is load-bearing). The only callers
+  are bearers, which are **act-as-any by design** (the 202/203 model). So there is no
+  session-exploitable gap. Still added the three `ensure_acting_member` guards as **defensive
+  consistency** (strict no-op for current callers; pins a session to self IF these are ever
+  `/ui/api`-mounted like 251). Test: `legacy_inbox_and_mentions_are_bearer_only_not_session_reachable`
+  (documents the 401 reachability truth); guard logic unit-tested in `ensure_acting_member`.
+- **`hash-v1` embedding default boots with no warning** (`main.rs:247-251`) — "semantic search"
+  silently returns near-random results if `MAIDAN_EMBEDDING_PROVIDER` is unset. `warn!` at boot.
+  (Repo's own K5.)
+- **`event_stream` replay swallows the cursor advance** (`event_stream.rs:202-204`, `let _ =`) — a
+  failed advance is invisible (correctness is safe — a stuck cursor re-delivers, never skips; only
+  observability suffers). Log/count it. (Repo's own K9.)
+- **README "Run it (SQLite, no Docker)" 28-byte secret** (`README.md:149`,
+  `MAIDAN_SESSION_SECRET=dev-session-secret-change-me`) won't boot — `session/cookie.rs:18` needs
+  ≥32 bytes. Fix to a ≥32-byte value (the 314 headline one-liner was fixed; this sibling was missed).
+- Optional defense-in-depth (K3/K4): `AppState::subscribe_resume_secret()` getter `panic!`
+  (`state.rs:307`) → boot invariant; gate the `AUTH_DISABLED` + missing-secret test-secret fallback
+  (`main.rs:361-368`) behind an explicit `MAIDAN_ALLOW_INSECURE_RESUME_SECRET=1` ack. *(Deferred from 315 — behaviour-changing, low urgency.)*
+- **DEFERRED from 315 to its own cluster — outbox `list_pending` `FOR UPDATE SKIP LOCKED`** (K8,
+  `postgres/outbox.rs:29-50`): two relay replicas can both fetch + publish the same pending row
+  before either `mark_published`. Bounded (optimistic bus is at-most-once, consumers idempotent by
+  `log_id`). **A naive `FOR UPDATE SKIP LOCKED` on the pooled SELECT is a no-op false fix** — the
+  lock releases when the statement's implicit tx ends, and the relay publishes + marks *outside* any
+  tx. A correct fix needs either a **lease column** (migration + the mail_outbox/scheduler pattern)
+  or wrapping the batch publish inside a held transaction (holds row locks across bus publishes —
+  a robustness trade-off) + a multi-replica double-publish integration test. Its own small cluster,
+  not a hasty 315 line.
+
+### Cluster 316 — honesty scrub + no-clone image (docs, `oss-adoption`)
+
+- **Correct `docs/Claims.md:37`** — A2A gRPC exposes only `get_task`/`cancel_task`/`list_tasks`
+  (`a2a_grpc/mod.rs:107-131`), **no `SendMessage`**. Soften "full A2A v1.0 across three bindings" to
+  "JSON-RPC + REST complete; gRPC = task read/cancel/list (message-send over JSON-RPC/REST)." The
+  claims sheet is the wrong place for a falsifiable overclaim (protocol reviewers are invited).
+- **Verified doc/comment lies:** `mail.rs:5` "Not wired" (wired since 249; also unchecks the
+  Pre-Public-Hardening A6/K1 P0); `mcp/server.rs:30` "default stays 2024-11-05" (const is
+  `2026-07-28`); `Framework Integrations.md:21` says 2024; `Pi.md` AUTH_DISABLED lab path (won't boot
+  — recast to `maidan init` + pin `v314`, not floating `latest`); `Threat-Model.md:47` seed (add
+  `maidan init`); `book/src/introduction.md` (Slack-shaped lead + `cargo run` with no session secret);
+  `sdk/README.md` "0.0.1 name-hold" (0.1.0 is live); `Clients.md`/`Client Testing.md` (name-hold +
+  2024 canary); `Promotion.md` (cargo/AUTH_DISABLED hero + "don't announce Slack/Git/mail/SDK" — all
+  shipped; topics "none" — 293 set 10); README feature table "experimental A2A bridge" (understates
+  282–289); `CLAUDE.md`/`AGENTS.md`/`Integration.md` stale (Slack-shaped / MCP 2024 / A2A subset);
+  `SECURITY.md:63` cosign example → current tag; strategy pack banners (Handoff/Path/Expansion
+  Bets/Launch/Adoption frozen 2026-08-25/26 — executed through v314, canonical = Open Work).
+- **No-clone image path** (verified: `ghcr.io/david-engelmann/maidan-server:v314.0.0` is anonymously
+  pullable — manifest 200, multi-arch amd64+arm64; `latest` currently matches). Add a README
+  `docker run …:v314` one-liner (pinned tag, ≥32-byte `MAIDAN_SESSION_SECRET`, then
+  `docker exec … maidan init`) + a cosign one-liner. **Smoke that the pulled image boots with auth on
+  before advertising it.** Not the floating `latest` as the story.
+- Housekeeping: `v300` GitHub Release is a **Draft** (publish or delete); **no `v311` tag** — 311's
+  code is in `v312` (commit `6d3172c`); document it, **do NOT cut the tag**; optionally bump the
+  quickstart image pin `v312`→`v314`.
+
+### Cluster 318 — token-pack evidence (`generic-room`, after 315–317)
+
+The README "far fewer tokens" (and the pitch's "a fraction of the tokens") is a claim with no
+number. Add a reproducible measurement beside `Benchmark.md`: prompt-token estimate of
+`GET /threads/:id/context` (REST; includes artifacts) **and** MCP `get_thread_context` (omits
+artifacts — measure separately) vs concatenating every channel message; publish
+hardware/commit/backend/method like 281. Optional `maidan_context_tokens_total` metric. **Do NOT put
+a ratio on a public site until this row exists.**
+
+### Fidelity + context flagship arc (`generic-room` — the differentiator)
+
+From two converging research threads (pre-LLM annotation tooling + grounding/argumentation/provenance
+theory) plus the context/replay thread. This is the promotable category nobody ships: **the room
+where agents build durable, checkable, replayable shared understanding — at a fraction of the
+tokens.** It is **one arc on one substrate** (the typed reference edge). All rows are storage+API
+level — the server stores and serves typed edges, definitions, and immutable snapshots; **agents
+interpret and re-run. Maidan stays a room, not a brain.** Sequence measure-cheap-first (each a
+foundation for the next); zero-blast-radius foundations follow the 159/217/234 pattern.
+
+1. **Typed reference relations (keystone).** Constrain `Reference.relation` (today a free string) to
+   a controlled set — `supports / refutes / defines / depends / duplicates / grounds / supersedes` —
+   validated against the vocabulary registry (fall back to a free-form sub-label so expressivity
+   isn't lost); add reverse-edge / by-type queries. The thread-DAG is already a special-cased typed
+   `blocks` — proof the pattern works. Subsumes provenance links, argument links, supersession, and
+   branch lineage. IBIS / W3C PROV / ClaimReview / GitHub-Linear relations are all this same edge;
+   ~7 predicates provably suffice, so it never becomes an ontology product.
+2. **Shared glossary / definitions layer.** One **flat** foundation table (`glossary_terms
+   {workspace_id, channel_id?, term, definition, aliases, created_by}`) + REST/MCP + surfaced in the
+   existing context pack. The `defines` edge's target; the anti-drift pin (every free-string means the
+   same thing to every agent). Keep flat — **no hierarchy/broader-narrower** (that's the KG-product
+   line).
+3. **Optional `confidence`** on `Vote`/`ThreadResult` (one nullable field → weighted consensus) +
+   near-zero-code **conventions:** a decision-record shape (Context/Decision/Consequences/Alternatives
+   /Status) over `thread_results` + the `supersedes` edge; an `ack` grounding act as a reserved vote
+   value (**version-pinned** to the message edit it grounded). Add no new object for these.
+4. **As-of context replay** *(net-new)*. `GET /threads/:id/context?as_of=<event_id>` + MCP twin —
+   thread the cursor through the assembler's bounded reads (the log already supports `list_after`
+   truncation). **Deterministic over immutable data only — no fresh semantic search.** Serves audit
+   ("what context did the agent see when it produced result X") AND re-ask-from-a-point-before-the-
+   tangent. Zero-schema foundation.
+5. **Seed-from-message gesture** (the parked design; the write side of "re-ask"). `POST
+   /messages/{id}/seed`, inclusion `pointer|quote|pack|prefix`, a `WorkSeeded` event; **lineage = a
+   `seeded_from`/`branched_from` typed edge (from #1), NOT a bespoke table.** `prefix` mode delegates
+   to as-of replay (#4). Titled, claimable child; source untouched; deleting the source leaves the
+   child up; N seeds per source.
+6. **Immutable context snapshot artifact** *(net-new)*. Freeze an assembled pack (as-of or live) into
+   the **existing** content-addressed artifact store (sha256, dedup, ref-guarded per 204); re-ask
+   attaches via seed inclusion `pack` pointing at the sha. Delivers "prefix paid once, N angles" +
+   tamper-evident "exactly what the agent was handed."
+7. **Flow / setup template** *(last, deferrable — highest scope-creep risk)*. A `structure_only`
+   filter over workspace export (187) + import-remap (269–270): clone a setup (channels/skills/
+   schedules/DAG skeleton), no messages/results. **Clone only — the room never scores which template
+   is "better."** Consider deferring entirely if export/import already suffices.
+
+**Anti-goals (LOCKED — this is what keeps it "perfect at what it does, not more"):** no span-labeling
+UI, no inter-annotator-agreement metrics / adjudication queues, no Snorkel-style label model, no
+coreference equivalence classes, no rich claim/argument graph (SciClaim), no bespoke decision-record
+subsystem, no notes layer (a note is already a message + a reference edge), no KG hierarchy; no server
+re-execution of models/tools, no branch-tree-with-merge, no A/B-eval over templates/contexts, no
+prompt/version registry, no deep-copy fork, no non-deterministic "improved" replay, no shared-mutable
+working set across forks. **Not a harness. Not a labeling product. Not a reasoning engine. Not a
+SaaS.** The parked V-track (V1–V8 in `docs/Undeniable.md` §5), the V2 working-set-budget, `/play`,
+hosted cloud, and the public launch stay **gated on David**.
 
 ### Public-launch readiness (external review, 2026-08-25)
 
@@ -73,20 +213,20 @@ starts without an explicit go.**
 
 | Pri | Item | Notes |
 |-----|------|-------|
-| **P1 (adoption) — IN PROGRESS** | **Language SDKs (TypeScript → Python → Go → Rust)** | REST + WebSocket clients under `sdk/`, independent SemVer from the server (publish only on an `sdk-*` tag). Frozen v1 method surface = `docs/Client Contract.md`; black-box scenarios (which also catch server bugs) = `docs/Client Testing.md`. **TypeScript ✅ (Cluster 294, 0.1.0)** — dependency-free `Client` (REST + WS), full `.d.ts`, `MaidanError`, `subscribe`/`waitFor*`, verified black-box (5/5) via `scripts/sdk-test.sh`. **Python ✅ (Cluster 295, 0.1.0)** — dependency-free (stdlib `urllib` REST + a hand-rolled RFC-6455 WS), snake_case surface, verified black-box (5/5). **Go ✅ (Cluster 296, 0.1.0)** — dependency-free (stdlib `net/http` REST + a hand-rolled RFC-6455 WS), service-struct surface, verified black-box (`go vet`/`gofmt` clean). **Rust ✅ (Cluster 297, 0.1.0)** — standalone crate (no `maidan-*` dep; small sync `ureq`/`tungstenite` stack, since std has no HTTP/TLS), service-handle surface, verified black-box (`clippy -D warnings`/`fmt` clean). **THE SDK ARC (294–297) IS COMPLETE** — TS, Python, Go, Rust at 0.1.0. Remaining follow-ups: **(a)** registry publishing — **machinery DONE (Cluster 298):** `sdk-release.yml` publishes on `sdk-{ts,py,rs,go}-vX.Y.Z` tags; `NPM_TOKEN`/`PYPI_TOKEN`/`CRATES_TOKEN` repo secrets loaded; all four dry-run-verified. **Remaining: push the `sdk-*-v0.1.0` tags to actually publish** (`docs/SDK Release.md`), then confirm the packages resolve. **(b)** SDK interop CI — **DONE (Cluster 299):** a report-only `sdk-interop` job boots a server and runs all four black-box suites via `scripts/sdk-test.sh`; **(c)** typed response models (all four currently return generic JSON) — still open. Rust client must NOT depend on `maidan-server`. MCP stays a URL (the LangChain/AutoGen door, Cluster 280), not a 4th library; A2A stays a recipe (`examples/a2a_interop.py`, Cluster 289). **Publish follow-up:** none of the SDKs are published to their registries yet — publishing needs registry tokens as repo secrets (`NPM_TOKEN`, PyPI, crates.io) + a release trigger on an `sdk-*` tag; the user must add the secrets (flagged under the standing publish authorization) |
+| ✅ **P1 (adoption) — DONE + PUBLISHED** | **Language SDKs (TypeScript → Python → Go → Rust)** | REST + WebSocket clients under `sdk/`, independent SemVer from the server (publish only on an `sdk-*` tag). Frozen v1 method surface = `docs/Client Contract.md`; black-box scenarios (which also catch server bugs) = `docs/Client Testing.md`. **TypeScript ✅ (Cluster 294, 0.1.0)** — dependency-free `Client` (REST + WS), full `.d.ts`, `MaidanError`, `subscribe`/`waitFor*`, verified black-box (5/5) via `scripts/sdk-test.sh`. **Python ✅ (Cluster 295, 0.1.0)** — dependency-free (stdlib `urllib` REST + a hand-rolled RFC-6455 WS), snake_case surface, verified black-box (5/5). **Go ✅ (Cluster 296, 0.1.0)** — dependency-free (stdlib `net/http` REST + a hand-rolled RFC-6455 WS), service-struct surface, verified black-box (`go vet`/`gofmt` clean). **Rust ✅ (Cluster 297, 0.1.0)** — standalone crate (no `maidan-*` dep; small sync `ureq`/`tungstenite` stack, since std has no HTTP/TLS), service-handle surface, verified black-box (`clippy -D warnings`/`fmt` clean). **THE SDK ARC (294–297) IS COMPLETE** — TS, Python, Go, Rust at 0.1.0. Remaining follow-ups: **(a)** registry publishing — **machinery DONE (Cluster 298):** `sdk-release.yml` publishes on `sdk-{ts,py,rs,go}-vX.Y.Z` tags; `NPM_TOKEN`/`PYPI_TOKEN`/`CRATES_TOKEN` repo secrets loaded; all four dry-run-verified. **Remaining: push the `sdk-*-v0.1.0` tags to actually publish** (`docs/SDK Release.md`), then confirm the packages resolve. **(b)** SDK interop CI — **DONE (Cluster 299):** a report-only `sdk-interop` job boots a server and runs all four black-box suites via `scripts/sdk-test.sh`; **(c)** typed response models (all four currently return generic JSON) — still open (0.2). Rust client must NOT depend on `maidan-server`. MCP stays a URL (the LangChain/AutoGen door, Cluster 280), not a 4th library; A2A stays a recipe (`examples/a2a_interop.py`, Cluster 289). **✅ PUBLISHED (verified 2026-08-28):** all four are LIVE at 0.1.0 — PyPI `maidan` 0.1.0, npm `maidan` 0.1.0, crates.io `maidan` 0.1.0, `sdk-go-v0.1.0` module tag; all four `sdk-release` runs succeeded 2026-08-27 (secrets loaded). A second 0.1.0 upload is rejected. Remaining is only typed DTOs (0.2) + the `sdk/README.md` "0.0.1 name-hold" doc lie (→ 316 scrub). |
 | **P2 (adoption)** | **Hosted playground** (`maidan.world/play`) | A try-it sandbox: ephemeral workspace + the two-agent hero loop (Cluster 278) in the browser. Detail in `docs/Adoption.md` §3 |
 | **P3 (adoption)** | **Hosted cloud** (managed Maidan) | Later; multi-tenant hosting. `docs/Adoption.md` §4 |
 | **P2** | **SDK interop CI** | A CI job running the `docs/Client Testing.md` scenario catalog across the SDKs once they exist (the report-only A2A interop job, Cluster 289, is the pattern) |
 
 ## Standing risks (still open)
 
-- **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). **Still open:** DM threads readable via the *generic* thread route — the `__dm__` exemption in `ensure_channel_access` preserves this pre-existing behavior; tighten by checking DM participants (**next: Cluster 180**). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`).
+- **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` self-only: **assessed in 315 — the "session can read another's inbox" concern was a FALSE POSITIVE** (bearer-only routes, no `/ui/api` mount → sessions get 401; bearers are act-as-any by design). Defensive `ensure_acting_member` guards added anyway (no-op today; future-proofs a `/ui/api` mount).
 - **At-most-once event bus (default path)** — transactional outbox (**10**), quarantine (**12**), HTTP outbox replay (**56**); NOTIFY duplicates/gaps possible on the optimistic path. **Mitigated:** opt-in `at_least_once` reconcile delivery (WebSocket **125**, MCP SSE **126**) is gap-free + at-least-once per `consumer_id`.
 - **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration. **Mitigated:** fail-closed (**157**) — `AUTH_DISABLED` needs the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack and refuses boot otherwise (and always in production); compile-time strip (**91**) removes the path entirely in hardened (`--no-default-features`) builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener** — best-effort recovery; `/health/ready` reflects errors.
 - **SQLite semantic search** — brute-force cosine fallback; optional `sqlite-vec` feature for an index; HNSW is Postgres-only (by design, not a gap).
-- **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful.
+- **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful. **→ Cluster 315 adds a boot `warn!`** so a stranger who leaves it unset isn't silently served near-random "semantic" results.
 - **`rsa` advisory `RUSTSEC-2023-0071`** — ignored (RS256 id_token verify via openidconnect v4; no fixed `rsa`); clears on openidconnect v5 (unreleased). See [Dependencies.md](Dependencies.md).
 - **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264), released as `v101.0.0`; not a backlog. All four gate tags (incl. `maidan-operator-1.0`) are cut.
 
@@ -111,7 +251,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v273.0.0`** (post-gate hardening, Phase XXIV). Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
+- **Latest tag:** **`v314.0.0`** (post-gate hardening, Phase XXIV). Since v273: MCP `2026-07-28` (300–303), durable mail retry (304–306), Slack + GitHub projectors (307–312), the SDK arc published at 0.1.0 (294–299), and launch-prep (313 default-secure quickstart, 314 claims/policies/release-verification). Next: the 2026-08-28 sweep's 315–318 + fidelity/context flagship arc (above). *(Narrative below is the historical v273 program record.)* Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
     - **Batched `pg_notify` — DECLINED (low value + delivery-core risk).** The LISTEN handler hydrates a single pointer per NOTIFY, and the hot path publishes per-event (no natural batch); only the latency-tolerant fallback relay batches. A correct coalescing needs **range-hydration** on the listener (track `last_hydrated_log_id`, hydrate `(last_hydrated, X]` per pointer, advance) — a delivery-core change for a win that only helps the non-hot path. Range-hydration alone is a robustness win (self-heals dropped NOTIFYs) if ever wanted, but risks double-delivery without careful last-hydrated tracking.
     - **Read-replica routing — DEFERRED (needs infra + a Store refactor).** Requires a second read-pool threaded through the `Store` (which is constructed with one pool), read-after-write consistency handling (route reads-after-writes / real-time to primary; only lag-tolerant reads like search/workspace-context to the replica), config (`MAIDAN_DATABASE_REPLICA_URL`, degrades to primary when unset), and a real replica to validate beyond the degenerate case.
 - **Deferred from Arc C:** federation `content→parts` **egress** (194 did ingest; egress still body-only).
@@ -120,10 +260,10 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 - **Assignment queue follow-ups (Clusters 190–192):** MCP tools shipped in 191; claim leases + reclaim shipped in 192. Remaining: `claim_next` is channel-scoped (no workspace-wide pull); no server-side default lease (the caller sets `lease_secs`); reclaim is lazy (only a subsequent `claim_next` frees an expired lease — nothing actively unassigns a dead holder / emits an event until someone pulls).
 - **Secret-rotation follow-ups (Cluster 189):** migration to a rotated key is lazy (a secret moves only when re-saved — no bulk re-encrypt sweep, so an old key must stay in `FEDERATION_DECRYPT_KEYS` until all secrets rotate); the fallback set is a startup `OnceLock` (rotation needs a restart, not a live reload).
 - **Usage/metering follow-ups (Cluster 188):** no per-tenant storage bytes (content-addressed artifacts dedup across workspaces — attributing by uploader would double-count; decide a convention if billing needs it); usage is a point-in-time snapshot (no historical time-series — operators sample on their cadence).
-- **Workspace export follow-ups (Cluster 187):** reactions/votes not exported (per-message N+1); artifact blobs not included (metadata via references only); the bundle is built in memory + returned in one response (a streaming/NDJSON variant would scale better); and there is **no import path yet** — re-import is the other half of portability.
+- **Workspace export follow-ups (Cluster 187):** reactions/votes not exported (per-message N+1); artifact blobs not included (metadata via references only); the bundle is built in memory + returned in one response (a streaming/NDJSON variant would scale better). *(Import path SHIPPED 269–270 — `Store::import_workspace` + `POST /workspaces/import`, both new-workspace-remap and `?mode=restore`; the "no import path yet" note is resolved.)*
 - **Retention follow-ups (Cluster 186):** no `occurred_at` index on the pruned tables (the daily batched sweep tolerates a scan; add if it gets hot); deliveries prune is lightly tested (valid-query/empty smoke — the FK fixture for delivery rows was deferred); a stale/abandoned delivery cursor pins the event-log prune floor (needs a stale-cursor reaper eventually).
 - **Denial (401/403) auditing → logs/metrics, not the audit table (Cluster 182 decision).** Table-level per-denial auditing is an attacker-controlled, unbounded `maidan_audit` write amplifier. If durable denial history is ever needed, do it in a sampled/rate-limited sink separate from the audit table.
-- **True single-transaction dual-write atomicity (deferred from Cluster 184).** Today a mutation commits the domain row in one tx, then `publish()` appends the `Event` in a separate tx; 184 hardened this (retry transient append failures, distinguish append-vs-bus failure, meter hard losses via `maidan_event_append_failures_total`) but did not make it atomic. The full fix is a **transactional outbox**: append the event (+ outbox row, already atomic with each other) in the **same** transaction as the domain mutation. Scope is large — every mutating `Store` method × both backends — and the message-post path is entangled (it does insert → slash-command edit → publish, so the event must be built from the *final* message, not the initial insert). Do it as its own incremental sub-arc: start with the simple immediate-publish mutations (channel/thread create, reactions, votes, pins) via `*_with_event` store methods that thread a shared tx, then tackle the edit-entangled message path (likely: build the event inside the store after the in-tx edits). Watch: event construction moving into the store is a layering shift; keep it contained.
+- **True single-transaction dual-write atomicity — ✅ DONE (transactional-outbox migration 205–214).** *(Corrected 2026-08-28: this was listed as open, but the migration completed it.)* Every event tied to a domain-table write now commits atomically with it via `*_with_event` store methods sharing one tx (verified e.g. `postgres/channels.rs` `create_with_event` = `begin → append_in_tx → commit`), including the slash-entangled message-post path (`edit_message_with_posted_event`). `publish()` correctly remains only for the two callers that append **standalone** events with no domain row to be atomic with (the federation relay + `publish_routed_mentions`).
 - **Deferred (Cluster 173):** federation/A2A-ingested messages carry `body` only — the ingest path (`a2a_agent.rs`, federation worker) doesn't yet map incoming `parts → content` (typed structured content). In-scope-to-not-break; propagation is a follow-up. All four gate tags cut (`maidan-2.0` v58, `maidan-agent-1.0` v76, `maidan-operator-1.0` v101, `maidan-scale-1.0` v120).
 - **Active work:** post-gate hardening clusters (121+); no further ladder gate defined. See [[Roadmap]] + [[Remaining Work]].
 - **Integrators:** start at [[Agent Integration]] and `contracts/`.
