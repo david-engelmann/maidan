@@ -26,10 +26,15 @@ single source of truth for *how* to operate in this codebase. The
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v273.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v315.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
-  handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). The detailed
-  handoff paragraph below narrates through Cluster 266; clusters **267–272**
+  handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). Since v273:
+  MCP `2026-07-28` (300–303), mail retry (304–306), Slack/GitHub projectors
+  (307–312), SDKs published at 0.1.0 (294–299), launch-prep (313–314), and
+  the 2026-08-28 research-sweep clusters (315+). **The canonical live backlog
+  is [`docs/Open Work.md`](docs/Open%20Work.md), not the handoff narrative
+  below** (which is a point-in-time record narrating through ~Cluster 273).
+  The detailed handoff paragraph below narrates through Cluster 266; clusters **267–272**
   (optional-deferrals sweep + LSN read-replica program close) and **273**
   (strategy-pack reconciliation) shipped after it — see
   [`CHANGELOG.md`](CHANGELOG.md) and [`docs/Open Work.md`](docs/Open%20Work.md)

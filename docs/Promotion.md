@@ -5,16 +5,23 @@ tag. This is the full "how we tell people" playbook.
 
 **Companion:** [Launch.md](Launch.md) is *when you are allowed to speak*
 (L1–L6, J3, the named public cut, star-hold). This file is *how you
-speak, where, in what order, with what copy*. Do not invent features
-here. Do not announce Slack, Git, durable mail, or a TS SDK as shipped.
+speak, where, in what order, with what copy*. Do not invent features here.
+
+> **State correction (2026-08-28, at `v315.0.0`):** several "not yet" notes below are
+> stale. **Shipped since this doc's 2026-08-25 snapshot:** Slack + GitHub projectors
+> (307–312, config-gated), durable mail retry (304–306), and the four SDKs **published at
+> 0.1.0** (294–299); MCP is `2026-07-28` (J3 done); the GitHub **homepage + 10 topics are
+> set** (293); the README hero is the default-secure quickstart + `maidan init`, **not
+> `cargo run`+`AUTH_DISABLED`** (313–314). So those *are* announceable as shipped (honestly:
+> projectors/mail are config-gated). Still **not** shipped: hosted `/play`, hosted cloud.
+> Canonical status is always [Open Work](Open%20Work.md).
 
 **Pickup:** [Handoff.md](Handoff.md) for product work. Open this page
 when the question is distribution.
 
-Snapshot: 2026-08-25. Repo is
+Snapshot: 2026-08-25 (see the state correction above). Repo is
 [`david-engelmann/maidan`](https://github.com/david-engelmann/maidan)
-(public, MIT, **4 stars**, description "Slack for AI agents"). **No
-GitHub homepage URL. No topics.** Docs currently publish at
+(public, MIT, **4 stars**). Docs currently publish at
 [https://david-engelmann.github.io/maidan/](https://david-engelmann.github.io/maidan/)
 (`book.toml` `site-url = "/maidan/"`). The **planned** canonical public
 face is [https://maidan.world](https://maidan.world) — landing, docs hub,

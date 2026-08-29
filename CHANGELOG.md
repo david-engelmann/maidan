@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [316.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). Docs honesty scrub + honest prebuilt-image path
+(2026-08-28 research sweep, part 2). No new gate tag.
+
+### Fixed
+
+- **Two more won't-boot commands** — `book/src/introduction.md`'s published `cargo run`
+  quickstart (no `MAIDAN_SESSION_SECRET` → auth-on won't boot) and `docs/Pi.md`'s
+  `docker run -e AUTH_DISABLED=1` (missing the `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack →
+  fail-closed; `:latest` → pinned). Pi.md's native path recast to `maidan init` (auth on).
+
+### Changed (docs honesty)
+
+- Corrected verified stale/false docs at `v315`: `Claims.md` A2A-gRPC overclaim (gRPC =
+  task read/cancel/list only, no `SendMessage`); `mail.rs` "Not wired" comment (wired since
+  249); `mcp/server.rs` default-protocol comment (2024→2026); `Framework Integrations.md`
+  (2024→2026); `Threat-Model.md` seed (→ `maidan init`); `sdk/README` + `Clients.md`/`Client
+  Testing.md` banners (SDKs published at 0.1.0; MCP 2026; not name-holds); `Promotion.md`
+  state banner (projectors/mail/SDK shipped, topics set); README "experimental A2A bridge" →
+  "A2A v1.0 (JSON-RPC+REST; gRPC partial)"; `AGENTS.md`/`Integration.md`; `CLAUDE.md`
+  latest-tag v273→v315; `SECURITY.md` cosign example → `<tag>`; Pre-Public-Hardening A6/K1
+  marked done.
+
+### Added
+
+- **README "Prebuilt image (no clone)"** note — the published `ghcr.io/…/maidan-server`
+  images are signed + multi-arch and boot with auth on (verified by live smoke), for
+  compose/k8s deploys; seed via `maidan init` against your DB. (The image is distroless with
+  no bundled CLI, so a *true* one-command no-clone eval — token flow bundled — is deferred to
+  a follow-up that publishes the quickstart image to GHCR.)
+- Published the stuck `v300.0.0` GitHub Release draft.
+
 ## [315.0.0] — 2026-08-28
 
 Post-gate hardening (Phase XXIV). Pre-launch correctness & DX + the 2026-08-28

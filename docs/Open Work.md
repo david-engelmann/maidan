@@ -81,31 +81,37 @@ dual-write atomicity are all **closed** — see the standing-risks corrections b
   a robustness trade-off) + a multi-replica double-publish integration test. Its own small cluster,
   not a hasty 315 line.
 
-### Cluster 316 — honesty scrub + no-clone image (docs, `oss-adoption`)
+### Cluster 316 — honesty scrub + no-clone image (docs, `oss-adoption`) — ✅ DONE
 
-- **Correct `docs/Claims.md:37`** — A2A gRPC exposes only `get_task`/`cancel_task`/`list_tasks`
-  (`a2a_grpc/mod.rs:107-131`), **no `SendMessage`**. Soften "full A2A v1.0 across three bindings" to
-  "JSON-RPC + REST complete; gRPC = task read/cancel/list (message-send over JSON-RPC/REST)." The
-  claims sheet is the wrong place for a falsifiable overclaim (protocol reviewers are invited).
-- **Verified doc/comment lies:** `mail.rs:5` "Not wired" (wired since 249; also unchecks the
-  Pre-Public-Hardening A6/K1 P0); `mcp/server.rs:30` "default stays 2024-11-05" (const is
-  `2026-07-28`); `Framework Integrations.md:21` says 2024; `Pi.md` AUTH_DISABLED lab path (won't boot
-  — recast to `maidan init` + pin `v314`, not floating `latest`); `Threat-Model.md:47` seed (add
-  `maidan init`); `book/src/introduction.md` (Slack-shaped lead + `cargo run` with no session secret);
-  `sdk/README.md` "0.0.1 name-hold" (0.1.0 is live); `Clients.md`/`Client Testing.md` (name-hold +
-  2024 canary); `Promotion.md` (cargo/AUTH_DISABLED hero + "don't announce Slack/Git/mail/SDK" — all
-  shipped; topics "none" — 293 set 10); README feature table "experimental A2A bridge" (understates
-  282–289); `CLAUDE.md`/`AGENTS.md`/`Integration.md` stale (Slack-shaped / MCP 2024 / A2A subset);
-  `SECURITY.md:63` cosign example → current tag; strategy pack banners (Handoff/Path/Expansion
-  Bets/Launch/Adoption frozen 2026-08-25/26 — executed through v314, canonical = Open Work).
-- **No-clone image path** (verified: `ghcr.io/david-engelmann/maidan-server:v314.0.0` is anonymously
-  pullable — manifest 200, multi-arch amd64+arm64; `latest` currently matches). Add a README
-  `docker run …:v314` one-liner (pinned tag, ≥32-byte `MAIDAN_SESSION_SECRET`, then
-  `docker exec … maidan init`) + a cosign one-liner. **Smoke that the pulled image boots with auth on
-  before advertising it.** Not the floating `latest` as the story.
-- Housekeeping: `v300` GitHub Release is a **Draft** (publish or delete); **no `v311` tag** — 311's
-  code is in `v312` (commit `6d3172c`); document it, **do NOT cut the tag**; optionally bump the
-  quickstart image pin `v312`→`v314`.
+- **Docs honesty scrub — DONE.** Corrected `Claims.md` A2A-gRPC overclaim (gRPC = task
+  read/cancel/list only, no `SendMessage`); `mail.rs` "Not wired" comment (wired 249; unchecked
+  Pre-Public-Hardening A6/K1); `mcp/server.rs` default-2024 comment (const is 2026); `Framework
+  Integrations.md` 2024→2026; **two more won't-boot commands fixed** — `Pi.md`'s
+  `docker run -e AUTH_DISABLED=1` (missing the ack → fail-closed; + `:latest`→`:v315`, + a
+  `maidan init` auth-on path) and `book/src/introduction.md`'s `cargo run` (no `MAIDAN_SESSION_SECRET`,
+  same class as the README headline); `Threat-Model.md` seed → `maidan init`; `sdk/README.md` +
+  `Clients.md`/`Client Testing.md` banners (0.1.0 published, not name-holds; MCP 2026); `Promotion.md`
+  state banner (projectors/mail/SDK shipped, topics set, hero no longer cargo+AUTH_DISABLED); README
+  "experimental A2A bridge"→"A2A v1.0 (JSON-RPC+REST; gRPC partial)"; `AGENTS.md`/`Integration.md`
+  MCP-2024/A2A-subset; `CLAUDE.md` latest-tag v273→v315 + "Open Work is canonical"; `SECURITY.md`
+  cosign example → `<tag>`.
+- **No-clone image — smoke-gated, and the smoke reshaped it (KEY FINDING).** The published
+  `ghcr.io/david-engelmann/maidan-server:v315.0.0` **boots with auth on** (verified: `/health` ok,
+  multi-arch amd64+arm64, anonymously pullable), BUT it is **distroless (no shell) and bundles only
+  `maidan-server`, not the `maidan` CLI**, and `POST /workspaces`→401 — so the doc's planned
+  "`docker run …` then `exec maidan init`" is **impossible** (no CLI, no shell, no out-of-the-box
+  token seed). Added an **honest** README "Prebuilt image (no clone)" note instead: images are signed
+  + multi-arch, seed via `maidan init` run against your DB (release binary / one-shot job), verify
+  cosign. **Deferred to its own cluster:** a *true* one-command no-clone eval (with the token flow
+  bundled) needs the **quickstart image** (both binaries + a shell) **published to GHCR** — real infra,
+  not a docs line.
+- **Housekeeping — DONE:** `v300.0.0` GitHub Release was a stuck Draft → **published** (neighbors were
+  all published). **No `v311` tag** (311's code is in `v312`, commit `6d3172c`) — documented, tag NOT
+  cut (correct). Quickstart image pin bump v312→v315 deferred (cosmetic).
+- **Residual (fuller pass, low blast radius):** the dense planning docs (`Clients.md`, `Client
+  Testing.md`, `Promotion.md`) still have inline 0.0.1/2024/AUTH_DISABLED references beyond the
+  corrected top banners; the strategy pack (Handoff/Path/Expansion Bets/Launch/Adoption) stays a
+  frozen 2026-08-25 snapshot (canonical = Open Work). Maintainer-facing; a full sweep is optional.
 
 ### Cluster 318 — token-pack evidence (`generic-room`, after 315–317)
 

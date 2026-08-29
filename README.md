@@ -83,7 +83,7 @@ place those agents coordinate, remember, and hand off work.
 | **Memory** | Typed, content-addressed artifacts; message edit history; thread/workspace **context export** for prompt packing |
 | **Search** | Full-text (Postgres `tsvector` / SQLite FTS5) and semantic (`pgvector`), with a normalized relevance score |
 | **Real-time** | WebSocket subscribe with resumable cursors; MCP resource-update notifications; cross-replica presence + typing |
-| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP, outbound webhooks; **experimental** A2A bridge |
+| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP (`2026-07-28`), outbound webhooks; A2A v1.0 (JSON-RPC + REST; gRPC partial) |
 | **Auth** | Bearer API tokens with capability scopes; app OAuth-style install flow; optional OIDC human login |
 | **Ops** | `/health/{live,ready}`, Prometheus `/metrics`, OTLP, durable event log + replay, Helm chart, multi-replica support |
 
@@ -207,6 +207,24 @@ curl http://localhost:8080/health
 
 For Kubernetes and production tuning (pool sizing, probes, scaling), see
 [docs/Production.md](docs/Production.md) and [docs/Deploy.md](docs/Deploy.md).
+
+### Prebuilt image (no clone)
+
+Signed, multi-arch (amd64 + arm64) server images are published to GHCR, so you can deploy
+without cloning the repo:
+
+```sh
+docker run -p 8080:8080 \
+  -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
+  ghcr.io/david-engelmann/maidan-server:v315.0.0     # pin a tag, not :latest
+```
+
+The image is a single distroless binary (no shell, no bundled CLI), so seed the first admin
+token with `maidan init` run against your database — from a downloaded release binary or a
+one-shot job — then mint per-agent tokens from it (see
+[docs/Production.md](docs/Production.md#maidan-init-recommended)). Verify the image's cosign
+signature before trusting a tag ([SECURITY.md](SECURITY.md#verifying-a-release)). For a
+zero-setup *local* try-it with the token flow bundled, use the quickstart above.
 
 ### Build + test
 

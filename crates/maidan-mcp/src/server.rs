@@ -24,11 +24,11 @@ use crate::{prompts, resources, tools};
 
 /// Protocol revisions this server implements, newest first. `initialize`
 /// negotiates against the client's requested version, and the HTTP transports
-/// validate the `MCP-Protocol-Version` header against this set. `2026-07-28` is
-/// negotiable now (a current client that requests it gets it echoed); the
-/// stateless-core + routing-header work of that revision lands incrementally
-/// (Protocols.md J3), so the *default* stays the `2024-11-05` baseline
-/// ([`DEFAULT_PROTOCOL_VERSION`]) until 2026 is fully green and advertised.
+/// validate the `MCP-Protocol-Version` header against this set. The **default is
+/// `2026-07-28`** ([`DEFAULT_PROTOCOL_VERSION`]) — the current revision, fully
+/// landed and advertised (negotiation, stateless streamable core, and SEP-2243
+/// routing headers; Protocols.md J3.1–3.5). `2024-11-05` stays supported for
+/// older clients that request it explicitly.
 pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2024-11-05"];
 const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
 

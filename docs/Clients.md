@@ -2,8 +2,11 @@
 > this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
-> behind those backlog items. The `sdk/` scaffolds remain gated 0.0.1 name-holds — "do not
-> implement the client code without a go" still stands.
+> behind those backlog items. **UPDATE (2026-08-28):** the SDKs are **implemented and
+> published at 0.1.0** (clusters 294–299 — TS/Python/Go/Rust live on npm/PyPI/crates.io + the
+> Go module tag). The "0.0.1 name-hold / do not implement without a go" language below is
+> historical; remaining SDK work is typed response models (0.2). MCP is `2026-07-28` (J3
+> shipped); wherever this doc says "until J3, MCP `2024-11-05`," read it as done.
 # Clients — incorporating Maidan into existing workflows
 
 **Audience:** whoever implements the Python / TypeScript / Rust

@@ -2,8 +2,12 @@
 > this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
-> behind those backlog items. The `sdk/` scaffolds remain gated 0.0.1 name-holds — "do not
-> implement the client code without a go" still stands.
+> behind those backlog items. **UPDATE (2026-08-28):** the SDKs are **implemented and
+> published at 0.1.0** (clusters 294–299) and the report-only `sdk-interop` CI job runs these
+> scenarios (Cluster 299). The "0.0.1 name-hold / do not implement" language below is
+> historical. MCP is `2026-07-28` by default (J3 shipped) — wherever this doc says protocol
+> `2024-11-05` "until J3," read it as the current revision; the quickstart runs auth-on, so
+> the SDKs send a bearer (not `AUTH_DISABLED`).
 # Client Testing — black-box scenarios that cover the server
 
 **Audience:** whoever implements SDK 0.1 and whoever owns CI.

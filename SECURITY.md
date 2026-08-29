@@ -60,7 +60,7 @@ against the Sigstore transparency log. Verify before you trust a tag.
 **Container image** (signed by immutable digest):
 
 ```sh
-cosign verify ghcr.io/david-engelmann/maidan-server:v313.0.0 \
+cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
   --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```

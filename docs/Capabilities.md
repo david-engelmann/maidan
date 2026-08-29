@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v316.0.0 — docs honesty scrub + honest prebuilt-image path
+
+| Change | Where |
+|--------|-------|
+| Corrected every verified stale/false doc at v315 (Claims.md A2A-gRPC overclaim → "gRPC = task read/cancel/list, no SendMessage"; `mail.rs`/`server.rs`/`Framework Integrations`/`Threat-Model`/`sdk/README`/`Clients`/`Client Testing`/`Promotion`/`AGENTS`/`Integration`/`CLAUDE`/`SECURITY` staleness; README "experimental A2A"→"A2A v1.0"); fixed two more won't-boot commands (`introduction.md` `cargo run` missing session secret; `Pi.md` `docker run` missing the AUTH_DISABLED ack). Added an honest README "Prebuilt image (no clone)" note — **smoke found the planned `docker run … maidan init` impossible** (prod image is distroless, no CLI/shell), so a true one-command no-clone eval is deferred (needs the quickstart image on GHCR). Published the stuck `v300` release draft | `docs/{Claims,Framework Integrations,Threat-Model,Pi,Integration,Clients,Client Testing,Promotion}.md`, `book/src/introduction.md`, `README.md`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `sdk/README.md`, `crates/maidan-server/src/mail.rs`, `crates/maidan-mcp/src/server.rs` |
+
 ## v315.0.0 — pre-launch correctness & DX + research-sweep fold
 
 | Change | Where |
