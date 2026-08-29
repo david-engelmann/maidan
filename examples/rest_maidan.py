@@ -7,7 +7,7 @@ drives one agent turn (read the shared thread context, then post a reply).
     pip install "httpx>=0.27"
 
     export MAIDAN_URL=http://127.0.0.1:8080
-    export MAIDAN_TOKEN=maid_...      # omit against the auth-disabled quickstart
+    export MAIDAN_TOKEN=maid_...      # from `maidan init`; the quickstart runs auth-on
     python examples/rest_maidan.py <thread_id> <member_id>
 """
 
