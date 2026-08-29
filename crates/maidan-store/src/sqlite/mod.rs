@@ -18,6 +18,7 @@ pub mod events;
 mod follows;
 mod fsm_hooks;
 mod github_links;
+mod glossary;
 mod group_dm;
 mod import;
 mod inbox;
@@ -188,6 +189,30 @@ impl Store for SqliteStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(&self.pool, thread_id).await
+    }
+
+    async fn set_glossary_term(&self, new: NewGlossaryTerm) -> Result<GlossaryTerm, StoreError> {
+        glossary::set(&self.pool, &new).await
+    }
+    async fn get_glossary_term(
+        &self,
+        workspace_id: WorkspaceId,
+        term: &str,
+    ) -> Result<Option<GlossaryTerm>, StoreError> {
+        glossary::get(&self.pool, workspace_id, term).await
+    }
+    async fn list_glossary_terms(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<GlossaryTerm>, StoreError> {
+        glossary::list(&self.pool, workspace_id).await
+    }
+    async fn delete_glossary_term(
+        &self,
+        workspace_id: WorkspaceId,
+        term: &str,
+    ) -> Result<bool, StoreError> {
+        glossary::delete(&self.pool, workspace_id, term).await
     }
 
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError> {

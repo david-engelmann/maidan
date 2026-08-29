@@ -1110,6 +1110,32 @@ pub struct NewReference {
     pub relation: RelationKind,
 }
 
+/// A workspace's canonical definition of a term (Cluster 321) — the anti-drift pin
+/// so agents use words the same way, and the target of the `defines` reference
+/// relation. One entry per `(workspace_id, term)`. Flat by design (no hierarchy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GlossaryTerm {
+    pub id: uuid::Uuid,
+    pub workspace_id: WorkspaceId,
+    pub term: String,
+    pub definition: String,
+    /// Alternate labels for the same term (SKOS altLabel).
+    pub aliases: Vec<String>,
+    pub created_by: MemberId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewGlossaryTerm {
+    pub workspace_id: WorkspaceId,
+    pub term: String,
+    pub definition: String,
+    pub aliases: Vec<String>,
+    pub created_by: MemberId,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Artifact {
