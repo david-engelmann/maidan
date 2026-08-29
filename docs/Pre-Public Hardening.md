@@ -274,10 +274,10 @@ A5, `mail.rs` module docs) **can** land in parallel with that sweep.
   Replace blanket "pre-release" with accurate maturity language
   (e.g. "stable API surface under the tagged gates; solo-maintained;
   expect rapid post-gate hardening"). Align README status section.
-- [ ] **A6. Fix the `mail.rs` module-doc lie**
-  Rewrite to: config-gated SMTP; wired from `notification_router`
-  (249); best-effort spawn, no retry; presence skip (253) and digest
-  (255) already applied before send. Point at Expansion Bet 4 for DLQ.
+- **A6. Fix the `mail.rs` module-doc lie — ✅ done (Cluster 316)**
+  Rewritten: config-gated SMTP; wired from `notification_router`
+  (249); best-effort spawn; presence skip (253) + digest (255) applied
+  before send; durable retry/DLQ via the mail outbox (305–306).
 
 ### B. Structural refactors — "readable modules" (**P1**, no behavior change)
 
@@ -591,7 +591,7 @@ and small correctness, not features.
 
 | ID | Sev | Scope |
 |----|-----|--------|
-| **K1** | P0 | **A6.** Rewrite `mail.rs` module docs to match `notification_router` (wired, spawn, no retry, presence/digest gates). |
+| **K1** | ✅ done (316) | **A6.** `mail.rs` module docs rewritten to match `notification_router` (wired 249, spawn, presence/digest gates, DLQ 305–306). |
 | **K2** | P1 | Strike Open Work "Cluster 180 still open" / `v143` baseline. DM generic-thread hole **shipped** (`ensure_thread_access`). E5 stale-plan pass. |
 | **K3** | P1 | Replace `subscribe_resume_secret()` panic with boot-time invariant (assert in `AppState::new` / `main`) or `Option` + 500. Do not leave a panic on a getter. |
 | **K4** | P1 | `AUTH_DISABLED` + missing `MAIDAN_SESSION_SECRET` must not silently use `TEST_SUBSCRIBE_RESUME_SECRET` except in tests. Fail boot, or require an explicit `MAIDAN_ALLOW_INSECURE_RESUME_SECRET=1` next to the existing insecure-auth ack. |

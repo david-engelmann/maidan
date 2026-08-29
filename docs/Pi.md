@@ -26,22 +26,32 @@ docker pull ghcr.io/david-engelmann/maidan-server:latest
 Minimal SQLite-backed server (no Postgres container):
 
 ```sh
+# Lab / dev only: auth OFF. AUTH_DISABLED fails closed unless the explicit
+# MAIDAN_ALLOW_INSECURE_NO_AUTH ack is ALSO set (Cluster 157), so both are required
+# for the container to boot. Never expose this to a network. Pin the tag, not :latest.
 mkdir -p ~/maidan-data
 docker run --rm -d \
   --name maidan \
   -p 8080:8080 \
   -e DATABASE_URL=sqlite:///data/maidan.db \
   -e AUTH_DISABLED=1 \
+  -e MAIDAN_ALLOW_INSECURE_NO_AUTH=1 \
   -v ~/maidan-data:/data \
-  ghcr.io/david-engelmann/maidan-server:latest
+  ghcr.io/david-engelmann/maidan-server:v315.0.0
 
 curl -s http://127.0.0.1:8080/health
 ```
 
-For production-style auth, use bootstrap once ([Production.md](Production.md#bootstrap)):
+For **auth on** (recommended for anything beyond a throwaway lab), seed the first admin
+token with the `maidan` CLI. The published server image is a single distroless binary and
+does **not** bundle the CLI, so run `maidan init` from the **native install (Option B
+below)** against the same database, or from a downloaded release binary against your
+Postgres — then send `Authorization: Bearer <token>` (see
+[Production.md](Production.md#maidan-init-recommended)):
 
-- Build or use an image with `MAIDAN_ENABLE_BOOTSTRAP=1` at image build time, or run from source on the Pi.
-- Set `MAIDAN_BOOTSTRAP=1`, create workspace + member, mint token, then disable bootstrap and set real auth.
+```sh
+DATABASE_URL=sqlite:///home/pi/maidan/maidan.db maidan init --workspace pi-lab
+```
 
 Full stack (Postgres + MinIO) via compose works on Pi if you have RAM; see [Deploy.md](Deploy.md).
 
@@ -58,16 +68,20 @@ tar -xzf maidan-aarch64-unknown-linux-gnu.tar.gz
 sudo install -m755 maidan-server maidan /usr/local/bin/
 ```
 
-3. Run with persistent SQLite:
+3. Run with persistent SQLite, auth on. Seed the first admin token once with `maidan
+   init` (the native install includes the `maidan` CLI), then start the server:
 
 ```sh
 export DATABASE_URL=sqlite:///home/pi/maidan/maidan.db
-export AUTH_DISABLED=1   # dev / lab only
+maidan init --workspace pi          # prints an admin bearer token once — save it
+export MAIDAN_SESSION_SECRET=change-me-to-a-32-byte-plus-secret-value
 maidan-server
 ```
 
-Open `http://<pi-ip>:8080/ui/` for the operator shell, or use bearer tokens per
-[Integration.md](Integration.md).
+Open `http://<pi-ip>:8080/ui/` for the operator shell, or send `Authorization: Bearer
+<token>` per [Integration.md](Integration.md). (For a throwaway lab only, you can instead
+run auth off with `AUTH_DISABLED=1 MAIDAN_ALLOW_INSECURE_NO_AUTH=1` — both are required,
+never on a network.)
 
 ---
 
