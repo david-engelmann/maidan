@@ -113,14 +113,17 @@ dual-write atomicity are all **closed** — see the standing-risks corrections b
   corrected top banners; the strategy pack (Handoff/Path/Expansion Bets/Launch/Adoption) stays a
   frozen 2026-08-25 snapshot (canonical = Open Work). Maintainer-facing; a full sweep is optional.
 
-### Cluster 318 — token-pack evidence (`generic-room`, after 315–317)
+### Cluster 318 — token-pack evidence (`generic-room`) — ✅ DONE
 
-The README "far fewer tokens" (and the pitch's "a fraction of the tokens") is a claim with no
-number. Add a reproducible measurement beside `Benchmark.md`: prompt-token estimate of
-`GET /threads/:id/context` (REST; includes artifacts) **and** MCP `get_thread_context` (omits
-artifacts — measure separately) vs concatenating every channel message; publish
-hardware/commit/backend/method like 281. Optional `maidan_context_tokens_total` metric. **Do NOT put
-a ratio on a public site until this row exists.**
+Shipped `token_pack` (`crates/maidan-server/tests/token_pack.rs`, the `load_baseline` pattern:
+`#[ignore]`d harness + pure estimator unit-tested in CI) — the scoped context pack vs dumping the
+whole channel = **~6.8× fewer tokens** (in-process SQLite, 8 threads × 40 msgs; scoped ~4 951 vs
+naive ~33 908 tokens), plus ~1.3× from lean edits. Bytes exact, `≈chars/4` tokens, ratio
+tokenizer-independent. `Benchmark.md` "Context-pack token savings" section + `Claims.md` token row →
+"Shipped + measured" with the evidence link — a ratio now exists behind the claim.
+**Follow-ups (optional):** measure the MCP `get_thread_context` pack separately (it omits artifacts
+vs REST); a `maidan_context_tokens_total` metric (not needed now — the doc exists). **This closes the
+launch-prep leg of the sweep (315–318); next is the fidelity + context flagship arc.**
 
 ### Fidelity + context flagship arc (`generic-room` — the differentiator)
 

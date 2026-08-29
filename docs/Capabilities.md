@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v318.0.0 — token-pack evidence
+
+| Change | Where |
+|--------|-------|
+| A number for the "far fewer tokens" claim: `token_pack` measures the scoped context pack vs dumping the whole channel — **~6.8× fewer tokens** (in-process SQLite, 8×40 msgs; scoped pack ~4 951 vs naive ~33 908 tokens), plus ~1.3× from lean edits. Bytes exact, `≈chars/4` tokens, ratio tokenizer-independent; `#[ignore]`d harness + pure estimator unit-tested in CI. `Benchmark.md` gained a "Context-pack token savings" section; `Claims.md` token row → "Shipped + measured" with the evidence link. **Closes the launch-prep leg of the 2026-08-28 sweep (315–318)** | `crates/maidan-server/tests/token_pack.rs`, `docs/Benchmark.md`, `docs/Claims.md` |
+
 ## v317.0.0 — Bet 2 MCP snippet pack + two-language lease demo
 
 | Change | Where |
