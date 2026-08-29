@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [321.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). **Cluster 3 of the fidelity + context flagship arc** —
+shared glossary foundation. No new gate tag.
+
+### Added
+
+- **`maidan_glossary_terms`** (pg `0053` / sqlite `0052`) — a workspace's canonical
+  `term -> definition` (+ aliases), one entry per `(workspace_id, term)`. Flat by design
+  (no hierarchy). The anti-drift pin and the target of 319's `defines` reference relation.
+- **`GlossaryTerm` / `NewGlossaryTerm`** models + **`Store::{set,get,list,delete}_glossary_term`**
+  (both backends) — `set` upserts (overwrites definition/aliases, bumps `updated_at`, keeps
+  authorship), `list` is ordered by term. Zero-blast-radius store foundation — no routes/tools
+  yet (those land in 322).
+
 ## [320.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). **Cluster 2 of the fidelity + context flagship arc** —

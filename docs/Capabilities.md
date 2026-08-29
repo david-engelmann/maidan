@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v321.0.0 — shared glossary foundation (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| A workspace's canonical `term -> definition` (+ aliases) so agents use words the same way — the anti-drift pin and the target of 319's `defines` reference relation. `maidan_glossary_terms` (pg `0053` / sqlite `0052`, `UNIQUE(workspace_id, term)`, aliases as JSONB/TEXT-JSON), `GlossaryTerm`/`NewGlossaryTerm` models, and `Store::{set,get,list,delete}_glossary_term` (both backends; `set` upserts, preserving authorship + bumping `updated_at`). Flat by design — hierarchy is a knowledge-graph product line, out of scope. **Zero-blast-radius store foundation** — no routes/tools yet (322). **Cluster 3 of the fidelity + context flagship arc** | `migrations/{postgres/0053,sqlite/0052}_glossary_terms.sql`, `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{store.rs,migrate.rs,{postgres,sqlite}/{glossary,mod}.rs}` |
+
 ## v320.0.0 — reverse-edge + by-type reference queries (flagship arc)
 
 | Change | Where |

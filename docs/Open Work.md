@@ -146,11 +146,15 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    reshaped to query src-or-dst + optional `relation` filter + a new MCP `list_references` tool — "what
    refutes X / what references this" is now navigable. The "vocabulary registry" framing folds into the
    glossary (item 2); `RelationKind::CONTROLLED` is the controlled set for relations.
-2. **Shared glossary / definitions layer.** One **flat** foundation table (`glossary_terms
-   {workspace_id, channel_id?, term, definition, aliases, created_by}`) + REST/MCP + surfaced in the
-   existing context pack. The `defines` edge's target; the anti-drift pin (every free-string means the
-   same thing to every agent). Keep flat — **no hierarchy/broader-narrower** (that's the KG-product
-   line).
+2. **Shared glossary / definitions layer — foundation ✅ DONE (Cluster 321).** One **flat**
+   `maidan_glossary_terms {id, workspace_id, term, definition, aliases, created_by, created_at,
+   updated_at}` table (pg `0053` / sqlite `0052`, `UNIQUE(workspace_id, term)`, aliases as JSONB /
+   TEXT-JSON) + `GlossaryTerm`/`NewGlossaryTerm` models + `Store::{set,get,list,delete}_glossary_term`
+   (both backends; `set` upserts). Workspace-scoped (dropped the speculative `channel_id?`). Kept
+   **flat — no hierarchy/broader-narrower** (that's the KG-product line, a locked anti-goal). The
+   `defines` edge's target; the anti-drift pin. **Remaining (Cluster 322):** surface over REST + MCP
+   (CRUD) and fold into the existing context pack (a thread's context carries the workspace's
+   definitions).
 3. **Optional `confidence`** on `Vote`/`ThreadResult` (one nullable field → weighted consensus) +
    near-zero-code **conventions:** a decision-record shape (Context/Decision/Consequences/Alternatives
    /Status) over `thread_results` + the `supersedes` edge; an `ack` grounding act as a reserved vote

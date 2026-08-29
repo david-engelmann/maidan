@@ -99,6 +99,27 @@ pub trait Store: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
 
+    /// A workspace's shared glossary (Cluster 321, fidelity arc): `set` upserts a
+    /// canonical `term -> definition` (+ aliases) keyed on `(workspace_id, term)`,
+    /// `get` fetches one, `list` returns all (ordered by term), `delete` removes
+    /// one. The anti-drift pin — the target of the `defines` reference relation.
+    /// No routes/tools yet — a zero-blast-radius foundation.
+    async fn set_glossary_term(&self, new: NewGlossaryTerm) -> Result<GlossaryTerm, StoreError>;
+    async fn get_glossary_term(
+        &self,
+        workspace_id: WorkspaceId,
+        term: &str,
+    ) -> Result<Option<GlossaryTerm>, StoreError>;
+    async fn list_glossary_terms(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<GlossaryTerm>, StoreError>;
+    async fn delete_glossary_term(
+        &self,
+        workspace_id: WorkspaceId,
+        term: &str,
+    ) -> Result<bool, StoreError>;
+
     /// Per-recipient notifications (Cluster 237, Program C): `create` inserts one
     /// row for a recipient, `list_for_member` returns newest-first (optionally
     /// unread-only), `mark_read` stamps `read_at` (idempotent), `unread_count` is
