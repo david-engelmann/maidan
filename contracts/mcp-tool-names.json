@@ -41,6 +41,7 @@
   "list_notifications",
   "list_pins",
   "list_reactions",
+  "list_references",
   "list_roots",
   "list_slash_commands",
   "list_task_schedules",

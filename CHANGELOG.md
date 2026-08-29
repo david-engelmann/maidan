@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [320.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). **Cluster 2 of the fidelity + context flagship arc** —
+reverse-edge + by-type reference queries. No new gate tag.
+
+### Added
+
+- **`Store::list_references_to`** (both backends) — the reverse reference edge ("what
+  references this"), reusing the existing `idx_references_dst` index (no migration).
+- **MCP `list_references` tool** — MCP could add references but not list them; now it lists
+  FROM a source or TO a target, optionally filtered by relation (`workspace:read`; shares
+  `add_reference`'s src/dst access-gate). Both contracts updated.
+
+### Changed
+
+- **`GET /references` reshaped** — takes *either* the `src_kind+src_id` pair (forward) *or*
+  the `dst_kind+dst_id` pair (reverse), plus an optional `relation` filter; exactly one pair
+  required (else `400`), access gated on that anchor. Same route + cap (no new-route
+  preflight). Turns the typed reference graph from 319 into a navigable one.
+
 ## [319.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). **Cluster 1 of the fidelity + context flagship arc** —

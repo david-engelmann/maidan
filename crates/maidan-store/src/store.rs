@@ -785,6 +785,13 @@ pub trait Store: Send + Sync {
         src_id: uuid::Uuid,
     ) -> Result<Vec<Reference>, StoreError>;
 
+    /// References pointing AT one target — the reverse edge (Cluster 320).
+    async fn list_references_to(
+        &self,
+        dst_kind: RefSide,
+        dst_id: uuid::Uuid,
+    ) -> Result<Vec<Reference>, StoreError>;
+
     /// References from many sources of one kind in a single query (Cluster 106).
     /// Avoids the per-message `list_references_from` N+1. Returns a flat list the
     /// caller groups by `src_id`; ordered by `src_id` then `created_at ASC`.

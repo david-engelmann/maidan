@@ -274,8 +274,16 @@ fn default_limit() -> i64 {
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListReferencesQuery {
-    pub src_kind: RefSide,
-    pub src_id: uuid::Uuid,
+    /// List references FROM this source (forward edges). Give either the `src_*`
+    /// pair OR the `dst_*` pair (Cluster 320).
+    pub src_kind: Option<RefSide>,
+    pub src_id: Option<uuid::Uuid>,
+    /// List references TO this target (reverse edges — "what references this").
+    pub dst_kind: Option<RefSide>,
+    pub dst_id: Option<uuid::Uuid>,
+    /// Optional relation filter (a `RelationKind` wire string, e.g. `refutes`).
+    #[schema(value_type = Option<String>)]
+    pub relation: Option<RelationKind>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

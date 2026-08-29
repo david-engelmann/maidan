@@ -118,6 +118,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "search_messages" => Ok(SEARCH_QUERY),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
+        "list_references" => Ok(WORKSPACE_READ),
         "register_fsm_hook" => Ok(WORKSPACE_WRITE),
         "list_fsm_hooks" => Ok(WORKSPACE_READ),
         "add_channel_member" | "list_channel_members" | "remove_channel_member" => {
@@ -202,7 +203,7 @@ async fn enforce_channel_access(
                     .await?;
             }
         }
-        "add_reference" => {
+        "add_reference" | "list_references" => {
             for (kind_key, id_key) in [("src_kind", "src_id"), ("dst_kind", "dst_id")] {
                 if let (Some(kv), Some(id)) = (args.get(kind_key), field(id_key)) {
                     match serde_json::from_value::<maidan_types::RefSide>(kv.clone()) {
@@ -307,6 +308,7 @@ pub async fn dispatch(
         "unpin_message" => social::unpin_message(store, args).await,
         "list_pins" => social::list_pins(store, args).await,
         "add_reference" => reference::add_reference(store, args).await,
+        "list_references" => reference::list_references(store, args).await,
         "upload_artifact" => artifact::upload_artifact(store, artifacts, args).await,
         "begin_artifact_multipart" => artifact::begin_artifact_multipart(artifacts).await,
         "upload_artifact_multipart_part" => {

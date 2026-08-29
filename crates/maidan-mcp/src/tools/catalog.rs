@@ -747,9 +747,23 @@ pub fn catalog() -> Vec<Value> {
                     "src_id": {"type": "string", "format": "uuid"},
                     "dst_kind": {"type": "string", "enum": ["thread", "message"]},
                     "dst_id": {"type": "string", "format": "uuid"},
-                    "relation": {"type": "string"}
+                    "relation": {"type": "string", "description": "typed relation; controlled set: supports/refutes/defines/depends/duplicates/grounds/supersedes (other values are allowed and round-trip verbatim)"}
                 },
                 "required": ["src_kind", "src_id", "dst_kind", "dst_id", "relation"]
+            }
+        }),
+        json!({
+            "name": "list_references",
+            "description": "List references FROM a source (forward) or TO a target (reverse — 'what references this'), optionally filtered by relation. Provide exactly one of the src_kind+src_id or dst_kind+dst_id pair.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "src_kind": {"type": "string", "enum": ["thread", "message"]},
+                    "src_id": {"type": "string", "format": "uuid"},
+                    "dst_kind": {"type": "string", "enum": ["thread", "message"]},
+                    "dst_id": {"type": "string", "format": "uuid"},
+                    "relation": {"type": "string", "description": "optional relation filter (controlled set: supports/refutes/defines/depends/duplicates/grounds/supersedes, or any custom value)"}
+                }
             }
         }),
         json!({

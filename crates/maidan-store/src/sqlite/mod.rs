@@ -991,6 +991,14 @@ impl Store for SqliteStore {
     ) -> Result<Vec<Reference>, StoreError> {
         refs::list_from(&self.pool, src_kind, src_id).await
     }
+
+    async fn list_references_to(
+        &self,
+        dst_kind: RefSide,
+        dst_id: uuid::Uuid,
+    ) -> Result<Vec<Reference>, StoreError> {
+        refs::list_to(&self.pool, dst_kind, dst_id).await
+    }
     async fn list_references_from_many(
         &self,
         src_kind: RefSide,

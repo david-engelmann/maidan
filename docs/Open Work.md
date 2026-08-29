@@ -141,10 +141,11 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    the bare snake_case string (wire byte-identical); both store backends bind `as_str()`/parse
    `from_wire` (column stays TEXT, no migration); REST `CreateReference` + MCP `add_reference` inputs
    typed; `ReferenceAdded` carries it; OpenAPI/MCP schemas unchanged (`string`). The thread-DAG was
-   already a special-cased typed `blocks`. **Still to do → Cluster 320:** the **reverse-edge /
-   by-type query** surface (`list_references_to` + REST/MCP — "what refutes X / what supersedes Y")
-   that makes the typed graph navigable. The "vocabulary registry" framing folds into the glossary
-   (item 2); `RelationKind::CONTROLLED` is the controlled set for relations.
+   already a special-cased typed `blocks`. **Reverse-edge / by-type queries — ✅ DONE (Cluster 320):**
+   `Store::list_references_to` (reverse, reuses `idx_references_dst`, no migration) + `GET /references`
+   reshaped to query src-or-dst + optional `relation` filter + a new MCP `list_references` tool — "what
+   refutes X / what references this" is now navigable. The "vocabulary registry" framing folds into the
+   glossary (item 2); `RelationKind::CONTROLLED` is the controlled set for relations.
 2. **Shared glossary / definitions layer.** One **flat** foundation table (`glossary_terms
    {workspace_id, channel_id?, term, definition, aliases, created_by}`) + REST/MCP + surfaced in the
    existing context pack. The `defines` edge's target; the anti-drift pin (every free-string means the

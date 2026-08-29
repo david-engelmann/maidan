@@ -54,17 +54,33 @@ pub async fn create_reference(
     Ok((StatusCode::CREATED, Json(r)))
 }
 
+/// List references by source (forward) OR target (reverse), optionally filtered by
+/// relation (Cluster 320). Exactly one of the `src_*` / `dst_*` pairs is required;
+/// access is gated on that anchor entity (the Cluster-165 model), symmetric to
+/// `create_reference`.
 pub async fn list_references(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Query(q): Query<ListReferencesQuery>,
 ) -> ApiResult<Json<Vec<Reference>>> {
     cap(&auth, WORKSPACE_READ)?;
-    ensure_ref_access(state.store.as_ref(), &auth, q.src_kind, q.src_id).await?;
-    Ok(Json(
-        state
-            .store
-            .list_references_from(q.src_kind, q.src_id)
-            .await?,
-    ))
+    let mut refs = match (q.src_kind, q.src_id, q.dst_kind, q.dst_id) {
+        (Some(src_kind), Some(src_id), None, None) => {
+            ensure_ref_access(state.store.as_ref(), &auth, src_kind, src_id).await?;
+            state.store.list_references_from(src_kind, src_id).await?
+        }
+        (None, None, Some(dst_kind), Some(dst_id)) => {
+            ensure_ref_access(state.store.as_ref(), &auth, dst_kind, dst_id).await?;
+            state.store.list_references_to(dst_kind, dst_id).await?
+        }
+        _ => {
+            return Err(ApiError::BadRequest(
+                "provide exactly one of the src_kind+src_id or dst_kind+dst_id pair".into(),
+            ))
+        }
+    };
+    if let Some(relation) = q.relation {
+        refs.retain(|r| r.relation == relation);
+    }
+    Ok(Json(refs))
 }
