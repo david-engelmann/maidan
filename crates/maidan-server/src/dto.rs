@@ -7,7 +7,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ArtifactKind, ChannelId, ContentBlock, EmailDeliveryMode,
-    EventKind, MemberId, MemberKind, RefSide, ThreadId, WebhookSubscriptionId, WorkspaceId,
+    EventKind, MemberId, MemberKind, RefSide, RelationKind, ThreadId, WebhookSubscriptionId,
+    WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -206,7 +207,10 @@ pub struct CreateReference {
     pub src_id: uuid::Uuid,
     pub dst_kind: RefSide,
     pub dst_id: uuid::Uuid,
-    pub relation: String,
+    /// Typed relation (Cluster 319). Snake_case string; controlled set
+    /// `RelationKind::CONTROLLED`, unknown values round-trip via `Other`.
+    #[schema(value_type = String)]
+    pub relation: RelationKind,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Event, NewReference, RefSide, Reference, StoredEvent};
+use maidan_types::{Event, NewReference, RefSide, Reference, RelationKind, StoredEvent};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ pub async fn create(pool: &SqlitePool, new: NewReference) -> Result<Reference, S
     .bind(new.src_id)
     .bind(new.dst_kind.as_str())
     .bind(new.dst_id)
-    .bind(&new.relation)
+    .bind(new.relation.as_str())
     .bind(now)
     .fetch_one(pool)
     .await
@@ -55,7 +55,7 @@ pub async fn create_with_event(
     .bind(new.src_id)
     .bind(new.dst_kind.as_str())
     .bind(new.dst_id)
-    .bind(&new.relation)
+    .bind(new.relation.as_str())
     .bind(now)
     .fetch_one(&mut *tx)
     .await
@@ -137,7 +137,7 @@ fn row_to_reference(row: &sqlx::sqlite::SqliteRow) -> Result<Reference, StoreErr
         src_id: row.get::<Uuid, _>("src_id"),
         dst_kind,
         dst_id: row.get::<Uuid, _>("dst_id"),
-        relation: row.get("relation"),
+        relation: RelationKind::from_wire(row.get::<String, _>("relation").as_str()),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
     })
 }

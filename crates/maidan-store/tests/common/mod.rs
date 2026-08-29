@@ -173,7 +173,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             src_id: msg2.id.0,
             dst_kind: RefSide::Message,
             dst_id: msg1.id.0,
-            relation: "replies-to".to_string(),
+            relation: "replies-to".into(),
         })
         .await
         .expect("add reference");

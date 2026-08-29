@@ -1098,7 +1098,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
             src_id: msg.id.0,
             dst_kind: RefSide::Thread,
             dst_id: th.id.0,
-            relation: "derived_from".to_string(),
+            relation: "derived_from".into(),
         })
         .await
         .expect("reference");
