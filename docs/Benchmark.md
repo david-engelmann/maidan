@@ -58,6 +58,30 @@ Each iteration is one post + one read + one search. Latencies are milliseconds.
 |-----|-----|-----|-----|--------|
 | **0.71** | 0.91 | 1.00 | 1.14 | 0 |
 
+### Context-pack token savings (`token_pack`)
+
+The README says agents "pull exactly the context a step needs … instead of re-stuffing
+the prompt, so the same work costs far fewer tokens." Measured: a scoped thread **context
+pack** (`GET /threads/:id/context` — a bounded window + pins + results + references +
+artifacts, edits as metadata) vs the naive baseline of dumping **every message in the
+channel** into the prompt. Reported in **bytes** (exact — the serialized JSON is what an
+agent receives) and an estimated token count (`≈ chars/4`; the *ratio* is
+tokenizer-independent). Fixture: 8 threads × 40 substantive messages = 320 total; the
+target thread also carries 15 edits.
+
+| What the agent is handed | Bytes | ~Tokens |
+|--------------------------|-------|---------|
+| Scoped pack (`GET …/context`) | 19 802 | ~4 951 |
+| Naive: dump the whole channel | 135 630 | ~33 908 |
+| Same pack, but full edit bodies | 25 943 | ~6 486 |
+
+- **Scoped pack vs naive channel dump: ~6.8× fewer tokens.**
+- **Lean edits (metadata) vs full `body_before`/`body_after`: ~1.3× fewer tokens on the pack** — the single biggest per-pack lever (default `include_edits=false`).
+
+The ratio grows with channel size (the pack is bounded; the dump is not) and with edit
+history. This is a data-shape measurement, not a latency one, so it is hardware- and
+tokenizer-independent to first order.
+
 ## How to read these
 
 - **Realtime fan-out is sub-millisecond.** A subscriber sees a posted message in
@@ -89,7 +113,13 @@ cargo test --release -p maidan-server --test loadgen post_to_observer_latency --
 
 # both, wrapped with the env knobs:
 scripts/loadgen.sh
+
+# context-pack token savings (bytes + estimated tokens + the ratio):
+cargo test -p maidan-server --test token_pack -- --ignored --nocapture
 ```
+
+The `token_pack` estimator math is pure and unit-tested in CI; the measurement itself is
+`#[ignore]`d (a measurement tool, not a gate), like `load_baseline`.
 
 Env knobs: `MAIDAN_LOADGEN_CONCURRENCY`, `MAIDAN_LOADGEN_OPS`,
 `MAIDAN_LOADGEN_DURATION_SECS` (timed soak), `MAIDAN_LOADGEN_OBSERVER_OPS`.

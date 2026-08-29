@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [318.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). Token-pack evidence — the last launch-prep cluster of
+the 2026-08-28 research sweep. No new gate tag.
+
+### Added
+
+- **`token_pack` measurement** (`crates/maidan-server/tests/token_pack.rs`) — evidence for
+  the "far fewer tokens" claim: the scoped context pack vs dumping every message in the
+  channel. Measured (in-process SQLite, 8 threads × 40 messages): scoped pack ~4 951 tokens
+  (19 802 bytes) vs naive channel dump ~33 908 tokens (135 630 bytes) = **~6.8× fewer
+  tokens**; lean edits vs full edit bodies = ~1.3× fewer. Bytes are exact; the token
+  estimate is `≈ chars/4` and the ratio is tokenizer-independent. `#[ignore]`d harness +
+  pure estimator unit-tested in CI (the `load_baseline` pattern).
+- **`Benchmark.md`** "Context-pack token savings" section (method + numbers + reproduce);
+  **`Claims.md`** token row upgraded to "Shipped + measured" with the ratio + evidence link.
+
 ## [317.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). Bet 2 MCP snippet pack + the two-language lease demo
