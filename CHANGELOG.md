@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [317.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). Bet 2 MCP snippet pack + the two-language lease demo
+(2026-08-28 research sweep, part 3). No new gate tag.
+
+### Added
+
+- **Two-language lease demo** (`examples/lease_demo/` + `scripts/lease-demo.sh`) — the
+  falsifiable hello-world: a Python SDK worker and a TypeScript SDK worker both call
+  `claim_next_thread` on one channel; Maidan hands each open task to exactly one worker (no
+  double-claim across languages), and the drained queue returns `null`. No LLM. Verified
+  end-to-end locally.
+- **MCP client configs** — `examples/cursor-mcp.json` + `examples/claude-desktop-mcp.json`
+  (`/mcp/streamable`, bearer, `2026-07-28` stateless).
+- CI validate-quickstart now guards the demo scripts + configs (`bash -n`, `node --check`,
+  `py_compile`, JSON-parse).
+
+### Changed
+
+- `langchain_maidan.py` + `autogen_maidan.py` now **filter the catalog to the six-tool hero
+  loop** (`claim_next_thread`, `post_message`, `get_thread_context`, `set_thread_result`,
+  `wait_for_result`, `wait_for_ready`) before handing tools to the agent, instead of loading
+  all ~78. Filter only — the catalog is unchanged server-side; the pi 8-method seam stays
+  callable.
+- `examples/README.md` reworked around the hero demo + MCP configs + the auth-on quickstart;
+  `Framework Integrations.md` leads with the hero-6 filter; fixed the stale `rest_maidan.py`
+  auth note.
+
 ## [316.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). Docs honesty scrub + honest prebuilt-image path

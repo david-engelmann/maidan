@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v317.0.0 — Bet 2 MCP snippet pack + two-language lease demo
+
+| Change | Where |
+|--------|-------|
+| The falsifiable hello-world: a Python SDK worker + a TypeScript SDK worker both `claim_next_thread` on one channel → Maidan hands each task to exactly one (no cross-language double-claim; drained queue → `null`; no LLM); verified end-to-end via `scripts/lease-demo.sh`. MCP client configs for Cursor/Claude (`/mcp/streamable`, bearer, `2026-07-28`). LangChain/AutoGen examples now **filter to the six-tool hero loop** (client-side; catalog stays 78, pi 8-seam callable) instead of loading all ~78. CI guards the new scripts/configs | `examples/lease_demo/`, `scripts/lease-demo.sh`, `examples/{cursor-mcp,claude-desktop-mcp}.json`, `examples/{langchain,autogen,rest}_maidan.py`, `examples/README.md`, `docs/Framework Integrations.md`, `.github/workflows/ci.yml` |
+
 ## v316.0.0 — docs honesty scrub + honest prebuilt-image path
 
 | Change | Where |
