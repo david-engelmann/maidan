@@ -153,7 +153,7 @@ pub async fn import_workspace(pool: &PgPool, b: &WorkspaceImport) -> Result<(), 
         .bind(r.src_id)
         .bind(r.dst_kind.as_str())
         .bind(r.dst_id)
-        .bind(&r.relation)
+        .bind(r.relation.as_str())
         .bind(r.created_at)
         .execute(&mut *tx)
         .await?;

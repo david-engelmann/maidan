@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [319.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). **Cluster 1 of the fidelity + context flagship arc** —
+typed reference relations (the keystone). No new gate tag.
+
+### Changed
+
+- **`Reference.relation` is now a controlled `RelationKind`**, not a free `String`. Set:
+  `supports / refutes / defines / depends / duplicates / grounds / supersedes`, plus
+  `Other(String)` for anything outside it (round-trips verbatim). It serializes as the bare
+  snake_case string, so REST/MCP/event/export payloads are **byte-identical** — the change
+  is type-safety + canonicalization, turning the reference graph into a machine-navigable
+  argument/provenance graph. Both store backends bind `relation.as_str()` and parse via
+  `RelationKind::from_wire`; the `maidan_references` column stays `TEXT` (no migration). REST
+  `CreateReference` + MCP `add_reference` inputs are `RelationKind` (unknown → `Other`);
+  OpenAPI/MCP schemas still declare `relation` as `string` (accurate — no contract change).
+  Pre-launch, no backwards-compat shim (the field changed type outright).
+
 ## [318.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). Token-pack evidence — the last launch-prep cluster of

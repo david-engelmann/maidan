@@ -984,6 +984,107 @@ pub struct NewPin {
     pub member_id: MemberId,
 }
 
+/// The typed predicate on a [`Reference`] edge (Cluster 319). A small controlled
+/// vocabulary — the same subject→predicate→object shape as IBIS, W3C PROV,
+/// ClaimReview, and GitHub/Linear issue relations — so an agent's edges are
+/// machine-navigable ("what `refutes` this", "what this `supersedes`") instead of
+/// free prose. [`Other`] keeps expressivity: an unrecognized relation round-trips
+/// verbatim rather than being rejected. Serializes as the bare snake_case string on
+/// the wire (a controlled variant → its canonical name; `Other(s)` → `s`).
+///
+/// [`Other`]: RelationKind::Other
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationKind {
+    /// This entity provides support/evidence for the target.
+    Supports,
+    /// This entity contradicts/refutes the target.
+    Refutes,
+    /// This entity defines the target (points at a glossary term / canonical def).
+    Defines,
+    /// This entity depends on the target.
+    Depends,
+    /// This entity is a duplicate of the target.
+    Duplicates,
+    /// This entity is grounded in the target (source span / artifact / provenance).
+    Grounds,
+    /// This entity supersedes the target (the target is now historical).
+    Supersedes,
+    /// Any relation outside the controlled set, preserved verbatim.
+    Other(String),
+}
+
+impl RelationKind {
+    /// The controlled vocabulary (excludes `Other`).
+    pub const CONTROLLED: [&'static str; 7] = [
+        "supports",
+        "refutes",
+        "defines",
+        "depends",
+        "duplicates",
+        "grounds",
+        "supersedes",
+    ];
+
+    /// The wire string for this relation.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Supports => "supports",
+            Self::Refutes => "refutes",
+            Self::Defines => "defines",
+            Self::Depends => "depends",
+            Self::Duplicates => "duplicates",
+            Self::Grounds => "grounds",
+            Self::Supersedes => "supersedes",
+            Self::Other(s) => s,
+        }
+    }
+
+    /// Parse a wire string into a relation — a controlled variant when it matches,
+    /// otherwise `Other` (never fails).
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            "supports" => Self::Supports,
+            "refutes" => Self::Refutes,
+            "defines" => Self::Defines,
+            "depends" => Self::Depends,
+            "duplicates" => Self::Duplicates,
+            "grounds" => Self::Grounds,
+            "supersedes" => Self::Supersedes,
+            other => Self::Other(other.to_string()),
+        }
+    }
+
+    /// True for a controlled-vocabulary relation (not `Other`).
+    pub fn is_controlled(&self) -> bool {
+        !matches!(self, Self::Other(_))
+    }
+}
+
+impl From<&str> for RelationKind {
+    fn from(s: &str) -> Self {
+        Self::from_wire(s)
+    }
+}
+
+impl From<String> for RelationKind {
+    fn from(s: String) -> Self {
+        Self::from_wire(&s)
+    }
+}
+
+impl Serialize for RelationKind {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for RelationKind {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(Self::from_wire(&s))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Reference {
@@ -992,7 +1093,11 @@ pub struct Reference {
     pub src_id: uuid::Uuid,
     pub dst_kind: RefSide,
     pub dst_id: uuid::Uuid,
-    pub relation: String,
+    /// The typed predicate (Cluster 319). Wire form is a snake_case string; the
+    /// controlled set is [`RelationKind::CONTROLLED`], unknown values round-trip via
+    /// [`RelationKind::Other`].
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub relation: RelationKind,
     pub created_at: DateTime<Utc>,
 }
 
@@ -1002,7 +1107,7 @@ pub struct NewReference {
     pub src_id: uuid::Uuid,
     pub dst_kind: RefSide,
     pub dst_id: uuid::Uuid,
-    pub relation: String,
+    pub relation: RelationKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1473,6 +1578,55 @@ pub struct ReindexJob {
     pub started_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<DateTime<Utc>>,
+}
+
+#[cfg(test)]
+mod relation_kind_tests {
+    use super::*;
+
+    #[test]
+    fn controlled_variants_round_trip_as_canonical_snake_case() {
+        for (variant, wire) in [
+            (RelationKind::Supports, "supports"),
+            (RelationKind::Refutes, "refutes"),
+            (RelationKind::Defines, "defines"),
+            (RelationKind::Depends, "depends"),
+            (RelationKind::Duplicates, "duplicates"),
+            (RelationKind::Grounds, "grounds"),
+            (RelationKind::Supersedes, "supersedes"),
+        ] {
+            assert_eq!(variant.as_str(), wire);
+            assert!(variant.is_controlled());
+            assert_eq!(RelationKind::from_wire(wire), variant);
+            // serde round-trips through the bare string.
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(json, format!("\"{wire}\""));
+            assert_eq!(
+                serde_json::from_str::<RelationKind>(&json).unwrap(),
+                variant
+            );
+        }
+        assert_eq!(RelationKind::CONTROLLED.len(), 7);
+    }
+
+    #[test]
+    fn unknown_relation_round_trips_verbatim_as_other() {
+        let r = RelationKind::from_wire("relates_to");
+        assert_eq!(r, RelationKind::Other("relates_to".into()));
+        assert!(!r.is_controlled());
+        assert_eq!(r.as_str(), "relates_to");
+        assert_eq!(serde_json::to_string(&r).unwrap(), "\"relates_to\"");
+        assert_eq!(
+            serde_json::from_str::<RelationKind>("\"relates_to\"").unwrap(),
+            r
+        );
+        // From<&str> / From<String> are the ergonomic constructors.
+        assert_eq!(RelationKind::from("supports"), RelationKind::Supports);
+        assert_eq!(
+            RelationKind::from("x".to_string()),
+            RelationKind::Other("x".into())
+        );
+    }
 }
 
 #[cfg(test)]

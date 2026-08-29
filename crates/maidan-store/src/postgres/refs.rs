@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Event, NewReference, RefSide, Reference, StoredEvent};
+use maidan_types::{Event, NewReference, RefSide, Reference, RelationKind, StoredEvent};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -27,7 +27,7 @@ pub async fn create(pool: &PgPool, new: NewReference) -> Result<Reference, Store
     .bind(new.src_id)
     .bind(new.dst_kind.as_str())
     .bind(new.dst_id)
-    .bind(&new.relation)
+    .bind(new.relation.as_str())
     .fetch_one(pool)
     .await
     .map_err(map_ref_err)?;
@@ -52,7 +52,7 @@ pub async fn create_with_event(
     .bind(new.src_id)
     .bind(new.dst_kind.as_str())
     .bind(new.dst_id)
-    .bind(&new.relation)
+    .bind(new.relation.as_str())
     .fetch_one(&mut *tx)
     .await
     .map_err(map_ref_err)?;
@@ -124,7 +124,7 @@ fn row_to_reference(row: &sqlx::postgres::PgRow) -> Result<Reference, StoreError
         src_id: row.get::<Uuid, _>("src_id"),
         dst_kind,
         dst_id: row.get::<Uuid, _>("dst_id"),
-        relation: row.get("relation"),
+        relation: RelationKind::from_wire(row.get::<String, _>("relation").as_str()),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
     })
 }

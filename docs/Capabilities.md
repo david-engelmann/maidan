@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v319.0.0 — typed reference relations (flagship arc keystone)
+
+| Change | Where |
+|--------|-------|
+| `Reference.relation` is now a controlled `RelationKind` (`supports/refutes/defines/depends/duplicates/grounds/supersedes` + `Other(String)` escape) instead of a free string — the same subject→predicate→object shape as IBIS/PROV/ClaimReview, turning the reference graph into a machine-navigable argument/provenance graph. Serializes as the bare snake_case string (wire byte-identical); both store backends bind `as_str()`/parse `from_wire`, column stays TEXT (no migration); REST `CreateReference` + MCP `add_reference` inputs typed; OpenAPI/MCP schemas unchanged (`string`). **Cluster 1 of the fidelity + context flagship arc.** No backwards-compat shim (pre-launch) | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/{refs,import}.rs`, `crates/maidan-server/src/dto.rs`, `crates/maidan-mcp/src/tools/reference.rs` |
+
 ## v318.0.0 — token-pack evidence
 
 | Change | Where |

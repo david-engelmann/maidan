@@ -135,13 +135,16 @@ level — the server stores and serves typed edges, definitions, and immutable s
 interpret and re-run. Maidan stays a room, not a brain.** Sequence measure-cheap-first (each a
 foundation for the next); zero-blast-radius foundations follow the 159/217/234 pattern.
 
-1. **Typed reference relations (keystone).** Constrain `Reference.relation` (today a free string) to
-   a controlled set — `supports / refutes / defines / depends / duplicates / grounds / supersedes` —
-   validated against the vocabulary registry (fall back to a free-form sub-label so expressivity
-   isn't lost); add reverse-edge / by-type queries. The thread-DAG is already a special-cased typed
-   `blocks` — proof the pattern works. Subsumes provenance links, argument links, supersession, and
-   branch lineage. IBIS / W3C PROV / ClaimReview / GitHub-Linear relations are all this same edge;
-   ~7 predicates provably suffice, so it never becomes an ontology product.
+1. **Typed reference relations (keystone) — ✅ DONE (Cluster 319).** `Reference.relation` is now a
+   controlled `RelationKind` (`supports / refutes / defines / depends / duplicates / grounds /
+   supersedes` + `Other(String)` escape so expressivity isn't lost), not a free string. Serializes as
+   the bare snake_case string (wire byte-identical); both store backends bind `as_str()`/parse
+   `from_wire` (column stays TEXT, no migration); REST `CreateReference` + MCP `add_reference` inputs
+   typed; `ReferenceAdded` carries it; OpenAPI/MCP schemas unchanged (`string`). The thread-DAG was
+   already a special-cased typed `blocks`. **Still to do → Cluster 320:** the **reverse-edge /
+   by-type query** surface (`list_references_to` + REST/MCP — "what refutes X / what supersedes Y")
+   that makes the typed graph navigable. The "vocabulary registry" framing folds into the glossary
+   (item 2); `RelationKind::CONTROLLED` is the controlled set for relations.
 2. **Shared glossary / definitions layer.** One **flat** foundation table (`glossary_terms
    {workspace_id, channel_id?, term, definition, aliases, created_by}`) + REST/MCP + surfaced in the
    existing context pack. The `defines` edge's target; the anti-drift pin (every free-string means the
@@ -179,6 +182,45 @@ prompt/version registry, no deep-copy fork, no non-deterministic "improved" repl
 working set across forks. **Not a harness. Not a labeling product. Not a reasoning engine. Not a
 SaaS.** The parked V-track (V1–V8 in `docs/Undeniable.md` §5), the V2 working-set-budget, `/play`,
 hosted cloud, and the public launch stay **gated on David**.
+
+### Integration reality — projector/transport test coverage (`generic-room`)
+
+From the 2026-08-29 mocks-vs-e2e audit (`docs/Integration Reality.md`, line-checked). The
+in-process room e2es are real; the **vendor-shaped HTTP paths are not exercised** — the shipped
+`SlackWebClient`/`GithubApiClient`/`lettre SmtpTransport` are never constructed in any test (only
+the `SlackSender`/`GithubSender`/`MailTransport` **trait mocks**, which prove loop-prevention, not
+the wire). Both egress clients also **hardcode the vendor host** (`slack.com`, `api.github.com`)
+with **no base-URL override**, so they can't be aimed at a local sink. Fold as `generic-room`
+test-confidence work (not next; the flagship arc leads):
+
+- **Real-client HTTP-path tests, no SaaS (Integration Reality §3.1).** Add a **base-URL override**
+  to `SlackWebClient` + `GithubApiClient`, then a second test that constructs the *real* client
+  against a loopback axum sink — assert the JSON body, bearer/`User-Agent`/`Accept`, and the
+  failure branches untested today (Slack's HTTP-200 `{"ok":false}`; GitHub's non-2xx status). Copy
+  the `webhooks_e2e.rs` loopback-`/hook` shape; for SMTP, drive `SmtpTransport::send` against
+  **Mailpit** in Docker. The trait mocks stay for loop-prevention. Don't add a WireMock crate if an
+  axum sink is simpler; never hit slack.com / api.github.com in PR CI.
+- **LSN replica routing is claimed but CI-untested (§3.2).** The read-your-writes contract
+  (`Maidan-Consistency-Token`) has no running-server CI coverage — the harness tests
+  (`replication.rs`/`read_routing.rs`/`replica_routing.rs`) are `#[ignore]`d and `MAIDAN_DB_REPLICA_URL`
+  is unset in `ci.yml`/`compose.yaml`. Fold: a compose primary+standby stand-in (or a job that runs
+  `scripts/replica-harness.sh` + un-ignores those tests). **Distinguish the two env names** — the
+  harness reads `MAIDAN_PRIMARY_URL`/`MAIDAN_REPLICA_URL`; the *server* reads `MAIDAN_DB_REPLICA_URL`
+  (whether the running server actually routes given that key is a separate, currently-untested check).
+- **Honesty nits (§3.4, small docs/naming):** the `*_e2e.rs` files run in the **`integration`** job,
+  while the job named **`e2e`** is docker-compose smoke (Operations/Client Testing wording);
+  `slack_egress_e2e`/`github_egress_e2e`/`mail_worker_e2e` **overclaim** (trait mocks, not wire
+  e2e); `two_replica_*_e2e` is two app sides on one Postgres (app-HA), not `MAIDAN_DB_REPLICA_URL`
+  replica routing; `Client Testing.md` still frames SDK CI as `compose --profile full` when the
+  real `sdk-interop` job is report-only SQLite + `AUTH_DISABLED`.
+- **Live projectors = David's setup, NOT a maidan cluster (§3.3):** a throwaway Slack workspace +
+  app and a GitHub App on a throwaway repo behind a tunnel, one scripted round-trip each
+  (loop-prevention the assert), nightly/manual. Do NOT start the live apps until §3.1 can aim the
+  clients at a local host (else the first live run is also the first HTTP run).
+- **Anti-goals (§4):** do NOT rebuild the room e2es (claim/MCP/auth/outbox are real); no Slack
+  Marketplace / Check Runs / Copilot; no real tokens in CI; do NOT graduate `sdk-interop`/`a2a-interop`
+  off report-only here; do NOT boot `compose.quickstart` in CI as the projector sink; compose
+  federation-pull is **not** missing (`federation-pull-smoke.sh` covers it); not a harness.
 
 ### Public-launch readiness (external review, 2026-08-25)
 

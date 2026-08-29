@@ -16,7 +16,8 @@ struct AddReferenceArgs {
     src_id: uuid::Uuid,
     dst_kind: RefSide,
     dst_id: uuid::Uuid,
-    relation: String,
+    /// Snake_case string; controlled set `RelationKind::CONTROLLED`, unknown → `Other`.
+    relation: RelationKind,
 }
 
 pub(super) async fn add_reference(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
