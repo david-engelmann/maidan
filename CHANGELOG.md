@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [326.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 8 of the fidelity + context flagship arc** —
+as-of context replay. No new gate tag.
+
+### Added
+
+- **As-of context replay** — `GET /threads/:id/context?as_of=<event_id>` (+ the MCP
+  `get_thread_context` `as_of` arg) reconstructs a thread as it stood at that event-log id,
+  deterministic over the immutable log (no fresh search). A since-edited message shows its
+  as-of body; a since-tombstoned message reappears. Unknown id → `404`.
+- **`Store::list_thread_events_through`** (both backends) + **`maidan_types::reconstruct_messages_through`**
+  (shared by the REST assembler and the MCP builder) — the immutable-log substrate + the
+  message fold. Additive components are cut by the anchor event's time; the glossary is
+  omitted from an as-of pack.
+
 ## [325.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 7 of the fidelity + context flagship arc** —

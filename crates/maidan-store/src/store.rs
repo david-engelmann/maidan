@@ -859,6 +859,13 @@ pub trait Store: Send + Sync {
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError>;
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError>;
+    /// A thread's events with `id <= through_id`, in `id` order (Cluster 326) —
+    /// the immutable substrate for as-of context replay.
+    async fn list_thread_events_through(
+        &self,
+        thread_id: ThreadId,
+        through_id: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
     async fn list_events_after(
         &self,
         workspace_id: WorkspaceId,

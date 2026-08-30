@@ -27,6 +27,10 @@ struct ThreadContextArgs {
     /// the response when the glossary is empty. `false` drops it.
     #[serde(default = "default_true")]
     include_glossary: bool,
+    /// As-of context replay (Cluster 326): reconstruct the thread as it stood at
+    /// this event-log id, deterministic over the immutable log. Omit for the live
+    /// pack.
+    as_of: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +65,9 @@ fn default_true() -> bool {
 pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
     let a: ThreadContextArgs =
         serde_json::from_value(args.clone()).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    if let Some(as_of) = a.as_of {
+        return get_thread_context_as_of(store, &a, as_of).await;
+    }
     let thread_id = ThreadId(a.thread_id);
     let thread = store.get_thread(thread_id).await?;
     if thread.tombstoned_at.is_some() {
@@ -135,6 +142,94 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         }
     }
     Ok(out)
+}
+
+/// As-of context replay (Cluster 326): the MCP twin of the REST assembler's
+/// `build_thread_context_as_of`. The message set is folded from the immutable
+/// event log via `maidan_types::reconstruct_messages_through`; the additive
+/// components are cut by the anchor event's time. Deterministic; no fresh search;
+/// glossary omitted (current vocabulary, not thread history).
+async fn get_thread_context_as_of(
+    store: &dyn Store,
+    a: &ThreadContextArgs,
+    as_of: i64,
+) -> Result<Value, McpError> {
+    let anchor = store.get_stored_event(as_of).await?;
+    let cutoff = anchor.occurred_at;
+    let thread_id = ThreadId(a.thread_id);
+    let thread = store.get_thread(thread_id).await?;
+    let channel = store.get_channel(thread.channel_id).await?;
+
+    let events = store.list_thread_events_through(thread_id, as_of).await?;
+    let mut all = reconstruct_messages_through(&events);
+    if let Some(cursor) = a.message_cursor {
+        match all.iter().position(|m| m.id.0 == cursor) {
+            Some(pos) => all = all.split_off(pos + 1),
+            None => all.clear(),
+        }
+    }
+    let page_limit = a.message_limit.clamp(1, 500);
+    let next_message_cursor = if all.len() as i64 > page_limit {
+        all.get(page_limit as usize - 1).map(|m| m.id.0.to_string())
+    } else {
+        None
+    };
+    let messages: Vec<Message> = all.into_iter().take(page_limit as usize).collect();
+
+    let mut message_edits = Vec::new();
+    for message in &messages {
+        for edit in store.list_message_edits(message.id, 20).await? {
+            if edit.edited_at > cutoff {
+                continue;
+            }
+            if a.include_edits {
+                message_edits.push(serde_json::to_value(&edit)?);
+            } else {
+                message_edits.push(json!({
+                    "id": edit.id,
+                    "message_id": edit.message_id,
+                    "editor_id": edit.editor_id,
+                    "edited_at": edit.edited_at,
+                }));
+            }
+        }
+    }
+
+    let mut references = store
+        .list_references_from(RefSide::Thread, thread_id.0)
+        .await?;
+    for message in &messages {
+        let mut from_message = store
+            .list_references_from(RefSide::Message, message.id.0)
+            .await?;
+        references.append(&mut from_message);
+    }
+    references.retain(|r| r.created_at <= cutoff);
+    references.sort_by_key(|r| r.created_at);
+    references.dedup_by_key(|r| r.id);
+
+    let mut transitions = store
+        .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
+        .await?;
+    transitions.retain(|t| t.occurred_at <= cutoff);
+    let mut chrono = transitions.clone();
+    chrono.sort_by_key(|t| t.occurred_at);
+    let state = chrono
+        .last()
+        .map(|t| t.to_state)
+        .unwrap_or(ThreadState::Open);
+
+    Ok(json!({
+        "workspace_id": channel.workspace_id.0,
+        "channel_id": thread.channel_id.0,
+        "as_of": as_of,
+        "thread": thread,
+        "messages": messages,
+        "message_edits": message_edits,
+        "references": references,
+        "fsm": { "state": state, "transitions": transitions },
+        "next_message_cursor": next_message_cursor,
+    }))
 }
 
 pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
@@ -398,5 +493,93 @@ mod tests {
         for t in wctx["threads"].as_array().unwrap() {
             assert!(t.get("glossary").is_none());
         }
+    }
+
+    #[tokio::test]
+    async fn as_of_replay_shows_the_message_body_at_that_point() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "r".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let (msg, posted) = store
+            .post_message_with_event(
+                NewMessage {
+                    thread_id: thread.id,
+                    author_id: member.id,
+                    body: "v1".into(),
+                    metadata: json!({}),
+                    content: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        store
+            .edit_message_with_event(
+                msg.id,
+                member.id,
+                EditMessage {
+                    body: "v2".into(),
+                    metadata: json!({}),
+                    content: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // As-of the posting event: the body is the original.
+        let at_post = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": thread.id.0, "as_of": posted.id }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(at_post["messages"][0]["body"], "v1");
+        assert_eq!(at_post["as_of"], json!(posted.id));
+        assert!(at_post.get("glossary").is_none());
+
+        // Live: the edited body.
+        let live = get_thread_context(store.as_ref(), &json!({ "thread_id": thread.id.0 }))
+            .await
+            .unwrap();
+        assert_eq!(live["messages"][0]["body"], "v2");
     }
 }
