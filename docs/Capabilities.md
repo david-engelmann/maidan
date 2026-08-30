@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v330.0.0 — context snapshot MCP tool (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| MCP `snapshot_thread_context` — the twin of the 329 REST route: freeze the assembled context pack (live or `as_of`) into the content-addressed artifact store, returning the `Artifact` (`kind=context_snapshot`). `artifact:upload`; reuses `context::get_thread_context` + the modern `upsert_artifact_with_event` + Cluster-204 ref + bus-notify (an MCP-frozen snapshot is fetchable by its workspace, unlike the older MCP artifact tools). Both contracts → 84 tools. Context snapshot is now complete over REST + MCP. **Cluster 12 of the fidelity + context flagship arc** | `crates/maidan-mcp/src/tools/{snapshot.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
+
 ## v329.0.0 — immutable context snapshot artifact (flagship arc)
 
 | Change | Where |

@@ -28,6 +28,7 @@ mod schedule;
 mod search;
 mod seed;
 mod skill;
+mod snapshot;
 mod social;
 mod thread;
 
@@ -120,7 +121,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
         | "complete_artifact_multipart"
-        | "abort_artifact_multipart" => Ok(ARTIFACT_UPLOAD),
+        | "abort_artifact_multipart"
+        | "snapshot_thread_context" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
@@ -180,6 +182,7 @@ async fn enforce_channel_access(
         "list_messages"
         | "post_message"
         | "get_thread_context"
+        | "snapshot_thread_context"
         | "get_tool_transcript"
         | "summarize_thread"
         | "pin_message"
@@ -340,6 +343,7 @@ pub async fn dispatch(
             let v = crate::context::get_thread_context(store.as_ref(), args).await?;
             Ok(content_json(&v))
         }
+        "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
         "get_workspace_context" => {
             let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
             // Drop packed threads in private channels the caller can't access

@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [330.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 12 of the fidelity + context flagship arc** —
+context snapshot MCP tool. No new gate tag.
+
+### Added
+
+- **MCP `snapshot_thread_context`** — the twin of the Cluster-329 REST route: freeze the
+  assembled context pack (live or `as_of`) into the content-addressed artifact store,
+  returning the `Artifact` (`kind=context_snapshot`). `artifact:upload`; uses the modern
+  `upsert_artifact_with_event` + Cluster-204 ref + bus-notify (an MCP-frozen snapshot is
+  fetchable by its workspace, unlike the older MCP artifact tools). Both contracts → 84 tools.
+
 ## [329.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 11 of the fidelity + context flagship arc** —

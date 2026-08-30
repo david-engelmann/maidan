@@ -1001,6 +1001,22 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "snapshot_thread_context",
+            "description": "Freeze the assembled context pack (live or as_of) into the content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed. Same params as get_thread_context; returns the artifact (kind=context_snapshot). Requires artifact:upload. Fetch the bytes via the artifact sha.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    "include_edits": {"type": "boolean", "default": false},
+                    "include_glossary": {"type": "boolean", "default": true},
+                    "as_of": {"type": "integer", "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack."}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "get_workspace_context",
             "description": "Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).",
             "inputSchema": {

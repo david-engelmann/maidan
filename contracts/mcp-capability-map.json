@@ -71,6 +71,7 @@
   "set_member_email": "workspace:read",
   "set_notification_pref": "workspace:read",
   "set_thread_result": "thread:transition",
+  "snapshot_thread_context": "artifact:upload",
   "summarize_thread": "workspace:read",
   "unassign_thread": "thread:transition",
   "unfollow_channel": "workspace:read",
