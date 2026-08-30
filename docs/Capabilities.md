@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v331.0.0 — flagship arc closeout (decision)
+
+| Change | Where |
+|--------|-------|
+| Docs-only closeout of the fidelity + context flagship arc (319–331). A "Product scope" ADR records the arc complete and **declines** its optional tail (seed `pack`/`prefix` inclusion, a `WorkSeeded` event, the flow/setup template) as composable from shipped primitives — declined, not deferred, with revisit conditions. Open Work / Roadmap marked complete. Clean baseline for a research round. **Cluster 13 (closeout) of the fidelity + context flagship arc** | `docs/Decisions.md`, `docs/Open Work.md`, `docs/Roadmap.md` |
+
 ## v330.0.0 — context snapshot MCP tool (flagship arc)
 
 | Change | Where |

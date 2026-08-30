@@ -128,6 +128,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **330.0** (`v330.0.0`) **flagship arc — cluster 12: context snapshot MCP tool.** MCP `snapshot_thread_context` — the twin of the 329 REST route: freeze the assembled context pack (live or `as_of`) into the content-addressed artifact store, returning the `Artifact` (`kind=context_snapshot`). `artifact:upload`; reuses `context::get_thread_context` + the modern `upsert_artifact_with_event` + Cluster-204 ref + bus-notify (an MCP-frozen snapshot is fetchable by its workspace, unlike the older MCP artifact tools). Both contracts → 84 tools. Context snapshot is now complete over REST + MCP. **Next: 331 closes the flagship arc** with an explicit decision on the optional tail (seed `pack`/`prefix` inclusion, `WorkSeeded`, flow template) — reaching a clean point to open a research round.
 
+**331.0** (`v331.0.0`) **flagship arc — cluster 13 (closeout).** Docs-only decision cluster: a "Product scope" ADR in `docs/Decisions.md` records the fidelity + context flagship arc **complete (319–331)** and **declines** its optional tail (seed `pack`/`prefix` inclusion, a `WorkSeeded` event, the flow/setup template) as composable from shipped primitives — declined, not deferred, with revisit conditions. Open Work / Roadmap marked complete. **The flagship arc is done** — a clean point to open a research round. The public launch remains gated on the maintainer's go.
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**
