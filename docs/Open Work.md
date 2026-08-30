@@ -158,10 +158,14 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    `GET /workspaces/:wid/context` (REST + MCP) carry a `glossary` field (`include_glossary`, default
    `true`, empty-omitted; workspace pack carries it once at the top, deduped). **The glossary layer
    (321→322→323) is COMPLETE.**
-3. **Optional `confidence`** on `Vote`/`ThreadResult` (one nullable field → weighted consensus) +
-   near-zero-code **conventions:** a decision-record shape (Context/Decision/Consequences/Alternatives
-   /Status) over `thread_results` + the `supersedes` edge; an `ack` grounding act as a reserved vote
-   value (**version-pinned** to the message edit it grounded). Add no new object for these.
+3. **Optional `confidence` — ✅ DONE for `Vote` (Cluster 324):** nullable `maidan_votes.confidence`
+   (pg `0054` / sqlite `0053`), `Vote`/`NewVote` `Option<f64>` (omitted when absent), REST
+   `POST/GET /messages/:id/votes` + MCP `cast_vote`, range `0..=1` at the API edge, re-cast upserts
+   it. (`ThreadResult` already stores arbitrary JSON, so a `confidence` there is a convention, not a
+   schema change — folded into the conventions below.) **Remaining:** near-zero-code **conventions** —
+   a decision-record shape (Context/Decision/Consequences/Alternatives/Status) over `thread_results` +
+   the `supersedes` edge; an `ack` grounding act as a reserved vote value (**version-pinned** to the
+   message edit it grounded). Add no new object for these.
 4. **As-of context replay** *(net-new)*. `GET /threads/:id/context?as_of=<event_id>` + MCP twin —
    thread the cursor through the assembler's bounded reads (the log already supports `list_after`
    truncation). **Deterministic over immutable data only — no fresh semantic search.** Serves audit

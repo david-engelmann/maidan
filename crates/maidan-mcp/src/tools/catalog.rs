@@ -684,13 +684,14 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "cast_vote",
-            "description": "Cast a vote on a message (e.g. approve, request-changes, emoji).",
+            "description": "Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
                     "member_id": {"type": "string", "format": "uuid"},
-                    "kind": {"type": "string"}
+                    "kind": {"type": "string"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
                 },
                 "required": ["message_id", "member_id", "kind"]
             }

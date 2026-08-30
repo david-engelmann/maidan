@@ -150,14 +150,18 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             message_id: msg1.id,
             member_id: bot.id,
             kind: "approve".to_string(),
+            confidence: Some(0.8),
         })
         .await
         .expect("cast vote");
+    // Re-casting the same (message, member, kind) is idempotent in count but
+    // upserts the confidence (Cluster 324) — the latest cast wins.
     store
         .cast_vote(NewVote {
             message_id: msg1.id,
             member_id: bot.id,
             kind: "approve".to_string(),
+            confidence: Some(0.4),
         })
         .await
         .expect("idempotent vote");
@@ -166,6 +170,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
         .await
         .expect("list votes");
     assert_eq!(votes.len(), 1);
+    assert_eq!(votes[0].confidence, Some(0.4), "re-cast updated confidence");
 
     let reference = store
         .add_reference(NewReference {

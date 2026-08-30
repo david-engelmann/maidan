@@ -321,6 +321,7 @@ async fn social_with_event_appends_atomically() {
             message_id: msg.id,
             member_id: MemberId(author.id.0),
             kind: "up".to_string(),
+            confidence: None,
         })
         .await
         .expect("vote");

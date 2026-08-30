@@ -190,6 +190,10 @@ pub struct CreateMention {
 pub struct CreateVote {
     pub member_id: uuid::Uuid,
     pub kind: String,
+    /// Optional confidence weight (Cluster 324), by convention in `0..=1`, for
+    /// weighted consensus. Omit to state no confidence.
+    #[serde(default)]
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

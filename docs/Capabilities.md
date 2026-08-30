@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v324.0.0 — optional vote confidence (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| An optional `confidence` weight (0..1) on a vote, so consumers can compute weighted consensus instead of a flat tally. `maidan_votes.confidence` (pg `0054` / sqlite `0053`, nullable); `Vote`/`NewVote` gain `confidence: Option<f64>` (omitted when absent); REST `POST/GET /messages/:id/votes` + MCP `cast_vote`; range validated at the API edge. Re-casting the same `(message, member, kind)` upserts the confidence (count idempotent). **Cluster 6 of the fidelity + context flagship arc** | `migrations/{postgres/0054,sqlite/0053}_vote_confidence.sql`, `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/votes.rs`, `crates/maidan-server/src/{dto.rs,routes/social.rs}`, `crates/maidan-mcp/src/tools/{social,catalog}.rs` |
+
 ## v323.0.0 — glossary in the context pack (flagship arc)
 
 | Change | Where |

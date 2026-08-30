@@ -15,15 +15,25 @@ struct CastVoteArgs {
     message_id: uuid::Uuid,
     member_id: uuid::Uuid,
     kind: String,
+    #[serde(default)]
+    confidence: Option<f64>,
 }
 
 pub(super) async fn cast_vote(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: CastVoteArgs = serde_json::from_value(args.clone())?;
+    if let Some(c) = a.confidence {
+        if !(0.0..=1.0).contains(&c) {
+            return Err(McpError::InvalidParams(
+                "confidence must be in 0..=1".into(),
+            ));
+        }
+    }
     store
         .cast_vote(NewVote {
             message_id: MessageId(a.message_id),
             member_id: MemberId(a.member_id),
             kind: a.kind,
+            confidence: a.confidence,
         })
         .await?;
     Ok(content_json(&json!({"ok": true})))
