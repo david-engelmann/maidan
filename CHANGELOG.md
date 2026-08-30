@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [329.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 11 of the fidelity + context flagship arc** —
+immutable context snapshot artifact. No new gate tag.
+
+### Added
+
+- **`POST /threads/:id/context/snapshot`** — freeze the assembled context pack (live or
+  `as_of`) into the content-addressed artifact store: a tamper-evident, deduped record of
+  exactly what the agent was handed. Returns the `Artifact` (`kind=context_snapshot`,
+  `application/json`); fetchable at `GET /artifacts/:sha`. Gated `artifact:upload` + thread
+  access.
+- **`ArtifactKind::ContextSnapshot`** — new kind; migration pg `0055` / sqlite `0054` widens
+  the artifact-kind `CHECK` allowlist.
+
 ## [328.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 10 of the fidelity + context flagship arc** —

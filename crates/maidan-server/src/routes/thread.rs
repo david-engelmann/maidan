@@ -7,7 +7,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{ARTIFACT_UPLOAD, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_fsm::ThreadAction;
@@ -104,6 +104,69 @@ pub async fn get_thread_context(
     )
     .await?;
     Ok(Json(packed))
+}
+
+/// `POST /threads/:id/context/snapshot` — freeze the assembled context pack (live
+/// or `as_of`) into the content-addressed artifact store (Cluster 329): a
+/// tamper-evident record of exactly what the agent was handed. Deduped by sha256
+/// (identical packs share a blob) and ref-guarded per Cluster 204. Re-ask can
+/// later attach the snapshot by its sha. Gated `artifact:upload` + thread access.
+pub async fn snapshot_thread_context(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ThreadContextQuery>,
+) -> ApiResult<(StatusCode, Json<Artifact>)> {
+    let thread_id = ThreadId(id);
+    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
+    cap(&auth, ARTIFACT_UPLOAD)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let packed = crate::thread_context::build_thread_context(
+        state.store.as_ref(),
+        thread_id,
+        crate::thread_context::ThreadContextLimits {
+            message_limit: if q.message_limit > 0 {
+                q.message_limit
+            } else {
+                100
+            },
+            transition_limit: if q.transition_limit > 0 {
+                q.transition_limit
+            } else {
+                50
+            },
+            message_cursor: q.message_cursor.map(MessageId),
+            include_edits: q.include_edits,
+            include_glossary: q.include_glossary,
+            as_of: q.as_of,
+        },
+    )
+    .await?;
+    let body: axum::body::Bytes = serde_json::to_vec(&packed)
+        .map_err(|e| ApiError::Internal(format!("serialize context snapshot: {e}")))?
+        .into();
+    let size_bytes = body.len() as i64;
+    let sha = state.artifacts.put(body).await?;
+    // Same atomic upsert + Cluster-204 per-workspace ref + `ArtifactUpserted` event
+    // as a normal upload; the ref/uploader are recorded only for a non-bypass caller.
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let uploaded_by = (!auth.bypass).then_some(auth.member_id);
+    let (artifact, stored) = state
+        .store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha.to_string(),
+                size_bytes,
+                mime_type: Some("application/json".to_string()),
+                kind: ArtifactKind::ContextSnapshot,
+                uploaded_by,
+            },
+            ref_workspace,
+        )
+        .await?;
+    publish_stored(&state, stored).await;
+    Ok((StatusCode::CREATED, Json(artifact)))
 }
 
 /// `GET /threads/:id/tool-transcript` (Cluster 197) — the thread's tool-call

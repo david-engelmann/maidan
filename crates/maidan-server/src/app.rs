@@ -267,6 +267,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/context", get(routes::get_thread_context))
         .route(
+            "/threads/:id/context/snapshot",
+            post(routes::snapshot_thread_context),
+        )
+        .route(
             "/threads/:id/tool-transcript",
             get(routes::get_tool_transcript),
         )

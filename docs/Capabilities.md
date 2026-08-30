@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v329.0.0 — immutable context snapshot artifact (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| `POST /threads/:id/context/snapshot` freezes the assembled context pack (live or `as_of`) into the existing content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed (identical packs share a blob). Returns the `Artifact` (`kind=context_snapshot`, `application/json`); fetchable at `GET /artifacts/:sha`; gated `artifact:upload` + thread access. New `ArtifactKind::ContextSnapshot` + migration pg `0055` / sqlite `0054` widening the artifact-kind `CHECK`. Reuses the artifact store wholesale (no new blob path). **Cluster 11 of the fidelity + context flagship arc** | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/{routes/thread.rs,app.rs,openapi/*}`, `migrations/{postgres/0055,sqlite/0054}_artifact_kind_context_snapshot.sql`, `contracts/http-capability-map.json` |
+
 ## v328.0.0 — seed-from-message MCP tool (flagship arc)
 
 | Change | Where |

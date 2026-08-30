@@ -146,6 +146,7 @@ impl Modify for SecurityAddon {
         paths::create_thread,
         paths::get_thread,
         paths::get_thread_context,
+        paths::snapshot_thread_context,
         paths::get_tool_transcript,
         paths::transition_thread,
         paths::assign_thread,

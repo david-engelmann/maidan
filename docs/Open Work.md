@@ -186,10 +186,13 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    + bus-notify; 83 tools). Seed-from-message is COMPLETE over REST + MCP (pointer + quote).
    **Remaining (optional):** `pack`/`prefix` inclusion (`prefix` delegates to as-of replay #4); a
    `WorkSeeded` single-signal event.
-6. **Immutable context snapshot artifact** *(net-new)*. Freeze an assembled pack (as-of or live) into
-   the **existing** content-addressed artifact store (sha256, dedup, ref-guarded per 204); re-ask
-   attaches via seed inclusion `pack` pointing at the sha. Delivers "prefix paid once, N angles" +
-   tamper-evident "exactly what the agent was handed."
+6. **Immutable context snapshot artifact — ✅ DONE (Cluster 329).** `POST /threads/:id/context/snapshot`
+   freezes the assembled pack (live or `as_of`) into the existing content-addressed artifact store
+   (sha256 dedup, ref-guarded per 204); returns the `Artifact` (`kind=context_snapshot`), fetchable at
+   `GET /artifacts/:sha`; gated `artifact:upload` + thread access. New `ArtifactKind::ContextSnapshot` +
+   migration pg `0055` / sqlite `0054` widening the kind `CHECK`. Delivers tamper-evident "exactly what
+   the agent was handed" + "prefix paid once, N angles". **Remaining (optional):** an MCP snapshot tool;
+   the seed `pack` inclusion (attach a snapshot sha, ties #5↔#6).
 7. **Flow / setup template** *(last, deferrable — highest scope-creep risk)*. A `structure_only`
    filter over workspace export (187) + import-remap (269–270): clone a setup (channels/skills/
    schedules/DAG skeleton), no messages/results. **Clone only — the room never scores which template
