@@ -342,6 +342,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/messages/{id}/seed",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "DELETE",
     "path": "/messages/{id}/purge",
     "capability": "workspace:write",

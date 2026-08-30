@@ -115,6 +115,92 @@ pub async fn post_message(
     Ok((StatusCode::CREATED, Json(message)))
 }
 
+/// `POST /messages/:id/seed` — seed a new work thread from a source message
+/// (Cluster 327, the write side of "re-ask"). Creates a titled thread (in the
+/// source's channel, or `channel_id`), links it to the source with a `seeded_from`
+/// reference edge, and — for `inclusion: "quote"` — posts a first message quoting
+/// the source. The source is untouched; N seeds per source are allowed. Gated on
+/// `workspace:write` + read-access to the source + write-access to the target
+/// channel.
+pub async fn seed_from_message(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(message_id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SeedFromMessage>,
+) -> ApiResult<(StatusCode, Json<Thread>)> {
+    let source_id = MessageId(message_id);
+    let chain = resolve_message_chain(state.store.as_ref(), source_id).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, chain.workspace_id)?;
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, source_id).await?;
+    if body.title.trim().is_empty() {
+        return Err(ApiError::BadRequest("title must not be empty".into()));
+    }
+    let inclusion = body.inclusion.as_deref().unwrap_or("pointer");
+    if !matches!(inclusion, "pointer" | "quote") {
+        return Err(ApiError::BadRequest(
+            "inclusion must be 'pointer' or 'quote'".into(),
+        ));
+    }
+    let target_channel = match body.channel_id {
+        Some(cid) => ChannelId(cid),
+        None => chain.channel_id,
+    };
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, target_channel).await?;
+
+    // 1. The titled child thread (atomic row + ThreadCreated event).
+    let (thread, t_stored) = state
+        .store
+        .create_thread_with_event(NewThread {
+            channel_id: target_channel,
+            parent_thread_id: None,
+            title: Some(body.title.trim().to_string()),
+        })
+        .await?;
+    super::publish_stored(&state, t_stored).await;
+
+    // 2. The lineage edge: new thread `seeded_from` the source message.
+    let (_reference, r_stored) = state
+        .store
+        .add_reference_with_event(NewReference {
+            src_kind: RefSide::Thread,
+            src_id: thread.id.0,
+            dst_kind: RefSide::Message,
+            dst_id: message_id,
+            relation: RelationKind::SeededFrom,
+        })
+        .await?;
+    super::publish_stored(&state, r_stored).await;
+
+    // 3. `quote` inclusion: a first message quoting the source (author = caller).
+    if inclusion == "quote" {
+        let source = state.store.get_message(source_id).await?;
+        let quoted = source
+            .body
+            .lines()
+            .map(|l| format!("> {l}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (message, m_stored) = state
+            .store
+            .post_message_with_event(
+                NewMessage {
+                    thread_id: thread.id,
+                    author_id: auth.member_id,
+                    body: quoted,
+                    metadata: serde_json::json!({ "seeded_from": message_id }),
+                    content: None,
+                },
+                None,
+            )
+            .await?;
+        super::publish_stored(&state, m_stored).await;
+        publish_routed_mentions(&state, thread.id, chain.workspace_id, &message).await;
+    }
+
+    Ok((StatusCode::CREATED, Json(thread)))
+}
+
 pub async fn edit_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

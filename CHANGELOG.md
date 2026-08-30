@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [327.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 9 of the fidelity + context flagship arc** —
+seed-from-message (REST). No new gate tag.
+
+### Added
+
+- **`POST /messages/:id/seed`** — spawn a titled, claimable child thread from a source
+  message (the write side of "re-ask"), linked by a `seeded_from` reference edge (new thread
+  → source). `inclusion`: `pointer` (default, edge only) or `quote` (first message quotes the
+  source). Source untouched; N seeds per source. Gated `workspace:write` + source read +
+  target-channel write. Reuses existing primitives — no bespoke table, no new event kind
+  (emits `ThreadCreated` + `ReferenceAdded`).
+- **`RelationKind::SeededFrom`** — the lineage relation, added to the controlled vocabulary
+  (`CONTROLLED` is now 8).
+
 ## [326.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 8 of the fidelity + context flagship arc** —

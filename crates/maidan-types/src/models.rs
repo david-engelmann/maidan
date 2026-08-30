@@ -1015,13 +1015,16 @@ pub enum RelationKind {
     Grounds,
     /// This entity supersedes the target (the target is now historical).
     Supersedes,
+    /// This entity was seeded/branched from the target (re-ask lineage, Cluster
+    /// 327): a new work thread spawned from a source message.
+    SeededFrom,
     /// Any relation outside the controlled set, preserved verbatim.
     Other(String),
 }
 
 impl RelationKind {
     /// The controlled vocabulary (excludes `Other`).
-    pub const CONTROLLED: [&'static str; 7] = [
+    pub const CONTROLLED: [&'static str; 8] = [
         "supports",
         "refutes",
         "defines",
@@ -1029,6 +1032,7 @@ impl RelationKind {
         "duplicates",
         "grounds",
         "supersedes",
+        "seeded_from",
     ];
 
     /// The wire string for this relation.
@@ -1041,6 +1045,7 @@ impl RelationKind {
             Self::Duplicates => "duplicates",
             Self::Grounds => "grounds",
             Self::Supersedes => "supersedes",
+            Self::SeededFrom => "seeded_from",
             Self::Other(s) => s,
         }
     }
@@ -1056,6 +1061,7 @@ impl RelationKind {
             "duplicates" => Self::Duplicates,
             "grounds" => Self::Grounds,
             "supersedes" => Self::Supersedes,
+            "seeded_from" => Self::SeededFrom,
             other => Self::Other(other.to_string()),
         }
     }
@@ -1626,6 +1632,7 @@ mod relation_kind_tests {
             (RelationKind::Duplicates, "duplicates"),
             (RelationKind::Grounds, "grounds"),
             (RelationKind::Supersedes, "supersedes"),
+            (RelationKind::SeededFrom, "seeded_from"),
         ] {
             assert_eq!(variant.as_str(), wire);
             assert!(variant.is_controlled());
@@ -1638,7 +1645,7 @@ mod relation_kind_tests {
                 variant
             );
         }
-        assert_eq!(RelationKind::CONTROLLED.len(), 7);
+        assert_eq!(RelationKind::CONTROLLED.len(), 8);
     }
 
     #[test]

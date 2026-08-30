@@ -578,6 +578,13 @@ pub fn tombstone_message() {}
     responses((status = 201, body = Mention)))]
 pub fn create_mention() {}
 
+#[utoipa::path(post, path = "/messages/{id}/seed", tag = "messages",
+    params(("id" = Uuid, Path, description = "Source message id")),
+    request_body = SeedFromMessage,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = Thread, description = "The seeded child thread, linked to the source by a `seeded_from` reference edge")))]
+pub fn seed_from_message() {}
+
 #[utoipa::path(post, path = "/messages/{id}/votes", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
     request_body = CreateVote,

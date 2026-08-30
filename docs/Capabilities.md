@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v327.0.0 — seed-from-message (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| The write side of "re-ask": `POST /messages/:id/seed` spawns a titled, claimable child thread from a source message, linked by a `seeded_from` reference edge (new thread → source). `inclusion`: `pointer` (default, edge only) or `quote` (first message quotes the source). Source untouched; N seeds per source; gated `workspace:write` + source read + target-channel write. Reuses existing primitives — no bespoke table, no new event kind (emits `ThreadCreated` + `ReferenceAdded`); lineage is queryable via the Cluster-320 reverse reference query. New `RelationKind::SeededFrom` (controlled vocab → 8). MCP tool follows in 328. **Cluster 9 of the fidelity + context flagship arc** | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/{routes/message.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
+
 ## v326.0.0 — as-of context replay (flagship arc)
 
 | Change | Where |

@@ -299,6 +299,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/messages/:id/edits", get(routes::list_message_edits))
         .route("/messages/:id/purge", delete(routes::purge_message))
+        .route("/messages/:id/seed", post(routes::seed_from_message))
         .route("/messages/:id/mentions", post(routes::create_mention))
         .route(
             "/messages/:id/votes",
