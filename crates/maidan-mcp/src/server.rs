@@ -2148,6 +2148,108 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_thread_context_tool_freezes_and_refs() {
+        use maidan_auth::capability::{ARTIFACT_UPLOAD, WORKSPACE_READ};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "cs".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .post_message(NewMessage {
+                thread_id: thread.id,
+                author_id: member.id,
+                body: "freeze me".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![ARTIFACT_UPLOAD.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let artifact = content(
+            server
+                .call_tool(
+                    &auth,
+                    "snapshot_thread_context",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(artifact["kind"], json!("context_snapshot"));
+        let sha = artifact["sha256"].as_str().unwrap().to_string();
+        assert!(artifact["size_bytes"].as_i64().unwrap() > 0);
+
+        // The Cluster-204 access ref is recorded for the caller's workspace.
+        assert!(store.artifact_ref_exists(ws.id, &sha).await.unwrap());
+
+        // An identical snapshot dedups to the same sha.
+        let again = content(
+            server
+                .call_tool(
+                    &auth,
+                    "snapshot_thread_context",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(again["sha256"].as_str().unwrap(), sha);
+    }
+
+    #[tokio::test]
     async fn skill_tools_declare_and_list() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

@@ -71,6 +71,7 @@
   "set_member_email",
   "set_notification_pref",
   "set_thread_result",
+  "snapshot_thread_context",
   "summarize_thread",
   "unassign_thread",
   "unfollow_channel",
