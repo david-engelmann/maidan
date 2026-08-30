@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v328.0.0 — seed-from-message MCP tool (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| MCP `seed_from_message` — the twin of the 327 REST route: `{message_id, title, inclusion?, channel_id?}` spawns a titled child thread + a `seeded_from` reference edge (+ a quoting first message for `inclusion=quote`). `workspace:write`; source access via the pre-dispatch gate, target channel checked in-handler. Uses `*_with_event` store methods + a bus-notify of the returned event (atomic log + real-time parity — the MCP analogue of REST `publish_stored`; the first MCP thread-creating tool). Both contracts → 83 tools. **Cluster 10 of the fidelity + context flagship arc** | `crates/maidan-mcp/src/tools/{seed.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
+
 ## v327.0.0 — seed-from-message (flagship arc)
 
 | Change | Where |

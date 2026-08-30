@@ -182,8 +182,10 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    gated `workspace:write` + source read + target-channel write. Inclusion `pointer` (default) +
    `quote` shipped; **lineage is the `seeded_from` typed edge (from #1), NOT a bespoke table** — no
    new event kind (emits `ThreadCreated` + `ReferenceAdded`). New `RelationKind::SeededFrom`.
-   **Remaining:** MCP `seed_from_message` tool (Cluster 328); `pack`/`prefix` inclusion (`prefix`
-   delegates to as-of replay #4); an optional `WorkSeeded` single-signal event.
+   **MCP `seed_from_message` — ✅ DONE (Cluster 328)** (twin of the REST route; atomic `*_with_event`
+   + bus-notify; 83 tools). Seed-from-message is COMPLETE over REST + MCP (pointer + quote).
+   **Remaining (optional):** `pack`/`prefix` inclusion (`prefix` delegates to as-of replay #4); a
+   `WorkSeeded` single-signal event.
 6. **Immutable context snapshot artifact** *(net-new)*. Freeze an assembled pack (as-of or live) into
    the **existing** content-addressed artifact store (sha256, dedup, ref-guarded per 204); re-ask
    attaches via seed inclusion `pack` pointing at the sha. Delivers "prefix paid once, N angles" +
