@@ -196,6 +196,20 @@ pub struct CreateVote {
     pub confidence: Option<f64>,
 }
 
+/// Seed a new work thread from a source message (Cluster 327) — the write side of
+/// "re-ask". `inclusion`: `pointer` (default, lineage edge only) or `quote` (the
+/// seed's first message quotes the source). `channel_id` defaults to the source's
+/// channel. The seed is a titled, claimable child; the source is untouched;
+/// lineage is a `seeded_from` reference edge (new thread → source message).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SeedFromMessage {
+    pub title: String,
+    #[serde(default)]
+    pub inclusion: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<uuid::Uuid>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReaction {
     pub member_id: uuid::Uuid,

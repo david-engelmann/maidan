@@ -176,11 +176,14 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    as-of bodies (a since-edited message shows its old body, a since-tombstoned message reappears);
    additive components cut by the anchor's time; glossary omitted; unknown id → `404`. Serves audit +
    re-ask-from-before-a-tangent. **Deferred:** workspace-context as-of (thread-scoped only in v1).
-5. **Seed-from-message gesture** (the parked design; the write side of "re-ask"). `POST
-   /messages/{id}/seed`, inclusion `pointer|quote|pack|prefix`, a `WorkSeeded` event; **lineage = a
-   `seeded_from`/`branched_from` typed edge (from #1), NOT a bespoke table.** `prefix` mode delegates
-   to as-of replay (#4). Titled, claimable child; source untouched; deleting the source leaves the
-   child up; N seeds per source.
+5. **Seed-from-message gesture** (the write side of "re-ask"). **REST — ✅ DONE (Cluster 327):**
+   `POST /messages/{id}/seed` (`{title, inclusion?, channel_id?}`) spawns a titled, claimable child
+   thread + a `seeded_from` reference edge (new thread → source), source untouched, N per source,
+   gated `workspace:write` + source read + target-channel write. Inclusion `pointer` (default) +
+   `quote` shipped; **lineage is the `seeded_from` typed edge (from #1), NOT a bespoke table** — no
+   new event kind (emits `ThreadCreated` + `ReferenceAdded`). New `RelationKind::SeededFrom`.
+   **Remaining:** MCP `seed_from_message` tool (Cluster 328); `pack`/`prefix` inclusion (`prefix`
+   delegates to as-of replay #4); an optional `WorkSeeded` single-signal event.
 6. **Immutable context snapshot artifact** *(net-new)*. Freeze an assembled pack (as-of or live) into
    the **existing** content-addressed artifact store (sha256, dedup, ref-guarded per 204); re-ask
    attaches via seed inclusion `pack` pointing at the sha. Delivers "prefix paid once, N angles" +

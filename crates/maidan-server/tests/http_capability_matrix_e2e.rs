@@ -325,6 +325,9 @@ fn apply_route_defaults(
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
     }
+    if path.ends_with("/seed") && method == "POST" {
+        return b.json(&json!({ "title": "cap matrix" }));
+    }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
     }
