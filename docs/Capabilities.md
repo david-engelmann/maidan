@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v325.0.0 — agent conventions: decisions, supersession, acks (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| The "near-zero-code conventions" half of the arc's confidence-and-conventions item — codified as docs with a convention-proving e2e and **zero new server code** ("a room, not a brain"). `docs/Integration.md` "Agent conventions" documents: **decision records** (ADR-shaped `thread_result` JSON), **supersession** (a `supersedes` reference edge + `status` flip; `GET /references?dst_kind=…&relation=supersedes` = "what replaced this?"), and **grounding acks** (an `ack` vote grounding a message as of its `created_at`, detectably stale once edited later). `decision_convention_e2e` proves the whole trio over the real HTTP API. **Cluster 7 of the fidelity + context flagship arc** | `docs/Integration.md`, `crates/maidan-server/tests/decision_convention_e2e.rs` |
+
 ## v324.0.0 — optional vote confidence (flagship arc)
 
 | Change | Where |
