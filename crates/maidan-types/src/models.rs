@@ -87,6 +87,9 @@ pub enum ArtifactKind {
     Transcript,
     CodeDump,
     Attachment,
+    /// A frozen, content-addressed context pack (Cluster 329) — tamper-evident
+    /// "exactly what the agent was handed".
+    ContextSnapshot,
 }
 
 impl ArtifactKind {
@@ -97,6 +100,7 @@ impl ArtifactKind {
             Self::Transcript => "transcript",
             Self::CodeDump => "code_dump",
             Self::Attachment => "attachment",
+            Self::ContextSnapshot => "context_snapshot",
         }
     }
 
@@ -107,6 +111,7 @@ impl ArtifactKind {
             "transcript" => Some(Self::Transcript),
             "code_dump" => Some(Self::CodeDump),
             "attachment" => Some(Self::Attachment),
+            "context_snapshot" => Some(Self::ContextSnapshot),
             _ => None,
         }
     }
@@ -116,6 +121,7 @@ impl ArtifactKind {
             Self::Screenshot => "image/png",
             Self::Recording | Self::Attachment => "application/octet-stream",
             Self::Transcript | Self::CodeDump => "text/plain",
+            Self::ContextSnapshot => "application/json",
         }
     }
 }

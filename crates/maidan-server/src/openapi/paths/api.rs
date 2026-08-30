@@ -488,6 +488,15 @@ pub fn get_thread() {}
     responses((status = 200, body = ThreadContext)))]
 pub fn get_thread_context() {}
 
+#[utoipa::path(post, path = "/threads/{id}/context/snapshot", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ThreadContextQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = Artifact, description = "The frozen context pack as a content-addressed artifact")))]
+pub fn snapshot_thread_context() {}
+
 #[utoipa::path(get, path = "/threads/{id}/tool-transcript", tag = "threads",
     params(
         ("id" = Uuid, Path, description = "Thread id"),

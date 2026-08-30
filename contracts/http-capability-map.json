@@ -414,6 +414,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/context/snapshot",
+    "capability": "artifact:upload",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/threads/{id}/tool-transcript",
     "capability": "workspace:read",
