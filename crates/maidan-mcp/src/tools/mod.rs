@@ -19,6 +19,7 @@ mod artifact;
 mod automation;
 mod catalog;
 mod channel;
+mod glossary;
 mod member;
 mod message;
 mod reference;
@@ -97,6 +98,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "follow_thread"
         | "unfollow_thread"
         | "list_thread_follows"
+        | "get_glossary_term"
+        | "list_glossary_terms"
         | "list_roots" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -109,6 +112,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "unpin_message"
         | "add_reference"
         | "create_task_schedule"
+        | "set_glossary_term"
         | "add_member_skill" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
@@ -292,6 +296,9 @@ pub async fn dispatch(
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
         "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
+        "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
+        "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
+        "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
         "add_member_skill" => skill::add_member_skill(store, args).await,
         "list_member_skills" => skill::list_member_skills(store, args).await,
         "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,

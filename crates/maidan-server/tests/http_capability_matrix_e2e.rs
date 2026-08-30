@@ -185,6 +185,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
+            .replace("{term}", "testterm")
             .replace("{did}", delivery_id);
     }
     if template.starts_with("/ui/api/workspaces/") {
@@ -320,6 +321,9 @@ fn apply_route_defaults(
     }
     if path.ends_with("/delivery-mode") && method == "PUT" {
         return b.json(&json!({ "mode": "digest" }));
+    }
+    if path.contains("/glossary/") && method == "PUT" {
+        return b.json(&json!({ "definition": "cap matrix" }));
     }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);

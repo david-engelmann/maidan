@@ -339,6 +339,38 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_glossary_term",
+            "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string"},
+                    "definition": {"type": "string"},
+                    "aliases": {"type": "array", "items": {"type": "string"}, "description": "alternate labels for the same term"}
+                },
+                "required": ["term", "definition"]
+            }
+        }),
+        json!({
+            "name": "get_glossary_term",
+            "description": "Look up one term's canonical definition in the workspace glossary. Returns null when the term is undefined.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string"}
+                },
+                "required": ["term"]
+            }
+        }),
+        json!({
+            "name": "list_glossary_terms",
+            "description": "List all defined terms in the workspace's shared glossary, ordered by term.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
             "name": "wait_for_ready",
             "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees readiness signalled after the call subscribes, so pick up already-ready work with claim_next_thread first.",
             "inputSchema": {

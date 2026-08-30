@@ -125,6 +125,15 @@ pub struct AddSkill {
     pub skill: String,
 }
 
+/// Define (or redefine) a glossary term (Cluster 322). The term itself is the
+/// path segment; this is the body. `aliases` defaults to empty when omitted.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetGlossaryTerm {
+    pub definition: String,
+    #[serde(default)]
+    pub aliases: Option<Vec<String>>,
+}
+
 /// Set a task's structured result (Cluster 235). `result` is arbitrary JSON.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadResult {

@@ -82,6 +82,16 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/:id/export", get(routes::export_workspace))
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
+        .route(
+            "/workspaces/:wid/glossary",
+            get(routes::list_glossary_terms),
+        )
+        .route(
+            "/workspaces/:wid/glossary/:term",
+            put(routes::set_glossary_term)
+                .get(routes::get_glossary_term)
+                .delete(routes::delete_glossary_term),
+        )
         .route("/workspaces/:wid/events", get(routes::list_events))
         .route(
             "/workspaces/:wid/outbox/:oid/replay",
