@@ -28,6 +28,13 @@ pub async fn cast_vote(
     ensure_workspace(&auth, chain.workspace_id)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
+    if let Some(c) = body.confidence {
+        if !(0.0..=1.0).contains(&c) {
+            return Err(crate::error::ApiError::BadRequest(
+                "confidence must be in 0..=1".into(),
+            ));
+        }
+    }
     // Cluster 206: vote row + `VoteCast` event commit atomically (transactional
     // outbox); `publish_stored` then notifies the bus.
     let stored = state
@@ -36,6 +43,7 @@ pub async fn cast_vote(
             message_id: MessageId(message_id),
             member_id: MemberId(body.member_id),
             kind: body.kind.clone(),
+            confidence: body.confidence,
         })
         .await?;
     publish_stored(&state, stored).await;

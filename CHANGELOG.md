@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [324.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 6 of the fidelity + context flagship arc** —
+optional vote confidence. No new gate tag.
+
+### Added
+
+- **Optional `confidence` on a vote** (`maidan_votes.confidence`, pg `0054` / sqlite `0053`,
+  nullable) for weighted consensus. `Vote`/`NewVote` gain `confidence: Option<f64>`
+  (omitted when absent); surfaced on REST `POST/GET /messages/:id/votes` and the MCP
+  `cast_vote` tool; range `0..=1` validated at the API edge (`400`/`InvalidParams`).
+
+### Changed
+
+- **Re-casting a vote upserts its confidence** — the `(message_id, member_id, kind)`
+  `ON CONFLICT` now updates `confidence` (was `DO NOTHING`); count stays idempotent.
+
 ## [323.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 5 of the fidelity + context flagship arc** —

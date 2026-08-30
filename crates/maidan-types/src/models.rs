@@ -942,6 +942,10 @@ pub struct Vote {
     pub message_id: MessageId,
     pub member_id: MemberId,
     pub kind: String,
+    /// Optional confidence weight (Cluster 324), by convention in `0..=1`, for
+    /// weighted consensus. `None` when the voter stated no confidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -950,6 +954,8 @@ pub struct NewVote {
     pub message_id: MessageId,
     pub member_id: MemberId,
     pub kind: String,
+    /// Optional confidence weight (Cluster 324), by convention `0..=1`.
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
