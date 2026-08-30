@@ -66,6 +66,12 @@ pub struct ThreadContext {
     pub references: Vec<Reference>,
     pub artifacts: Vec<Artifact>,
     pub fsm: ThreadFsmContext,
+    /// The workspace glossary (Cluster 323) — canonical term definitions grounding
+    /// the pack in shared vocabulary. Omitted when empty or when the caller opts
+    /// out (`include_glossary=false`). On a workspace-context pack this rides the
+    /// top-level `WorkspaceContext.glossary` instead (not repeated per thread).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub glossary: Vec<GlossaryTerm>,
     /// Present when more messages exist (`message_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_message_cursor: Option<String>,
@@ -76,6 +82,10 @@ pub struct WorkspaceContext {
     pub workspace: Workspace,
     pub channels: Vec<Channel>,
     pub threads: Vec<ThreadContext>,
+    /// The workspace glossary (Cluster 323), carried once here rather than on each
+    /// nested thread pack. Omitted when empty or when `include_glossary=false`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub glossary: Vec<GlossaryTerm>,
     /// Present when more threads exist (`thread_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_thread_cursor: Option<String>,
@@ -89,6 +99,10 @@ pub struct ThreadContextLimits {
     /// Include full `body_before`/`body_after` on each edit. Default `false`:
     /// edits carry metadata only. The single biggest token lever on a pack.
     pub include_edits: bool,
+    /// Attach the workspace glossary to the pack (Cluster 323). Default `true`.
+    /// A workspace-context build sets this `false` on its nested thread builds so
+    /// the glossary rides the top level once, not per thread.
+    pub include_glossary: bool,
 }
 
 impl Default for ThreadContextLimits {
@@ -98,6 +112,7 @@ impl Default for ThreadContextLimits {
             transition_limit: 50,
             message_cursor: None,
             include_edits: false,
+            include_glossary: true,
         }
     }
 }
@@ -186,6 +201,12 @@ pub async fn build_thread_context(
         .map(|e| MessageEditView::from_edit(e, limits.include_edits))
         .collect();
 
+    let glossary = if limits.include_glossary {
+        store.list_glossary_terms(workspace_id).await?
+    } else {
+        Vec::new()
+    };
+
     Ok(ThreadContext {
         workspace_id,
         channel_id: thread.channel_id,
@@ -198,6 +219,7 @@ pub async fn build_thread_context(
             state: thread.state,
             transitions,
         },
+        glossary,
         next_message_cursor,
     })
 }
@@ -211,6 +233,17 @@ pub async fn build_workspace_context(
 ) -> Result<WorkspaceContext, ApiError> {
     let workspace = store.get_workspace(workspace_id).await?;
     let channels = store.list_channels(workspace_id).await?;
+    // The glossary rides the workspace level once; the nested thread builds skip
+    // it (below) so it is not repeated per thread.
+    let glossary = if limits.include_glossary {
+        store.list_glossary_terms(workspace_id).await?
+    } else {
+        Vec::new()
+    };
+    let nested_limits = ThreadContextLimits {
+        include_glossary: false,
+        ..limits
+    };
     let page_limit = thread_limit.clamp(1, 50);
     // One keyset page from SQL (ordered `(created_at, id)`, tombstoned filtered),
     // fetching one extra row to detect a next page — no longer loads every
@@ -232,7 +265,7 @@ pub async fn build_workspace_context(
     // the response contract (and the tombstone-mid-build 404) is unchanged.
     let thread_ids: Vec<ThreadId> = page.iter().map(|t| t.id).collect();
     let threads: Vec<ThreadContext> = stream::iter(thread_ids)
-        .map(|tid| build_thread_context(store, tid, limits))
+        .map(|tid| build_thread_context(store, tid, nested_limits))
         .buffered(CONTEXT_THREAD_CONCURRENCY)
         .try_collect()
         .await?;
@@ -240,6 +273,7 @@ pub async fn build_workspace_context(
         workspace,
         channels,
         threads,
+        glossary,
         next_thread_cursor,
     })
 }

@@ -233,6 +233,11 @@ pub struct ThreadContextQuery {
     /// `false` returns edit metadata only — the largest token lever on a pack.
     #[serde(default)]
     pub include_edits: bool,
+    /// Include the workspace glossary (canonical term definitions) so the pack is
+    /// grounded in shared vocabulary. Default `true`; omitted from the response
+    /// when the glossary is empty. Set `false` to drop it for a token-tight pack.
+    #[serde(default = "default_true")]
+    pub include_glossary: bool,
 }
 
 /// Query for `GET /threads/:id/tool-transcript` (Cluster 197).
@@ -259,6 +264,10 @@ pub struct WorkspaceContextQuery {
     /// `false` returns edit metadata only.
     #[serde(default)]
     pub include_edits: bool,
+    /// Include the workspace glossary once at the top level (grounding). Default
+    /// `true`; omitted when empty. Set `false` to drop it.
+    #[serde(default = "default_true")]
+    pub include_glossary: bool,
 }
 
 fn default_workspace_thread_limit() -> i64 {
@@ -279,6 +288,10 @@ pub struct ListMessageEditsQuery {
 
 fn default_limit() -> i64 {
     100
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [323.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 5 of the fidelity + context flagship arc** —
+glossary in the context pack. No new gate tag.
+
+### Added
+
+- **Context packs carry the workspace glossary** — `GET /threads/:id/context` and `GET
+  /workspaces/:wid/context` (REST) + the `get_thread_context`/`get_workspace_context` MCP
+  tools now include a `glossary` field so an agent's context is grounded in shared
+  vocabulary without a second call. New `include_glossary` param, **default `true`**;
+  omitted from the response when the glossary is empty; the workspace pack carries it once
+  at the top level (not repeated per nested thread).
+
 ## [322.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). **Cluster 4 of the fidelity + context flagship arc** —
