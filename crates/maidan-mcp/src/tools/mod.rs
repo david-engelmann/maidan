@@ -26,6 +26,7 @@ mod reference;
 mod roots;
 mod schedule;
 mod search;
+mod seed;
 mod skill;
 mod social;
 mod thread;
@@ -113,6 +114,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "add_reference"
         | "create_task_schedule"
         | "set_glossary_term"
+        | "seed_from_message"
         | "add_member_skill" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
@@ -201,7 +203,7 @@ async fn enforce_channel_access(
             }
         }
         "edit_message" | "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction"
-        | "list_reactions" => {
+        | "list_reactions" | "seed_from_message" => {
             if let Some(id) = field("message_id") {
                 maidan_auth::ensure_message_access(store, auth, maidan_types::MessageId(id))
                     .await?;
@@ -306,6 +308,7 @@ pub async fn dispatch(
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
         "edit_message" => message::edit_message(store, auth, args).await,
+        "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(store, args).await,
         "cast_vote" => social::cast_vote(store, args).await,
         "add_reaction" => social::add_reaction(store, args).await,

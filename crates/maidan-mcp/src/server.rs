@@ -2045,6 +2045,109 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn seed_from_message_tool_spawns_a_linked_child() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "s".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("root".into()),
+            })
+            .await
+            .unwrap();
+        let source = store
+            .post_message(NewMessage {
+                thread_id: thread.id,
+                author_id: member.id,
+                body: "tangent".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // A real member session so the quote's author FK is satisfied.
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let child = content(
+            server
+                .call_tool(
+                    &auth,
+                    "seed_from_message",
+                    &json!({ "message_id": source.id.0, "title": "branch", "inclusion": "quote" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(child["title"], json!("branch"));
+        let child_id: uuid::Uuid = serde_json::from_value(child["id"].clone()).unwrap();
+
+        // The seeded_from edge points from the child thread at the source message.
+        let refs = store
+            .list_references_to(maidan_types::RefSide::Message, source.id.0)
+            .await
+            .unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].relation, maidan_types::RelationKind::SeededFrom);
+        assert_eq!(refs[0].src_id, child_id);
+
+        // The quote inclusion posted a first message quoting the source.
+        let msgs = store
+            .list_messages(maidan_types::ThreadId(child_id), 10)
+            .await
+            .unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].body, "> tangent");
+    }
+
+    #[tokio::test]
     async fn skill_tools_declare_and_list() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

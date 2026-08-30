@@ -65,6 +65,7 @@
   "renew_claim": "thread:transition",
   "request_approval": "workspace:read",
   "search_messages": "search:query",
+  "seed_from_message": "workspace:write",
   "set_delivery_mode": "workspace:read",
   "set_glossary_term": "workspace:write",
   "set_member_email": "workspace:read",

@@ -656,6 +656,20 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "seed_from_message",
+            "description": "Seed a new titled work thread from a source message (the write side of 're-ask'), linked by a seeded_from reference edge. inclusion: 'pointer' (default, edge only) or 'quote' (a first message quoting the source). The source is untouched; N seeds per source. Lineage is queryable via list_references (dst=the source, relation=seeded_from).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid", "description": "the source message"},
+                    "title": {"type": "string"},
+                    "inclusion": {"type": "string", "enum": ["pointer", "quote"], "default": "pointer"},
+                    "channel_id": {"type": "string", "format": "uuid", "description": "target channel (default: the source's channel)"}
+                },
+                "required": ["message_id", "title"]
+            }
+        }),
+        json!({
             "name": "edit_message",
             "description": "Edit a message body (author needs message:post; others need workspace:write).",
             "inputSchema": {

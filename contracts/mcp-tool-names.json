@@ -65,6 +65,7 @@
   "renew_claim",
   "request_approval",
   "search_messages",
+  "seed_from_message",
   "set_delivery_mode",
   "set_glossary_term",
   "set_member_email",

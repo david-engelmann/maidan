@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [328.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 10 of the fidelity + context flagship arc** —
+seed-from-message (MCP). No new gate tag.
+
+### Added
+
+- **MCP `seed_from_message`** — the twin of the Cluster-327 REST route: `{message_id, title,
+  inclusion?, channel_id?}` spawns a titled child thread + a `seeded_from` reference edge (+ a
+  quoting first message for `inclusion=quote`). `workspace:write`; source access via the
+  pre-dispatch gate, target channel checked in-handler. Uses the `*_with_event` store methods
+  + a bus-notify of the returned event (atomic log + real-time parity). Both contracts
+  updated (83 tools).
+
 ## [327.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 9 of the fidelity + context flagship arc** —
