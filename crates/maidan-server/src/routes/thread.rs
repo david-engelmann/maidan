@@ -98,6 +98,7 @@ pub async fn get_thread_context(
             },
             message_cursor: q.message_cursor.map(MessageId),
             include_edits: q.include_edits,
+            include_glossary: q.include_glossary,
         },
     )
     .await?;

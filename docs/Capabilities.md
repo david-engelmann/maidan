@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v323.0.0 — glossary in the context pack (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| The grounding payoff: `GET /threads/:id/context` + `GET /workspaces/:wid/context` (REST) and the `get_thread_context`/`get_workspace_context` MCP tools now carry a `glossary` field, so an agent's context is grounded in the workspace's shared vocabulary without a second call. New `include_glossary` param, **default `true`**; `skip_serializing_if` empty (byte-neutral when no glossary); the workspace pack carries it once at the top (not repeated per nested thread — `build_workspace_context` dedups). One constant query per pack, so the context query-count independence invariant is unchanged. **Cluster 5 of the fidelity + context flagship arc — the glossary layer (321→322→323) is complete** | `crates/maidan-server/src/{thread_context.rs,dto.rs,routes/{thread,workspace}.rs}`, `crates/maidan-mcp/src/{context.rs,tools/catalog.rs}` |
+
 ## v322.0.0 — glossary REST + MCP (flagship arc)
 
 | Change | Where |

@@ -971,28 +971,30 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_thread_context",
-            "description": "Pack thread messages, edits, references, and FSM history for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies.",
+            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
-                    "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."}
+                    "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."},
+                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."}
                 },
                 "required": ["thread_id"]
             }
         }),
         json!({
             "name": "get_workspace_context",
-            "description": "Pack workspace channels and thread contexts (bounded by thread_limit).",
+            "description": "Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid"},
                     "thread_limit": {"type": "integer", "minimum": 1, "maximum": 50},
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
-                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200}
+                    "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it."}
                 },
                 "required": ["workspace_id"]
             }

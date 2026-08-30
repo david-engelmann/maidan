@@ -22,6 +22,11 @@ struct ThreadContextArgs {
     /// bodies are the single largest token cost of a context pack.
     #[serde(default)]
     include_edits: bool,
+    /// Include the workspace glossary (canonical term definitions) so the pack is
+    /// grounded in shared vocabulary (Cluster 323). Default `true`; omitted from
+    /// the response when the glossary is empty. `false` drops it.
+    #[serde(default = "default_true")]
+    include_glossary: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +39,10 @@ struct WorkspaceContextArgs {
     #[serde(default = "default_transition_limit")]
     transition_limit: i64,
     thread_cursor: Option<Uuid>,
+    /// Include the workspace glossary once at the top level (grounding, Cluster
+    /// 323). Default `true`; omitted when empty. `false` drops it.
+    #[serde(default = "default_true")]
+    include_glossary: bool,
 }
 
 fn default_message_limit() -> i64 {
@@ -44,6 +53,9 @@ fn default_transition_limit() -> i64 {
 }
 fn default_thread_limit() -> i64 {
     10
+}
+fn default_true() -> bool {
+    true
 }
 
 pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
@@ -99,7 +111,7 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         }
     }
 
-    Ok(json!({
+    let mut out = json!({
         "workspace_id": channel.workspace_id.0,
         "channel_id": thread.channel_id.0,
         "thread": thread,
@@ -111,7 +123,18 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
             "transitions": transitions,
         },
         "next_message_cursor": next_message_cursor,
-    }))
+    });
+    // The glossary grounds the pack in the workspace's shared vocabulary (Cluster
+    // 323). Attached only when present + requested, so an empty glossary costs no
+    // tokens and a workspace-context pack (which carries it once at the top) can
+    // suppress it per nested thread.
+    if a.include_glossary {
+        let glossary = store.list_glossary_terms(channel.workspace_id).await?;
+        if !glossary.is_empty() {
+            out["glossary"] = serde_json::to_value(&glossary)?;
+        }
+    }
+    Ok(out)
 }
 
 pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
@@ -164,17 +187,27 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
                 "thread_id": thread.id.0,
                 "message_limit": a.message_limit,
                 "transition_limit": a.transition_limit,
+                // The glossary rides the workspace level once (below); suppress it
+                // per nested thread so it is not repeated N times.
+                "include_glossary": false,
             }),
         )
         .await?;
         threads.push(packed);
     }
-    Ok(json!({
+    let mut out = json!({
         "workspace": workspace,
         "channels": channels,
         "threads": threads,
         "next_thread_cursor": next_thread_cursor,
-    }))
+    });
+    if a.include_glossary {
+        let glossary = store.list_glossary_terms(workspace_id).await?;
+        if !glossary.is_empty() {
+            out["glossary"] = serde_json::to_value(&glossary)?;
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -285,5 +318,85 @@ mod tests {
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0]["body_before"], "original body");
         assert_eq!(edits[0]["body_after"], "edited body");
+    }
+
+    #[tokio::test]
+    async fn context_carries_the_glossary_and_dedups_in_workspace_pack() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "gl".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "alice".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_glossary_term(NewGlossaryTerm {
+                workspace_id: ws.id,
+                term: "LSN".into(),
+                definition: "log sequence number".into(),
+                aliases: vec![],
+                created_by: member.id,
+            })
+            .await
+            .unwrap();
+
+        // Thread context includes the glossary by default…
+        let ctx = get_thread_context(store.as_ref(), &json!({ "thread_id": thread.id.0 }))
+            .await
+            .unwrap();
+        assert_eq!(ctx["glossary"].as_array().unwrap().len(), 1);
+        assert_eq!(ctx["glossary"][0]["term"], "LSN");
+
+        // …and is dropped when opted out.
+        let off = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": thread.id.0, "include_glossary": false }),
+        )
+        .await
+        .unwrap();
+        assert!(off.get("glossary").is_none());
+
+        // Workspace context carries it once at the top; nested threads don't repeat it.
+        let wctx = get_workspace_context(store.as_ref(), &json!({ "workspace_id": ws.id.0 }))
+            .await
+            .unwrap();
+        assert_eq!(wctx["glossary"].as_array().unwrap().len(), 1);
+        for t in wctx["threads"].as_array().unwrap() {
+            assert!(t.get("glossary").is_none());
+        }
     }
 }

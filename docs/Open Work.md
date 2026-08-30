@@ -154,8 +154,10 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    **flat — no hierarchy/broader-narrower** (that's the KG-product line, a locked anti-goal). The
    `defines` edge's target; the anti-drift pin. **REST + MCP CRUD — ✅ DONE (Cluster 322):**
    `PUT/GET/DELETE /workspaces/:wid/glossary/:term` + list, and MCP `set/get/list_glossary_term(s)`
-   (`delete` REST-only). **Remaining (Cluster 323):** fold into the existing context pack (a thread's
-   `GET …/context`, REST + MCP, carries the workspace's definitions — grounding without a second call).
+   (`delete` REST-only). **Context-pack fold — ✅ DONE (Cluster 323):** `GET /threads/:id/context` +
+   `GET /workspaces/:wid/context` (REST + MCP) carry a `glossary` field (`include_glossary`, default
+   `true`, empty-omitted; workspace pack carries it once at the top, deduped). **The glossary layer
+   (321→322→323) is COMPLETE.**
 3. **Optional `confidence`** on `Vote`/`ThreadResult` (one nullable field → weighted consensus) +
    near-zero-code **conventions:** a decision-record shape (Context/Decision/Consequences/Alternatives
    /Status) over `thread_results` + the `supersedes` edge; an `ack` grounding act as a reserved vote
