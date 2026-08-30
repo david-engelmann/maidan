@@ -127,6 +127,15 @@ launch-prep leg of the sweep (315–318); next is the fidelity + context flagshi
 
 ### Fidelity + context flagship arc (`generic-room` — the differentiator)
 
+> **✅ COMPLETE (Clusters 319–331, tags `v319.0.0`–`v331.0.0`).** Typed relations (319–320) →
+> glossary store/REST-MCP/context-fold (321–323) → vote confidence (324) → agent conventions
+> (325) → as-of context replay (326) → seed-from-message REST+MCP (327–328) → immutable context
+> snapshot artifact REST+MCP (329–330) → arc closeout, optional tail declined (331). The optional
+> tail (seed `pack`/`prefix` inclusion, `WorkSeeded`, flow template) is **declined**, composable
+> from shipped primitives — see the ADR
+> [[Decisions]] "Product scope". Items 1–7 below
+> are the original plan, each annotated with its shipped/declined status.
+
 From two converging research threads (pre-LLM annotation tooling + grounding/argumentation/provenance
 theory) plus the context/replay thread. This is the promotable category nobody ships: **the room
 where agents build durable, checkable, replayable shared understanding — at a fraction of the
@@ -184,8 +193,10 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    new event kind (emits `ThreadCreated` + `ReferenceAdded`). New `RelationKind::SeededFrom`.
    **MCP `seed_from_message` — ✅ DONE (Cluster 328)** (twin of the REST route; atomic `*_with_event`
    + bus-notify; 83 tools). Seed-from-message is COMPLETE over REST + MCP (pointer + quote).
-   **Remaining (optional):** `pack`/`prefix` inclusion (`prefix` delegates to as-of replay #4); a
-   `WorkSeeded` single-signal event.
+   **`pack`/`prefix` inclusion + `WorkSeeded` — DECLINED (Cluster 331,
+   [[Decisions]] "Product scope"):** composable
+   today as snapshot (#6) + seed-pointer + as-of replay (#4); `WorkSeeded` is covered by
+   `ThreadCreated` + `ReferenceAdded`. Revisitable with demand.
 6. **Immutable context snapshot artifact — ✅ DONE (Cluster 329).** `POST /threads/:id/context/snapshot`
    freezes the assembled pack (live or `as_of`) into the existing content-addressed artifact store
    (sha256 dedup, ref-guarded per 204); returns the `Artifact` (`kind=context_snapshot`), fetchable at
@@ -196,10 +207,12 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    bus-notify; 84 tools). Context snapshot is COMPLETE over REST + MCP. **Remaining (optional
    convenience):** the seed `pack` inclusion (attach a snapshot sha, ties #5↔#6 — composable today
    as snapshot + seed-pointer).
-7. **Flow / setup template** *(last, deferrable — highest scope-creep risk)*. A `structure_only`
-   filter over workspace export (187) + import-remap (269–270): clone a setup (channels/skills/
-   schedules/DAG skeleton), no messages/results. **Clone only — the room never scores which template
-   is "better."** Consider deferring entirely if export/import already suffices.
+7. **Flow / setup template — DECLINED (Cluster 331,
+   [[Decisions]] "Product scope").** Cloning a
+   setup (channels/skills/schedules/DAG skeleton) is covered by workspace export (187) + import-remap
+   (269–270): export, prune content, import. A dedicated `structure_only` export filter is the arc's
+   highest-scope-creep item and "the room never scores which template is better" (a locked
+   anti-goal); declined until a research round shows concrete demand.
 
 **Anti-goals (LOCKED — this is what keeps it "perfect at what it does, not more"):** no span-labeling
 UI, no inter-annotator-agreement metrics / adjudication queues, no Snorkel-style label model, no

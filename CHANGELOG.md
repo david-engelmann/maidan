@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [331.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 13 (closeout) of the fidelity + context flagship
+arc.** Docs-only. No new gate tag.
+
+### Changed
+
+- **Flagship arc closed (319–331).** A "Product scope" ADR in `docs/Decisions.md` records the
+  arc complete and **declines** its optional tail — seed `pack`/`prefix` inclusion, a
+  `WorkSeeded` event, and the flow/setup template — each composable from shipped primitives
+  (snapshot + seed + as-of replay; `ThreadCreated` + `ReferenceAdded`; export + import).
+  Open Work / Roadmap updated with the completion + declines.
+
 ## [330.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 12 of the fidelity + context flagship arc** —

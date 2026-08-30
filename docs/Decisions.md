@@ -749,3 +749,45 @@ and threat-model updates without half-implemented login.
 **To revisit:** if a deployment needs browser login before `v2.0.0`, use an
 external reverse proxy (OAuth2 Proxy) in front of `/ui/` only — documented in
 [[OIDC]] as a stopgap, not a supported Maidan API.
+
+## Product scope
+
+### Fidelity + context flagship arc — the optional tail is declined (`v331.0.0`)
+
+**Decision.** The fidelity + context flagship arc (Clusters 319–330) is **complete**.
+Its explicitly-optional tail is **declined**, not deferred — the value each item promised
+is already deliverable by composing shipped primitives, and adding bespoke surfaces for it
+would violate the arc's locked anti-goals ("a room, not a brain; perfect at what it does,
+not more"). This ADR records what was declined and why, so a future research round starts
+from a clean, deliberate baseline rather than an implicit backlog.
+
+**What shipped (the arc).** Typed reference relations + reverse/by-type queries (319–320);
+shared glossary — store → REST/MCP → grounded into the context pack (321–323); optional vote
+`confidence` for weighted consensus (324); agent conventions — decision records, supersession,
+grounding acks, as docs + a proving e2e with zero server code (325); as-of context replay from
+the immutable event log (326); seed-from-message over REST + MCP (327–328); immutable
+content-addressed context snapshot artifact over REST + MCP (329–330).
+
+**Declined tail + why each is already covered.**
+
+1. **Seed `pack` / `prefix` inclusion.** A seed can already start from a frozen context: an
+   agent calls `POST /threads/:id/context/snapshot` (329) — optionally `?as_of=<event>` (326)
+   for the prefix-before-the-tangent — then `POST /messages/:id/seed` (327) and carries the
+   snapshot sha. A dedicated `pack`/`prefix` inclusion mode is a *convenience wrapper* over
+   snapshot + seed + as-of, not new capability; leaving the composition to the agent keeps
+   the seed endpoint a single clean gesture.
+2. **`WorkSeeded` single-signal event.** A seed already emits `ThreadCreated` +
+   `ReferenceAdded` (the `seeded_from` edge). A watcher gets the full "a branch spawned from
+   message X" signal by correlating those two; a third event kind would add the 11-site
+   EventKind drill for a filter convenience, with no new information.
+3. **Flow / setup template (`structure_only` clone).** Cloning a workspace's setup
+   (channels/skills/schedules/DAG skeleton) is covered by the shipped workspace export (187) +
+   import-remap (269–270): export a source workspace, prune content, import. A dedicated
+   `structure_only` export filter is the arc's flagged highest-scope-creep item and the room
+   must never score which template is "better" (a locked anti-goal); declined until a research
+   round shows concrete demand.
+
+**To revisit.** A future research round may re-open any of these with evidence of real
+demand. `pack`/`prefix` inclusion is the most likely candidate (pure convenience, low risk);
+a `structure_only` export filter is the least (scope-creep toward a template product). None
+is a correctness or capability gap today.
