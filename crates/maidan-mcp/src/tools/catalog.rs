@@ -972,7 +972,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_thread_context",
-            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it.",
+            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -980,7 +980,8 @@ pub fn catalog() -> Vec<Value> {
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
                     "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."},
-                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."}
+                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."},
+                    "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."}
                 },
                 "required": ["thread_id"]
             }

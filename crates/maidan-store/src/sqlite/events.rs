@@ -156,6 +156,26 @@ pub async fn list_after_stable(
     rows.iter().map(row_to_stored).collect()
 }
 
+/// A thread's events with `id <= through_id`, in `id` order (Cluster 326) — the
+/// immutable substrate for as-of context replay. See the Postgres twin.
+pub async fn list_through(
+    pool: &SqlitePool,
+    thread_id: maidan_types::ThreadId,
+    through_id: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE thread_id = ? AND id <= ?
+         ORDER BY id ASC",
+    )
+    .bind(thread_id.0)
+    .bind(through_id)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_stored).collect()
+}
+
 fn row_to_stored(row: &sqlx::sqlite::SqliteRow) -> Result<StoredEvent, StoreError> {
     let kind_str: String = row.get("kind");
     let kind = parse_kind(&kind_str)?;

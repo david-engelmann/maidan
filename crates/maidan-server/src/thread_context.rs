@@ -103,6 +103,10 @@ pub struct ThreadContextLimits {
     /// A workspace-context build sets this `false` on its nested thread builds so
     /// the glossary rides the top level once, not per thread.
     pub include_glossary: bool,
+    /// As-of context replay (Cluster 326): when set, reconstruct the thread as it
+    /// stood at this event-log id — deterministic over the immutable log, no fresh
+    /// search. `None` = the live pack.
+    pub as_of: Option<i64>,
 }
 
 impl Default for ThreadContextLimits {
@@ -113,6 +117,7 @@ impl Default for ThreadContextLimits {
             message_cursor: None,
             include_edits: false,
             include_glossary: true,
+            as_of: None,
         }
     }
 }
@@ -122,6 +127,9 @@ pub async fn build_thread_context(
     thread_id: ThreadId,
     limits: ThreadContextLimits,
 ) -> Result<ThreadContext, ApiError> {
+    if let Some(as_of) = limits.as_of {
+        return build_thread_context_as_of(store, thread_id, as_of, limits).await;
+    }
     let thread = store.get_thread(thread_id).await?;
     if thread.tombstoned_at.is_some() {
         return Err(ApiError::NotFound);
@@ -220,6 +228,135 @@ pub async fn build_thread_context(
             transitions,
         },
         glossary,
+        next_message_cursor,
+    })
+}
+
+/// Reconstruct a thread's context as it stood at event-log id `as_of` (Cluster
+/// 326). The message set (and each message's body) is folded from the **immutable
+/// event log** — `MessagePosted`/`MessageEdited` carry the full `Message`,
+/// `MessageTombstoned` its id — so a since-edited or since-tombstoned message
+/// shows its as-of body, not its current one. The additive components (edits,
+/// references, transitions, artifacts) are immutable rows cut by the anchor
+/// event's time. Deterministic; no fresh semantic search. The glossary (current
+/// vocabulary, not thread history) is omitted from an as-of pack.
+async fn build_thread_context_as_of(
+    store: &dyn Store,
+    thread_id: ThreadId,
+    as_of: i64,
+    limits: ThreadContextLimits,
+) -> Result<ThreadContext, ApiError> {
+    // The anchor event bounds the replay (its id) and gives the time cutoff for
+    // the additive components. A missing id is a client error (404 via NotFound).
+    let anchor = store.get_stored_event(as_of).await?;
+    let cutoff = anchor.occurred_at;
+
+    let mut thread = store.get_thread(thread_id).await?;
+    let channel = store.get_channel(thread.channel_id).await?;
+    let workspace_id = channel.workspace_id;
+
+    // Fold the thread's message events up to `as_of` into the as-of message set
+    // (shared with the MCP builder via `maidan_types::reconstruct_messages_through`).
+    let events = store.list_thread_events_through(thread_id, as_of).await?;
+    let mut all_messages: Vec<Message> = reconstruct_messages_through(&events);
+
+    // Keyset pagination over the reconstructed list (in memory — it is bounded).
+    if let Some(cursor) = limits.message_cursor {
+        match all_messages.iter().position(|m| m.id == cursor) {
+            Some(pos) => all_messages = all_messages.split_off(pos + 1),
+            None => all_messages.clear(),
+        }
+    }
+    let page_limit = limits.message_limit.clamp(1, 500);
+    let next_message_cursor = if all_messages.len() as i64 > page_limit {
+        all_messages
+            .get(page_limit as usize - 1)
+            .map(|m| m.id.0.to_string())
+    } else {
+        None
+    };
+    let messages: Vec<Message> = all_messages.into_iter().take(page_limit as usize).collect();
+
+    // Edits — immutable rows, cut by the anchor's time; ordered like the live pack.
+    let message_ids: Vec<MessageId> = messages.iter().map(|m| m.id).collect();
+    let message_pos: HashMap<MessageId, usize> = message_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i))
+        .collect();
+    let mut message_edits = store
+        .list_message_edits_for_messages(&message_ids, 20)
+        .await?;
+    message_edits.retain(|e| e.edited_at <= cutoff);
+    message_edits.sort_by_key(|e| {
+        (
+            message_pos
+                .get(&e.message_id)
+                .copied()
+                .unwrap_or(usize::MAX),
+            e.edited_at,
+            e.id,
+        )
+    });
+    let message_edits: Vec<MessageEditView> = message_edits
+        .into_iter()
+        .map(|e| MessageEditView::from_edit(e, limits.include_edits))
+        .collect();
+
+    // References — additive, cut by time.
+    let message_src_ids: Vec<uuid::Uuid> = messages.iter().map(|m| m.id.0).collect();
+    let mut references = store
+        .list_references_from(RefSide::Thread, thread_id.0)
+        .await?;
+    let mut from_messages = store
+        .list_references_from_many(RefSide::Message, &message_src_ids)
+        .await?;
+    references.append(&mut from_messages);
+    references.retain(|r| r.created_at <= cutoff);
+    references.sort_by_key(|r| r.created_at);
+    references.dedup_by_key(|r| r.id);
+
+    // Transitions — additive, cut by time; the as-of FSM state is the last one.
+    let mut transitions = store
+        .list_thread_transitions(thread_id, limits.transition_limit)
+        .await?;
+    transitions.retain(|t| t.occurred_at <= cutoff);
+    let mut chrono = transitions.clone();
+    chrono.sort_by_key(|t| t.occurred_at);
+    let state = chrono
+        .last()
+        .map(|t| t.to_state)
+        .unwrap_or(ThreadState::Open);
+    thread.state = state;
+
+    // Artifacts — from the as-of messages' metadata, cut by time.
+    let mut artifact_shas = HashSet::new();
+    for message in &messages {
+        for sha in artifact_shas_from_metadata(&message.metadata) {
+            artifact_shas.insert(sha);
+        }
+    }
+    let mut artifacts = Vec::new();
+    for sha in artifact_shas {
+        if let Ok(artifact) = store.get_artifact_by_sha(&sha).await {
+            if artifact.tombstoned_at.is_none() && artifact.created_at <= cutoff {
+                artifacts.push(artifact);
+            }
+        }
+    }
+    artifacts.sort_by_key(|a| a.created_at);
+
+    Ok(ThreadContext {
+        workspace_id,
+        channel_id: thread.channel_id,
+        thread,
+        messages,
+        message_edits,
+        references,
+        artifacts,
+        fsm: ThreadFsmContext { state, transitions },
+        // An as-of pack omits the glossary (current vocabulary, not thread history).
+        glossary: Vec::new(),
         next_message_cursor,
     })
 }

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v326.0.0 — as-of context replay (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| `GET /threads/:id/context?as_of=<event_id>` (+ MCP `get_thread_context` `as_of` arg) reconstructs a thread as it stood at that event-log id — deterministic over the immutable log, no fresh search. A since-edited message shows its as-of body; a since-tombstoned message reappears (both impossible from current rows). `Store::list_thread_events_through` (both backends) + shared `maidan_types::reconstruct_messages_through` fold `MessagePosted`/`MessageEdited` (full `Message` payloads) + `MessageTombstoned`; additive components cut by the anchor's time; glossary omitted. Serves audit + re-ask-from-before-a-tangent. Unknown id → `404`. **Cluster 8 of the fidelity + context flagship arc** | `crates/maidan-store/src/{store.rs,{postgres,sqlite}/{events,mod}.rs}`, `crates/maidan-types/src/events.rs`, `crates/maidan-server/src/{thread_context.rs,dto.rs,routes/{thread,workspace}.rs}`, `crates/maidan-mcp/src/{context.rs,tools/catalog.rs}` |
+
 ## v325.0.0 — agent conventions: decisions, supersession, acks (flagship arc)
 
 | Change | Where |

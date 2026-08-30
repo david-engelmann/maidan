@@ -1291,6 +1291,13 @@ impl Store for PostgresStore {
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
         events::get_by_id(&self.pool, log_id).await
     }
+    async fn list_thread_events_through(
+        &self,
+        thread_id: ThreadId,
+        through_id: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        events::list_through(self.read_pool(), thread_id, through_id).await
+    }
 
     async fn list_events_after(
         &self,

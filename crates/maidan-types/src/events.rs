@@ -607,6 +607,41 @@ impl EventFilter {
     }
 }
 
+/// Reconstruct a thread's message set from its events (Cluster 326 as-of replay).
+/// `MessagePosted`/`MessageEdited` both carry the full `Message`, so folding them
+/// yields each message's body **as it stood** at the last event in `events`;
+/// `MessageTombstoned` removes it. First-posted order is preserved and non-message
+/// events are ignored. Pass the thread's events with `id <= as_of`
+/// ([`crate` consumers use `Store::list_thread_events_through`]) to get the
+/// as-of message set — deterministic over the immutable log, no current-row reads.
+pub fn reconstruct_messages_through(events: &[StoredEvent]) -> Vec<Message> {
+    let mut order: Vec<MessageId> = Vec::new();
+    let mut by_id: std::collections::HashMap<MessageId, Message> = std::collections::HashMap::new();
+    for stored in events {
+        let Ok(ev) = serde_json::from_value::<Event>(stored.payload.clone()) else {
+            continue;
+        };
+        match ev {
+            Event::MessagePosted { message, .. } | Event::MessageEdited { message, .. } => {
+                if !by_id.contains_key(&message.id) {
+                    order.push(message.id);
+                }
+                by_id.insert(message.id, message);
+            }
+            Event::MessageTombstoned { message_id, .. } => {
+                if by_id.remove(&message_id).is_some() {
+                    order.retain(|id| *id != message_id);
+                }
+            }
+            _ => {}
+        }
+    }
+    order
+        .iter()
+        .filter_map(|id| by_id.get(id).cloned())
+        .collect()
+}
+
 #[cfg(test)]
 mod filter_tests {
     use super::*;

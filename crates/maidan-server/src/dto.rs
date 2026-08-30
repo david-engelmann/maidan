@@ -242,6 +242,10 @@ pub struct ThreadContextQuery {
     /// when the glossary is empty. Set `false` to drop it for a token-tight pack.
     #[serde(default = "default_true")]
     pub include_glossary: bool,
+    /// As-of context replay (Cluster 326): reconstruct the thread as it stood at
+    /// this event-log id, deterministic over the immutable log. Omit for the live
+    /// pack. An unknown id is `404`.
+    pub as_of: Option<i64>,
 }
 
 /// Query for `GET /threads/:id/tool-transcript` (Cluster 197).

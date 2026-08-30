@@ -168,11 +168,14 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    alternatives) over `thread_results`, supersession via the `supersedes` reference edge + `status`
    flip, and an `ack` grounding vote (version-pinned by time: stale once the message is edited after
    the ack's `created_at`; optional `confidence`). **Item 3 (confidence + conventions) is COMPLETE.**
-4. **As-of context replay** *(net-new)*. `GET /threads/:id/context?as_of=<event_id>` + MCP twin —
-   thread the cursor through the assembler's bounded reads (the log already supports `list_after`
-   truncation). **Deterministic over immutable data only — no fresh semantic search.** Serves audit
-   ("what context did the agent see when it produced result X") AND re-ask-from-a-point-before-the-
-   tangent. Zero-schema foundation.
+4. **As-of context replay — ✅ DONE (Cluster 326).** `GET /threads/:id/context?as_of=<event_id>`
+   + MCP `get_thread_context` `as_of` arg reconstructs a thread as it stood at that event-log id,
+   **deterministic over the immutable log** (no fresh search). `Store::list_thread_events_through`
+   (both backends) + shared `maidan_types::reconstruct_messages_through` fold `MessagePosted`/
+   `MessageEdited` (full `Message` payloads) + `MessageTombstoned` → the as-of message set with
+   as-of bodies (a since-edited message shows its old body, a since-tombstoned message reappears);
+   additive components cut by the anchor's time; glossary omitted; unknown id → `404`. Serves audit +
+   re-ask-from-before-a-tangent. **Deferred:** workspace-context as-of (thread-scoped only in v1).
 5. **Seed-from-message gesture** (the parked design; the write side of "re-ask"). `POST
    /messages/{id}/seed`, inclusion `pointer|quote|pack|prefix`, a `WorkSeeded` event; **lineage = a
    `seeded_from`/`branched_from` typed edge (from #1), NOT a bespoke table.** `prefix` mode delegates
