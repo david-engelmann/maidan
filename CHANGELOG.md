@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [322.0.0] — 2026-08-29
+
+Post-gate hardening (Phase XXIV). **Cluster 4 of the fidelity + context flagship arc** —
+glossary REST + MCP. No new gate tag.
+
+### Added
+
+- **Glossary REST** — `PUT/GET/DELETE /workspaces/:wid/glossary/:term` + `GET
+  /workspaces/:wid/glossary` (list). `set` upserts (`workspace:write`, `created_by` = acting
+  member); reads are `workspace:read`; `GET :term` is `404` when undefined.
+- **Glossary MCP tools** — `set_glossary_term` / `get_glossary_term` / `list_glossary_terms`
+  over the caller's workspace (`delete` stays REST-only, the 220/229 precedent). Both
+  contracts updated.
+
 ## [321.0.0] — 2026-08-29
 
 Post-gate hardening (Phase XXIV). **Cluster 3 of the fidelity + context flagship arc** —

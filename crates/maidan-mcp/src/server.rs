@@ -1960,6 +1960,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn glossary_tools_set_get_and_list() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "gl".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // A real member session so `created_by` satisfies its FK.
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let set = content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_glossary_term",
+                    &json!({ "term": "LSN", "definition": "log sequence number", "aliases": ["wal position"] }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["term"], json!("LSN"));
+        assert_eq!(set["definition"], json!("log sequence number"));
+
+        let got = content(
+            server
+                .call_tool(&auth, "get_glossary_term", &json!({ "term": "LSN" }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["aliases"], json!(["wal position"]));
+
+        // Unknown term -> null.
+        let miss = content(
+            server
+                .call_tool(&auth, "get_glossary_term", &json!({ "term": "nope" }))
+                .await
+                .unwrap(),
+        );
+        assert!(miss.is_null());
+
+        let list = content(
+            server
+                .call_tool(&auth, "list_glossary_terms", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["term"], json!("LSN"));
+    }
+
+    #[tokio::test]
     async fn skill_tools_declare_and_list() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

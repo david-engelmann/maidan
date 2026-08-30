@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v322.0.0 — glossary REST + MCP (flagship arc)
+
+| Change | Where |
+|--------|-------|
+| The 321 glossary, surfaced: REST `PUT/GET/DELETE /workspaces/:wid/glossary/:term` + `GET /workspaces/:wid/glossary` (list), and MCP `set_glossary_term`/`get_glossary_term`/`list_glossary_terms`. Agents can define, look up, and list a workspace's canonical `term -> definition`. `set` upserts (`workspace:write`, `created_by` = acting member); reads are `workspace:read`; `delete` stays REST-only (the 220/229 precedent). **Cluster 4 of the fidelity + context flagship arc** | `crates/maidan-server/src/{routes/glossary.rs,dto.rs,app.rs,openapi/*}`, `crates/maidan-mcp/src/tools/{glossary.rs,mod.rs,catalog.rs}`, `contracts/{http-capability-map,mcp-*}.json` |
+
 ## v321.0.0 — shared glossary foundation (flagship arc)
 
 | Change | Where |

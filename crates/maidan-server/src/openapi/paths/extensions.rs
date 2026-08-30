@@ -51,6 +51,62 @@ pub fn get_workspace_usage() {}
 
 #[utoipa::path(
     get,
+    path = "/workspaces/{wid}/glossary",
+    tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<GlossaryTerm>, description = "All defined terms, ordered by term"))
+)]
+pub fn list_glossary_terms() {}
+
+#[utoipa::path(
+    put,
+    path = "/workspaces/{wid}/glossary/{term}",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("term" = String, Path, description = "The term being defined")
+    ),
+    request_body = SetGlossaryTerm,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = GlossaryTerm, description = "The defined term (upserted)"))
+)]
+pub fn set_glossary_term() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/glossary/{term}",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("term" = String, Path, description = "The term to look up")
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = GlossaryTerm),
+        (status = 404, description = "No such term is defined")
+    )
+)]
+pub fn get_glossary_term() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/glossary/{term}",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("term" = String, Path, description = "The term to remove")
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Removed"),
+        (status = 404, description = "No such term is defined")
+    )
+)]
+pub fn delete_glossary_term() {}
+
+#[utoipa::path(
+    get,
     path = "/members/{id}/assigned-threads",
     tag = "threads",
     params(("id" = Uuid, Path, description = "Member id")),
