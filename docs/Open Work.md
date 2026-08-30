@@ -162,10 +162,12 @@ foundation for the next); zero-blast-radius foundations follow the 159/217/234 p
    (pg `0054` / sqlite `0053`), `Vote`/`NewVote` `Option<f64>` (omitted when absent), REST
    `POST/GET /messages/:id/votes` + MCP `cast_vote`, range `0..=1` at the API edge, re-cast upserts
    it. (`ThreadResult` already stores arbitrary JSON, so a `confidence` there is a convention, not a
-   schema change — folded into the conventions below.) **Remaining:** near-zero-code **conventions** —
-   a decision-record shape (Context/Decision/Consequences/Alternatives/Status) over `thread_results` +
-   the `supersedes` edge; an `ack` grounding act as a reserved vote value (**version-pinned** to the
-   message edit it grounded). Add no new object for these.
+   schema change — folded into the conventions.) **Conventions — ✅ DONE (Cluster 325):** documented in
+   `docs/Integration.md` "Agent conventions" with a convention-proving `decision_convention_e2e` and
+   **zero new server code** — a decision-record shape (kind/status/context/decision/consequences/
+   alternatives) over `thread_results`, supersession via the `supersedes` reference edge + `status`
+   flip, and an `ack` grounding vote (version-pinned by time: stale once the message is edited after
+   the ack's `created_at`; optional `confidence`). **Item 3 (confidence + conventions) is COMPLETE.**
 4. **As-of context replay** *(net-new)*. `GET /threads/:id/context?as_of=<event_id>` + MCP twin —
    thread the cursor through the assembler's bounded reads (the log already supports `list_after`
    truncation). **Deterministic over immutable data only — no fresh semantic search.** Serves audit

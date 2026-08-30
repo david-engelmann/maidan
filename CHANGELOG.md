@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [325.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 7 of the fidelity + context flagship arc** —
+agent conventions (decisions, supersession, grounding acks). No new gate tag.
+
+### Added
+
+- **`docs/Integration.md` → "Agent conventions"** — documented patterns over existing
+  primitives, no new server object: **decision records** (ADR-shaped `thread_result` JSON),
+  **supersession** (a `supersedes` reference edge + `status` flip; reverse relation-filtered
+  query answers "what replaced this?"), and **grounding acks** (an `ack` vote that grounds a
+  message as of its `created_at`, detectably stale once the message is edited later).
+- **`decision_convention_e2e`** — proves the whole trio works over the real HTTP API with
+  zero server change.
+
 ## [324.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 6 of the fidelity + context flagship arc** —
