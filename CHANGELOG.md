@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [339.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 8 of the post-flagship audit program** — fetch-once
+thread authorization (audit P1.4b). No new gate tag.
+
+### Changed
+
+- **Thread-scoped handlers no longer double-fetch thread+channel.** ~30 handlers across
+  `message.rs`/`thread.rs`/`social.rs`/`skills.rs` called `resolve_thread_context` (get_thread +
+  get_channel) and then `ensure_thread_access` (the same two fetches again). New
+  `maidan_auth::authorize_thread` resolves the thread's `ThreadScope { workspace_id, channel_id,
+  thread_id }` **and** authorizes the caller in one fetch; `ensure_thread_access` delegates to it
+  (rule single-sourced, and it sheds its own duplicate `get_channel`). Handlers that use the scope
+  call `authorize_thread`; the rest drop `resolve_thread_context` + the redundant `ensure_workspace`
+  and keep `ensure_thread_access`. Behaviour-identical (missing → 404, wrong workspace / no access →
+  403 with the same messages), so the per-request thread+channel fetch count on that surface halves.
+
+### Added
+
+- `maidan_auth::authorize_thread` + `maidan_auth::ThreadScope`.
+
 ## [338.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 7 of the post-flagship audit program** — post-path

@@ -11,7 +11,6 @@ use maidan_auth::{
     capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::resolve_thread_context;
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
@@ -75,9 +74,9 @@ pub async fn add_thread_required_skill(
     ApiJson(body): ApiJson<AddSkill>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, THREAD_TRANSITION)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
@@ -95,9 +94,8 @@ pub async fn list_thread_required_skills(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadRequiredSkill>>> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     Ok(Json(
         state.store.list_thread_required_skills(thread_id).await?,
@@ -110,9 +108,9 @@ pub async fn remove_thread_required_skill(
     Path((id, skill)): Path<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, THREAD_TRANSITION)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if state
         .store

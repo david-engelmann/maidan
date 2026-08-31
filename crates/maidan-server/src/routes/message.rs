@@ -10,7 +10,7 @@ use maidan_auth::{
     capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::{resolve_message_chain, resolve_thread_context};
+use maidan_router::resolve_message_chain;
 use maidan_types::*;
 
 use super::{cap, ensure_message_edit, ensure_workspace, publish_routed_mentions, ApiResult};
@@ -25,9 +25,10 @@ pub async fn post_message(
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
-    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
+    // Cluster 339: one fetch resolves the thread's scope AND authorizes the caller
+    // (was `resolve_thread_context` + `ensure_workspace` + `ensure_thread_access`).
+    let ctx =
+        maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     super::ensure_acting_member(&auth, MemberId(body.author_id))?;
     // Cluster 173: a content-only post derives its searchable `body` from the
     // blocks; an explicit `body` is respected verbatim.
@@ -258,9 +259,10 @@ pub async fn list_messages(
     Path(thread_id): Path<uuid::Uuid>,
     Query(q): Query<ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
-    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread, so the prior `resolve_thread_context` + `ensure_workspace` were a
+    // redundant second fetch — this handler never used the resolved context.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     Ok(Json(
         state

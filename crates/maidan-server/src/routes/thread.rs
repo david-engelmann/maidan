@@ -11,7 +11,7 @@ use maidan_auth::{
     AuthContext,
 };
 use maidan_fsm::ThreadAction;
-use maidan_router::{resolve_channel_context, resolve_thread_context};
+use maidan_router::resolve_channel_context;
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
@@ -61,12 +61,12 @@ pub async fn get_thread(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     let thread = state.store.get_thread(ThreadId(id)).await?;
-    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
-    // Cluster 180: thread-scoped access (DM-participant-aware for `__dm__`),
-    // not channel-scoped — the generic route must not expose a DM thread to a
-    // non-participant.
+    // Cluster 180: thread-scoped access (DM-participant-aware for `__dm__`), not
+    // channel-scoped — the generic route must not expose a DM thread to a
+    // non-participant. Cluster 339: `ensure_thread_access` resolves +
+    // workspace-checks the thread, so the prior `resolve_thread_context` +
+    // `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(id)).await?;
     Ok(Json(thread))
 }
@@ -78,9 +78,9 @@ pub async fn get_thread_context(
     Query(q): Query<ThreadContextQuery>,
 ) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let packed = crate::thread_context::build_thread_context(
         state.store.as_ref(),
@@ -118,9 +118,9 @@ pub async fn snapshot_thread_context(
     Query(q): Query<ThreadContextQuery>,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, ARTIFACT_UPLOAD)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let packed = crate::thread_context::build_thread_context(
         state.store.as_ref(),
@@ -179,9 +179,9 @@ pub async fn get_tool_transcript(
     Query(q): Query<ToolTranscriptQuery>,
 ) -> ApiResult<Json<ToolTranscript>> {
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
     let messages = state.store.list_messages(thread_id, limit).await?;
@@ -202,9 +202,8 @@ pub async fn transition_thread(
         ))
     })?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    // Cluster 339: one fetch resolves scope + authorizes (was resolve + ws + access).
+    let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (result, stored) = state
         .store
@@ -256,9 +255,8 @@ pub async fn set_thread_result(
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    // Cluster 339: one fetch resolves scope + authorizes (was resolve + ws + access).
+    let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let result = state
         .store
         .set_thread_result(thread_id, auth.member_id, &body.result)
@@ -286,8 +284,9 @@ pub async fn get_thread_result(
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     match state.store.get_thread_result(thread_id).await? {
         Some(result) => Ok(Json(result)),
@@ -303,8 +302,9 @@ pub async fn assign_thread(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (thread, stored) = state
@@ -328,8 +328,9 @@ pub async fn unassign_thread(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (thread, stored) = state
@@ -348,8 +349,9 @@ pub async fn claim_thread(
 ) -> ApiResult<Json<ThreadClaimResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
@@ -425,8 +427,9 @@ pub async fn renew_claim(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let thread = state
@@ -448,17 +451,15 @@ pub async fn add_thread_dependency(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     let depends_on = ThreadId(body.depends_on_thread_id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    // Cluster 339: authorize + resolve each thread in a single fetch.
+    let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     // The dependency must be in the same workspace and visible to the caller too.
-    let dep_ctx = resolve_thread_context(state.store.as_ref(), depends_on).await?;
+    let dep_ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, depends_on).await?;
     if dep_ctx.workspace_id != ctx.workspace_id {
         return Err(ApiError::BadRequest(
             "dependency thread is in a different workspace".into(),
         ));
     }
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, depends_on).await?;
     state
         .store
         .add_thread_dependency(thread_id, depends_on)
@@ -474,8 +475,9 @@ pub async fn list_thread_dependencies(
 ) -> ApiResult<Json<ThreadDependenciesView>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let dependencies = state.store.list_thread_dependencies(thread_id).await?;
     let ready = state.store.thread_dependencies_satisfied(thread_id).await?;
@@ -493,8 +495,9 @@ pub async fn remove_thread_dependency(
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if state
         .store
@@ -515,8 +518,9 @@ pub async fn list_thread_dependents(
 ) -> ApiResult<Json<Vec<ThreadDependency>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
+    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     Ok(Json(state.store.list_thread_dependents(thread_id).await?))
 }
