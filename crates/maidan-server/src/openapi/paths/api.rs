@@ -459,7 +459,7 @@ pub fn list_channel_members() {}
 pub fn remove_channel_member() {}
 
 #[utoipa::path(get, path = "/channels/{cid}/threads", tag = "threads",
-    params(("cid" = Uuid, Path, description = "Channel id")),
+    params(("cid" = Uuid, Path, description = "Channel id"), ListThreadsQuery),
     security(("bearerAuth" = [])),
     responses((status = 200, body = Vec<Thread>)))]
 pub fn list_threads() {}

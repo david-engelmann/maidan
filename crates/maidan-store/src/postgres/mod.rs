@@ -831,6 +831,15 @@ impl Store for PostgresStore {
         threads::page_for_workspace(&self.pool, workspace_id, after, limit).await
     }
 
+    async fn page_threads_for_channel(
+        &self,
+        channel_id: ChannelId,
+        after: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::page_for_channel(self.read_pool(), channel_id, after, limit).await
+    }
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,

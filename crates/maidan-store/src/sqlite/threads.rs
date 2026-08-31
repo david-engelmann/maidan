@@ -552,6 +552,38 @@ pub async fn page_for_workspace(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// One keyset page of a channel's **live** threads, ordered `(created_at, id)`
+/// ascending (Cluster 343). `after` is an exclusive cursor (the prior page's last
+/// thread id); `None` starts from the beginning. The channel-scoped twin of
+/// [`page_for_workspace`] — bounds the previously-unbounded channel thread list.
+pub async fn page_for_channel(
+    pool: &SqlitePool,
+    channel_id: ChannelId,
+    after: Option<ThreadId>,
+    limit: i64,
+) -> Result<Vec<Thread>, StoreError> {
+    let cursor = after.map(|t| t.0);
+    let rows = sqlx::query(
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at,
+                tombstoned_at, assignee_id, assignment_expires_at
+         FROM maidan_threads t
+         WHERE t.channel_id = ?
+           AND t.tombstoned_at IS NULL
+           AND (? IS NULL OR (t.created_at, t.id) > (
+                 SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = ?
+               ))
+         ORDER BY t.created_at ASC, t.id ASC
+         LIMIT ?",
+    )
+    .bind(channel_id.0)
+    .bind(cursor)
+    .bind(cursor)
+    .bind(limit.max(0))
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 async fn validate_parent(
     pool: &SqlitePool,
     channel_id: ChannelId,
