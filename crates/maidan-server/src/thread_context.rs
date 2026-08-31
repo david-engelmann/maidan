@@ -415,27 +415,8 @@ pub async fn build_workspace_context(
     })
 }
 
-fn artifact_shas_from_metadata(metadata: &serde_json::Value) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Some(s) = metadata.get("artifact_sha256").and_then(|v| v.as_str()) {
-        out.push(s.to_string());
-    }
-    if let Some(s) = metadata.get("sha256").and_then(|v| v.as_str()) {
-        out.push(s.to_string());
-    }
-    if let Some(arr) = metadata.get("artifacts").and_then(|v| v.as_array()) {
-        for item in arr {
-            if let Some(s) = item.as_str() {
-                out.push(s.to_string());
-            } else if let Some(sha) = item.get("sha256").and_then(|v| v.as_str()) {
-                out.push(sha.to_string());
-            }
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
+// Cluster 335: `artifact_shas_from_metadata` moved to `maidan_types` (in scope via
+// the `use maidan_types::*` glob above) so REST + MCP share one sha extractor.
 
 #[cfg(test)]
 mod tests {

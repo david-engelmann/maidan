@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v335.0.0 — MCP context: batch reads + surface artifacts (audit P1.2)
+
+| Change | Where |
+|--------|-------|
+| The MCP context assembler had a per-message N+1 (refs + edits fetched per message) and omitted artifacts; the REST one batched both + included artifacts. Now `get_thread_context`/`get_thread_context_as_of` use batched shared helpers (`collect_references` `src_id=ANY`, `collect_edit_views` with optional as-of cutoff, `collect_artifacts`) and surface an `artifacts` array — matching REST. Sha extractor shared via `maidan_types::artifact_shas_from_metadata`. REST unchanged (query-count guard green). Full cross-crate assembler hoist deferred (maidan-router `ThreadContext` name collision + utoipa/futures plumbing; maintainability-only, message fold already shared). **Cluster 4 of the post-flagship audit program** | `crates/maidan-types/src/models.rs`, `crates/maidan-mcp/src/context.rs`, `crates/maidan-server/src/thread_context.rs` |
+
 ## v334.0.0 — MCP write-path event parity, the rest (audit P1.1b)
 
 | Change | Where |

@@ -53,10 +53,14 @@ cluster cadence: retro + `vX.0.0` tag each).
   reindex (stale semantic search); MCP `post_message` never publishes `MentionRecorded` (no agent
   `@mention` notifications / `wait_for_mention`). Migrate to `*_with_event` + a shared `McpServer`
   publish; **sequence `edit_message` first** (sharpest correctness bug). **Effort M.**
-- **P1.2 Unify the context assembler across REST + MCP.** `crates/maidan-mcp/src/context.rs:95-119`
-  re-introduces the per-message N+1 that `thread_context.rs` batched (Cluster 106) and **omits artifacts**;
-  hoist one assembler into `maidan-router` (already a dep of both), REST returns typed / MCP serializes.
-  Stops the flagship context pack diverging by transport. **Effort M.**
+- **P1.2 — ✅ mostly DONE (Cluster 335).** The user-visible divergence is closed: the MCP context
+  assembler now uses batched shared helpers (no per-message N+1) and surfaces an `artifacts` array,
+  matching REST; the sha extractor is shared via `maidan_types::artifact_shas_from_metadata`. **Deferred
+  (maintainability-only):** the full cross-crate assembler hoist into `maidan-router` — blocked by a
+  `ThreadContext` name collision (router already exports a resolution struct of that name) + utoipa-
+  feature propagation + a `futures` dep, a multi-cluster refactor whose remaining payoff is only ending
+  the `as_of` double-impl (and the trickiest shared logic — the message fold — already goes through
+  `maidan_types::reconstruct_messages_through`). Revisit if the two assemblers start to drift.
 - **P1.3 Agent cold-start: `whoami` + populated `initialize` instructions.** No `whoami` tool and no
   `/me` route exist, yet every hero-loop tool needs the caller's own `member_id`; MCP `initialize` omits
   the spec `instructions` field. Add a `whoami` tool + `GET /me` (member/workspace/capabilities), populate

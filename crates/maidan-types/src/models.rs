@@ -706,6 +706,32 @@ pub fn derive_body(blocks: &[ContentBlock]) -> String {
         .join("\n\n")
 }
 
+/// Content-addressed artifact SHAs referenced by a message's `metadata` — the
+/// `artifact_sha256` / `sha256` scalar fields plus an `artifacts` array of either
+/// bare SHA strings or `{sha256}` objects. Sorted + deduped. Shared by the REST
+/// and MCP context assemblers (Cluster 335) so both surface the same artifacts.
+pub fn artifact_shas_from_metadata(metadata: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(s) = metadata.get("artifact_sha256").and_then(|v| v.as_str()) {
+        out.push(s.to_string());
+    }
+    if let Some(s) = metadata.get("sha256").and_then(|v| v.as_str()) {
+        out.push(s.to_string());
+    }
+    if let Some(arr) = metadata.get("artifacts").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                out.push(s.to_string());
+            } else if let Some(sha) = item.get("sha256").and_then(|v| v.as_str()) {
+                out.push(sha.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// One tool invocation in a thread's transcript (Cluster 197): a
 /// [`ContentBlock::ToolUse`] paired with its [`ContentBlock::ToolResult`]
 /// (correlated by id), plus the message context each block came from.
