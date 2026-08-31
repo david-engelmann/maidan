@@ -174,10 +174,11 @@ struct EditMessageArgs {
 }
 
 pub(super) async fn edit_message(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: EditMessageArgs = serde_json::from_value(args.clone())?;
     let message_id = MessageId(a.message_id);
     let existing = store.get_message(message_id).await?;
@@ -206,8 +207,18 @@ pub(super) async fn edit_message(
     } else {
         a.body
     };
-    let msg = store
-        .edit_message(
+    // Cluster 333: the edit + its `MessageEdited` event commit atomically, then
+    // the bus is notified — so an MCP edit (like a REST edit) triggers embedding
+    // reindex, feeds as-of context replay, and reaches WS/SSE subscribers. (MCP
+    // previously called the event-less `edit_message`, silently breaking all three.)
+    let dm_conversation_id = store
+        .dm_conversation_for_thread(existing.thread_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|d| d.id);
+    let (msg, stored) = store
+        .edit_message_with_event(
             message_id,
             editor_id,
             EditMessage {
@@ -215,8 +226,10 @@ pub(super) async fn edit_message(
                 metadata,
                 content,
             },
+            dm_conversation_id,
         )
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&msg))
 }
 
