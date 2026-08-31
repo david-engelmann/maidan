@@ -1,5 +1,7 @@
 //! MCP context export (Cluster 74) — mirrors HTTP context packs; pagination Cluster 82.
 
+use std::collections::{HashMap, HashSet};
+
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -7,6 +9,88 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::error::McpError;
+
+/// Thread + message references for a context pack, batched (Cluster 335): one
+/// thread read + one `src_id = ANY` read across all messages, replacing the
+/// per-message N+1. Ordered by `created_at`, deduped — mirrors the REST assembler.
+async fn collect_references(
+    store: &dyn Store,
+    thread_id: ThreadId,
+    messages: &[Message],
+) -> Result<Vec<Reference>, McpError> {
+    let msg_ids: Vec<Uuid> = messages.iter().map(|m| m.id.0).collect();
+    let mut refs = store
+        .list_references_from(RefSide::Thread, thread_id.0)
+        .await?;
+    let mut from_msgs = store
+        .list_references_from_many(RefSide::Message, &msg_ids)
+        .await?;
+    refs.append(&mut from_msgs);
+    refs.sort_by_key(|r| r.created_at);
+    refs.dedup_by_key(|r| r.id);
+    Ok(refs)
+}
+
+/// Edit records for a context pack, batched across all messages then re-ordered by
+/// (message position, edited_at, id) (Cluster 335). Lean by default (id/editor/
+/// timestamp); `include_edits` adds the heavy before/after bodies.
+async fn collect_edit_views(
+    store: &dyn Store,
+    messages: &[Message],
+    include_edits: bool,
+    cutoff: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Vec<Value>, McpError> {
+    let msg_ids: Vec<MessageId> = messages.iter().map(|m| m.id).collect();
+    let pos: HashMap<MessageId, usize> =
+        msg_ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    let mut edits = store.list_message_edits_for_messages(&msg_ids, 20).await?;
+    if let Some(c) = cutoff {
+        edits.retain(|e| e.edited_at <= c);
+    }
+    edits.sort_by_key(|e| {
+        (
+            pos.get(&e.message_id).copied().unwrap_or(usize::MAX),
+            e.edited_at,
+            e.id,
+        )
+    });
+    let mut out = Vec::with_capacity(edits.len());
+    for edit in edits {
+        if include_edits {
+            out.push(serde_json::to_value(&edit)?);
+        } else {
+            out.push(json!({
+                "id": edit.id,
+                "message_id": edit.message_id,
+                "editor_id": edit.editor_id,
+                "edited_at": edit.edited_at,
+            }));
+        }
+    }
+    Ok(out)
+}
+
+/// Non-tombstoned artifacts referenced by a page's messages' metadata (Cluster
+/// 335 — MCP context packs previously omitted artifacts entirely). Ordered by
+/// `created_at`; a missing/tombstoned blob is skipped.
+async fn collect_artifacts(store: &dyn Store, messages: &[Message]) -> Vec<Artifact> {
+    let mut shas = HashSet::new();
+    for m in messages {
+        for sha in artifact_shas_from_metadata(&m.metadata) {
+            shas.insert(sha);
+        }
+    }
+    let mut artifacts = Vec::new();
+    for sha in shas {
+        if let Ok(a) = store.get_artifact_by_sha(&sha).await {
+            if a.tombstoned_at.is_none() {
+                artifacts.push(a);
+            }
+        }
+    }
+    artifacts.sort_by_key(|a| a.created_at);
+    artifacts
+}
 
 #[derive(Debug, Deserialize)]
 struct ThreadContextArgs {
@@ -89,34 +173,11 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     let transitions = store
         .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
         .await?;
-    let mut references = store
-        .list_references_from(RefSide::Thread, thread_id.0)
-        .await?;
-    for message in &messages {
-        let mut from_message = store
-            .list_references_from(RefSide::Message, message.id.0)
-            .await?;
-        references.append(&mut from_message);
-    }
-    references.sort_by_key(|r| r.created_at);
-    references.dedup_by_key(|r| r.id);
-
-    let mut message_edits = Vec::new();
-    for message in &messages {
-        let edits = store.list_message_edits(message.id, 20).await?;
-        for edit in edits {
-            if a.include_edits {
-                message_edits.push(serde_json::to_value(&edit)?);
-            } else {
-                message_edits.push(json!({
-                    "id": edit.id,
-                    "message_id": edit.message_id,
-                    "editor_id": edit.editor_id,
-                    "edited_at": edit.edited_at,
-                }));
-            }
-        }
-    }
+    // Cluster 335: batched refs/edits (no per-message N+1) + artifacts (previously
+    // omitted from MCP packs) — shared with the REST assembler's behavior.
+    let references = collect_references(store, thread_id, &messages).await?;
+    let message_edits = collect_edit_views(store, &messages, a.include_edits, None).await?;
+    let artifacts = collect_artifacts(store, &messages).await;
 
     let mut out = json!({
         "workspace_id": channel.workspace_id.0,
@@ -125,6 +186,7 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         "messages": messages,
         "message_edits": message_edits,
         "references": references,
+        "artifacts": artifacts,
         "fsm": {
             "state": thread.state,
             "transitions": transitions,
@@ -176,37 +238,13 @@ async fn get_thread_context_as_of(
     };
     let messages: Vec<Message> = all.into_iter().take(page_limit as usize).collect();
 
-    let mut message_edits = Vec::new();
-    for message in &messages {
-        for edit in store.list_message_edits(message.id, 20).await? {
-            if edit.edited_at > cutoff {
-                continue;
-            }
-            if a.include_edits {
-                message_edits.push(serde_json::to_value(&edit)?);
-            } else {
-                message_edits.push(json!({
-                    "id": edit.id,
-                    "message_id": edit.message_id,
-                    "editor_id": edit.editor_id,
-                    "edited_at": edit.edited_at,
-                }));
-            }
-        }
-    }
-
-    let mut references = store
-        .list_references_from(RefSide::Thread, thread_id.0)
-        .await?;
-    for message in &messages {
-        let mut from_message = store
-            .list_references_from(RefSide::Message, message.id.0)
-            .await?;
-        references.append(&mut from_message);
-    }
+    // Cluster 335: batched refs/edits + artifacts (shared with the live path), then
+    // cut to the anchor's time — the additive components as they stood at `as_of`.
+    let message_edits = collect_edit_views(store, &messages, a.include_edits, Some(cutoff)).await?;
+    let mut references = collect_references(store, thread_id, &messages).await?;
     references.retain(|r| r.created_at <= cutoff);
-    references.sort_by_key(|r| r.created_at);
-    references.dedup_by_key(|r| r.id);
+    let mut artifacts = collect_artifacts(store, &messages).await;
+    artifacts.retain(|art| art.created_at <= cutoff);
 
     let mut transitions = store
         .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
@@ -227,6 +265,7 @@ async fn get_thread_context_as_of(
         "messages": messages,
         "message_edits": message_edits,
         "references": references,
+        "artifacts": artifacts,
         "fsm": { "state": state, "transitions": transitions },
         "next_message_cursor": next_message_cursor,
     }))
@@ -581,5 +620,80 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(live["messages"][0]["body"], "v2");
+    }
+
+    #[tokio::test]
+    async fn context_pack_includes_artifacts() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "a".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let sha = "ab".repeat(32);
+        store
+            .upsert_artifact(NewArtifact {
+                sha256: sha.clone(),
+                size_bytes: 5,
+                mime_type: Some("text/plain".into()),
+                kind: ArtifactKind::Attachment,
+                uploaded_by: Some(member.id),
+            })
+            .await
+            .unwrap();
+        store
+            .post_message(NewMessage {
+                thread_id: thread.id,
+                author_id: member.id,
+                body: "see attachment".into(),
+                metadata: json!({ "artifact_sha256": sha }),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        // Cluster 335: the MCP context pack now surfaces referenced artifacts
+        // (previously omitted — REST included them, MCP did not).
+        let ctx = get_thread_context(store.as_ref(), &json!({ "thread_id": thread.id.0 }))
+            .await
+            .unwrap();
+        let artifacts = ctx["artifacts"].as_array().expect("artifacts present");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0]["sha256"], json!(sha));
     }
 }

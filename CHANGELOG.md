@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [335.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 4 of the post-flagship audit program** — MCP
+context: batch reads + surface artifacts (audit P1.2). No new gate tag.
+
+### Fixed
+
+- **The MCP context assembler no longer has a per-message N+1 and no longer omits artifacts.**
+  `get_thread_context`/`get_thread_context_as_of` now use batched reads (one `src_id = ANY`
+  reference read + one batched edit read, shared helpers) and surface an `artifacts` array from
+  message metadata — matching the REST assembler. The sha extractor moved to
+  `maidan_types::artifact_shas_from_metadata` (shared by both). REST behavior unchanged
+  (`context_query_count_e2e` stays green).
+
 ## [334.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 3 of the post-flagship audit program** — MCP
