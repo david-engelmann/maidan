@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use maidan_artifacts::{ArtifactStore, Sha256};
+use maidan_artifacts::Sha256;
 use maidan_store::Store;
 use maidan_types::*;
 use serde_json::{json, Value};
@@ -40,11 +40,7 @@ pub fn catalog() -> Vec<Value> {
     ]
 }
 
-pub async fn read(
-    store: &Arc<dyn Store>,
-    artifacts: &Arc<dyn ArtifactStore>,
-    uri: &str,
-) -> Result<Value, McpError> {
+pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> {
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
@@ -54,16 +50,13 @@ pub async fn read(
                     "artifact sha256 must be 64 hex chars".into(),
                 ));
             }
+            // Access is gated by the caller (server::resources_read → artifact_ref_exists,
+            // Cluster 204/332). `size_bytes` is authoritative metadata, so the blob is
+            // never loaded just to report its length.
             let meta = store.get_artifact_by_sha(id_str).await?;
-            let sha =
-                Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
-            let body = artifacts
-                .get(&sha)
-                .await
-                .map_err(|e| McpError::Internal(e.to_string()))?;
             json!({
                 "artifact": meta,
-                "byte_length": body.len(),
+                "byte_length": meta.size_bytes,
             })
         }
         "workspaces" | "channels" | "threads" => {

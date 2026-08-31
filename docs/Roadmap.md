@@ -130,6 +130,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **331.0** (`v331.0.0`) **flagship arc — cluster 13 (closeout).** Docs-only decision cluster: a "Product scope" ADR in `docs/Decisions.md` records the fidelity + context flagship arc **complete (319–331)** and **declines** its optional tail (seed `pack`/`prefix` inclusion, a `WorkSeeded` event, the flow/setup template) as composable from shipped primitives — declined, not deferred, with revisit conditions. Open Work / Roadmap marked complete. **The flagship arc is done** — a clean point to open a research round. The public launch remains gated on the maintainer's go.
 
+**332.0** (`v332.0.0`) **post-flagship audit program — cluster 1: MCP artifact tenant isolation (P0.1).** The one P0 from the 2026-08-30 full-repo audit: the MCP artifact tools bypassed the Cluster-204 per-workspace isolation the REST path enforces. `get_artifact_metadata` + the `maidan://artifacts/{sha}` resource read now gate on `artifact_ref_exists` → `NotFound` (no cross-tenant oracle); MCP uploads record the per-workspace ref; `resources::read` uses `size_bytes` instead of loading the blob. e2e `mcp_artifact_tools_enforce_tenant_isolation`. **Next (audit program): P1.1 MCP write-path event/atomicity parity** (edit_message first — it silently breaks the flagship as-of replay + embedding reindex), then P1.2 unify context assembler → P1.3 whoami/initialize → P1.4 post-path → P1.5 egress tests + LSN CI → P2 docs/polish.
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**

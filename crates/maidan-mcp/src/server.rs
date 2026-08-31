@@ -376,11 +376,23 @@ impl McpServer {
                             .await?;
                         }
                     }
+                    // Cluster 204/332: artifacts are deduped across tenants, so gate
+                    // the read on the caller's per-workspace access ref. A missing ref
+                    // is NotFound (no cross-tenant existence oracle), like REST.
+                    (Some("artifacts"), Some(sha)) => {
+                        if !self
+                            .store
+                            .artifact_ref_exists(auth.workspace_id, sha)
+                            .await?
+                        {
+                            return Err(McpError::NotFound);
+                        }
+                    }
                     _ => {}
                 }
             }
         }
-        resources::read(&self.store, &self.artifacts, uri).await
+        resources::read(&self.store, uri).await
     }
 
     async fn resources_subscribe(
@@ -2247,6 +2259,99 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(again["sha256"].as_str().unwrap(), sha);
+    }
+
+    #[tokio::test]
+    async fn mcp_artifact_tools_enforce_tenant_isolation() {
+        use maidan_auth::capability::{ARTIFACT_UPLOAD, WORKSPACE_READ};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let mk = |name: &str| {
+            let store = store.clone();
+            let name = name.to_string();
+            async move {
+                let ws = store
+                    .create_workspace(NewWorkspace { name: name.clone() })
+                    .await
+                    .unwrap();
+                let m = store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: name,
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap();
+                (ws.id, m.id)
+            }
+        };
+        let (ws_a, member_a) = mk("a").await;
+        let (ws_b, member_b) = mk("b").await;
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let caps = || vec![ARTIFACT_UPLOAD.to_string(), WORKSPACE_READ.to_string()];
+        let auth_a = AuthContext::from_session(member_a, ws_a, caps());
+        let auth_b = AuthContext::from_session(member_b, ws_b, caps());
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Workspace A uploads an artifact (records A's access ref).
+        let up = content(
+            server
+                .call_tool(
+                    &auth_a,
+                    "upload_artifact",
+                    &json!({ "kind": "attachment", "content_base64": "aGVsbG8=" }),
+                )
+                .await
+                .unwrap(),
+        );
+        let sha = up["sha256"].as_str().unwrap().to_string();
+
+        // A can read its own artifact metadata; B cannot (NotFound — no oracle).
+        assert!(server
+            .call_tool(&auth_a, "get_artifact_metadata", &json!({ "sha256": sha }))
+            .await
+            .is_ok());
+        let denied = server
+            .call_tool(&auth_b, "get_artifact_metadata", &json!({ "sha256": sha }))
+            .await;
+        assert!(
+            matches!(denied, Err(McpError::NotFound)),
+            "B must not read A's artifact metadata, got {denied:?}"
+        );
+
+        // Same isolation on the resources/read path (maidan://artifacts/{sha}).
+        let req = |uri: String| JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(json!(1)),
+            method: "resources/read".to_string(),
+            params: json!({ "uri": uri }),
+        };
+        let uri = format!("maidan://artifacts/{sha}");
+        let resp_b = server.handle(req(uri.clone()), &auth_b).await;
+        assert!(
+            resp_b.error.is_some() && resp_b.result.is_none(),
+            "B must not read A's artifact via resources/read"
+        );
+        let resp_a = server.handle(req(uri), &auth_a).await;
+        assert!(resp_a.result.is_some() && resp_a.error.is_none());
     }
 
     #[tokio::test]

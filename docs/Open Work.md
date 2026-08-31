@@ -6,6 +6,79 @@ see [[Remaining Work]].
 
 Updated at each cluster retro. **Baseline:** code on `main` at **`v314.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), and again at **v314** (2026-08-28 4-thread research sweep — see "Pre-launch fixes + flagship arc" below).
 
+## Post-flagship audit program (2026-08-30 full-repo audit — CURRENT)
+
+A 9-agent full-repo audit (code / deferred / docs / product / perf / security / testing /
+architecture → synthesis; journal `wf_23c0c888-03f`) ran after the flagship arc closed at
+`v331`. **Verdict: ~90% of "code perfect / docs immaculate / no major gaps / production-ready /
+compelling."** Engineering discipline is top-decile (no lib `unwrap`/TODO; REST transactional
+outbox; comprehensive app-layer RBAC; LSN causal replica routing validated vs real replication;
+an honest self-correcting backlog). **The single dominant theme: the MCP transport was never
+brought to parity with REST** — and MCP is the product's primary agent interface, so the
+deficient transport is the one agents actually use. The two sharpest items were **code-verified
+by the maintainer** (file:line below), not taken on faith. Run as the next program (normal
+cluster cadence: retro + `vX.0.0` tag each).
+
+**P0 — fix before promoting:**
+- **P0.1 — ✅ FIXED (Cluster 332).** MCP artifact tools now enforce Cluster-204 tenant isolation:
+  `get_artifact_metadata` + the `maidan://artifacts/{sha}` resource read gate on
+  `artifact_ref_exists(auth.workspace_id, sha)` → `NotFound` when absent (no cross-tenant oracle,
+  matching REST); MCP uploads (single-shot + multipart complete) record the per-workspace ref via
+  `record_artifact_ref`; `resources::read` uses `meta.size_bytes` instead of loading the blob.
+  e2e `mcp_artifact_tools_enforce_tenant_isolation` (workspace B denied on both the tool + resource
+  paths; A allowed). *Was:* MCP artifact tools bypassed Cluster-204 (cross-tenant leak).
+  `crates/maidan-mcp/src/tools/artifact.rs::get_artifact_metadata` takes no `auth` and calls
+  `store.get_artifact_by_sha` with **no `artifact_ref_exists` check**; `crates/maidan-mcp/src/resources.rs:57-60`
+  (`maidan://artifacts/{sha}` read) does the same **and returns the full blob bytes** — so any
+  `workspace:read` bearer reads any tenant's artifact bytes+metadata by SHA (REST returns 404 via
+  `ensure_artifact_ref`). `upload_artifact` also uses `upsert_artifact` (no ref → REST 404). Fix:
+  thread `auth` in, gate reads on `artifact_ref_exists(auth.workspace_id, sha)`, upload via
+  `upsert_artifact_with_event` + `ref_workspace` (the Cluster-330 `snapshot.rs` tool is the template);
+  drop the full-blob read in `resources.rs`, use `meta.size_bytes`. Add a cross-tenant e2e. **Effort S.**
+
+**P1 — high-value clusters (ordered):**
+- **P1.1 MCP write-path parity: events + atomicity. ✅ VERIFIED (edit_message).** The 8 event-less MCP
+  write tools (`cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/`unpin_message`/`edit_message`/
+  `record_mention`/`add_reference`) call plain non-`*_with_event` store methods and append **no** domain
+  event; `tools/message.rs::edit_message` calls `store.edit_message` (event-less) → an MCP edit appends
+  no `MessageEdited`, so the **flagship as-of replay returns the stale body forever** and embeddings never
+  reindex (stale semantic search); MCP `post_message` never publishes `MentionRecorded` (no agent
+  `@mention` notifications / `wait_for_mention`). Migrate to `*_with_event` + a shared `McpServer`
+  publish; **sequence `edit_message` first** (sharpest correctness bug). **Effort M.**
+- **P1.2 Unify the context assembler across REST + MCP.** `crates/maidan-mcp/src/context.rs:95-119`
+  re-introduces the per-message N+1 that `thread_context.rs` batched (Cluster 106) and **omits artifacts**;
+  hoist one assembler into `maidan-router` (already a dep of both), REST returns typed / MCP serializes.
+  Stops the flagship context pack diverging by transport. **Effort M.**
+- **P1.3 Agent cold-start: `whoami` + populated `initialize` instructions.** No `whoami` tool and no
+  `/me` route exist, yet every hero-loop tool needs the caller's own `member_id`; MCP `initialize` omits
+  the spec `instructions` field. Add a `whoami` tool + `GET /me` (member/workspace/capabilities), populate
+  `initialize.instructions` with the 6-tool hero loop, optionally default `author_id`/`member_id` to
+  `auth.member_id`. Cheapest adoption unlock. **Effort M.**
+- **P1.4 Post-path round-trip reduction.** `routes/message.rs` double-fetches thread+channel
+  (`resolve_thread_context` then `ensure_thread_access`), and `publish_routed_mentions`→
+  `route_mentions_for_message` re-runs `resolve_message_chain` unconditionally even for zero-mention posts;
+  short-circuit when no `@handles` + pass the known `workspace_id`. Halves reads on the most frequent
+  write. **Effort S.**
+- **P1.5 Egress wire-path tests + LSN replica CI (already tracked §3.1/§3.2 — now unblocked).** Add a
+  base-URL override to `SlackWebClient`/`GithubApiClient` + real-client-against-loopback tests (SMTP vs
+  Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two
+  genuine test-confidence gaps on shipped launch-narrative features. **Effort M each.**
+
+**P2 — polish (do after P0/P1):** projector link-management REST/MCP surface (only ingress mounted);
+A2A gRPC doc contradiction (`Architecture.md` "three transports/gRPC" vs `Protocols.md` "no gRPC binding"
+vs ground-truth get/cancel/list only — reconcile to `Claims.md`'s honest "partial"); `Integration.md`
+omits the flagship context surface (`as_of`, glossary-in-pack, snapshot, seed); MCP `post_message` skips
+slash-dispatch (decide+document); notification-router O(followers) serial round-trips; Store 256-method
+god-trait split; `list_threads` unbounded (last unpaginated list); README no visual media / no paste-ready
+invite; tool-count drift (`~78`→**84** in `Framework Integrations.md` + `examples/README.md`), README
+image pin `v315`→`v331`, `Architecture.md` `Capability-Map.md` dead GitHub link.
+
+**DECLINE / already-covered (not gaps — do not spend a cluster):** the flagship optional tail (seed
+`pack`/`prefix`, `WorkSeeded`, `structure_only` template) + Postgres RLS — explicitly DECLINED in
+[[Decisions]] (`## Product scope` + `## Security`); the legacy `/inbox` authz "defect" — verified FALSE
+POSITIVE (bearer-only, sessions 401); outbox multi-replica double-publish (K8) — deferred with a correct
+fix spec; Postgres benchmark numbers / coverage floor / `context_query_count` flake — real but P3.
+
 ## Post-272 forward work (next program)
 
 The optional-deferrals sweep (267–272) closed the last program. The next body of

@@ -322,16 +322,16 @@ pub async fn dispatch(
         "list_pins" => social::list_pins(store, args).await,
         "add_reference" => reference::add_reference(store, args).await,
         "list_references" => reference::list_references(store, args).await,
-        "upload_artifact" => artifact::upload_artifact(store, artifacts, args).await,
+        "upload_artifact" => artifact::upload_artifact(store, artifacts, auth, args).await,
         "begin_artifact_multipart" => artifact::begin_artifact_multipart(artifacts).await,
         "upload_artifact_multipart_part" => {
             artifact::upload_artifact_multipart_part(artifacts, args).await
         }
         "complete_artifact_multipart" => {
-            artifact::complete_artifact_multipart(store, artifacts, args).await
+            artifact::complete_artifact_multipart(store, artifacts, auth, args).await
         }
         "abort_artifact_multipart" => artifact::abort_artifact_multipart(artifacts, args).await,
-        "get_artifact_metadata" => artifact::get_artifact_metadata(store, args).await,
+        "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
         "search_messages" => {
             search::search_messages(search, embedding_provider, store, auth, args).await
         }

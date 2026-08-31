@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [332.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 1 of the post-flagship audit program** — MCP artifact
+tenant isolation (audit P0.1). No new gate tag.
+
+### Security
+
+- **MCP artifact tools now enforce Cluster-204 cross-tenant isolation.** `get_artifact_metadata`
+  and the `maidan://artifacts/{sha}` resource read gate on `artifact_ref_exists(auth.workspace_id,
+  sha)` → `NotFound` when the caller's workspace has no access ref (no cross-tenant existence oracle,
+  matching REST); MCP uploads record the per-workspace ref. Previously a `workspace:read` bearer could
+  read any tenant's artifact metadata + byte-length by SHA, and MCP-uploaded blobs recorded no ref
+  (REST fetch 404'd). `resources::read` now uses `size_bytes` metadata instead of loading the blob.
+
 ## [331.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 13 (closeout) of the fidelity + context flagship
