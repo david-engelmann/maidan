@@ -101,10 +101,12 @@ cluster cadence: retro + `vX.0.0` tag each).
 `Architecture.md` + `Protocols.md` to `Claims.md`'s honest "partial" — gRPC is get/cancel/list only,
 verified in `a2a_grpc/mod.rs`); tool-count drift (`~78`→**85** in `Framework Integrations.md` +
 `examples/README.md` + `Adoption.md`); README image pin `v315`→`v339`; `Architecture.md`
-`Capability-Map.md` dead GitHub link → `Capability%20Map.md`. **Remaining P2 (code-side):** projector
-link-management REST/MCP surface (only ingress mounted); `Integration.md` omits the flagship context
-surface (`as_of`, glossary-in-pack, snapshot, seed); MCP `post_message` skips slash-dispatch
-(decide+document); notification-router O(followers) serial round-trips; Store 256-method god-trait split;
+`Capability-Map.md` dead GitHub link → `Capability%20Map.md`. **Also ✅ DONE (Cluster 342):** `Integration.md` now documents the flagship context surface
+(`as_of` time-travel, glossary-in-pack, context snapshot, lean edits, seed/re-ask, tool-transcript)
+in a new "Fidelity & context" subsection, with MCP-tool parity; folded a Cluster-341 miss
+(`Protocols.md` "78" → 85 tools). **Remaining P2 (code-side):** projector link-management REST/MCP
+surface (only ingress mounted); MCP `post_message` skips slash-dispatch (decide+document);
+notification-router O(followers) serial round-trips; Store 256-method god-trait split;
 `list_threads` unbounded (last unpaginated list); README no visual media / no paste-ready invite.
 
 **DECLINE / already-covered (not gaps — do not spend a cluster):** the flagship optional tail (seed

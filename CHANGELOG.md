@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [342.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 11 of the post-flagship audit program** — surface the
+flagship context features to integrators (audit P2). Docs-only. No new gate tag.
+
+### Fixed
+
+- **`Integration.md` now documents the flagship context surface.** The integrator guide described
+  the context pack but omitted the differentiators; a new "Fidelity & context" subsection covers
+  glossary grounding (`include_glossary` + glossary CRUD), as-of replay (`as_of=<event_log_id>`,
+  time travel), context snapshots (`POST /threads/:id/context/snapshot`), lean edits
+  (`include_edits`), seed/re-ask (`POST /messages/:id/seed`), and the tool-call transcript — with
+  the exact wire surface and MCP-tool parity, all verified against code.
+- **Tool-count miss from Cluster 341**: `Protocols.md` still said "tool count is 78" → **85**.
+
 ## [341.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 10 of the post-flagship audit program** — docs

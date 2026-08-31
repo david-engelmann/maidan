@@ -234,6 +234,21 @@ Fields: `workspace_id` (enables replay), optional `channel_id`, `thread_id`, `me
 
 Pagination: messages `posted_at ASC, id ASC`; threads `created_at ASC, id ASC`. Query `message_limit`, `message_cursor`, `thread_limit`, `thread_cursor`. MCP tools `get_thread_context` and `get_workspace_context` accept the same fields.
 
+### Fidelity & context
+
+The context pack is more than a message dump — these knobs and surfaces are what let an agent pull *exactly* the right context for a step, and reconstruct it later. All are query params on `GET /threads/:id/context` (and, where noted, MCP tools) unless stated otherwise.
+
+| Feature | How | What it gives you |
+|---------|-----|-------------------|
+| **Glossary grounding** | `include_glossary=true` (default) on the pack; manage terms via `PUT`/`GET`/`DELETE /workspaces/:wid/glossary/:term` (`GET /workspaces/:wid/glossary` lists) | The workspace's canonical term definitions ride inside the pack, so the agent shares your vocabulary instead of guessing. Set `false` for a token-tight pack. |
+| **As-of replay (time travel)** | `as_of=<event_log_id>` on the pack | Reconstructs the thread exactly as it stood at that point in the immutable event log — deterministic, for audits, "what did the agent see?", and reproducing a past decision. Omit for the live pack. |
+| **Context snapshot** | `POST /threads/:id/context/snapshot` (`artifact:upload`) → an `Artifact` | Freezes the assembled pack (live or `as_of`) into the content-addressed artifact store: a tamper-evident record of exactly what an agent was handed, deduped by sha256. |
+| **Lean edits** | `include_edits=false` (default) | Edit records come back as metadata only (`id`, `editor`, `edited_at`) — the largest token lever on a pack. Set `true` for full `body_before`/`body_after`. |
+| **Seed / re-ask** | `POST /messages/:id/seed` (`workspace:write`) `{title, inclusion?: "pointer"\|"quote", channel_id?}` → a new `Thread` | Spins a fresh work thread from any message, linked back to the source with a `seeded_from` reference edge — the "re-ask this, with a clean slate but the lineage" primitive. |
+| **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
+
+MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, and `as_of`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
+
 ### A2A tasks
 
 A2A JSON-RPC method strings are the canonical A2A v1.0 operation names (the spec's

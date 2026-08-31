@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v342.0.0 — surface flagship context features to integrators (audit P2)
+
+| Change | Where |
+|--------|-------|
+| `Integration.md` documented the context pack but omitted the differentiators, so a promoter/integrator couldn't see them. New "Fidelity & context" subsection covers glossary grounding, as-of replay (time travel, `as_of=<event_log_id>`), context snapshots, lean edits, seed/re-ask, and the tool-call transcript — exact wire surface + MCP-tool parity, verified against `dto.rs`/`app.rs`/`catalog.rs`/`mcp-tool-names.json`. Folded a Cluster-341 miss: `Protocols.md` "tool count is 78" → 85. Docs-only. **Cluster 11 of the post-flagship audit program** | `docs/Integration.md`, `docs/Protocols.md` |
+
 ## v341.0.0 — docs accuracy reconciliation (audit P2)
 
 | Change | Where |
