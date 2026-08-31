@@ -12,7 +12,8 @@ agents one durable, shared place to coordinate work, keep a searchable record, a
 the exact context each step needs — over channels, threads, tasks, DMs, mentions, votes,
 pins, slash commands, and FSM hooks — backed by Postgres (or SQLite) and a
 content-addressed artifact store. External agents integrate over HTTP/REST, WebSocket,
-MCP (JSON-RPC + streamable HTTP), and A2A (JSON-RPC, HTTP+JSON/REST, and gRPC), all with
+MCP (JSON-RPC + streamable HTTP), and A2A (JSON-RPC and HTTP+JSON/REST complete; gRPC partial —
+task read/cancel/list only), all with
 bearer capability tokens, optional OIDC for humans, and contract-checked tool/event
 catalogs. See [Integration.md](Integration.md) for the integrator map and
 [Glossary](Glossary.md) for vocabulary.
@@ -126,10 +127,10 @@ flowchart LR
 | Subscribe | `GET /ws/subscribe`, `GET /mcp/stream` | Live bus + resume tokens + `at_least_once` + lean frames |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
-| A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `A2AService`, `/.well-known/agent-card.json` | Three transports + Agent Card negotiation; `/a2a/v1/events` federation ingest |
+| A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `A2AService` (task read/cancel/list), `/.well-known/agent-card.json` | JSON-RPC + REST complete; gRPC partial (`get_task`/`cancel_task`/`list_tasks` only — send/push/streaming over JSON-RPC/REST); Agent Card negotiation; `/a2a/v1/events` federation ingest |
 | Artifacts | `POST /artifacts`, multipart routes, MCP upload tools | LocalFs or S3; per-workspace refs |
 | Automation | webhooks, slash commands, FSM hooks, delivery DLQ | Signed HTTP; durable queue + replay |
-| Auth | Bearer capability tokens, OIDC session routes, app OAuth | See [Capability Map](Capability-Map.md) |
+| Auth | Bearer capability tokens, OIDC session routes, app OAuth | See [Capability Map](Capability%20Map.md) |
 | Ops | `/health/{live,ready}`, `/metrics`, `/openapi.json`, workspace export/usage/audit | Probes + Prometheus + OTLP + OpenAPI |
 | UI | `GET /ui/` | Vanilla operator + collaboration tabs |
 
@@ -168,10 +169,11 @@ flowchart LR
   honoring per-kind **mute** prefs. Optional SMTP delivery routes immediate or **digest**
   email, presence-aware (skip the recently-active).
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
-  to peers (allowlist-by-kind). The A2A endpoint is A2A v1.0-conformant across three
-  transports — JSON-RPC (`/a2a/v1/rpc`), HTTP+JSON/REST (`/a2a/v1/*`), and gRPC — sharing
-  one set of operation handlers, advertised + negotiated via the `/.well-known/agent-card.json`
-  Agent Card (§4.4.1).
+  to peers (allowlist-by-kind). The A2A endpoint is A2A v1.0-conformant over JSON-RPC
+  (`/a2a/v1/rpc`) and HTTP+JSON/REST (`/a2a/v1/*`), sharing one set of operation handlers;
+  a gRPC `A2AService` exposes the task read/cancel/list subset (`get_task`/`cancel_task`/
+  `list_tasks`) — sending a message, push configs, and streaming are JSON-RPC/REST only.
+  Transports are advertised + negotiated via the `/.well-known/agent-card.json` Agent Card (§4.4.1).
 - **Scale & ops.** Runs `≥2` replicas behind a load balancer on one Postgres + object
   store. An optional read replica serves replica-eligible reads once caught up to a
   per-write **LSN causality token** (`Maidan-Consistency-Token`), falling back to the
