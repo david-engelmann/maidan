@@ -9,7 +9,7 @@ use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::{resolve_message_chain, resolve_thread_context};
+use maidan_router::resolve_message_chain;
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
@@ -154,9 +154,9 @@ pub async fn pin_message(
     ApiJson(body): ApiJson<PinMessage>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
@@ -184,9 +184,9 @@ pub async fn unpin_message(
     ApiJson(body): ApiJson<PinMessage>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
-    let ctx = resolve_thread_context(state.store.as_ref(), thread_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
@@ -214,9 +214,8 @@ pub async fn list_pins(
     Extension(auth): Extension<AuthContext>,
     Path(thread_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Pin>>> {
-    let ctx = resolve_thread_context(state.store.as_ref(), ThreadId(thread_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, ctx.workspace_id)?;
+    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     Ok(Json(
         state

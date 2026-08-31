@@ -104,10 +104,56 @@ pub async fn ensure_dm_participant(
     ))
 }
 
+/// A thread's resolved location, returned by [`authorize_thread`]. Mirrors the
+/// router's `ThreadContext` fields so a handler that previously kept a `ctx` from
+/// `resolve_thread_context` reads it unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThreadScope {
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+}
+
+/// Resolve a thread's workspace + channel **and** authorize the caller in a
+/// single pass (Cluster 339). Most write handlers used to call
+/// `resolve_thread_context` (get_thread + get_channel) and then
+/// [`ensure_thread_access`] (the same two fetches again); this does the fetch
+/// once and returns the [`ThreadScope`] the handler needs. The access rule is
+/// identical to [`ensure_thread_access`] — workspace isolation, then
+/// DM-conversation participation for a `__dm__` thread or `channel_members` for a
+/// private channel. `bypass` skips the checks but still returns the scope (the
+/// handler needs the location regardless).
+pub async fn authorize_thread(
+    store: &dyn Store,
+    auth: &AuthContext,
+    thread_id: ThreadId,
+) -> Result<ThreadScope, AuthError> {
+    let thread = store.get_thread(thread_id).await?;
+    let channel = store.get_channel(thread.channel_id).await?;
+    let scope = ThreadScope {
+        workspace_id: channel.workspace_id,
+        channel_id: channel.id,
+        thread_id,
+    };
+    if auth.bypass {
+        return Ok(scope);
+    }
+    auth.ensure_workspace(channel.workspace_id)?;
+    if channel.name == DM_CHANNEL_NAME {
+        ensure_dm_participant(store, auth, thread_id).await?;
+    } else if channel.private && !store.channel_is_member(channel.id, auth.member_id).await? {
+        return Err(AuthError::Forbidden(
+            "caller is not a member of this private channel".into(),
+        ));
+    }
+    Ok(scope)
+}
+
 /// Ensure the caller may access `thread_id`. For a normal channel this is
 /// channel access; for a `__dm__` thread it is DM-conversation participation
 /// (Cluster 180) — closing the gap where a DM thread was readable via the
-/// generic thread route by any workspace member.
+/// generic thread route by any workspace member. Delegates to
+/// [`authorize_thread`] so the rule stays single-sourced (Cluster 339).
 pub async fn ensure_thread_access(
     store: &dyn Store,
     auth: &AuthContext,
@@ -116,13 +162,7 @@ pub async fn ensure_thread_access(
     if auth.bypass {
         return Ok(());
     }
-    let thread = store.get_thread(thread_id).await?;
-    let channel = store.get_channel(thread.channel_id).await?;
-    auth.ensure_workspace(channel.workspace_id)?;
-    if channel.name == DM_CHANNEL_NAME {
-        return ensure_dm_participant(store, auth, thread_id).await;
-    }
-    ensure_channel_access(store, auth, thread.channel_id).await
+    authorize_thread(store, auth, thread_id).await.map(|_| ())
 }
 
 /// The bool form of [`ensure_thread_access`], for filtering aggregate result

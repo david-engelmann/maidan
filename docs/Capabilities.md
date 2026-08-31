@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v339.0.0 — fetch-once thread authorization (audit P1.4b)
+
+| Change | Where |
+|--------|-------|
+| ~30 thread-scoped handlers double-fetched thread+channel — `resolve_thread_context` (get_thread + get_channel) then `ensure_thread_access` (the same two fetches again) — plus a redundant `ensure_workspace`. New `maidan_auth::authorize_thread` resolves `ThreadScope {workspace_id, channel_id, thread_id}` and authorizes in one fetch; `ensure_thread_access` delegates to it (rule single-sourced; also drops its own duplicate `get_channel`). Handlers that use the scope call `authorize_thread`; the rest keep only `ensure_thread_access`. Behaviour-identical (404 missing / 403 wrong-ws / 403 no-access, same messages); per-request thread+channel fetches halve on that surface. **Cluster 8 of the post-flagship audit program** | `crates/maidan-auth/src/{access.rs,lib.rs}`, `crates/maidan-server/src/routes/{message,thread,social,skills}.rs` |
+
 ## v338.0.0 — post-path mention-routing round-trip reduction (audit P1.4a)
 
 | Change | Where |

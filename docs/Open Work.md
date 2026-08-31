@@ -78,13 +78,18 @@ cluster cadence: retro + `vX.0.0` tag each).
     `resolve_message_chain` per post — it routes via `route_mentions_in_message` with the workspace the
     caller already resolved, and short-circuits when the body has no `@handles` (zero store work for a
     plain post). Removed the now-unused `route_mentions_for_message`.
-  - **P1.4b — TODO (Cluster 339):** the systemic thread+channel double-fetch — ~30 handlers across
-    `message.rs`/`thread.rs`/`social.rs`/`skills.rs` call `resolve_thread_context` (get_thread +
-    get_channel) then `ensure_thread_access` (the same two fetches again). Plan: a fetch-once
-    `authorize_thread` helper in `maidan-auth` returning the resolved `{workspace_id, channel_id}` scope
-    while performing the access check, with `ensure_thread_access` delegating to it (behaviour-identical);
-    migrate the double-fetch pairs. Care: bypass early-return + 404-vs-403 precedence must be preserved.
-    **Effort M.**
+  - **P1.4b — ✅ DONE (Cluster 339):** `maidan_auth::authorize_thread` resolves the thread's
+    `ThreadScope {workspace_id, channel_id, thread_id}` **and** authorizes the caller in one fetch;
+    `ensure_thread_access` delegates to it (rule single-sourced; also sheds its own duplicate
+    `get_channel`). ~30 handlers across `message.rs`/`thread.rs`/`social.rs`/`skills.rs` migrated —
+    those using the scope call `authorize_thread`, the rest keep `ensure_thread_access` and drop the
+    redundant `resolve_thread_context` + `ensure_workspace`. Behaviour-identical (404/403, same
+    messages); thread+channel fetches halve on that surface.
+  - **P1.4c — TODO (optional, Cluster 340):** the *message*-keyed twin — `resolve_message_chain`
+    (get_message + thread + channel) then `ensure_thread_access`/`ensure_message_access` on
+    edit/tombstone/votes/reactions has the same double-fetch shape → an `authorize_message` helper.
+    The channel-keyed `resolve_channel_context` sites (create/list threads) are a third, smaller
+    variant. **Effort S.**
 - **P1.5 Egress wire-path tests + LSN replica CI (already tracked §3.1/§3.2 — now unblocked).** Add a
   base-URL override to `SlackWebClient`/`GithubApiClient` + real-client-against-loopback tests (SMTP vs
   Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two
