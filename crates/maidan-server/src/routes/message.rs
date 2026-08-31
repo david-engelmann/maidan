@@ -10,10 +10,9 @@ use maidan_auth::{
     capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::resolve_message_chain;
 use maidan_types::*;
 
-use super::{cap, ensure_message_edit, ensure_workspace, publish_routed_mentions, ApiResult};
+use super::{cap, ensure_message_edit, publish_routed_mentions, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -130,10 +129,9 @@ pub async fn seed_from_message(
     ApiJson(body): ApiJson<SeedFromMessage>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
     let source_id = MessageId(message_id);
-    let chain = resolve_message_chain(state.store.as_ref(), source_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, source_id).await?;
+    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, source_id).await?;
     if body.title.trim().is_empty() {
         return Err(ApiError::BadRequest("title must not be empty".into()));
     }
@@ -209,9 +207,8 @@ pub async fn edit_message(
     ApiJson(body): ApiJson<EditMessageRequest>,
 ) -> ApiResult<Json<Message>> {
     let message_id = MessageId(message_id);
-    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, message_id).await?;
     let existing = state.store.get_message(message_id).await?;
     if existing.tombstoned_at.is_some() {
         return Err(ApiError::BadRequest("message is tombstoned".into()));
@@ -277,10 +274,9 @@ pub async fn get_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Message>> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
@@ -291,10 +287,9 @@ pub async fn list_message_edits(
     Query(q): Query<crate::dto::ListMessageEditsQuery>,
 ) -> ApiResult<Json<Vec<MessageEdit>>> {
     let message_id = MessageId(id);
-    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let limit = q.limit.clamp(1, 500);
     Ok(Json(
         state.store.list_message_edits(message_id, limit).await?,
@@ -306,10 +301,9 @@ pub async fn tombstone_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
     let dm_conversation_id =
         crate::dm::dm_conversation_id_for_thread(state.store.as_ref(), chain.thread_id).await;
     let stored = state
@@ -331,10 +325,9 @@ pub async fn purge_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
     state.store.purge_message(MessageId(id)).await?;
     crate::audit::record(
         &state,
@@ -360,10 +353,9 @@ pub async fn create_mention(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     let stored = state
         .store
         .record_mention_with_event(MessageId(message_id), MemberId(body.member_id))
