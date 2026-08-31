@@ -140,6 +140,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **336.0** (`v336.0.0`) **post-flagship audit program — cluster 5: agent cold-start whoami + initialize instructions (P1.3).** The cheapest adoption unlock: an agent with only a base URL + token couldn't run the hero loop (every hero-loop tool needs its own `member_id`; MCP `initialize` had no `instructions`). New MCP `whoami` tool → `{member_id, workspace_id, capabilities, is_bearer, bypass}` from auth; `initialize.instructions` cold-start guide; `AuthContext::capabilities()` accessor. 85 tools. **Next: 337 REST `GET /me` twin**, then P1.4 post-path round-trips → P1.5 egress tests + LSN CI → P2 docs/polish.
 
+**337.0** (`v337.0.0`) **post-flagship audit program — cluster 6: REST `GET /me` identity endpoint (P1.3).** The HTTP twin of 336's MCP `whoami`, closing agent self-discovery on REST: `GET /me` → `{member_id, workspace_id, capabilities, is_bearer}` reflected from the request's auth (no store access), so an agent or `/ui` session with only a base URL + token can discover the `member_id` every member-attributed write requires. `workspace:read`; full new-route preflight (OpenAPI + `WhoAmI` schema + capability-map). Audit P1.3 (agent cold-start) now complete across both transports. **Next: P1.4** post-path round-trip reduction → P1.5 egress wire tests + LSN replica CI → P2 docs/polish.
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**

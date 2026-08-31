@@ -488,6 +488,17 @@ pub struct DeliveryModeView {
     pub mode: EmailDeliveryMode,
 }
 
+/// The caller's own identity (Cluster 337 — `GET /me`, the REST twin of the MCP
+/// `whoami` tool): who this token/session acts as, in which workspace, with what
+/// capabilities. `is_bearer` = an acts-as-any bearer token vs a pinned session.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WhoAmI {
+    pub member_id: uuid::Uuid,
+    pub workspace_id: uuid::Uuid,
+    pub capabilities: Vec<String>,
+    pub is_bearer: bool,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
