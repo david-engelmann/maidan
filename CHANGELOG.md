@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [340.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 9 of the post-flagship audit program** — fetch-once
+message authorization (audit P1.4c). No new gate tag.
+
+### Changed
+
+- **Message-scoped handlers no longer double-fetch.** The message-keyed twin of Cluster 339: ~12
+  handlers in `message.rs`/`social.rs` called `resolve_message_chain` (get_message + thread +
+  channel) and then an access helper that resolved the same chain again. New
+  `maidan_auth::authorize_message` resolves the `MessageScope { workspace_id, channel_id,
+  thread_id, message_id }` **and** authorizes the caller in one pass (via `authorize_thread`);
+  `ensure_message_access` delegates to it. Handlers that use the scope call `authorize_message`;
+  the rest keep `ensure_message_access` and drop the redundant `resolve_message_chain` +
+  `ensure_workspace`. Per-request message-scoped fetches drop from ~5 to 3. Behaviour-identical
+  (404 missing / 403 wrong-ws / 403 no-access, same messages). Completes audit P1.4.
+
+### Added
+
+- `maidan_auth::authorize_message` + `maidan_auth::MessageScope`.
+
 ## [339.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 8 of the post-flagship audit program** — fetch-once

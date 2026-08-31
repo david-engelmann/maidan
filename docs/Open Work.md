@@ -85,11 +85,13 @@ cluster cadence: retro + `vX.0.0` tag each).
     those using the scope call `authorize_thread`, the rest keep `ensure_thread_access` and drop the
     redundant `resolve_thread_context` + `ensure_workspace`. Behaviour-identical (404/403, same
     messages); thread+channel fetches halve on that surface.
-  - **P1.4c — TODO (optional, Cluster 340):** the *message*-keyed twin — `resolve_message_chain`
-    (get_message + thread + channel) then `ensure_thread_access`/`ensure_message_access` on
-    edit/tombstone/votes/reactions has the same double-fetch shape → an `authorize_message` helper.
-    The channel-keyed `resolve_channel_context` sites (create/list threads) are a third, smaller
-    variant. **Effort S.**
+  - **P1.4c — ✅ DONE (Cluster 340):** `maidan_auth::authorize_message` resolves the
+    `MessageScope {workspace_id, channel_id, thread_id, message_id}` **and** authorizes in one pass
+    (via `authorize_thread`); `ensure_message_access` delegates to it. ~12 handlers in
+    `message.rs`/`social.rs` migrated (edit/tombstone/purge/seed use the scope; votes/reactions/
+    get/edits/mentions keep `ensure_message_access`). Message-scoped fetches drop ~5→3.
+    **Audit P1.4 is complete** (338 + 339 + 340). Residual: the channel-keyed
+    `resolve_channel_context` sites (create/list threads) — 2 low-traffic handlers, left as-is.
 - **P1.5 Egress wire-path tests + LSN replica CI (already tracked §3.1/§3.2 — now unblocked).** Add a
   base-URL override to `SlackWebClient`/`GithubApiClient` + real-client-against-loopback tests (SMTP vs
   Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two

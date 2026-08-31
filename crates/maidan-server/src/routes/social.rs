@@ -9,10 +9,9 @@ use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::resolve_message_chain;
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish_stored, ApiResult};
+use super::{cap, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::ApiJson;
 use crate::state::AppState;
@@ -23,10 +22,10 @@ pub async fn cast_vote(
     Path(message_id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: one message→thread→channel fetch authorizes (was
+    // resolve_message_chain + ensure_workspace + ensure_thread_access).
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     if let Some(c) = body.confidence {
         if !(0.0..=1.0).contains(&c) {
@@ -59,10 +58,10 @@ pub async fn list_votes(
     Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Vote>>> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // resolves the message→thread→channel and authorizes in one pass.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     Ok(Json(
         state
             .store
@@ -78,10 +77,10 @@ pub async fn add_reaction(
     ApiJson(body): ApiJson<CreateReaction>,
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
-    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // resolves the message→thread→channel and authorizes in one pass.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
@@ -108,10 +107,10 @@ pub async fn remove_reaction(
     ApiJson(body): ApiJson<RemoveReaction>,
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
-    let chain = resolve_message_chain(state.store.as_ref(), message_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // resolves the message→thread→channel and authorizes in one pass.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
@@ -135,10 +134,10 @@ pub async fn list_reactions(
     Extension(auth): Extension<AuthContext>,
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Reaction>>> {
-    let chain = resolve_message_chain(state.store.as_ref(), MessageId(message_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, chain.workspace_id)?;
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, chain.thread_id).await?;
+    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // resolves the message→thread→channel and authorizes in one pass.
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     Ok(Json(
         state
             .store

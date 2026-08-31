@@ -182,7 +182,39 @@ pub async fn can_access_thread(
     }
 }
 
-/// Ensure the caller may access the channel that owns `message_id`.
+/// A message's resolved location, returned by [`authorize_message`]. Mirrors the
+/// router's `MessageChain` fields so a handler that previously kept a `chain` from
+/// `resolve_message_chain` reads it unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessageScope {
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub message_id: MessageId,
+}
+
+/// Resolve a message's workspace/channel/thread **and** authorize the caller in
+/// one pass (Cluster 340) — the message-keyed twin of [`authorize_thread`], for
+/// handlers that used `resolve_message_chain` (get_message + thread + channel)
+/// and then `ensure_thread_access` (thread + channel again). `bypass` skips the
+/// checks but still returns the scope.
+pub async fn authorize_message(
+    store: &dyn Store,
+    auth: &AuthContext,
+    message_id: MessageId,
+) -> Result<MessageScope, AuthError> {
+    let message = store.get_message(message_id).await?;
+    let thread = authorize_thread(store, auth, message.thread_id).await?;
+    Ok(MessageScope {
+        workspace_id: thread.workspace_id,
+        channel_id: thread.channel_id,
+        thread_id: thread.thread_id,
+        message_id,
+    })
+}
+
+/// Ensure the caller may access the channel that owns `message_id`. Delegates to
+/// [`authorize_message`] so the rule stays single-sourced (Cluster 340).
 pub async fn ensure_message_access(
     store: &dyn Store,
     auth: &AuthContext,
@@ -191,6 +223,5 @@ pub async fn ensure_message_access(
     if auth.bypass {
         return Ok(());
     }
-    let message = store.get_message(message_id).await?;
-    ensure_thread_access(store, auth, message.thread_id).await
+    authorize_message(store, auth, message_id).await.map(|_| ())
 }
