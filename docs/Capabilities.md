@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v338.0.0 — post-path mention-routing round-trip reduction (audit P1.4a)
+
+| Change | Where |
+|--------|-------|
+| Every message post (the hottest write path) re-ran `resolve_message_chain` (message→thread→channel→workspace) inside mention routing purely to re-derive a workspace id the caller already had — and did so even for posts with no `@handles`. `publish_routed_mentions` (REST + MCP) now short-circuits on `parse_at_handles(body).is_empty()` (no store work for a plain post) and otherwise routes via `route_mentions_in_message` with the known workspace, dropping the redundant round-trip. Removed the now-unused `route_mentions_for_message`. Behaviour-preserving (mentions still emit `MentionRecorded`). **Cluster 7 of the post-flagship audit program** | `crates/maidan-server/src/routes/mod.rs`, `crates/maidan-mcp/src/tools/message.rs`, `crates/maidan-router/src/{mentions.rs,lib.rs}` |
+
 ## v337.0.0 — REST `GET /me` identity endpoint (audit P1.3)
 
 | Change | Where |

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use maidan_router::{resolve_thread_context, route_mentions_for_message};
+use maidan_router::{parse_at_handles, resolve_thread_context, route_mentions_in_message};
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -91,8 +91,15 @@ async fn publish_routed_mentions(
     workspace_id: WorkspaceId,
     message: &Message,
 ) {
-    let mentioned = match route_mentions_for_message(
+    // Cluster 338: skip all store work when the body has no `@handles`, and route
+    // with the workspace the caller already resolved (no per-post
+    // `resolve_message_chain` round-trip) — the parity of the REST change.
+    if parse_at_handles(&message.body).is_empty() {
+        return;
+    }
+    let mentioned = match route_mentions_in_message(
         server.store.as_ref(),
+        workspace_id,
         message.id,
         message.author_id,
         &message.body,

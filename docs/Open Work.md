@@ -73,11 +73,18 @@ cluster cadence: retro + `vX.0.0` tag each).
   the spec `instructions` field. Add a `whoami` tool + `GET /me` (member/workspace/capabilities), populate
   `initialize.instructions` with the 6-tool hero loop, optionally default `author_id`/`member_id` to
   `auth.member_id`. Cheapest adoption unlock. **Effort M.**
-- **P1.4 Post-path round-trip reduction.** `routes/message.rs` double-fetches thread+channel
-  (`resolve_thread_context` then `ensure_thread_access`), and `publish_routed_mentions`→
-  `route_mentions_for_message` re-runs `resolve_message_chain` unconditionally even for zero-mention posts;
-  short-circuit when no `@handles` + pass the known `workspace_id`. Halves reads on the most frequent
-  write. **Effort S.**
+- **P1.4 Post-path round-trip reduction.** Split into two clusters.
+  - **P1.4a — ✅ DONE (Cluster 338):** `publish_routed_mentions` (REST + MCP) no longer re-runs
+    `resolve_message_chain` per post — it routes via `route_mentions_in_message` with the workspace the
+    caller already resolved, and short-circuits when the body has no `@handles` (zero store work for a
+    plain post). Removed the now-unused `route_mentions_for_message`.
+  - **P1.4b — TODO (Cluster 339):** the systemic thread+channel double-fetch — ~30 handlers across
+    `message.rs`/`thread.rs`/`social.rs`/`skills.rs` call `resolve_thread_context` (get_thread +
+    get_channel) then `ensure_thread_access` (the same two fetches again). Plan: a fetch-once
+    `authorize_thread` helper in `maidan-auth` returning the resolved `{workspace_id, channel_id}` scope
+    while performing the access check, with `ensure_thread_access` delegating to it (behaviour-identical);
+    migrate the double-fetch pairs. Care: bypass early-return + 404-vs-403 precedence must be preserved.
+    **Effort M.**
 - **P1.5 Egress wire-path tests + LSN replica CI (already tracked §3.1/§3.2 — now unblocked).** Add a
   base-URL override to `SlackWebClient`/`GithubApiClient` + real-client-against-loopback tests (SMTP vs
   Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two

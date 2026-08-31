@@ -11,7 +11,7 @@ use maidan_auth::{
     capability::{MESSAGE_POST, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_router::route_mentions_for_message;
+use maidan_router::{parse_at_handles, route_mentions_in_message};
 use maidan_types::*;
 
 use crate::error::ApiError;
@@ -95,8 +95,16 @@ pub(crate) async fn publish_routed_mentions(
     workspace_id: WorkspaceId,
     message: &Message,
 ) {
-    let mentioned = match route_mentions_for_message(
+    // Cluster 338: the common case is a post with no `@handles` — short-circuit
+    // before any store work. Otherwise route with the workspace the caller already
+    // resolved, so we skip the per-post `resolve_message_chain` round-trip that
+    // `route_mentions_for_message` did only to re-derive that same workspace id.
+    if parse_at_handles(&message.body).is_empty() {
+        return;
+    }
+    let mentioned = match route_mentions_in_message(
         state.store.as_ref(),
+        workspace_id,
         message.id,
         message.author_id,
         &message.body,
