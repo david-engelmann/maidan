@@ -13,6 +13,20 @@ use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
+/// `GET /me` — the caller's own identity (Cluster 337; the REST twin of the MCP
+/// `whoami` tool). Reflects the request's auth (member/workspace/capabilities), so
+/// an agent handed only a base URL + token can discover the `member_id` every
+/// member-attributed write needs. `workspace:read`.
+pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<WhoAmI>> {
+    cap(&auth, WORKSPACE_READ)?;
+    Ok(Json(WhoAmI {
+        member_id: auth.member_id.0,
+        workspace_id: auth.workspace_id.0,
+        capabilities: auth.capabilities().to_vec(),
+        is_bearer: auth.token_id.is_some(),
+    }))
+}
+
 #[cfg(feature = "bootstrap")]
 pub async fn create_member(
     State(state): State<AppState>,

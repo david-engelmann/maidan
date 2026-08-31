@@ -51,6 +51,15 @@ pub fn get_workspace_usage() {}
 
 #[utoipa::path(
     get,
+    path = "/me",
+    tag = "workspaces",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = WhoAmI))
+)]
+pub fn get_me() {}
+
+#[utoipa::path(
+    get,
     path = "/workspaces/{wid}/glossary",
     tag = "workspaces",
     params(("wid" = Uuid, Path, description = "Workspace id")),

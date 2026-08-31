@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v337.0.0 — REST `GET /me` identity endpoint (audit P1.3)
+
+| Change | Where |
+|--------|-------|
+| The REST twin of Cluster 336's MCP `whoami`, closing agent self-discovery on the HTTP transport. New `GET /me` → `{member_id, workspace_id, capabilities, is_bearer}` reflected from the request's auth (no store access); an agent or `/ui` session with only a base URL + token can discover the `member_id` every member-attributed write requires. `workspace:read`. Full new-route preflight (OpenAPI path + `WhoAmI` schema + capability-map). Audit P1.3 (agent cold-start) now complete across both transports. **Cluster 6 of the post-flagship audit program** | `crates/maidan-server/src/{routes/member.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
+
 ## v336.0.0 — agent cold-start: whoami + initialize instructions (audit P1.3)
 
 | Change | Where |

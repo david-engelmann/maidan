@@ -661,6 +661,12 @@
   },
   {
     "method": "GET",
+    "path": "/me",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/glossary",
     "capability": "workspace:read",
     "surface": "http"

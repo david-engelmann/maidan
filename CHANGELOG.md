@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [337.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 6 of the post-flagship audit program** — the REST
+`GET /me` twin of Cluster 336's MCP `whoami` (audit P1.3). No new gate tag.
+
+### Added
+
+- **`GET /me`** — the caller's own identity (`{member_id, workspace_id, capabilities,
+  is_bearer}`) reflected from the request's auth (no store access), the HTTP twin of the MCP
+  `whoami` tool. An agent or `/ui` session handed only a base URL + token can now discover the
+  `member_id` every member-attributed write requires, with no out-of-band provisioning.
+  `workspace:read`. Full new-route preflight (OpenAPI path + `WhoAmI` schema + capability-map).
+
 ## [336.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 5 of the post-flagship audit program** — agent
