@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v340.0.0 — fetch-once message authorization (audit P1.4c)
+
+| Change | Where |
+|--------|-------|
+| The message-keyed twin of 339, completing audit P1.4. ~12 handlers in `message.rs`/`social.rs` called `resolve_message_chain` (get_message + thread + channel) then an access helper that resolved the same chain again + a redundant `ensure_workspace`. New `maidan_auth::authorize_message` resolves `MessageScope {workspace_id, channel_id, thread_id, message_id}` and authorizes in one pass (via `authorize_thread`); `ensure_message_access` delegates to it. Handlers using the scope (edit/tombstone/purge/seed) call `authorize_message`; the rest (votes/reactions/get/edits/mentions) keep `ensure_message_access`. Message-scoped fetches drop ~5→3. Behaviour-identical. **Cluster 9 of the post-flagship audit program** | `crates/maidan-auth/src/{access.rs,lib.rs}`, `crates/maidan-server/src/routes/{message,social}.rs` |
+
 ## v339.0.0 — fetch-once thread authorization (audit P1.4b)
 
 | Change | Where |
