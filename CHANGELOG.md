@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [344.0.0] — 2026-08-31
+
+Post-gate hardening (Phase XXIV). **Cluster 13 of the post-flagship audit program** —
+bounded-concurrency notification fan-out (audit P2). No new gate tag.
+
+### Changed
+
+- **`MessagePosted` follower fan-out no longer head-of-line-blocks the router.** The notification
+  router is a serial bus consumer; it fanned a message out to its followers in a sequential loop
+  (`2 × followers` store round-trips), so a widely followed message stalled the whole pipeline. The
+  per-recipient writes now run with bounded concurrency (`buffer_unordered`, cap 8; the Cluster-199
+  pattern), collapsing the fan-out wall-clock. Behaviour-preserved (same rows written; a store
+  error still short-circuits). A true batch insert is a logged follow-up.
+
 ## [343.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 12 of the post-flagship audit program** — keyset-paginate

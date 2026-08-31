@@ -31,6 +31,13 @@ use crate::state::AppState;
 const RECONNECT_INITIAL: Duration = Duration::from_millis(100);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
+/// Max concurrent per-recipient notification writes for one `MessagePosted`
+/// fan-out (Cluster 344). The router is a serial bus consumer, so a widely
+/// followed message previously head-of-line-blocked the whole pipeline on
+/// `2 × followers` sequential store round-trips; a bounded `buffer_unordered`
+/// de-serializes it while capping pool fan-out (mirrors Cluster 199).
+const NOTIFY_FANOUT_CONCURRENCY: usize = 8;
+
 pub struct NotificationRouter {
     shutdown: watch::Sender<()>,
     handle: tokio::task::JoinHandle<()>,
@@ -187,23 +194,60 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 recipients.insert(m);
             }
             recipients.remove(&message.author_id);
-            for member_id in recipients {
-                notify(
-                    state,
-                    *workspace_id,
-                    member_id,
-                    EventKind::MessagePosted,
-                    log_id,
-                    Some(*channel_id),
-                    Some(*thread_id),
-                    Some(message.id),
-                    Some(message.author_id),
-                )
-                .await?;
-            }
+            fan_out_message_posted(
+                state,
+                *workspace_id,
+                recipients,
+                log_id,
+                *channel_id,
+                *thread_id,
+                message.id,
+                message.author_id,
+            )
+            .await?;
         }
         _ => {}
     }
+    Ok(())
+}
+
+/// Fan a `MessagePosted` out to its followers with bounded concurrency
+/// (Cluster 344) — the serial per-recipient `notify` loop head-of-line-blocked
+/// the router. Order is irrelevant (each write targets a distinct recipient row),
+/// so `buffer_unordered` is used; a store error on any recipient short-circuits
+/// (matching the prior `?`-in-loop behaviour). Futures imports are function-scoped
+/// so the module's `tokio_stream::StreamExt` (the bus `.next()`) stays unambiguous.
+#[allow(clippy::too_many_arguments)]
+async fn fan_out_message_posted(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    recipients: HashSet<MemberId>,
+    source_log_id: i64,
+    channel_id: ChannelId,
+    thread_id: ThreadId,
+    message_id: MessageId,
+    author_id: MemberId,
+) -> Result<(), String> {
+    use futures::stream::{self, StreamExt, TryStreamExt};
+    // Map on the plain iterator (Iterator::map) — mapping on the stream would be
+    // ambiguous between the module's tokio_stream::StreamExt and futures::StreamExt.
+    let writes = recipients.into_iter().map(|member_id| {
+        notify(
+            state,
+            workspace_id,
+            member_id,
+            EventKind::MessagePosted,
+            source_log_id,
+            Some(channel_id),
+            Some(thread_id),
+            Some(message_id),
+            Some(author_id),
+        )
+    });
+    stream::iter(writes)
+        .buffer_unordered(NOTIFY_FANOUT_CONCURRENCY)
+        .try_collect::<Vec<_>>()
+        .await?;
     Ok(())
 }
 
