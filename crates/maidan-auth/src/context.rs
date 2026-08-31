@@ -75,6 +75,12 @@ impl AuthContext {
         self.bypass || self.capabilities.iter().any(|c| c == cap)
     }
 
+    /// The capabilities granted to this caller (Cluster 336 — `whoami` / `GET /me`
+    /// self-discovery). Empty for a bypass caller (auth disabled).
+    pub fn capabilities(&self) -> &[String] {
+        &self.capabilities
+    }
+
     pub fn require_capability(&self, cap: &str) -> Result<(), crate::AuthError> {
         if self.has_capability(cap) {
             Ok(())

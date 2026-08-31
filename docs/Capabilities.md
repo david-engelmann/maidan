@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v336.0.0 — agent cold-start: whoami + initialize instructions (audit P1.3)
+
+| Change | Where |
+|--------|-------|
+| The cheapest adoption unlock: an agent with only a base URL + token couldn't run the hero loop (every hero-loop tool needs its own `member_id`, and MCP `initialize` had no `instructions`). New MCP `whoami` tool → `{member_id, workspace_id, capabilities, is_bearer, bypass}` from auth (`workspace:read`, no store access); `initialize.instructions` now carries a cold-start guide (call `whoami`, then the six-tool hero loop); `AuthContext::capabilities()` accessor. 85 MCP tools. REST `GET /me` twin → Cluster 337. **Cluster 5 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/whoami.rs,tools/mod.rs,tools/catalog.rs,server.rs}`, `crates/maidan-auth/src/context.rs`, `contracts/mcp-*.json` |
+
 ## v335.0.0 — MCP context: batch reads + surface artifacts (audit P1.2)
 
 | Change | Where |

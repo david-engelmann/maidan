@@ -82,5 +82,6 @@
   "wait_for_mention",
   "wait_for_notification",
   "wait_for_ready",
-  "wait_for_result"
+  "wait_for_result",
+  "whoami"
 ]

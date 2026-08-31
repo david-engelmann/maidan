@@ -31,6 +31,7 @@ mod skill;
 mod snapshot;
 mod social;
 mod thread;
+mod whoami;
 
 pub use catalog::catalog;
 
@@ -102,7 +103,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_thread_follows"
         | "get_glossary_term"
         | "list_glossary_terms"
-        | "list_roots" => Ok(WORKSPACE_READ),
+        | "list_roots"
+        | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -387,6 +389,7 @@ pub async fn dispatch(
         "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
         "request_approval" => approval::request_approval(server, session_id, args).await,
         "list_roots" => roots::list_roots(server, session_id, args).await,
+        "whoami" => whoami::whoami(auth).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

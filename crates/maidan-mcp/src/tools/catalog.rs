@@ -6,6 +6,11 @@ use serde_json::{json, Value};
 pub fn catalog() -> Vec<Value> {
     vec![
         json!({
+            "name": "whoami",
+            "description": "Return the caller's own identity: member_id, workspace_id, capabilities, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.",
+            "inputSchema": { "type": "object", "properties": {} }
+        }),
+        json!({
             "name": "open_dm_conversation",
             "description": "Open or fetch a 1:1 DM conversation between two workspace members.",
             "inputSchema": {

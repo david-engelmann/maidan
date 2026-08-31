@@ -82,5 +82,6 @@
   "wait_for_mention": "workspace:read",
   "wait_for_notification": "workspace:read",
   "wait_for_ready": "workspace:read",
-  "wait_for_result": "workspace:read"
+  "wait_for_result": "workspace:read",
+  "whoami": "workspace:read"
 }
