@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v343.0.0 — keyset-paginate the channel thread list (audit P2)
+
+| Change | Where |
+|--------|-------|
+| The last unpaginated list: `GET /channels/:cid/threads` + MCP `list_threads` called unbounded `Store::list_threads(channel_id)`. New `Store::page_threads_for_channel(channel_id, after, limit)` (both backends; keyset `(created_at, id)` ASC, exclusive cursor, `LIMIT` in SQL — channel-scoped twin of `page_threads_for_workspace`) backs `limit` (default 100, clamp 1..=500) + `cursor` on the REST route (`ListThreadsQuery`) and the MCP tool; Postgres routes it via the read replica. Unbounded `list_threads` kept for internal full-list callers. **Cluster 12 of the post-flagship audit program** | `crates/maidan-store/src/{store.rs,sqlite/threads.rs,postgres/threads.rs,*/mod.rs}`, `crates/maidan-server/src/{routes/thread.rs,dto.rs,openapi/paths/api.rs}`, `crates/maidan-mcp/src/tools/{thread.rs,catalog.rs}` |
+
 ## v342.0.0 — surface flagship context features to integrators (audit P2)
 
 | Change | Where |

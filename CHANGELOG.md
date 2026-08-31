@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [343.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 12 of the post-flagship audit program** — keyset-paginate
+the channel thread list (audit P2). No new gate tag.
+
+### Changed
+
+- **`GET /channels/:cid/threads` and MCP `list_threads` are now paginated.** They called
+  `Store::list_threads(channel_id)`, an unbounded full-channel query (the last unpaginated list). New
+  `Store::page_threads_for_channel(channel_id, after, limit)` (both backends; keyset `(created_at,
+  id)` ascending, exclusive cursor, `LIMIT` in SQL — the channel-scoped twin of
+  `page_threads_for_workspace`) backs a `limit` (default 100, clamp 1..=500) + `cursor` on both the
+  REST route (`ListThreadsQuery`) and the MCP tool. Postgres routes it through the read replica. The
+  unbounded `list_threads` remains for internal full-list callers (context assembly, import).
+
 ## [342.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 11 of the post-flagship audit program** — surface the

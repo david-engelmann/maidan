@@ -302,6 +302,15 @@ pub struct ListMessagesQuery {
     pub limit: i64,
 }
 
+/// Query for `GET /channels/:cid/threads` (Cluster 343) — keyset pagination over
+/// a channel's live threads, `(created_at, id)` ascending. `limit` defaults to
+/// 100 (clamped 1..=500); `cursor` is the prior page's last thread id (exclusive).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListThreadsQuery {
+    pub limit: Option<i64>,
+    pub cursor: Option<uuid::Uuid>,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListMessageEditsQuery {
     #[serde(default = "default_limit")]

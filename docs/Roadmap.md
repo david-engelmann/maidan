@@ -152,6 +152,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **342.0** (`v342.0.0`) **post-flagship audit program — cluster 11: surface flagship context features to integrators (P2).** `Integration.md` documented the context pack but omitted the differentiators; a new "Fidelity & context" subsection covers glossary grounding, as-of replay (time travel), context snapshots, lean edits, seed/re-ask, and the tool-call transcript — exact wire surface + MCP-tool parity, all verified against code. Folded a Cluster-341 miss (`Protocols.md` "78" → 85 tools). Docs-only. **Next: P1.5** egress wire tests + LSN replica CI, then remaining P2 code-side items.
 
+**343.0** (`v343.0.0`) **post-flagship audit program — cluster 12: keyset-paginate the channel thread list (P2).** The last unpaginated list: `GET /channels/:cid/threads` + MCP `list_threads` called unbounded `Store::list_threads`. New `page_threads_for_channel(channel_id, after, limit)` (both backends; keyset `(created_at, id)` ASC, exclusive cursor, `LIMIT` in SQL) backs `limit` (default 100, clamp 1..=500) + `cursor` on the REST route + MCP tool; Postgres routes it via the read replica. Unbounded `list_threads` kept for internal full-list callers. **Next: P1.5** egress wire tests + LSN replica CI, then remaining P2 code-side items.
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**

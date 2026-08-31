@@ -107,7 +107,9 @@ in a new "Fidelity & context" subsection, with MCP-tool parity; folded a Cluster
 (`Protocols.md` "78" → 85 tools). **Remaining P2 (code-side):** projector link-management REST/MCP
 surface (only ingress mounted); MCP `post_message` skips slash-dispatch (decide+document);
 notification-router O(followers) serial round-trips; Store 256-method god-trait split;
-`list_threads` unbounded (last unpaginated list); README no visual media / no paste-ready invite.
+README no visual media / no paste-ready invite. **✅ DONE (Cluster 343):** `list_threads` unbounded
+(last unpaginated list) — now keyset-paginated via `page_threads_for_channel` on the REST route + MCP
+tool (default 100, clamp 1..=500); unbounded variant kept for internal full-list callers.
 
 **DECLINE / already-covered (not gaps — do not spend a cluster):** the flagship optional tail (seed
 `pack`/`prefix`, `WorkSeeded`, `structure_only` template) + Postgres RLS — explicitly DECLINED in

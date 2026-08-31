@@ -47,12 +47,21 @@ pub async fn list_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(channel_id): Path<uuid::Uuid>,
+    Query(q): Query<ListThreadsQuery>,
 ) -> ApiResult<Json<Vec<Thread>>> {
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
-    Ok(Json(state.store.list_threads(ChannelId(channel_id)).await?))
+    // Cluster 343: keyset-paginated (was unbounded). Default 100, clamp 1..=500.
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let after = q.cursor.map(ThreadId);
+    Ok(Json(
+        state
+            .store
+            .page_threads_for_channel(ChannelId(channel_id), after, limit)
+            .await?,
+    ))
 }
 
 pub async fn get_thread(

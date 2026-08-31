@@ -99,11 +99,13 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "list_threads",
-            "description": "List threads in a channel.",
+            "description": "List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "channel_id": {"type": "string", "format": "uuid"}
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 100, "description": "Max threads to return (clamped 1..=500)."},
+                    "cursor": {"type": "string", "format": "uuid", "description": "Exclusive keyset cursor: the prior page's last thread id."}
                 },
                 "required": ["channel_id"]
             }

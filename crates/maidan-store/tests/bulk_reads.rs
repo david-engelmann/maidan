@@ -180,6 +180,7 @@ async fn assert_bulk_reads(store: &dyn Store) {
         .is_empty());
 
     assert_thread_pagination(store).await;
+    assert_channel_thread_pagination(store).await;
 }
 
 /// `page_threads_for_workspace` keyset pagination: a small-limit
@@ -275,6 +276,98 @@ async fn assert_thread_pagination(store: &dyn Store) {
         full[1..].to_vec(),
         "cursor returns rows after it"
     );
+}
+
+/// `page_threads_for_channel` (Cluster 343): keyset walk reproduces the channel's
+/// thread order once, the cursor is exclusive, and another channel's threads
+/// never leak in.
+async fn assert_channel_thread_pagination(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "chpage".into(),
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "a".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "b".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let mut created = Vec::new();
+    for _ in 0..4 {
+        created.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: ch.id,
+                    parent_thread_id: None,
+                    title: None,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    // A thread in another channel must never appear in this channel's page.
+    let elsewhere = store
+        .create_thread(NewThread {
+            channel_id: other.id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap()
+        .id;
+
+    let full: Vec<ThreadId> = store
+        .page_threads_for_channel(ch.id, None, 100)
+        .await
+        .unwrap()
+        .iter()
+        .map(|t| t.id)
+        .collect();
+    assert!(!full.contains(&elsewhere), "channel scoping holds");
+    let mut got: Vec<_> = full.iter().map(|t| t.0).collect();
+    got.sort();
+    let mut want: Vec<_> = created.iter().map(|t| t.0).collect();
+    want.sort();
+    assert_eq!(got, want, "page returns exactly the channel's threads");
+
+    // Small-limit keyset walk reproduces the order once; cursor is exclusive.
+    let mut walk = Vec::new();
+    let mut cursor: Option<ThreadId> = None;
+    for _ in 0..10 {
+        let page = store
+            .page_threads_for_channel(ch.id, cursor, 2)
+            .await
+            .unwrap();
+        if page.is_empty() {
+            break;
+        }
+        assert!(page.len() <= 2, "LIMIT is respected");
+        for t in &page {
+            walk.push(t.id);
+        }
+        cursor = Some(page.last().unwrap().id);
+    }
+    assert_eq!(walk, full, "keyset walk reproduces the order once each");
+    assert!(store
+        .page_threads_for_channel(ch.id, full.last().copied(), 100)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]

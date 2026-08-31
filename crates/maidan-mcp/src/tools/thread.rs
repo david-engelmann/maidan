@@ -22,11 +22,22 @@ const MAX_WAIT_MS: i64 = 300_000;
 #[derive(Deserialize)]
 struct ListThreadsArgs {
     channel_id: uuid::Uuid,
+    /// Max threads to return (default 100, clamped 1..=500) — Cluster 343.
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Exclusive keyset cursor: the prior page's last thread id.
+    #[serde(default)]
+    cursor: Option<uuid::Uuid>,
 }
 
 pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ListThreadsArgs = serde_json::from_value(args.clone())?;
-    let threads = store.list_threads(ChannelId(a.channel_id)).await?;
+    // Cluster 343: keyset-paginated (was unbounded). Default 100, clamp 1..=500.
+    let limit = a.limit.unwrap_or(100).clamp(1, 500);
+    let after = a.cursor.map(ThreadId);
+    let threads = store
+        .page_threads_for_channel(ChannelId(a.channel_id), after, limit)
+        .await?;
     Ok(content_json(&threads))
 }
 

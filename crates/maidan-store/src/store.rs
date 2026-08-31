@@ -451,6 +451,19 @@ pub trait Store: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Thread>, StoreError>;
 
+    /// One keyset page of a channel's **live** threads, ordered `(created_at, id)`
+    /// ascending (Cluster 343). `after` is an exclusive cursor (the prior page's
+    /// last thread id); `None` starts from the beginning. The channel-scoped twin
+    /// of [`page_threads_for_workspace`](Self::page_threads_for_workspace) —
+    /// bounds the previously-unbounded [`list_threads`](Self::list_threads)
+    /// (kept for internal full-list callers).
+    async fn page_threads_for_channel(
+        &self,
+        channel_id: ChannelId,
+        after: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError>;
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,
