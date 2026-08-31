@@ -154,6 +154,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **343.0** (`v343.0.0`) **post-flagship audit program — cluster 12: keyset-paginate the channel thread list (P2).** The last unpaginated list: `GET /channels/:cid/threads` + MCP `list_threads` called unbounded `Store::list_threads`. New `page_threads_for_channel(channel_id, after, limit)` (both backends; keyset `(created_at, id)` ASC, exclusive cursor, `LIMIT` in SQL) backs `limit` (default 100, clamp 1..=500) + `cursor` on the REST route + MCP tool; Postgres routes it via the read replica. Unbounded `list_threads` kept for internal full-list callers. **Next: P1.5** egress wire tests + LSN replica CI, then remaining P2 code-side items.
 
+**344.0** (`v344.0.0`) **post-flagship audit program — cluster 13: bounded-concurrency notification fan-out (P2).** The notification router is a serial bus consumer; a `MessagePosted` fanned out to followers in a sequential loop (`2 × followers` store round-trips), head-of-line-blocking the pipeline on a widely-followed message. Per-recipient writes now run with bounded concurrency (`buffer_unordered`, cap 8 — the Cluster-199 pattern). Behaviour-preserved. Batch insert logged as a further optimization. **Next: P1.5** egress wire tests + LSN replica CI, then remaining P2 code-side items (notification batch insert, projector link-management, Store trait split, MCP `post_message` slash-dispatch decision).
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**

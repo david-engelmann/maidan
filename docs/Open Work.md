@@ -105,9 +105,15 @@ verified in `a2a_grpc/mod.rs`); tool-count drift (`~78`→**85** in `Framework I
 (`as_of` time-travel, glossary-in-pack, context snapshot, lean edits, seed/re-ask, tool-transcript)
 in a new "Fidelity & context" subsection, with MCP-tool parity; folded a Cluster-341 miss
 (`Protocols.md` "78" → 85 tools). **Remaining P2 (code-side):** projector link-management REST/MCP
-surface (only ingress mounted); MCP `post_message` skips slash-dispatch (decide+document);
-notification-router O(followers) serial round-trips; Store 256-method god-trait split;
-README no visual media / no paste-ready invite. **✅ DONE (Cluster 343):** `list_threads` unbounded
+surface (only ingress mounted); MCP `post_message` skips slash-dispatch (decide+document — needs a
+product call: implement parity vs document the intentional difference); Store 256-method god-trait
+split; README no visual media / no paste-ready invite; **notification batch insert** — the further
+optimization after Cluster 344: collapse the fan-out's `2N` round-trips into a batch mute-filter +
+a multi-row `INSERT … ON CONFLICT DO NOTHING` (new both-backend batch store methods; email
+side-effect keyed off the `RETURNING` set). **✅ DONE (Cluster 344):** notification-router
+O(followers) **serial** round-trips — the `MessagePosted` fan-out now runs per-recipient writes with
+bounded concurrency (`buffer_unordered`, cap 8), de-serializing the head-of-line block.
+**✅ DONE (Cluster 343):** `list_threads` unbounded
 (last unpaginated list) — now keyset-paginated via `page_threads_for_channel` on the REST route + MCP
 tool (default 100, clamp 1..=500); unbounded variant kept for internal full-list callers.
 

@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v344.0.0 — bounded-concurrency notification fan-out (audit P2)
+
+| Change | Where |
+|--------|-------|
+| The notification router is a serial bus consumer; a `MessagePosted` fanned out to followers in a sequential loop (`2 × followers` store round-trips), so a widely-followed message head-of-line-blocked the whole pipeline. Per-recipient `notify` writes now run with bounded concurrency (`buffer_unordered`, cap 8 — the Cluster-199 pattern) via `fan_out_message_posted`. Behaviour-preserved (same rows; error short-circuits). Batch insert logged as a further optimization. **Cluster 13 of the post-flagship audit program** | `crates/maidan-server/src/notification_router.rs` |
+
 ## v343.0.0 — keyset-paginate the channel thread list (audit P2)
 
 | Change | Where |
