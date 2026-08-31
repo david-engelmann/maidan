@@ -61,7 +61,11 @@ cluster cadence: retro + `vX.0.0` tag each).
   feature propagation + a `futures` dep, a multi-cluster refactor whose remaining payoff is only ending
   the `as_of` double-impl (and the trickiest shared logic — the message fold — already goes through
   `maidan_types::reconstruct_messages_through`). Revisit if the two assemblers start to drift.
-- **P1.3 Agent cold-start: `whoami` + populated `initialize` instructions.** No `whoami` tool and no
+- **P1.3 — ✅ MCP DONE (Cluster 336):** MCP `whoami` tool (`{member_id, workspace_id, capabilities,
+  is_bearer, bypass}` from auth) + `initialize.instructions` cold-start guide + `AuthContext::capabilities()`.
+  **Remaining: REST `GET /me` twin (Cluster 337).** Optional arg-defaulting (`author_id`/`member_id` ←
+  `auth.member_id`) still deferred (touches many tools; whoami already unblocks the hero loop).
+- **P1.3 (original) Agent cold-start: `whoami` + populated `initialize` instructions.** No `whoami` tool and no
   `/me` route exist, yet every hero-loop tool needs the caller's own `member_id`; MCP `initialize` omits
   the spec `instructions` field. Add a `whoami` tool + `GET /me` (member/workspace/capabilities), populate
   `initialize.instructions` with the 6-tool hero loop, optionally default `author_id`/`member_id` to

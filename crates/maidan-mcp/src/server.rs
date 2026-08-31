@@ -321,7 +321,16 @@ impl McpServer {
             "serverInfo": {
                 "name": self.server_name,
                 "version": self.server_version
-            }
+            },
+            // Cluster 336: the spec `instructions` field — an agent's cold-start guide.
+            // Call `whoami` first for your member_id, then the six-tool hero loop.
+            "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
+                member_id, workspace_id, and capabilities. Hero loop for task work: \
+                `claim_next_thread` (take the next ready task in a channel) → `get_thread_context` \
+                (read it, grounded in the workspace glossary) → do the work → `set_thread_result` \
+                (record the outcome) → `wait_for_ready`/`wait_for_result` (coordinate with other \
+                agents). Tools are capability-filtered to your token, so `tools/list` shows only \
+                what you can call."
         }))
     }
 
@@ -2209,6 +2218,77 @@ mod tests {
         );
         let mentions = store.list_mentions_for_member(bob.id, 10).await.unwrap();
         assert_eq!(mentions.len(), 1, "bob was @mentioned");
+    }
+
+    #[tokio::test]
+    async fn whoami_returns_identity_and_initialize_carries_instructions() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_token(
+            maidan_types::ApiTokenId(uuid::Uuid::new_v4()),
+            member.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let me = content(server.call_tool(&auth, "whoami", &json!({})).await.unwrap());
+        assert_eq!(me["member_id"], json!(member.id.0));
+        assert_eq!(me["workspace_id"], json!(ws.id.0));
+        assert_eq!(me["is_bearer"], json!(true));
+        let caps = me["capabilities"].as_array().unwrap();
+        assert!(caps.iter().any(|c| c == "workspace:read"));
+
+        // initialize carries the spec `instructions` cold-start guide.
+        let init = server
+            .handle(
+                JsonRpcRequest {
+                    jsonrpc: "2.0".to_string(),
+                    id: Some(json!(1)),
+                    method: "initialize".to_string(),
+                    params: json!({ "protocolVersion": "2026-07-28" }),
+                },
+                &auth,
+            )
+            .await;
+        let instructions = init.result.unwrap()["instructions"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(instructions.contains("whoami"));
+        assert!(instructions.contains("claim_next_thread"));
     }
 
     #[tokio::test]

@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [336.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 5 of the post-flagship audit program** — agent
+cold-start: `whoami` + `initialize` instructions (audit P1.3). No new gate tag.
+
+### Added
+
+- **MCP `whoami` tool** — returns `{member_id, workspace_id, capabilities, is_bearer, bypass}`
+  from the request's auth (no store access), so an agent handed only a base URL + token can
+  discover its own `member_id` (which every hero-loop tool needs) instead of an out-of-band
+  lookup. `workspace:read`.
+- **MCP `initialize.instructions`** — the `initialize` response now carries the spec
+  `instructions` field: a cold-start guide (call `whoami`, then the six-tool hero loop).
+- **`AuthContext::capabilities()`** accessor.
+
 ## [335.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 4 of the post-flagship audit program** — MCP
