@@ -97,14 +97,15 @@ cluster cadence: retro + `vX.0.0` tag each).
   Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two
   genuine test-confidence gaps on shipped launch-narrative features. **Effort M each.**
 
-**P2 — polish (do after P0/P1):** projector link-management REST/MCP surface (only ingress mounted);
-A2A gRPC doc contradiction (`Architecture.md` "three transports/gRPC" vs `Protocols.md` "no gRPC binding"
-vs ground-truth get/cancel/list only — reconcile to `Claims.md`'s honest "partial"); `Integration.md`
-omits the flagship context surface (`as_of`, glossary-in-pack, snapshot, seed); MCP `post_message` skips
-slash-dispatch (decide+document); notification-router O(followers) serial round-trips; Store 256-method
-god-trait split; `list_threads` unbounded (last unpaginated list); README no visual media / no paste-ready
-invite; tool-count drift (`~78`→**84** in `Framework Integrations.md` + `examples/README.md`), README
-image pin `v315`→`v331`, `Architecture.md` `Capability-Map.md` dead GitHub link.
+**P2 — polish (do after P0/P1).** **✅ DONE (Cluster 341):** A2A gRPC doc contradiction (reconciled
+`Architecture.md` + `Protocols.md` to `Claims.md`'s honest "partial" — gRPC is get/cancel/list only,
+verified in `a2a_grpc/mod.rs`); tool-count drift (`~78`→**85** in `Framework Integrations.md` +
+`examples/README.md` + `Adoption.md`); README image pin `v315`→`v339`; `Architecture.md`
+`Capability-Map.md` dead GitHub link → `Capability%20Map.md`. **Remaining P2 (code-side):** projector
+link-management REST/MCP surface (only ingress mounted); `Integration.md` omits the flagship context
+surface (`as_of`, glossary-in-pack, snapshot, seed); MCP `post_message` skips slash-dispatch
+(decide+document); notification-router O(followers) serial round-trips; Store 256-method god-trait split;
+`list_threads` unbounded (last unpaginated list); README no visual media / no paste-ready invite.
 
 **DECLINE / already-covered (not gaps — do not spend a cluster):** the flagship optional tail (seed
 `pack`/`prefix`, `WorkSeeded`, `structure_only` template) + Postgres RLS — explicitly DECLINED in

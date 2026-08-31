@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v341.0.0 — docs accuracy reconciliation (audit P2)
+
+| Change | Where |
+|--------|-------|
+| Audit P2 accuracy fixes, each verified against ground-truth code. **A2A gRPC** reconciled to the honest "partial": `Architecture.md` (implied full parity) + `Protocols.md` ("No gRPC binding" — also wrong) now match `Claims.md` — the gRPC `A2AService` exposes `get_task`/`cancel_task`/`list_tasks` only (verified in `a2a_grpc/mod.rs`); send/push/streaming stay JSON-RPC/REST. **Tool-count drift 78 → 85** in the live integrator docs. **Dead GitHub link** `Capability-Map.md` → `Capability%20Map.md`. **README image pin** `v315` → `v339`. Docs-only. **Cluster 10 of the post-flagship audit program** | `docs/{Architecture,Protocols,Framework Integrations,Adoption}.md`, `examples/README.md`, `README.md` |
+
 ## v340.0.0 — fetch-once message authorization (audit P1.4c)
 
 | Change | Where |

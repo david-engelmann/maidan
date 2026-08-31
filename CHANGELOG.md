@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [341.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 10 of the post-flagship audit program** — docs
+accuracy reconciliation (audit P2). Docs-only. No new gate tag.
+
+### Fixed
+
+- **A2A gRPC docs reconciled to reality.** `Architecture.md` implied full three-transport parity
+  and `Protocols.md` said "No gRPC binding" — both wrong. Ground truth (`a2a_grpc/mod.rs`): the
+  gRPC `A2AService` implements `get_task`/`cancel_task`/`list_tasks` only. Both docs now match
+  `Claims.md`: JSON-RPC + REST complete; gRPC partial (task read/cancel/list; send/push/streaming
+  over JSON-RPC/REST).
+- **MCP tool-count drift 78 → 85** in the live integrator docs (`Framework Integrations.md`,
+  `examples/README.md`, `Adoption.md`) to match `contracts/mcp-tool-names.json`.
+- **Dead GitHub link** in `Architecture.md`: `[Capability Map](Capability-Map.md)` →
+  `Capability%20Map.md` (the repo file has a space; the bare-hyphen form 404s on GitHub, while the
+  `%20` form is what `sync-docs.sh` rewrites for the published book).
+- **README image pin** `v315.0.0` → `v339.0.0` (a recent released tag).
+
 ## [340.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 9 of the post-flagship audit program** — fetch-once

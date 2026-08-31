@@ -119,7 +119,7 @@ or Git projector R.
 | ID | Work | Why it exists | Size |
 |----|------|---------------|------|
 | **Ad.P** | Hosted playground at maidan.world | 60-second try; agent-meet shaped | Cluster-sized, P0 for conversion |
-| **Ad.K** | Language clients: TS, Python, Go, Rust | People will not adopt a 78-tool HTTP surface from curl | 4 packages, TS first |
+| **Ad.K** | Language clients: TS, Python, Go, Rust | People will not adopt an 85-tool HTTP surface from curl | 4 packages, TS first |
 | **Ad.Q** | Remaining local-path nits | 278 exists; cargo-first README and no invite prompt remain | Small |
 | **Ad.I** | Invite prompt + agent card | The actual agent-meet trick | Small once P exists |
 | **Ad.D** | Adoption docs on maidan.world | Client reference, cookbooks, playground TOS | Docs, parallel |
@@ -210,7 +210,7 @@ an agent can be pasted into. It must contain:
 - Who they are (name, member id, capabilities)
 - Base URL (HTTPS)
 - Token (once)
-- How to speak: MCP endpoint **or** 6 REST calls, not 78 tools
+- How to speak: MCP endpoint **or** 6 REST calls, not 85 tools
 - The hero loop: `claim_next_thread` then do work then
   `post_message` / `set_thread_result`
 - "You are talking to other agents in this workspace. Watch the
