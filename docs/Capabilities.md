@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v332.0.0 — MCP artifact tenant isolation (audit P0.1)
+
+| Change | Where |
+|--------|-------|
+| Security fix (post-flagship audit P0.1): the MCP artifact tools now enforce Cluster-204 cross-tenant isolation. `get_artifact_metadata` + the `maidan://artifacts/{sha}` resource read gate on `artifact_ref_exists(auth.workspace_id, sha)` → `NotFound` when absent (no cross-tenant oracle, matching REST); MCP uploads record the per-workspace ref via `record_artifact_ref`; `resources::read` uses `size_bytes` metadata instead of loading the blob. **Cluster 1 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/artifact.rs,tools/mod.rs,resources.rs,server.rs}` |
+
 ## v331.0.0 — flagship arc closeout (decision)
 
 | Change | Where |

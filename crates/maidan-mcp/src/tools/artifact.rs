@@ -5,6 +5,7 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
 use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store};
+use maidan_auth::AuthContext;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -12,6 +13,16 @@ use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
+
+/// Record the per-workspace access ref for an artifact so the caller's workspace
+/// can later fetch the deduped blob (Cluster 204 / 332). Skipped for a bypass
+/// caller (auth disabled). Mirrors the REST upload path (`ref_workspace`).
+async fn record_ref(store: &Arc<dyn Store>, auth: &AuthContext, sha: &str) -> Result<(), McpError> {
+    if !auth.bypass {
+        store.record_artifact_ref(auth.workspace_id, sha).await?;
+    }
+    Ok(())
+}
 
 #[derive(Deserialize)]
 struct UploadArtifactArgs {
@@ -99,6 +110,7 @@ struct CompleteMultipartArgs {
 pub(super) async fn complete_artifact_multipart(
     store: &Arc<dyn Store>,
     artifacts: &Arc<dyn ArtifactStore>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: CompleteMultipartArgs = serde_json::from_value(args.clone())?;
@@ -128,6 +140,7 @@ pub(super) async fn complete_artifact_multipart(
             uploaded_by: a.uploaded_by.map(MemberId),
         })
         .await?;
+    record_ref(store, auth, &sha.to_string()).await?;
     Ok(content_json(&artifact))
 }
 
@@ -153,6 +166,7 @@ pub(super) async fn abort_artifact_multipart(
 pub(super) async fn upload_artifact(
     store: &Arc<dyn Store>,
     artifacts: &Arc<dyn ArtifactStore>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: UploadArtifactArgs = serde_json::from_value(args.clone())?;
@@ -173,6 +187,7 @@ pub(super) async fn upload_artifact(
             uploaded_by: a.uploaded_by.map(MemberId),
         })
         .await?;
+    record_ref(store, auth, &sha.to_string()).await?;
     Ok(content_json(&artifact))
 }
 
@@ -183,9 +198,21 @@ struct GetArtifactMetadataArgs {
 
 pub(super) async fn get_artifact_metadata(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
+    // Cluster 204/332: a blob is deduped across tenants, so gate on the caller's
+    // per-workspace access ref. A missing ref returns NotFound (indistinguishable
+    // from a genuinely-absent artifact — no cross-tenant existence oracle), exactly
+    // as the REST `get_artifact` does.
+    if !auth.bypass
+        && !store
+            .artifact_ref_exists(auth.workspace_id, &a.sha256)
+            .await?
+    {
+        return Err(McpError::NotFound);
+    }
     let artifact = store.get_artifact_by_sha(&a.sha256).await?;
     Ok(content_json(&artifact))
 }
