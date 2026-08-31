@@ -39,10 +39,12 @@ cluster cadence: retro + `vX.0.0` tag each).
 **P1 — high-value clusters (ordered):**
 - **P1.1a — ✅ FIXED (Cluster 333):** MCP `edit_message` now uses `edit_message_with_event` + the new
   `McpServer::publish_stored` bus-notify, so an MCP edit appends `MessageEdited` → as-of replay sees the
-  edit, the indexer reindexes, WS/SSE + notification router fire. **Remaining (P1.1b, Cluster 334):**
-  migrate the other 7 event-less write tools (`cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/
-  `unpin_message`/`record_mention`/`add_reference`) to `*_with_event` + `publish_stored`, and publish
-  `MentionRecorded` from MCP `post_message`/`post_dm_message`.
+  edit, the indexer reindexes, WS/SSE + notification router fire. **P1.1b — ✅ FIXED (Cluster 334):**
+  the other 7 event-less write tools (`cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/
+  `unpin_message`/`record_mention`/`add_reference`) now use `*_with_event` + `publish_stored`, and MCP
+  `post_message`/`post_dm_message` publish `MentionRecorded` per @mentioned member. **P1.1 (MCP
+  write-path parity) is COMPLETE** — every MCP mutation emits its domain event like REST (WS/SSE,
+  at-least-once, federation, notifications).
 - **P1.1 MCP write-path parity: events + atomicity. ✅ VERIFIED (edit_message).** The 8 event-less MCP
   write tools (`cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/`unpin_message`/`edit_message`/
   `record_mention`/`add_reference`) call plain non-`*_with_event` store methods and append **no** domain

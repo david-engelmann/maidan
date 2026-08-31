@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v334.0.0 — MCP write-path event parity, the rest (audit P1.1b)
+
+| Change | Where |
+|--------|-------|
+| The 7 remaining event-less MCP write tools now emit domain events (via `McpServer::publish_stored`): `cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/`unpin_message`/`add_reference` → `*_with_event`; `record_mention` → `record_mention_with_event`; and MCP `post_message`/`post_dm_message` publish `MentionRecorded` per @mentioned member (a shared `publish_routed_mentions` helper). MCP mutations now reach WS/SSE, at-least-once, federation, and the notification router / `wait_for_mention` like REST. **P1.1 (MCP write-path parity) complete** (333 edit + 334 rest). **Cluster 3 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/social.rs,tools/reference.rs,tools/message.rs,tools/mod.rs}` |
+
 ## v333.0.0 — MCP edit_message emits MessageEdited (audit P1.1a)
 
 | Change | Where |

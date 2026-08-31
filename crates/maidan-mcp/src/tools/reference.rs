@@ -20,10 +20,15 @@ struct AddReferenceArgs {
     relation: RelationKind,
 }
 
-pub(super) async fn add_reference(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn add_reference(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: AddReferenceArgs = serde_json::from_value(args.clone())?;
-    let r = store
-        .add_reference(NewReference {
+    // Cluster 334: emit ReferenceAdded (atomic) + bus-notify, like REST.
+    let (r, stored) = server
+        .store
+        .add_reference_with_event(NewReference {
             src_kind: a.src_kind,
             src_id: a.src_id,
             dst_kind: a.dst_kind,
@@ -31,6 +36,7 @@ pub(super) async fn add_reference(store: &Arc<dyn Store>, args: &Value) -> Resul
             relation: a.relation,
         })
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&r))
 }
 

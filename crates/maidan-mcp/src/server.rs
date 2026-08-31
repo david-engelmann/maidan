@@ -2083,6 +2083,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mcp_write_tools_emit_domain_events() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_bus::InMemoryBus;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let alice = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "alice".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let bob = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "bob".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let msg = store
+            .post_message(NewMessage {
+                thread_id: thread.id,
+                author_id: alice.id,
+                body: "seed".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        // A bus so publish_event-based events (MessagePosted / MentionRecorded) log.
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth = AuthContext::from_session(
+            alice.id,
+            ws.id,
+            vec![
+                MESSAGE_POST.to_string(),
+                WORKSPACE_WRITE.to_string(),
+                WORKSPACE_READ.to_string(),
+            ],
+        );
+
+        server
+            .call_tool(
+                &auth,
+                "cast_vote",
+                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "kind": "up" }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
+                "add_reference",
+                &json!({
+                    "src_kind": "message", "src_id": msg.id.0,
+                    "dst_kind": "thread", "dst_id": thread.id.0, "relation": "grounds"
+                }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
+                "post_message",
+                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "ping @bob" }),
+            )
+            .await
+            .unwrap();
+
+        // Workspace-scoped (ReferenceAdded isn't thread-scoped, so a thread query
+        // would miss it) — captures every event these tools appended.
+        let events = store.list_events_after(ws.id, 0, 1000).await.unwrap();
+        let kinds: Vec<EventKind> = events.iter().map(|e| e.kind).collect();
+        // The social tools now append their domain events (were event-less). (VoteCast
+        // is the representative message-scoped `*_with_event`; add_reference uses the
+        // same path but ReferenceAdded isn't workspace-hoisted, so it's not asserted here.)
+        assert!(kinds.contains(&EventKind::VoteCast), "VoteCast: {kinds:?}");
+        // …and an MCP post with an @mention now publishes MentionRecorded for the mentioned member.
+        assert!(
+            kinds.contains(&EventKind::MentionRecorded),
+            "MentionRecorded: {kinds:?}"
+        );
+        let mentions = store.list_mentions_for_member(bob.id, 10).await.unwrap();
+        assert_eq!(mentions.len(), 1, "bob was @mentioned");
+    }
+
+    #[tokio::test]
     async fn glossary_tools_set_get_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 

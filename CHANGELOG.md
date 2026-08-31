@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [334.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 3 of the post-flagship audit program** — MCP
+write-path event parity, the rest (audit P1.1b). No new gate tag.
+
+### Fixed
+
+- **The 7 remaining event-less MCP write tools now emit domain events** (via
+  `McpServer::publish_stored`): `cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/
+  `unpin_message`/`add_reference` → `*_with_event`; `record_mention` → `record_mention_with_event`;
+  and MCP `post_message`/`post_dm_message` now publish `MentionRecorded` per @mentioned member
+  (previously recorded the rows but never published). MCP mutations now reach WS/SSE,
+  at-least-once delivery, federation, and the notification router / `wait_for_mention` like REST.
+  **P1.1 (MCP write-path parity) is complete** (333 `edit_message` + 334 the rest).
+
 ## [333.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 2 of the post-flagship audit program** — MCP
