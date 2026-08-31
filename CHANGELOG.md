@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [333.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 2 of the post-flagship audit program** — MCP
+`edit_message` emits `MessageEdited` (audit P1.1a). No new gate tag.
+
+### Fixed
+
+- **MCP `edit_message` now appends a `MessageEdited` event** (via `edit_message_with_event` +
+  the new `McpServer::publish_stored` bus-notify), fixing a correctness bug: an MCP edit was
+  event-less, so the flagship **as-of context replay** returned the stale body forever and the
+  embedding indexer **never reindexed** (stale semantic search); WS/SSE + the notification
+  router also missed it. MCP edits now behave like REST edits across replay, reindex, and
+  realtime.
+
 ## [332.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 1 of the post-flagship audit program** — MCP artifact

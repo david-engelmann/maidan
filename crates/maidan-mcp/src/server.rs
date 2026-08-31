@@ -10,7 +10,7 @@ use maidan_auth::AuthContext;
 use maidan_bus::{EventBus, ResourceNotifier};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
-use maidan_types::{BusEnvelope, Event};
+use maidan_types::{BusEnvelope, Event, StoredEvent};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, Mutex};
 
@@ -141,6 +141,23 @@ impl McpServer {
         };
         let _ = bus.publish(envelope).await;
         Some(stored.id)
+    }
+
+    /// Bus-notify an event that was **already durably appended** by a `*_with_event`
+    /// store call — the MCP analogue of the REST `publish_stored`. Hydrates the
+    /// `Event` from the stored payload; a missing bus (embedded use) is a no-op.
+    /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
+    pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
+        if let Some(bus) = self.event_bus.as_ref() {
+            if let Ok(event) = serde_json::from_value::<Event>(stored.payload.clone()) {
+                let _ = bus
+                    .publish(BusEnvelope {
+                        log_id: stored.id,
+                        event,
+                    })
+                    .await;
+            }
+        }
     }
 
     pub fn streamable_sessions(&self) -> Arc<StreamableSessionRegistry> {
@@ -1969,6 +1986,100 @@ mod tests {
         );
         assert_eq!(list.as_array().unwrap().len(), 1);
         assert_eq!(list[0]["id"], created["id"]);
+    }
+
+    #[tokio::test]
+    async fn mcp_edit_message_appends_messageedited_event() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "e".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let msg = store
+            .post_message(NewMessage {
+                thread_id: thread.id,
+                author_id: member.id,
+                body: "v1".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![MESSAGE_POST.to_string(), WORKSPACE_READ.to_string()],
+        );
+
+        server
+            .call_tool(
+                &auth,
+                "edit_message",
+                &json!({ "message_id": msg.id.0, "editor_id": member.id.0, "body": "v2" }),
+            )
+            .await
+            .unwrap();
+
+        // The edit now appends a MessageEdited event — so as-of replay sees "v2"
+        // and the indexer reindexes (previously the MCP edit was event-less).
+        let events = store
+            .list_thread_events_through(thread.id, i64::MAX)
+            .await
+            .unwrap();
+        assert!(
+            events.iter().any(|e| e.kind == EventKind::MessageEdited),
+            "MCP edit_message must append a MessageEdited event, got {:?}",
+            events.iter().map(|e| e.kind).collect::<Vec<_>>()
+        );
+        // And the reconstructed as-of message shows the edited body.
+        let msgs = maidan_types::reconstruct_messages_through(&events);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].body, "v2");
     }
 
     #[tokio::test]

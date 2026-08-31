@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v333.0.0 — MCP edit_message emits MessageEdited (audit P1.1a)
+
+| Change | Where |
+|--------|-------|
+| Correctness fix (post-flagship audit P1.1a): MCP `edit_message` was event-less (`store.edit_message`), so an MCP edit appended no `MessageEdited` → the flagship as-of replay returned the stale body forever and the embedding indexer never reindexed. Now it calls `edit_message_with_event` (atomic row + event) and the new `McpServer::publish_stored` bus-notify → as-of replay, reindex, and WS/SSE + notification-router all see MCP edits, matching REST. `publish_stored` is the reusable seam for the rest of the MCP write-path migration (Cluster 334). **Cluster 2 of the post-flagship audit program** | `crates/maidan-mcp/src/{server.rs,tools/message.rs,tools/mod.rs}` |
+
 ## v332.0.0 — MCP artifact tenant isolation (audit P0.1)
 
 | Change | Where |

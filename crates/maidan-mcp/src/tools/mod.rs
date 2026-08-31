@@ -310,7 +310,7 @@ pub async fn dispatch(
         "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, args).await,
-        "edit_message" => message::edit_message(store, auth, args).await,
+        "edit_message" => message::edit_message(server, auth, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(store, args).await,
         "cast_vote" => social::cast_vote(store, args).await,
