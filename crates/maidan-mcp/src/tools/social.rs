@@ -19,7 +19,10 @@ struct CastVoteArgs {
     confidence: Option<f64>,
 }
 
-pub(super) async fn cast_vote(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn cast_vote(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: CastVoteArgs = serde_json::from_value(args.clone())?;
     if let Some(c) = a.confidence {
         if !(0.0..=1.0).contains(&c) {
@@ -28,14 +31,18 @@ pub(super) async fn cast_vote(store: &Arc<dyn Store>, args: &Value) -> Result<Va
             ));
         }
     }
-    store
-        .cast_vote(NewVote {
+    // Cluster 334: emit the domain event (atomic) + bus-notify, like REST — so
+    // MCP votes/reactions/pins reach WS/SSE, at-least-once, and federation.
+    let stored = server
+        .store
+        .cast_vote_with_event(NewVote {
             message_id: MessageId(a.message_id),
             member_id: MemberId(a.member_id),
             kind: a.kind,
             confidence: a.confidence,
         })
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&json!({"ok": true})))
 }
 
@@ -46,26 +53,36 @@ struct ReactionArgs {
     emoji: String,
 }
 
-pub(super) async fn add_reaction(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn add_reaction(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: ReactionArgs = serde_json::from_value(args.clone())?;
-    store
-        .add_reaction(NewReaction {
+    let stored = server
+        .store
+        .add_reaction_with_event(NewReaction {
             message_id: MessageId(a.message_id),
             member_id: MemberId(a.member_id),
             emoji: a.emoji,
         })
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&json!({"ok": true})))
 }
 
 pub(super) async fn remove_reaction(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReactionArgs = serde_json::from_value(args.clone())?;
-    let removed = store
-        .remove_reaction(MessageId(a.message_id), MemberId(a.member_id), &a.emoji)
+    // The event is appended only when a row was actually removed (idempotent).
+    let (removed, stored) = server
+        .store
+        .remove_reaction_with_event(MessageId(a.message_id), MemberId(a.member_id), &a.emoji)
         .await?;
+    if let Some(stored) = stored {
+        server.publish_stored(&stored).await;
+    }
     Ok(content_json(&json!({"removed": removed})))
 }
 
@@ -92,23 +109,39 @@ struct PinArgs {
     member_id: uuid::Uuid,
 }
 
-pub(super) async fn pin_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn pin_message(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: PinArgs = serde_json::from_value(args.clone())?;
-    store
-        .pin_message(NewPin {
+    let stored = server
+        .store
+        .pin_message_with_event(NewPin {
             thread_id: ThreadId(a.thread_id),
             message_id: MessageId(a.message_id),
             member_id: MemberId(a.member_id),
         })
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&json!({"ok": true})))
 }
 
-pub(super) async fn unpin_message(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+pub(super) async fn unpin_message(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a: PinArgs = serde_json::from_value(args.clone())?;
-    let removed = store
-        .unpin_message(ThreadId(a.thread_id), MessageId(a.message_id))
+    let (removed, stored) = server
+        .store
+        .unpin_message_with_event(
+            ThreadId(a.thread_id),
+            MessageId(a.message_id),
+            MemberId(a.member_id),
+        )
         .await?;
+    if let Some(stored) = stored {
+        server.publish_stored(&stored).await;
+    }
     Ok(content_json(&json!({"removed": removed})))
 }
 

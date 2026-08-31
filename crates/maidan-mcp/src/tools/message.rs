@@ -60,7 +60,6 @@ pub(super) async fn post_dm_message(
             content,
         })
         .await?;
-    let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
     if server.event_bus.is_some() {
         let ctx = resolve_thread_context(store.as_ref(), dm.thread_id)
             .await
@@ -76,7 +75,47 @@ pub(super) async fn post_dm_message(
             })
             .await;
     }
+    // Cluster 334: record + publish MentionRecorded per @mention so the
+    // notification router / wait_for_mention fire (was recorded but never published).
+    publish_routed_mentions(server, dm.thread_id, dm.workspace_id, &msg).await;
     Ok(content_json(&msg))
+}
+
+/// Route + record @mentions in a just-posted message and publish a
+/// `MentionRecorded` event per mentioned member — the MCP analogue of the REST
+/// `publish_routed_mentions` (Cluster 334). Best-effort: a routing error is logged
+/// and skipped, never failing the post.
+async fn publish_routed_mentions(
+    server: &crate::server::McpServer,
+    thread_id: ThreadId,
+    workspace_id: WorkspaceId,
+    message: &Message,
+) {
+    let mentioned = match route_mentions_for_message(
+        server.store.as_ref(),
+        message.id,
+        message.author_id,
+        &message.body,
+    )
+    .await
+    {
+        Ok(ids) => ids,
+        Err(err) => {
+            tracing::warn!(error = %err, "mcp mention routing failed");
+            return;
+        }
+    };
+    for member_id in mentioned {
+        server
+            .publish_event(Event::MentionRecorded {
+                occurred_at: Utc::now(),
+                workspace_id,
+                thread_id,
+                message_id: message.id,
+                member_id,
+            })
+            .await;
+    }
 }
 
 #[derive(Deserialize)]
@@ -136,11 +175,10 @@ pub(super) async fn post_message(
             content,
         })
         .await?;
-    let _ = route_mentions_for_message(store.as_ref(), msg.id, msg.author_id, &msg.body).await;
+    let ctx = resolve_thread_context(store.as_ref(), thread_id)
+        .await
+        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
     if server.event_bus.is_some() {
-        let ctx = resolve_thread_context(store.as_ref(), thread_id)
-            .await
-            .map_err(|e| McpError::InvalidParams(e.to_string()))?;
         let dm_id = store
             .dm_conversation_for_thread(thread_id)
             .await
@@ -158,6 +196,10 @@ pub(super) async fn post_message(
             })
             .await;
     }
+    // Cluster 334: record + publish MentionRecorded per @mention (was recorded but
+    // never published, so agent @mentions never fired the notification router /
+    // wait_for_mention). Records unconditionally; the publish no-ops without a bus.
+    publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
     Ok(content_json(&msg))
 }
 
@@ -240,12 +282,16 @@ struct RecordMentionArgs {
 }
 
 pub(super) async fn record_mention(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RecordMentionArgs = serde_json::from_value(args.clone())?;
-    store
-        .record_mention(MessageId(a.message_id), MemberId(a.member_id))
+    // Cluster 334: the explicit-mention API now emits MentionRecorded (atomic) +
+    // bus-notify, so it reaches the notification router / wait_for_mention like REST.
+    let stored = server
+        .store
+        .record_mention_with_event(MessageId(a.message_id), MemberId(a.member_id))
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&json!({"ok": true})))
 }
