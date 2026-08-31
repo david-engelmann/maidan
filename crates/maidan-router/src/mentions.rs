@@ -3,7 +3,7 @@
 use maidan_store::Store;
 use maidan_types::{MemberId, MessageId, WorkspaceId};
 
-use crate::{resolve_message_chain, RouterError};
+use crate::RouterError;
 
 /// Extract unique `@handle` tokens from `body` (ASCII handles: letter/digit/`_`/`-`).
 pub fn parse_at_handles(body: &str) -> Vec<String> {
@@ -67,17 +67,6 @@ pub async fn route_mentions_in_message(
         }
     }
     Ok(mentioned)
-}
-
-/// Route mentions using workspace id from the message's thread chain.
-pub async fn route_mentions_for_message(
-    store: &dyn Store,
-    message_id: MessageId,
-    author_id: MemberId,
-    body: &str,
-) -> Result<Vec<MemberId>, RouterError> {
-    let chain = resolve_message_chain(store, message_id).await?;
-    route_mentions_in_message(store, chain.workspace_id, message_id, author_id, body).await
 }
 
 #[cfg(test)]

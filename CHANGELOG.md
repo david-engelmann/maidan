@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [338.0.0] — 2026-08-30
+
+Post-gate hardening (Phase XXIV). **Cluster 7 of the post-flagship audit program** — post-path
+mention-routing round-trip reduction (audit P1.4a). No new gate tag.
+
+### Changed
+
+- **Mention routing no longer re-resolves the thread chain per post.** `publish_routed_mentions`
+  (REST + MCP) already held the post's workspace id but called `route_mentions_for_message`, which
+  re-ran `resolve_message_chain` (message → thread → channel → workspace) on every post to
+  re-derive it. It now routes directly via `route_mentions_in_message` with the known workspace,
+  and short-circuits when the body has no `@handles` — so a plain post does no store work for
+  mentions at all. Behaviour-preserving (mentions still emit `MentionRecorded`).
+
+### Removed
+
+- `maidan_router::route_mentions_for_message` (now unused; its callers pass the known workspace).
+
 ## [337.0.0] — 2026-08-30
 
 Post-gate hardening (Phase XXIV). **Cluster 6 of the post-flagship audit program** — the REST

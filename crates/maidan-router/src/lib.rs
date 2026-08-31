@@ -9,7 +9,7 @@ pub mod resolve;
 pub mod slash;
 
 pub use error::RouterError;
-pub use mentions::{parse_at_handles, route_mentions_for_message, route_mentions_in_message};
+pub use mentions::{parse_at_handles, route_mentions_in_message};
 pub use resolve::{
     resolve_channel_context, resolve_message_chain, resolve_thread_context, ChannelContext,
     MessageChain, ThreadContext,
