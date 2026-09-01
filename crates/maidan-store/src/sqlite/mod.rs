@@ -243,6 +243,12 @@ impl NotificationStore for SqliteStore {
     ) -> Result<Option<Notification>, StoreError> {
         notifications::create_if_absent(&self.pool, new).await
     }
+    async fn create_notifications_batch(
+        &self,
+        rows: &[NewNotification],
+    ) -> Result<Vec<Notification>, StoreError> {
+        notifications::create_batch(&self.pool, rows).await
+    }
     async fn list_notifications(
         &self,
         member_id: MemberId,

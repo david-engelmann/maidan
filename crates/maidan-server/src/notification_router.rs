@@ -31,13 +31,6 @@ use crate::state::AppState;
 const RECONNECT_INITIAL: Duration = Duration::from_millis(100);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
-/// Max concurrent per-recipient notification writes for one `MessagePosted`
-/// fan-out (Cluster 344). The router is a serial bus consumer, so a widely
-/// followed message previously head-of-line-blocked the whole pipeline on
-/// `2 × followers` sequential store round-trips; a bounded `buffer_unordered`
-/// de-serializes it while capping pool fan-out (mirrors Cluster 199).
-const NOTIFY_FANOUT_CONCURRENCY: usize = 8;
-
 pub struct NotificationRouter {
     shutdown: watch::Sender<()>,
     handle: tokio::task::JoinHandle<()>,
@@ -211,12 +204,12 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
     Ok(())
 }
 
-/// Fan a `MessagePosted` out to its followers with bounded concurrency
-/// (Cluster 344) — the serial per-recipient `notify` loop head-of-line-blocked
-/// the router. Order is irrelevant (each write targets a distinct recipient row),
-/// so `buffer_unordered` is used; a store error on any recipient short-circuits
-/// (matching the prior `?`-in-loop behaviour). Futures imports are function-scoped
-/// so the module's `tokio_stream::StreamExt` (the bus `.next()`) stays unambiguous.
+/// Fan a `MessagePosted` out to its followers (Cluster 344 de-serialized this off
+/// the router; Cluster 349 collapsed it to a batch). The router is a serial bus
+/// consumer, so a widely followed message must not head-of-line-block the pipeline:
+/// mutes resolve in one query (Cluster 348) and the unmuted set is written in one
+/// batch insert, so a fan-out to N followers is ~2 store round trips regardless of
+/// N. A store error short-circuits (matching the prior `?`-in-loop behaviour).
 #[allow(clippy::too_many_arguments)]
 async fn fan_out_message_posted(
     state: &AppState,
@@ -228,11 +221,13 @@ async fn fan_out_message_posted(
     message_id: MessageId,
     author_id: MemberId,
 ) -> Result<(), String> {
-    use futures::stream::{self, StreamExt, TryStreamExt};
     // Cluster 348: resolve mutes for the whole recipient set in ONE query (was one
-    // `is_notification_muted` per recipient), then write only the unmuted —
-    // concurrently (Cluster 344). Cuts the fan-out from `2 × followers` store
-    // round-trips toward `followers + 1`.
+    // `is_notification_muted` per recipient). Cluster 349: write the unmuted set in
+    // ONE `INSERT … ON CONFLICT DO NOTHING RETURNING` (was one insert per recipient,
+    // concurrently). Together this collapses the fan-out to ~2 store round trips
+    // (mute filter + batch insert) regardless of follower count. `create_notifications_batch`
+    // returns only the rows it actually inserted, so we meter + email exactly the new
+    // notifications (a dedup collision from a replay / second replica is skipped).
     let recipients: Vec<MemberId> = recipients.into_iter().collect();
     let muted: HashSet<MemberId> = state
         .store
@@ -244,28 +239,40 @@ async fn fan_out_message_posted(
     for _ in &muted {
         crate::metrics::record_notification_suppressed("muted");
     }
-    // Map on the plain iterator (Iterator::map) — mapping on the stream would be
-    // ambiguous between the module's tokio_stream::StreamExt and futures::StreamExt.
-    let writes = recipients
+    let new_rows: Vec<NewNotification> = recipients
         .into_iter()
         .filter(|m| !muted.contains(m))
-        .map(|member_id| {
-            write_notification(
-                state,
-                workspace_id,
-                member_id,
-                EventKind::MessagePosted,
-                source_log_id,
-                Some(channel_id),
-                Some(thread_id),
-                Some(message_id),
-                Some(author_id),
-            )
-        });
-    stream::iter(writes)
-        .buffer_unordered(NOTIFY_FANOUT_CONCURRENCY)
-        .try_collect::<Vec<_>>()
-        .await?;
+        .map(|member_id| NewNotification {
+            workspace_id,
+            member_id,
+            kind: EventKind::MessagePosted,
+            source_log_id,
+            channel_id: Some(channel_id),
+            thread_id: Some(thread_id),
+            message_id: Some(message_id),
+            actor_id: Some(author_id),
+        })
+        .collect();
+    if new_rows.is_empty() {
+        return Ok(());
+    }
+    let created = state
+        .store
+        .create_notifications_batch(&new_rows)
+        .await
+        .map_err(|e| e.to_string())?;
+    for n in &created {
+        crate::metrics::record_notification_created(n.kind.as_str());
+        // Off-platform email (Cluster 249), only when a transport is configured —
+        // spawned so a slow SMTP send never blocks routing (best-effort, not retried).
+        if state.mail.is_some() {
+            let st = state.clone();
+            let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
+            tokio::spawn(async move {
+                deliver_notification_email(&st, member_id, kind, log_id).await;
+            });
+        }
+    }
     Ok(())
 }
 
