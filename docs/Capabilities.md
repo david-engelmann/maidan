@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v347.0.0 — projector egress wire-path tests (audit P1.5)
+
+| Change | Where |
+|--------|-------|
+| The production HTTP clients that build the actual projector-egress request (`SlackWebClient` `chat.postMessage`, `GithubApiClient` issue-comment POST) had no test — the egress tests drive mock sender traits. Added a `with_base_url` constructor to each (production `new` targets the real host) so the wire path is testable, and `egress_wire_e2e` drives the real clients against a loopback recorder: exact URL/headers (bearer + GitHub `User-Agent`)/JSON body + success/error decoding (Slack HTTP-200-`{"ok":false}`; GitHub non-2xx → `Api(status)`). Production behaviour unchanged. **Cluster 16 of the post-flagship audit program** | `crates/maidan-server/src/{slack.rs,github.rs}`, `crates/maidan-server/tests/egress_wire_e2e.rs` |
+
 ## v346.0.0 — projector link-management REST surface (audit P2)
 
 | Change | Where |

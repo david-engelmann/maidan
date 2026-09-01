@@ -201,13 +201,23 @@ pub trait SlackSender: Send + Sync {
 /// The production [`SlackSender`]: posts via the Slack Web API `chat.postMessage`.
 pub struct SlackWebClient {
     bot_token: String,
+    /// API base, `https://slack.com` in production; overridable so the wire path
+    /// can be tested against a loopback server (Cluster 347).
+    base_url: String,
     http: reqwest::Client,
 }
 
 impl SlackWebClient {
     pub fn new(bot_token: String) -> Self {
+        Self::with_base_url(bot_token, "https://slack.com".to_string())
+    }
+
+    /// Build against a custom API base (test loopback server). `base_url` has no
+    /// trailing slash; `/api/chat.postMessage` is appended.
+    pub fn with_base_url(bot_token: String, base_url: String) -> Self {
         Self {
             bot_token,
+            base_url,
             http: reqwest::Client::new(),
         }
     }
@@ -218,7 +228,7 @@ impl SlackSender for SlackWebClient {
     async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
         let resp = self
             .http
-            .post("https://slack.com/api/chat.postMessage")
+            .post(format!("{}/api/chat.postMessage", self.base_url))
             .bearer_auth(&self.bot_token)
             .json(&serde_json::json!({ "channel": channel, "text": text }))
             .send()
