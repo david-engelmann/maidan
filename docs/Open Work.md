@@ -6,7 +6,13 @@ see [[Remaining Work]].
 
 Updated at each cluster retro. **Baseline:** code on `main` at **`v314.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), and again at **v314** (2026-08-28 4-thread research sweep — see "Pre-launch fixes + flagship arc" below).
 
-## Post-flagship audit program (2026-08-30 full-repo audit — CURRENT)
+## Post-flagship audit program (2026-08-30 full-repo audit — ✅ COMPLETE at v349.0.0)
+
+> **Closed (Cluster 349).** Every P0/P1/P2 item below is shipped or closed as a documented decision;
+> the wrap-up cluster 349 (349.1 Store trait split, 349.2 notification batch INSERT, 349.3 LSN-replica
+> CI job, 349.4 MCP projector tools, 349.5 SMTP wire test) closed the last of the deferred tails. Two
+> tails were declined with rationale (broad MCP arg-defaulting; the cross-crate assembler hoist) and
+> README visual media awaits a maintainer-recorded asset. No audit item remains open.
 
 A 9-agent full-repo audit (code / deferred / docs / product / perf / security / testing /
 architecture → synthesis; journal `wf_23c0c888-03f`) ran after the flagship arc closed at
@@ -97,10 +103,12 @@ cluster cadence: retro + `vX.0.0` tag each).
     `with_base_url` constructor + `egress_wire_e2e` drives the real clients against a loopback recorder
     (exact URL/headers/body + success/error decoding). Optional follow-up: an SMTP wire test against an
     in-process catcher (the mail path already has a recording-mock e2e + connect-free config validation).
-  - **LSN-replica CI job — TODO:** a CI job running `scripts/replica-harness.sh` (two-Postgres streaming
-    replication) that un-ignores the `#[ignore]`d LSN routing tests. Deferred as its own cluster — it
-    needs a heavy two-Postgres Docker setup in CI; the routing is already validated locally against the
-    harness. **Effort M.**
+  - **LSN-replica CI job — ✅ DONE (Cluster 349.3):** a `replica-routing` CI job runs
+    `scripts/replica-harness.sh` (a real primary + streaming-standby pair on host Docker) and executes
+    the three previously-`#[ignore]`d LSN routing tests (`maidan-store::{replication,read_routing}`,
+    `maidan-search::replica_routing`) with the two URLs set. The read-your-writes contract is now proven
+    in CI, not just locally (the job self-validated on its own PR). Non-required (heavy two-Postgres
+    setup).
 
 **P2 — polish (do after P0/P1).** **✅ DONE (Cluster 341):** A2A gRPC doc contradiction (reconciled
 `Architecture.md` + `Protocols.md` to `Claims.md`'s honest "partial" — gRPC is get/cancel/list only,
@@ -116,16 +124,24 @@ commands + merge the `{slash_command, slash_response}` metadata like REST; the M
 also moved to the atomic outbox path. **✅ DONE (Cluster 346):** projector link-management — the
 Slack/GitHub projectors shipped ingress + egress + a store link table but no route created a link
 (egress could never fire); added `POST`/`GET`/`DELETE` `/workspaces/:wid/{slack,github}-links`
-(channel/workspace derived from `authorize_thread`; workspace-scoped unlink). MCP link tools are an
-optional follow-up. **✅ DONE (Cluster 348):** the notification fan-out **mute check** is now
+(channel/workspace derived from `authorize_thread`; workspace-scoped unlink). **✅ DONE (Cluster 349.4):** the MCP
+projector link tools now ship (the six MCP twins of the 346 REST routes; capability-filtered → 91
+tools). **✅ DONE (Cluster 348):** the notification fan-out **mute check** is now
 batched — `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`, Postgres `= ANY`)
 resolves the muted subset in one query; the fan-out writes only the unmuted (concurrently, per 344),
-cutting `2 × followers` toward `followers + 1` round-trips. **Remaining P2 (code-side):** the
-notification **multi-row batch INSERT** — the further optimization: collapse the writes too into one
-`INSERT … ON CONFLICT DO NOTHING RETURNING` (Postgres `UNNEST`, SQLite chunked dynamic `VALUES` under
-the 999-param limit; email side-effect keyed off the `RETURNING` set) → `~2` round-trips; Store
-256-method god-trait split (large, low external value — recommend deferring); README no visual media
-/ no paste-ready invite. **✅ DONE (Cluster 344):** notification-router
+cutting `2 × followers` toward `followers + 1` round-trips. **✅ DONE (Cluster 349.2):** the
+notification **multi-row batch INSERT** — `Store::create_notifications_batch` collapses the writes into
+one `INSERT … ON CONFLICT DO NOTHING RETURNING` (Postgres `UNNEST`, SQLite chunked `VALUES`; email keyed
+off the `RETURNING` set) → `~2` round-trips regardless of follower count. **✅ DONE (Cluster 349.1):** the
+Store 256-method god-trait split (35 cohesive sub-traits + method-less `Store` super-trait + blanket impl
++ `prelude`; `dyn Store` call sites unchanged — the "recommend deferring" was overridden by the maintainer's
+"wrap it up" and shipped cleanly). **✅ DONE (Cluster 349.5):** the SMTP wire-path test (real `lettre`
+transport vs an in-process sink). **Declined as decisions (Cluster 349):** broad MCP arg-defaulting
+(`author_id`/`member_id` ← caller — a semantic change to the critical post path for modest gain, `whoami`
+covers self-discovery) + the cross-crate context-assembler hoist into `maidan-router` (multi-crate surgery
+for near-zero user value; the shared fold already routes through `maidan_types`). **Still needs a
+maintainer asset:** README visual media / paste-ready invite (a recorded terminal GIF can't be authored
+in-repo). **The post-flagship audit program (332–349) is COMPLETE.** **✅ DONE (Cluster 344):** notification-router
 O(followers) **serial** round-trips — the `MessagePosted` fan-out now runs per-recipient writes with
 bounded concurrency (`buffer_unordered`, cap 8), de-serializing the head-of-line block.
 **✅ DONE (Cluster 343):** `list_threads` unbounded

@@ -3,6 +3,20 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v349.0.0 — deferred-work wrap-up (audit close-out)
+
+A multi-PR cluster (349.1–349.5) closing every remaining deferred item from the post-flagship audit.
+
+| Change | Where |
+|--------|-------|
+| **Store trait split (349.1):** the 258-method `Store` god-trait → 35 cohesive domain sub-traits (`WorkspaceStore`/`ThreadStore`/`MessageStore`/…) + a method-less `Store` super-trait + blanket impl, so `dyn Store` call sites are unchanged and a caller can bound on a narrow sub-trait; `maidan_store::prelude` re-exports them for concrete-backend callers. | `crates/maidan-store/src/{store.rs,lib.rs,sqlite/mod.rs,postgres/mod.rs}` |
+| **Notification batch INSERT (349.2):** `Store::create_notifications_batch` writes the unmuted follower set in one `INSERT … ON CONFLICT DO NOTHING RETURNING` (PG `UNNEST` / SQLite chunked `VALUES`) → the fan-out is ~2 round trips regardless of follower count. | `crates/maidan-store/src/{store.rs,*/notifications.rs}`, `notification_router.rs` |
+| **LSN-replica CI job (349.3):** a `replica-routing` job runs the three `#[ignore]`d LSN routing tests against a real primary+streaming-standby pair — read-your-writes proven in CI. | `.github/workflows/ci.yml`, `scripts/replica-harness.sh` |
+| **MCP projector link tools (349.4):** the six MCP twins of the Cluster-346 REST link routes (Slack + GitHub link/list/unlink); capability-filtered (91 tools). | `crates/maidan-mcp/src/tools/projector.rs`, `contracts/mcp-*.json` |
+| **SMTP wire test (349.5):** the real `lettre` `SmtpTransport` proven on the wire against an in-process SMTP sink. | `crates/maidan-server/src/mail.rs` |
+
+Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-crate assembler hoist (declined), README visual media (needs a recorded asset). **The post-flagship audit program (332–349) is complete.**
+
 ## v348.0.0 — batch the notification fan-out mute check (audit P2)
 
 | Change | Where |

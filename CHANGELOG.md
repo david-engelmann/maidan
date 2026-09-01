@@ -7,6 +7,42 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [349.0.0] — 2026-09-01
+
+Post-gate hardening (Phase XXIV). **Cluster 18 of the post-flagship audit program — its close-out.**
+A multi-PR "wrap-up" cluster (349.1–349.5) that closes every remaining deferred item from the
+post-flagship audit. No new gate tag.
+
+### Changed
+
+- **The 258-method `Store` god-trait is split into 35 cohesive domain sub-traits** (349.1). `Store`
+  becomes a method-less super-trait (`Store: WorkspaceStore + ThreadStore + … + Send + Sync {}`) with
+  a blanket impl, so every `dyn Store` call site is unchanged; a caller can now bound on a narrow
+  sub-trait, and a new `maidan_store::prelude` re-exports `Store` + every sub-trait for concrete-backend
+  callers. Pure interface reorganization.
+
+### Added
+
+- **`Store::create_notifications_batch`** (349.2) — the `MessagePosted` follower fan-out now writes the
+  whole unmuted set in one `INSERT … ON CONFLICT DO NOTHING RETURNING` (Postgres `UNNEST`, SQLite
+  chunked `VALUES`), so with Cluster 348 the fan-out is ~2 store round trips regardless of follower
+  count.
+- **`replica-routing` CI job** (349.3) — stands up a real primary + streaming-standby pair
+  (`scripts/replica-harness.sh`) and runs the three previously `#[ignore]`d LSN routing tests, so the
+  read-your-writes contract is proven in CI, not just locally.
+- **Six MCP projector link-management tools** (349.4) — the MCP twins of the Cluster-346 REST link
+  routes (Slack + GitHub link/list/unlink). Capability-filtered, so no catalog bloat (91 tools).
+- **SMTP wire-path test** (349.5) — the real `lettre` `SmtpTransport` is proven to speak SMTP
+  end-to-end against an in-process plaintext sink (no Docker, no MTA).
+
+### Deferred (closed as decisions)
+
+- Broad MCP arg-defaulting (`author_id`/`member_id` ← caller) — **declined** (semantic change to the
+  critical post path for modest gain; `whoami`/`GET /me` self-discovery already covers it).
+- Cross-crate context-assembler hoist into `maidan-router` — **declined** (multi-crate surgery for
+  near-zero user value; the shared fold already routes through `maidan_types`).
+- README visual media — needs a recorded terminal asset (maintainer).
+
 ## [348.0.0] — 2026-09-01
 
 Post-gate hardening (Phase XXIV). **Cluster 17 of the post-flagship audit program** — batch the
