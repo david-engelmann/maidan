@@ -162,4 +162,99 @@ mod tests {
             Err(MailError::Config(_))
         ));
     }
+
+    /// Wire-path test: the real `lettre` `SmtpTransport` opens a plaintext SMTP
+    /// connection and delivers a message end-to-end. The recording-mock e2e proves
+    /// the router *calls* `send`; this proves `send` actually speaks SMTP (envelope
+    /// + headers + body on the wire), against an in-process minimal SMTP sink — no
+    /// Docker, no real MTA (Integration Reality §3.1).
+    #[tokio::test]
+    async fn smtp_transport_delivers_a_message_over_the_wire() {
+        use std::time::Duration;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+
+        // A minimal SMTP server: greet, ack the envelope commands, capture DATA.
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let (r, mut w) = sock.split();
+            let mut reader = BufReader::new(r);
+            let mut line = String::new();
+            let mut data = String::new();
+            w.write_all(b"220 localhost ESMTP\r\n").await.unwrap();
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).await.unwrap() == 0 {
+                    break;
+                }
+                let cmd = line.trim_end();
+                if cmd.starts_with("EHLO") || cmd.starts_with("HELO") {
+                    w.write_all(b"250-localhost\r\n250 OK\r\n").await.unwrap();
+                } else if cmd.starts_with("MAIL FROM") || cmd.starts_with("RCPT TO") {
+                    w.write_all(b"250 OK\r\n").await.unwrap();
+                } else if cmd.starts_with("DATA") {
+                    w.write_all(b"354 End data with <CR><LF>.<CR><LF>\r\n")
+                        .await
+                        .unwrap();
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).await.unwrap() == 0 {
+                            break;
+                        }
+                        if line.trim_end() == "." {
+                            break;
+                        }
+                        data.push_str(&line);
+                    }
+                    w.write_all(b"250 OK: queued\r\n").await.unwrap();
+                } else if cmd.starts_with("QUIT") {
+                    w.write_all(b"221 Bye\r\n").await.unwrap();
+                    break;
+                } else {
+                    w.write_all(b"250 OK\r\n").await.unwrap();
+                }
+            }
+            let _ = tx.send(data);
+        });
+
+        let cfg = SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            username: None,
+            password: None,
+            from: "maidan@example.com".into(),
+            starttls: false,
+        };
+        SmtpTransport::from_config(&cfg)
+            .unwrap()
+            .send(
+                "agent@example.com",
+                "You were mentioned",
+                "hello from maidan",
+            )
+            .await
+            .unwrap();
+
+        let captured = tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .expect("sink did not capture the message in time")
+            .unwrap();
+        assert!(
+            captured.contains("Subject: You were mentioned"),
+            "subject header on the wire: {captured}"
+        );
+        assert!(captured.contains("hello from maidan"), "body on the wire");
+        assert!(
+            captured.contains("agent@example.com"),
+            "To header on the wire"
+        );
+        assert!(
+            captured.contains("maidan@example.com"),
+            "From header on the wire"
+        );
+    }
 }
