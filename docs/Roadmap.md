@@ -162,6 +162,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **347.0** (`v347.0.0`) **post-flagship audit program — cluster 16: projector egress wire-path tests (P1.5).** The production HTTP clients that build the actual projector-egress request (`SlackWebClient`, `GithubApiClient`) had no test (the egress tests drive mock sender traits). Added a `with_base_url` constructor to each (production `new` targets the real host), and `egress_wire_e2e` drives the real clients against a loopback recorder asserting the exact URL/headers/body + success/error decoding. **Next: the LSN-replica CI job** (P1.5 second half), then P2 code-side (notification batch insert, Store trait split).
 
+**348.0** (`v348.0.0`) **post-flagship audit program — cluster 17: batch the notification fan-out mute check (P2).** The follow-up to Cluster 344: a `MessagePosted` fan-out still ran one `is_notification_muted` query per follower. New `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`, Postgres `= ANY`) resolves the muted subset in one query; the fan-out batch-fetches it, meters the suppressed, and writes only the unmuted (concurrently, per 344). Cuts `2 × followers` toward `followers + 1` round-trips. The multi-row batch INSERT (collapsing the writes too) is a logged further optimization. **Next: notification multi-row INSERT + LSN-replica CI job; Store trait split deferred (large, low external value).**
+
 **Integrators:** use [Integration.md](Integration.md) — not this roadmap.
 
 **Recently closed:** Cluster **234.0** — Program B (Arc F): structured-results foundation (`thread_results` table + model + store set/get, both backends; zero-blast-radius, no routes); **Program B part 18**, at **`v234.0.0`**

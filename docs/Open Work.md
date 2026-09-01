@@ -117,11 +117,15 @@ also moved to the atomic outbox path. **✅ DONE (Cluster 346):** projector link
 Slack/GitHub projectors shipped ingress + egress + a store link table but no route created a link
 (egress could never fire); added `POST`/`GET`/`DELETE` `/workspaces/:wid/{slack,github}-links`
 (channel/workspace derived from `authorize_thread`; workspace-scoped unlink). MCP link tools are an
-optional follow-up. **Remaining P2 (code-side):** Store 256-method god-trait
-split; README no visual media / no paste-ready invite; **notification batch insert** — the further
-optimization after Cluster 344: collapse the fan-out's `2N` round-trips into a batch mute-filter +
-a multi-row `INSERT … ON CONFLICT DO NOTHING` (new both-backend batch store methods; email
-side-effect keyed off the `RETURNING` set). **✅ DONE (Cluster 344):** notification-router
+optional follow-up. **✅ DONE (Cluster 348):** the notification fan-out **mute check** is now
+batched — `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`, Postgres `= ANY`)
+resolves the muted subset in one query; the fan-out writes only the unmuted (concurrently, per 344),
+cutting `2 × followers` toward `followers + 1` round-trips. **Remaining P2 (code-side):** the
+notification **multi-row batch INSERT** — the further optimization: collapse the writes too into one
+`INSERT … ON CONFLICT DO NOTHING RETURNING` (Postgres `UNNEST`, SQLite chunked dynamic `VALUES` under
+the 999-param limit; email side-effect keyed off the `RETURNING` set) → `~2` round-trips; Store
+256-method god-trait split (large, low external value — recommend deferring); README no visual media
+/ no paste-ready invite. **✅ DONE (Cluster 344):** notification-router
 O(followers) **serial** round-trips — the `MessagePosted` fan-out now runs per-recipient writes with
 bounded concurrency (`buffer_unordered`, cap 8), de-serializing the head-of-line block.
 **✅ DONE (Cluster 343):** `list_threads` unbounded

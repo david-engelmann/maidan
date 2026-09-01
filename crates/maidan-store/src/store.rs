@@ -170,6 +170,15 @@ pub trait Store: Send + Sync {
         kind: EventKind,
     ) -> Result<bool, StoreError>;
 
+    /// Which of `members` have muted `kind` (Cluster 348) — the batch form of
+    /// [`is_notification_muted`](Self::is_notification_muted), so a fan-out checks
+    /// mutes in one query instead of one per recipient.
+    async fn filter_muted_members(
+        &self,
+        kind: EventKind,
+        members: &[MemberId],
+    ) -> Result<Vec<MemberId>, StoreError>;
+
     /// Subscription / follows (Cluster 244, Arc H): a member follows a channel or
     /// thread to be notified of activity there even without a mention. `follow_*` is
     /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*` is a

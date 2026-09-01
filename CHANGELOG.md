@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [348.0.0] — 2026-09-01
+
+Post-gate hardening (Phase XXIV). **Cluster 17 of the post-flagship audit program** — batch the
+notification fan-out mute check (audit P2). No new gate tag.
+
+### Changed
+
+- **The `MessagePosted` follower fan-out checks mutes in one query, not one per recipient.** The
+  follow-up to Cluster 344 (which de-serialized the fan-out): it still ran an `is_notification_muted`
+  query per follower. New `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`,
+  Postgres `= ANY`) resolves the muted subset of a recipient set in one query; the fan-out
+  batch-fetches it, meters the suppressed, and writes only the unmuted (concurrently, per 344). Cuts
+  the fan-out from `2 × followers` round-trips toward `followers + 1`. Behaviour-preserved. A
+  multi-row batch INSERT (collapsing the writes too) is a logged further optimization.
+
+### Added
+
+- `Store::filter_muted_members`.
+
 ## [347.0.0] — 2026-09-01
 
 Post-gate hardening (Phase XXIV). **Cluster 16 of the post-flagship audit program** — projector

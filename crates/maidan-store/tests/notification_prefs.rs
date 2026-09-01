@@ -79,6 +79,49 @@ async fn run_suite(store: &dyn Store) {
         .expect("list");
     assert_eq!(prefs.len(), 1);
     assert!(!prefs[0].muted);
+
+    // Cluster 348: the batch mute-filter returns exactly the members who muted the
+    // kind, out of the given set. `member` has MessagePosted un-set (→ not muted);
+    // a second member mutes it; a third has no prefs.
+    let m2 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "m2".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m2");
+    let m3 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "m3".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m3");
+    store
+        .set_notification_pref(m2.id, EventKind::MessagePosted, true)
+        .await
+        .expect("mute m2 message_posted");
+    let muted = store
+        .filter_muted_members(EventKind::MessagePosted, &[member.id, m2.id, m3.id])
+        .await
+        .expect("filter_muted");
+    assert_eq!(muted, vec![m2.id], "only m2 muted MessagePosted");
+    // A different kind: none of them muted it.
+    assert!(store
+        .filter_muted_members(EventKind::ThreadReady, &[member.id, m2.id, m3.id])
+        .await
+        .expect("filter_muted other kind")
+        .is_empty());
+    // Empty input → empty (no query).
+    assert!(store
+        .filter_muted_members(EventKind::MessagePosted, &[])
+        .await
+        .expect("filter_muted empty")
+        .is_empty());
 }
 
 #[tokio::test]

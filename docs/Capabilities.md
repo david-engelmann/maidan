@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v348.0.0 — batch the notification fan-out mute check (audit P2)
+
+| Change | Where |
+|--------|-------|
+| The follow-up to Cluster 344: a `MessagePosted` fan-out still ran one `is_notification_muted` query per follower (`2 × followers` round-trips). New `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`, Postgres `= ANY`) resolves the muted subset in one query; the fan-out batch-fetches it, meters the suppressed, and writes only the unmuted (concurrently, per 344). `notify`'s insert/email/metric tail extracted into `write_notification` (shared with the mention path). Cuts the fan-out toward `followers + 1` round-trips. A multi-row batch INSERT is a logged further optimization. **Cluster 17 of the post-flagship audit program** | `crates/maidan-store/src/{store.rs,*/notification_prefs.rs,*/mod.rs}`, `crates/maidan-server/src/notification_router.rs` |
+
 ## v347.0.0 — projector egress wire-path tests (audit P1.5)
 
 | Change | Where |
