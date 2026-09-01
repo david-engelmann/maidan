@@ -404,3 +404,36 @@ jobs:
           docker compose --profile otlp logs otel-collector || true
           echo "=== maidan-otlp ==="
           docker compose --profile otlp logs maidan-otlp || true
+
+  replica-routing:
+    # LSN causal read-replica routing (Clusters 261-266, 271) against REAL
+    # streaming replication. `scripts/replica-harness.sh` stands up a primary +
+    # hot-standby pair on the host Docker daemon (its ports map to localhost, so
+    # the cargo test process reaches them directly — no dind). The three routing
+    # tests are `#[ignore]`d + env-gated, so they run only here with the two URLs
+    # set; unset elsewhere they skip. Closes the "LSN routing is CI-untested"
+    # gap (Cluster 349 / Integration Reality §3.2). Not a required check yet.
+    name: replica routing (LSN)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: bring up a primary + streaming standby
+        run: |
+          eval "$(scripts/replica-harness.sh up)"
+          {
+            echo "MAIDAN_PRIMARY_URL=$MAIDAN_PRIMARY_URL"
+            echo "MAIDAN_REPLICA_URL=$MAIDAN_REPLICA_URL"
+          } >> "$GITHUB_ENV"
+      - name: LSN read-your-write routing tests (real streaming replication)
+        run: |
+          cargo test -p maidan-store  --test replication    -- --ignored --nocapture
+          cargo test -p maidan-store  --test read_routing    -- --ignored --nocapture
+          cargo test -p maidan-search --test replica_routing -- --ignored --nocapture
+      - name: tear down the harness
+        if: always()
+        run: scripts/replica-harness.sh down
