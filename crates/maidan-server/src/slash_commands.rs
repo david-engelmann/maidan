@@ -465,3 +465,46 @@ pub fn merge_metadata(mut base: Value, extra: Value) -> Value {
 pub struct SlashInvocationSummary {
     pub ok: bool,
 }
+
+/// The server-side [`maidan_mcp::SlashDispatcher`] (Cluster 345): lets the MCP
+/// `post_message` handler (in `maidan-mcp`) run registered slash commands, which
+/// live here. Attached to the `McpServer` once at startup from `main.rs`, so the
+/// `AppState` it holds and the `Arc<McpServer>` inside it form a deliberate
+/// process-lifetime shared-state graph (never built in tests, which leave the
+/// dispatcher unset).
+pub struct ServerSlashDispatcher {
+    state: AppState,
+}
+
+impl ServerSlashDispatcher {
+    pub fn new(state: AppState) -> Self {
+        Self { state }
+    }
+}
+
+#[async_trait::async_trait]
+impl maidan_mcp::SlashDispatcher for ServerSlashDispatcher {
+    async fn dispatch(
+        &self,
+        auth: &AuthContext,
+        parsed: &ParsedSlashCommand,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        author_id: MemberId,
+        message_id: MessageId,
+    ) -> Value {
+        let result = dispatch_slash_command(
+            &self.state,
+            auth,
+            parsed,
+            workspace_id,
+            channel_id,
+            thread_id,
+            author_id,
+            message_id,
+        )
+        .await;
+        slash_metadata(parsed, &result)
+    }
+}

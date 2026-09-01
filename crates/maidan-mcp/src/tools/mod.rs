@@ -311,7 +311,7 @@ pub async fn dispatch(
         "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,
         "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
-        "post_message" => message::post_message(server, args).await,
+        "post_message" => message::post_message(server, auth, args).await,
         "edit_message" => message::edit_message(server, auth, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,

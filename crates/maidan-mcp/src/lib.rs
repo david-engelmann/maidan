@@ -20,6 +20,7 @@ pub mod reference;
 pub mod resource_updates;
 pub mod resources;
 pub mod server;
+pub mod slash_dispatch;
 pub mod stdio;
 pub mod streamable_session;
 pub mod tools;
@@ -30,4 +31,5 @@ pub use server::{
     is_supported_protocol_version, preferred_protocol_version, McpServer,
     SUPPORTED_PROTOCOL_VERSIONS,
 };
+pub use slash_dispatch::SlashDispatcher;
 pub use stdio::run_stdio;
