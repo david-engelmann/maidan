@@ -1072,5 +1072,73 @@ pub fn catalog() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "link_slack_channel",
+            "description": "Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply the Slack channel id and the member inbound Slack messages are attributed to. Requires workspace:write + access to the thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "slack_channel_id": {"type": "string"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "slack_channel_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_slack_channel_links",
+            "description": "List the Slack channel links in your workspace. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "unlink_slack_channel",
+            "description": "Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "slack_channel_id": {"type": "string"}
+                },
+                "required": ["slack_channel_id"]
+            }
+        }),
+        json!({
+            "name": "link_github_issue",
+            "description": "Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply repo (owner/name), issue_number, and the member inbound GitHub comments are attributed to. Requires workspace:write + access to the thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "repo": {"type": "string", "description": "owner/name"},
+                    "issue_number": {"type": "integer"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "repo", "issue_number", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_github_issue_links",
+            "description": "List the GitHub issue/PR links in your workspace. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "unlink_github_issue",
+            "description": "Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "owner/name"},
+                    "issue_number": {"type": "integer"}
+                },
+                "required": ["repo", "issue_number"]
+            }
+        }),
     ]
 }

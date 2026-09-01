@@ -1943,6 +1943,142 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn projector_link_tools_slack_and_github() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "p".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // A real workspace-scoped session: `list_*` reads `auth.workspace_id`, and
+        // link resolves the thread's own workspace/channel (public → member has access).
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Slack: link resolves ws/channel from the thread → list → unlink.
+        let link = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "link_slack_channel",
+                    &json!({ "thread_id": thread.id.0, "slack_channel_id": "C123", "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(link["slack_channel_id"], json!("C123"));
+        assert_eq!(link["channel_id"], json!(channel.id.0));
+        let list = unwrap_content(
+            server
+                .call_tool(&auth, "list_slack_channel_links", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        let un = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "unlink_slack_channel",
+                    &json!({ "slack_channel_id": "C123" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(un["unlinked"], json!(true));
+        assert!(unwrap_content(
+            server
+                .call_tool(&auth, "list_slack_channel_links", &json!({}))
+                .await
+                .unwrap()
+        )
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+        // GitHub: same round-trip.
+        let gh = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "link_github_issue",
+                    &json!({ "thread_id": thread.id.0, "repo": "o/r", "issue_number": 7, "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(gh["repo"], json!("o/r"));
+        assert_eq!(gh["issue_number"], json!(7));
+        let ghlist = unwrap_content(
+            server
+                .call_tool(&auth, "list_github_issue_links", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(ghlist.as_array().unwrap().len(), 1);
+        let ghun = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "unlink_github_issue",
+                    &json!({ "repo": "o/r", "issue_number": 7 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(ghun["unlinked"], json!(true));
+    }
+
+    #[tokio::test]
     async fn task_schedule_tools_create_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
