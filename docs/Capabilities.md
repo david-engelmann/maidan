@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v345.0.0 — MCP `post_message` slash-command parity (audit P2)
+
+| Change | Where |
+|--------|-------|
+| MCP `post_message` ignored registered slash commands while REST ran them. New dependency-inverted `maidan_mcp::SlashDispatcher` trait (implemented by `maidan-server`'s `ServerSlashDispatcher`, attached to the `McpServer` via `set_slash_dispatcher` in `main.rs` — server-binary only, a `OnceLock` field) lets the MCP post path run slash dispatch when a command is registered, merging the same `{slash_command, slash_response}` metadata as REST (Cluster-211 provisional-insert → dispatch → finalizing-edit shape). The MCP no-slash post was also upgraded to the atomic outbox path (`post_message_with_event` + `publish_stored`). Tests/embedders leave the dispatcher unset → skip slash (no `AppState`↔`McpServer` cycle). **Cluster 14 of the post-flagship audit program** | `crates/maidan-mcp/src/{slash_dispatch.rs,server.rs,tools/message.rs,tools/mod.rs,lib.rs}`, `crates/maidan-server/src/{slash_commands.rs,main.rs}` |
+
 ## v344.0.0 — bounded-concurrency notification fan-out (audit P2)
 
 | Change | Where |

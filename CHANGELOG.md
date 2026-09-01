@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [345.0.0] — 2026-09-01
+
+Post-gate hardening (Phase XXIV). **Cluster 14 of the post-flagship audit program** — MCP
+`post_message` slash-command parity (audit P2). No new gate tag.
+
+### Added
+
+- **MCP `post_message` now runs registered slash commands, like REST.** The audit found MCP posts
+  ignored slash commands (a `/deploy` body dispatched over REST but was stored literally over MCP).
+  A new dependency-inverted `maidan_mcp::SlashDispatcher` trait — implemented by `maidan-server` and
+  attached to the `McpServer` at startup (`set_slash_dispatcher`, server-binary only) — lets the MCP
+  post path run the server's slash dispatch when a command is registered, merging the same
+  `{slash_command, slash_response}` metadata as REST. The MCP no-slash post was also upgraded to the
+  atomic outbox path (`post_message_with_event` + `publish_stored`), matching REST.
+
 ## [344.0.0] — 2026-08-31
 
 Post-gate hardening (Phase XXIV). **Cluster 13 of the post-flagship audit program** —

@@ -493,6 +493,14 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("github projector ingress configured");
     }
 
+    // Cluster 345: give the MCP server the slash-command dispatcher so an MCP
+    // `post_message` runs registered slash commands like a REST post. Attached
+    // last (after every other `attach_*`) so the dispatcher's `AppState` clone is
+    // fully configured; server-binary only, so tests/embedders skip slash dispatch.
+    state.mcp.set_slash_dispatcher(std::sync::Arc::new(
+        maidan_server::slash_commands::ServerSlashDispatcher::new(state.clone()),
+    ));
+
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
     // delivery watermark), audit trail, and delivery tables past their age.

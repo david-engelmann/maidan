@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use maidan_router::{parse_at_handles, resolve_thread_context, route_mentions_in_message};
+use maidan_router::{
+    parse_at_handles, parse_slash_command, resolve_thread_context, route_mentions_in_message,
+};
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -156,8 +158,24 @@ struct PostMessageArgs {
     content: Option<Vec<ContentBlock>>,
 }
 
+/// Merge a slash-command's response metadata (`{slash_command, slash_response}`)
+/// into the posted message's metadata — the maidan-mcp copy of the REST
+/// `merge_metadata` (Cluster 345), so an MCP slash post carries the same shape.
+fn merge_slash_metadata(mut base: Value, extra: Value) -> Value {
+    if !base.is_object() {
+        base = json!({});
+    }
+    if let (Some(base_obj), Some(extra_obj)) = (base.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra_obj {
+            base_obj.insert(key.clone(), value.clone());
+        }
+    }
+    base
+}
+
 pub(super) async fn post_message(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
@@ -169,43 +187,86 @@ pub(super) async fn post_message(
         a.body.clone()
     };
     let thread_id = ThreadId(a.thread_id);
-    let msg = store
-        .post_message(NewMessage {
-            thread_id,
-            author_id: MemberId(a.author_id),
-            body,
-            metadata: if a.metadata.is_null() {
-                json!({})
-            } else {
-                a.metadata
-            },
-            content,
-        })
-        .await?;
     let ctx = resolve_thread_context(store.as_ref(), thread_id)
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if server.event_bus.is_some() {
-        let dm_id = store
-            .dm_conversation_for_thread(thread_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|d| d.id);
-        server
-            .publish_event(Event::MessagePosted {
-                occurred_at: Utc::now(),
-                workspace_id: ctx.workspace_id,
-                channel_id: ctx.channel_id,
+    let new_message = NewMessage {
+        thread_id,
+        author_id: MemberId(a.author_id),
+        body,
+        metadata: if a.metadata.is_null() {
+            json!({})
+        } else {
+            a.metadata.clone()
+        },
+        content,
+    };
+    let dm_id = store
+        .dm_conversation_for_thread(thread_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|d| d.id);
+
+    // Cluster 345: MCP posts now run registered slash commands, matching the REST
+    // post path. The dispatcher is server-injected (attached only in the server
+    // binary); without one — tests / embedders — this is the plain atomic post.
+    let slash = match (
+        parse_slash_command(&new_message.body),
+        server.slash_dispatcher(),
+    ) {
+        (Some(parsed), Some(dispatcher))
+            if store
+                .get_slash_command_by_name(ctx.workspace_id, &parsed.name)
+                .await
+                .is_ok() =>
+        {
+            Some((parsed, dispatcher))
+        }
+        _ => None,
+    };
+
+    let msg = if let Some((parsed, dispatcher)) = slash {
+        // Provisional insert → run the (possibly external) dispatch → finalizing
+        // edit + `MessagePosted` of the edited message in one tx (Cluster 211 shape).
+        let m = store.post_message(new_message).await?;
+        let slash_meta = dispatcher
+            .dispatch(
+                auth,
+                &parsed,
+                ctx.workspace_id,
+                ctx.channel_id,
                 thread_id,
-                dm_conversation_id: dm_id,
-                message: msg.clone(),
-            })
+                MemberId(a.author_id),
+                m.id,
+            )
             .await;
-    }
+        let metadata = merge_slash_metadata(m.metadata.clone(), slash_meta);
+        let (message, stored) = store
+            .edit_message_with_posted_event(
+                m.id,
+                MemberId(a.author_id),
+                EditMessage {
+                    body: m.body.clone(),
+                    metadata,
+                    content: m.content.clone(),
+                },
+                dm_id,
+            )
+            .await?;
+        server.publish_stored(&stored).await;
+        message
+    } else {
+        // Cluster 345: the no-slash path is now the atomic outbox post
+        // (`post_message_with_event` + `publish_stored`), matching REST — the event
+        // is durably appended in the same tx (was a separate, bus-gated append).
+        let (message, stored) = store.post_message_with_event(new_message, dm_id).await?;
+        server.publish_stored(&stored).await;
+        message
+    };
     // Cluster 334: record + publish MentionRecorded per @mention (was recorded but
     // never published, so agent @mentions never fired the notification router /
-    // wait_for_mention). Records unconditionally; the publish no-ops without a bus.
+    // wait_for_mention).
     publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
     Ok(content_json(&msg))
 }

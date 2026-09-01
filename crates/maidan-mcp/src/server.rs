@@ -91,6 +91,10 @@ pub struct McpServer {
     streamable_sessions: Arc<StreamableSessionRegistry>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
     resource_notifier: Option<Arc<dyn ResourceNotifier>>,
+    /// Server-injected slash-command dispatcher (Cluster 345). Set once at
+    /// startup via [`Self::set_slash_dispatcher`]; `None` (never set) means MCP
+    /// posts skip slash dispatch (the pre-345 behaviour, and how tests run).
+    slash_dispatcher: std::sync::OnceLock<Arc<dyn crate::slash_dispatch::SlashDispatcher>>,
 }
 
 impl McpServer {
@@ -114,7 +118,26 @@ impl McpServer {
             streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
             event_bus: None,
             resource_notifier: None,
+            slash_dispatcher: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Attach the server-side slash-command dispatcher (Cluster 345). Called once
+    /// at startup from the server binary (only `main.rs`), so the resulting
+    /// `AppState`↔`McpServer` reference is a process-lifetime shared-state graph,
+    /// never created in tests/embedders (which leave it unset → MCP posts skip
+    /// slash dispatch). Works through `&self` (the server is already `Arc`-shared).
+    pub fn set_slash_dispatcher(
+        &self,
+        dispatcher: Arc<dyn crate::slash_dispatch::SlashDispatcher>,
+    ) {
+        let _ = self.slash_dispatcher.set(dispatcher);
+    }
+
+    pub(crate) fn slash_dispatcher(
+        &self,
+    ) -> Option<&Arc<dyn crate::slash_dispatch::SlashDispatcher>> {
+        self.slash_dispatcher.get()
     }
 
     /// When set, message mutations append to the event log and publish for an in-process indexer.
@@ -2218,6 +2241,147 @@ mod tests {
         );
         let mentions = store.list_mentions_for_member(bob.id, 10).await.unwrap();
         assert_eq!(mentions.len(), 1, "bob was @mentioned");
+    }
+
+    #[tokio::test]
+    async fn mcp_post_runs_registered_slash_command_via_dispatcher() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_bus::InMemoryBus;
+
+        // Stands in for the server-side slash runtime (Cluster 345): returns the
+        // slash metadata the real `ServerSlashDispatcher` would produce.
+        struct MockSlash;
+        #[async_trait::async_trait]
+        impl crate::slash_dispatch::SlashDispatcher for MockSlash {
+            async fn dispatch(
+                &self,
+                _auth: &maidan_auth::AuthContext,
+                parsed: &maidan_router::ParsedSlashCommand,
+                _ws: WorkspaceId,
+                _ch: ChannelId,
+                _th: ThreadId,
+                _author: MemberId,
+                _msg: MessageId,
+            ) -> serde_json::Value {
+                json!({
+                    "slash_command": { "name": parsed.name, "args": parsed.args },
+                    "slash_response": { "ok": true, "handled": parsed.name }
+                })
+            }
+        }
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let alice = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "alice".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .create_slash_command(NewSlashCommand {
+                workspace_id: ws.id,
+                name: "echo".into(),
+                description: None,
+                handler_kind: SlashHandlerKind::Http,
+                handler_target: "https://example.test/hook".into(),
+                secret_ciphertext: String::new(),
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        server.set_slash_dispatcher(Arc::new(MockSlash));
+        let auth = AuthContext::from_session(
+            alice.id,
+            ws.id,
+            vec![
+                MESSAGE_POST.to_string(),
+                WORKSPACE_WRITE.to_string(),
+                WORKSPACE_READ.to_string(),
+            ],
+        );
+
+        // A `/echo` post runs the registered command → the message carries the
+        // merged slash metadata (the parity with REST).
+        server
+            .call_tool(
+                &auth,
+                "post_message",
+                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "/echo hi there" }),
+            )
+            .await
+            .unwrap();
+        let msgs = store.list_messages(thread.id, 10).await.unwrap();
+        let slashed = msgs.iter().find(|m| m.body == "/echo hi there").unwrap();
+        assert_eq!(slashed.metadata["slash_command"]["name"], "echo");
+        assert_eq!(slashed.metadata["slash_command"]["args"], "hi there");
+        assert_eq!(slashed.metadata["slash_response"]["ok"], true);
+
+        // A plain post is untouched (no slash metadata).
+        server
+            .call_tool(
+                &auth,
+                "post_message",
+                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "plain message" }),
+            )
+            .await
+            .unwrap();
+        let msgs = store.list_messages(thread.id, 10).await.unwrap();
+        let plain = msgs.iter().find(|m| m.body == "plain message").unwrap();
+        assert!(plain.metadata.get("slash_command").is_none());
+
+        // An unregistered slash name is a literal post (no dispatch).
+        server
+            .call_tool(
+                &auth,
+                "post_message",
+                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "/unknown x" }),
+            )
+            .await
+            .unwrap();
+        let msgs = store.list_messages(thread.id, 10).await.unwrap();
+        let unknown = msgs.iter().find(|m| m.body == "/unknown x").unwrap();
+        assert!(unknown.metadata.get("slash_command").is_none());
     }
 
     #[tokio::test]

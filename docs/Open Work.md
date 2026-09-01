@@ -104,9 +104,12 @@ verified in `a2a_grpc/mod.rs`); tool-count drift (`~78`→**85** in `Framework I
 `Capability-Map.md` dead GitHub link → `Capability%20Map.md`. **Also ✅ DONE (Cluster 342):** `Integration.md` now documents the flagship context surface
 (`as_of` time-travel, glossary-in-pack, context snapshot, lean edits, seed/re-ask, tool-transcript)
 in a new "Fidelity & context" subsection, with MCP-tool parity; folded a Cluster-341 miss
-(`Protocols.md` "78" → 85 tools). **Remaining P2 (code-side):** projector link-management REST/MCP
-surface (only ingress mounted); MCP `post_message` skips slash-dispatch (decide+document — needs a
-product call: implement parity vs document the intentional difference); Store 256-method god-trait
+(`Protocols.md` "78" → 85 tools). **✅ DONE (Cluster 345):** MCP `post_message` slash-dispatch —
+user chose **parity**: a dependency-inverted `maidan_mcp::SlashDispatcher` (implemented by
+`maidan-server`, attached to `McpServer` in `main.rs`) lets the MCP post path run registered slash
+commands + merge the `{slash_command, slash_response}` metadata like REST; the MCP no-slash post was
+also moved to the atomic outbox path. **Remaining P2 (code-side):** projector link-management REST/MCP
+surface (only ingress mounted); Store 256-method god-trait
 split; README no visual media / no paste-ready invite; **notification batch insert** — the further
 optimization after Cluster 344: collapse the fan-out's `2N` round-trips into a batch mute-filter +
 a multi-row `INSERT … ON CONFLICT DO NOTHING` (new both-backend batch store methods; email
