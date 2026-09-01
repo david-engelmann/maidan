@@ -63,6 +63,34 @@ pub async fn is_muted(
     Ok(row.map(|r| r.get::<bool, _>("muted")).unwrap_or(false))
 }
 
+/// Which of `members` have muted `kind` (Cluster 348) — the batch form of
+/// [`is_muted`], so a fan-out checks mutes in one query instead of N.
+pub async fn filter_muted(
+    pool: &SqlitePool,
+    kind: EventKind,
+    members: &[MemberId],
+) -> Result<Vec<MemberId>, StoreError> {
+    if members.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", members.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT member_id FROM maidan_notification_prefs \
+         WHERE kind = ? AND muted = 1 AND member_id IN ({placeholders})"
+    );
+    let mut q = sqlx::query(&sql).bind(kind.as_str());
+    for m in members {
+        q = q.bind(m.0);
+    }
+    let rows = q.fetch_all(pool).await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<uuid::Uuid, _>("member_id")))
+        .collect())
+}
+
 fn row_to_pref(row: &sqlx::sqlite::SqliteRow) -> Result<NotificationPref, StoreError> {
     let kind_str: String = row.get("kind");
     Ok(NotificationPref {

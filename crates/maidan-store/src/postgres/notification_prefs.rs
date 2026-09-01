@@ -57,6 +57,31 @@ pub async fn is_muted(
     Ok(row.map(|r| r.get::<bool, _>("muted")).unwrap_or(false))
 }
 
+/// Which of `members` have muted `kind` (Cluster 348) — the batch form of
+/// [`is_muted`], so a fan-out checks mutes in one query instead of N.
+pub async fn filter_muted(
+    pool: &PgPool,
+    kind: EventKind,
+    members: &[MemberId],
+) -> Result<Vec<MemberId>, StoreError> {
+    if members.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<uuid::Uuid> = members.iter().map(|m| m.0).collect();
+    let rows = sqlx::query(
+        "SELECT member_id FROM maidan_notification_prefs \
+         WHERE kind = $1 AND muted = true AND member_id = ANY($2)",
+    )
+    .bind(kind.as_str())
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<uuid::Uuid, _>("member_id")))
+        .collect())
+}
+
 fn row_to_pref(row: &sqlx::postgres::PgRow) -> Result<NotificationPref, StoreError> {
     let kind_str: String = row.get("kind");
     Ok(NotificationPref {

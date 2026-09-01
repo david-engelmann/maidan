@@ -229,21 +229,39 @@ async fn fan_out_message_posted(
     author_id: MemberId,
 ) -> Result<(), String> {
     use futures::stream::{self, StreamExt, TryStreamExt};
+    // Cluster 348: resolve mutes for the whole recipient set in ONE query (was one
+    // `is_notification_muted` per recipient), then write only the unmuted —
+    // concurrently (Cluster 344). Cuts the fan-out from `2 × followers` store
+    // round-trips toward `followers + 1`.
+    let recipients: Vec<MemberId> = recipients.into_iter().collect();
+    let muted: HashSet<MemberId> = state
+        .store
+        .filter_muted_members(EventKind::MessagePosted, &recipients)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect();
+    for _ in &muted {
+        crate::metrics::record_notification_suppressed("muted");
+    }
     // Map on the plain iterator (Iterator::map) — mapping on the stream would be
     // ambiguous between the module's tokio_stream::StreamExt and futures::StreamExt.
-    let writes = recipients.into_iter().map(|member_id| {
-        notify(
-            state,
-            workspace_id,
-            member_id,
-            EventKind::MessagePosted,
-            source_log_id,
-            Some(channel_id),
-            Some(thread_id),
-            Some(message_id),
-            Some(author_id),
-        )
-    });
+    let writes = recipients
+        .into_iter()
+        .filter(|m| !muted.contains(m))
+        .map(|member_id| {
+            write_notification(
+                state,
+                workspace_id,
+                member_id,
+                EventKind::MessagePosted,
+                source_log_id,
+                Some(channel_id),
+                Some(thread_id),
+                Some(message_id),
+                Some(author_id),
+            )
+        });
     stream::iter(writes)
         .buffer_unordered(NOTIFY_FANOUT_CONCURRENCY)
         .try_collect::<Vec<_>>()
@@ -275,6 +293,37 @@ async fn notify(
         crate::metrics::record_notification_suppressed("muted");
         return Ok(false);
     }
+    write_notification(
+        state,
+        workspace_id,
+        member_id,
+        kind,
+        source_log_id,
+        channel_id,
+        thread_id,
+        message_id,
+        actor_id,
+    )
+    .await
+}
+
+/// Write one per-recipient notification for an **already-unmuted** recipient
+/// (Cluster 348) — the tail of [`notify`], split out so the `MessagePosted`
+/// fan-out can batch the mute check once and then write concurrently. Returns
+/// whether a row was written (a dedup collision returns `false`); on a new row,
+/// meters it and best-effort-spawns the off-platform email (Cluster 249).
+#[allow(clippy::too_many_arguments)]
+async fn write_notification(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    kind: EventKind,
+    source_log_id: i64,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    message_id: Option<MessageId>,
+    actor_id: Option<MemberId>,
+) -> Result<bool, String> {
     let created = state
         .store
         .create_notification_if_absent(NewNotification {

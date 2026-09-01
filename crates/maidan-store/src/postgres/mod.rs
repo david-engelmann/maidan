@@ -475,6 +475,13 @@ impl Store for PostgresStore {
     ) -> Result<bool, StoreError> {
         notification_prefs::is_muted(&self.pool, member_id, kind).await
     }
+    async fn filter_muted_members(
+        &self,
+        kind: EventKind,
+        members: &[MemberId],
+    ) -> Result<Vec<MemberId>, StoreError> {
+        notification_prefs::filter_muted(&self.pool, kind, members).await
+    }
 
     async fn follow_channel(
         &self,
