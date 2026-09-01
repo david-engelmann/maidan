@@ -3,6 +3,12 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v346.0.0 — projector link-management REST surface (audit P2)
+
+| Change | Where |
+|--------|-------|
+| The Slack/GitHub projectors shipped ingress + egress + a store link table, but no route ever *created* a link — so the link table could never be populated and the projector egress could never fire (a launch feature that couldn't be turned on). New REST surface: `POST`/`GET /workspaces/:wid/slack-links` + `DELETE /…/slack-links/:slack_channel_id`; `POST`/`GET /workspaces/:wid/github-links` + `DELETE /…/github-links?repo=&issue_number=`. The link's `channel_id`/`workspace_id` are derived from `authorize_thread` (can't disagree with the thread); the caller gives only the external id, thread, and attribution member. `POST`/`DELETE`=`workspace:write`, `GET`=`workspace:read`. Full new-route preflight; `projector_links_e2e` proves the created link is what the egress reverse-lookup reads. **Cluster 15 of the post-flagship audit program** | `crates/maidan-server/src/{slack.rs,github.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
+
 ## v345.0.0 — MCP `post_message` slash-command parity (audit P2)
 
 | Change | Where |

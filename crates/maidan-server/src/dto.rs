@@ -508,6 +508,36 @@ pub struct WhoAmI {
     pub is_bearer: bool,
 }
 
+/// Link a Slack channel to a Maidan thread (Cluster 346). The link's
+/// `channel_id`/`workspace_id` are derived from the thread, so only the Slack
+/// channel id, thread, and the member relayed messages are attributed to are given.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LinkSlackChannel {
+    pub slack_channel_id: String,
+    pub thread_id: uuid::Uuid,
+    pub member_id: uuid::Uuid,
+}
+
+/// Link a GitHub issue/PR to a Maidan thread (Cluster 346). `repo` is the
+/// `owner/name` full name; `channel_id`/`workspace_id` are derived from the thread.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LinkGithubIssue {
+    pub repo: String,
+    pub issue_number: i64,
+    pub thread_id: uuid::Uuid,
+    pub member_id: uuid::Uuid,
+}
+
+/// Query for `DELETE /workspaces/:wid/github-links` (Cluster 346) — `repo` carries
+/// a slash (`owner/name`), so the target is a query pair rather than a path. Both
+/// fields are required by the handler; they are `Option` only so a request that
+/// omits them fails the capability check (403) rather than query extraction (400).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct UnlinkGithubQuery {
+    pub repo: Option<String>,
+    pub issue_number: Option<i64>,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,

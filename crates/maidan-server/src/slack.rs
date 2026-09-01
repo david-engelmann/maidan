@@ -11,14 +11,19 @@
 //! then returns `404`), so an unconfigured deployment is unchanged.
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
+    Extension, Json,
 };
 use hmac::{Hmac, Mac};
+use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
+use maidan_types::{MemberId, NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId};
 use sha2::Sha256;
 
+use crate::dto::LinkSlackChannel;
+use crate::error::ApiJson;
+use crate::routes::{cap, ensure_workspace, ApiResult};
 use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -274,6 +279,83 @@ pub async fn route_message_to_slack(
             tracing::warn!(error = %err, "slack egress: post failed");
             crate::metrics::record_slack_egress("failed");
         }
+    }
+}
+
+/// `POST /workspaces/:wid/slack-links` (Cluster 346) — link a Slack channel to a
+/// Maidan thread so the projector can bridge messages both ways. The link's
+/// `channel_id`/`workspace_id` come from resolving the thread (so they can't
+/// disagree with it); the caller supplies only the Slack channel id, thread, and
+/// the member that relayed Slack messages are attributed to. `workspace:write` +
+/// access to the thread. Upserts (re-linking a Slack channel replaces its link).
+pub async fn link_slack_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<LinkSlackChannel>,
+) -> ApiResult<(StatusCode, Json<SlackChannelLink>)> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    let scope =
+        maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(body.thread_id))
+            .await?;
+    if scope.workspace_id != WorkspaceId(wid) {
+        return Err(crate::error::ApiError::BadRequest(
+            "thread is not in this workspace".into(),
+        ));
+    }
+    let link = state
+        .store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: body.slack_channel_id,
+            workspace_id: scope.workspace_id,
+            channel_id: scope.channel_id,
+            thread_id: ThreadId(body.thread_id),
+            member_id: MemberId(body.member_id),
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(link)))
+}
+
+/// `GET /workspaces/:wid/slack-links` (Cluster 346) — the workspace's Slack
+/// channel links. `workspace:read`.
+pub async fn list_slack_channel_links(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<SlackChannelLink>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    Ok(Json(
+        state
+            .store
+            .list_slack_channel_links(WorkspaceId(wid))
+            .await?,
+    ))
+}
+
+/// `DELETE /workspaces/:wid/slack-links/:slack_channel_id` (Cluster 346) — remove
+/// a Slack channel link. `workspace:write`. `404` if the link doesn't exist.
+pub async fn unlink_slack_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((wid, slack_channel_id)): Path<(uuid::Uuid, String)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    // Scope the delete to this workspace: only unlink if the link belongs to it.
+    match state
+        .store
+        .get_slack_channel_link(&slack_channel_id)
+        .await?
+    {
+        Some(link) if link.workspace_id == WorkspaceId(wid) => {}
+        _ => return Err(crate::error::ApiError::NotFound),
+    }
+    if state.store.unlink_slack_channel(&slack_channel_id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(crate::error::ApiError::NotFound)
     }
 }
 

@@ -108,8 +108,11 @@ in a new "Fidelity & context" subsection, with MCP-tool parity; folded a Cluster
 user chose **parity**: a dependency-inverted `maidan_mcp::SlashDispatcher` (implemented by
 `maidan-server`, attached to `McpServer` in `main.rs`) lets the MCP post path run registered slash
 commands + merge the `{slash_command, slash_response}` metadata like REST; the MCP no-slash post was
-also moved to the atomic outbox path. **Remaining P2 (code-side):** projector link-management REST/MCP
-surface (only ingress mounted); Store 256-method god-trait
+also moved to the atomic outbox path. **✅ DONE (Cluster 346):** projector link-management — the
+Slack/GitHub projectors shipped ingress + egress + a store link table but no route created a link
+(egress could never fire); added `POST`/`GET`/`DELETE` `/workspaces/:wid/{slack,github}-links`
+(channel/workspace derived from `authorize_thread`; workspace-scoped unlink). MCP link tools are an
+optional follow-up. **Remaining P2 (code-side):** Store 256-method god-trait
 split; README no visual media / no paste-ready invite; **notification batch insert** — the further
 optimization after Cluster 344: collapse the fan-out's `2N` round-trips into a batch mute-filter +
 a multi-row `INSERT … ON CONFLICT DO NOTHING` (new both-backend batch store methods; email

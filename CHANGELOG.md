@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [346.0.0] — 2026-09-01
+
+Post-gate hardening (Phase XXIV). **Cluster 15 of the post-flagship audit program** — projector
+link-management REST surface (audit P2). No new gate tag.
+
+### Added
+
+- **The Slack/GitHub projectors are now operable.** They shipped ingress + egress + a store link
+  table, but no route ever created a link, so the link table could never be populated and the
+  egress could never fire. New REST surface: `POST`/`GET /workspaces/:wid/slack-links` +
+  `DELETE /…/slack-links/:slack_channel_id`, and `POST`/`GET /workspaces/:wid/github-links` +
+  `DELETE /…/github-links?repo=&issue_number=`. The link's `channel_id`/`workspace_id` are derived
+  from resolving the thread (`authorize_thread`), so they can't disagree with it; the caller
+  supplies only the external id, the thread, and the attribution member. `POST`/`DELETE` =
+  `workspace:write`, `GET` = `workspace:read`.
+
 ## [345.0.0] — 2026-09-01
 
 Post-gate hardening (Phase XXIV). **Cluster 14 of the post-flagship audit program** — MCP

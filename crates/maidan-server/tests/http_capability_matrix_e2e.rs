@@ -186,6 +186,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
             .replace("{term}", "testterm")
+            .replace("{slack_channel_id}", "CTEST")
             .replace("{did}", delivery_id);
     }
     if template.starts_with("/ui/api/workspaces/") {
@@ -447,6 +448,21 @@ fn apply_route_defaults(
             "name": "cap",
             "handler_kind": "http",
             "handler_target": "https://example.com/slash"
+        }));
+    }
+    if path.contains("/slack-links") && method == "POST" {
+        return b.json(&json!({
+            "slack_channel_id": "CTEST",
+            "thread_id": "00000000-0000-0000-0000-000000000000",
+            "member_id": "00000000-0000-0000-0000-000000000000"
+        }));
+    }
+    if path.contains("/github-links") && method == "POST" {
+        return b.json(&json!({
+            "repo": "owner/name",
+            "issue_number": 1,
+            "thread_id": "00000000-0000-0000-0000-000000000000",
+            "member_id": "00000000-0000-0000-0000-000000000000"
         }));
     }
     if path.contains("/fsm-hooks") && method == "POST" {
