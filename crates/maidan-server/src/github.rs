@@ -170,13 +170,23 @@ pub trait GithubSender: Send + Sync {
 /// `POST /repos/{repo}/issues/{n}/comments`.
 pub struct GithubApiClient {
     token: String,
+    /// API base, `https://api.github.com` in production; overridable so the wire
+    /// path can be tested against a loopback server (Cluster 347).
+    base_url: String,
     http: reqwest::Client,
 }
 
 impl GithubApiClient {
     pub fn new(token: String) -> Self {
+        Self::with_base_url(token, "https://api.github.com".to_string())
+    }
+
+    /// Build against a custom API base (test loopback server). `base_url` has no
+    /// trailing slash; `/repos/{repo}/issues/{n}/comments` is appended.
+    pub fn with_base_url(token: String, base_url: String) -> Self {
         Self {
             token,
+            base_url,
             http: reqwest::Client::new(),
         }
     }
@@ -190,7 +200,10 @@ impl GithubSender for GithubApiClient {
         issue_number: i64,
         text: &str,
     ) -> Result<(), GithubError> {
-        let url = format!("https://api.github.com/repos/{repo}/issues/{issue_number}/comments");
+        let url = format!(
+            "{}/repos/{repo}/issues/{issue_number}/comments",
+            self.base_url
+        );
         let resp = self
             .http
             .post(&url)

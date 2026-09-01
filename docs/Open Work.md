@@ -92,10 +92,15 @@ cluster cadence: retro + `vX.0.0` tag each).
     get/edits/mentions keep `ensure_message_access`). Message-scoped fetches drop ~5→3.
     **Audit P1.4 is complete** (338 + 339 + 340). Residual: the channel-keyed
     `resolve_channel_context` sites (create/list threads) — 2 low-traffic handlers, left as-is.
-- **P1.5 Egress wire-path tests + LSN replica CI (already tracked §3.1/§3.2 — now unblocked).** Add a
-  base-URL override to `SlackWebClient`/`GithubApiClient` + real-client-against-loopback tests (SMTP vs
-  Mailpit); a CI job running `scripts/replica-harness.sh` that un-ignores the LSN routing tests. The two
-  genuine test-confidence gaps on shipped launch-narrative features. **Effort M each.**
+- **P1.5 Egress wire-path tests + LSN replica CI (§3.1/§3.2).**
+  - **Egress wire tests — ✅ DONE (Cluster 347):** `SlackWebClient`/`GithubApiClient` gained a
+    `with_base_url` constructor + `egress_wire_e2e` drives the real clients against a loopback recorder
+    (exact URL/headers/body + success/error decoding). Optional follow-up: an SMTP wire test against an
+    in-process catcher (the mail path already has a recording-mock e2e + connect-free config validation).
+  - **LSN-replica CI job — TODO:** a CI job running `scripts/replica-harness.sh` (two-Postgres streaming
+    replication) that un-ignores the `#[ignore]`d LSN routing tests. Deferred as its own cluster — it
+    needs a heavy two-Postgres Docker setup in CI; the routing is already validated locally against the
+    harness. **Effort M.**
 
 **P2 — polish (do after P0/P1).** **✅ DONE (Cluster 341):** A2A gRPC doc contradiction (reconciled
 `Architecture.md` + `Protocols.md` to `Claims.md`'s honest "partial" — gRPC is get/cancel/list only,

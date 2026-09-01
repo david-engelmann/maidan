@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [347.0.0] — 2026-09-01
+
+Post-gate hardening (Phase XXIV). **Cluster 16 of the post-flagship audit program** — projector
+egress wire-path tests (audit P1.5). No new gate tag.
+
+### Added
+
+- **Wire-path tests for the projector egress HTTP clients.** `SlackWebClient` / `GithubApiClient`
+  (the production clients that build the actual outbound request) had no test — the projector
+  egress tests use mock sender traits. Each gained a `with_base_url` constructor (production `new`
+  targets the real host), and `egress_wire_e2e` drives the real clients against a loopback server:
+  it asserts the exact URL, headers (bearer + GitHub's required `User-Agent`), JSON body, and
+  success/error decoding (Slack's HTTP-200-`{"ok":false}` convention; GitHub's non-2xx →
+  `GithubError::Api`). Production behaviour unchanged.
+
 ## [346.0.0] — 2026-09-01
 
 Post-gate hardening (Phase XXIV). **Cluster 15 of the post-flagship audit program** — projector
