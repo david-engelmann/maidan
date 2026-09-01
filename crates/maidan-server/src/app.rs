@@ -380,6 +380,20 @@ pub fn router(state: AppState) -> Router {
             delete(slash_commands::revoke_slash_command),
         )
         .route(
+            "/workspaces/:wid/slack-links",
+            post(slack::link_slack_channel).get(slack::list_slack_channel_links),
+        )
+        .route(
+            "/workspaces/:wid/slack-links/:slack_channel_id",
+            delete(slack::unlink_slack_channel),
+        )
+        .route(
+            "/workspaces/:wid/github-links",
+            post(github::link_github_issue)
+                .get(github::list_github_issue_links)
+                .delete(github::unlink_github_issue),
+        )
+        .route(
             "/workspaces/:wid/fsm-hooks",
             post(fsm_hooks::create_fsm_hook).get(fsm_hooks::list_fsm_hooks),
         )

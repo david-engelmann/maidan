@@ -13,12 +13,17 @@
 //! [`crate::webhooks::verify_signature`].
 
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
+    Extension, Json,
 };
+use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
+use maidan_types::{GithubIssueLink, MemberId, NewGithubIssueLink, ThreadId, WorkspaceId};
 
+use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
+use crate::error::ApiJson;
+use crate::routes::{cap, ensure_workspace, ApiResult};
 use crate::state::AppState;
 
 /// GitHub App / webhook credentials. `webhook_secret` verifies inbound deliveries;
@@ -237,6 +242,89 @@ pub async fn route_message_to_github(
             tracing::warn!(error = %err, "github egress: comment post failed");
             crate::metrics::record_github_egress("failed");
         }
+    }
+}
+
+/// `POST /workspaces/:wid/github-links` (Cluster 346) — link a GitHub issue/PR to a
+/// Maidan thread so the projector can bridge comments both ways. The link's
+/// `channel_id`/`workspace_id` are derived from resolving the thread; the caller
+/// supplies only `repo` (`owner/name`), `issue_number`, thread, and the attribution
+/// member. `workspace:write` + access to the thread. Upserts.
+pub async fn link_github_issue(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<LinkGithubIssue>,
+) -> ApiResult<(StatusCode, Json<GithubIssueLink>)> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    let scope =
+        maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(body.thread_id))
+            .await?;
+    if scope.workspace_id != WorkspaceId(wid) {
+        return Err(crate::error::ApiError::BadRequest(
+            "thread is not in this workspace".into(),
+        ));
+    }
+    let link = state
+        .store
+        .link_github_issue(NewGithubIssueLink {
+            repo: body.repo,
+            issue_number: body.issue_number,
+            workspace_id: scope.workspace_id,
+            channel_id: scope.channel_id,
+            thread_id: ThreadId(body.thread_id),
+            member_id: MemberId(body.member_id),
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(link)))
+}
+
+/// `GET /workspaces/:wid/github-links` (Cluster 346) — the workspace's GitHub
+/// issue/PR links. `workspace:read`.
+pub async fn list_github_issue_links(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<GithubIssueLink>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    Ok(Json(
+        state
+            .store
+            .list_github_issue_links(WorkspaceId(wid))
+            .await?,
+    ))
+}
+
+/// `DELETE /workspaces/:wid/github-links?repo=…&issue_number=…` (Cluster 346) —
+/// remove a GitHub link (`repo` carries a slash, so it's a query pair, not a path).
+/// `workspace:write`. `404` if the link doesn't exist in this workspace.
+pub async fn unlink_github_issue(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(wid): Path<uuid::Uuid>,
+    Query(q): Query<UnlinkGithubQuery>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, WorkspaceId(wid))?;
+    let (Some(repo), Some(issue_number)) = (q.repo, q.issue_number) else {
+        return Err(crate::error::ApiError::BadRequest(
+            "repo and issue_number query params are required".into(),
+        ));
+    };
+    match state
+        .store
+        .get_github_issue_link(&repo, issue_number)
+        .await?
+    {
+        Some(link) if link.workspace_id == WorkspaceId(wid) => {}
+        _ => return Err(crate::error::ApiError::NotFound),
+    }
+    if state.store.unlink_github_issue(&repo, issue_number).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(crate::error::ApiError::NotFound)
     }
 }
 

@@ -439,3 +439,68 @@ pub fn list_dead_mail() {}
     )
 )]
 pub fn requeue_dead_mail() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/slack-links",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = LinkSlackChannel,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = SlackChannelLink))
+)]
+pub fn link_slack_channel() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/slack-links",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<SlackChannelLink>))
+)]
+pub fn list_slack_channel_links() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/slack-links/{slack_channel_id}",
+    tag = "integrations",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("slack_channel_id" = String, Path, description = "Slack channel id")
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Unlinked"), (status = 404, description = "No such link"))
+)]
+pub fn unlink_slack_channel() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/github-links",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = LinkGithubIssue,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = GithubIssueLink))
+)]
+pub fn link_github_issue() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/github-links",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<GithubIssueLink>))
+)]
+pub fn list_github_issue_links() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/github-links",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id"), UnlinkGithubQuery),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Unlinked"), (status = 404, description = "No such link"))
+)]
+pub fn unlink_github_issue() {}
