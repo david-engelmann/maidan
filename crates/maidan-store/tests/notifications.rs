@@ -185,10 +185,109 @@ async fn run_suite(store: &dyn Store) {
         .is_empty());
 }
 
+/// Batch fan-out insert (Cluster 349): `create_notifications_batch` inserts a
+/// distinct recipient set in one round trip, is idempotent on `(member_id,
+/// source_log_id)`, returns only the rows actually inserted, and short-circuits
+/// on empty input.
+async fn run_batch_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "notif-batch".into(),
+        })
+        .await
+        .expect("ws");
+    let new_member = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let m1 = store.create_member(new_member("m1")).await.expect("m1");
+    let m2 = store.create_member(new_member("m2")).await.expect("m2");
+    let m3 = store.create_member(new_member("m3")).await.expect("m3");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+        })
+        .await
+        .expect("thread");
+    let row = |member_id, log: i64| NewNotification {
+        workspace_id: ws.id,
+        member_id,
+        kind: EventKind::MessagePosted,
+        source_log_id: log,
+        channel_id: Some(channel.id),
+        thread_id: Some(thread.id),
+        message_id: None,
+        actor_id: None,
+    };
+
+    // Empty input short-circuits (no query, empty result).
+    assert!(store
+        .create_notifications_batch(&[])
+        .await
+        .expect("empty batch")
+        .is_empty());
+
+    // One event fanned to three distinct recipients → all three inserted.
+    let created = store
+        .create_notifications_batch(&[row(m1.id, 100), row(m2.id, 100), row(m3.id, 100)])
+        .await
+        .expect("batch insert");
+    assert_eq!(created.len(), 3, "all three recipients inserted");
+    let got: std::collections::HashSet<_> = created.iter().map(|n| n.member_id).collect();
+    assert!(got.contains(&m1.id) && got.contains(&m2.id) && got.contains(&m3.id));
+    assert!(created.iter().all(|n| n.kind == EventKind::MessagePosted
+        && n.source_log_id == 100
+        && n.read_at.is_none()));
+
+    // Re-inserting the same (member, source_log_id) pairs dedups → none returned.
+    let again = store
+        .create_notifications_batch(&[row(m1.id, 100), row(m2.id, 100), row(m3.id, 100)])
+        .await
+        .expect("batch dedup");
+    assert!(
+        again.is_empty(),
+        "ON CONFLICT DO NOTHING dedups the whole batch"
+    );
+
+    // A mixed batch: a new event (101) for m1+m2, plus m3's already-present (100).
+    let mixed = store
+        .create_notifications_batch(&[row(m1.id, 101), row(m2.id, 101), row(m3.id, 100)])
+        .await
+        .expect("mixed batch");
+    let mixed_keys: std::collections::HashSet<_> = mixed
+        .iter()
+        .map(|n| (n.member_id, n.source_log_id))
+        .collect();
+    assert_eq!(
+        mixed.len(),
+        2,
+        "only the two new (member,event) pairs insert"
+    );
+    assert!(mixed_keys.contains(&(m1.id, 101)) && mixed_keys.contains(&(m2.id, 101)));
+
+    // Ledger reflects the inserts: m1 has two events, m3 has one.
+    assert_eq!(store.unread_notification_count(m1.id).await.expect("m1"), 2);
+    assert_eq!(store.unread_notification_count(m3.id).await.expect("m3"), 1);
+}
+
 #[tokio::test]
 async fn notifications_create_list_mark_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_batch_suite(&store).await;
 }
 
 #[tokio::test]
@@ -223,4 +322,5 @@ async fn notifications_create_list_mark_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
+    run_batch_suite(&store).await;
 }

@@ -151,6 +151,18 @@ pub trait NotificationStore: Send + Sync {
         &self,
         new: NewNotification,
     ) -> Result<Option<Notification>, StoreError>;
+    /// Insert many per-recipient notifications in one round trip (Cluster 349) —
+    /// the batch form of [`create_notification_if_absent`](Self::create_notification_if_absent)
+    /// for the `MessagePosted` fan-out. Each row is idempotent on `(member_id,
+    /// source_log_id)` (`ON CONFLICT DO NOTHING`); the returned vec is the subset
+    /// that was actually inserted (deduped rows are omitted), so the caller meters
+    /// + emails exactly the new notifications. Empty input returns empty with no
+    /// query. Postgres inserts via `UNNEST` arrays; SQLite chunks a multi-row
+    /// `VALUES` under the 999-parameter limit.
+    async fn create_notifications_batch(
+        &self,
+        rows: &[NewNotification],
+    ) -> Result<Vec<Notification>, StoreError>;
     async fn list_notifications(
         &self,
         member_id: MemberId,

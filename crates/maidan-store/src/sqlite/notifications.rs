@@ -67,6 +67,54 @@ pub async fn create_if_absent(
     row.as_ref().map(row_to_notification).transpose()
 }
 
+/// Insert many notifications in one round trip (Cluster 349) — the batch form of
+/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is
+/// `ON CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
+/// inserted rows (deduped rows omitted). The caller passes a set of distinct
+/// recipients (so no intra-batch key collision). Chunked under SQLite's
+/// 999-parameter limit (10 bound params per row → 90 rows/chunk).
+pub async fn create_batch(
+    pool: &SqlitePool,
+    rows: &[NewNotification],
+) -> Result<Vec<Notification>, StoreError> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    const COLS: &str = "id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id, \
+                        message_id, actor_id, created_at, read_at";
+    const CHUNK: usize = 90;
+    let now = Utc::now().to_rfc3339();
+    let mut out = Vec::with_capacity(rows.len());
+    for chunk in rows.chunks(CHUNK) {
+        let values = vec!["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)"; chunk.len()].join(", ");
+        let sql = format!(
+            "INSERT INTO maidan_notifications ({COLS})
+             VALUES {values}
+             ON CONFLICT (member_id, source_log_id) DO NOTHING
+             RETURNING {COLS}"
+        );
+        let mut q = sqlx::query(&sql);
+        for new in chunk {
+            q = q
+                .bind(NotificationId::new().0)
+                .bind(new.workspace_id.0)
+                .bind(new.member_id.0)
+                .bind(new.kind.as_str())
+                .bind(new.source_log_id)
+                .bind(new.channel_id.map(|c| c.0))
+                .bind(new.thread_id.map(|t| t.0))
+                .bind(new.message_id.map(|m| m.0))
+                .bind(new.actor_id.map(|a| a.0))
+                .bind(now.clone());
+        }
+        let inserted = q.fetch_all(pool).await?;
+        for r in &inserted {
+            out.push(row_to_notification(r)?);
+        }
+    }
+    Ok(out)
+}
+
 /// A member's notifications, newest first, optionally unread-only (Cluster 237).
 pub async fn list_for_member(
     pool: &SqlitePool,

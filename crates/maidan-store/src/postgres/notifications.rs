@@ -63,6 +63,52 @@ pub async fn create_if_absent(
     row.as_ref().map(row_to_notification).transpose()
 }
 
+/// Insert many notifications in one round trip (Cluster 349) — the batch form of
+/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is
+/// `ON CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
+/// inserted rows (deduped rows omitted). The caller passes a set of distinct
+/// recipients (so no intra-batch key collision). Inserts via `UNNEST` arrays, so
+/// row count never affects the bound-parameter count (9 array params).
+pub async fn create_batch(
+    pool: &PgPool,
+    rows: &[NewNotification],
+) -> Result<Vec<Notification>, StoreError> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<Uuid> = rows.iter().map(|_| NotificationId::new().0).collect();
+    let workspace_ids: Vec<Uuid> = rows.iter().map(|r| r.workspace_id.0).collect();
+    let member_ids: Vec<Uuid> = rows.iter().map(|r| r.member_id.0).collect();
+    let kinds: Vec<String> = rows.iter().map(|r| r.kind.as_str().to_string()).collect();
+    let source_log_ids: Vec<i64> = rows.iter().map(|r| r.source_log_id).collect();
+    let channel_ids: Vec<Option<Uuid>> = rows.iter().map(|r| r.channel_id.map(|c| c.0)).collect();
+    let thread_ids: Vec<Option<Uuid>> = rows.iter().map(|r| r.thread_id.map(|t| t.0)).collect();
+    let message_ids: Vec<Option<Uuid>> = rows.iter().map(|r| r.message_id.map(|m| m.0)).collect();
+    let actor_ids: Vec<Option<Uuid>> = rows.iter().map(|r| r.actor_id.map(|a| a.0)).collect();
+    let inserted = sqlx::query(
+        "INSERT INTO maidan_notifications
+            (id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+             message_id, actor_id)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::bigint[],
+                              $6::uuid[], $7::uuid[], $8::uuid[], $9::uuid[])
+         ON CONFLICT (member_id, source_log_id) DO NOTHING
+         RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
+                   message_id, actor_id, created_at, read_at",
+    )
+    .bind(&ids)
+    .bind(&workspace_ids)
+    .bind(&member_ids)
+    .bind(&kinds)
+    .bind(&source_log_ids)
+    .bind(&channel_ids)
+    .bind(&thread_ids)
+    .bind(&message_ids)
+    .bind(&actor_ids)
+    .fetch_all(pool)
+    .await?;
+    inserted.iter().map(row_to_notification).collect()
+}
+
 pub async fn list_for_member(
     pool: &PgPool,
     member_id: MemberId,
