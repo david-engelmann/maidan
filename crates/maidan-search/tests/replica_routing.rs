@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use maidan_search::{PostgresSearch, Search, SearchFilters};
 use maidan_store::postgres::{replication::replica_replay_lsn, with_read_consistency};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::postgres::PgPoolOptions;
 

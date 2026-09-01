@@ -1,7 +1,7 @@
 //! Notification preferences (Cluster 241, Arc H): set (upsert) a mute flag per
 //! event kind, list, and the router's `is_muted` query. Both backends. No wiring yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{EventKind, MemberKind, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

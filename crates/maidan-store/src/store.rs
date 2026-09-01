@@ -11,14 +11,17 @@ use crate::error::StoreError;
 /// Cluster A. Richer queries (search, threading rollups) arrive in later
 /// clusters via dedicated traits and crates.
 #[async_trait]
-pub trait Store: Send + Sync {
+pub trait MetaStore: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
 
     /// The primary's current WAL write position — the read-replica causality token
     /// stamped on a write (Cluster 263). `Some` on Postgres (`pg_current_wal_lsn()`),
     /// `None` on SQLite (no streaming replication, so no token).
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
+}
 
+#[async_trait]
+pub trait WorkspaceStore: Send + Sync {
     /// Insert a whole workspace content graph (Cluster 269) — members, channels,
     /// threads, messages, edits, pins, references — with explicit ids, state, and
     /// timestamps preserved, in one transaction. The inverse of the Cluster-187
@@ -38,7 +41,10 @@ pub trait Store: Send + Sync {
     /// Live per-workspace usage counts (members/channels/threads/messages,
     /// excluding tombstoned rows) for metering (Cluster 188).
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
+}
 
+#[async_trait]
+pub trait MemberStore: Send + Sync {
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError>;
     /// Create a member and append its `MemberJoined` event atomically (Cluster
     /// 213).
@@ -53,7 +59,10 @@ pub trait Store: Send + Sync {
         handle: &str,
     ) -> Result<Member, StoreError>;
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
+}
 
+#[async_trait]
+pub trait SkillStore: Send + Sync {
     /// Capability registry (Cluster 230): the free-form skill tags a member
     /// declares. `add` is idempotent and rejects an empty skill; `remove` returns
     /// `true` when a row was deleted; `list` is ordered by skill. Skill routing
@@ -84,7 +93,10 @@ pub trait Store: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadRequiredSkill>, StoreError>;
+}
 
+#[async_trait]
+pub trait ThreadResultStore: Send + Sync {
     /// A task's structured result (Cluster 234): `set` upserts (a re-set
     /// overwrites), `get` returns `None` until one is produced. No worker/routes
     /// yet — a zero-blast-radius foundation.
@@ -98,7 +110,10 @@ pub trait Store: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
+}
 
+#[async_trait]
+pub trait GlossaryStore: Send + Sync {
     /// A workspace's shared glossary (Cluster 321, fidelity arc): `set` upserts a
     /// canonical `term -> definition` (+ aliases) keyed on `(workspace_id, term)`,
     /// `get` fetches one, `list` returns all (ordered by term), `delete` removes
@@ -119,7 +134,10 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         term: &str,
     ) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait NotificationStore: Send + Sync {
     /// Per-recipient notifications (Cluster 237, Program C): `create` inserts one
     /// row for a recipient, `list_for_member` returns newest-first (optionally
     /// unread-only), `mark_read` stamps `read_at` (idempotent), `unread_count` is
@@ -178,7 +196,10 @@ pub trait Store: Send + Sync {
         kind: EventKind,
         members: &[MemberId],
     ) -> Result<Vec<MemberId>, StoreError>;
+}
 
+#[async_trait]
+pub trait FollowStore: Send + Sync {
     /// Subscription / follows (Cluster 244, Arc H): a member follows a channel or
     /// thread to be notified of activity there even without a mention. `follow_*` is
     /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*` is a
@@ -214,7 +235,10 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
     ) -> Result<Vec<ThreadFollow>, StoreError>;
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+}
 
+#[async_trait]
+pub trait MailStore: Send + Sync {
     /// A member's delivery email address (Cluster 248, Arc I): where email
     /// notifications go. `set` upserts, `get` returns `None` when unset, `delete`
     /// removes it. A separate table, so the shared member row-mapping is untouched.
@@ -257,7 +281,10 @@ pub trait Store: Send + Sync {
     /// Requeue a dead entry (`pending`, due now, `attempts` reset); returns whether
     /// a dead row was actually requeued.
     async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait ProjectorLinkStore: Send + Sync {
     /// Slack projector channel links (Cluster 308): map a Slack channel to the
     /// Maidan channel/thread it projects into, and the member inbound messages post
     /// as. `link` upserts (one per Slack channel); `get` resolves the ingress
@@ -304,7 +331,10 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<GithubIssueLink>, StoreError>;
     async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait PresenceDigestStore: Send + Sync {
     /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
     /// (called on presence registration), `get` returns the instant or `None`. A
     /// cross-replica signal for presence-aware email routing. No wiring yet — a
@@ -334,7 +364,10 @@ pub trait Store: Send + Sync {
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
     async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
+}
 
+#[async_trait]
+pub trait SessionStore: Send + Sync {
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,
@@ -348,7 +381,10 @@ pub trait Store: Send + Sync {
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
+}
 
+#[async_trait]
+pub trait ChannelStore: Send + Sync {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
 
     /// Insert a channel and append its `ChannelCreated` event **atomically** in
@@ -384,7 +420,10 @@ pub trait Store: Send + Sync {
         channel_id: ChannelId,
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait DmStore: Send + Sync {
     async fn open_dm_conversation(
         &self,
         workspace_id: WorkspaceId,
@@ -427,7 +466,10 @@ pub trait Store: Send + Sync {
         id: GroupDmConversationId,
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait ThreadStore: Send + Sync {
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError>;
 
     /// Insert a thread and append its `ThreadCreated` event **atomically** in one
@@ -498,7 +540,10 @@ pub trait Store: Send + Sync {
     /// open task threads partitioned into ready / assigned / blocked, using the
     /// same claimability predicate as `claim_next`. One aggregate query.
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+}
 
+#[async_trait]
+pub trait TaskScheduleStore: Send + Sync {
     /// Scheduled / recurring task foundation (Cluster 226). CRUD plus the
     /// sweeper's due-scan (`due_task_schedules`). No worker or routes yet — a
     /// zero-blast-radius foundation.
@@ -534,7 +579,10 @@ pub trait Store: Send + Sync {
         id: TaskScheduleId,
         active: bool,
     ) -> Result<TaskSchedule, StoreError>;
+}
 
+#[async_trait]
+pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
     async fn assign_thread(
@@ -618,7 +666,10 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
         lease_secs: i64,
     ) -> Result<Thread, StoreError>;
+}
 
+#[async_trait]
+pub trait ThreadDepStore: Send + Sync {
     /// Add a task-dependency edge: `thread_id` depends on `depends_on` (Cluster
     /// 217). Idempotent; a self-dependency is rejected; both threads must exist.
     async fn add_thread_dependency(
@@ -650,7 +701,10 @@ pub trait Store: Send + Sync {
     /// a terminal state (Cluster 222). Callers invoke this right after transitioning
     /// `thread_id` into a terminal state to emit `ThreadReady` for each result.
     async fn newly_ready_dependents(&self, thread_id: ThreadId) -> Result<Vec<Thread>, StoreError>;
+}
 
+#[async_trait]
+pub trait MessageStore: Send + Sync {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
     /// Insert a message and append its `MessagePosted` event atomically
     /// (Cluster 210). For the DM / group-DM post paths, which do no post-insert
@@ -734,7 +788,10 @@ pub trait Store: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspaceEraseResult, StoreError>;
+}
 
+#[async_trait]
+pub trait MentionInboxStore: Send + Sync {
     async fn record_mention(
         &self,
         message_id: MessageId,
@@ -769,7 +826,10 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
         limit: i64,
     ) -> Result<MemberInbox, StoreError>;
+}
 
+#[async_trait]
+pub trait SocialStore: Send + Sync {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
     /// Cast a vote and append its `VoteCast` event atomically (Cluster 206).
     async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError>;
@@ -814,7 +874,10 @@ pub trait Store: Send + Sync {
         member_id: MemberId,
     ) -> Result<(bool, Option<StoredEvent>), StoreError>;
     async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError>;
+}
 
+#[async_trait]
+pub trait ReferenceStore: Send + Sync {
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError>;
     /// Add a reference and append its `ReferenceAdded` event atomically (Cluster
     /// 214).
@@ -843,7 +906,10 @@ pub trait Store: Send + Sync {
         src_kind: RefSide,
         src_ids: &[uuid::Uuid],
     ) -> Result<Vec<Reference>, StoreError>;
+}
 
+#[async_trait]
+pub trait ArtifactMetaStore: Send + Sync {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
     /// Upsert an artifact, optionally record its per-workspace access ref, and
     /// append its `ArtifactUpserted` event — all atomically (Cluster 214).
@@ -870,7 +936,10 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         sha256: &str,
     ) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait EventStore: Send + Sync {
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError>;
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError>;
     async fn list_audit_for_workspace(
@@ -904,7 +973,10 @@ pub trait Store: Send + Sync {
         stable_before: chrono::DateTime<chrono::Utc>,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
+}
 
+#[async_trait]
+pub trait AppStore: Send + Sync {
     async fn create_app(&self, new: NewApp) -> Result<App, StoreError>;
     async fn get_app(&self, id: AppId) -> Result<App, StoreError>;
     async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError>;
@@ -924,7 +996,10 @@ pub trait Store: Send + Sync {
         &self,
         id: AppInstallationId,
     ) -> Result<AppInstallation, StoreError>;
+}
 
+#[async_trait]
+pub trait OAuthCodeStore: Send + Sync {
     /// Persist a one-time OAuth authorization code (Cluster 104). The plaintext
     /// code is never stored — `code_hash` is its SHA-256 digest.
     async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError>;
@@ -933,7 +1008,10 @@ pub trait Store: Send + Sync {
     /// Returns `None` if the code is unknown, already consumed, or expired —
     /// guaranteeing single use across replicas.
     async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
+}
 
+#[async_trait]
+pub trait ReindexStore: Send + Sync {
     /// Insert or update an embedding reindex job (Cluster 104). Keyed by
     /// `job_id`, so the start record and later status updates upsert the row,
     /// making job status visible on any replica.
@@ -941,7 +1019,10 @@ pub trait Store: Send + Sync {
 
     /// Fetch a reindex job by id, or `None` if unknown.
     async fn get_reindex_job(&self, job_id: uuid::Uuid) -> Result<Option<ReindexJob>, StoreError>;
+}
 
+#[async_trait]
+pub trait TokenStore: Send + Sync {
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
@@ -972,7 +1053,10 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         capability: &str,
     ) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait PeerStore: Send + Sync {
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError>;
     async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError>;
     async fn get_peer_by_token_hash(&self, token_hash: &str) -> Result<Peer, StoreError>;
@@ -996,7 +1080,10 @@ pub trait Store: Send + Sync {
         local_event_id: i64,
     ) -> Result<bool, StoreError>;
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError>;
+}
 
+#[async_trait]
+pub trait DeliveryCursorStore: Send + Sync {
     /// Last `log_id` delivered to `consumer_id` in `workspace_id` (0 if none).
     async fn get_delivery_cursor(
         &self,
@@ -1044,7 +1131,10 @@ pub trait Store: Send + Sync {
         cutoff: chrono::DateTime<chrono::Utc>,
         limit: i64,
     ) -> Result<u64, StoreError>;
+}
 
+#[async_trait]
+pub trait WebhookStore: Send + Sync {
     async fn create_webhook_subscription(
         &self,
         new: NewWebhookSubscription,
@@ -1104,7 +1194,10 @@ pub trait Store: Send + Sync {
         delivery_id: i64,
         workspace_id: WorkspaceId,
     ) -> Result<WebhookDelivery, StoreError>;
+}
 
+#[async_trait]
+pub trait AutomationStore: Send + Sync {
     async fn enqueue_automation_delivery(
         &self,
         new: NewAutomationDelivery,
@@ -1137,7 +1230,10 @@ pub trait Store: Send + Sync {
         delivery_id: i64,
         workspace_id: WorkspaceId,
     ) -> Result<AutomationDelivery, StoreError>;
+}
 
+#[async_trait]
+pub trait SlashCommandStore: Send + Sync {
     async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError>;
     async fn list_slash_commands(
         &self,
@@ -1153,7 +1249,10 @@ pub trait Store: Send + Sync {
         workspace_id: WorkspaceId,
         name: &str,
     ) -> Result<SlashCommandWithSecret, StoreError>;
+}
 
+#[async_trait]
+pub trait FsmHookStore: Send + Sync {
     async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError>;
     async fn list_fsm_hooks(&self, workspace_id: WorkspaceId) -> Result<Vec<FsmHook>, StoreError>;
     async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError>;
@@ -1164,7 +1263,10 @@ pub trait Store: Send + Sync {
         from_state: ThreadState,
         to_state: ThreadState,
     ) -> Result<Vec<FsmHookWithSecret>, StoreError>;
+}
 
+#[async_trait]
+pub trait A2aStore: Send + Sync {
     async fn upsert_a2a_push_config(
         &self,
         workspace_id: WorkspaceId,
@@ -1218,4 +1320,95 @@ pub trait Store: Send + Sync {
         task_id: &str,
         config_id: &str,
     ) -> Result<bool, StoreError>;
+}
+
+/// The full storage surface: the union of every domain sub-trait above.
+///
+/// Split from a single 258-method trait into cohesive sub-traits (Cluster
+/// 349): `Store` is now a marker super-trait, so `dyn Store` / `Arc<dyn
+/// Store>` still expose every method, while a caller that needs only one
+/// concern can bound on the narrower sub-trait (e.g. `impl ThreadStore`).
+/// The blanket impl means any backend that implements all the sub-traits is
+/// automatically a `Store` — no per-backend `impl Store` block.
+pub trait Store:
+    MetaStore
+    + WorkspaceStore
+    + MemberStore
+    + SkillStore
+    + ThreadResultStore
+    + GlossaryStore
+    + NotificationStore
+    + FollowStore
+    + MailStore
+    + ProjectorLinkStore
+    + PresenceDigestStore
+    + SessionStore
+    + ChannelStore
+    + DmStore
+    + ThreadStore
+    + TaskScheduleStore
+    + AssignmentStore
+    + ThreadDepStore
+    + MessageStore
+    + MentionInboxStore
+    + SocialStore
+    + ReferenceStore
+    + ArtifactMetaStore
+    + EventStore
+    + AppStore
+    + OAuthCodeStore
+    + ReindexStore
+    + TokenStore
+    + PeerStore
+    + DeliveryCursorStore
+    + WebhookStore
+    + AutomationStore
+    + SlashCommandStore
+    + FsmHookStore
+    + A2aStore
+    + Send
+    + Sync
+{
+}
+
+impl<
+        T: MetaStore
+            + WorkspaceStore
+            + MemberStore
+            + SkillStore
+            + ThreadResultStore
+            + GlossaryStore
+            + NotificationStore
+            + FollowStore
+            + MailStore
+            + ProjectorLinkStore
+            + PresenceDigestStore
+            + SessionStore
+            + ChannelStore
+            + DmStore
+            + ThreadStore
+            + TaskScheduleStore
+            + AssignmentStore
+            + ThreadDepStore
+            + MessageStore
+            + MentionInboxStore
+            + SocialStore
+            + ReferenceStore
+            + ArtifactMetaStore
+            + EventStore
+            + AppStore
+            + OAuthCodeStore
+            + ReindexStore
+            + TokenStore
+            + PeerStore
+            + DeliveryCursorStore
+            + WebhookStore
+            + AutomationStore
+            + SlashCommandStore
+            + FsmHookStore
+            + A2aStore
+            + Send
+            + Sync,
+    > Store for T
+{
 }

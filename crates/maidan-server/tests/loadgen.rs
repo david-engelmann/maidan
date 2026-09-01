@@ -33,7 +33,7 @@ use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;

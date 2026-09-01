@@ -1,7 +1,7 @@
 //! Token capability quotas persistence (Cluster 54).
 
 use maidan_auth::hash_secret;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, TokenQuota};
 use sqlx::sqlite::SqlitePoolOptions;
 

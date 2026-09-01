@@ -1,7 +1,7 @@
 //! Subscription/follows (Cluster 244, Arc H): follow/unfollow a channel or thread,
 //! list a member's follows, and the router's follower-set queries. Both backends.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

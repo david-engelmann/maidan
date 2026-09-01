@@ -2,7 +2,7 @@
 //! sweeper's due-scan. Exercised on both backends. No worker/routes yet.
 
 use chrono::{Duration, Utc};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewTaskSchedule, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

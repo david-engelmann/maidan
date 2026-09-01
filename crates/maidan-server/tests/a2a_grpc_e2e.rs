@@ -8,7 +8,7 @@ use maidan_bus::InMemoryBus;
 use maidan_server::a2a_grpc::generated::a2a_service_client::A2aServiceClient;
 use maidan_server::a2a_grpc::generated::{GetTaskRequest, ListTasksRequest};
 use maidan_server::AppState;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::NewWorkspace;
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -15,7 +15,7 @@ use maidan_server::{
     automation_worker::AutomationDeliveryWorker, fsm_hook_worker::FsmHookWorker, router, AppState,
     FsmHookRuntime, SlashRuntime, WebhookRuntime,
 };
-use maidan_store::{run_sqlite_migrations, AutomationDeliveryFilter, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::NewWorkspace;
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;

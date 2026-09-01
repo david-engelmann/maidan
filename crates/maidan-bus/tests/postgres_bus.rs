@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::Utc;
 use futures::StreamExt;
 use maidan_bus::{BusItem, EventBus, PostgresBus};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{BusEnvelope, *};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

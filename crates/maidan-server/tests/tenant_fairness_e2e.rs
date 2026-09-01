@@ -6,7 +6,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
-use maidan_store::{configure_sqlite_pool, run_sqlite_migrations, SqliteStore};
+use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 use sqlx::sqlite::SqlitePoolOptions;
 

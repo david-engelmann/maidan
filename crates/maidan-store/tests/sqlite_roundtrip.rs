@@ -2,7 +2,7 @@
 
 mod common;
 
-use maidan_store::{run_sqlite_migrations, SqliteStore};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> SqliteStore {

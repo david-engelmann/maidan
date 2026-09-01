@@ -1,7 +1,7 @@
 //! Durable member last-seen (Cluster 252, Arc I): touch (upsert) / get. Both
 //! backends. No wiring yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -1,7 +1,7 @@
 //! Member delivery emails (Cluster 248, Arc I): set (upsert) / get / delete a
 //! member's email address. Both backends. No delivery wiring yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

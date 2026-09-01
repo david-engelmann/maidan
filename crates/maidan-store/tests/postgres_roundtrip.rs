@@ -8,7 +8,7 @@ mod common;
 
 use std::time::Duration;
 
-use maidan_store::{run_postgres_migrations, PostgresStore};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;

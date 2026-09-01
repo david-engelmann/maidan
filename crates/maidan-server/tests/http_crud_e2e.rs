@@ -9,9 +9,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
-use maidan_store::{
-    run_postgres_migrations, run_sqlite_migrations, PostgresStore, SqliteStore, Store,
-};
+use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use reqwest::StatusCode;
 use serde_json::json;
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};

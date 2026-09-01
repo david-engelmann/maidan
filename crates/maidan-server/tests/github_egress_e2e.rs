@@ -10,7 +10,7 @@ use maidan_server::{
     github::{route_message_to_github, GithubError, GithubSender},
     AppState,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewMessage, NewThread, NewWorkspace,
 };

@@ -1,7 +1,7 @@
 //! SQLite outbox integration tests.
 
 use chrono::Utc;
-use maidan_store::{run_sqlite_migrations, sqlite::outbox, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations, sqlite::outbox};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 

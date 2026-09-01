@@ -1,7 +1,7 @@
 //! Slack projector channel links (Cluster 308): link (upsert) / get / list /
 //! unlink a Slack channel → Maidan channel/thread/member mapping. Both backends.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
 };

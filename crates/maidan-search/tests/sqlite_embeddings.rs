@@ -7,7 +7,7 @@ use std::sync::Arc;
 use maidan_search::{
     postgres::EMBEDDING_DIM, sqlite_pool_options, Search, SearchFilters, SqliteSearch,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::MessageId;
 
 fn one_hot(index: usize) -> Vec<f32> {

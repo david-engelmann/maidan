@@ -5,7 +5,7 @@ use std::sync::Arc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, AutomationDeliveryFilter, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{AutomationSourceKind, NewAutomationDelivery, NewWebhookSubscription};
 use sqlx::sqlite::SqlitePoolOptions;
 

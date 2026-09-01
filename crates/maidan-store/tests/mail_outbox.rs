@@ -2,7 +2,7 @@
 //! delivered / reschedule-or-dead-letter / DLQ count. Both backends.
 
 use chrono::{Duration, Utc};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::NewMailOutbox;
 use sqlx::sqlite::SqlitePoolOptions;
 

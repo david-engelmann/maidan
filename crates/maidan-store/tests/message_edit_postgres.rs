@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };

@@ -5,7 +5,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use maidan_artifacts::{ArtifactStore, LocalFsStore};
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewApiToken, NewChannel, NewMember, NewMessage, NewReference,
     NewThread, NewWorkspace, RefSide,

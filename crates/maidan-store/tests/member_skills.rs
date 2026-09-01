@@ -1,7 +1,7 @@
 //! Capability registry foundation (Cluster 230): a member's declared skills —
 //! add (idempotent) / remove (conditional) / list. Both backends. No routes yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -1,7 +1,7 @@
 //! Criterion benches for store hot paths (Track U.1).
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use maidan_store::{configure_sqlite_pool, SqliteStore, Store};
+use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -5,7 +5,7 @@ mod common;
 use std::sync::Arc;
 
 use maidan_search::SqliteSearch;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 //! Message body/metadata edit with `edited_at` (Cluster 29).
 
-use maidan_store::{configure_sqlite_pool, SqliteStore, Store};
+use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };

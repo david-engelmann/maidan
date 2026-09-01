@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use maidan_server::thread_context::{build_thread_context, ThreadContextLimits};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;

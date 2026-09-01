@@ -8,7 +8,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use sqlx::sqlite::SqlitePoolOptions;
 
 struct Ctx {

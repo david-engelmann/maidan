@@ -6,9 +6,7 @@ mod common;
 use std::{sync::Arc, time::Duration};
 
 use maidan_search::{PostgresSearch, Search, SearchFilters, SqliteSearch};
-use maidan_store::{
-    run_postgres_migrations, run_sqlite_migrations, PostgresStore, SqliteStore, Store,
-};
+use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;

@@ -15,7 +15,7 @@ use std::{
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 

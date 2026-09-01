@@ -11,7 +11,7 @@ use std::{
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::StatusCode;
 use serde_json::Value;

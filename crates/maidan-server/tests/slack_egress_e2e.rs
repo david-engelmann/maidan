@@ -10,7 +10,7 @@ use maidan_server::{
     slack::{route_message_to_slack, SlackError, SlackSender},
     AppState,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace,
 };

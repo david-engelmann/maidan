@@ -5,9 +5,7 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use maidan_store::{
-    run_postgres_migrations, run_sqlite_migrations, PostgresStore, SqliteStore, Store,
-};
+use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::SqlitePoolOptions;

@@ -1,6 +1,6 @@
 //! Migration 0007: artifact kind CHECK constraint.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{ArtifactKind, NewArtifact};
 use sqlx::sqlite::SqlitePoolOptions;
 

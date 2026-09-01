@@ -6,7 +6,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_search::{hash_embedding, model_name, PostgresSearch, Search};
 use maidan_server::{router, AppState};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

@@ -2,7 +2,7 @@
 //! `term -> definition` (+ aliases) — set (upsert) / get / list / delete. Both
 //! backends. No routes/tools yet — a zero-blast-radius foundation.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewGlossaryTerm, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -15,7 +15,7 @@ use std::time::Duration;
 use maidan_auth::{capability, hash_secret};
 use maidan_search::{PostgresSearch, Search};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
 };

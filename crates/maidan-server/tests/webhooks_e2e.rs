@@ -19,7 +19,7 @@ use axum::{
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
 use maidan_server::{router, webhook_worker::WebhookWorker, AppState, WebhookRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Mutex;

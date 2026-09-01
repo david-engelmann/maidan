@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_search::{EmbeddingProvider, HashV1Provider, PostgresSearch, Search};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

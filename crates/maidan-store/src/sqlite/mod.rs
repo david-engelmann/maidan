@@ -64,7 +64,7 @@ use maidan_types::*;
 use sqlx::SqlitePool;
 
 use crate::error::StoreError;
-use crate::store::Store;
+use crate::store::*;
 
 pub use pragmas::{configure_pool, configure_pool_with};
 
@@ -84,7 +84,7 @@ impl SqliteStore {
 }
 
 #[async_trait]
-impl Store for SqliteStore {
+impl MetaStore for SqliteStore {
     async fn health_check(&self) -> Result<(), StoreError> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
@@ -93,7 +93,10 @@ impl Store for SqliteStore {
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
         Ok(None) // SQLite has no streaming replication / WAL LSN token.
     }
+}
 
+#[async_trait]
+impl WorkspaceStore for SqliteStore {
     async fn import_workspace(&self, i: &WorkspaceImport) -> Result<(), StoreError> {
         import::import_workspace(&self.pool, i).await
     }
@@ -116,7 +119,10 @@ impl Store for SqliteStore {
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
         workspaces::usage(&self.pool, id).await
     }
+}
 
+#[async_trait]
+impl MemberStore for SqliteStore {
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
         members::create(&self.pool, new).await
     }
@@ -139,7 +145,10 @@ impl Store for SqliteStore {
     ) -> Result<Member, StoreError> {
         members::get_by_handle(&self.pool, workspace_id, handle).await
     }
+}
 
+#[async_trait]
+impl SkillStore for SqliteStore {
     async fn add_member_skill(&self, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
         member_skills::add(&self.pool, member_id, skill).await
     }
@@ -176,6 +185,10 @@ impl Store for SqliteStore {
     ) -> Result<Vec<ThreadRequiredSkill>, StoreError> {
         thread_skills::list(&self.pool, thread_id).await
     }
+}
+
+#[async_trait]
+impl ThreadResultStore for SqliteStore {
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
@@ -190,7 +203,10 @@ impl Store for SqliteStore {
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(&self.pool, thread_id).await
     }
+}
 
+#[async_trait]
+impl GlossaryStore for SqliteStore {
     async fn set_glossary_term(&self, new: NewGlossaryTerm) -> Result<GlossaryTerm, StoreError> {
         glossary::set(&self.pool, &new).await
     }
@@ -214,7 +230,10 @@ impl Store for SqliteStore {
     ) -> Result<bool, StoreError> {
         glossary::delete(&self.pool, workspace_id, term).await
     }
+}
 
+#[async_trait]
+impl NotificationStore for SqliteStore {
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError> {
         notifications::create(&self.pool, new).await
     }
@@ -274,7 +293,10 @@ impl Store for SqliteStore {
     ) -> Result<Vec<MemberId>, StoreError> {
         notification_prefs::filter_muted(&self.pool, kind, members).await
     }
+}
 
+#[async_trait]
+impl FollowStore for SqliteStore {
     async fn follow_channel(
         &self,
         member_id: MemberId,
@@ -321,7 +343,10 @@ impl Store for SqliteStore {
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_followers(&self.pool, thread_id).await
     }
+}
 
+#[async_trait]
+impl MailStore for SqliteStore {
     async fn set_member_email(
         &self,
         member_id: MemberId,
@@ -369,7 +394,10 @@ impl Store for SqliteStore {
     async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError> {
         mail_outbox::requeue_dead(&self.pool, id).await
     }
+}
 
+#[async_trait]
+impl ProjectorLinkStore for SqliteStore {
     async fn link_slack_channel(
         &self,
         new: NewSlackChannelLink,
@@ -426,7 +454,10 @@ impl Store for SqliteStore {
     async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
         github_links::unlink(&self.pool, repo, issue_number).await
     }
+}
 
+#[async_trait]
+impl PresenceDigestStore for SqliteStore {
     async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {
         member_last_seen::touch(&self.pool, member_id).await
     }
@@ -460,7 +491,10 @@ impl Store for SqliteStore {
     async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError> {
         email_digest::members_due_for_digest(&self.pool, limit).await
     }
+}
 
+#[async_trait]
+impl SessionStore for SqliteStore {
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError> {
         oidc::upsert_identity(&self.pool, new).await
     }
@@ -488,7 +522,10 @@ impl Store for SqliteStore {
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
         sessions::delete(&self.pool, id).await
     }
+}
 
+#[async_trait]
+impl ChannelStore for SqliteStore {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError> {
         channels::create(&self.pool, new).await
     }
@@ -534,7 +571,10 @@ impl Store for SqliteStore {
     ) -> Result<bool, StoreError> {
         channel_members::is_member(&self.pool, channel_id, member_id).await
     }
+}
 
+#[async_trait]
+impl DmStore for SqliteStore {
     async fn open_dm_conversation(
         &self,
         workspace_id: WorkspaceId,
@@ -597,7 +637,10 @@ impl Store for SqliteStore {
     ) -> Result<bool, StoreError> {
         group_dm::is_member(&self.pool, id, member_id).await
     }
+}
 
+#[async_trait]
+impl ThreadStore for SqliteStore {
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError> {
         threads::create(&self.pool, new).await
     }
@@ -667,7 +710,10 @@ impl Store for SqliteStore {
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
         threads::channel_queue_depth(&self.pool, channel_id).await
     }
+}
 
+#[async_trait]
+impl TaskScheduleStore for SqliteStore {
     async fn create_task_schedule(&self, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError> {
         task_schedules::create(&self.pool, new).await
     }
@@ -703,7 +749,10 @@ impl Store for SqliteStore {
     ) -> Result<TaskSchedule, StoreError> {
         task_schedules::set_active(&self.pool, id, active).await
     }
+}
 
+#[async_trait]
+impl AssignmentStore for SqliteStore {
     async fn assign_thread(
         &self,
         thread_id: ThreadId,
@@ -777,7 +826,10 @@ impl Store for SqliteStore {
     ) -> Result<Thread, StoreError> {
         threads::renew_claim(&self.pool, thread_id, member_id, lease_secs).await
     }
+}
 
+#[async_trait]
+impl ThreadDepStore for SqliteStore {
     async fn add_thread_dependency(
         &self,
         thread_id: ThreadId,
@@ -810,7 +862,10 @@ impl Store for SqliteStore {
     async fn newly_ready_dependents(&self, thread_id: ThreadId) -> Result<Vec<Thread>, StoreError> {
         thread_deps::newly_ready_dependents(&self.pool, thread_id).await
     }
+}
 
+#[async_trait]
+impl MessageStore for SqliteStore {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
         messages::create(&self.pool, new).await
     }
@@ -906,7 +961,10 @@ impl Store for SqliteStore {
     ) -> Result<WorkspaceEraseResult, StoreError> {
         erase_workspace::erase(&self.pool, workspace_id).await
     }
+}
 
+#[async_trait]
+impl MentionInboxStore for SqliteStore {
     async fn record_mention(
         &self,
         message_id: MessageId,
@@ -951,7 +1009,10 @@ impl Store for SqliteStore {
     ) -> Result<MemberInbox, StoreError> {
         inbox::list_for_member(&self.pool, member_id, limit).await
     }
+}
 
+#[async_trait]
+impl SocialStore for SqliteStore {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError> {
         votes::cast(&self.pool, new).await
     }
@@ -1015,7 +1076,10 @@ impl Store for SqliteStore {
     async fn list_pins_for_thread(&self, thread_id: ThreadId) -> Result<Vec<Pin>, StoreError> {
         pins::list_for_thread(&self.pool, thread_id).await
     }
+}
 
+#[async_trait]
+impl ReferenceStore for SqliteStore {
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError> {
         refs::create(&self.pool, new).await
     }
@@ -1047,7 +1111,10 @@ impl Store for SqliteStore {
     ) -> Result<Vec<Reference>, StoreError> {
         refs::list_from_many(&self.pool, src_kind, src_ids).await
     }
+}
 
+#[async_trait]
+impl ArtifactMetaStore for SqliteStore {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError> {
         artifacts::upsert(&self.pool, new).await
     }
@@ -1077,7 +1144,10 @@ impl Store for SqliteStore {
     ) -> Result<bool, StoreError> {
         artifacts::ref_exists(&self.pool, workspace_id, sha256).await
     }
+}
 
+#[async_trait]
+impl EventStore for SqliteStore {
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
         audit::append(&self.pool, new).await
     }
@@ -1125,7 +1195,10 @@ impl Store for SqliteStore {
     ) -> Result<Vec<StoredEvent>, StoreError> {
         events::list_after_stable(&self.pool, workspace_id, after_id, stable_before, limit).await
     }
+}
 
+#[async_trait]
+impl AppStore for SqliteStore {
     async fn create_app(&self, new: NewApp) -> Result<App, StoreError> {
         apps::create_app(&self.pool, new).await
     }
@@ -1165,7 +1238,10 @@ impl Store for SqliteStore {
     ) -> Result<AppInstallation, StoreError> {
         apps::revoke_installation(&self.pool, id).await
     }
+}
 
+#[async_trait]
+impl OAuthCodeStore for SqliteStore {
     async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError> {
         oauth_codes::insert(&self.pool, new).await
     }
@@ -1173,7 +1249,10 @@ impl Store for SqliteStore {
     async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError> {
         oauth_codes::consume(&self.pool, code_hash).await
     }
+}
 
+#[async_trait]
+impl ReindexStore for SqliteStore {
     async fn upsert_reindex_job(&self, job: ReindexJob) -> Result<(), StoreError> {
         reindex_jobs::upsert(&self.pool, job).await
     }
@@ -1181,7 +1260,10 @@ impl Store for SqliteStore {
     async fn get_reindex_job(&self, job_id: uuid::Uuid) -> Result<Option<ReindexJob>, StoreError> {
         reindex_jobs::get(&self.pool, job_id).await
     }
+}
 
+#[async_trait]
+impl TokenStore for SqliteStore {
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {
         tokens::create(&self.pool, new).await
     }
@@ -1237,7 +1319,10 @@ impl Store for SqliteStore {
     ) -> Result<bool, StoreError> {
         tokens::workspace_has_active_capability(&self.pool, workspace_id, capability).await
     }
+}
 
+#[async_trait]
+impl PeerStore for SqliteStore {
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError> {
         peers::create(&self.pool, new).await
     }
@@ -1290,7 +1375,10 @@ impl Store for SqliteStore {
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError> {
         peers::is_federated_local_event(&self.pool, local_event_id).await
     }
+}
 
+#[async_trait]
+impl DeliveryCursorStore for SqliteStore {
     async fn get_delivery_cursor(
         &self,
         consumer_id: &str,
@@ -1336,7 +1424,10 @@ impl Store for SqliteStore {
     ) -> Result<u64, StoreError> {
         retention::prune_deliveries(&self.pool, cutoff, limit).await
     }
+}
 
+#[async_trait]
+impl WebhookStore for SqliteStore {
     async fn create_webhook_subscription(
         &self,
         new: NewWebhookSubscription,
@@ -1453,7 +1544,10 @@ impl Store for SqliteStore {
     ) -> Result<WebhookDelivery, StoreError> {
         webhooks::replay_delivery(&self.pool, delivery_id, workspace_id).await
     }
+}
 
+#[async_trait]
+impl AutomationStore for SqliteStore {
     async fn enqueue_automation_delivery(
         &self,
         new: NewAutomationDelivery,
@@ -1509,7 +1603,10 @@ impl Store for SqliteStore {
     ) -> Result<AutomationDelivery, StoreError> {
         automation_deliveries::replay(&self.pool, delivery_id, workspace_id).await
     }
+}
 
+#[async_trait]
+impl SlashCommandStore for SqliteStore {
     async fn create_slash_command(&self, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {
         slash_commands::create(&self.pool, new).await
     }
@@ -1539,7 +1636,10 @@ impl Store for SqliteStore {
     ) -> Result<SlashCommandWithSecret, StoreError> {
         slash_commands::get_by_name(&self.pool, workspace_id, name).await
     }
+}
 
+#[async_trait]
+impl FsmHookStore for SqliteStore {
     async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError> {
         fsm_hooks::create(&self.pool, new).await
     }
@@ -1564,7 +1664,10 @@ impl Store for SqliteStore {
     ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
         fsm_hooks::list_matching(&self.pool, workspace_id, from_state, to_state).await
     }
+}
 
+#[async_trait]
+impl A2aStore for SqliteStore {
     async fn upsert_a2a_push_config(
         &self,
         workspace_id: WorkspaceId,

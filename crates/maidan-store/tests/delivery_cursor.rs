@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use maidan_store::{
-    postgres::delivery_cursor as pg_cursor, run_postgres_migrations, run_sqlite_migrations,
-    sqlite::delivery_cursor as sqlite_cursor, PostgresStore, SqliteStore, Store,
+    postgres::delivery_cursor as pg_cursor, prelude::*, run_postgres_migrations,
+    run_sqlite_migrations, sqlite::delivery_cursor as sqlite_cursor,
 };
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;

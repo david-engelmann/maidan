@@ -1,7 +1,7 @@
 //! GitHub projector issue/PR links (Cluster 311): link (upsert) / get / by-thread /
 //! list / unlink a (repo, issue) → Maidan channel/thread/member mapping. Both backends.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewThread, NewWorkspace,
 };

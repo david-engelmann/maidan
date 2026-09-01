@@ -4,7 +4,7 @@ use maidan_search::{
     embedding_provider::{EmbeddingProvider, EmbeddingProviderError},
     embedding_tables, sqlite_pool_options, Search, SearchFilters, SqliteSearch,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use std::sync::Arc;
 

@@ -1,7 +1,7 @@
 //! Workspace full erasure deletes the workspace row (Cluster 53).
 
 use maidan_auth::hash_secret;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store, StoreError};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 

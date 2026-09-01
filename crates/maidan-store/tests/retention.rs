@@ -1,7 +1,7 @@
 //! Data-retention pruning (Cluster 186): age cutoff + the at-least-once
 //! delivery-cursor floor for the event log; audit + deliveries by age.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewAuditEvent, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

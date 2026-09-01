@@ -13,7 +13,7 @@ use maidan_server::{
     slack::{slack_signature, SlackConfig},
     AppState,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
 };

@@ -9,7 +9,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState, FederationRuntime};
-use maidan_store::{run_postgres_migrations, PostgresStore};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use reqwest::StatusCode;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

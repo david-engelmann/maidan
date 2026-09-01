@@ -6,7 +6,7 @@ use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
 use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
-use maidan_store::{run_sqlite_migrations, sqlite::outbox, OutboxBackend, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations, sqlite::outbox, OutboxBackend};
 use maidan_types::EventFilter;
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
