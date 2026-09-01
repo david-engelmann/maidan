@@ -22,6 +22,7 @@ mod channel;
 mod glossary;
 mod member;
 mod message;
+mod projector;
 mod reference;
 mod roots;
 mod schedule;
@@ -104,6 +105,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_glossary_term"
         | "list_glossary_terms"
         | "list_roots"
+        | "list_slack_channel_links"
+        | "list_github_issue_links"
         | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -131,6 +134,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "list_references" => Ok(WORKSPACE_READ),
         "register_fsm_hook" => Ok(WORKSPACE_WRITE),
         "list_fsm_hooks" => Ok(WORKSPACE_READ),
+        "link_slack_channel"
+        | "unlink_slack_channel"
+        | "link_github_issue"
+        | "unlink_github_issue" => Ok(WORKSPACE_WRITE),
         "add_channel_member" | "list_channel_members" | "remove_channel_member" => {
             Ok(maidan_auth::capability::CHANNEL_ADMIN)
         }
@@ -341,6 +348,12 @@ pub async fn dispatch(
         "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,
         "register_fsm_hook" => automation::register_fsm_hook(store, auth, args).await,
         "list_fsm_hooks" => automation::list_fsm_hooks(store, auth, args).await,
+        "link_slack_channel" => projector::link_slack_channel(server, auth, args).await,
+        "list_slack_channel_links" => projector::list_slack_channel_links(server, auth, args).await,
+        "unlink_slack_channel" => projector::unlink_slack_channel(server, auth, args).await,
+        "link_github_issue" => projector::link_github_issue(server, auth, args).await,
+        "list_github_issue_links" => projector::list_github_issue_links(server, auth, args).await,
+        "unlink_github_issue" => projector::unlink_github_issue(server, auth, args).await,
         "get_thread_context" => {
             let v = crate::context::get_thread_context(store.as_ref(), args).await?;
             Ok(content_json(&v))
