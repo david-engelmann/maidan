@@ -1,7 +1,7 @@
 //! Per-workspace usage counts (Cluster 188): scoped to the workspace, exclude
 //! tombstoned rows.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };

@@ -8,7 +8,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use maidan_search::{hash_embedding, model_name, Search, SearchFilters, SqliteSearch};
-use maidan_store::{configure_sqlite_pool, run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
 };

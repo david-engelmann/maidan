@@ -1,7 +1,7 @@
 //! API token store: create, lookup, revoke, expiry.
 
 use chrono::{Duration, Utc};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
 };

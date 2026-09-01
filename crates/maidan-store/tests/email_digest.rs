@@ -2,7 +2,7 @@
 //! digest watermark, and the "due for digest" enumeration. Both backends.
 
 use chrono::{Duration, Utc};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EmailDeliveryMode, EventKind, MemberId, MemberKind, NewMember, NewNotification, NewWorkspace,
     WorkspaceId,

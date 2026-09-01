@@ -5,7 +5,7 @@
 //! assertions run against both dialects.
 
 use maidan_fsm::ThreadAction;
-use maidan_store::{Store, StoreError};
+use maidan_store::prelude::*;
 use maidan_types::*;
 
 #[allow(dead_code)]

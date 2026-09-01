@@ -8,7 +8,7 @@ use maidan_search::{
     BatchConfig, BatchingEmbeddingHandler, EmbeddingHandler, HashV1Provider, IndexerMetrics,
     PostgresSearch, Search,
 };
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

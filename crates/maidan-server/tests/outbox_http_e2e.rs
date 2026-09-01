@@ -8,7 +8,7 @@ use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{test_support::FailingBus, BusItem, EventBus, PostgresBus};
 use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
-use maidan_store::{postgres::outbox, OutboxBackend, PostgresStore, Store};
+use maidan_store::{postgres::outbox, prelude::*, OutboxBackend};
 use maidan_types::EventFilter;
 use serde_json::json;
 use sqlx::PgPool;

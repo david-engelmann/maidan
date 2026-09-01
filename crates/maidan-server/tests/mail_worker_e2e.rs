@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{mail_worker, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::NewMailOutbox;
 use sqlx::sqlite::SqlitePoolOptions;
 

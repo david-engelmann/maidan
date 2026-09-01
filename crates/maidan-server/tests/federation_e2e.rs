@@ -16,7 +16,7 @@ use maidan_auth::{
     hash_secret, TokenSecret,
 };
 use maidan_server::{router, AppState, FederationRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     Artifact, ArtifactId, ArtifactKind, Event, EventKind, MemberId, MemberKind, NewApiToken,
     NewMember, NewWorkspace, PeerId, StoredEvent, WorkspaceId,

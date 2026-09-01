@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use maidan_store::{postgres::outbox, run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{postgres::outbox, prelude::*, run_postgres_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

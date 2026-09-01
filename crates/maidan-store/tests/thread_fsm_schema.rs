@@ -1,7 +1,7 @@
 //! Migration 0004: thread transition log and `in_review` state.
 
 use chrono::Utc;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadState};
 use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;

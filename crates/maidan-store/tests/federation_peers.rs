@@ -1,7 +1,7 @@
 //! Federation peer store: CRUD, token lookup, ingest dedupe.
 
 use maidan_auth::{decrypt_peer_secret, encrypt_peer_secret};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewPeer, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

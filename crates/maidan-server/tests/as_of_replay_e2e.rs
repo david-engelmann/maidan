@@ -7,7 +7,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };

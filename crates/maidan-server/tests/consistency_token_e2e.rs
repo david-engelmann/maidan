@@ -7,7 +7,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{consistency::CONSISTENCY_TOKEN_HEADER, router, AppState};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{Lsn, MemberKind, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::json;

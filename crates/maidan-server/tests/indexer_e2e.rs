@@ -7,7 +7,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus};
 use maidan_search::{Indexer, LoggingHandler, SqliteSearch};
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::EventKind;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;

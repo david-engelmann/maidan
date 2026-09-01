@@ -3,7 +3,7 @@
 mod common;
 
 use maidan_fsm::ThreadAction;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadState};
 use sqlx::sqlite::SqlitePoolOptions;
 

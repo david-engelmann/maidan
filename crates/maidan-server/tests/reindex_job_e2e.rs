@@ -7,7 +7,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_search::{hash_embedding, model_name, sqlite_pool_options, Search, SqliteSearch};
 use maidan_server::{router, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 
 #[tokio::test]

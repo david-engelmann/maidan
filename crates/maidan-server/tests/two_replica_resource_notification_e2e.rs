@@ -14,7 +14,7 @@ use maidan_auth::AuthContext;
 use maidan_bus::{PostgresResourceNotifier, ResourceNotifier};
 use maidan_mcp::{JsonRpcRequest, McpServer};
 use maidan_search::{EmbeddingProvider, HashV1Provider, PostgresSearch, Search};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;

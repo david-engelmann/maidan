@@ -5,7 +5,7 @@ mod common;
 use std::{sync::Arc, time::Duration};
 
 use maidan_search::{postgres::EMBEDDING_DIM, PostgresSearch, Search, SearchError, SearchFilters};
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MessageId, NewMessage};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};

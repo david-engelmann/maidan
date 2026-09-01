@@ -6,7 +6,7 @@ use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, subscribe_grants, AppState};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{

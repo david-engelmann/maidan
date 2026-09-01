@@ -1,6 +1,6 @@
 //! Hard-delete tombstoned messages (Track V.2).
 
-use maidan_store::{configure_sqlite_pool, SqliteStore, Store};
+use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -2,7 +2,7 @@
 
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_search::{EmbeddingProvider, HashV1Provider, Search, SqliteSearch};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 async fn seed_workspace(

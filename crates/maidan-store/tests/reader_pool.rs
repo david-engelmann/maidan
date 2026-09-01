@@ -3,7 +3,7 @@
 //! real replica needed) — the point is the two-pool constructor, not routing
 //! (which arrives in Cluster 264).
 
-use maidan_store::{run_postgres_migrations, PostgresStore, Store};
+use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::NewWorkspace;
 
 #[tokio::test]

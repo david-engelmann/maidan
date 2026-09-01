@@ -1,7 +1,7 @@
 //! OIDC identity, pending auth, and session store coverage.
 
 use chrono::{Duration, Utc};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewMaidanSession, NewMember, NewOidcIdentity, NewOidcPendingAuth, NewWorkspace,
     WorkspaceId,

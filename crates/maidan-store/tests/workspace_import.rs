@@ -2,7 +2,7 @@
 //! state, and timestamps preserved, and reads back faithfully. Both backends.
 
 use chrono::Utc;
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 

@@ -17,7 +17,7 @@ use maidan_search::{
     embedding_provider::{EmbeddingProvider, EmbeddingProviderError},
     sqlite_pool_options, Search, SearchFilters, SqliteSearch,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, MessageId, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
 };

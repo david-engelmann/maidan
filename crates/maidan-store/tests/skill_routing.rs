@@ -2,7 +2,7 @@
 //! member only claims a task whose required skills it holds. Plus the
 //! `thread_required_skills` CRUD. Both backends.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 

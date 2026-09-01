@@ -1,6 +1,6 @@
 //! Automation delivery store (Cluster 68.0).
 
-use maidan_store::{run_sqlite_migrations, AutomationDeliveryFilter, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{
     AutomationSourceKind, NewAutomationDelivery, NewFsmHook, NewWorkspace, SlashHandlerKind,
     ThreadState,

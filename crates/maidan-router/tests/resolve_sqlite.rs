@@ -1,7 +1,7 @@
 //! Hierarchy resolution against an in-memory SQLite store.
 
 use maidan_router::{resolve_channel_context, resolve_message_chain, resolve_thread_context};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 

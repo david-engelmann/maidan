@@ -8,7 +8,7 @@ use std::{
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewApiToken, NewWorkspace};
 use reqwest::StatusCode;
 use sqlx::sqlite::SqlitePoolOptions;

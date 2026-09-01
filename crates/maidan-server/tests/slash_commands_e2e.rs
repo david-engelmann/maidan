@@ -10,7 +10,7 @@ use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Router};
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
 use maidan_server::{router, AppState, SlashRuntime, WebhookRuntime};
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Mutex;

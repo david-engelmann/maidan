@@ -10,7 +10,7 @@ use std::{
 
 use maidan_auth::{capability, hash_secret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
-use maidan_store::{PostgresStore, Store};
+use maidan_store::prelude::*;
 use serde_json::json;
 
 struct Harness {

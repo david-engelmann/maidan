@@ -1,7 +1,7 @@
 //! Per-recipient notifications (Cluster 237, Program C): create / list / mark-read
 //! / unread-count. Both backends. Zero-blast-radius foundation — no router yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EventKind, MemberKind, NewChannel, NewMember, NewNotification, NewThread, NewWorkspace,
     NotificationId,

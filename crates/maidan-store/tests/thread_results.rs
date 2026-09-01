@@ -1,7 +1,7 @@
 //! Task structured results (Cluster 234, Arc F): set (upsert) / get a thread's
 //! result. Both backends. No routes yet.
 
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;

@@ -12,7 +12,7 @@ use maidan_server::{
     oidc::{OidcRuntime, OidcSettings},
     router, AppState, FederationRuntime,
 };
-use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
 use serde_json::json;
