@@ -179,6 +179,145 @@ workflow (retro + `vX.0.0` tag each).
 | **Provider recipes** | Doc/compose recipes only (Ollama/TEI embeddings, R2/AWS-S3 next to MinIO, Keycloak + a SaaS OIDC, Neon/RDS/Supabase note, LibSQL/Turso feasibility). | Providers.md (**I2–I6**) |
 | **Public launch** | Public-preview cut, un-hold, announce — **gated on the maintainer's explicit go**; keeps `publish = false` (no crates.io 1.0). | Launch.md (**L1–L6**) |
 
+## Engineering-canon forward program (2026-09-02 research round)
+
+A durable knowledge-base research round (69 books + 53 concepts + 183 repos + 13 protocol/compliance
+standards + 17 papers + a 5-vector operational-hardening pass) produced **125 net-new candidates**, each
+grounded in a cited source. **Honest headline: the canon overwhelmingly *validates* the shipped v349 design**
+— the transactional outbox is textbook WAL journaling, `claim_next` is a linearizable compare-and-set, the 8
+CI checks are fitness functions, and the LSN token gives read-your-writes. Net-new work is **hardening a
+design the theory and the incident record endorse**, not a rewrite. Candidates are grouped into programs
+below, roughly in recommended order. Each is a self-describing contract; none is committed until picked with
+the maintainer and run through the normal cluster workflow (retro + `vX.0.0` tag).
+
+**Near-term product spine (highest product value — the differentiator work):**
+- **Occupancy correctness.** Two occupancy clocks — assigned-never-acknowledged **and** started-then-died
+  (`ClaimExpired` fired *eagerly* on SIGTERM/drain, not only on the next `claim_next`) — plus a server default
+  lease and a minted `claim_lease_id` that fences stale writes. Today lease + lazy reclaim exist but a drained
+  replica can keep `assignee_id` until someone else pulls, and there is no `claim_lease_id`. Paint queued ≠
+  claimed ≠ working ≠ blocked. *(This is the same target the occupancy follow-ups under "Standing risks"
+  already flag — clusters 190–192.)*
+- **HITL gates** — the `request_approval` interrupt (Cluster 174) becomes a queryable held gate: the server
+  holds all open interrupts, an empty accept is not consent, cancel dequeues, and the GET-stream carries the
+  `elicitation/create`.
+- **Threaded `/ui` + session chrome** — flagship buttons in the vanilla `/ui` (WCAG AA + keyboard + `lang`);
+  per-thread/channel mute + mention breakthrough; session chrome (running/idle/needs-input/needs-approval/done)
+  that paints what-changed/assumptions/tests without a transcript.
+- **Context budget (`G-dev-1`)** — the context pack caps message **rows, not tokens** (verified), so a
+  wide-`ContentBlock` thread blows the window; add a token/byte budget that drops lean-eligible fields and
+  folds older messages via the existing `summarize_thread`, recording the elision as auditable metadata. The
+  academic record backs this (MAST failure taxonomy; "Lost in the Middle"; MemGPT).
+
+**Program R — resilience & operational hardening (fastest ROI; grounded in real outages + framework failures):**
+- `mcp-tool-timeout-isolation` — per-tool invocation deadline + failure isolation (+ optional circuit breaker)
+  on `tools/mod.rs::dispatch`; today there is **no per-tool timeout**, so one hung/looping tool holds a task+pool
+  slot or fails a whole JSON-RPC batch (ollama#16813, IBM/mcp-context-forge#2078).
+- `subscription-leak-reaper` — an active timer-driven reaper + `maidan_active_subscriptions{transport}` gauge +
+  heartbeat dead-peer close for streamable/WS (streamable `prune_expired` is lazy/access-triggered today;
+  bounded broadcast caps memory but not the lazy-cleanup gap — opencode#22198 leaked 24.5 GB).
+- `conn-leak-detector` — a production connection-lifecycle ceiling + leak gauge on the long-lived WS/MCP-SSE
+  paths (no global cap, no per-token ceiling, no idle-reap past the long-poll clamp today; AWS Kinesis 2020,
+  CockroachDB 2016).
+- `tower-load-shed` + `tower-http-middleware` — a fail-fast `LoadShed`+`ConcurrencyLimit` layer **below auth**
+  + a shared egress retry-budget (Cloudflare 2023 recovery storm), and standardized request-id + sensitive-header
+  **redaction** + catch-panic (tower-http is already a dep; no redaction today).
+- `ws-frame-limits` — explicit `max_message_size`/`max_frame_size` on `/ws/subscribe` aligned with the REST body
+  cap (the WS door inherits tungstenite's ~64 MiB default vs the 2 MiB REST cap; RFC 6455 §"resource exhaustion").
+- `replica-divergence-fence` — a health-gated breaker forcing **all** reads (incl. no-token) to the primary once
+  lag > threshold or the poller errors; today a *no-token* read still routes to a lagging replica (GitHub 2018
+  split-brain). Complements the v266 per-token fallback.
+
+**Program V — verification as proof (turn occupancy/outbox correctness from "tested" into "proven"):**
+- `stateful-proptest` — model-based proptest of claim-lease/outbox/FSM vs the real store (parallel mode =
+  `claim_next` linearizability); the method template is QuickCheck/PULSE (ICFP 2009), the criterion is
+  Herlihy-Wing linearizability (1990), the industrial precedent is AWS's TLA+ use (CACM 2015).
+- `loom-interleaving` — exhaustive interleaving model-check of the event-bus/cursor/notification-batch models.
+- `madsim-deterministic` — seed-reproducible fault simulation of bus/cursor/replica (FoundationDB DST /
+  TigerBeetle are the exemplars) — the deterministic complement to the randomized `chaos.rs`.
+- `kani-critical-units` — bounded proof of capability containment, cursor arithmetic, idempotency keys, FSM
+  totality. `mutation-testing` — cargo-mutants proving the auth/store/bus tests detect change. `transport-fuzz` —
+  cargo-fuzz/LibAFL over the untrusted MCP/A2A/WS decoders.
+
+**Program D — operational durability & Postgres ops (highest net-new conviction from the book/repo canon):**
+- `pitr-dr` — continuous WAL-archiving PITR + a tested restore drill (v260 DR is `pg_dump`-only; the LSN replica
+  is not a backup). `idle-tx-timeout` — `idle_in_transaction_session_timeout`/`lock_timeout`/`idle_session_timeout`
+  in `after_connect` (only `statement_timeout` set today → the XID horizon can pin). `autovacuum-hot-tables` +
+  `time-partition-hot-tables` — per-table autovacuum + range-partitioning of the append-only tables
+  (events/audit/deliveries/notifications), retention = DROP PARTITION.
+- `embedding-job-queue` / `pg-visibility-queue` — a durable SKIP-LOCKED lease/retry/DLQ so the outbox-relay /
+  claim-next / scheduler / **indexer** queues converge (the indexer is an ephemeral bus subscriber today, so a
+  provider outage silently drops an embedding until reindex). `derived-rebuild` — `maidan rebuild-derived --verify`
+  re-folds `maidan_events` to rebuild/diff the notification ledger + follow counts + inbox cursors (+ a drift metric).
+- `pg-level-observability` (XID-age/bloat/WAL/replication-slot), `pool-topology-doc`, `utf8-pin`, `sqlite-backup-drill`,
+  `artifact-gc` (ref-counted content-addressed blob GC — the v204 deferral, which the GDPR-erasure item below needs).
+
+**Program B — protocol conformance CI (external-client oracles the internal bijection tests can't give):**
+- `a2a-tck-ci` — run the official A2A TCK MUST suite in CI. `mcp-inspector-ci` — scriptable Inspector/official-SDK
+  oracle over all 91 tools. `sdk-interop-oracle` — run the official third-party SDKs as clients. `openapi-lint`
+  (design-consistency beyond existence), `rfc9457-problem-details` (docs cite the obsoleted RFC 7807), `snapshot-tests`
+  (insta over normalized MCP/A2A/OpenAPI/audit shapes so wire-drift is a reviewed diff).
+
+**Program S — security hardening (security-led; the 4-source flagship + the compliance set):**
+- `cap-attenuation` — macaroon-style strict-subset+expiry token derivation without a `token:admin` round-trip
+  (a 4-source convergence: Levy object-capability + macaroons + Windley delegation + confused-deputy). `threat-regression-gates`
+  (each Threat-Model T-row → a named CI test), `threat-model-delta` (per-PR), `token-ttl-dpop` (TTL + DPoP/mTLS-bound
+  tokens, RFC 9449/8705), `mcp-step-up-auth` (audience-bound + step-up for sensitive tools), `mcp-security-scan`
+  (scan the 91-tool surface for over-permission/exfil — InjecAgent/ASB), `content-provenance-trust-label` (carry the
+  untrusted-external/other-tenant/tool-result label so a consumer sanitizes downstream — Maidan is the injection
+  *carrier, never the sanitizer*; AgentDojo/IPI). `agent-toolcall-audit`.
+- Supply chain: `image-digest-pin` (deploy the signed digest not the mutable `:tag`), `sbom-provenance` (syft SBOM →
+  cosign attestation), `trivy-policy`, `osv-scan` (the four `sdk/*` lockfiles are outside cargo-deny's Rust reach),
+  `cargo-vet`, `miri-unsafe`, `rollout-drain` (preStop drain + grace so the v156 SIGTERM drain isn't raced by
+  Service-endpoint removal).
+
+**Program E — enterprise compliance (SOC2/HIPAA/GDPR technical controls; unlocks procurement):**
+- `erasure-cascade` — **GDPR Art 17 is unsatisfiable end-to-end today**: content-addressed dedup means a naive
+  delete is unsafe, so a workspace/subject erasure must cascade to artifacts (ref-GC) + embeddings + derived tables
+  with a `--verify` fold. `tenant-isolation-attestation` — an enumerable cross-tenant denial suite (per surface ×
+  boundary) as the SIG/VSAQ "how is data segregated?" evidence (the RLS deferral at 216 left isolation self-asserted).
+  `field-redaction-filter` (read-time PII masking on `Message`/`ContentBlock`/audit metadata), `key-rotation-lifecycle`
+  (scheduled re-encrypt + key-age policy atop the v189 read-side keyring), `denial-audit` (a bounded/sampled 401/403
+  signal + spike alert — the v182 write-amplifier deferral, done as an aggregate not a per-request write).
+
+**Program O — observability & reliability:** `trace-context-propagation` (a correlation id across the WS/MCP/A2A
+doors + the async indexer + webhook fan-out — `traceparent` dies before the outbox relay today), `otel-collector-pipeline`
+(durable buffered redacted pipeline + a tested loss-on-collector-failure contract), `tokio-console-diag` (opt-in
+runtime diagnostics for the ~9 workers), `assembly-slo` (a named p99 + tail-amplification guard on the fan-out paths),
+`replica-health` (a lag-threshold alert + explicit `replica_unhealthy` route reason), `chaos-steady-state`,
+`operator-data-ink` (Tufte operator views).
+
+**Program F — search & retrieval quality:** `search-rerank` (RRF/cross-encoder), `hnsw-recall-eval` (the m/ef knobs
+are unset = pgvector defaults), `query-embedding-cache`, `search-eval-gate` (versioned corpus + baseline over
+`relevance_eval.rs`), `paradedb-eval` (compare Postgres-native BM25+RRF vs the hand-rolled hybrid — a decision doc).
+
+**Program G — architecture, DX & release governance:** `fitness-catalog` (name Maidan's implicit `-ilities`, one
+fitness fn each — threat-gates/openapi-lint/a11y/mutation/coverage all feed it), `nextest-profiles` (honest
+flaky-quarantine), `semver-gates` (crates + SDKs), `coverage-floors` (risk-based, not blanket %), `migration-parity-gate`
+(assert every `.sql` registered both backends + diff the replayed pg-vs-sqlite schema — closes the
+`maidan-migration-register` silent-drop class), `ui-fetch-contract` (typed `/ui` fetch), `active-benchmarking` (+ k6),
+`sdk-ergonomics` (idempotency keys + typed error taxonomy + auto-pagination — under SDK 0.2), plus DX niceties
+(`devcontainer`, `pipeline-parity`, `typed-config`, `cross-build-matrix`, `compose-health-order`, `s3-test-double`).
+
+**Program U — `/ui` & docs polish:** `ui-design-tokens` + `ui-a11y-audit` (partial ARIA, `lang="en"` hardcoded, no
+`:focus-visible`), `ui-code-editor`/`ui-log-stream`/`ui-dag-view` (monaco/xterm/xyflow patterns, no-build), `docs-diagrams`
+(mermaid), `openapi-reference-ui` (a Scalar-style interactive reference over the bijection-gated `/openapi.json`),
+`demo-recordings` (asciinema/vhs demo-as-code).
+
+**Program L — launch & growth (all gated on the maintainer's explicit go).** The public presence for maidan.world:
+`positioning-message-system` (retire "Slack for agents" as the *primary* claim → "durable coordination for software
+agents"), `landing-funnel` (a 15-section site), `interactive-product-demo` + `wasm-playground` (an in-browser
+zero-install room — the hero demo), `agent-readable-docs` (`llms.txt` + copy-to-agent prompt), `evidence-benchmark-policy`,
+`trust-foundation-page` (the compliance-surface page the Program-E work backs), `github-conversion`, `measurement-plan`,
+`changelog-as-product`, `launch-program`, `templates-integrations`, `comparison-migration-pages`. **Open-core /
+monetization:** `open-core-boundary` (the whole room stays OSS/local/free; the multi-tenant control plane —
+`maidan-operator` + usage-metering + SSO/SCIM + a compliance-audit panel + managed PITR — is the paid `hosted-control-plane`
+SKU; the Supabase/Tailscale/HashiCorp line).
+
+**Anti-goals & honesty gates (carried from the round):** no harness/sandbox/eval-gauntlet (Pi/Soundcheck own those);
+no workflow-engine dependency (an ADR compares Restate/Temporal and declines it — the outbox/DAG/scheduler already
+re-derive the semantics); RLS stays deferred (216); no unearned SLA/badge/logo/benchmark on any launch surface
+(every number links a dated method); public launch + any paid tier gated on David.
+
 ## Pre-launch fixes + flagship arc (2026-08-28 research sweep)
 
 A 4-thread research sweep (2026-08-28) audited the tree at **v314** for anything more pressing
@@ -469,6 +608,7 @@ starts without an explicit go.**
 - **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful. **→ Cluster 315 adds a boot `warn!`** so a stranger who leaves it unset isn't silently served near-random "semantic" results.
 - **`rsa` advisory `RUSTSEC-2023-0071`** — ignored (RS256 id_token verify via openidconnect v4; no fixed `rsa`); clears on openidconnect v5 (unreleased). See [Dependencies.md](Dependencies.md).
 - **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264), released as `v101.0.0`; not a backlog. All four gate tags (incl. `maidan-operator-1.0`) are cut.
+- **Newly-surfaced operational gaps (2026-09-02 canon round — see "Engineering-canon forward program" above).** Grounded in real incidents/clauses, small + on-the-room: **(1)** MCP `tools/dispatch` has no per-tool timeout — one hung tool can hold a task+pool slot or fail a JSON-RPC batch; **(2)** the long-lived WS/MCP-SSE connections have no ceiling/leak-gauge and streamable prune is lazy; **(3)** a *no-token* read can route to a lagging replica (the v266 token covers only token-carrying reads); **(4)** GDPR Art-17 erasure is unsatisfiable end-to-end because content-addressed dedup blocks a naive delete (needs a ref-counted cascade); **(5)** tenant isolation is app-layer + self-asserted (RLS deferred 216) with no named conformance artifact. The durable substrate avoids the *worst* forms of most failure classes by design (outbox, bounded broadcast, at-least-once cursor, LSN token); these five are the residual gaps.
 
 ## Shipped (reference)
 
