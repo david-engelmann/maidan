@@ -437,3 +437,40 @@ jobs:
       - name: tear down the harness
         if: always()
         run: scripts/replica-harness.sh down
+
+  ui-tests:
+    name: ui tests (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Real headless-Chromium coverage of the /ui console. The example harness
+    # (crates/maidan-server/examples/ui_test_server.rs) seeds an in-memory server
+    # and serves the real /ui; Playwright drives it in a browser. This catches
+    # DOM / render / event-wiring bugs the static ui_js_contract check cannot.
+    # See ui-tests/README.md.
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: build the /ui test harness
+        run: cargo build --example ui_test_server -p maidan-server
+      - name: install node deps
+        working-directory: ui-tests
+        run: npm ci
+      - name: install chromium
+        working-directory: ui-tests
+        run: npx playwright install --with-deps chromium
+      - name: run playwright
+        working-directory: ui-tests
+        run: npx playwright test
+      - name: upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui-tests/playwright-report/
+          retention-days: 7
