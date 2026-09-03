@@ -51,3 +51,4 @@ id_newtype!(OidcIdentityId);
 id_newtype!(TaskScheduleId);
 id_newtype!(NotificationId);
 id_newtype!(MailOutboxId);
+id_newtype!(ApprovalGateId);

@@ -4,6 +4,7 @@
 //! AUTOINCREMENT id — we read it back via `last_insert_rowid()`).
 
 mod a2a;
+mod approval_gates;
 pub mod apps;
 mod artifacts;
 mod audit;
@@ -202,6 +203,38 @@ impl ThreadResultStore for SqliteStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(&self.pool, thread_id).await
+    }
+}
+
+#[async_trait]
+impl ApprovalGateStore for SqliteStore {
+    async fn create_approval_gate(
+        &self,
+        gate: &NewApprovalGate,
+    ) -> Result<ApprovalGate, StoreError> {
+        approval_gates::create(&self.pool, gate).await
+    }
+    async fn get_approval_gate(
+        &self,
+        id: ApprovalGateId,
+    ) -> Result<Option<ApprovalGate>, StoreError> {
+        approval_gates::get(&self.pool, id).await
+    }
+    async fn list_pending_approval_gates(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<ApprovalGate>, StoreError> {
+        approval_gates::list_pending(&self.pool, workspace_id, limit).await
+    }
+    async fn resolve_approval_gate(
+        &self,
+        id: ApprovalGateId,
+        resolved_by: MemberId,
+        state: ApprovalGateState,
+        content: Option<&serde_json::Value>,
+    ) -> Result<Option<ApprovalGate>, StoreError> {
+        approval_gates::resolve(&self.pool, id, resolved_by, state, content).await
     }
 }
 
