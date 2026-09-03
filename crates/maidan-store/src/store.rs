@@ -113,6 +113,35 @@ pub trait ThreadResultStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait ApprovalGateStore: Send + Sync {
+    /// A durable human-approval gate (Cluster 350, the held gate): `create` opens
+    /// a `Pending` gate, `resolve` compare-and-sets it to accept/decline/cancel
+    /// (a second answer is a no-op → `None`), `list_pending` is the queryable
+    /// outstanding-gate list. No worker/routes yet — a zero-blast-radius
+    /// foundation.
+    async fn create_approval_gate(
+        &self,
+        gate: &NewApprovalGate,
+    ) -> Result<ApprovalGate, StoreError>;
+    async fn get_approval_gate(
+        &self,
+        id: ApprovalGateId,
+    ) -> Result<Option<ApprovalGate>, StoreError>;
+    async fn list_pending_approval_gates(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<ApprovalGate>, StoreError>;
+    async fn resolve_approval_gate(
+        &self,
+        id: ApprovalGateId,
+        resolved_by: MemberId,
+        state: ApprovalGateState,
+        content: Option<&serde_json::Value>,
+    ) -> Result<Option<ApprovalGate>, StoreError>;
+}
+
+#[async_trait]
 pub trait GlossaryStore: Send + Sync {
     /// A workspace's shared glossary (Cluster 321, fidelity arc): `set` upserts a
     /// canonical `term -> definition` (+ aliases) keyed on `(workspace_id, term)`,
@@ -1348,6 +1377,7 @@ pub trait Store:
     + MemberStore
     + SkillStore
     + ThreadResultStore
+    + ApprovalGateStore
     + GlossaryStore
     + NotificationStore
     + FollowStore
@@ -1389,6 +1419,7 @@ impl<
             + MemberStore
             + SkillStore
             + ThreadResultStore
+            + ApprovalGateStore
             + GlossaryStore
             + NotificationStore
             + FollowStore

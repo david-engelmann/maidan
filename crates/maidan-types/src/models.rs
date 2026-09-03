@@ -254,6 +254,81 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// The state of an approval gate (Cluster 350, the held gate). A gate opens
+/// `Pending`; a human resolves it to exactly one of accept/decline/cancel.
+/// Silence never resolves a gate (there is no timeout auto-approve), and a
+/// resolve is a compare-and-set on `Pending` so a double-answer can't flip it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalGateState {
+    #[default]
+    Pending,
+    Accepted,
+    Declined,
+    Cancelled,
+}
+
+impl ApprovalGateState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "accepted" => Some(Self::Accepted),
+            "declined" => Some(Self::Declined),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+
+    /// Whether the gate is no longer awaiting a human.
+    pub fn is_resolved(self) -> bool {
+        !matches!(self, Self::Pending)
+    }
+}
+
+/// A durable, queryable human-approval gate (Cluster 350, the held gate). An
+/// agent's `request_approval` opens one `Pending` gate and returns an
+/// `input-required` result instead of blocking; a human later resolves it via
+/// the `/ui`. Persisted so the gate survives a dropped connection and can be
+/// listed while outstanding (queryable). An optional `thread_id` attaches the
+/// gate to a thread for the N6 required-human claim gate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ApprovalGate {
+    pub id: ApprovalGateId,
+    pub workspace_id: WorkspaceId,
+    pub thread_id: Option<ThreadId>,
+    pub requested_by: MemberId,
+    pub prompt: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub schema: Option<serde_json::Value>,
+    pub state: ApprovalGateState,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub content: Option<serde_json::Value>,
+    pub resolved_by: Option<MemberId>,
+    pub created_at: DateTime<Utc>,
+    pub resolved_at: Option<DateTime<Utc>>,
+}
+
+/// The inputs to open a new approval gate (Cluster 350).
+#[derive(Debug, Clone)]
+pub struct NewApprovalGate {
+    pub workspace_id: WorkspaceId,
+    pub thread_id: Option<ThreadId>,
+    pub requested_by: MemberId,
+    pub prompt: String,
+    pub schema: Option<serde_json::Value>,
+}
+
 /// A per-recipient notification (Cluster 237, Program C). Where a mention is one
 /// shared `maidan_mentions` row read through a single inbox cursor, this is one
 /// row per (recipient, source event): *who* should know, *what* triggered it
