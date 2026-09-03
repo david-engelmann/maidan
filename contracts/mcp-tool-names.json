@@ -1,5 +1,6 @@
 [
   "abort_artifact_multipart",
+  "acknowledge_claim",
   "add_channel_member",
   "add_member_skill",
   "add_reaction",

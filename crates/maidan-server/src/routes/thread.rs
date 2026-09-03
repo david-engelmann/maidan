@@ -453,6 +453,30 @@ pub async fn renew_claim(
     Ok(Json(thread))
 }
 
+/// Acknowledge a claim and start the working clock (Cluster 351), for the current
+/// holder presenting the matching fencing token. `NotFound` if the caller isn't
+/// the holder or the token is stale. Idempotent: the first start time is kept.
+pub async fn acknowledge_claim(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<AcknowledgeClaim>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
+    let thread = state
+        .store
+        .acknowledge_claim(
+            thread_id,
+            MemberId(body.member_id),
+            ClaimLeaseId(body.claim_lease_id),
+        )
+        .await?;
+    Ok(Json(thread))
+}
+
 /// Add a task-dependency edge (Cluster 219): the path thread depends on
 /// `depends_on_thread_id`. Both threads must be in the same workspace and visible
 /// to the caller. `thread:transition` — dependency wiring is a workflow op.

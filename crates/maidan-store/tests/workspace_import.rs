@@ -79,6 +79,7 @@ fn sample() -> WorkspaceImport {
             assignee_id: Some(m2),
             assignment_expires_at: None,
             claim_lease_id: Some(lease),
+            work_started_at: Some(now),
             created_at: now,
             updated_at: now,
             tombstoned_at: None,
@@ -166,6 +167,11 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(
         threads[0].claim_lease_id, b.threads[0].claim_lease_id,
         "claim lease id preserved through import"
+    );
+    assert_eq!(
+        threads[0].work_started_at.is_some(),
+        b.threads[0].work_started_at.is_some(),
+        "working clock preserved through import"
     );
 
     let msgs = store

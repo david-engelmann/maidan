@@ -249,6 +249,32 @@ pub(super) async fn renew_claim(
 }
 
 #[derive(Deserialize)]
+struct AcknowledgeClaimArgs {
+    thread_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    claim_lease_id: uuid::Uuid,
+}
+
+/// Acknowledge a claim and start the working clock (Cluster 351), for the current
+/// holder presenting the matching fencing token. Idempotent (the first start time
+/// wins). Thread access is enforced pre-dispatch (the `thread_id` arg).
+pub(super) async fn acknowledge_claim(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AcknowledgeClaimArgs = serde_json::from_value(args.clone())?;
+    let thread = server
+        .store
+        .acknowledge_claim(
+            ThreadId(a.thread_id),
+            MemberId(a.member_id),
+            ClaimLeaseId(a.claim_lease_id),
+        )
+        .await?;
+    Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
 struct AddThreadDependencyArgs {
     thread_id: uuid::Uuid,
     depends_on_thread_id: uuid::Uuid,

@@ -163,6 +163,10 @@ async fn run_readside_suite(store: &dyn Store) {
         Some(m2.id),
         "expired lease reclaimed by the next claimer"
     );
+    assert!(
+        c2.work_started_at.is_none(),
+        "a fresh (re)claim resets the working clock"
+    );
     // Lease is now valid → nothing else claimable.
     assert!(store
         .claim_next_thread(lease_ch.id, m1.id, Some(3600))
@@ -192,6 +196,32 @@ async fn run_readside_suite(store: &dyn Store) {
     // Even the real holder presenting the wrong (stale) token is rejected.
     assert!(matches!(
         store.renew_claim(leased.id, m2.id, lease1, 7200).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
+
+    // --- working clock (Cluster 351): acknowledge starts it, fenced + idempotent ---
+    let acked = store
+        .acknowledge_claim(leased.id, m2.id, lease2)
+        .await
+        .expect("holder acknowledges and starts the working clock");
+    let started = acked.work_started_at.expect("working clock is now set");
+    // A second acknowledge within the same claim epoch keeps the first start time.
+    let reacked = store
+        .acknowledge_claim(leased.id, m2.id, lease2)
+        .await
+        .expect("re-acknowledge is idempotent");
+    assert_eq!(
+        reacked.work_started_at,
+        Some(started),
+        "the working clock keeps its first start time on re-acknowledge"
+    );
+    // A stale token cannot start the clock, and neither can a non-holder.
+    assert!(matches!(
+        store.acknowledge_claim(leased.id, m2.id, lease1).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
+    assert!(matches!(
+        store.acknowledge_claim(leased.id, m1.id, lease2).await,
         Err(maidan_store::StoreError::NotFound)
     ));
 }

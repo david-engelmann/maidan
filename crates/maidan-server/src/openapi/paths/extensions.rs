@@ -147,6 +147,17 @@ pub fn claim_next_thread() {}
 pub fn renew_claim() {}
 
 #[utoipa::path(
+    post,
+    path = "/threads/{id}/claim/acknowledge",
+    tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = AcknowledgeClaim,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread, description = "Working clock started (current holder with the matching fencing token)"))
+)]
+pub fn acknowledge_claim() {}
+
+#[utoipa::path(
     get,
     path = "/workspaces/{wid}/audit",
     tag = "workspaces",
