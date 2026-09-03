@@ -71,6 +71,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_workspace_context"
         | "summarize_thread"
         | "request_approval"
+        | "get_approval_gate"
         | "list_mentions"
         | "get_inbox"
         | "mark_inbox_read"
@@ -400,7 +401,8 @@ pub async fn dispatch(
             Ok(content_json(&v))
         }
         "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
-        "request_approval" => approval::request_approval(server, session_id, args).await,
+        "request_approval" => approval::request_approval(server, auth, args).await,
+        "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
         "list_roots" => roots::list_roots(server, session_id, args).await,
         "whoami" => whoami::whoami(auth).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),

@@ -17,6 +17,7 @@
   "edit_message": "message:post",
   "follow_channel": "workspace:read",
   "follow_thread": "workspace:read",
+  "get_approval_gate": "workspace:read",
   "get_artifact_metadata": "workspace:read",
   "get_delivery_mode": "workspace:read",
   "get_dependency_results": "workspace:read",

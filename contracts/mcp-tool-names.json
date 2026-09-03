@@ -17,6 +17,7 @@
   "edit_message",
   "follow_channel",
   "follow_thread",
+  "get_approval_gate",
   "get_artifact_metadata",
   "get_delivery_mode",
   "get_dependency_results",

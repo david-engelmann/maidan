@@ -1053,14 +1053,25 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "request_approval",
-            "description": "Human-in-the-loop gate: ask the human on the connected MCP client to approve or reject an action (server→client elicitation/create over the GET /mcp/streamable stream). Requires a streamable session whose client declared the elicitation capability. Returns {approved, action, content}.",
+            "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "prompt": {"type": "string", "description": "what the human is being asked to approve"},
-                    "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply (MCP requestedSchema)"}
+                    "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply alongside their decision"}
                 },
                 "required": ["prompt"]
+            }
+        }),
+        json!({
+            "name": "get_approval_gate",
+            "description": "Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "gate_id": {"type": "string", "description": "the gate id returned by request_approval"}
+                },
+                "required": ["gate_id"]
             }
         }),
         json!({
