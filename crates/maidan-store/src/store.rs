@@ -710,6 +710,17 @@ pub trait AssignmentStore: Send + Sync {
         lease_id: ClaimLeaseId,
         lease_secs: i64,
     ) -> Result<Thread, StoreError>;
+
+    /// Stamp the working clock (Cluster 351): the current claim-holder
+    /// acknowledges and begins work. Fenced by `(member_id, lease_id)`. Idempotent
+    /// (the first start time wins). `NotFound` if the caller isn't the holder or
+    /// the token is stale.
+    async fn acknowledge_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<Thread, StoreError>;
 }
 
 #[async_trait]

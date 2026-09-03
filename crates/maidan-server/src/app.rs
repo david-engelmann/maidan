@@ -271,6 +271,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/claim/renew", post(routes::renew_claim))
         .route(
+            "/threads/:id/claim/acknowledge",
+            post(routes::acknowledge_claim),
+        )
+        .route(
             "/threads/:id",
             get(routes::get_thread).post(routes::transition_thread),
         )

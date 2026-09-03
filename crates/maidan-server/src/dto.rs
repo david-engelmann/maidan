@@ -96,6 +96,15 @@ pub struct RenewClaim {
     pub lease_secs: i64,
 }
 
+/// Acknowledge a claim and start the working clock (Cluster 351). The current
+/// holder presents its fencing token; the working clock (`work_started_at`) is
+/// stamped once and preserved on re-acknowledge.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AcknowledgeClaim {
+    pub member_id: uuid::Uuid,
+    pub claim_lease_id: uuid::Uuid,
+}
+
 /// Add a task-dependency edge — the thread in the path depends on
 /// `depends_on_thread_id` (Cluster 219).
 #[derive(Debug, Deserialize, ToSchema)]

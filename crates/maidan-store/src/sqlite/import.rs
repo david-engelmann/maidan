@@ -76,8 +76,8 @@ pub async fn import_workspace(pool: &SqlitePool, b: &WorkspaceImport) -> Result<
         sqlx::query(
             "INSERT INTO maidan_threads
                 (id, channel_id, parent_thread_id, title, state, assignee_id,
-                 assignment_expires_at, claim_lease_id, created_at, updated_at, tombstoned_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 assignment_expires_at, claim_lease_id, work_started_at, created_at, updated_at, tombstoned_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(t.id.0)
         .bind(t.channel_id.0)
@@ -87,6 +87,7 @@ pub async fn import_workspace(pool: &SqlitePool, b: &WorkspaceImport) -> Result<
         .bind(t.assignee_id.map(|a| a.0))
         .bind(t.assignment_expires_at)
         .bind(t.claim_lease_id.map(|l| l.0))
+        .bind(t.work_started_at)
         .bind(t.created_at)
         .bind(t.updated_at)
         .bind(t.tombstoned_at)

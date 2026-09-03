@@ -1074,6 +1074,14 @@ impl AssignmentStore for PostgresStore {
     ) -> Result<Thread, StoreError> {
         threads::renew_claim(&self.pool, thread_id, member_id, lease_id, lease_secs).await
     }
+    async fn acknowledge_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<Thread, StoreError> {
+        threads::acknowledge_claim(&self.pool, thread_id, member_id, lease_id).await
+    }
 }
 
 #[async_trait]

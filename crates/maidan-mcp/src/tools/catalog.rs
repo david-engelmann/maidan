@@ -199,6 +199,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "acknowledge_claim",
+            "description": "Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
+                    "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"}
+                },
+                "required": ["thread_id", "member_id", "claim_lease_id"]
+            }
+        }),
+        json!({
             "name": "add_thread_dependency",
             "description": "Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.",
             "inputSchema": {

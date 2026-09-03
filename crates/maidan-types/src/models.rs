@@ -627,6 +627,14 @@ pub struct Thread {
     /// lease alone lets a stale holder act after the next owner has taken over.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claim_lease_id: Option<ClaimLeaseId>,
+    /// The working clock (Cluster 351). `assignment_expires_at` is the *claim*
+    /// clock (lease deadline); this is when the current holder acknowledged and
+    /// began work (`acknowledge_claim`). `None` = claimed but not yet started, or
+    /// unassigned. Reset to `None` on every (re)claim/assign/unassign so it always
+    /// reflects the CURRENT claim epoch — letting occupancy separate a
+    /// claimed-but-idle agent from one actively working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_started_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,

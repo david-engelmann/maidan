@@ -1,5 +1,6 @@
 {
   "abort_artifact_multipart": "artifact:upload",
+  "acknowledge_claim": "thread:transition",
   "add_channel_member": "channel:admin",
   "add_member_skill": "workspace:write",
   "add_reaction": "workspace:write",
