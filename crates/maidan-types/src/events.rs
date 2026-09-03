@@ -37,6 +37,7 @@ pub enum EventKind {
     ThreadAssignmentChanged,
     ThreadReady,
     ThreadResultSet,
+    ClaimExpired,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -61,6 +62,7 @@ impl EventKind {
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
+            Self::ClaimExpired => "claim_expired",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -85,6 +87,7 @@ impl EventKind {
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
+            "claim_expired" => Some(Self::ClaimExpired),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -115,6 +118,7 @@ impl EventKind {
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
         Self::ThreadResultSet,
+        Self::ClaimExpired,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -164,6 +168,9 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
+            // A lease expiry is detected locally (this deployment's clock + reclaim);
+            // a peer must not inject a claim of one.
+            Self::ClaimExpired => false,
         }
     }
 }
@@ -237,6 +244,22 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         produced_by: MemberId,
+    },
+    /// A claim's lease lapsed and the thread was reclaimed by the next agent
+    /// (Cluster 351). Emitted lazily by `claim_next` when it takes over an
+    /// expired lease — `member_id` is the *previous* holder whose claim expired,
+    /// so a supervisor can react to a dead/stalled agent without polling. A
+    /// locally-derived signal (this deployment's clock): not federatable. A lease
+    /// that expires but is never reclaimed emits nothing (the occupancy view
+    /// still shows it).
+    ClaimExpired {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The previous holder whose lease expired.
+        member_id: MemberId,
+        thread: Thread,
     },
     MessagePosted {
         occurred_at: DateTime<Utc>,
@@ -334,6 +357,7 @@ impl Event {
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
+            Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -358,6 +382,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
+            | Self::ClaimExpired { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -382,6 +407,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
+            | Self::ClaimExpired { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -403,6 +429,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }
             | Self::ThreadResultSet { channel_id, .. }
+            | Self::ClaimExpired { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -419,6 +446,7 @@ impl Event {
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
+            Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -453,6 +481,7 @@ impl Event {
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
+            Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
             | Self::ReactionAdded { member_id, .. }
@@ -719,6 +748,7 @@ mod kind_tests {
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
+                | EventKind::ClaimExpired
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -764,6 +794,7 @@ mod kind_tests {
             EventKind::ArtifactUpserted,
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
+            EventKind::ClaimExpired,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);

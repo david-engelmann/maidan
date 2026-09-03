@@ -617,3 +617,71 @@ pub(super) async fn wait_for_ready(
         return Ok(content_json(&envelope.event));
     }
 }
+
+#[derive(Deserialize)]
+struct WaitForClaimExpiredArgs {
+    /// Optional channel to scope to; omit to await any accessible expiry in the
+    /// caller's workspace.
+    #[serde(default)]
+    channel_id: Option<uuid::Uuid>,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+}
+
+/// Block until a claim's lease lapses and its thread is reclaimed, emitting
+/// `ClaimExpired` (Cluster 351) — a supervisor's "an agent died" signal, so it
+/// needn't poll the occupancy view. Scoped to `channel_id` when given, else any
+/// thread in the caller's workspace they can access; returns the `ClaimExpired`
+/// event (its `member_id` is the dead holder) or `null` on timeout. **Live**
+/// primitive (only sees expiries reclaimed *after* it subscribes); the
+/// `GET /mcp/stream` SSE transport, `kinds=claim_expired`, is the resumable
+/// alternative. A lease that expires but is never reclaimed emits nothing.
+pub(super) async fn wait_for_claim_expired(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitForClaimExpiredArgs = serde_json::from_value(args.clone())?;
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(
+            "wait_for_claim_expired requires an event bus".into(),
+        ));
+    };
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        channel_id: a.channel_id.map(ChannelId),
+        kinds: Some(std::collections::HashSet::from([EventKind::ClaimExpired])),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    let store = server.store.as_ref();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        let maidan_bus::BusItem::Event(envelope) = item else {
+            continue;
+        };
+        // Don't reveal an expiry in a thread the caller can't access.
+        if !auth.bypass {
+            if let Some(tid) = envelope.event.thread_id() {
+                if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                    continue;
+                }
+            }
+        }
+        return Ok(content_json(&envelope.event));
+    }
+}

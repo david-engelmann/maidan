@@ -87,6 +87,7 @@
   "unpin_message",
   "upload_artifact",
   "upload_artifact_multipart_part",
+  "wait_for_claim_expired",
   "wait_for_mention",
   "wait_for_notification",
   "wait_for_ready",

@@ -698,14 +698,17 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError>;
-    /// Claim the next thread, appending `ThreadAssignmentChanged` atomically
-    /// **iff** a thread was claimed (Cluster 209). `(thread, event)`.
+    /// Claim the next thread, appending its events atomically **iff** a thread was
+    /// claimed (Cluster 209/351). The returned events are the reclaim's
+    /// `ThreadAssignmentChanged`, preceded by a `ClaimExpired` when the claim took
+    /// over an expired lease (the previous holder's claim lapsed). Empty vec when
+    /// nothing was claimed.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
-    ) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError>;
+    ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Extend a claimed thread's lease (heartbeat), only for the current assignee
     /// holding the matching fencing token (Cluster 192 / 351). `NotFound` if the

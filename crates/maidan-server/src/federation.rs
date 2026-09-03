@@ -315,6 +315,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             thread_id,
             produced_by,
         },
+        // Non-federatable (a locally-derived lease expiry) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        ClaimExpired {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            member_id,
+            thread,
+        } => ClaimExpired {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            thread,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

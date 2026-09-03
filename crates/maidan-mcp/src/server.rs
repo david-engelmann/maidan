@@ -1072,6 +1072,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_for_claim_expired_returns_expiry_and_filters_private() {
+        use chrono::Utc;
+        use maidan_auth::capability::WORKSPACE_READ;
+        use maidan_bus::InMemoryBus;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "ce".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let public = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "open".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let secret = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "secret".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        let mk_thread = |channel_id, store: Arc<dyn Store>| async move {
+            store
+                .create_thread(NewThread {
+                    channel_id,
+                    parent_thread_id: None,
+                    title: Some("t".into()),
+                })
+                .await
+                .unwrap()
+        };
+        let pub_thread = mk_thread(public.id, store.clone()).await;
+        let secret_thread = mk_thread(secret.id, store.clone()).await;
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth = AuthContext::from_session(agent.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let expired = |thread: Thread| Event::ClaimExpired {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            member_id: agent.id,
+            thread,
+        };
+
+        // An expiry in the public thread wakes the workspace-wide waiter, naming
+        // the dead holder.
+        let live_args = json!({ "timeout_ms": 5000 });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_claim_expired", &live_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                server.publish_event(expired(pub_thread.clone())).await;
+            }
+        );
+        let got = unwrap_content(out.unwrap());
+        assert_eq!(got["kind"], json!("claim_expired"));
+        assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+        assert_eq!(got["member_id"], json!(agent.id.0));
+
+        // An expiry in a private channel the agent can't access is filtered → null.
+        let filtered_args = json!({ "timeout_ms": 400 });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_claim_expired", &filtered_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                server.publish_event(expired(secret_thread.clone())).await;
+            }
+        );
+        assert!(
+            unwrap_content(out.unwrap()).is_null(),
+            "an expiry in an inaccessible private channel is filtered → timeout"
+        );
+    }
+
+    #[tokio::test]
     async fn result_tools_set_get_wait_and_aggregate() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_bus::InMemoryBus;

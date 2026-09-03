@@ -225,6 +225,26 @@ async fn append_assignment_event(
     events::append_in_tx(tx, &event).await
 }
 
+/// Build + append a `ClaimExpired` event on a caller-supplied tx (Cluster 351):
+/// the previous holder `expired_member`'s lease lapsed and the thread was
+/// reclaimed. See the Postgres twin.
+async fn append_claim_expired_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: &Thread,
+    expired_member: MemberId,
+) -> Result<StoredEvent, StoreError> {
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread.id).await?;
+    let event = Event::ClaimExpired {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: thread.id,
+        member_id: expired_member,
+        thread: thread.clone(),
+    };
+    events::append_in_tx(tx, &event).await
+}
+
 /// Atomic compare-and-set claim (Cluster 171): `assignee_id IS NULL` guards the
 /// UPDATE so only one concurrent claimer wins. `None` → already assigned (or
 /// absent); disambiguate with a follow-up read.
@@ -491,60 +511,75 @@ pub async fn claim_next_with_event(
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
-) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError> {
+) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let now = Utc::now();
     let expires = lease_secs.map(|s| (now + chrono::Duration::seconds(s)).to_rfc3339());
     let lease = ClaimLeaseId::new();
+    // SQLite serializes writers, so a select-then-update in one tx is race-free.
+    // The pre-update SELECT captures the candidate's current assignee (`prev`), so
+    // a reclaim of an expired lease can emit `ClaimExpired` for the dead holder
+    // (RETURNING would only give the post-update row).
+    let candidate = sqlx::query(
+        "SELECT t.id, t.assignee_id FROM maidan_threads t
+         WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
+           AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_dependencies d
+               JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+               WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_required_skills trs
+               WHERE trs.thread_id = t.id
+                 AND NOT EXISTS (
+                     SELECT 1 FROM maidan_member_skills ms
+                     WHERE ms.member_id = ? AND ms.skill = trs.skill
+                 )
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_approval_gates g
+               WHERE g.thread_id = t.id AND g.state = 'pending'
+           )
+         ORDER BY t.created_at ASC, t.id ASC
+         LIMIT 1",
+    )
+    .bind(channel_id.0)
+    .bind(now.to_rfc3339())
+    .bind(member_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let candidate = match candidate {
+        Some(c) => c,
+        None => {
+            tx.commit().await?;
+            return Ok((None, Vec::new()));
+        }
+    };
+    let cand_id: Uuid = candidate.get("id");
+    let prev_assignee = candidate
+        .get::<Option<Uuid>, _>("assignee_id")
+        .map(MemberId);
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
-         WHERE id = (
-             SELECT t.id FROM maidan_threads t
-             WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
-               AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_dependencies d
-                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                   WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_required_skills trs
-                   WHERE trs.thread_id = t.id
-                     AND NOT EXISTS (
-                         SELECT 1 FROM maidan_member_skills ms
-                         WHERE ms.member_id = ? AND ms.skill = trs.skill
-                     )
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_approval_gates g
-                   WHERE g.thread_id = t.id AND g.state = 'pending'
-               )
-             ORDER BY t.created_at ASC, t.id ASC
-             LIMIT 1
-         )
+         WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
     )
     .bind(member_id.0)
     .bind(&expires)
     .bind(lease.0)
     .bind(now.to_rfc3339())
-    .bind(channel_id.0)
-    .bind(now.to_rfc3339())
-    .bind(member_id.0)
-    .fetch_optional(&mut *tx)
+    .bind(cand_id)
+    .fetch_one(&mut *tx)
     .await?;
-    match row {
-        Some(row) => {
-            let thread = row_to_thread(&row)?;
-            let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
-            tx.commit().await?;
-            Ok((Some(thread), Some(stored)))
-        }
-        None => {
-            tx.commit().await?;
-            Ok((None, None))
-        }
+    let thread = row_to_thread(&row)?;
+    let mut events = Vec::new();
+    if let Some(expired) = prev_assignee {
+        events.push(append_claim_expired_event(&mut tx, &thread, expired).await?);
     }
+    events.push(append_assignment_event(&mut tx, &thread, member_id, None, None).await?);
+    tx.commit().await?;
+    Ok((Some(thread), events))
 }
 
 /// Extend a claim's lease (heartbeat), only for the current assignee (Cluster

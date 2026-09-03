@@ -213,6 +213,26 @@ async fn append_assignment_event(
     events::append_in_tx(tx, &event).await
 }
 
+/// Build + append a `ClaimExpired` event on a caller-supplied tx (Cluster 351):
+/// the previous holder `expired_member`'s lease lapsed and the thread was
+/// reclaimed. Emitted alongside the reclaim's `ThreadAssignmentChanged`.
+async fn append_claim_expired_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread: &Thread,
+    expired_member: MemberId,
+) -> Result<StoredEvent, StoreError> {
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread.id).await?;
+    let event = Event::ClaimExpired {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: thread.id,
+        member_id: expired_member,
+        thread: thread.clone(),
+    };
+    events::append_in_tx(tx, &event).await
+}
+
 /// Atomic compare-and-set claim (Cluster 171): the `assignee_id IS NULL`
 /// predicate + row lock guarantees only one concurrent claimer wins. A `None`
 /// result means the row was already assigned (or absent) — disambiguate with a
@@ -468,13 +488,15 @@ pub async fn claim_next_with_event(
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
-) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError> {
+) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
     let lease = ClaimLeaseId::new();
+    // The CTE captures the candidate's PRE-update assignee (`prev_assignee`) so a
+    // reclaim of an expired lease can emit `ClaimExpired` for the dead holder.
     let row = sqlx::query(
         "WITH next AS (
-             SELECT c.id FROM maidan_threads c
+             SELECT c.id, c.assignee_id AS prev_assignee FROM maidan_threads c
              WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
                AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
                AND NOT EXISTS (
@@ -500,7 +522,7 @@ pub async fn claim_next_with_event(
          )
          UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
-         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at",
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, next.prev_assignee",
     )
     .bind(member_id.0)
     .bind(channel_id.0)
@@ -511,13 +533,19 @@ pub async fn claim_next_with_event(
     match row {
         Some(row) => {
             let thread = row_to_thread(&row)?;
-            let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
+            let prev_assignee = row.get::<Option<Uuid>, _>("prev_assignee").map(MemberId);
+            let mut events = Vec::new();
+            // A reclaim of an expired lease: the previous holder's claim expired.
+            if let Some(expired) = prev_assignee {
+                events.push(append_claim_expired_event(&mut tx, &thread, expired).await?);
+            }
+            events.push(append_assignment_event(&mut tx, &thread, member_id, None, None).await?);
             tx.commit().await?;
-            Ok((Some(thread), Some(stored)))
+            Ok((Some(thread), events))
         }
         None => {
             tx.commit().await?;
-            Ok((None, None))
+            Ok((None, Vec::new()))
         }
     }
 }

@@ -2,7 +2,7 @@
 //! claim-next atomically takes the oldest unassigned thread.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
@@ -249,10 +249,90 @@ async fn run_readside_suite(store: &dyn Store) {
     ));
 }
 
+/// Cluster 351: `claim_next_with_event` emits `ClaimExpired` for the dead holder
+/// when it reclaims an expired lease — a fresh claim emits only the assignment.
+async fn run_claim_expired_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "ce".into() })
+        .await
+        .expect("ws");
+    let m1 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "ce-1".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m1");
+    let m2 = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "ce-2".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("m2");
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "ce-ch".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let t = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+        })
+        .await
+        .expect("t");
+
+    // m1 claims with an already-expired lease → a fresh claim: only the assignment.
+    let (claimed, ev1) = store
+        .claim_next_thread_with_event(ch.id, m1.id, Some(-1))
+        .await
+        .expect("claim m1");
+    assert_eq!(claimed.map(|c| c.id), Some(t.id));
+    assert_eq!(ev1.len(), 1, "a fresh claim emits only the assignment");
+    assert_eq!(ev1[0].kind, EventKind::ThreadAssignmentChanged);
+
+    // m2 reclaims the expired lease → ClaimExpired (for m1) THEN the assignment.
+    let (reclaimed, ev2) = store
+        .claim_next_thread_with_event(ch.id, m2.id, Some(3600))
+        .await
+        .expect("reclaim m2");
+    assert_eq!(reclaimed.map(|c| c.id), Some(t.id));
+    assert_eq!(
+        ev2.len(),
+        2,
+        "reclaiming an expired lease emits ClaimExpired + the assignment"
+    );
+    assert_eq!(
+        ev2[0].kind,
+        EventKind::ClaimExpired,
+        "ClaimExpired is emitted first (the old claim ended before the new one)"
+    );
+    assert_eq!(ev2[1].kind, EventKind::ThreadAssignmentChanged);
+    // The ClaimExpired names the dead holder, m1.
+    let expired: Event = serde_json::from_value(ev2[0].payload.clone()).expect("event");
+    assert_eq!(
+        expired.member_id(),
+        Some(m1.id),
+        "ClaimExpired names the previous (expired) holder"
+    );
+    assert_eq!(expired.thread_id(), Some(t.id));
+}
+
 #[tokio::test]
 async fn assignment_readside_lists_mine_and_claims_oldest_sqlite() {
     let store = sqlite().await;
     run_readside_suite(&store).await;
+    run_claim_expired_suite(&store).await;
 }
 
 #[tokio::test]
@@ -287,4 +367,5 @@ async fn assignment_readside_lists_mine_and_claims_oldest_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_readside_suite(&store).await;
+    run_claim_expired_suite(&store).await;
 }

@@ -416,11 +416,13 @@ pub async fn claim_next_thread(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
-    let (claimed, stored) = state
+    let (claimed, events) = state
         .store
         .claim_next_thread_with_event(channel.id, member_id, body.lease_secs)
         .await?;
-    if let Some(stored) = stored {
+    // A reclaim may emit two events: ClaimExpired (dead holder) then the claim's
+    // ThreadAssignmentChanged. Publish in order.
+    for stored in events {
         super::publish_stored(&state, stored).await;
     }
     Ok(Json(claimed))
