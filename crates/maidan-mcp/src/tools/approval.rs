@@ -1,67 +1,82 @@
-//! Human-in-the-loop approval tool (Cluster 174).
+//! Human-in-the-loop approval tools (Cluster 174, reworked in Cluster 350).
 //!
-//! `request_approval` asks the *human* on the other end of a streamable MCP
-//! session to approve or reject an action, via the spec's `elicitation/create`
-//! server→client request (Cluster 148 transport, GET-stream delivery from 154).
-//! It's the elicitation analogue of the sampling-backed `summarize_thread`
-//! (Cluster 155): a gate an agent can `await` before doing something sensitive.
+//! `request_approval` opens a durable [`ApprovalGate`](maidan_types::ApprovalGate)
+//! and returns an `input_required` result **without blocking** — the agent is
+//! free to do other work and poll `get_approval_gate` (or await the
+//! `ThreadResultSet`-style signal in a later cluster) for the human's decision.
+//! This replaces the pre-350 model where the tool call parked up to 30s on an
+//! in-memory oneshot: the gate is now persisted, survives a dropped connection,
+//! and is answerable by a human over the `/ui` (Cluster 350.3+). "Silence is not
+//! consent" — a gate is resolved only by an explicit accept/decline/cancel.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
+use maidan_auth::AuthContext;
+use maidan_types::{ApprovalGateId, NewApprovalGate};
 
 #[derive(Deserialize)]
 struct RequestApprovalArgs {
     /// Human-readable description of what needs approval.
     prompt: String,
-    /// Optional JSON Schema for structured detail the human may supply
-    /// alongside their decision (MCP `requestedSchema`). Defaults to an empty
-    /// object — the accept/decline action alone carries the decision.
+    /// Optional JSON Schema for structured detail the human may supply alongside
+    /// their decision (MCP `requestedSchema`). Persisted on the gate.
     #[serde(default)]
     schema: Option<Value>,
 }
 
-/// Elicit a human approve/reject decision over the session's client.
+/// Open a durable human-approval gate and return `input_required`.
 ///
-/// Requires a streamable session whose client declared the `elicitation`
-/// capability. Returns `{approved, action, content}` where `approved` is true
-/// iff the human chose `accept`; `decline`/`cancel` (or a timeout, surfaced as
-/// an error) mean not approved.
+/// The gate is created `pending` and attributed to the caller
+/// (`auth.member_id`); a human resolves it later to accept/decline/cancel. The
+/// tool does **not** block — poll `get_approval_gate` with the returned
+/// `gate_id` for the outcome. Requires `workspace:write` (it persists a gate).
 pub(super) async fn request_approval(
     server: &crate::server::McpServer,
-    session_id: Option<&str>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RequestApprovalArgs = serde_json::from_value(args.clone())?;
-    let session = session_id.ok_or_else(|| {
-        McpError::InvalidParams(
-            "request_approval requires a streamable session (open GET /mcp/streamable) whose \
-             client supports elicitation"
-                .into(),
-        )
-    })?;
-
-    // MCP `elicitation/create`: the client presents `message` to the human and
-    // collects a response conforming to `requestedSchema`, returning
-    // `{action: accept|decline|cancel, content?}`.
-    let requested_schema = a.schema.unwrap_or_else(
-        || json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-    );
-    let params = json!({
-        "message": a.prompt,
-        "requestedSchema": requested_schema,
-    });
-    let result = server
-        .request_client(session, "elicitation/create", params)
+    let gate = server
+        .store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: auth.workspace_id,
+            thread_id: None,
+            requested_by: auth.member_id,
+            prompt: a.prompt,
+            schema: a.schema,
+        })
         .await?;
-
-    let action = result.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    let approved = action == "accept";
     Ok(content_json(&json!({
-        "approved": approved,
-        "action": action,
-        "content": result.get("content").cloned().unwrap_or(Value::Null),
+        "status": "input_required",
+        "gate_id": gate.id,
     })))
+}
+
+#[derive(Deserialize)]
+struct GetApprovalGateArgs {
+    gate_id: ApprovalGateId,
+}
+
+/// Poll a durable approval gate by id (Cluster 350). Returns the gate — its
+/// `state` is `pending` until a human answers, then `accepted`/`declined`/
+/// `cancelled` with any `content` they supplied. `null` if no such gate exists
+/// in the caller's workspace. Requires `workspace:read`.
+pub(super) async fn get_approval_gate(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetApprovalGateArgs = serde_json::from_value(args.clone())?;
+    let gate = server.store.get_approval_gate(a.gate_id).await?;
+    match gate {
+        // Scope to the caller's workspace (bypass sees all); an out-of-workspace
+        // id reads as "not found" — no cross-tenant existence oracle.
+        Some(g) if auth.bypass || g.workspace_id == auth.workspace_id => {
+            Ok(content_json(&serde_json::to_value(g)?))
+        }
+        _ => Ok(content_json(&Value::Null)),
+    }
 }

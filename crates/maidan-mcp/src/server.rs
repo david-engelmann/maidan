@@ -1748,6 +1748,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn approval_gate_tools_request_and_poll() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "gates".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // `request_approval` persists `requested_by = auth.member_id` (a real-member
+        // FK), so this runs with a from_session auth — the nil-member bypass would
+        // FK-fail.
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![maidan_auth::capability::WORKSPACE_READ.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Opening a gate returns input_required immediately — no blocking.
+        let opened = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "request_approval",
+                    &json!({ "prompt": "Deploy v9 to prod?" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(opened["status"], json!("input_required"));
+        let gate_id = opened["gate_id"].as_str().unwrap().to_string();
+
+        // The gate is queryable and pending (silence is not consent).
+        let polled = unwrap_content(
+            server
+                .call_tool(&auth, "get_approval_gate", &json!({ "gate_id": gate_id }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(polled["state"], json!("pending"));
+        assert_eq!(polled["prompt"], json!("Deploy v9 to prod?"));
+        assert_eq!(polled["requested_by"], json!(agent.id.0));
+
+        // An unknown gate id reads as null — no cross-workspace existence oracle.
+        let missing = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_approval_gate",
+                    &json!({ "gate_id": uuid::Uuid::new_v4().to_string() }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(missing.is_null());
+    }
+
+    #[tokio::test]
     async fn email_tools_set_get_delete() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
