@@ -574,6 +574,59 @@ pub async fn acknowledge_claim(
     row_to_thread(&row)
 }
 
+/// Release a claim (graceful handoff, Cluster 351): the current holder returns
+/// the thread to the queue immediately instead of waiting for the lease to lapse
+/// — e.g. an agent shutting down on SIGTERM. Fenced by `(assignee_id,
+/// claim_lease_id)`; clears the assignee, lease, and working clock in one write.
+/// `NotFound` if the caller isn't the holder or the token is stale.
+pub async fn release_claim(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+         WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
+/// Release a claim and append its `ThreadAssignmentChanged` event in one tx
+/// (Cluster 351, the outbox pattern). The previous assignee is the caller (the
+/// fence guarantees it). `NotFound` if the caller isn't the holder.
+pub async fn release_claim_with_event(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+         WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let thread = row_to_thread(&row)?;
+    let stored =
+        append_assignment_event(&mut tx, &thread, member_id, Some(member_id), None).await?;
+    tx.commit().await?;
+    Ok((thread, stored))
+}
+
 pub async fn list_for_workspace(
     pool: &PgPool,
     workspace_id: WorkspaceId,

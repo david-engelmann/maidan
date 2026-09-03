@@ -403,6 +403,12 @@ fn apply_route_defaults(
             "claim_lease_id": uuid::Uuid::nil()
         }));
     }
+    if path == "/threads/{id}/claim/release" && method == "POST" {
+        return b.json(&json!({
+            "member_id": f.member,
+            "claim_lease_id": uuid::Uuid::nil()
+        }));
+    }
     if path == "/threads/{id}/dependencies" && method == "POST" {
         return b.json(&json!({ "depends_on_thread_id": f.thread }));
     }

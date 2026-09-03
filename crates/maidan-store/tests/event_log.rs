@@ -620,6 +620,18 @@ async fn assignment_with_event_appends_atomically() {
         .expect("claim2");
     assert!(!claim_res2.claimed && claim_ev2.is_none());
 
+    // release the claim (Cluster 351) → event, thread back to unassigned.
+    let lease = claim_res
+        .thread
+        .claim_lease_id
+        .expect("the claim minted a fencing token");
+    let (released, release_ev) = store
+        .release_claim_with_event(th.id, actor_id, lease)
+        .await
+        .expect("release");
+    assert_eq!(release_ev.kind, EventKind::ThreadAssignmentChanged);
+    assert_eq!(released.assignee_id, None, "release clears the assignee");
+
     // claim_next in a fresh channel with one unassigned thread → event, then null.
     let ch2 = store
         .create_channel(NewChannel {

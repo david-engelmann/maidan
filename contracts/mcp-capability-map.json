@@ -66,6 +66,7 @@
   "record_mention": "workspace:write",
   "register_fsm_hook": "workspace:write",
   "register_slash_command": "workspace:write",
+  "release_claim": "thread:transition",
   "remove_channel_member": "channel:admin",
   "remove_reaction": "workspace:write",
   "renew_claim": "thread:transition",

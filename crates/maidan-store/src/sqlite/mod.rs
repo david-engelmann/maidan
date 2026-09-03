@@ -880,6 +880,22 @@ impl AssignmentStore for SqliteStore {
     ) -> Result<Thread, StoreError> {
         threads::acknowledge_claim(&self.pool, thread_id, member_id, lease_id).await
     }
+    async fn release_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<Thread, StoreError> {
+        threads::release_claim(&self.pool, thread_id, member_id, lease_id).await
+    }
+    async fn release_claim_with_event(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<(Thread, StoredEvent), StoreError> {
+        threads::release_claim_with_event(&self.pool, thread_id, member_id, lease_id).await
+    }
 }
 
 #[async_trait]

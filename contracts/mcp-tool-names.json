@@ -66,6 +66,7 @@
   "record_mention",
   "register_fsm_hook",
   "register_slash_command",
+  "release_claim",
   "remove_channel_member",
   "remove_reaction",
   "renew_claim",

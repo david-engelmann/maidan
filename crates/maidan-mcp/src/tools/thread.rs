@@ -275,6 +275,35 @@ pub(super) async fn acknowledge_claim(
 }
 
 #[derive(Deserialize)]
+struct ReleaseClaimArgs {
+    thread_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    claim_lease_id: uuid::Uuid,
+}
+
+/// Release a claim (graceful handoff, Cluster 351): the current holder returns the
+/// thread to the queue by presenting its fencing token, instead of waiting for the
+/// lease to lapse. Thread access is enforced pre-dispatch. Emits
+/// `ThreadAssignmentChanged`.
+pub(super) async fn release_claim(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ReleaseClaimArgs = serde_json::from_value(args.clone())?;
+    let member = MemberId(a.member_id);
+    let thread = server
+        .store
+        .release_claim(
+            ThreadId(a.thread_id),
+            member,
+            ClaimLeaseId(a.claim_lease_id),
+        )
+        .await?;
+    publish_assignment(server, &thread, member, Some(member), None).await?;
+    Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
 struct AddThreadDependencyArgs {
     thread_id: uuid::Uuid,
     depends_on_thread_id: uuid::Uuid,

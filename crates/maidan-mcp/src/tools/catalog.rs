@@ -212,6 +212,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "release_claim",
+            "description": "Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
+                    "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"}
+                },
+                "required": ["thread_id", "member_id", "claim_lease_id"]
+            }
+        }),
+        json!({
             "name": "add_thread_dependency",
             "description": "Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.",
             "inputSchema": {

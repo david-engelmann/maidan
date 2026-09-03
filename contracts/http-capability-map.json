@@ -732,6 +732,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/claim/release",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/audit",
     "capability": "workspace:read",
