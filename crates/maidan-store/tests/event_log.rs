@@ -655,12 +655,14 @@ async fn assignment_with_event_appends_atomically() {
         .await
         .expect("claim_next");
     assert_eq!(next.map(|t| t.id), Some(th2.id));
-    assert!(next_ev.is_some());
+    // A fresh claim (no previous holder) emits only ThreadAssignmentChanged.
+    assert_eq!(next_ev.len(), 1);
+    assert_eq!(next_ev[0].kind, EventKind::ThreadAssignmentChanged);
     let (none_next, none_ev) = store
         .claim_next_thread_with_event(ch2.id, actor_id, None)
         .await
         .expect("claim_next empty");
-    assert!(none_next.is_none() && none_ev.is_none());
+    assert!(none_next.is_none() && none_ev.is_empty());
 
     // All emitted events are durably in the log.
     let events = store
@@ -671,7 +673,7 @@ async fn assignment_with_event_appends_atomically() {
         assign_ev.id,
         unassign_ev.id,
         claim_ev.unwrap().id,
-        next_ev.unwrap().id,
+        next_ev[0].id,
     ] {
         assert!(events.iter().any(|e| e.id == id), "event {id} durable");
     }

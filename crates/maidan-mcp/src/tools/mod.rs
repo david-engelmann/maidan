@@ -75,6 +75,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mark_inbox_read"
         | "wait_for_mention"
         | "wait_for_ready"
+        | "wait_for_claim_expired"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "list_assigned_threads"
@@ -179,11 +180,12 @@ async fn enforce_channel_access(
         "list_threads"
         | "claim_next_thread"
         | "wait_for_ready"
+        | "wait_for_claim_expired"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "create_task_schedule"
         | "follow_channel" => {
-            // `wait_for_ready`'s channel_id is optional; gate it only when present
+            // These tools' channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
             if let Some(id) = field("channel_id") {
                 maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
@@ -308,6 +310,7 @@ pub async fn dispatch(
         "unfollow_thread" => member::unfollow_thread(store, args).await,
         "list_thread_follows" => member::list_thread_follows(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
+        "wait_for_claim_expired" => thread::wait_for_claim_expired(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,

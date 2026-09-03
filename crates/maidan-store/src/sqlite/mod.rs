@@ -860,7 +860,7 @@ impl AssignmentStore for SqliteStore {
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
-    ) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError> {
+    ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
         threads::claim_next_with_event(&self.pool, channel_id, member_id, lease_secs).await
     }
     async fn renew_claim(

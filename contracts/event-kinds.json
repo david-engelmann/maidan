@@ -1,6 +1,7 @@
 [
   "artifact_upserted",
   "channel_created",
+  "claim_expired",
   "member_joined",
   "mention_recorded",
   "message_edited",

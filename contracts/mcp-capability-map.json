@@ -87,6 +87,7 @@
   "unpin_message": "workspace:write",
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload",
+  "wait_for_claim_expired": "workspace:read",
   "wait_for_mention": "workspace:read",
   "wait_for_notification": "workspace:read",
   "wait_for_ready": "workspace:read",

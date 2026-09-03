@@ -427,6 +427,17 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "wait_for_claim_expired",
+            "description": "Block until a claim's lease lapses and its thread is reclaimed by the next agent (emitting claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees expiries reclaimed after the call subscribes. A lease that expires but is never reclaimed emits nothing (poll get_channel_occupancy for that).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                }
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {
