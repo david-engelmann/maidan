@@ -52,24 +52,8 @@ pub async fn streamable(
     }
     crate::mcp::validate_protocol_version(&headers)?;
 
-    // Parse once as a value so a client's *response* (to a server→client
-    // request) can be told apart from a request/notification.
-    let value: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
-    };
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
-
-    // A JSON-RPC response (has `id`, no `method`) answers a server→client
-    // request — route it to the awaiting caller rather than dispatching it.
-    if value.get("method").is_none() && value.get("id").is_some() {
-        if let Some(sid) = session_header.filter(|s| !s.is_empty()) {
-            state.mcp.resolve_client_response(sid, value).await;
-        }
-        return Ok(StatusCode::ACCEPTED.into_response());
-    }
-
-    let request: JsonRpcRequest = match serde_json::from_value(value) {
+    let request: JsonRpcRequest = match serde_json::from_slice(&body) {
         Ok(r) => r,
         Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
     };
@@ -83,24 +67,18 @@ pub async fn streamable(
     // MCP 2026-07-28 is stateless (Protocols.md J3.3-4): sessions are gone, so a
     // `2026-07-28` request lands cold and gets a single JSON-RPC response — we
     // never mint or require an `Mcp-Session-Id`, regardless of `Accept`. Live-wait
-    // and server→client requests ride `GET /mcp/stream` / WS / the `wait_for_*`
-    // tools, not a POST session; a 2026 client must not depend on GET-session being
-    // "Streamable HTTP". (The 2024-11-05 SSE-session path below is unchanged.)
+    // rides `GET /mcp/stream` / WS / the `wait_for_*` tools, not a POST session; a
+    // 2026 client must not depend on GET-session being "Streamable HTTP". (The
+    // 2024-11-05 SSE-session path below, incl. `Last-Event-ID` replay, is unchanged.)
     if crate::mcp::is_stateless_request(&headers) {
-        let response = state.mcp.handle_in_session(request, &auth, None).await;
+        let response = state.mcp.handle(request, &auth).await;
         return Ok(Json(response).into_response());
     }
 
     // Content negotiation: a client that accepts only JSON gets a single
-    // response body rather than an SSE session (MCP spec allows either). Pass
-    // any open session id through so a tool that issues a server→client request
-    // (an `elicitation/create` via `request_client`) can target that session's
-    // GET stream and return its result in this JSON body.
+    // response body rather than an SSE session (MCP spec allows either).
     if !accepts_event_stream(&headers) {
-        let response = state
-            .mcp
-            .handle_in_session(request, &auth, session_header.filter(|s| !s.is_empty()))
-            .await;
+        let response = state.mcp.handle(request, &auth).await;
         return Ok(Json(response).into_response());
     }
 
@@ -120,10 +98,7 @@ async fn follow_up_on_open_session(
     session_id: &str,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
-    let response = state
-        .mcp
-        .handle_in_session(request, auth, Some(session_id))
-        .await;
+    let response = state.mcp.handle(request, auth).await;
     // Mux onto the open SSE leg (202). If that leg has since dropped — the
     // session survives it now, for reconnect — the response was still logged
     // for replay; answer it inline (200) rather than failing.
@@ -148,19 +123,6 @@ async fn open_new_streamable_session(
     let session_id = state.mcp.touch_streamable_session(session_header).await;
     let registry = state.mcp.streamable_sessions();
     let sse_rx = registry.open(session_id.clone()).await;
-
-    // Record the client's declared capabilities so the server can gate
-    // server→client requests (sampling / roots / elicitation) on them.
-    if request.method == "initialize" {
-        let capabilities = request
-            .params
-            .get("capabilities")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-        registry
-            .set_client_capabilities(&session_id, capabilities)
-            .await;
-    }
 
     let response = state.mcp.handle(request, auth).await;
     push_response_and_notifications(state, &session_id, &response).await?;
@@ -290,26 +252,7 @@ pub async fn stream_get(
             .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
     });
 
-    // Server→client requests (sampling / roots / elicitation) for this session
-    // are delivered here, on the canonical GET stream (Cluster 154), merged with
-    // the unsolicited notifications above.
-    let session_requests = match &session_id {
-        Some(id) => registry.subscribe_client_requests(id).await,
-        None => None,
-    };
-    let live: std::pin::Pin<
-        Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>,
-    > = match session_requests {
-        Some(req_rx) => {
-            let requests = BroadcastStream::new(req_rx).filter_map(|item| {
-                item.ok()
-                    .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
-            });
-            Box::pin(notifications.merge(requests))
-        }
-        None => Box::pin(notifications),
-    };
-    let stream = replay.chain(live);
+    let stream = replay.chain(notifications);
 
     let mut resp = Sse::new(stream)
         .keep_alive(
