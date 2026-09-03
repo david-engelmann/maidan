@@ -78,8 +78,8 @@ pub async fn import_workspace(pool: &PgPool, b: &WorkspaceImport) -> Result<(), 
         sqlx::query(
             "INSERT INTO maidan_threads
                 (id, channel_id, parent_thread_id, title, state, assignee_id,
-                 assignment_expires_at, created_at, updated_at, tombstoned_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                 assignment_expires_at, claim_lease_id, created_at, updated_at, tombstoned_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         )
         .bind(t.id.0)
         .bind(t.channel_id.0)
@@ -88,6 +88,7 @@ pub async fn import_workspace(pool: &PgPool, b: &WorkspaceImport) -> Result<(), 
         .bind(t.state.as_str())
         .bind(t.assignee_id.map(|a| a.0))
         .bind(t.assignment_expires_at)
+        .bind(t.claim_lease_id.map(|l| l.0))
         .bind(t.created_at)
         .bind(t.updated_at)
         .bind(t.tombstoned_at)

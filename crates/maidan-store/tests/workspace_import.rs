@@ -15,6 +15,7 @@ fn sample() -> WorkspaceImport {
     let th = ThreadId(uuid::Uuid::new_v4());
     let msg1 = MessageId(uuid::Uuid::new_v4());
     let msg2 = MessageId(uuid::Uuid::new_v4());
+    let lease = ClaimLeaseId(uuid::Uuid::new_v4());
     WorkspaceImport {
         workspace: Workspace {
             id: ws,
@@ -77,6 +78,7 @@ fn sample() -> WorkspaceImport {
             state: ThreadState::Closed,
             assignee_id: Some(m2),
             assignment_expires_at: None,
+            claim_lease_id: Some(lease),
             created_at: now,
             updated_at: now,
             tombstoned_at: None,
@@ -160,6 +162,10 @@ async fn run_suite(store: &dyn Store) {
         threads[0].assignee_id,
         Some(b.members[1].id),
         "assignee preserved"
+    );
+    assert_eq!(
+        threads[0].claim_lease_id, b.threads[0].claim_lease_id,
+        "claim lease id preserved through import"
     );
 
     let msgs = store

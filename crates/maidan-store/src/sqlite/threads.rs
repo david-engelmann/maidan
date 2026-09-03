@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, Event, MemberId, NewThread, QueueDepth, StoredEvent, Thread, ThreadClaimResult,
-    ThreadId, ThreadState, WorkspaceId,
+    ChannelId, ClaimLeaseId, Event, MemberId, NewThread, QueueDepth, StoredEvent, Thread,
+    ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -17,7 +17,7 @@ pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreEr
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(id)
     .bind(new.channel_id.0)
@@ -43,7 +43,7 @@ pub async fn create_with_event(
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(id)
     .bind(new.channel_id.0)
@@ -72,7 +72,7 @@ pub async fn create_with_event(
 
 pub async fn get(pool: &SqlitePool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id
          FROM maidan_threads WHERE id = ?",
     )
     .bind(id.0)
@@ -84,7 +84,7 @@ pub async fn get(pool: &SqlitePool, id: ThreadId) -> Result<Thread, StoreError> 
 
 pub async fn list(pool: &SqlitePool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id
          FROM maidan_threads WHERE channel_id = ? ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
@@ -103,7 +103,7 @@ pub async fn assign(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(assignee_id.0)
     .bind(Utc::now().to_rfc3339())
@@ -137,7 +137,7 @@ pub async fn assign_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(assignee_id.0)
     .bind(Utc::now().to_rfc3339())
@@ -156,7 +156,7 @@ pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, 
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, updated_at = ?
          WHERE id = ?
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
@@ -184,7 +184,7 @@ pub async fn unassign_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, updated_at = ?
          WHERE id = ?
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
@@ -232,7 +232,7 @@ pub async fn claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
     .bind(Utc::now().to_rfc3339())
@@ -265,7 +265,7 @@ pub async fn claim_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
     .bind(Utc::now().to_rfc3339())
@@ -308,7 +308,7 @@ pub async fn list_assigned(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = ? AND t.assignee_id = ? AND t.tombstoned_at IS NULL
@@ -361,7 +361,7 @@ pub async fn claim_next(
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
     .bind(&expires)
@@ -459,7 +459,7 @@ pub async fn claim_next_with_event(
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
     .bind(&expires)
@@ -497,7 +497,7 @@ pub async fn renew_claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignment_expires_at = ?, updated_at = ?
          WHERE id = ? AND assignee_id = ? AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(&expires)
     .bind(now.to_rfc3339())
@@ -515,7 +515,7 @@ pub async fn list_for_workspace(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = ?
@@ -540,7 +540,7 @@ pub async fn page_for_workspace(
     let cursor = after.map(|t| t.0);
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = ?
@@ -573,7 +573,7 @@ pub async fn page_for_channel(
     let cursor = after.map(|t| t.0);
     let rows = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at,
-                tombstoned_at, assignee_id, assignment_expires_at
+                tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id
          FROM maidan_threads t
          WHERE t.channel_id = ?
            AND t.tombstoned_at IS NULL
@@ -640,6 +640,9 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         state,
         assignee_id: assignee.map(MemberId),
         assignment_expires_at: row.get::<Option<DateTime<Utc>>, _>("assignment_expires_at"),
+        claim_lease_id: row
+            .get::<Option<Uuid>, _>("claim_lease_id")
+            .map(ClaimLeaseId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),

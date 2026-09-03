@@ -620,6 +620,13 @@ pub struct Thread {
     /// recovery); `None` is a durable assignment with no lease.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignment_expires_at: Option<DateTime<Utc>>,
+    /// The fencing value for the current claim (Cluster 351, the occupancy
+    /// clocks). A fresh resource-version minted every time `assignee_id` is set
+    /// (claim / claim_next / assign) and cleared on unassign. `renew_claim` and
+    /// other claim-holder operations must present the matching value — a TTL
+    /// lease alone lets a stale holder act after the next owner has taken over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_lease_id: Option<ClaimLeaseId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
