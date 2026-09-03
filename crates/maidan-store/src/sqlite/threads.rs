@@ -354,6 +354,10 @@ pub async fn claim_next(
                          WHERE ms.member_id = ? AND ms.skill = trs.skill
                      )
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_approval_gates g
+                   WHERE g.thread_id = t.id AND g.state = 'pending'
+               )
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
@@ -447,6 +451,10 @@ pub async fn claim_next_with_event(
                          SELECT 1 FROM maidan_member_skills ms
                          WHERE ms.member_id = ? AND ms.skill = trs.skill
                      )
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_approval_gates g
+                   WHERE g.thread_id = t.id AND g.state = 'pending'
                )
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1

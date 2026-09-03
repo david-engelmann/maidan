@@ -25,6 +25,11 @@ struct RequestApprovalArgs {
     /// their decision (MCP `requestedSchema`). Persisted on the gate.
     #[serde(default)]
     schema: Option<Value>,
+    /// Optional thread to attach the gate to (Cluster 350.6, N6). While the gate
+    /// is `pending`, `claim_next` will not hand the thread to an agent — the
+    /// required human is a *claim gate*, not a notification preference.
+    #[serde(default)]
+    thread_id: Option<uuid::Uuid>,
 }
 
 /// Open a durable human-approval gate and return `input_required`.
@@ -43,7 +48,7 @@ pub(super) async fn request_approval(
         .store
         .create_approval_gate(&NewApprovalGate {
             workspace_id: auth.workspace_id,
-            thread_id: None,
+            thread_id: a.thread_id.map(maidan_types::ThreadId),
             requested_by: auth.member_id,
             prompt: a.prompt,
             schema: a.schema,

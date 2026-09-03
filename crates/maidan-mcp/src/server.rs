@@ -1678,6 +1678,49 @@ mod tests {
                 .unwrap(),
         );
         assert!(missing.is_null());
+
+        // N6: a thread-attached gate carries the thread_id (the claim-gate store
+        // behaviour is proven in the `approval_gate_claim` integration test).
+        let channel = server
+            .store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = server
+            .store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+        let gated = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "request_approval",
+                    &json!({ "prompt": "gate this thread", "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let gate_on_thread = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_approval_gate",
+                    &json!({ "gate_id": gated["gate_id"] }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(gate_on_thread["thread_id"], json!(thread.id.0));
     }
 
     #[tokio::test]
