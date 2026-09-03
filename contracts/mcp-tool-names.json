@@ -20,6 +20,7 @@
   "follow_thread",
   "get_approval_gate",
   "get_artifact_metadata",
+  "get_channel_occupancy",
   "get_delivery_mode",
   "get_dependency_results",
   "get_glossary_term",

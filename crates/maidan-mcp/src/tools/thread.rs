@@ -347,6 +347,19 @@ pub(super) async fn get_queue_depth(
     Ok(content_json(&depth))
 }
 
+/// A channel's occupancy (Cluster 351): `{open, queued, claimed, working, blocked}`
+/// — the two-clocks refinement of `get_queue_depth`, splitting held work into
+/// `claimed` (not yet acknowledged) and `working`. The MCP twin of
+/// `GET /channels/:cid/occupancy`. Channel access is enforced pre-dispatch.
+pub(super) async fn get_channel_occupancy(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
+    let occupancy = store.channel_occupancy(ChannelId(a.channel_id)).await?;
+    Ok(content_json(&occupancy))
+}
+
 #[derive(Deserialize)]
 struct SetThreadResultArgs {
     thread_id: uuid::Uuid,

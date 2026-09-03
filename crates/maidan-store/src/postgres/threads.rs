@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ClaimLeaseId, Event, MemberId, NewThread, QueueDepth, StoredEvent, Thread,
-    ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
+    ChannelId, ChannelOccupancy, ClaimLeaseId, Event, MemberId, NewThread, QueueDepth, StoredEvent,
+    Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -405,6 +405,56 @@ pub async fn channel_queue_depth(
         open: row.get::<i64, _>("open_count"),
         ready: row.get::<i64, _>("ready_count"),
         assigned: row.get::<i64, _>("assigned_count"),
+        blocked: row.get::<i64, _>("blocked_count"),
+    })
+}
+
+/// Channel occupancy (Cluster 351) — the two-clocks refinement of
+/// `channel_queue_depth`. Splits the held threads by the working clock: `claimed`
+/// (live lease, `work_started_at` unset) vs `working` (started). `queued` and
+/// `blocked` cover the available (unassigned or lease-expired) threads exactly as
+/// `queue_depth` does. `NOW()` inline so `queued` matches the claimability
+/// predicate. The four sub-counts partition `open`.
+pub async fn channel_occupancy(
+    pool: &PgPool,
+    channel_id: ChannelId,
+) -> Result<ChannelOccupancy, StoreError> {
+    let row = sqlx::query(
+        "SELECT
+             COUNT(*) AS open_count,
+             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
+                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= NOW())
+                       AND t.work_started_at IS NULL
+                     THEN 1 ELSE 0 END), 0) AS claimed_count,
+             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
+                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= NOW())
+                       AND t.work_started_at IS NOT NULL
+                     THEN 1 ELSE 0 END), 0) AS working_count,
+             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
+                       AND NOT EXISTS (
+                           SELECT 1 FROM maidan_thread_dependencies d
+                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                     THEN 1 ELSE 0 END), 0) AS queued_count,
+             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
+                       AND EXISTS (
+                           SELECT 1 FROM maidan_thread_dependencies d
+                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
+                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                     THEN 1 ELSE 0 END), 0) AS blocked_count
+         FROM maidan_threads t
+         WHERE t.channel_id = $1
+           AND t.state NOT IN ('closed', 'archived')
+           AND t.tombstoned_at IS NULL",
+    )
+    .bind(channel_id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(ChannelOccupancy {
+        open: row.get::<i64, _>("open_count"),
+        queued: row.get::<i64, _>("queued_count"),
+        claimed: row.get::<i64, _>("claimed_count"),
+        working: row.get::<i64, _>("working_count"),
         blocked: row.get::<i64, _>("blocked_count"),
     })
 }

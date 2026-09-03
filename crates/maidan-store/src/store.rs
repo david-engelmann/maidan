@@ -581,6 +581,15 @@ pub trait ThreadStore: Send + Sync {
     /// open task threads partitioned into ready / assigned / blocked, using the
     /// same claimability predicate as `claim_next`. One aggregate query.
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+
+    /// Channel occupancy (Cluster 351): the two-clocks refinement of
+    /// `channel_queue_depth` — the held threads split into `claimed` (not yet
+    /// acknowledged) and `working` (acknowledged), so an orchestrator sees how
+    /// much held work is actually underway. One aggregate query.
+    async fn channel_occupancy(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<ChannelOccupancy, StoreError>;
 }
 
 #[async_trait]

@@ -20,6 +20,7 @@
   "follow_thread": "workspace:read",
   "get_approval_gate": "workspace:read",
   "get_artifact_metadata": "workspace:read",
+  "get_channel_occupancy": "workspace:read",
   "get_delivery_mode": "workspace:read",
   "get_dependency_results": "workspace:read",
   "get_glossary_term": "workspace:read",

@@ -133,6 +133,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{cid}/occupancy",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/dm/{id}",
     "capability": "workspace:read",
     "surface": "http"

@@ -436,6 +436,12 @@ pub fn get_channel() {}
     responses((status = 200, body = QueueDepth)))]
 pub fn get_channel_queue_depth() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/occupancy", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ChannelOccupancy)))]
+pub fn get_channel_occupancy() {}
+
 #[utoipa::path(post, path = "/channels/{cid}/members", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = AddChannelMember,
