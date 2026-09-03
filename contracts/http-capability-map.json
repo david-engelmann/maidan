@@ -499,6 +499,18 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{wid}/approval-gates",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/approval-gates/{id}/answer",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{tid}/messages",
     "capability": "workspace:read",
     "surface": "http"

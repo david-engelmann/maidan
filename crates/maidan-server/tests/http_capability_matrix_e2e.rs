@@ -254,6 +254,10 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         // Any UUID works — the cap() check 403s before the id is looked up.
         return template.replace("{id}", &f.workspace);
     }
+    if template.starts_with("/approval-gates/") {
+        // Any UUID works — cap() 403s before the gate is looked up.
+        return template.replace("{id}", &f.workspace);
+    }
     template.to_string()
 }
 
@@ -394,6 +398,9 @@ fn apply_route_defaults(
     }
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
+    }
+    if path == "/approval-gates/{id}/answer" && method == "POST" {
+        return b.json(&json!({ "request_state": "x", "action": "accept" }));
     }
     if path == "/workspaces/{wid}/task-schedules" && method == "POST" {
         return b.json(&json!({ "channel_id": f.channel, "title": "cap matrix" }));

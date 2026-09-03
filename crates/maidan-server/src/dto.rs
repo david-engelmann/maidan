@@ -6,9 +6,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ArtifactKind, ChannelId, ContentBlock, EmailDeliveryMode,
-    EventKind, MemberId, MemberKind, RefSide, RelationKind, ThreadId, WebhookSubscriptionId,
-    WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, ChannelId, ContentBlock,
+    EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide, RelationKind, ThreadId,
+    WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -139,6 +139,29 @@ pub struct SetGlossaryTerm {
 pub struct SetThreadResult {
     #[schema(value_type = Object)]
     pub result: serde_json::Value,
+}
+
+/// Answer a human-approval gate (Cluster 350.3): accept / decline / cancel, with
+/// the HMAC `request_state` the server issued alongside the pending gate.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AnswerApprovalGate {
+    /// The opaque integrity token from the pending-gate list — must verify.
+    pub request_state: String,
+    /// `accept`, `decline`, or `cancel`. Any other value is a bad request — an
+    /// empty or unknown action is never a silent accept.
+    pub action: String,
+    /// Optional structured detail the human supplies with their decision.
+    #[serde(default)]
+    #[schema(value_type = Option<Object>)]
+    pub content: Option<serde_json::Value>,
+}
+
+/// A pending approval gate plus the `request_state` a human echoes back to
+/// answer it (Cluster 350.3).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApprovalGateView {
+    pub gate: ApprovalGate,
+    pub request_state: String,
 }
 
 /// A task's dependency edges plus whether it is ready to run (Cluster 219).
