@@ -314,6 +314,7 @@
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
         <button type="button" data-tab="notifications">Notifications</button>
+        <button type="button" data-tab="approvals">Approvals</button>
         <button type="button" data-tab="thread">FSM</button>
         <button type="button" data-tab="dms">DMs</button>
         <button type="button" data-tab="group-dms">Group DMs</button>
@@ -405,6 +406,20 @@
         </div>
         <ul id="notification-list" class="muted">
           <li>Sign in and refresh to load your notifications.</li>
+        </ul>
+      </section>
+      <section id="panel-approvals" class="panel">
+        <p class="muted">
+          Pending human-approval gates for a workspace — an agent's
+          <code>request_approval</code> parks here until you accept, decline, or
+          cancel. A gate attached to a thread blocks <code>claim_next</code> until
+          you act (N6). Set a Workspace + Token (or sign in) above.
+        </p>
+        <div>
+          <button id="approvals-refresh" type="button">Refresh</button>
+        </div>
+        <ul id="approval-list" class="muted">
+          <li>Set a workspace and refresh to load pending gates.</li>
         </ul>
       </section>
       <section id="panel-dms" class="panel">
@@ -1615,6 +1630,72 @@
         await loadNotifications();
       }
 
+      async function loadApprovals() {
+        const list = document.getElementById("approval-list");
+        const ws = document.getElementById("workspace").value.trim();
+        if (!ws) {
+          list.classList.add("muted");
+          list.innerHTML = "<li>Set a workspace id above, then refresh.</li>";
+          return;
+        }
+        const res = await fetch(uiReadPath(`/workspaces/${ws}/approval-gates`), {
+          headers: headers(),
+          credentials: "include",
+        });
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          list.classList.add("muted");
+          list.innerHTML = `<li>HTTP ${res.status}</li>`;
+          return;
+        }
+        renderApprovals(await res.json());
+      }
+
+      function renderApprovals(views) {
+        const list = document.getElementById("approval-list");
+        list.innerHTML = "";
+        if (!views.length) {
+          list.classList.add("muted");
+          list.innerHTML = "<li>No pending approval gates.</li>";
+          return;
+        }
+        list.classList.remove("muted");
+        for (const v of views) {
+          const gate = v.gate;
+          const li = document.createElement("li");
+          li.className = "approval-row";
+          li.dataset.gateId = gate.id;
+          const prompt = document.createElement("span");
+          prompt.textContent = gate.prompt;
+          li.appendChild(prompt);
+          for (const action of ["accept", "decline", "cancel"]) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = action;
+            btn.className = `gate-${action}`;
+            btn.onclick = () => answerGate(gate.id, action, v.request_state);
+            li.appendChild(btn);
+          }
+          list.appendChild(li);
+        }
+      }
+
+      async function answerGate(gateId, action, requestState) {
+        if (!requireAuthForWrite()) return;
+        const res = await fetch(apiWritePath(`/approval-gates/${gateId}/answer`), {
+          method: "POST",
+          headers: headers(true),
+          credentials: "include",
+          body: JSON.stringify({ request_state: requestState, action }),
+        });
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return;
+        }
+        setStatus(`gate ${action}ed`, "ok");
+        await loadApprovals();
+      }
+
       async function markAllNotificationsRead() {
         if (!requireAuthForWrite()) return;
         try {
@@ -1638,6 +1719,7 @@
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "notifications") loadNotifications();
+          if (btn.dataset.tab === "approvals") loadApprovals();
         };
       });
 
@@ -1935,6 +2017,7 @@
       document.getElementById("presence-online").onclick = () => setPresence("online");
       document.getElementById("presence-away").onclick = () => setPresence("away");
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
+      document.getElementById("approvals-refresh").onclick = () => loadApprovals();
       document.getElementById("notif-read-all").onclick = () =>
         markAllNotificationsRead();
       document.getElementById("notif-unread-only").onchange = () =>

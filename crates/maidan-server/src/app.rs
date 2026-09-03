@@ -548,6 +548,10 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/members/:id/notifications/unread-count",
             get(routes::member_unread_notification_count),
         )
+        .route(
+            "/ui/api/workspaces/:wid/approval-gates",
+            get(routes::list_approval_gates),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
@@ -607,6 +611,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/members/:id/notifications/read-all",
             post(routes::mark_all_member_notifications_read),
+        )
+        .route(
+            "/ui/api/approval-gates/:id/answer",
+            post(routes::answer_approval_gate),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
