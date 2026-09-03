@@ -861,9 +861,10 @@ impl AssignmentStore for SqliteStore {
         &self,
         thread_id: ThreadId,
         member_id: MemberId,
+        lease_id: ClaimLeaseId,
         lease_secs: i64,
     ) -> Result<Thread, StoreError> {
-        threads::renew_claim(&self.pool, thread_id, member_id, lease_secs).await
+        threads::renew_claim(&self.pool, thread_id, member_id, lease_id, lease_secs).await
     }
 }
 

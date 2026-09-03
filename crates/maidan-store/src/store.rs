@@ -699,12 +699,15 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<(Option<Thread>, Option<StoredEvent>), StoreError>;
 
     /// Extend a claimed thread's lease (heartbeat), only for the current assignee
-    /// (Cluster 192). `NotFound` if the thread is gone or the caller isn't the
-    /// holder.
+    /// holding the matching fencing token (Cluster 192 / 351). `NotFound` if the
+    /// thread is gone, the caller isn't the holder, or `lease_id` doesn't match
+    /// the thread's current claim — so a stale holder whose claim was reclaimed
+    /// by the next owner can no longer extend a lease it no longer holds.
     async fn renew_claim(
         &self,
         thread_id: ThreadId,
         member_id: MemberId,
+        lease_id: ClaimLeaseId,
         lease_secs: i64,
     ) -> Result<Thread, StoreError>;
 }

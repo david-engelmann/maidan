@@ -222,11 +222,15 @@ pub(super) async fn claim_next_thread(
 struct RenewClaimArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
+    claim_lease_id: uuid::Uuid,
     lease_secs: i64,
 }
 
 /// Extend a claimed thread's lease (heartbeat), only for the current assignee
-/// (Cluster 192). Thread access is enforced pre-dispatch (the `thread_id` arg).
+/// holding the matching fencing token (Cluster 192 / 351). `claim_lease_id` is
+/// the value from the claiming response's `Thread.claim_lease_id`; a stale
+/// holder presents an outdated token and is rejected. Thread access is enforced
+/// pre-dispatch (the `thread_id` arg).
 pub(super) async fn renew_claim(
     server: &crate::server::McpServer,
     args: &Value,
@@ -234,7 +238,12 @@ pub(super) async fn renew_claim(
     let a: RenewClaimArgs = serde_json::from_value(args.clone())?;
     let thread = server
         .store
-        .renew_claim(ThreadId(a.thread_id), MemberId(a.member_id), a.lease_secs)
+        .renew_claim(
+            ThreadId(a.thread_id),
+            MemberId(a.member_id),
+            ClaimLeaseId(a.claim_lease_id),
+            a.lease_secs,
+        )
         .await?;
     Ok(content_json(&thread))
 }

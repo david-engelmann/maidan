@@ -169,13 +169,29 @@ async fn run_readside_suite(store: &dyn Store) {
         .await
         .expect("claim none")
         .is_none());
-    // The holder renews; a non-holder is rejected.
+    // Fencing (Cluster 351): reclaiming the expired lease rotates the token, so
+    // the dead holder's token is stale.
+    let lease1 = c1
+        .claim_lease_id
+        .expect("m1's claim minted a fencing token");
+    let lease2 = c2
+        .claim_lease_id
+        .expect("m2's reclaim minted a fresh token");
+    assert_ne!(lease1, lease2, "a reclaim rotates the fencing token");
+    // The current holder renews with the matching token.
     store
-        .renew_claim(leased.id, m2.id, 7200)
+        .renew_claim(leased.id, m2.id, lease2, 7200)
         .await
-        .expect("holder renews");
+        .expect("holder renews with the current token");
+    // The dead holder (m1) presenting its stale token is fenced out — the classic
+    // "first holder unlocks the next owner's lock" bug is prevented.
     assert!(matches!(
-        store.renew_claim(leased.id, m1.id, 7200).await,
+        store.renew_claim(leased.id, m1.id, lease1, 7200).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
+    // Even the real holder presenting the wrong (stale) token is rejected.
+    assert!(matches!(
+        store.renew_claim(leased.id, m2.id, lease1, 7200).await,
         Err(maidan_store::StoreError::NotFound)
     ));
 }
