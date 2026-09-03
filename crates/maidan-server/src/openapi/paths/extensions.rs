@@ -158,6 +158,17 @@ pub fn renew_claim() {}
 pub fn acknowledge_claim() {}
 
 #[utoipa::path(
+    post,
+    path = "/threads/{id}/claim/release",
+    tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = ReleaseClaim,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread, description = "Claim released back to the queue (current holder with the matching fencing token)"))
+)]
+pub fn release_claim() {}
+
+#[utoipa::path(
     get,
     path = "/workspaces/{wid}/audit",
     tag = "workspaces",

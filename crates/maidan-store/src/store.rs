@@ -730,6 +730,26 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_id: ClaimLeaseId,
     ) -> Result<Thread, StoreError>;
+
+    /// Release a claim (graceful handoff, Cluster 351): the current holder returns
+    /// the thread to the queue immediately (e.g. a clean shutdown) rather than
+    /// letting the lease lapse. Fenced by `(member_id, lease_id)`. `NotFound` if
+    /// the caller isn't the holder or the token is stale.
+    async fn release_claim(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<Thread, StoreError>;
+
+    /// Release a claim and append its `ThreadAssignmentChanged` event atomically
+    /// (Cluster 351, the outbox pattern). The previous assignee is the caller.
+    async fn release_claim_with_event(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        lease_id: ClaimLeaseId,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
 }
 
 #[async_trait]

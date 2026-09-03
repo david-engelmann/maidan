@@ -146,6 +146,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "claim_next_thread"
         | "renew_claim"
         | "acknowledge_claim"
+        | "release_claim"
         | "add_thread_dependency"
         | "add_thread_required_skill"
         | "set_thread_result" => Ok(maidan_auth::capability::THREAD_TRANSITION),
@@ -202,6 +203,7 @@ async fn enforce_channel_access(
         | "unassign_thread"
         | "renew_claim"
         | "acknowledge_claim"
+        | "release_claim"
         | "add_thread_dependency"
         | "list_thread_dependencies"
         | "add_thread_required_skill"
@@ -281,6 +283,7 @@ pub async fn dispatch(
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
         "renew_claim" => thread::renew_claim(server, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, args).await,
+        "release_claim" => thread::release_claim(server, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
         "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,
         "list_mentions" => member::list_mentions(store, args).await,

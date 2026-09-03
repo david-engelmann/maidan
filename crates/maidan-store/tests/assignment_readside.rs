@@ -224,6 +224,29 @@ async fn run_readside_suite(store: &dyn Store) {
         store.acknowledge_claim(leased.id, m1.id, lease2).await,
         Err(maidan_store::StoreError::NotFound)
     ));
+
+    // --- release (Cluster 351): the holder hands the work back, fenced ---
+    // A non-holder presenting a stale token cannot release.
+    assert!(matches!(
+        store.release_claim(leased.id, m1.id, lease1).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
+    // The holder releases: assignee, lease, and working clock all clear.
+    let released = store
+        .release_claim(leased.id, m2.id, lease2)
+        .await
+        .expect("holder releases the claim");
+    assert_eq!(released.assignee_id, None, "release clears the assignee");
+    assert_eq!(released.claim_lease_id, None, "release clears the lease");
+    assert_eq!(
+        released.work_started_at, None,
+        "release clears the working clock"
+    );
+    // Releasing again (no longer held) is a no-op → NotFound.
+    assert!(matches!(
+        store.release_claim(leased.id, m2.id, lease2).await,
+        Err(maidan_store::StoreError::NotFound)
+    ));
 }
 
 #[tokio::test]

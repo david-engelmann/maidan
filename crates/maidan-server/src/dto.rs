@@ -105,6 +105,14 @@ pub struct AcknowledgeClaim {
     pub claim_lease_id: uuid::Uuid,
 }
 
+/// Release a claim (graceful handoff, Cluster 351): the current holder returns
+/// the thread to the queue by presenting its fencing token.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReleaseClaim {
+    pub member_id: uuid::Uuid,
+    pub claim_lease_id: uuid::Uuid,
+}
+
 /// Add a task-dependency edge — the thread in the path depends on
 /// `depends_on_thread_id` (Cluster 219).
 #[derive(Debug, Deserialize, ToSchema)]

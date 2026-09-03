@@ -477,6 +477,32 @@ pub async fn acknowledge_claim(
     Ok(Json(thread))
 }
 
+/// Release a claim (graceful handoff, Cluster 351): the current holder returns
+/// the thread to the queue immediately by presenting its fencing token, instead
+/// of waiting for the lease to lapse. `NotFound` if the caller isn't the holder
+/// or the token is stale. Emits `ThreadAssignmentChanged`.
+pub async fn release_claim(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<ReleaseClaim>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
+    let (thread, stored) = state
+        .store
+        .release_claim_with_event(
+            thread_id,
+            MemberId(body.member_id),
+            ClaimLeaseId(body.claim_lease_id),
+        )
+        .await?;
+    super::publish_stored(&state, stored).await;
+    Ok(Json(thread))
+}
+
 /// Add a task-dependency edge (Cluster 219): the path thread depends on
 /// `depends_on_thread_id`. Both threads must be in the same workspace and visible
 /// to the caller. `thread:transition` — dependency wiring is a workflow op.
