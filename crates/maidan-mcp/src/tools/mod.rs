@@ -206,6 +206,7 @@ async fn enforce_channel_access(
         | "get_thread_result"
         | "wait_for_result"
         | "get_dependency_results"
+        | "request_approval"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;

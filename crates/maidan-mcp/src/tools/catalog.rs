@@ -1040,12 +1040,13 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "request_approval",
-            "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent.",
+            "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "prompt": {"type": "string", "description": "what the human is being asked to approve"},
-                    "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply alongside their decision"}
+                    "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply alongside their decision"},
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional thread to gate: while pending, claim_next skips this thread (a required-human claim gate)"}
                 },
                 "required": ["prompt"]
             }

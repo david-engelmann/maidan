@@ -338,6 +338,10 @@ pub async fn claim_next(
                          WHERE ms.member_id = $1 AND ms.skill = trs.skill
                      )
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_approval_gates g
+                   WHERE g.thread_id = c.id AND g.state = 'pending'
+               )
              ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
              FOR UPDATE SKIP LOCKED
@@ -424,6 +428,10 @@ pub async fn claim_next_with_event(
                          SELECT 1 FROM maidan_member_skills ms
                          WHERE ms.member_id = $1 AND ms.skill = trs.skill
                      )
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_approval_gates g
+                   WHERE g.thread_id = c.id AND g.state = 'pending'
                )
              ORDER BY c.created_at ASC, c.id ASC
              LIMIT 1
