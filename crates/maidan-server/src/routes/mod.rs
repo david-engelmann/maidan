@@ -18,6 +18,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 use chrono::Utc;
 
+mod approval_gate;
 mod artifact;
 mod channel;
 mod glossary;
@@ -33,6 +34,7 @@ mod thread;
 mod token;
 mod workspace;
 
+pub use approval_gate::*;
 pub use artifact::*;
 pub use channel::*;
 pub use glossary::*;

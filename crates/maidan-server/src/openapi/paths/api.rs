@@ -764,6 +764,21 @@ pub fn set_thread_result() {}
     responses((status = 200, body = ThreadResult)))]
 pub fn get_thread_result() {}
 
+// --- approval gates (the held gate, Cluster 350) ---
+
+#[utoipa::path(get, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ApprovalGateView>)))]
+pub fn list_approval_gates() {}
+
+#[utoipa::path(post, path = "/approval-gates/{id}/answer", tag = "approval-gates",
+    params(("id" = Uuid, Path, description = "Approval gate id")),
+    request_body = AnswerApprovalGate,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ApprovalGate)))]
+pub fn answer_approval_gate() {}
+
 // --- artifacts ---
 
 #[utoipa::path(post, path = "/artifacts", tag = "artifacts",
