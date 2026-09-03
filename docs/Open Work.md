@@ -442,6 +442,30 @@ layer *underneath* them); **the room *is* the memory bank** (EnzeD/vibe-coding 4
 Maidan ships it). And the **ontology framing** — "agents build a shared, typed, checkable ontology of their work"
 (typed references + glossary + the EventKind lexicon; ships the primitives, **not** a knowledge-graph product).
 
+**Canon candidate ledger — folded & deferred (accounting: no research candidate was dropped).** Every candidate the
+round produced has a home above; the remainder are recorded here so the roadmap is provably complete against the
+research round, not silently lossy:
+
+- *Folded into a named row (traceable):* `durable-execution-adr` — write the Restate/Temporal decline as an ADR
+  beside RLS/216 (the anti-goal below); `acp-ide-bridge` → row #51; `a2a-requirement-matrix` → `a2a-tck-ci`;
+  `a2a-rs-differential` → `sdk-interop-oracle`; `mcp-differential-conformance` → `mcp-inspector-ci`;
+  `design-system-tokens` supersets `ui-design-tokens` (spans the site **and** the `/ui`, Programs L + U).
+- *Already substantially shipped:* `slash-post-atomicity` — the slash-finalize is atomic via the transactional
+  outbox (Cluster 211, `edit_message_with_posted_event`); the residual provisional-insert→external-dispatch window
+  is inherent (an external slash dispatch cannot sit inside the tx). No forward row needed.
+- *Launch/DX front-door (Program L/S/U, maintainer-gated):* `oss-funnel` (the OSS front door), `docs-site-upgrade`
+  (the mdBook docs engine), `ossf-scorecard` (OpenSSF Scorecard supply-chain grade).
+- *Federation hardening (net-new, unranked — schedule only if federation gets real multi-peer use; it is event-log
+  replication today, 267 egress shipped):* `federation-event-contract` (versioned envelope contract),
+  `federation-causal-order` (cross-peer causal ordering), `federation-vc-delegation` (verifiable-credential peer
+  trust), `crdt-federation-eval` (a CRDT-convergence decision doc).
+- *Deferred evals & ops (parked; revisit on a concrete trigger — none blocks the Wave program):* `abac-control-plane`
+  (OPA/ABAC, beyond the shipped capability model), `tantivy-eval` (a search-backend decision doc, paired with the
+  `paradedb-eval` of Program F), `sqlx-compile-checks` (compile-time SQL), `sops-secrets` (deploy-secret encryption),
+  `ci-egress-control` (CI egress allowlist), `cross-repo-advice` (cross-system advisory sharing),
+  `workflow-quiescence` (an in-flight-run drain signal), `jemalloc-eval` / `zerocopy-eval` (allocator / zero-copy
+  micro-evals), `mcp-registry-policy` / `mcp-apps-playground` (an MCP tool-registry policy / apps playground).
+
 **Anti-goals & honesty gates (carried from the round):** no harness/sandbox/eval-gauntlet (Pi/Soundcheck own those);
 no workflow-engine dependency (an ADR compares Restate/Temporal and declines it — the outbox/DAG/scheduler already
 re-derive the semantics); RLS stays deferred (216); no unearned SLA/badge/logo/benchmark on any launch surface
