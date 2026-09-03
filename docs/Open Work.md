@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v314.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), and again at **v314** (2026-08-28 4-thread research sweep — see "Pre-launch fixes + flagship arc" below).
+Updated at each cluster retro. **Baseline:** code on `main` at **`v349.0.0`** (`0728ead`) (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), and again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round).
 
 ## Post-flagship audit program (2026-08-30 full-repo audit — ✅ COMPLETE at v349.0.0)
 
@@ -154,7 +154,11 @@ tool (default 100, clamp 1..=500); unbounded variant kept for internal full-list
 POSITIVE (bearer-only, sessions 401); outbox multi-replica double-publish (K8) — deferred with a correct
 fix spec; Postgres benchmark numbers / coverage floor / `context_query_count` flake — real but P3.
 
-## Post-272 forward work (next program)
+## Post-272 forward work (2026-08-25 program — mostly shipped)
+
+> **Superseded by "Forward program (2026-09-02 splice)" below** as the canonical forward backlog. This section
+> is the 2026-08-25 program record; most rows are ✅ DONE (MCP upgrade, mail retry, SDKs, projectors), the
+> remainder (provider recipes, public launch) carry into the Forward program's Wave 4 + Program L.
 
 The optional-deferrals sweep (267–272) closed the last program. The next body of
 work was scoped by the **2026-08-25 strategy pass** — the detail and rationale live
@@ -179,34 +183,133 @@ workflow (retro + `vX.0.0` tag each).
 | **Provider recipes** | Doc/compose recipes only (Ollama/TEI embeddings, R2/AWS-S3 next to MinIO, Keycloak + a SaaS OIDC, Neon/RDS/Supabase note, LibSQL/Turso feasibility). | Providers.md (**I2–I6**) |
 | **Public launch** | Public-preview cut, un-hold, announce — **gated on the maintainer's explicit go**; keeps `publish = false` (no crates.io 1.0). | Launch.md (**L1–L6**) |
 
-## Engineering-canon forward program (2026-09-02 research round)
+## Forward program (2026-09-02 splice — workplace-product roadmap + engineering-canon hardening)
 
-A durable knowledge-base research round (69 books + 53 concepts + 183 repos + 13 protocol/compliance
-standards + 17 papers + a 5-vector operational-hardening pass) produced **125 net-new candidates**, each
-grounded in a cited source. **Honest headline: the canon overwhelmingly *validates* the shipped v349 design**
-— the transactional outbox is textbook WAL journaling, `claim_next` is a linearizable compare-and-set, the 8
-CI checks are fitness functions, and the LSN token gives read-your-writes. Net-new work is **hardening a
-design the theory and the incident record endorse**, not a rewrite. Candidates are grouped into programs
-below, roughly in recommended order. Each is a self-describing contract; none is committed until picked with
-the maintainer and run through the normal cluster workflow (retro + `vX.0.0` tag).
+The canonical forward backlog. Two research bodies merged into one program a development agent can execute
+without extra briefing: **(A)** the ranked **workplace-product roadmap** (Wave 1 #1–14 identity loop, then
+Wave 2–4 #15–51 giant lifts), and **(B)** the **engineering-canon research round** (69 books + 53 concepts +
+183 repos + 13 standards + 17 papers + a 5-vector operational-hardening pass → 125 candidates that *thicken*
+the Wave rows and add the cross-cutting hardening/durability/security/compliance/observability/launch layer).
+**Honest headline: the canon overwhelmingly *validates* the shipped v349 design** (outbox = WAL journaling,
+`claim_next` = linearizable CAS, 8 CI checks = fitness functions, LSN = read-your-writes); net-new work is the
+workplace loop + hardening a design the theory and incident record endorse, not a rewrite. Pick the next
+cluster here; run it through the normal cluster workflow (retro + `vX.0.0` tag). **Maidan is the generic Rust
+room** — Pi owns sandbox/eval, Soundcheck owns `/test`/`/review`, bgv3 is under test. Do not become a harness,
+a workflow-engine product, a k8s operator, an SPA, or an eval bench.
 
-**Near-term product spine (highest product value — the differentiator work):**
-- **Occupancy correctness.** Two occupancy clocks — assigned-never-acknowledged **and** started-then-died
-  (`ClaimExpired` fired *eagerly* on SIGTERM/drain, not only on the next `claim_next`) — plus a server default
-  lease and a minted `claim_lease_id` that fences stale writes. Today lease + lazy reclaim exist but a drained
-  replica can keep `assignee_id` until someone else pulls, and there is no `claim_lease_id`. Paint queued ≠
-  claimed ≠ working ≠ blocked. *(This is the same target the occupancy follow-ups under "Standing risks"
-  already flag — clusters 190–192.)*
-- **HITL gates** — the `request_approval` interrupt (Cluster 174) becomes a queryable held gate: the server
-  holds all open interrupts, an empty accept is not consent, cancel dequeues, and the GET-stream carries the
-  `elicitation/create`.
-- **Threaded `/ui` + session chrome** — flagship buttons in the vanilla `/ui` (WCAG AA + keyboard + `lang`);
-  per-thread/channel mute + mention breakthrough; session chrome (running/idle/needs-input/needs-approval/done)
-  that paints what-changed/assumptions/tests without a transcript.
-- **Context budget (`G-dev-1`)** — the context pack caps message **rows, not tokens** (verified), so a
-  wide-`ContentBlock` thread blows the window; add a token/byte budget that drops lean-eligible fields and
-  folds older messages via the existing `summarize_thread`, recording the elision as auditable metadata. The
-  academic record backs this (MAST failure taxonomy; "Lost in the Middle"; MemGPT).
+### EXPAND — grow the named home in place (one row each; do NOT mint a second cluster)
+
+- **Occupancy clocks — 190–192 ← G1 + H8 + H9 (Wave 1 #2, the standing hole).** Two clocks: `ClaimUnacknowledged`
+  (assigned, never acknowledged) **and** `ClaimExpired` (started, then died) — **`ClaimExpired` fires eager on
+  process death (SIGTERM / k8s drain), not only on the next `claim_next`**. Default `lease_secs`; `ClaimFailed`
+  = 400 (a timeout must not invent an answer), not queued; cancel-run without close; paint queued ≠ claimed ≠
+  working ≠ blocked. Mint `claim_lease_id` (a Burns *resource-version* fencing value — Burns 2e never says
+  "fencing token"; a TTL lock without it lets the first holder unlock the next owner's lock). Parked HITL is
+  IDLE (not billed); Autopilot ≠ permissions; reconnect ≠ auto-continue. ReplicaSet replicas + liveness/readiness
+  are **not** occupancy. **Tree today:** lease + lazy reclaim exist, `claim_lease_id`/`ClaimExpired` empty,
+  `lease_secs: None` = durable, a drained replica keeps `assignee_id` until someone else pulls. **Canon
+  thickeners:** a TLA+/TLC (or reduced loom/madsim) model of the two-clocks + fencing invariant is a **G1 test**
+  (`NEW-stateful-proptest` / `NEW-loom-interleaving` / `NEW-madsim-deterministic` / `NEW-kani-critical-units` —
+  grounded in Herlihy-Wing linearizability, AWS's TLA+ use, FoundationDB DST, QuickCheck/PULSE); PGMQ-shaped
+  `visibility_timeout` = `lease_secs` (ack vs expire vs DLQ) + kube-rs drain recipes (finalizer/SIGTERM →
+  `ClaimExpired`); the eager-death clock also closes `NEW-conn-leak-detector`'s sibling risk (a drained replica
+  holding a claim). Brooks/MMM as book evidence (adding occupants ≠ faster clocks). **Do not** split the clocks,
+  import a harness agent-loop, add a second journal table, or put N8 chrome on this row.
+- **Held gate — 174 ← F3 + F9 + H2 + H10 + N6 (Wave 1 #1, the first NEW row).** `request_approval` returns MRTR
+  `InputRequiredResult` + an HMAC `requestState` (untrusted — MUST verify integrity); drop the `2024-11-05`
+  fallback (still in `SUPPORTED`); three-way accept/decline/cancel; delete sampling/roots (deprecated in `rmcp`);
+  gates **queryable**; cancel dequeues; empty accept is not yes; **silence is not consent**; confirm the *exact*
+  action; **required-human is a claim gate** (N6), not a digest pref; `/ui` is the elicitation client.
+  **Thickeners:** also **ext-auth step-up** (resource indicators / token audience / consent — elicit, don't
+  silently expand — `NEW-mcp-step-up-auth`); also **broken-premise hold** (uncertainty → ask/stuck, not a
+  confident land — BullshitBench); Hyrum one-line (observable MCP/A2A is the contract). **Do not** reopen J3
+  (`ttlMs`/`cacheScope`/`server/discover`/`request_client`), restore `Mcp-Session-Id`, mint a second
+  elicitation cluster, or add a fourth interrupt.
+- **HITL list — 282–289 follow-up ← H12 (Wave 1 #3).** `ListTasks` remainder per live A2A 1.0.0: `status` incl.
+  `input-required`/`INPUT_REQUIRED`; page tokens (`nextPageToken` MUST be present, `""` on last page — tree
+  returns empty); `statusTimestampAfter`; `includeArtifacts` (omit field when false); `application/a2a+json`
+  (tree = `application/json`); `pageSize` max **100** (tree clamps 200). Stripe: auto-page + idempotency keys on
+  retries. Agents cannot find the gate without this. **Thickener:** a2a-tck MUST failures feed this remainder
+  (Soundcheck **runs** the TCK — `NEW-a2a-tck-ci`; not a Maidan occupancy cluster). **Do not** mint a new `tasks/list`.
+
+### KEEP remaining — splice after occupancy (#2), before later ADD (not a new cluster)
+
+- **README visual media / paste-ready invite** (a recorded terminal GIF + a README contact line). Thickeners: an
+  honest one-paragraph not-a-harness / not-Slack / not-Temporal; a CONTRIBUTING handbook-lite (occupy / disclose /
+  cut a release — shape, not a handbook site); SECURITY.md dated-or-omit numbers; GHCR pin = HEAD; `llms.txt` + copy-to-agent.
+- **SDK 0.2 typed DTOs** (all four SDKs return generic JSON today) + `NEW-sdk-ergonomics` (client idempotency keys
+  + a typed error taxonomy mapping RFC 9457 `problem+json` + auto-pagination — stripe-node craft). Differential
+  tests against the official MCP TS/Python + `a2a-rs` SDKs are **Soundcheck `/test`** (`NEW-mcp-inspector-ci` /
+  `NEW-sdk-interop-oracle`), not a new occupancy cluster.
+
+### Wave 1 — the identity loop (ranked #1–14; a stranger + a coding agent can occupy the room)
+
+1. **F3 + F9 + H2 + H10 (+ N6)** — the held gate on cluster **174** (see EXPAND). First NEW row.
+2. **G1 + H8 + H9** — occupancy clocks, EXPAND 190–192 (see EXPAND). The standing hole. *(Remaining KEEP — README + SDK 0.2 — splices here, after #2.)*
+3. **H12** — the HITL list, EXPAND 282–289 (see EXPAND).
+4. **N8 / B1 + N7** (same rank, two bullets). **N8:** session chrome running/idle/needs-input/needs-approval/done + a capability card `{can,can't}` (markdown `allowed-tools` is not a grant; an ambient k8s SA default token is not a grant); also holder-side **attenuation chrome** (`NEW-cap-attenuation` — the occupant cannot widen). **B1 + N7:** flagship buttons in the vanilla `/ui`, WCAG AA + keyboard + `lang` (`NEW-ui-design-tokens` / `NEW-ui-a11y-audit`). **No SPA.** Not a 190–192 expand.
+5. **H4** — lookback on `wait_for_*` + evict-on-wait; side effects before a wait must be idempotent (resume replays); no occupancy I/O in Drop.
+6. **W1 = G-dev-2 + G-dev-4** — a durable human **owner** ≠ claimer; the claimer cannot merge its own PR; persist steer; notify the owner on stuck. An auto-reviewer subagent is not the owner (`owner_id` empty today).
+7. **F1 + F2 + F7** — every post is a titled thread; collapsed children; leaf mute; `ThreadBumped`. Also Automerge as *thread* collab (causal edits on the same titled thread — **the event log stays the log**, do not CRDT the log).
+8. **N3** — per-thread/channel mute + mention breakthrough + projector-kind overlay; **replace** the kind-only PK `(member, kind)` (241–243). Do not fold onto the projector-link row (346 / 349.4).
+9. **T1 / T5** — a tokens+USD+turns budget envelope that **stops the run**; an agent-work DLQ; hard stop ≠ success (`ClaimFailed`). Also G-dev-8 `budget {steps, usd, wall_secs}` + OpenMeter **entitlements → stop** (still not invoices); Jevons (cheaper tokens increase agent-hours, so the envelope must bind) + thinking-harder ≠ occupancy health (Qwen 3.8 Max 94%→26% green). Canon `NEW-assembly-slo` (named p99 + tail-amplification guard) rides here. Do not become OpenMeter / a billing SKU.
+10. **N2 / N5 / N4** — a digest of **buried decisions** (replace the unread-count digest, 254–257); an inbox grouped by thread + snooze; `during:` date-range on the existing search. **N6 is not here** (it is the claim gate on #1).
+11. **G-dev-1** — a frozen, **token-budgeted** context pack (the pack caps message *rows, not tokens* today — a wide-`ContentBlock` thread blows the window; drop lean fields, fold older via `summarize_thread`, record the elision as auditable metadata); child `grounds`; pack-exclude stale; file-mediated handoff; honor AGENTS.md/GEMINI.md/CLAUDE.md dirs + in-repo `llms.txt` as pack **input** (Codex 32 KiB cap). Pack language names **pushback** (challenge the framing; uncertainty is ask/stuck, not land). Not Cluster 331; not a docs-platform product. (Backed by MAST / "Lost in the Middle" / MemGPT.)
+12. **G-dev-7** — inbound `pull_request.merged` → `ThreadLanded` (steal the landed fact, not an automation product; projector is `issue_comment` + `ping` only today).
+13. **G2 / G4 / G3 / G11** — wait-edges + `on_timeout`; an escalation enum (G4 **after** the held gate in #1); fair dispatch + Unclaimable + hard WIP. Steal the Restate/Temporal promise/timer *shape* onto wait-edges; do not become the engine.
+14. **N1, T6, H15, SCIM-as-OIDC-P3** (four bullets, not one cluster) — web-push iff no live WS (`constructEvent(rawBody, signature, secret)`); legal-hold vs the immutable log; an OTel feature-gate (crates already pinned); SCIM as an OIDC P3. **H1 (AG-UI) is Wave 2 #17**, not this bucket.
+
+### Wave 2 — humans inhabit the workplace loop (#15–28; Handoff rule 8 flips for the Work tab — vanilla `/ui`, still no SPA)
+
+15. **B2 + B11 + B3** (three bullets) — a **Work tab** (claim-next, queue-depth, DAG, result, schedules, skills), **Prefs** (mute/follows/delivery/digest in the same console — inbox 251 exists, prefs do not), and a **looking glass** (kind/thread/sha/peer explorer). Inverse-Conway: design the room around intent→decompose→park→land (not a topology cluster).
+16. **G15 + G9** — a **waiting-on-you inbox** (assigned-to-me + open gates + required-human mentions, each with an SLA, not `@everyone`).
+17. **H1** — an **AG-UI door** on the existing WS/SSE (`RunStarted`/`Step*`/`RunFinished|RunError`; interrupts speak AG-UI; resume covers all; `editedArgs` = full replace). F3 stays MCP MRTR; this is the human-UI/IDE protocol. No CopilotKit.
+18. **G8 + W5 + G-dev-9** — a **recipe / thread-type** (Goose YAML *shape*: params, json_schema, retry, sub-recipes); instantiate = parent + DAG children + skills + DoD; a scheduler/webhook/slash seeds a run; copy-on-fire freezes recipe bytes into a snapshot (`ScheduleSkipped` if the previous run is still assigned). **Not a recipe VM.** 331 stays declined.
+19. **G19 + T3** — **secret-ref**: the log holds an id, the store holds the value, Pi fetches at exec; a SecretBroker substitutes on egress with a host allowlist. Never secret values in the event log.
+20. **G17 + B25** — a **freeze-member kill-switch** (drop leases, refuse `claim_next`, leave a gate) + a catalog of `MAIDAN_*` kill-switch env/flags as operator docs. Not G4 PAUSE.
+21. **H11** — **attachable labeled memory** as room objects (Letta-block shape `{label, description, limit, read_only, value}`; attach/detach; concurrent-safe insert; full rewrite last-writer-wins + owned). A parent watches a child's result block without a nested runtime. Not a transcript, not RAG.
+22. **G5 + G-dev-5** — **required reviewers** (named-promise k-of-n; author/assignee votes don't count; the reviewer is a different member on a review child; a `refutes` edge blocks close until the decision is accepted). Not a poll/closer (325).
+23. **G6 + G-dev-3 + W3** — a **spawn budget** (max tools + max children/depth; `ThreadSpawnDenied`/`SpawnRejected`; at most one GitHub link per parent claim; cap well below GitHub's 100/8). Brooks/Amdahl/Two-Pizza: coordination cost is n(n−1)/2; do not admit a further agent onto a late sequential claim.
+24. **G7 + G-dev-10** — the `claim_next` pack includes in-channel **accepted decisions**; facet `result_kind=decision|plan|merge_authorized` into the existing search. Closed decisions must be visible to the next claimer.
+25. **G-dev-6** — a **Soundcheck gate pointer** on the thread (`{kind:"soundcheck", status:pass|fail, artifact_sha?}`): the FSM will not `closed` without a pass from a soundcheck-skilled member ≠ the implementer, and a **green/amber/red** land-gate vocabulary so the FSM will not `closed` on **accepted nonsense** (amber = flags-then-still-engages is not a land). The room holds the pointer; Soundcheck owns `/test`; Pi may run the MIT BullshitBench dataset. Not a CI product / a judge panel in the room.
+26. **H7** — a **capability ticket** for cross-org artifact/share (a 48h incident room + files); keep LocalArtifactStore + S3; steal the ticket *shape*, not a mesh.
+27. **G14 + W2** — a **blocked-reason enum** (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips blocked; `BlockedResolved` unblocks. Distinct from DAG-children-must-be-terminal.
+28. **G16 / G18 / H3** (three bullets) — **follow a member's occupancy**; a **manager digest** (channel result/gate/stuck counts — compose notifications, not analytics); **run lineage** (`parentRunId`) on a thread (nested occupancy attributed; F7 mute stays orthogonal).
+
+### Wave 3 — integrity, sync, portability (#29–36; ATProto *steals*, not a PDS — the log is the product)
+
+29. **B5 + B15 + H5** — subscribe `CursorTooOld` (fail loud, no silent clamp) + a durable `consumer_id` cursor + a thick SDK helper (HTTP backfill then WS cutover); projector **shapes** `{workspace, channel?, thread?, types[]}` + a 409 must-refetch; `RecvError::Lagged(n)` = resume-from-log + a metric, never a silent drop (Postel anti-pattern: fail loud).
+30. **B6 + B21 + B17** — an **EventKind JSON-Schema pack** (lexicon analogue, feeds SDK 0.2); `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type — **Hyrum home**: observable `$type` is the contract); a `Maidan-Room-LSN` header on REST/WS/MCP/A2A/projectors so clients see projector lag. Canon `NEW-snapshot-tests` over the normalized shapes.
+31. **B7** — a **signed workspace export** a blank GHCR instance can verify without the origin host; document token continuity or an explicit "tokens die on export."
+32. **B16** — a **hash-chained log + strong refs** (every event `{id, lsn, prev_hash, content_hash}`; `claim_next` + A2A citations pin `{uri, content_hash}`); a federated peer detects a break without trusting the host. Not MST/CAR.
+33. **B18 + B19** — a **snapshot + since-LSN catch-up** (getRepo-shaped) + a **tap projector contract** (verify, backfill, filter, live-waits-for-history, webhook/WS); search is a projector that must not diverge silently.
+34. **B8 + B27** — a tombstone/deletion explorer + a backlink index ("what points at this message") + a kind census.
+35. **B20 + B22** — **named capability sets** (`maidan.agent.worker`, `maidan.human.admin`) + progressive grant + holder-side attenuation (`NEW-cap-attenuation` — Levy/Madden, not a Cedar rewrite); **stable `maidan://` URIs** (`maidan://{room}/channels/…/messages/…` optional `#content_hash`); optional `/.well-known/maidan-room`; a handle rename must not break stored IDs.
+36. **B10** — a **WASI slash-handler kind** (a workspace installs a no-network guest with gas/memory caps; Maidan stores + invokes; the guest is the tool). Giant, still a room. Not an agent runtime (that's Pi).
+
+### Wave 4 — stranger-start + ops leftovers (#37–51)
+
+37. **B12 + B14** — a **GHCR two-image boot smoke** (server `/health` + CLI `maidan init` against a throwaway DB) + a **loopback OIDC** (not `MAIDAN_OIDC_MOCK`).
+38. **N1 thicken** — **webhook retry-then-disable** on projector egress + a loud `ProjectorMisconfigured`/DLQ, never silent drop (`NEW-webhook-health`).
+39. **B9 + B13 + B4 + B23** — a `/ui`-fetch-path-vs-OpenAPI contract test (`NEW-ui-fetch-contract`); an EventKind × REST/MCP matrix CI (`NEW-migration-parity-gate` sibling); deeper in-process `ui_*` hero e2e; golden export-frame fixtures.
+40. **Capabilities changelog** — an in-repo, search-tied-to-tags release stream (`NEW-changelog-as-product`); honest GHCR-pin-vs-HEAD.
+41. **T2 + T4** — a **PayerStamp** on the event (model, tokens-by-tier, `usd_minor`, `price_snapshot`, payer, `claim_lease_id`) + an audit lane (principal/action/outcome/resource; gen_ai content capture OFF). Canon: pairs `NEW-usage-metering-ledger` (deferred) + `NEW-denial-audit`.
+42. **B24** — an **MCP Inspector recipe** as Soundcheck `/test` (`NEW-mcp-inspector-ci`; failures feed F3/H12). Not a Maidan occupancy cluster.
+43. **F5** — **presence** = a watch snapshot + diffs, **out of** `maidan_events` (presence in the log is a lie).
+44. **uuidv7** — PG18 uuidv7 for new ids (a Store tweak, not N4).
+45. **G1 tests** — the TLA+/loom/madsim model on Wave 1 G1 + an optional claimer-crash on `chaos.rs` (`NEW-madsim-deterministic` / `NEW-loom-interleaving`; proof, not a chaos-mesh product).
+46. **Cosign / cargo-deny verify + `/status` HTML** — make the signed-GHCR verify path a stranger-start README step (`NEW-sbom-provenance` / `NEW-image-digest-pin`); an operator `/status` (phase, backfill %, last cursor, replica lag). SECURITY.md is the public trust page. H15 is not a status page.
+47. **Templates in-repo** — `examples/` + compose recipes (MCP/A2A/coding-agent/deploy) with a last-verified date, owner, compatibility (`NEW-templates-integrations`). Not a marketplace.
+48. **CONTRIBUTING handbook-lite** — how to occupy, response standard, ownership, banned claims, how a release is cut. Not a handbook site.
+49. **Paste → artifact** — clipboard in `/ui` → `upsert_artifact`; filenames **server-minted** (path-traversal class). Optional operator ICAP before a sha is referenced.
+50. **H6 Goose claimant** — a blessed claimant path (Goose / OpenHands sessions claim **into** Maidan via MCP). We do not ship an agent; adoption after the room is occupiable.
+51. **ACP** — a footnote on H1 (#17): steal cancellation + session/load as the occupant protocol. SKIP as an IDE bridge unless later ranked (AG-UI is the HITL door).
+
+### Engineering-canon cross-cutting programs (the hardening/durability/security/compliance/observability/launch layer that thickens the Wave rows)
+
+These are **not** separate product rows — they harden the substrate the Wave program runs on, each grounded in a
+cited source (a book/repo/standard/paper, or a real incident/compliance clause). Most **validate** the shipped
+design; the net-new candidates are named inline in the Wave rows above and detailed here.
 
 **Program R — resilience & operational hardening (fastest ROI; grounded in real outages + framework failures):**
 - `mcp-tool-timeout-isolation` — per-tool invocation deadline + failure isolation (+ optional circuit breaker)
@@ -631,7 +734,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v314.0.0`** (post-gate hardening, Phase XXIV). Since v273: MCP `2026-07-28` (300–303), durable mail retry (304–306), Slack + GitHub projectors (307–312), the SDK arc published at 0.1.0 (294–299), and launch-prep (313 default-secure quickstart, 314 claims/policies/release-verification). Next: the 2026-08-28 sweep's 315–318 + fidelity/context flagship arc (above). *(Narrative below is the historical v273 program record.)* Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
+- **Latest tag:** **`v349.0.0`** (`0728ead`, post-gate hardening, Phase XXIV). Since v273: MCP `2026-07-28` (300–303), durable mail retry (304–306), Slack + GitHub projectors (307–312), the SDK arc published at 0.1.0 (294–299), launch-prep (313–314), the 2026-08-28 sweep (315–318) + the fidelity/context flagship arc (319–331), and the post-flagship audit program (332–349). Next: the "Forward program" section (2026-09-02 splice) — occupancy clocks (190–192) is the standing hole. *(Narrative below is the historical v273 program record.)* Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
     - **Batched `pg_notify` — DECLINED (low value + delivery-core risk).** The LISTEN handler hydrates a single pointer per NOTIFY, and the hot path publishes per-event (no natural batch); only the latency-tolerant fallback relay batches. A correct coalescing needs **range-hydration** on the listener (track `last_hydrated_log_id`, hydrate `(last_hydrated, X]` per pointer, advance) — a delivery-core change for a win that only helps the non-hot path. Range-hydration alone is a robustness win (self-heals dropped NOTIFYs) if ever wanted, but risks double-delivery without careful last-hydrated tracking.
     - **Read-replica routing — DEFERRED (needs infra + a Store refactor).** Requires a second read-pool threaded through the `Store` (which is constructed with one pool), read-after-write consistency handling (route reads-after-writes / real-time to primary; only lag-tolerant reads like search/workspace-context to the replica), config (`MAIDAN_DATABASE_REPLICA_URL`, degrades to primary when unset), and a real replica to validate beyond the degenerate case.
 - **Deferred from Arc C:** federation `content→parts` **egress** (194 did ingest; egress still body-only).
