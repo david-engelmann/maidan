@@ -24,7 +24,7 @@ struct SessionEntry {
     /// Recent `(event_id, payload)` frames, for `Last-Event-ID` replay.
     log: VecDeque<(u64, String)>,
     /// The client's `capabilities` object from `initialize` (Cluster 148) —
-    /// gates server→client requests (sampling / roots / elicitation).
+    /// gates server→client requests (elicitation).
     client_capabilities: Value,
     /// Next id for a server→client request, and the reply slots awaiting the
     /// client's response, keyed by that id.
@@ -162,7 +162,7 @@ impl StreamableSessionRegistry {
     }
 
     /// Whether the session's client declared a top-level capability key
-    /// (e.g. `sampling`, `roots`, `elicitation`).
+    /// (e.g. `elicitation`).
     pub async fn client_supports(&self, id: &str, capability: &str) -> bool {
         self.sessions
             .lock()
@@ -297,11 +297,11 @@ mod tests {
     async fn client_capabilities_and_pending_request_correlation() {
         let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
         let _rx = reg.open("sess".to_string()).await;
-        reg.set_client_capabilities("sess", serde_json::json!({"sampling": {}}))
+        reg.set_client_capabilities("sess", serde_json::json!({"elicitation": {}}))
             .await;
-        assert!(reg.client_supports("sess", "sampling").await);
-        assert!(!reg.client_supports("sess", "roots").await);
-        assert!(!reg.client_supports("missing", "sampling").await);
+        assert!(reg.client_supports("sess", "elicitation").await);
+        assert!(!reg.client_supports("sess", "sampling").await);
+        assert!(!reg.client_supports("missing", "elicitation").await);
 
         // Register a server→client request, then resolve it by id.
         let (req_id, rx) = reg.register_client_request("sess").await.unwrap();

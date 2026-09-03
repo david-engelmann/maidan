@@ -1039,19 +1039,6 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "summarize_thread",
-            "description": "Summarize a thread by asking the connected MCP client to sample an LLM (server→client sampling/createMessage over the GET /mcp/streamable stream). Requires a streamable session whose client declared the sampling capability.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "thread_id": {"type": "string", "format": "uuid"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
-                    "instructions": {"type": "string", "description": "Optional steer for the summary."}
-                },
-                "required": ["thread_id"]
-            }
-        }),
-        json!({
             "name": "request_approval",
             "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent.",
             "inputSchema": {
@@ -1072,15 +1059,6 @@ pub fn catalog() -> Vec<Value> {
                     "gate_id": {"type": "string", "description": "the gate id returned by request_approval"}
                 },
                 "required": ["gate_id"]
-            }
-        }),
-        json!({
-            "name": "list_roots",
-            "description": "List the roots (filesystem/workspace boundaries) the connected MCP client exposes, via the server→client roots/list request over the GET /mcp/streamable stream. Requires a streamable session whose client declared the roots capability. Returns the client's roots array.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
             }
         }),
         json!({

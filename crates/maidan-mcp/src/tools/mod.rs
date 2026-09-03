@@ -24,7 +24,6 @@ mod member;
 mod message;
 mod projector;
 mod reference;
-mod roots;
 mod schedule;
 mod search;
 mod seed;
@@ -69,7 +68,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_context"
         | "get_tool_transcript"
         | "get_workspace_context"
-        | "summarize_thread"
         | "request_approval"
         | "get_approval_gate"
         | "list_mentions"
@@ -105,7 +103,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_thread_follows"
         | "get_glossary_term"
         | "list_glossary_terms"
-        | "list_roots"
         | "list_slack_channel_links"
         | "list_github_issue_links"
         | "whoami" => Ok(WORKSPACE_READ),
@@ -194,7 +191,6 @@ async fn enforce_channel_access(
         | "get_thread_context"
         | "snapshot_thread_context"
         | "get_tool_transcript"
-        | "summarize_thread"
         | "pin_message"
         | "unpin_message"
         | "list_pins"
@@ -257,7 +253,10 @@ pub async fn dispatch(
     auth: &AuthContext,
     name: &str,
     args: &Value,
-    session_id: Option<&str>,
+    // Threaded from the transport for tools that issue a server→client
+    // `request_client` (latent since Cluster 350 retired sampling/roots and moved
+    // approvals to durable gates); kept for the next such tool.
+    _session_id: Option<&str>,
 ) -> Result<Value, McpError> {
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
@@ -400,10 +399,8 @@ pub async fn dispatch(
             }
             Ok(content_json(&v))
         }
-        "summarize_thread" => thread::summarize_thread(server, session_id, args).await,
         "request_approval" => approval::request_approval(server, auth, args).await,
         "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
-        "list_roots" => roots::list_roots(server, session_id, args).await,
         "whoami" => whoami::whoami(auth).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
