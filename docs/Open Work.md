@@ -198,6 +198,19 @@ cluster here; run it through the normal cluster workflow (retro + `vX.0.0` tag).
 room** — Pi owns sandbox/eval, Soundcheck owns `/test`/`/review`, bgv3 is under test. Do not become a harness,
 a workflow-engine product, a k8s operator, an SPA, or an eval bench.
 
+**How to read a Forward-program row.** Each row opens with one or more **short work-IDs** whose letter *loosely*
+marks the research lane — `G*`/`H*` orchestration + HITL, `F*` threads/fidelity, `N*` notifications,
+`W*`/`G-dev-*` human dev-workflow, `T*` budget/metering/audit, `B*` protocol/integrity/portability (a few `B*`/`F*`
+rows are `/ui` console work) — but **the letter is only a hint; the prose is authoritative.** **The IDs are opaque
+internal handles** from the 2026-09-02 research round (their catalogs are working notes, not repo docs); you do
+**not** need to resolve them. Read a row as: **`<ID(s)> — <what to build>` (`<current tree state>`; `<guardrails>`). `Do not: <scope fence>`.**
+The actionable spec is the **bold prose after the ID**, the current-tree state is the "*Tree today:*/*today*" clause,
+and the hard scope boundary is the "**Do not …**" clause — the IDs exist only so rows can cross-reference each other
+(e.g. "G4 after the held gate in #1", "N6 is not here"). Separately, `NEW-*` slugs (e.g. `NEW-cap-attenuation`) are
+the **engineering-canon candidates**; every one is defined in the *Engineering-canon cross-cutting programs* section
+below (Programs R–L). Waves are **priority-ranked** (#1 first); EXPAND rows grow an existing cluster in place rather
+than minting a new one.
+
 ### EXPAND — grow the named home in place (one row each; do NOT mint a second cluster)
 
 - **Occupancy clocks — 190–192 ← G1 + H8 + H9 (Wave 1 #2, the standing hole).** Two clocks: `ClaimUnacknowledged`
