@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v314.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), and again at **v314** (2026-08-28 4-thread research sweep — see "Pre-launch fixes + flagship arc" below).
+Updated at each cluster retro. **Baseline:** code on `main` at **`v349.0.0`** (`0728ead`) (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), and again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round).
 
 ## Post-flagship audit program (2026-08-30 full-repo audit — ✅ COMPLETE at v349.0.0)
 
@@ -154,7 +154,11 @@ tool (default 100, clamp 1..=500); unbounded variant kept for internal full-list
 POSITIVE (bearer-only, sessions 401); outbox multi-replica double-publish (K8) — deferred with a correct
 fix spec; Postgres benchmark numbers / coverage floor / `context_query_count` flake — real but P3.
 
-## Post-272 forward work (next program)
+## Post-272 forward work (2026-08-25 program — mostly shipped)
+
+> **Superseded by "Forward program (2026-09-02 splice)" below** as the canonical forward backlog. This section
+> is the 2026-08-25 program record; most rows are ✅ DONE (MCP upgrade, mail retry, SDKs, projectors), the
+> remainder (provider recipes, public launch) carry into the Forward program's Wave 4 + Program L.
 
 The optional-deferrals sweep (267–272) closed the last program. The next body of
 work was scoped by the **2026-08-25 strategy pass** — the detail and rationale live
@@ -178,6 +182,294 @@ workflow (retro + `vX.0.0` tag each).
 | **Pre-public cleanup nits → superseded by Clusters 315 (correctness) + 316 (honesty scrub)** | The real, verified nits (mail.rs "Not wired", outbox `FOR UPDATE SKIP LOCKED`, `event_stream` swallowed cursor, and the full doc-lie list) are now itemized under "Pre-launch fixes + flagship arc" below. This row is retired into those two clusters. | Pre-Public Hardening.md (**A–K**) |
 | **Provider recipes** | Doc/compose recipes only (Ollama/TEI embeddings, R2/AWS-S3 next to MinIO, Keycloak + a SaaS OIDC, Neon/RDS/Supabase note, LibSQL/Turso feasibility). | Providers.md (**I2–I6**) |
 | **Public launch** | Public-preview cut, un-hold, announce — **gated on the maintainer's explicit go**; keeps `publish = false` (no crates.io 1.0). | Launch.md (**L1–L6**) |
+
+## Forward program (2026-09-02 splice — workplace-product roadmap + engineering-canon hardening)
+
+The canonical forward backlog. Two research bodies merged into one program a development agent can execute
+without extra briefing: **(A)** the ranked **workplace-product roadmap** (Wave 1 #1–14 identity loop, then
+Wave 2–4 #15–51 giant lifts), and **(B)** the **engineering-canon research round** (69 books + 53 concepts +
+183 repos + 13 standards + 17 papers + a 5-vector operational-hardening pass + an ontology deep-dive → 128
+candidates that *thicken* the Wave rows and add the cross-cutting
+hardening/durability/security/compliance/observability/launch layer).
+**Honest headline: the canon overwhelmingly *validates* the shipped v349 design** (outbox = WAL journaling,
+`claim_next` = linearizable CAS, 8 CI checks = fitness functions, LSN = read-your-writes); net-new work is the
+workplace loop + hardening a design the theory and incident record endorse, not a rewrite. Pick the next
+cluster here; run it through the normal cluster workflow (retro + `vX.0.0` tag). **Maidan is the generic Rust
+room** — Pi owns sandbox/eval, Soundcheck owns `/test`/`/review`, bgv3 is under test. Do not become a harness,
+a workflow-engine product, a k8s operator, an SPA, or an eval bench.
+
+**How to read a Forward-program row.** Each row opens with one or more **short work-IDs** whose letter *loosely*
+marks the research lane — `G*`/`H*` orchestration + HITL, `F*` threads/fidelity, `N*` notifications,
+`W*`/`G-dev-*` human dev-workflow, `T*` budget/metering/audit, `B*` protocol/integrity/portability (a few `B*`/`F*`
+rows are `/ui` console work) — but **the letter is only a hint; the prose is authoritative.** **The IDs are opaque
+internal handles** from the 2026-09-02 research round (their catalogs are working notes, not repo docs); you do
+**not** need to resolve them. Read a row as: **`<ID(s)> — <what to build>` (`<current tree state>`; `<guardrails>`). `Do not: <scope fence>`.**
+The actionable spec is the **bold prose after the ID**, the current-tree state is the "*Tree today:*/*today*" clause,
+and the hard scope boundary is the "**Do not …**" clause — the IDs exist only so rows can cross-reference each other
+(e.g. "G4 after the held gate in #1", "N6 is not here"). Separately, `NEW-*` slugs (e.g. `NEW-cap-attenuation`) are
+the **engineering-canon candidates**; every one is defined in the *Engineering-canon cross-cutting programs* section
+below (Programs R–L). Waves are **priority-ranked** (#1 first); EXPAND rows grow an existing cluster in place rather
+than minting a new one.
+
+### EXPAND — grow the named home in place (one row each; do NOT mint a second cluster)
+
+- **Occupancy clocks — 190–192 ← G1 + H8 + H9 (Wave 1 #2, the standing hole).** Two clocks: `ClaimUnacknowledged`
+  (assigned, never acknowledged) **and** `ClaimExpired` (started, then died) — **`ClaimExpired` fires eager on
+  process death (SIGTERM / k8s drain), not only on the next `claim_next`**. Default `lease_secs`; `ClaimFailed`
+  = 400 (a timeout must not invent an answer), not queued; cancel-run without close; paint queued ≠ claimed ≠
+  working ≠ blocked. Mint `claim_lease_id` (a Burns *resource-version* fencing value — Burns 2e never says
+  "fencing token"; a TTL lock without it lets the first holder unlock the next owner's lock). Parked HITL is
+  IDLE (not billed); Autopilot ≠ permissions; reconnect ≠ auto-continue. ReplicaSet replicas + liveness/readiness
+  are **not** occupancy. **Tree today:** lease + lazy reclaim exist, `claim_lease_id`/`ClaimExpired` empty,
+  `lease_secs: None` = durable, a drained replica keeps `assignee_id` until someone else pulls. **Canon
+  thickeners:** a TLA+/TLC (or reduced loom/madsim) model of the two-clocks + fencing invariant is a **G1 test**
+  (`NEW-stateful-proptest` / `NEW-loom-interleaving` / `NEW-madsim-deterministic` / `NEW-kani-critical-units` —
+  grounded in Herlihy-Wing linearizability, AWS's TLA+ use, FoundationDB DST, QuickCheck/PULSE); PGMQ-shaped
+  `visibility_timeout` = `lease_secs` (ack vs expire vs DLQ) + kube-rs drain recipes (finalizer/SIGTERM →
+  `ClaimExpired`); the eager-death clock also closes `NEW-conn-leak-detector`'s sibling risk (a drained replica
+  holding a claim). Brooks/MMM as book evidence (adding occupants ≠ faster clocks). **Do not** split the clocks,
+  import a harness agent-loop, add a second journal table, or put N8 chrome on this row.
+- **Held gate — 174 ← F3 + F9 + H2 + H10 + N6 (Wave 1 #1, the first NEW row).** `request_approval` returns MRTR
+  `InputRequiredResult` + an HMAC `requestState` (untrusted — MUST verify integrity); drop the `2024-11-05`
+  fallback (still in `SUPPORTED`); three-way accept/decline/cancel; delete sampling/roots (deprecated in `rmcp`);
+  gates **queryable**; cancel dequeues; empty accept is not yes; **silence is not consent**; confirm the *exact*
+  action; **required-human is a claim gate** (N6), not a digest pref; `/ui` is the elicitation client.
+  **Thickeners:** also **ext-auth step-up** (resource indicators / token audience / consent — elicit, don't
+  silently expand — `NEW-mcp-step-up-auth`); also **broken-premise hold** (uncertainty → ask/stuck, not a
+  confident land — BullshitBench); Hyrum one-line (observable MCP/A2A is the contract). **Do not** reopen J3
+  (`ttlMs`/`cacheScope`/`server/discover`/`request_client`), restore `Mcp-Session-Id`, mint a second
+  elicitation cluster, or add a fourth interrupt.
+- **HITL list — 282–289 follow-up ← H12 (Wave 1 #3).** `ListTasks` remainder per live A2A 1.0.0: `status` incl.
+  `input-required`/`INPUT_REQUIRED`; page tokens (`nextPageToken` MUST be present, `""` on last page — tree
+  returns empty); `statusTimestampAfter`; `includeArtifacts` (omit field when false); `application/a2a+json`
+  (tree = `application/json`); `pageSize` max **100** (tree clamps 200). Stripe: auto-page + idempotency keys on
+  retries. Agents cannot find the gate without this. **Thickener:** a2a-tck MUST failures feed this remainder
+  (Soundcheck **runs** the TCK — `NEW-a2a-tck-ci`; not a Maidan occupancy cluster). **Do not** mint a new `tasks/list`.
+
+### KEEP remaining — splice after occupancy (#2), before later ADD (not a new cluster)
+
+- **README visual media / paste-ready invite** (a recorded terminal GIF + a README contact line). Thickeners: an
+  honest one-paragraph not-a-harness / not-Slack / not-Temporal; a CONTRIBUTING handbook-lite (occupy / disclose /
+  cut a release — shape, not a handbook site); SECURITY.md dated-or-omit numbers; GHCR pin = HEAD; `llms.txt` + copy-to-agent.
+- **SDK 0.2 typed DTOs** (all four SDKs return generic JSON today) + `NEW-sdk-ergonomics` (client idempotency keys
+  + a typed error taxonomy mapping RFC 9457 `problem+json` + auto-pagination — stripe-node craft). Differential
+  tests against the official MCP TS/Python + `a2a-rs` SDKs are **Soundcheck `/test`** (`NEW-mcp-inspector-ci` /
+  `NEW-sdk-interop-oracle`), not a new occupancy cluster.
+
+### Wave 1 — the identity loop (ranked #1–14; a stranger + a coding agent can occupy the room)
+
+1. **F3 + F9 + H2 + H10 (+ N6)** — the held gate on cluster **174** (see EXPAND). First NEW row.
+2. **G1 + H8 + H9** — occupancy clocks, EXPAND 190–192 (see EXPAND). The standing hole. *(Remaining KEEP — README + SDK 0.2 — splices here, after #2.)*
+3. **H12** — the HITL list, EXPAND 282–289 (see EXPAND).
+4. **N8 / B1 + N7** (same rank, two bullets). **N8:** session chrome running/idle/needs-input/needs-approval/done + a capability card `{can,can't}` (markdown `allowed-tools` is not a grant; an ambient k8s SA default token is not a grant); also holder-side **attenuation chrome** (`NEW-cap-attenuation` — the occupant cannot widen). **B1 + N7:** flagship buttons in the vanilla `/ui`, WCAG AA + keyboard + `lang` (`NEW-ui-design-tokens` / `NEW-ui-a11y-audit`). **No SPA.** Not a 190–192 expand.
+5. **H4** — lookback on `wait_for_*` + evict-on-wait; side effects before a wait must be idempotent (resume replays); no occupancy I/O in Drop.
+6. **W1 = G-dev-2 + G-dev-4** — a durable human **owner** ≠ claimer; the claimer cannot merge its own PR; persist steer; notify the owner on stuck. An auto-reviewer subagent is not the owner (`owner_id` empty today).
+7. **F1 + F2 + F7** — every post is a titled thread; collapsed children; leaf mute; `ThreadBumped`. Also Automerge as *thread* collab (causal edits on the same titled thread — **the event log stays the log**, do not CRDT the log).
+8. **N3** — per-thread/channel mute + mention breakthrough + projector-kind overlay; **replace** the kind-only PK `(member, kind)` (241–243). Do not fold onto the projector-link row (346 / 349.4).
+9. **T1 / T5** — a tokens+USD+turns budget envelope that **stops the run**; an agent-work DLQ; hard stop ≠ success (`ClaimFailed`). Also G-dev-8 `budget {steps, usd, wall_secs}` + OpenMeter **entitlements → stop** (still not invoices); Jevons (cheaper tokens increase agent-hours, so the envelope must bind) + thinking-harder ≠ occupancy health (Qwen 3.8 Max 94%→26% green). Canon `NEW-assembly-slo` (named p99 + tail-amplification guard) rides here. Do not become OpenMeter / a billing SKU.
+10. **N2 / N5 / N4** — a digest of **buried decisions** (replace the unread-count digest, 254–257); an inbox grouped by thread + snooze; `during:` date-range on the existing search. **N6 is not here** (it is the claim gate on #1).
+11. **G-dev-1** — a frozen, **token-budgeted** context pack (the pack caps message *rows, not tokens* today — a wide-`ContentBlock` thread blows the window; drop lean fields, fold older via `summarize_thread`, record the elision as auditable metadata); child `grounds`; pack-exclude stale; file-mediated handoff; honor AGENTS.md/GEMINI.md/CLAUDE.md dirs + in-repo `llms.txt` as pack **input** (Codex 32 KiB cap). Pack language names **pushback** (challenge the framing; uncertainty is ask/stuck, not land). Not Cluster 331; not a docs-platform product. (Backed by MAST / "Lost in the Middle" / MemGPT.)
+12. **G-dev-7** — inbound `pull_request.merged` → `ThreadLanded` (steal the landed fact, not an automation product; projector is `issue_comment` + `ping` only today).
+13. **G2 / G4 / G3 / G11** — wait-edges + `on_timeout`; an escalation enum (G4 **after** the held gate in #1); fair dispatch + Unclaimable + hard WIP. Steal the Restate/Temporal promise/timer *shape* onto wait-edges; do not become the engine.
+14. **N1, T6, H15, SCIM-as-OIDC-P3** (four bullets, not one cluster) — web-push iff no live WS (`constructEvent(rawBody, signature, secret)`); legal-hold vs the immutable log; an OTel feature-gate (crates already pinned); SCIM as an OIDC P3. **H1 (AG-UI) is Wave 2 #17**, not this bucket.
+
+### Wave 2 — humans inhabit the workplace loop (#15–28; Handoff rule 8 flips for the Work tab — vanilla `/ui`, still no SPA)
+
+15. **B2 + B11 + B3** (three bullets) — a **Work tab** (claim-next, queue-depth, DAG, result, schedules, skills), **Prefs** (mute/follows/delivery/digest in the same console — inbox 251 exists, prefs do not), and a **looking glass** (kind/thread/sha/peer explorer). Inverse-Conway: design the room around intent→decompose→park→land (not a topology cluster).
+16. **G15 + G9** — a **waiting-on-you inbox** (assigned-to-me + open gates + required-human mentions, each with an SLA, not `@everyone`).
+17. **H1** — an **AG-UI door** on the existing WS/SSE (`RunStarted`/`Step*`/`RunFinished|RunError`; interrupts speak AG-UI; resume covers all; `editedArgs` = full replace). F3 stays MCP MRTR; this is the human-UI/IDE protocol. No CopilotKit.
+18. **G8 + W5 + G-dev-9** — a **recipe / thread-type** (Goose YAML *shape*: params, json_schema, retry, sub-recipes); instantiate = parent + DAG children + skills + DoD; a scheduler/webhook/slash seeds a run; copy-on-fire freezes recipe bytes into a snapshot (`ScheduleSkipped` if the previous run is still assigned). **Not a recipe VM.** 331 stays declined.
+19. **G19 + T3** — **secret-ref**: the log holds an id, the store holds the value, Pi fetches at exec; a SecretBroker substitutes on egress with a host allowlist. Never secret values in the event log.
+20. **G17 + B25** — a **freeze-member kill-switch** (drop leases, refuse `claim_next`, leave a gate) + a catalog of `MAIDAN_*` kill-switch env/flags as operator docs. Not G4 PAUSE.
+21. **H11** — **attachable labeled memory** as room objects (Letta-block shape `{label, description, limit, read_only, value}`; attach/detach; concurrent-safe insert; full rewrite last-writer-wins + owned). A parent watches a child's result block without a nested runtime. Not a transcript, not RAG.
+22. **G5 + G-dev-5** — **required reviewers** (named-promise k-of-n; author/assignee votes don't count; the reviewer is a different member on a review child; a `refutes` edge blocks close until the decision is accepted). Not a poll/closer (325).
+23. **G6 + G-dev-3 + W3** — a **spawn budget** (max tools + max children/depth; `ThreadSpawnDenied`/`SpawnRejected`; at most one GitHub link per parent claim; cap well below GitHub's 100/8). Brooks/Amdahl/Two-Pizza: coordination cost is n(n−1)/2; do not admit a further agent onto a late sequential claim.
+24. **G7 + G-dev-10** — the `claim_next` pack includes in-channel **accepted decisions**; facet `result_kind=decision|plan|merge_authorized` into the existing search. Closed decisions must be visible to the next claimer.
+25. **G-dev-6** — a **Soundcheck gate pointer** on the thread (`{kind:"soundcheck", status:pass|fail, artifact_sha?}`): the FSM will not `closed` without a pass from a soundcheck-skilled member ≠ the implementer, and a **green/amber/red** land-gate vocabulary so the FSM will not `closed` on **accepted nonsense** (amber = flags-then-still-engages is not a land). The room holds the pointer; Soundcheck owns `/test`; Pi may run the MIT BullshitBench dataset. Not a CI product / a judge panel in the room.
+26. **H7** — a **capability ticket** for cross-org artifact/share (a 48h incident room + files); keep LocalArtifactStore + S3; steal the ticket *shape*, not a mesh.
+27. **G14 + W2** — a **blocked-reason enum** (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips blocked; `BlockedResolved` unblocks. Distinct from DAG-children-must-be-terminal.
+28. **G16 / G18 / H3** (three bullets) — **follow a member's occupancy**; a **manager digest** (channel result/gate/stuck counts — compose notifications, not analytics); **run lineage** (`parentRunId`) on a thread (nested occupancy attributed; F7 mute stays orthogonal).
+
+### Wave 3 — integrity, sync, portability (#29–36; ATProto *steals*, not a PDS — the log is the product)
+
+29. **B5 + B15 + H5** — subscribe `CursorTooOld` (fail loud, no silent clamp) + a durable `consumer_id` cursor + a thick SDK helper (HTTP backfill then WS cutover); projector **shapes** `{workspace, channel?, thread?, types[]}` + a 409 must-refetch; `RecvError::Lagged(n)` = resume-from-log + a metric, never a silent drop (Postel anti-pattern: fail loud).
+30. **B6 + B21 + B17** — an **EventKind JSON-Schema pack** (lexicon analogue, feeds SDK 0.2); `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type — **Hyrum home**: observable `$type` is the contract); a `Maidan-Room-LSN` header on REST/WS/MCP/A2A/projectors so clients see projector lag (a broadcast-lag companion to the existing read-your-writes `Maidan-Consistency-Token`, v263 — do not conflate the two). Canon `NEW-snapshot-tests` over the normalized shapes.
+31. **B7** — a **signed workspace export** a blank GHCR instance can verify without the origin host; document token continuity or an explicit "tokens die on export."
+32. **B16** — a **hash-chained log + strong refs** (every event `{id, lsn, prev_hash, content_hash}`; `claim_next` + A2A citations pin `{uri, content_hash}`); a federated peer detects a break without trusting the host. Not MST/CAR.
+33. **B18 + B19** — a **snapshot + since-LSN catch-up** (getRepo-shaped) + a **tap projector contract** (verify, backfill, filter, live-waits-for-history, webhook/WS); search is a projector that must not diverge silently.
+34. **B8 + B27** — a tombstone/deletion explorer + a backlink index ("what points at this message") + a kind census.
+35. **B20 + B22** — **named capability sets** (`maidan.agent.worker`, `maidan.human.admin`) + progressive grant + holder-side attenuation (`NEW-cap-attenuation` — Levy/Madden, not a Cedar rewrite); **stable `maidan://` URIs** (`maidan://{room}/channels/…/messages/…` optional `#content_hash`); optional `/.well-known/maidan-room`; a handle rename must not break stored IDs.
+36. **B10** — a **WASI slash-handler kind** (a workspace installs a no-network guest with gas/memory caps; Maidan stores + invokes; the guest is the tool). Giant, still a room. Not an agent runtime (that's Pi).
+
+### Wave 4 — stranger-start + ops leftovers (#37–51)
+
+37. **B12 + B14** — a **GHCR two-image boot smoke** (server `/health` + CLI `maidan init` against a throwaway DB) + a **loopback OIDC** (not `MAIDAN_OIDC_MOCK`).
+38. **N1 thicken** — **webhook retry-then-disable** on projector egress + a loud `ProjectorMisconfigured`/DLQ, never silent drop (`NEW-webhook-health`).
+39. **B9 + B13 + B4 + B23** — a `/ui`-fetch-path-vs-OpenAPI contract test (`NEW-ui-fetch-contract`); an EventKind × REST/MCP matrix CI (`NEW-migration-parity-gate` sibling); deeper in-process `ui_*` hero e2e; golden export-frame fixtures.
+40. **Capabilities changelog** — an in-repo, search-tied-to-tags release stream (`NEW-changelog-as-product`); honest GHCR-pin-vs-HEAD.
+41. **T2 + T4** — a **PayerStamp** on the event (model, tokens-by-tier, `usd_minor`, `price_snapshot`, payer, `claim_lease_id`) + an audit lane (principal/action/outcome/resource; gen_ai content capture OFF). Canon: pairs `NEW-usage-metering-ledger` (deferred) + `NEW-denial-audit`.
+42. **B24** — an **MCP Inspector recipe** as Soundcheck `/test` (`NEW-mcp-inspector-ci`; failures feed F3/H12). Not a Maidan occupancy cluster.
+43. **F5** — **presence** = a watch snapshot + diffs, **out of** `maidan_events` (presence in the log is a lie).
+44. **uuidv7** — PG18 uuidv7 for new ids (a Store tweak, not N4).
+45. **G1 tests** — the TLA+/loom/madsim model on Wave 1 G1 + an optional claimer-crash on `chaos.rs` (`NEW-madsim-deterministic` / `NEW-loom-interleaving`; proof, not a chaos-mesh product).
+46. **Cosign / cargo-deny verify + `/status` HTML** — make the signed-GHCR verify path a stranger-start README step (`NEW-sbom-provenance` / `NEW-image-digest-pin`); an operator `/status` (phase, backfill %, last cursor, replica lag). SECURITY.md is the public trust page. H15 is not a status page.
+47. **Templates in-repo** — `examples/` + compose recipes (MCP/A2A/coding-agent/deploy) with a last-verified date, owner, compatibility (`NEW-templates-integrations`). Not a marketplace.
+48. **CONTRIBUTING handbook-lite** — how to occupy, response standard, ownership, banned claims, how a release is cut. Not a handbook site.
+49. **Paste → artifact** — clipboard in `/ui` → `upsert_artifact`; filenames **server-minted** (path-traversal class). Optional operator ICAP before a sha is referenced.
+50. **H6 Goose claimant** — a blessed claimant path (Goose / OpenHands sessions claim **into** Maidan via MCP). We do not ship an agent; adoption after the room is occupiable.
+51. **ACP** — a footnote on H1 (#17): steal cancellation + session/load as the occupant protocol. SKIP as an IDE bridge unless later ranked (AG-UI is the HITL door).
+
+### Engineering-canon cross-cutting programs (the hardening/durability/security/compliance/observability/launch layer that thickens the Wave rows)
+
+These are **not** separate product rows — they harden the substrate the Wave program runs on, each grounded in a
+cited source (a book/repo/standard/paper, or a real incident/compliance clause). Most **validate** the shipped
+design; the net-new candidates are named inline in the Wave rows above and detailed here.
+
+**Program R — resilience & operational hardening (fastest ROI; grounded in real outages + framework failures):**
+- `mcp-tool-timeout-isolation` — per-tool invocation deadline + failure isolation (+ optional circuit breaker)
+  on `tools/mod.rs::dispatch`; today there is **no per-tool timeout**, so one hung/looping tool holds a task+pool
+  slot or fails a whole JSON-RPC batch (ollama#16813, IBM/mcp-context-forge#2078).
+- `subscription-leak-reaper` — an active timer-driven reaper + `maidan_active_subscriptions{transport}` gauge +
+  heartbeat dead-peer close for streamable/WS (streamable `prune_expired` is lazy/access-triggered today;
+  bounded broadcast caps memory but not the lazy-cleanup gap — opencode#22198 leaked 24.5 GB).
+- `conn-leak-detector` — a production connection-lifecycle ceiling + leak gauge on the long-lived WS/MCP-SSE
+  paths (no global cap, no per-token ceiling, no idle-reap past the long-poll clamp today; AWS Kinesis 2020,
+  CockroachDB 2016).
+- `tower-load-shed` + `tower-http-middleware` — a fail-fast `LoadShed`+`ConcurrencyLimit` layer **below auth**
+  + a shared egress retry-budget (Cloudflare 2023 recovery storm), and standardized request-id + sensitive-header
+  **redaction** + catch-panic (tower-http is already a dep; no redaction today).
+- `ws-frame-limits` — explicit `max_message_size`/`max_frame_size` on `/ws/subscribe` aligned with the REST body
+  cap (the WS door inherits tungstenite's ~64 MiB default vs the 2 MiB REST cap; RFC 6455 §"resource exhaustion").
+- `replica-divergence-fence` — a health-gated breaker forcing **all** reads (incl. no-token) to the primary once
+  lag > threshold or the poller errors; today a *no-token* read still routes to a lagging replica (GitHub 2018
+  split-brain). Complements the v266 per-token fallback.
+
+**Program V — verification as proof (turn occupancy/outbox correctness from "tested" into "proven"):**
+- `stateful-proptest` — model-based proptest of claim-lease/outbox/FSM vs the real store (parallel mode =
+  `claim_next` linearizability); the method template is QuickCheck/PULSE (ICFP 2009), the criterion is
+  Herlihy-Wing linearizability (1990), the industrial precedent is AWS's TLA+ use (CACM 2015).
+- `loom-interleaving` — exhaustive interleaving model-check of the event-bus/cursor/notification-batch models.
+- `madsim-deterministic` — seed-reproducible fault simulation of bus/cursor/replica (FoundationDB DST /
+  TigerBeetle are the exemplars) — the deterministic complement to the randomized `chaos.rs`.
+- `kani-critical-units` — bounded proof of capability containment, cursor arithmetic, idempotency keys, FSM
+  totality. `mutation-testing` — cargo-mutants proving the auth/store/bus tests detect change. `transport-fuzz` —
+  cargo-fuzz/LibAFL over the untrusted MCP/A2A/WS decoders.
+
+**Program D — operational durability & Postgres ops (highest net-new conviction from the book/repo canon):**
+- `pitr-dr` — continuous WAL-archiving PITR + a tested restore drill (v260 DR is `pg_dump`-only; the LSN replica
+  is not a backup). `idle-tx-timeout` — `idle_in_transaction_session_timeout`/`lock_timeout`/`idle_session_timeout`
+  in `after_connect` (only `statement_timeout` set today → the XID horizon can pin). `autovacuum-hot-tables` +
+  `time-partition-hot-tables` — per-table autovacuum + range-partitioning of the append-only tables
+  (events/audit/deliveries/notifications), retention = DROP PARTITION.
+- `embedding-job-queue` / `pg-visibility-queue` — a durable SKIP-LOCKED lease/retry/DLQ so the outbox-relay /
+  claim-next / scheduler / **indexer** queues converge (the indexer is an ephemeral bus subscriber today, so a
+  provider outage silently drops an embedding until reindex). `derived-rebuild` — `maidan rebuild-derived --verify`
+  re-folds `maidan_events` to rebuild/diff the notification ledger + follow counts + inbox cursors (+ a drift metric).
+- `pg-level-observability` (XID-age/bloat/WAL/replication-slot), `pool-topology-doc`, `utf8-pin`, `sqlite-backup-drill`,
+  `artifact-gc` (ref-counted content-addressed blob GC — the v204 deferral, which the GDPR-erasure item below needs).
+
+**Program B — protocol conformance CI (external-client oracles the internal bijection tests can't give):**
+- `a2a-tck-ci` — run the official A2A TCK MUST suite in CI. `mcp-inspector-ci` — scriptable Inspector/official-SDK
+  oracle over all 91 tools. `sdk-interop-oracle` — run the official third-party SDKs as clients. `openapi-lint`
+  (design-consistency beyond existence), `rfc9457-problem-details` (docs cite the obsoleted RFC 7807), `snapshot-tests`
+  (insta over normalized MCP/A2A/OpenAPI/audit shapes so wire-drift is a reviewed diff).
+
+**Program S — security hardening (security-led; the 4-source flagship + the compliance set):**
+- `cap-attenuation` — macaroon-style strict-subset+expiry token derivation without a `token:admin` round-trip
+  (a 4-source convergence: Levy object-capability + macaroons + Windley delegation + confused-deputy). `threat-regression-gates`
+  (each Threat-Model T-row → a named CI test), `threat-model-delta` (per-PR), `token-ttl-dpop` (TTL + DPoP/mTLS-bound
+  tokens, RFC 9449/8705), `mcp-step-up-auth` (audience-bound + step-up for sensitive tools), `mcp-security-scan`
+  (scan the 91-tool surface for over-permission/exfil — InjecAgent/ASB), `content-provenance-trust-label` (carry the
+  untrusted-external/other-tenant/tool-result label so a consumer sanitizes downstream — Maidan is the injection
+  *carrier, never the sanitizer*; AgentDojo/IPI). `agent-toolcall-audit`.
+- Supply chain: `image-digest-pin` (deploy the signed digest not the mutable `:tag`), `sbom-provenance` (syft SBOM →
+  cosign attestation), `trivy-policy`, `osv-scan` (the four `sdk/*` lockfiles are outside cargo-deny's Rust reach),
+  `cargo-vet`, `miri-unsafe`, `rollout-drain` (preStop drain + grace so the v156 SIGTERM drain isn't raced by
+  Service-endpoint removal).
+
+**Program E — enterprise compliance (SOC2/HIPAA/GDPR technical controls; unlocks procurement):**
+- `erasure-cascade` — **GDPR Art 17 is unsatisfiable end-to-end today**: content-addressed dedup means a naive
+  delete is unsafe, so a workspace/subject erasure must cascade to artifacts (ref-GC) + embeddings + derived tables
+  with a `--verify` fold. `tenant-isolation-attestation` — an enumerable cross-tenant denial suite (per surface ×
+  boundary) as the SIG/VSAQ "how is data segregated?" evidence (the RLS deferral at 216 left isolation self-asserted).
+  `field-redaction-filter` (read-time PII masking on `Message`/`ContentBlock`/audit metadata), `key-rotation-lifecycle`
+  (scheduled re-encrypt + key-age policy atop the v189 read-side keyring), `denial-audit` (a bounded/sampled 401/403
+  signal + spike alert — the v182 write-amplifier deferral, done as an aggregate not a per-request write).
+
+**Program O — observability & reliability:** `trace-context-propagation` (a correlation id across the WS/MCP/A2A
+doors + the async indexer + webhook fan-out — `traceparent` dies before the outbox relay today), `otel-collector-pipeline`
+(durable buffered redacted pipeline + a tested loss-on-collector-failure contract), `tokio-console-diag` (opt-in
+runtime diagnostics for the ~9 workers), `assembly-slo` (a named p99 + tail-amplification guard on the fan-out paths),
+`replica-health` (a lag-threshold alert + explicit `replica_unhealthy` route reason), `chaos-steady-state`,
+`operator-data-ink` (Tufte operator views).
+
+**Program F — search & retrieval quality:** `search-rerank` (RRF/cross-encoder), `hnsw-recall-eval` (the m/ef knobs
+are unset = pgvector defaults), `query-embedding-cache`, `search-eval-gate` (versioned corpus + baseline over
+`relevance_eval.rs`), `paradedb-eval` (compare Postgres-native BM25+RRF vs the hand-rolled hybrid — a decision doc),
+`ontology-facets` (facet search by the typed `RelationKind` edge / `result_kind` / `EventKind` — the shipped ontology
+substrate made queryable, from the ontology deep-dive; not a knowledge-graph product).
+
+**Program G — architecture, DX & release governance:** `fitness-catalog` (name Maidan's implicit `-ilities`, one
+fitness fn each — threat-gates/openapi-lint/a11y/mutation/coverage all feed it), `nextest-profiles` (honest
+flaky-quarantine), `semver-gates` (crates + SDKs), `coverage-floors` (risk-based, not blanket %), `migration-parity-gate`
+(assert every `.sql` registered both backends + diff the replayed pg-vs-sqlite schema — closes the
+`maidan-migration-register` silent-drop class), `glossary-grounding-lint` (a fitness fn: terms in the context pack /
+docs / `EventKind` lexicon resolve to the flat glossary — grounds the ontology substrate without an OWL reasoner),
+`ui-fetch-contract` (typed `/ui` fetch), `active-benchmarking` (+ k6),
+`sdk-ergonomics` (idempotency keys + typed error taxonomy + auto-pagination — under SDK 0.2), plus DX niceties
+(`devcontainer`, `pipeline-parity`, `typed-config`, `cross-build-matrix`, `compose-health-order`, `s3-test-double`).
+
+**Program U — `/ui` & docs polish:** `ui-design-tokens` + `ui-a11y-audit` (partial ARIA, `lang="en"` hardcoded, no
+`:focus-visible`), `ui-code-editor`/`ui-log-stream`/`ui-dag-view` (monaco/xterm/xyflow patterns, no-build), `reference-graph-view`
+(a typed-reference explorer over the `RelationKind` edges + the backlink index of Wave 3 #34 — the ontology made
+navigable in the `/ui`), `docs-diagrams`
+(mermaid), `openapi-reference-ui` (a Scalar-style interactive reference over the bijection-gated `/openapi.json`),
+`demo-recordings` (asciinema/vhs demo-as-code).
+
+**Program L — launch & growth (all gated on the maintainer's explicit go).** The public presence for maidan.world:
+`positioning-message-system` (retire "Slack for agents" as the *primary* claim → "durable coordination for software
+agents"), `landing-funnel` (a 15-section site), `interactive-product-demo` + `wasm-playground` (an in-browser
+zero-install room — the hero demo), `agent-readable-docs` (`llms.txt` + copy-to-agent prompt), `evidence-benchmark-policy`,
+`trust-foundation-page` (the compliance-surface page the Program-E work backs), `github-conversion`, `measurement-plan`,
+`changelog-as-product`, `launch-program`, `templates-integrations`, `comparison-migration-pages`. **Open-core /
+monetization:** `open-core-boundary` (the whole room stays OSS/local/free; the multi-tenant control plane —
+`maidan-operator` + usage-metering + SSO/SCIM + a compliance-audit panel + managed PITR — is the paid `hosted-control-plane`
+SKU; the Supabase/Tailscale/HashiCorp line). **Voice-grounded positioning angles** (cited, code-backed — each lands
+the current conversation on a shipped substrate): **the anti-skill-decay room** (Addy Osmani — the room keeps a
+team's judgment durable via typed refs + glossary + `as_of` replay as individual skill erodes); **a shared room, not
+N siloed git-worktrees** (vs Conductor/T3-Code parallel-agent silos — occupancy + `claim_next` is the coordination
+layer *underneath* them); **the room *is* the memory bank** (EnzeD/vibe-coding 4.8k★ hand-rolls a `/memory-bank` —
+Maidan ships it). And the **ontology framing** — "agents build a shared, typed, checkable ontology of their work"
+(typed references + glossary + the EventKind lexicon; ships the primitives, **not** a knowledge-graph product).
+
+**Canon candidate ledger — folded & deferred (accounting: no research candidate was dropped).** Every candidate the
+round produced has a home above; the remainder are recorded here so the roadmap is provably complete against the
+research round, not silently lossy:
+
+- *Folded into a named row (traceable):* `durable-execution-adr` — write the Restate/Temporal decline as an ADR
+  beside RLS/216 (the anti-goal below); `acp-ide-bridge` → row #51; `a2a-requirement-matrix` → `a2a-tck-ci`;
+  `a2a-rs-differential` → `sdk-interop-oracle`; `mcp-differential-conformance` → `mcp-inspector-ci`;
+  `design-system-tokens` supersets `ui-design-tokens` (spans the site **and** the `/ui`, Programs L + U).
+- *Already substantially shipped:* `slash-post-atomicity` — the slash-finalize is atomic via the transactional
+  outbox (Cluster 211, `edit_message_with_posted_event`); the residual provisional-insert→external-dispatch window
+  is inherent (an external slash dispatch cannot sit inside the tx). No forward row needed.
+- *Launch/DX front-door (Program L/S/U, maintainer-gated):* `oss-funnel` (the OSS front door), `docs-site-upgrade`
+  (the mdBook docs engine), `ossf-scorecard` (OpenSSF Scorecard supply-chain grade).
+- *Federation hardening (net-new, unranked — schedule only if federation gets real multi-peer use; it is event-log
+  replication today, 267 egress shipped):* `federation-event-contract` (versioned envelope contract),
+  `federation-causal-order` (cross-peer causal ordering), `federation-vc-delegation` (verifiable-credential peer
+  trust), `crdt-federation-eval` (a CRDT-convergence decision doc).
+- *Deferred evals & ops (parked; revisit on a concrete trigger — none blocks the Wave program):* `abac-control-plane`
+  (OPA/ABAC, beyond the shipped capability model), `tantivy-eval` (a search-backend decision doc, paired with the
+  `paradedb-eval` of Program F), `sqlx-compile-checks` (compile-time SQL), `sops-secrets` (deploy-secret encryption),
+  `ci-egress-control` (CI egress allowlist), `cross-repo-advice` (cross-system advisory sharing),
+  `workflow-quiescence` (an in-flight-run drain signal), `jemalloc-eval` / `zerocopy-eval` (allocator / zero-copy
+  micro-evals), `mcp-registry-policy` / `mcp-apps-playground` (an MCP tool-registry policy / apps playground).
+
+**Anti-goals & honesty gates (carried from the round):** no harness/sandbox/eval-gauntlet (Pi/Soundcheck own those);
+no workflow-engine dependency (an ADR compares Restate/Temporal and declines it — the outbox/DAG/scheduler already
+re-derive the semantics); RLS stays deferred (216); no unearned SLA/badge/logo/benchmark on any launch surface
+(every number links a dated method); public launch + any paid tier gated on David.
 
 ## Pre-launch fixes + flagship arc (2026-08-28 research sweep)
 
@@ -469,6 +761,7 @@ starts without an explicit go.**
 - **`hash-v1` default** — `openai-compatible` provider (v117) gives real semantics; `hash-v1` is the offline/dev default, not semantically meaningful. **→ Cluster 315 adds a boot `warn!`** so a stranger who leaves it unset isn't silently served near-random "semantic" results.
 - **`rsa` advisory `RUSTSEC-2023-0071`** — ignored (RS256 id_token verify via openidconnect v4; no fixed `rsa`); clears on openidconnect v5 (unreleased). See [Dependencies.md](Dependencies.md).
 - **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264), released as `v101.0.0`; not a backlog. All four gate tags (incl. `maidan-operator-1.0`) are cut.
+- **Newly-surfaced operational gaps (2026-09-02 canon round — see "Engineering-canon forward program" above).** Grounded in real incidents/clauses, small + on-the-room: **(1)** MCP `tools/dispatch` has no per-tool timeout — one hung tool can hold a task+pool slot or fail a JSON-RPC batch; **(2)** the long-lived WS/MCP-SSE connections have no ceiling/leak-gauge and streamable prune is lazy; **(3)** a *no-token* read can route to a lagging replica (the v266 token covers only token-carrying reads); **(4)** GDPR Art-17 erasure is unsatisfiable end-to-end because content-addressed dedup blocks a naive delete (needs a ref-counted cascade); **(5)** tenant isolation is app-layer + self-asserted (RLS deferred 216) with no named conformance artifact. The durable substrate avoids the *worst* forms of most failure classes by design (outbox, bounded broadcast, at-least-once cursor, LSN token); these five are the residual gaps.
 
 ## Shipped (reference)
 
@@ -491,7 +784,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest tag:** **`v314.0.0`** (post-gate hardening, Phase XXIV). Since v273: MCP `2026-07-28` (300–303), durable mail retry (304–306), Slack + GitHub projectors (307–312), the SDK arc published at 0.1.0 (294–299), and launch-prep (313 default-secure quickstart, 314 claims/policies/release-verification). Next: the 2026-08-28 sweep's 315–318 + fidelity/context flagship arc (above). *(Narrative below is the historical v273 program record.)* Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
+- **Latest tag:** **`v349.0.0`** (`0728ead`, post-gate hardening, Phase XXIV). Since v273: MCP `2026-07-28` (300–303), durable mail retry (304–306), Slack + GitHub projectors (307–312), the SDK arc published at 0.1.0 (294–299), launch-prep (313–314), the 2026-08-28 sweep (315–318) + the fidelity/context flagship arc (319–331), and the post-flagship audit program (332–349). Next: the "Forward program" section (2026-09-02 splice) — occupancy clocks (190–192) is the standing hole. *(Narrative below is the historical v273 program record.)* Post-v155 four-arc program complete (156–178). **Security-led four-arc program: Arc A (security & correctness) COMPLETE** (179–184); **Arc B (multi-tenant SaaS ops) COMPLETE** (185–189); **Arc C (agentic task-queue depth) COMPLETE** (190–197). **Arc D — performance & scale**: tractable perf wins DONE — 198 load/soak harness (`scripts/loadgen.sh` + `#[ignore]`d `load_baseline`), 199 concurrent workspace-context assembly (bounded `buffered` per-thread builds), 200 filtered-ANN search (RBAC private-channel deny pushed into the query; honors `limit`, no leak), 201 workspace-sharded event fan-out (`ShardedBroadcast`; O(relevant) not O(all)). **Arc D remaining items — assessed + deferred, NOT abandoned:**
     - **Batched `pg_notify` — DECLINED (low value + delivery-core risk).** The LISTEN handler hydrates a single pointer per NOTIFY, and the hot path publishes per-event (no natural batch); only the latency-tolerant fallback relay batches. A correct coalescing needs **range-hydration** on the listener (track `last_hydrated_log_id`, hydrate `(last_hydrated, X]` per pointer, advance) — a delivery-core change for a win that only helps the non-hot path. Range-hydration alone is a robustness win (self-heals dropped NOTIFYs) if ever wanted, but risks double-delivery without careful last-hydrated tracking.
     - **Read-replica routing — DEFERRED (needs infra + a Store refactor).** Requires a second read-pool threaded through the `Store` (which is constructed with one pool), read-after-write consistency handling (route reads-after-writes / real-time to primary; only lag-tolerant reads like search/workspace-context to the replica), config (`MAIDAN_DATABASE_REPLICA_URL`, degrades to primary when unset), and a real replica to validate beyond the degenerate case.
 - **Deferred from Arc C:** federation `content→parts` **egress** (194 did ingest; egress still body-only).
