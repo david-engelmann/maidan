@@ -94,8 +94,8 @@ pub async fn streamable(
     // Content negotiation: a client that accepts only JSON gets a single
     // response body rather than an SSE session (MCP spec allows either). Pass
     // any open session id through so a tool that issues a server→client request
-    // (e.g. summarize_thread) can target that session's GET stream and return
-    // its result in this JSON body.
+    // (an `elicitation/create` via `request_client`) can target that session's
+    // GET stream and return its result in this JSON body.
     if !accepts_event_stream(&headers) {
         let response = state
             .mcp

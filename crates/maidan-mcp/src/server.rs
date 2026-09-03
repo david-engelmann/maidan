@@ -70,8 +70,6 @@ const CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// method is not one the server may initiate.
 fn client_capability_for_method(method: &str) -> Option<&'static str> {
     match method {
-        "sampling/createMessage" => Some("sampling"),
-        "roots/list" => Some("roots"),
         "elicitation/create" => Some("elicitation"),
         _ => None,
     }
@@ -205,9 +203,9 @@ impl McpServer {
     }
 
     /// Issue a server→client JSON-RPC request over a client's streamable
-    /// session (MCP `sampling/createMessage`, `roots/list`,
-    /// `elicitation/create`) and await its response (Cluster 148). Requires the
-    /// client to have declared the corresponding capability in `initialize`;
+    /// session (MCP `elicitation/create`) and await its response (Cluster 148;
+    /// sampling/roots retired in Cluster 350). Requires the client to have
+    /// declared the corresponding capability in `initialize`;
     /// the request rides the session's SSE stream and the client's response
     /// arrives as an inbound POST routed by [`Self::resolve_client_response`].
     pub async fn request_client(
@@ -289,9 +287,9 @@ impl McpServer {
     }
 
     /// Like [`Self::handle`], but carries the streamable `Mcp-Session-Id` so a
-    /// tool that issues a server→client request (e.g. the sampling-backed
-    /// `summarize_thread`) can target the client on that session. Non-streamable
-    /// transports pass `None`.
+    /// tool that issues a server→client request (an `elicitation/create` via
+    /// [`Self::request_client`]) can target the client on that session.
+    /// Non-streamable transports pass `None`.
     pub async fn handle_in_session(
         &self,
         request: JsonRpcRequest,
@@ -689,7 +687,7 @@ mod tests {
         let registry = server.streamable_sessions();
         let _mpsc_rx = registry.open("sess".to_string()).await;
         registry
-            .set_client_capabilities("sess", json!({"sampling": {}}))
+            .set_client_capabilities("sess", json!({"elicitation": {}}))
             .await;
         // The client listens on the canonical GET stream for server→client requests.
         let mut client_rx = registry.subscribe_client_requests("sess").await.unwrap();
@@ -698,14 +696,14 @@ mod tests {
         let server_bg = server.clone();
         let call = tokio::spawn(async move {
             server_bg
-                .request_client("sess", "sampling/createMessage", json!({"prompt": "hi"}))
+                .request_client("sess", "elicitation/create", json!({"message": "approve?"}))
                 .await
         });
 
         // …the client reads it off the GET stream and replies by id.
         let data = client_rx.recv().await.unwrap();
         let pushed: Value = serde_json::from_str(&data).unwrap();
-        assert_eq!(pushed["method"], "sampling/createMessage");
+        assert_eq!(pushed["method"], "elicitation/create");
         let request_id = pushed["id"].as_i64().unwrap();
         let response = json!({"jsonrpc": "2.0", "id": request_id, "result": {"text": "ok"}});
         assert!(server.resolve_client_response("sess", response).await);
@@ -718,9 +716,9 @@ mod tests {
     async fn request_client_is_forbidden_without_the_declared_capability() {
         let (server, _thread, _member) = mk_server().await;
         let _rx = server.streamable_sessions().open("sess".to_string()).await;
-        // No capabilities declared → the server may not initiate sampling.
+        // No capabilities declared → the server may not initiate elicitation.
         let err = server
-            .request_client("sess", "sampling/createMessage", json!({}))
+            .request_client("sess", "elicitation/create", json!({}))
             .await
             .unwrap_err();
         assert!(matches!(err, McpError::Forbidden(_)));
