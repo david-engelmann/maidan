@@ -414,7 +414,13 @@ zero-install room — the hero demo), `agent-readable-docs` (`llms.txt` + copy-t
 `changelog-as-product`, `launch-program`, `templates-integrations`, `comparison-migration-pages`. **Open-core /
 monetization:** `open-core-boundary` (the whole room stays OSS/local/free; the multi-tenant control plane —
 `maidan-operator` + usage-metering + SSO/SCIM + a compliance-audit panel + managed PITR — is the paid `hosted-control-plane`
-SKU; the Supabase/Tailscale/HashiCorp line).
+SKU; the Supabase/Tailscale/HashiCorp line). **Voice-grounded positioning angles** (cited, code-backed — each lands
+the current conversation on a shipped substrate): **the anti-skill-decay room** (Addy Osmani — the room keeps a
+team's judgment durable via typed refs + glossary + `as_of` replay as individual skill erodes); **a shared room, not
+N siloed git-worktrees** (vs Conductor/T3-Code parallel-agent silos — occupancy + `claim_next` is the coordination
+layer *underneath* them); **the room *is* the memory bank** (EnzeD/vibe-coding 4.8k★ hand-rolls a `/memory-bank` —
+Maidan ships it). And the **ontology framing** — "agents build a shared, typed, checkable ontology of their work"
+(typed references + glossary + the EventKind lexicon; ships the primitives, **not** a knowledge-graph product).
 
 **Anti-goals & honesty gates (carried from the round):** no harness/sandbox/eval-gauntlet (Pi/Soundcheck own those);
 no workflow-engine dependency (an ADR compares Restate/Temporal and declines it — the outbox/DAG/scheduler already
