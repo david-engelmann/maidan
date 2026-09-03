@@ -1,0 +1,14 @@
+{
+  "name": "maidan-ui-tests",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Playwright browser tests for the maidan /ui console. Drives the real /ui in headless Chromium against a seeded in-process server (crates/maidan-server/examples/ui_test_server.rs) so /ui changes never need manual testing.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
+  }
+}
