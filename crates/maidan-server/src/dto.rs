@@ -85,10 +85,14 @@ pub struct ClaimNextThread {
     pub lease_secs: Option<i64>,
 }
 
-/// Extend a claimed thread's lease, for the current assignee (Cluster 192).
+/// Extend a claimed thread's lease, for the current assignee holding the
+/// matching fencing token (Cluster 192 / 351). `claim_lease_id` is the value
+/// returned in the claiming response's `Thread.claim_lease_id`; a stale holder
+/// whose claim was reclaimed presents an outdated token and is rejected.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenewClaim {
     pub member_id: uuid::Uuid,
+    pub claim_lease_id: uuid::Uuid,
     pub lease_secs: i64,
 }
 

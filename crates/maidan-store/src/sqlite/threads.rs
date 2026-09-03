@@ -100,12 +100,14 @@ pub async fn assign(
     thread_id: ThreadId,
     assignee_id: MemberId,
 ) -> Result<Thread, StoreError> {
+    let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(assignee_id.0)
+    .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -134,12 +136,14 @@ pub async fn assign_with_event(
     .ok_or(StoreError::NotFound)?
     .get::<Option<Uuid>, _>("assignee_id")
     .map(MemberId);
+    let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(assignee_id.0)
+    .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -154,7 +158,7 @@ pub async fn assign_with_event(
 /// Clear the assignee (Cluster 171). `NotFound` if absent.
 pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, updated_at = ?
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
@@ -182,7 +186,7 @@ pub async fn unassign_with_event(
         .get::<Option<Uuid>, _>("assignee_id")
         .map(MemberId);
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, updated_at = ?
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
@@ -229,12 +233,14 @@ pub async fn claim(
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<ThreadClaimResult, StoreError> {
+    let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
+    .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -262,12 +268,14 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(member_id.0)
+    .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -333,10 +341,11 @@ pub async fn claim_next(
 ) -> Result<Option<Thread>, StoreError> {
     let now = Utc::now();
     let expires = lease_secs.map(|s| (now + chrono::Duration::seconds(s)).to_rfc3339());
+    let lease = ClaimLeaseId::new();
     // Claimable = unassigned OR the current lease has expired (dead-agent
     // recovery; Cluster 192). SQLite serializes writers so this is race-free.
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = (
              SELECT t.id FROM maidan_threads t
              WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
@@ -365,6 +374,7 @@ pub async fn claim_next(
     )
     .bind(member_id.0)
     .bind(&expires)
+    .bind(lease.0)
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
@@ -433,8 +443,9 @@ pub async fn claim_next_with_event(
     let mut tx = pool.begin().await?;
     let now = Utc::now();
     let expires = lease_secs.map(|s| (now + chrono::Duration::seconds(s)).to_rfc3339());
+    let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, updated_at = ?
          WHERE id = (
              SELECT t.id FROM maidan_threads t
              WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
@@ -463,6 +474,7 @@ pub async fn claim_next_with_event(
     )
     .bind(member_id.0)
     .bind(&expires)
+    .bind(lease.0)
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
@@ -490,19 +502,21 @@ pub async fn renew_claim(
     pool: &SqlitePool,
     thread_id: ThreadId,
     member_id: MemberId,
+    lease_id: ClaimLeaseId,
     lease_secs: i64,
 ) -> Result<Thread, StoreError> {
     let now = Utc::now();
     let expires = (now + chrono::Duration::seconds(lease_secs)).to_rfc3339();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignment_expires_at = ?, updated_at = ?
-         WHERE id = ? AND assignee_id = ? AND tombstoned_at IS NULL
+         WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id",
     )
     .bind(&expires)
     .bind(now.to_rfc3339())
     .bind(thread_id.0)
     .bind(member_id.0)
+    .bind(lease_id.0)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;

@@ -391,7 +391,11 @@ fn apply_route_defaults(
         return b.json(&json!({ "member_id": f.member }));
     }
     if path == "/threads/{id}/claim/renew" && method == "POST" {
-        return b.json(&json!({ "member_id": f.member, "lease_secs": 60 }));
+        return b.json(&json!({
+            "member_id": f.member,
+            "claim_lease_id": uuid::Uuid::nil(),
+            "lease_secs": 60
+        }));
     }
     if path == "/threads/{id}/dependencies" && method == "POST" {
         return b.json(&json!({ "depends_on_thread_id": f.thread }));

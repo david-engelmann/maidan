@@ -443,7 +443,12 @@ pub async fn renew_claim(
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let thread = state
         .store
-        .renew_claim(thread_id, MemberId(body.member_id), body.lease_secs)
+        .renew_claim(
+            thread_id,
+            MemberId(body.member_id),
+            ClaimLeaseId(body.claim_lease_id),
+            body.lease_secs,
+        )
         .await?;
     Ok(Json(thread))
 }

@@ -186,15 +186,16 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "renew_claim",
-            "description": "Extend a claimed thread's lease (heartbeat). Only the current assignee may renew.",
+            "description": "Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
+                    "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"},
                     "lease_secs": {"type": "integer", "description": "new lease deadline in seconds from now"}
                 },
-                "required": ["thread_id", "member_id", "lease_secs"]
+                "required": ["thread_id", "member_id", "claim_lease_id", "lease_secs"]
             }
         }),
         json!({
