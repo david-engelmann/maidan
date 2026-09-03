@@ -3,6 +3,32 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v351.0.0 — the occupancy clocks (Wave 1 #2)
+
+A multi-PR cluster (351.1–351.6): a live picture of where every task-thread's work sits, plus fencing against zombie holders. The centrepiece is **two clocks** — the claim clock (lease) and the working clock (acknowledge) — which separate a claimed-but-idle agent from one actively working.
+
+| Change | Where |
+|--------|-------|
+| **Claim fencing (351.1–351.2):** a `claim_lease_id` token (pg 0057 / sqlite 0056) minted on every claim/assign, cleared on unassign; `renew`/`acknowledge`/`release` fenced on `(assignee_id, claim_lease_id)` so a reclaimed-out stale holder is rejected. | `migrations/*/005{6,7}_*`, `crates/maidan-store/src/*/threads.rs`, `crates/maidan-types/src/{ids,models}.rs` |
+| **The working clock (351.3):** `work_started_at` (pg 0058 / sqlite 0057) reset on every (re)claim, stamped by `acknowledge_claim` (idempotent). REST `POST /threads/:id/claim/acknowledge` + MCP `acknowledge_claim`. | `crates/maidan-store/src/*/threads.rs`, `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
+| **The occupancy view (351.4):** `GET /channels/:cid/occupancy` + MCP `get_channel_occupancy` → `{open, queued, claimed, working, blocked}` (the two-clocks refinement of `QueueDepth`). | `crates/maidan-store/src/*/threads.rs`, `crates/maidan-server/src/routes/channel.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
+| **`release_claim` (351.5):** REST `POST /threads/:id/claim/release` + MCP `release_claim` — a fenced graceful handoff returning work to the queue immediately. | `crates/maidan-store/src/*/threads.rs`, `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
+| **`ClaimExpired` event + `wait_for_claim_expired` (351.6):** a distinct filterable "an agent died" signal, emitted lazily+atomically when `claim_next` reclaims an expired lease (`member_id` = dead holder); non-federatable. MCP long-poll consumer. | `crates/maidan-types/src/events.rs`, `crates/maidan-store/src/*/threads.rs`, `crates/maidan-mcp/src/tools/thread.rs`, `contracts/event-kinds.json` |
+
+The claim lifecycle is now **claim → acknowledge → renew → release**, every step fenced. The remaining occupancy thickener (G1's formal two-clocks invariant model) is deferred to Program V.
+
+## v350.0.0 — the held gate (durable human approval) (Wave 1 #1)
+
+A multi-PR cluster (350.1–350.8) replacing the blocking MCP elicitation model with a durable, queryable approval gate: an agent asks for approval, gets an async *input-required* handle, and a human answers later over REST or the `/ui` — the answer integrity-checked.
+
+| Change | Where |
+|--------|-------|
+| **Durable gate (350.1–350.3):** `maidan_approval_gates` (pg 0056 / sqlite 0055) + compare-and-set `resolve`; MCP `request_approval` returns an async `input_required` handle (no held socket) + `get_approval_gate`; REST `GET /workspaces/:wid/approval-gates` + `POST /approval-gates/:id/answer` with an HMAC-signed `requestState` (409 double-answer / 400 bad action / 403 bad transition). | `migrations/*/0055/0056_approval_gates`, `crates/maidan-store/src/*/approval_gates.rs`, `crates/maidan-mcp/src/tools/approval.rs`, `crates/maidan-server/src/routes/approval_gate.rs` |
+| **Required-human claim gate (N6, 350.6):** a pending gate on a thread blocks `claim_next` — an agent is never handed work waiting on a person. | `crates/maidan-store/src/*/threads.rs` |
+| **Retire sampling+roots + the dead `request_client` subsystem (350.4–350.5):** removed the deprecated `summarize_thread`/`list_roots` tools and the now-unreachable server→client machinery; kept `2024-11-05` + `Last-Event-ID` resumability. | `crates/maidan-mcp/src/{server.rs,streamable_session.rs,tools/}` |
+| **A Playwright `/ui` test harness (350.7):** a seed-and-serve Rust example + a `ui-tests/` headless-Chromium project driving the real `/ui` in CI — the first browser test in the repo. | `crates/maidan-server/examples/ui_test_server.rs`, `ui-tests/`, `.github/workflows/ci.yml` |
+| **An Approvals tab in the `/ui` (350.8):** lists + answers pending gates (accept/decline/cancel) — the human elicitation client. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
+
 ## v349.0.0 — deferred-work wrap-up (audit close-out)
 
 A multi-PR cluster (349.1–349.5) closing every remaining deferred item from the post-flagship audit.

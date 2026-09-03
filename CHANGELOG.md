@@ -7,6 +7,71 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [351.0.0] — 2026-09-03
+
+Post-gate hardening (Phase XXIV). **Wave 1 #2 of the forward program — the occupancy
+clocks (the standing hole; EXPAND 190–192).** A multi-PR stacked cluster (351.1–351.6).
+No new gate tag.
+
+### Added
+
+- **Two clocks on a task thread** (351.1–351.3). The *claim* clock is the existing
+  lease (`assignment_expires_at`); the new *working* clock is `work_started_at`
+  (migration pg 0058 / sqlite 0057), reset on every (re)claim and stamped by
+  `acknowledge_claim` (REST `POST /threads/:id/claim/acknowledge` + MCP
+  `acknowledge_claim`; idempotent first-write via `COALESCE`). Together they separate
+  a claimed-but-idle agent from one actively working.
+- **Claim fencing** (351.1–351.2) — a `claim_lease_id` token (migration pg 0057 /
+  sqlite 0056) minted on every claim/assign and cleared on unassign; `renew_claim`,
+  `acknowledge_claim`, and `release_claim` are fenced on `(assignee_id,
+  claim_lease_id)`, so a stale holder whose claim was reclaimed is rejected.
+- **`GET /channels/:cid/occupancy`** + MCP `get_channel_occupancy` (351.4) —
+  `ChannelOccupancy {open, queued, claimed, working, blocked}`, the two-clocks
+  refinement of `QueueDepth`.
+- **`release_claim`** (351.5) — REST `POST /threads/:id/claim/release` + MCP
+  `release_claim`: a fenced graceful handoff that returns work to the queue
+  immediately instead of waiting for the lease to lapse.
+- **`ClaimExpired` event** + MCP `wait_for_claim_expired` (351.6) — a distinct,
+  filterable "an agent died" signal, emitted lazily+atomically when `claim_next`
+  reclaims an expired lease (its `member_id` is the dead holder). Non-federatable.
+
+### Changed
+
+- **`claim_next_thread_with_event` returns `(Option<Thread>, Vec<StoredEvent>)`** (was
+  a single optional event) — a reclaim of an expired lease emits `ClaimExpired` then
+  the reclaim's `ThreadAssignmentChanged`.
+
+## [350.0.0] — 2026-09-03
+
+Post-gate hardening (Phase XXIV). **Wave 1 #1 of the forward program — the held gate
+(F3 + F9 + H2 + H10 + N6), the first `NEW` row.** A multi-PR stacked cluster
+(350.1–350.8). No new gate tag.
+
+### Added
+
+- **A durable, queryable approval gate** (350.1–350.3) replaces the blocking MCP
+  elicitation model. A `maidan_approval_gates` table (pg 0056 / sqlite 0055) +
+  store CRUD with a compare-and-set `resolve`; MCP `request_approval` now returns an
+  async `input_required` handle (no held socket) and `get_approval_gate` reads it;
+  REST `GET /workspaces/:wid/approval-gates` lists pending gates and `POST
+  /approval-gates/:id/answer` resolves one. The handle's `requestState` is HMAC-signed
+  and verified; a double-answer is 409, a bad action 400, a bad transition 403.
+  "Silence is not consent" and "empty accept is not yes" are enforced by the CAS.
+- **Required-human approval as a claim gate (N6, 350.6)** — a pending gate on a thread
+  blocks `claim_next`, so an agent is never handed work waiting on a person.
+- **A Playwright `/ui` test harness (350.7)** — a seed-and-serve Rust example +
+  a `ui-tests/` project (headless Chromium) driving the real `/ui` in CI (a new
+  `ui-tests` job); the first real browser test in the repo.
+- **An Approvals tab in the `/ui` (350.8)** — lists and answers pending gates
+  (accept/decline/cancel); the human elicitation client.
+
+### Removed
+
+- **The deprecated MCP `summarize_thread` (sampling) and `list_roots` (roots) tools**
+  (350.4), and — now unreachable — **the entire server→client `request_client`
+  subsystem** (350.5). The `2024-11-05` protocol version and `Last-Event-ID`
+  resumability were deliberately **kept** (old-but-valid, not dead).
+
 ## [349.0.0] — 2026-09-01
 
 Post-gate hardening (Phase XXIV). **Cluster 18 of the post-flagship audit program — its close-out.**
