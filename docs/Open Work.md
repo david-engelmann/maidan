@@ -188,8 +188,9 @@ workflow (retro + `vX.0.0` tag each).
 The canonical forward backlog. Two research bodies merged into one program a development agent can execute
 without extra briefing: **(A)** the ranked **workplace-product roadmap** (Wave 1 #1–14 identity loop, then
 Wave 2–4 #15–51 giant lifts), and **(B)** the **engineering-canon research round** (69 books + 53 concepts +
-183 repos + 13 standards + 17 papers + a 5-vector operational-hardening pass → 125 candidates that *thicken*
-the Wave rows and add the cross-cutting hardening/durability/security/compliance/observability/launch layer).
+183 repos + 13 standards + 17 papers + a 5-vector operational-hardening pass + an ontology deep-dive → 128
+candidates that *thicken* the Wave rows and add the cross-cutting
+hardening/durability/security/compliance/observability/launch layer).
 **Honest headline: the canon overwhelmingly *validates* the shipped v349 design** (outbox = WAL journaling,
 `claim_next` = linearizable CAS, 8 CI checks = fitness functions, LSN = read-your-writes); net-new work is the
 workplace loop + hardening a design the theory and incident record endorse, not a rewrite. Pick the next
@@ -279,7 +280,7 @@ a workflow-engine product, a k8s operator, an SPA, or an eval bench.
 ### Wave 3 — integrity, sync, portability (#29–36; ATProto *steals*, not a PDS — the log is the product)
 
 29. **B5 + B15 + H5** — subscribe `CursorTooOld` (fail loud, no silent clamp) + a durable `consumer_id` cursor + a thick SDK helper (HTTP backfill then WS cutover); projector **shapes** `{workspace, channel?, thread?, types[]}` + a 409 must-refetch; `RecvError::Lagged(n)` = resume-from-log + a metric, never a silent drop (Postel anti-pattern: fail loud).
-30. **B6 + B21 + B17** — an **EventKind JSON-Schema pack** (lexicon analogue, feeds SDK 0.2); `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type — **Hyrum home**: observable `$type` is the contract); a `Maidan-Room-LSN` header on REST/WS/MCP/A2A/projectors so clients see projector lag. Canon `NEW-snapshot-tests` over the normalized shapes.
+30. **B6 + B21 + B17** — an **EventKind JSON-Schema pack** (lexicon analogue, feeds SDK 0.2); `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type — **Hyrum home**: observable `$type` is the contract); a `Maidan-Room-LSN` header on REST/WS/MCP/A2A/projectors so clients see projector lag (a broadcast-lag companion to the existing read-your-writes `Maidan-Consistency-Token`, v263 — do not conflate the two). Canon `NEW-snapshot-tests` over the normalized shapes.
 31. **B7** — a **signed workspace export** a blank GHCR instance can verify without the origin host; document token continuity or an explicit "tokens die on export."
 32. **B16** — a **hash-chained log + strong refs** (every event `{id, lsn, prev_hash, content_hash}`; `claim_next` + A2A citations pin `{uri, content_hash}`); a federated peer detects a break without trusting the host. Not MST/CAR.
 33. **B18 + B19** — a **snapshot + since-LSN catch-up** (getRepo-shaped) + a **tap projector contract** (verify, backfill, filter, live-waits-for-history, webhook/WS); search is a projector that must not diverge silently.
@@ -391,18 +392,24 @@ runtime diagnostics for the ~9 workers), `assembly-slo` (a named p99 + tail-ampl
 
 **Program F — search & retrieval quality:** `search-rerank` (RRF/cross-encoder), `hnsw-recall-eval` (the m/ef knobs
 are unset = pgvector defaults), `query-embedding-cache`, `search-eval-gate` (versioned corpus + baseline over
-`relevance_eval.rs`), `paradedb-eval` (compare Postgres-native BM25+RRF vs the hand-rolled hybrid — a decision doc).
+`relevance_eval.rs`), `paradedb-eval` (compare Postgres-native BM25+RRF vs the hand-rolled hybrid — a decision doc),
+`ontology-facets` (facet search by the typed `RelationKind` edge / `result_kind` / `EventKind` — the shipped ontology
+substrate made queryable, from the ontology deep-dive; not a knowledge-graph product).
 
 **Program G — architecture, DX & release governance:** `fitness-catalog` (name Maidan's implicit `-ilities`, one
 fitness fn each — threat-gates/openapi-lint/a11y/mutation/coverage all feed it), `nextest-profiles` (honest
 flaky-quarantine), `semver-gates` (crates + SDKs), `coverage-floors` (risk-based, not blanket %), `migration-parity-gate`
 (assert every `.sql` registered both backends + diff the replayed pg-vs-sqlite schema — closes the
-`maidan-migration-register` silent-drop class), `ui-fetch-contract` (typed `/ui` fetch), `active-benchmarking` (+ k6),
+`maidan-migration-register` silent-drop class), `glossary-grounding-lint` (a fitness fn: terms in the context pack /
+docs / `EventKind` lexicon resolve to the flat glossary — grounds the ontology substrate without an OWL reasoner),
+`ui-fetch-contract` (typed `/ui` fetch), `active-benchmarking` (+ k6),
 `sdk-ergonomics` (idempotency keys + typed error taxonomy + auto-pagination — under SDK 0.2), plus DX niceties
 (`devcontainer`, `pipeline-parity`, `typed-config`, `cross-build-matrix`, `compose-health-order`, `s3-test-double`).
 
 **Program U — `/ui` & docs polish:** `ui-design-tokens` + `ui-a11y-audit` (partial ARIA, `lang="en"` hardcoded, no
-`:focus-visible`), `ui-code-editor`/`ui-log-stream`/`ui-dag-view` (monaco/xterm/xyflow patterns, no-build), `docs-diagrams`
+`:focus-visible`), `ui-code-editor`/`ui-log-stream`/`ui-dag-view` (monaco/xterm/xyflow patterns, no-build), `reference-graph-view`
+(a typed-reference explorer over the `RelationKind` edges + the backlink index of Wave 3 #34 — the ontology made
+navigable in the `/ui`), `docs-diagrams`
 (mermaid), `openapi-reference-ui` (a Scalar-style interactive reference over the bijection-gated `/openapi.json`),
 `demo-recordings` (asciinema/vhs demo-as-code).
 
