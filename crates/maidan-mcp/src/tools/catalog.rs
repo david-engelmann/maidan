@@ -246,6 +246,17 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_channel_occupancy",
+            "description": "A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
             "name": "set_thread_result",
             "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
             "inputSchema": {

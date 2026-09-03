@@ -957,6 +957,12 @@ impl ThreadStore for PostgresStore {
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
         threads::channel_queue_depth(self.read_pool(), channel_id).await
     }
+    async fn channel_occupancy(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<ChannelOccupancy, StoreError> {
+        threads::channel_occupancy(self.read_pool(), channel_id).await
+    }
 }
 
 #[async_trait]

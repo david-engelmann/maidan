@@ -254,6 +254,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_channel_queue_depth),
         )
         .route(
+            "/channels/:cid/occupancy",
+            get(routes::get_channel_occupancy),
+        )
+        .route(
             "/channels/:cid/members",
             post(routes::add_channel_member).get(routes::list_channel_members),
         )

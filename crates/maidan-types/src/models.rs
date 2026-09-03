@@ -681,6 +681,30 @@ pub struct QueueDepth {
     pub blocked: i64,
 }
 
+/// The occupancy of a channel's **open** task threads (Cluster 351) — the
+/// two-clocks refinement of [`QueueDepth`]. It splits `assigned` by the *working*
+/// clock, so an orchestrator sees not just how much work is held but how much is
+/// actually underway. The four sub-counts partition `open`:
+/// - `queued`: claimable now — unassigned or lease-expired, with every dependency
+///   terminal (the `QueueDepth::ready` predicate).
+/// - `claimed`: held on a live lease, but the holder has not yet acknowledged —
+///   `work_started_at` is unset (grabbed the work, hasn't started).
+/// - `working`: held and the holder has acknowledged and begun work
+///   (`work_started_at` is set).
+/// - `blocked`: not held and waiting on a non-terminal dependency.
+///
+/// Splitting `claimed` from `working` is the payoff of the two clocks: it
+/// surfaces a claimed-but-idle agent — one that took work but never started it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChannelOccupancy {
+    pub open: i64,
+    pub queued: i64,
+    pub claimed: i64,
+    pub working: i64,
+    pub blocked: i64,
+}
+
 /// A schedule that materializes a task thread when due (Cluster 226). A one-shot
 /// (`interval_secs == None`) fires once then deactivates; a recurring schedule
 /// (`interval_secs == Some(n)`) re-arms `next_run_at += n s` after each firing.

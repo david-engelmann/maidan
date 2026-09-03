@@ -484,6 +484,101 @@ async fn run_queue_depth_suite(store: &dyn Store) {
     );
 }
 
+/// Cluster 351: `channel_occupancy` refines the queue depth by the working clock —
+/// held threads split into `claimed` (not acknowledged) vs `working` (started).
+async fn run_occupancy_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "occ".into() })
+        .await
+        .expect("ws");
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "occ-actor".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("actor");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "occ-queue".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+
+    // Empty channel: all zero.
+    let o0 = store.channel_occupancy(channel.id).await.expect("o0");
+    assert_eq!(
+        o0,
+        maidan_types::ChannelOccupancy {
+            open: 0,
+            queued: 0,
+            claimed: 0,
+            working: 0,
+            blocked: 0
+        }
+    );
+
+    // queued: unassigned, no deps.
+    let _queued = store.create_thread(mk("queued")).await.expect("queued");
+    // claimed: assigned (durable) but not acknowledged.
+    let claimed = store.create_thread(mk("claimed")).await.expect("claimed");
+    store
+        .assign_thread(claimed.id, actor.id)
+        .await
+        .expect("assign claimed");
+    // working: assigned AND acknowledged (working clock started).
+    let working = store.create_thread(mk("working")).await.expect("working");
+    let working = store
+        .assign_thread(working.id, actor.id)
+        .await
+        .expect("assign working");
+    let lease = working
+        .claim_lease_id
+        .expect("assignment minted a fencing token");
+    store
+        .acknowledge_claim(working.id, actor.id, lease)
+        .await
+        .expect("acknowledge");
+    // blocked: unassigned, depends on a non-terminal thread. `dep` itself is queued.
+    let dep = store.create_thread(mk("dep")).await.expect("dep");
+    let blocked = store.create_thread(mk("blocked")).await.expect("blocked");
+    store
+        .add_thread_dependency(blocked.id, dep.id)
+        .await
+        .expect("blocked->dep");
+
+    let o = store
+        .channel_occupancy(channel.id)
+        .await
+        .expect("occupancy");
+    assert_eq!(
+        o,
+        maidan_types::ChannelOccupancy {
+            open: 5,    // queued + claimed + working + dep + blocked
+            queued: 2,  // queued + dep (both unassigned, no non-terminal deps)
+            claimed: 1, // claimed (assigned, not acknowledged)
+            working: 1, // working (assigned + acknowledged)
+            blocked: 1, // blocked
+        },
+        "occupancy splits held work into claimed vs working"
+    );
+    assert_eq!(
+        o.queued + o.claimed + o.working + o.blocked,
+        o.open,
+        "the four sub-counts partition open"
+    );
+}
+
 #[tokio::test]
 async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     let store = sqlite().await;
@@ -492,6 +587,7 @@ async fn thread_dependency_dag_edges_and_readiness_sqlite() {
     run_cycle_prevention_suite(&store).await;
     run_ready_dependents_suite(&store).await;
     run_queue_depth_suite(&store).await;
+    run_occupancy_suite(&store).await;
 }
 
 #[tokio::test]
@@ -530,4 +626,5 @@ async fn thread_dependency_dag_edges_and_readiness_postgres() {
     run_cycle_prevention_suite(&store).await;
     run_ready_dependents_suite(&store).await;
     run_queue_depth_suite(&store).await;
+    run_occupancy_suite(&store).await;
 }
