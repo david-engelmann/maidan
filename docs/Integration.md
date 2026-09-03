@@ -209,7 +209,7 @@ Human-readable summary: [Capability Map.md](Capability%20Map.md).
 **`2026-07-28` (current, stateless):** send `MCP-Protocol-Version: 2026-07-28` on `POST /mcp/streamable`
 (or `POST /mcp`) — each request lands cold and returns a single JSON-RPC response; no `initialize`,
 no `Mcp-Session-Id`. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route
-without parsing the body. Live-wait / server→client ride `GET /mcp/stream` / WS / the `wait_for_*` tools.
+without parsing the body. Live-wait rides `GET /mcp/stream` / WS / the `wait_for_*` tools.
 
 **`2024-11-05` (session model, still supported):**
 

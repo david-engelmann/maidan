@@ -253,10 +253,6 @@ pub async fn dispatch(
     auth: &AuthContext,
     name: &str,
     args: &Value,
-    // Threaded from the transport for tools that issue a server→client
-    // `request_client` (latent since Cluster 350 retired sampling/roots and moved
-    // approvals to durable gates); kept for the next such tool.
-    _session_id: Option<&str>,
 ) -> Result<Value, McpError> {
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
