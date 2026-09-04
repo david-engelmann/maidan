@@ -951,13 +951,29 @@ pub(crate) fn rest_id() -> JsonRpcId {
 /// Map an operation result to a REST HTTP response. `result` → 200; error → an
 /// HTTP status for Maidan's JSON-RPC code. NOTE Maidan overloads `-32001` for
 /// auth/capability failures, so it maps to 403 (not the spec's 404 TaskNotFound).
+/// The A2A HTTP+JSON/REST binding (§11) media type. `Json(...)` would set
+/// `application/json` (what the JSON-RPC transport uses); the REST binding is
+/// distinguished by `application/a2a+json` (Cluster 352.3 / H12).
+const A2A_JSON_MEDIA_TYPE: &str = "application/a2a+json";
+
+/// Serialize a JSON body with the A2A REST media type instead of `application/json`.
+fn a2a_rest_json(status: StatusCode, value: serde_json::Value) -> Response {
+    let body = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
+    (
+        status,
+        [(axum::http::header::CONTENT_TYPE, A2A_JSON_MEDIA_TYPE)],
+        body,
+    )
+        .into_response()
+}
+
 fn rest_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
     let resp = match result {
         Ok(r) => r,
         Err(r) => r,
     };
     if let Some(value) = resp.result {
-        return (StatusCode::OK, Json(value)).into_response();
+        return a2a_rest_json(StatusCode::OK, value);
     }
     let (code, message) = resp
         .error
@@ -970,11 +986,10 @@ fn rest_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
         ERR_INTERNAL => StatusCode::INTERNAL_SERVER_ERROR,
         _ => StatusCode::BAD_REQUEST,
     };
-    (
+    a2a_rest_json(
         status,
-        Json(serde_json::json!({ "error": { "code": code, "message": message } })),
+        serde_json::json!({ "error": { "code": code, "message": message } }),
     )
-        .into_response()
 }
 
 pub async fn rest_send_message(

@@ -90,6 +90,7 @@ impl A2aClient {
     pub async fn get_task(&self, task_id: &str) -> Result<Task, A2aClientError> {
         let params = GetTaskRequest {
             id: task_id.to_string(),
+            include_artifacts: None,
         };
         let value = self
             .call(METHOD_GET_TASK, serde_json::to_value(params)?)

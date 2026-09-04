@@ -125,6 +125,10 @@ pub struct SendMessageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetTaskRequest {
     pub id: String,
+    /// Accepted for A2A conformance (Cluster 352.3 / H12) but a no-op — Maidan
+    /// tasks carry no artifacts. See `ListTasksRequest::include_artifacts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_artifacts: Option<bool>,
 }
 
 /// `ListTasks` request. Subset of the spec's `ListTasksRequest`: optional
@@ -141,6 +145,11 @@ pub struct ListTasksRequest {
     /// (`TASK_STATE_INPUT_REQUIRED`) form — normalized via [`normalize_task_state`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Accepted for A2A conformance (Cluster 352.3 / H12) but a **no-op**: Maidan
+    /// tasks are message deliveries / held gates and carry no artifacts, so the
+    /// `artifacts` field is always absent — there is nothing to include or omit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_artifacts: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i32>,
 }
