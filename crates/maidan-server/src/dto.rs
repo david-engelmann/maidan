@@ -544,12 +544,16 @@ pub struct DeliveryModeView {
 /// The caller's own identity (Cluster 337 — `GET /me`, the REST twin of the MCP
 /// `whoami` tool): who this token/session acts as, in which workspace, with what
 /// capabilities. `is_bearer` = an acts-as-any bearer token vs a pinned session.
+/// `known_capabilities` is the full capability vocabulary, so a client can render
+/// what the caller *cannot* do (vocabulary − granted) — the Cluster 353 capability
+/// card. A declared "allowed-tools" list is not a grant; this is the real set.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WhoAmI {
     pub member_id: uuid::Uuid,
     pub workspace_id: uuid::Uuid,
     pub capabilities: Vec<String>,
     pub is_bearer: bool,
+    pub known_capabilities: Vec<String>,
 }
 
 /// Link a Slack channel to a Maidan thread (Cluster 346). The link's

@@ -227,3 +227,35 @@ fn ui_js_wires_live_thread_refresh() {
         assert!(s.contains(kind), "THREAD_CONTENT_KINDS must include {kind}");
     }
 }
+
+/// Cluster 353.1: the Session tab's capability card. No browser in the required
+/// jobs, so guard the wiring statically — the loader must be defined, wired to the
+/// tab switch, and read the real grant from `/me`.
+#[test]
+fn ui_js_wires_session_capability_card() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function loadSession("),
+        "loadSession must be defined"
+    );
+    assert!(
+        s.contains("uiReadPath(\"/me\")"),
+        "the card must read the real grant from GET /me"
+    );
+    assert!(
+        s.contains("known_capabilities"),
+        "\"can't\" must be computed from the known-capability vocabulary"
+    );
+    assert!(
+        HTML.contains("data-tab=\"session\""),
+        "the Session tab button must exist"
+    );
+    assert!(
+        HTML.contains("id=\"panel-session\""),
+        "the Session panel must exist"
+    );
+    assert!(
+        s.contains("\"session\") loadSession()"),
+        "the tab switch must invoke loadSession()"
+    );
+}

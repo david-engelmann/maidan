@@ -123,6 +123,20 @@
       .err { color: var(--err); }
       .ok { color: var(--ok); }
       .muted { color: var(--muted); font-size: 0.9rem; }
+      .panel-h { font-size: 1.1rem; margin: 0.25rem 0 0.5rem; }
+      .session-identity { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.75rem; margin: 0.75rem 0; }
+      .session-identity dt { font-weight: 600; color: var(--muted); }
+      .session-identity dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+      .cap-card { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem; }
+      .cap-col { flex: 1 1 14rem; border: 1px solid var(--border); border-radius: 0.35rem; padding: 0.5rem 0.75rem; }
+      .cap-col h3 { font-size: 0.95rem; margin: 0.25rem 0 0.5rem; }
+      /* Colour reinforces, never replaces, the ✓/✗ glyph + "Can"/"Can't" text. */
+      .cap-can-h { color: #15803d; }
+      .cap-cant-h { color: #b91c1c; }
+      .cap-count { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+      .cap-list { list-style: none; padding: 0; margin: 0; }
+      .cap-list li { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; padding: 0.15rem 0; border-top: 1px solid var(--border); }
+      .cap-list li:first-child { border-top: none; }
       #mint-banner {
         display: none;
         margin-top: 0.75rem;
@@ -310,6 +324,7 @@
       <summary>More tools</summary>
       <nav class="tabs" role="tablist">
         <button type="button" data-tab="admin" aria-selected="true">Admin</button>
+        <button type="button" data-tab="session">Session</button>
         <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
@@ -348,6 +363,43 @@
           <label>Peer ID to delete <input id="peer-delete-id" /></label>
           <button id="delete-peer" type="button">Delete peer</button>
         </details>
+      </section>
+      <section id="panel-session" class="panel" aria-labelledby="session-heading">
+        <h2 id="session-heading" class="panel-h">Your session &amp; capabilities</h2>
+        <p class="muted">
+          What this session or token <em>actually</em> carries — read from
+          <code>GET /me</code>. A declared <code>allowed-tools</code> list, or an
+          ambient default token, is <strong>not</strong> a grant. The card below is
+          the real set: what you <em>can</em> do, and what you <em>can't</em>.
+        </p>
+        <div>
+          <button id="session-refresh" type="button">Refresh</button>
+        </div>
+        <dl id="session-identity" class="session-identity muted">
+          <dt>Acting as</dt><dd id="session-member">—</dd>
+          <dt>Workspace</dt><dd id="session-workspace">—</dd>
+          <dt>Credential</dt><dd id="session-credential">—</dd>
+        </dl>
+        <div class="cap-card">
+          <section class="cap-col" aria-labelledby="cap-can-heading">
+            <h3 id="cap-can-heading" class="cap-can-h">
+              <span aria-hidden="true">✓</span> Can
+              <span class="cap-count" id="cap-can-count"></span>
+            </h3>
+            <ul id="cap-can-list" class="cap-list muted">
+              <li>Refresh to load your capabilities.</li>
+            </ul>
+          </section>
+          <section class="cap-col" aria-labelledby="cap-cant-heading">
+            <h3 id="cap-cant-heading" class="cap-cant-h">
+              <span aria-hidden="true">✗</span> Can't
+              <span class="cap-count" id="cap-cant-count"></span>
+            </h3>
+            <ul id="cap-cant-list" class="cap-list muted">
+              <li>Refresh to load.</li>
+            </ul>
+          </section>
+        </div>
       </section>
       <section id="panel-search" class="panel">
         <label>Query <input id="search-q" placeholder="keywords" /></label>
@@ -1696,6 +1748,62 @@
         await loadApprovals();
       }
 
+      async function loadSession() {
+        try {
+          const res = await fetch(uiReadPath("/me"), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            setStatus(`HTTP ${res.status}`, "err");
+            document.getElementById("session-member").textContent =
+              `HTTP ${res.status} — sign in or set a bearer token above`;
+            return;
+          }
+          renderSession(await res.json());
+        } catch (e) {
+          setStatus(String(e), "err");
+        }
+      }
+
+      function renderSession(me) {
+        document.getElementById("session-member").textContent = me.member_id;
+        document.getElementById("session-workspace").textContent = me.workspace_id;
+        document.getElementById("session-credential").textContent = me.is_bearer
+          ? "bearer token — acts as any member (orchestrator)"
+          : "signed-in session — pinned to this member";
+        const granted = new Set(me.capabilities || []);
+        const known = me.known_capabilities || [];
+        const can = [...granted].sort();
+        const cant = known.filter((c) => !granted.has(c)).sort();
+        renderCapList("cap-can-list", "cap-can-count", can, "No capabilities granted.");
+        renderCapList(
+          "cap-cant-list",
+          "cap-cant-count",
+          cant,
+          "Nothing withheld — the full vocabulary is granted.",
+        );
+      }
+
+      function renderCapList(listId, countId, caps, emptyMsg) {
+        const list = document.getElementById(listId);
+        list.innerHTML = "";
+        document.getElementById(countId).textContent = `(${caps.length})`;
+        if (!caps.length) {
+          list.classList.add("muted");
+          const li = document.createElement("li");
+          li.textContent = emptyMsg;
+          list.appendChild(li);
+          return;
+        }
+        list.classList.remove("muted");
+        for (const c of caps) {
+          const li = document.createElement("li");
+          li.textContent = c;
+          list.appendChild(li);
+        }
+      }
+
       async function markAllNotificationsRead() {
         if (!requireAuthForWrite()) return;
         try {
@@ -1720,6 +1828,7 @@
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "notifications") loadNotifications();
           if (btn.dataset.tab === "approvals") loadApprovals();
+          if (btn.dataset.tab === "session") loadSession();
         };
       });
 
@@ -2018,6 +2127,7 @@
       document.getElementById("presence-away").onclick = () => setPresence("away");
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
       document.getElementById("approvals-refresh").onclick = () => loadApprovals();
+      document.getElementById("session-refresh").onclick = () => loadSession();
       document.getElementById("notif-read-all").onclick = () =>
         markAllNotificationsRead();
       document.getElementById("notif-unread-only").onchange = () =>
