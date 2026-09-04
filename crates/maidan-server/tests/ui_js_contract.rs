@@ -259,3 +259,35 @@ fn ui_js_wires_session_capability_card() {
         "the tab switch must invoke loadSession()"
     );
 }
+
+/// Cluster 353.2: session-chrome badges on the thread list. Guard the mapping's
+/// wiring statically — the pure classifier must be defined, invoked by
+/// loadThreads, and cover all five chrome states.
+#[test]
+fn ui_js_wires_session_chrome_badges() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function sessionChrome("),
+        "sessionChrome must be defined"
+    );
+    assert!(
+        s.contains("sessionChrome(th, gates[th.id])"),
+        "loadThreads must classify each thread"
+    );
+    assert!(
+        s.contains("function fetchPendingGatesByThread("),
+        "the gate lookup must be defined"
+    );
+    for state in [
+        "chrome-running",
+        "chrome-idle",
+        "chrome-needs-input",
+        "chrome-needs-approval",
+        "chrome-done",
+    ] {
+        assert!(
+            s.contains(state),
+            "the chrome classifier must cover {state}"
+        );
+    }
+}
