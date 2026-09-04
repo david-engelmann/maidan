@@ -86,12 +86,20 @@ pub async fn list_tasks(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
     limit: i64,
+    updated_after: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
+    // `updated_at` is stored `...Z` (ms) while chrono emits `...+00:00`; wrap both
+    // in `datetime(...)` so the compare is on a normalized UTC value, not the raw
+    // string (avoids the `Z`-vs-`+00:00` lexical trap). Second precision is fine
+    // for `statusTimestampAfter`.
+    let after = updated_after.map(|t| t.to_rfc3339());
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT task_json FROM maidan_a2a_tasks WHERE workspace_id = ?
-         ORDER BY updated_at DESC, id DESC LIMIT ?",
+        "SELECT task_json FROM maidan_a2a_tasks
+         WHERE workspace_id = ?1 AND (?2 IS NULL OR datetime(updated_at) > datetime(?2))
+         ORDER BY updated_at DESC, id DESC LIMIT ?3",
     )
     .bind(workspace_id.0)
+    .bind(after)
     .bind(limit)
     .fetch_all(pool)
     .await?;

@@ -662,6 +662,46 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "REST §11 responses carry the A2A media type"
     );
 
+    // Cluster 352.4: `statusTimestampAfter` filters by the task's status timestamp.
+    let list_after = |ts: &str| {
+        let (client, base, token) = (client.clone(), base.clone(), token.clone());
+        let ts = ts.to_string();
+        async move {
+            client
+                .get(format!("{base}/a2a/v1/tasks?statusTimestampAfter={ts}"))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let future = list_after("2099-01-01T00:00:00Z").await;
+    assert!(
+        future["tasks"].as_array().unwrap().is_empty(),
+        "nothing changed after a far-future instant"
+    );
+    let past = list_after("2000-01-01T00:00:00Z").await;
+    assert!(
+        !past["tasks"].as_array().unwrap().is_empty(),
+        "everything changed after a far-past instant"
+    );
+    let bad = client
+        .get(format!(
+            "{base}/a2a/v1/tasks?statusTimestampAfter=not-a-date"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        bad.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a malformed statusTimestampAfter is rejected"
+    );
+
     // Resolving the gate makes the task disappear (no stale status).
     store
         .resolve_approval_gate(gate.id, agent.id, ApprovalGateState::Accepted, None)

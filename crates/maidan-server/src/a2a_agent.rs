@@ -534,6 +534,21 @@ pub(crate) async fn dispatch_list_tasks(
             }
         },
     };
+    // Cluster 352.4: `statusTimestampAfter` — keep only tasks whose status changed
+    // strictly after this instant.
+    let updated_after = match req.status_timestamp_after.as_deref() {
+        None => None,
+        Some(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+            Err(_) => {
+                return Err(JsonRpcResponse::error(
+                    id.clone(),
+                    ERR_PARAMS,
+                    format!("invalid statusTimestampAfter (expected RFC 3339): {s}"),
+                ))
+            }
+        },
+    };
     // H12: pending held gates surface as `input-required` tasks. They're the
     // actionable "needs a human" items, so they lead the page (a small page still
     // shows them); RBAC-filtered by their context thread.
@@ -556,6 +571,10 @@ pub(crate) async fn dispatch_list_tasks(
                 continue;
             }
         }
+        // A gate's status timestamp is when it became pending (`created_at`).
+        if matches!(updated_after, Some(after) if gate.created_at <= after) {
+            continue;
+        }
         if let Some(thread_id) = gate.thread_id {
             match maidan_auth::can_access_thread(state.store.as_ref(), auth, thread_id).await {
                 Ok(true) => {}
@@ -573,7 +592,7 @@ pub(crate) async fn dispatch_list_tasks(
     }
     let raw = state
         .store
-        .list_a2a_tasks(auth.workspace_id, page_size as i64)
+        .list_a2a_tasks(auth.workspace_id, page_size as i64, updated_after)
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     for value in raw {
@@ -1011,6 +1030,12 @@ pub async fn rest_list_tasks(
     }
     if let Some(status) = q.get("status") {
         params.insert("status".into(), serde_json::Value::String(status.clone()));
+    }
+    if let Some(after) = q.get("statusTimestampAfter") {
+        params.insert(
+            "statusTimestampAfter".into(),
+            serde_json::Value::String(after.clone()),
+        );
     }
     if let Some(ps) = q.get("pageSize").and_then(|v| v.parse::<i64>().ok()) {
         params.insert("pageSize".into(), serde_json::Value::from(ps));

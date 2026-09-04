@@ -150,6 +150,10 @@ pub struct ListTasksRequest {
     /// `artifacts` field is always absent — there is nothing to include or omit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_artifacts: Option<bool>,
+    /// Keep only tasks whose status changed strictly after this RFC 3339 instant
+    /// (Cluster 352.4 / H12). A malformed value is rejected by the handler.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_timestamp_after: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i32>,
 }
