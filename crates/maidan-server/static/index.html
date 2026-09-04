@@ -114,6 +114,14 @@
       .tabs { display: flex; gap: 0.5rem; margin: 0.75rem 0; flex-wrap: wrap; }
       .tabs button { margin: 0; padding: 0.35rem 0.6rem; border: 1px solid var(--border); background: #fff; border-radius: 0.25rem; cursor: pointer; }
       .tabs button[aria-selected="true"] { font-weight: 600; background: #eff6ff; border-color: var(--accent); }
+      /* Skip link (WCAG 2.4.1) — off-screen until focused. */
+      .skip-link { position: absolute; left: -9999px; top: 0; background: var(--accent); color: #fff; padding: 0.5rem 0.75rem; border-radius: 0 0 0.25rem 0; z-index: 100; }
+      .skip-link:focus { left: 0; }
+      /* Visible keyboard focus on everything interactive (WCAG 2.4.7). */
+      a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+      textarea:focus-visible, [role="tab"]:focus-visible, [role="tabpanel"]:focus-visible {
+        outline: 3px solid var(--accent); outline-offset: 2px;
+      }
       .panel { display: none; }
       .panel.active { display: block; }
       label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
@@ -236,6 +244,7 @@
     </style>
   </head>
   <body data-ui-version="7">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
       <h1>Maidan</h1>
       <label>API base <input id="base" /></label>
@@ -275,7 +284,7 @@
           <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
         </ul>
       </aside>
-      <main>
+      <main id="main-content">
         <section id="live-panel">
           <div id="live-toolbar">
             <strong>Live</strong>
@@ -1934,8 +1943,10 @@
         btn.onclick = () => {
           document.querySelectorAll(".tabs button").forEach((b) => {
             b.setAttribute("aria-selected", "false");
+            b.tabIndex = -1;
           });
           btn.setAttribute("aria-selected", "true");
+          btn.tabIndex = 0;
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "notifications") loadNotifications();
@@ -1944,6 +1955,43 @@
           if (btn.dataset.tab === "tokens") loadAttenuationCeiling();
         };
       });
+
+      // ARIA tablist semantics + keyboard operability (WCAG 2.1.1 / 4.1.2):
+      // link tabs↔panels, rove tabindex so only the selected tab is in the tab
+      // order, and support Arrow/Home/End navigation across the tablist.
+      function initTablist() {
+        const tabs = Array.from(document.querySelectorAll(".tabs button[data-tab]"));
+        tabs.forEach((btn) => {
+          const name = btn.dataset.tab;
+          btn.setAttribute("role", "tab");
+          btn.id = `tab-${name}`;
+          btn.setAttribute("aria-controls", `panel-${name}`);
+          btn.tabIndex = btn.getAttribute("aria-selected") === "true" ? 0 : -1;
+          const panel = document.getElementById(`panel-${name}`);
+          if (panel) {
+            panel.setAttribute("role", "tabpanel");
+            panel.setAttribute("aria-labelledby", `tab-${name}`);
+            panel.tabIndex = 0;
+          }
+        });
+        const tablist = document.querySelector(".tabs");
+        if (!tablist) return;
+        tablist.addEventListener("keydown", (e) => {
+          const idx = tabs.indexOf(document.activeElement);
+          if (idx < 0) return;
+          let next = null;
+          if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % tabs.length;
+          else if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+            next = (idx - 1 + tabs.length) % tabs.length;
+          else if (e.key === "Home") next = 0;
+          else if (e.key === "End") next = tabs.length - 1;
+          if (next === null) return;
+          e.preventDefault();
+          tabs[next].focus();
+          tabs[next].click();
+        });
+      }
+      initTablist();
 
       async function refreshSession() {
         const el = document.getElementById("session-status");
