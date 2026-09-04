@@ -25,7 +25,7 @@ use maidan_a2a::{
     METHOD_GET_EXTENDED_AGENT_CARD, METHOD_GET_PUSH_NOTIFICATION_CONFIG, METHOD_GET_TASK,
     METHOD_LIST_PUSH_NOTIFICATION_CONFIGS, METHOD_LIST_TASKS, METHOD_SEND_MESSAGE,
     METHOD_SEND_STREAMING_MESSAGE, METHOD_SUBSCRIBE_TO_TASK, TASK_STATE_CANCELED,
-    TASK_STATE_COMPLETED, TASK_STATE_WORKING,
+    TASK_STATE_COMPLETED, TASK_STATE_INPUT_REQUIRED, TASK_STATE_WORKING,
 };
 use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::capability::WORKSPACE_WRITE;
@@ -178,6 +178,36 @@ async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "task not found".to_string())?;
     serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+/// A pending held gate (Cluster 350) rendered as a synthetic A2A **task** in
+/// `input-required` state (Cluster 352 / H12), so an external agent polling
+/// `tasks/list` (or `tasks/get`) can discover that a unit of work is waiting on a
+/// human decision. The task's id **is the gate id** (a distinct UUID namespace
+/// from real task ids), its `context_id` is the gate's thread, and it is always
+/// non-terminal while the gate is pending — a resolved gate stops appearing (no
+/// stale status). The prompt rides as the status message. Maidan A2A tasks are
+/// otherwise per-message deliveries that complete synchronously, so a gate cannot
+/// pause a real task — it is its own task.
+fn gate_as_task(gate: &ApprovalGate) -> Task {
+    Task {
+        id: gate.id.0.to_string(),
+        context_id: gate.thread_id.map(|t| t.0.to_string()),
+        status: TaskStatus {
+            state: TASK_STATE_INPUT_REQUIRED.to_string(),
+            message: Some(A2aMessage {
+                role: "agent".to_string(),
+                parts: vec![TextPart {
+                    kind: "text".to_string(),
+                    text: gate.prompt.clone(),
+                }],
+                metadata: None,
+            }),
+        },
+        metadata: Some(serde_json::json!({
+            "maidan": { "approvalGateId": gate.id.0, "kind": "approval_gate" }
+        })),
+    }
 }
 
 fn sse_json_rpc_frame(frame: JsonRpcResponse) -> SseEvent {
@@ -419,10 +449,44 @@ pub(crate) async fn dispatch_get_task(
             format!("invalid GetTask params: {e}"),
         )
     })?;
-    let task = load_task(state, &req.id)
-        .await
-        .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
-    ensure_task_workspace_access(state, auth, &id, &req.id, &task).await?;
+    let task = match load_task(state, &req.id).await {
+        Ok(task) => {
+            ensure_task_workspace_access(state, auth, &id, &req.id, &task).await?;
+            task
+        }
+        // H12: the id may be a pending held gate surfaced as an `input-required`
+        // task (Cluster 352) rather than a real per-message task.
+        Err(_) => {
+            let Some(gate_id) = Uuid::parse_str(&req.id).ok().map(ApprovalGateId) else {
+                return Err(JsonRpcResponse::error(
+                    id.clone(),
+                    ERR_PARAMS,
+                    "task not found",
+                ));
+            };
+            let gate = match state.store.get_approval_gate(gate_id).await {
+                Ok(Some(g)) if g.state == ApprovalGateState::Pending => g,
+                _ => {
+                    return Err(JsonRpcResponse::error(
+                        id.clone(),
+                        ERR_PARAMS,
+                        "task not found",
+                    ))
+                }
+            };
+            if let Err(e) = auth.ensure_workspace(gate.workspace_id) {
+                return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
+            }
+            if let Some(thread_id) = gate.thread_id {
+                if let Err(e) =
+                    maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id).await
+                {
+                    return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
+                }
+            }
+            gate_as_task(&gate)
+        }
+    };
     let value = serde_json::to_value(task)
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     Ok(JsonRpcResponse::success(id, value))
@@ -430,8 +494,11 @@ pub(crate) async fn dispatch_get_task(
 
 /// A2A `ListTasks`: the authenticated workspace's tasks, most-recently-updated
 /// first, filtered by optional `contextId` and by per-channel access (a task whose
-/// context thread the caller cannot read is dropped). Single-page for now
-/// (`nextPageToken` always empty); `pageSize` defaults to 50, clamped to 1..=200.
+/// context thread the caller cannot read is dropped). A task whose context thread
+/// has a pending held gate is overlaid `input-required` (Cluster 352 / H12) so an
+/// external agent can find it. Single-page for now (`nextPageToken` always empty);
+/// `pageSize` defaults to 50, clamped to 1..=200 (`status`/`statusTimestampAfter`
+/// filters + max 100 + real paging land in the H12 follow-ups).
 pub(crate) async fn dispatch_list_tasks(
     state: &AppState,
     auth: &AuthContext,
@@ -453,12 +520,42 @@ pub(crate) async fn dispatch_list_tasks(
         })?
     };
     let page_size = req.page_size.unwrap_or(50).clamp(1, 200);
+    // H12: pending held gates surface as `input-required` tasks. They're the
+    // actionable "needs a human" items, so they lead the page (a small page still
+    // shows them); RBAC-filtered by their context thread.
+    let mut tasks: Vec<Task> = Vec::new();
+    let gates = state
+        .store
+        .list_pending_approval_gates(auth.workspace_id, page_size as i64)
+        .await
+        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    for gate in gates {
+        let gate_task = gate_as_task(&gate);
+        if let Some(ctx) = &req.context_id {
+            if gate_task.context_id.as_deref() != Some(ctx.as_str()) {
+                continue;
+            }
+        }
+        if let Some(thread_id) = gate.thread_id {
+            match maidan_auth::can_access_thread(state.store.as_ref(), auth, thread_id).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    return Err(JsonRpcResponse::error(
+                        id.clone(),
+                        ERR_INTERNAL,
+                        e.to_string(),
+                    ))
+                }
+            }
+        }
+        tasks.push(gate_task);
+    }
     let raw = state
         .store
         .list_a2a_tasks(auth.workspace_id, page_size as i64)
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
-    let mut tasks: Vec<Task> = Vec::new();
     for value in raw {
         let Ok(task) = serde_json::from_value::<Task>(value) else {
             continue;
@@ -492,6 +589,8 @@ pub(crate) async fn dispatch_list_tasks(
         }
         tasks.push(task);
     }
+    // Gate-tasks lead the page, then real tasks; cap at the requested size.
+    tasks.truncate(page_size as usize);
     let total_size = tasks.len() as i32;
     let resp = ListTasksResponse {
         tasks,
