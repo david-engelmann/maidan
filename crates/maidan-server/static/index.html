@@ -150,6 +150,15 @@
       #thread-list li { padding: 0.35rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.85rem; }
       #thread-list li:hover { background: #f4f4f5; }
       #thread-list li.selected { background: #e0e7ff; font-weight: 600; }
+      /* Session chrome — the label text carries the meaning; colour only reinforces (WCAG 1.4.1). */
+      .chrome-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; padding: 0.05rem 0.3rem; border-radius: 0.6rem; margin-right: 0.4rem; border: 1px solid transparent; vertical-align: middle; }
+      .chrome-running { background: #dcfce7; color: #166534; border-color: #86efac; }
+      .chrome-idle { background: #f4f4f5; color: #52525b; border-color: #d4d4d8; }
+      .chrome-needs-input { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+      .chrome-needs-approval { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+      .chrome-done { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+      .chrome-legend { list-style: none; margin: 0.5rem 0 0; padding: 0.5rem 0 0; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--muted); }
+      .chrome-legend li { display: flex; gap: 0.4rem; align-items: baseline; padding: 0.1rem 0; cursor: default; }
       #collab-panel {
         border-top: 1px solid var(--border);
         padding: 0.75rem;
@@ -258,6 +267,13 @@
           <button id="create-thread" type="button" title="Requires bearer token">+</button>
         </div>
         <ul id="thread-list"><li class="muted">Select a channel</li></ul>
+        <ul class="chrome-legend" aria-label="Session-chrome legend">
+          <li><span class="chrome-badge chrome-running">running</span> claimed &amp; working</li>
+          <li><span class="chrome-badge chrome-idle">idle</span> unclaimed, or claimed but idle</li>
+          <li><span class="chrome-badge chrome-needs-input">needs-input</span> a gate wants structured input</li>
+          <li><span class="chrome-badge chrome-needs-approval">needs-approval</span> a gate wants a yes/no</li>
+          <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
+        </ul>
       </aside>
       <main>
         <section id="live-panel">
@@ -742,11 +758,22 @@
             list.innerHTML = "<li class='muted'>No threads</li>";
             return;
           }
+          const gates = await fetchPendingGatesByThread();
           threads.forEach((th) => {
             const li = document.createElement("li");
             li.dataset.id = th.id;
             const title = th.title || th.id.slice(0, 8);
-            li.textContent = title;
+            const chrome = sessionChrome(th, gates[th.id]);
+            li.dataset.chrome = chrome.label;
+            const badge = document.createElement("span");
+            badge.className = `chrome-badge ${chrome.cls}`;
+            badge.textContent = chrome.label;
+            badge.title = chrome.hint;
+            badge.setAttribute("aria-label", `session state: ${chrome.label}`);
+            const name = document.createElement("span");
+            name.textContent = title;
+            li.appendChild(badge);
+            li.appendChild(name);
             if (th.id === selectedThreadId) li.classList.add("selected");
             li.onclick = () => selectThread(th.id, title);
             list.appendChild(li);
@@ -754,6 +781,48 @@
         } catch (e) {
           list.innerHTML = `<li class='err'>${escapeHtml(String(e))}</li>`;
         }
+      }
+
+      // Pending approval gates for the current workspace, keyed by thread id, so
+      // loadThreads can flag a gated thread. Best-effort: on any failure the
+      // badges simply omit the gate state.
+      async function fetchPendingGatesByThread() {
+        const ws = wid();
+        const map = {};
+        if (!ws) return map;
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/approval-gates`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return map;
+          const views = await res.json();
+          for (const v of views) {
+            const g = v.gate;
+            if (g && g.thread_id) map[g.thread_id] = { hasSchema: g.schema != null };
+          }
+        } catch (_e) {
+          /* best-effort */
+        }
+        return map;
+      }
+
+      // Session chrome for a task thread — first match wins:
+      //  done          — thread terminal (closed/archived)
+      //  needs-input    — a pending gate with a schema (structured elicitation)
+      //  needs-approval — a pending gate without a schema (yes/no approval)
+      //  running        — claimed AND the working clock has started
+      //  idle           — otherwise (unclaimed, or claimed but not yet working)
+      function sessionChrome(th, gate) {
+        if (th.state === "closed" || th.state === "archived")
+          return { label: "done", cls: "chrome-done", hint: "thread is closed" };
+        if (gate)
+          return gate.hasSchema
+            ? { label: "needs-input", cls: "chrome-needs-input", hint: "waiting on structured input" }
+            : { label: "needs-approval", cls: "chrome-needs-approval", hint: "waiting on human approval" };
+        if (th.assignee_id && th.work_started_at)
+          return { label: "running", cls: "chrome-running", hint: "claimed and working" };
+        return { label: "idle", cls: "chrome-idle", hint: "not being worked" };
       }
 
       function selectThread(id, label) {
