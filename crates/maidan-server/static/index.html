@@ -632,6 +632,15 @@
         <label>Capabilities (comma-separated)
           <input id="token-caps" value="workspace:read,workspace:write,message:post" />
         </label>
+        <p id="attenuation-note" class="muted">
+          <strong>Attenuation:</strong> a minted token can only be a <em>subset</em>
+          of your own grant — you cannot widen. Anything you request beyond your
+          ceiling is rejected server-side (and flagged here before it is sent).
+        </p>
+        <p class="muted">Your grant (the ceiling):
+          <span id="attenuation-ceiling">refresh below…</span>
+        </p>
+        <p id="attenuation-warning" class="err" role="alert" hidden></p>
         <button id="mint-member-token" type="button">Mint token</button>
         <label>Token ID to revoke <input id="token-revoke-id" /></label>
         <button id="revoke-token" type="button">Revoke token</button>
@@ -1835,7 +1844,41 @@
         }
       }
 
+      // The caller's own capabilities — the attenuation ceiling for minting.
+      // Cached from /me so the mint pre-flight can flag a widening request.
+      let myCapabilities = null;
+
+      async function loadAttenuationCeiling() {
+        const span = document.getElementById("attenuation-ceiling");
+        try {
+          const res = await fetch(uiReadPath("/me"), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            span.textContent = `unknown (HTTP ${res.status})`;
+            return;
+          }
+          const me = await res.json();
+          myCapabilities = me.capabilities || [];
+          span.textContent = myCapabilities.length
+            ? myCapabilities.slice().sort().join(", ")
+            : "none";
+        } catch (e) {
+          span.textContent = "unknown";
+        }
+      }
+
+      // Requested caps that exceed the caller's own grant (the widening set).
+      // Empty when the request is a valid attenuation (a subset).
+      function capsExceedingGrant(requested) {
+        if (!myCapabilities) return [];
+        const grant = new Set(myCapabilities);
+        return requested.filter((c) => !grant.has(c));
+      }
+
       function renderSession(me) {
+        myCapabilities = me.capabilities || [];
         document.getElementById("session-member").textContent = me.member_id;
         document.getElementById("session-workspace").textContent = me.workspace_id;
         document.getElementById("session-credential").textContent = me.is_bearer
@@ -1898,6 +1941,7 @@
           if (btn.dataset.tab === "notifications") loadNotifications();
           if (btn.dataset.tab === "approvals") loadApprovals();
           if (btn.dataset.tab === "session") loadSession();
+          if (btn.dataset.tab === "tokens") loadAttenuationCeiling();
         };
       });
 
@@ -2615,6 +2659,19 @@
         const mid = document.getElementById("token-member").value.trim();
         const label = document.getElementById("token-label").value.trim();
         const caps = parseCaps(document.getElementById("token-caps").value);
+        // Attenuation pre-flight: a minted token cannot exceed the caller's grant
+        // (the server enforces this too, via validate_subset — this flags it early).
+        if (!myCapabilities) await loadAttenuationCeiling();
+        const excess = capsExceedingGrant(caps);
+        const warn = document.getElementById("attenuation-warning");
+        if (excess.length) {
+          warn.textContent =
+            `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
+          warn.hidden = false;
+          setStatus("Attenuation: request exceeds your grant", "err");
+          return;
+        }
+        warn.hidden = true;
         const res = await fetch(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
           method: "POST",
           headers: headers(true),
