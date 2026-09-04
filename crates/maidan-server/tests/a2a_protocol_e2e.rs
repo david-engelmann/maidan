@@ -646,6 +646,22 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "pageSize is clamped to 100"
     );
 
+    // Cluster 352.3: the REST §11 binding uses `application/a2a+json`, not `application/json`.
+    let ct_resp = client
+        .get(format!("{base}/a2a/v1/tasks"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        ct_resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok()),
+        Some("application/a2a+json"),
+        "REST §11 responses carry the A2A media type"
+    );
+
     // Resolving the gate makes the task disappear (no stale status).
     store
         .resolve_approval_gate(gate.id, agent.id, ApprovalGateState::Accepted, None)
