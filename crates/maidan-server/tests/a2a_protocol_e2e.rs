@@ -5,11 +5,18 @@ use std::{sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_a2a::{A2aClient, SendMessageRequest};
 use maidan_artifacts::LocalFsStore;
+use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_bus::InMemoryBus;
+use maidan_server::FederationRuntime;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::{
+    ApprovalGateState, MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewThread,
+    NewWorkspace,
+};
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
+use std::sync::atomic::AtomicI64;
 
 #[tokio::test]
 async fn a2a_send_message_posts_to_thread_and_get_task_round_trips() {
@@ -425,6 +432,204 @@ async fn a2a_get_task_loads_from_store_after_send_message() {
     let task = a2a.get_task(task_id).await.unwrap();
     assert_eq!(task.id, task_id);
     assert_eq!(task.status.state, "TASK_STATE_COMPLETED");
+}
+
+/// Cluster 352 / H12: a pending held gate surfaces as an `input-required` A2A task
+/// (id = the gate id), so an external agent can discover it via `tasks/get` +
+/// `tasks/list`; resolving the gate makes the task disappear. Runs with auth
+/// ENABLED so the bearer's workspace scopes `tasks/list` (a bypass caller has no
+/// real workspace).
+#[tokio::test]
+async fn a2a_pending_gate_surfaces_as_input_required_task() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::new(
+        store.clone(),
+        artifacts,
+        bus,
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false, // auth ENABLED
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    // Set the graph up through the store; mint a bearer scoped to the workspace.
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "gate-task".into(),
+        })
+        .await
+        .unwrap();
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: agent.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::MESSAGE_POST.to_string(),
+                capability::WORKSPACE_READ.to_string(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let token = secret.as_str().to_string();
+    let rpc = |method: &str, params: Value| {
+        let (client, base, token) = (client.clone(), base.clone(), token.clone());
+        let method = method.to_string();
+        async move {
+            client
+                .post(format!("{base}/a2a/v1/rpc"))
+                .bearer_auth(&token)
+                .json(&json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    // A real per-message task (completes synchronously).
+    let thread_id = thread.id.0.to_string();
+    let send = rpc(
+        "SendMessage",
+        json!({
+            "message": { "role": "user", "parts": [{ "type": "text", "text": "hi" }] },
+            "metadata": { "maidan": { "threadId": thread_id, "authorId": agent.id.0 } }
+        }),
+    )
+    .await;
+    let real_task_id = send["result"]["task"]["id"]
+        .as_str()
+        .expect("task id")
+        .to_string();
+
+    // Open a pending held gate on the thread (as `request_approval` would).
+    let gate = store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: ws.id,
+            thread_id: Some(thread.id),
+            requested_by: agent.id,
+            prompt: "Deploy to prod?".into(),
+            schema: None,
+        })
+        .await
+        .unwrap();
+    let gate_id = gate.id.0.to_string();
+
+    // GetTask(gate_id) → the gate as an input-required task.
+    let got = rpc("GetTask", json!({ "id": gate_id })).await;
+    assert_eq!(got["result"]["id"], json!(gate_id));
+    assert_eq!(
+        got["result"]["status"]["state"],
+        json!("TASK_STATE_INPUT_REQUIRED")
+    );
+    assert_eq!(got["result"]["contextId"], json!(thread_id));
+
+    // ListTasks (REST §11) leads with the gate-task and still shows the real task.
+    let list: Value = client
+        .get(format!("{base}/a2a/v1/tasks"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tasks = list["tasks"].as_array().unwrap();
+    assert!(
+        tasks.iter().any(|t| t["id"] == json!(gate_id)
+            && t["status"]["state"] == json!("TASK_STATE_INPUT_REQUIRED")),
+        "the gate is listed as an input-required task"
+    );
+    assert!(
+        tasks.iter().any(|t| t["id"] == json!(real_task_id)),
+        "the real per-message task is still listed"
+    );
+
+    // Resolving the gate makes the task disappear (no stale status).
+    store
+        .resolve_approval_gate(gate.id, agent.id, ApprovalGateState::Accepted, None)
+        .await
+        .unwrap();
+    let gone = rpc("GetTask", json!({ "id": gate_id })).await;
+    assert!(
+        gone.get("error").is_some(),
+        "a resolved gate is no longer a task"
+    );
+    let list2: Value = client
+        .get(format!("{base}/a2a/v1/tasks"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        !list2["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == json!(gate_id)),
+        "the resolved gate is gone from the list"
+    );
 }
 
 #[tokio::test]

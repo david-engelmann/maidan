@@ -22,6 +22,12 @@ pub const METHOD_CANCEL_TASK: &str = "CancelTask";
 pub const METHOD_GET_EXTENDED_AGENT_CARD: &str = "GetExtendedAgentCard";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
+/// The task is paused waiting on human input — a held approval gate (Cluster 350)
+/// on the task's context thread (Cluster 352 / H12). The A2A spec's kebab form is
+/// `input-required`; this codebase uses the proto-enum string on the wire, so the
+/// REST/JSON-RPC `status` filter maps `input-required`/`INPUT_REQUIRED` onto this.
+/// Non-terminal: the run resumes when the gate is answered.
+pub const TASK_STATE_INPUT_REQUIRED: &str = "TASK_STATE_INPUT_REQUIRED";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
 pub const TASK_STATE_FAILED: &str = "TASK_STATE_FAILED";
 pub const TASK_STATE_CANCELED: &str = "TASK_STATE_CANCELED";
@@ -345,6 +351,7 @@ mod tests {
             assert!(is_terminal_task_state(s), "{s} should be terminal");
         }
         assert!(!is_terminal_task_state(TASK_STATE_WORKING));
+        assert!(!is_terminal_task_state(TASK_STATE_INPUT_REQUIRED));
         assert!(!is_terminal_task_state("TASK_STATE_UNKNOWN"));
         assert!(!is_terminal_task_state(""));
     }
