@@ -320,3 +320,29 @@ fn ui_js_wires_attenuation_chrome() {
         "the attenuation warning element must exist"
     );
 }
+
+/// Cluster 353.4: WCAG-AA keyboard operability. Guard the ARIA tablist wiring +
+/// the skip link statically — the browser behaviour is covered by the Playwright
+/// spec, but these must be present for the a11y contract to hold.
+#[test]
+fn ui_js_wires_wcag_tablist_and_skip_link() {
+    let s = script(HTML);
+    assert!(
+        HTML.contains("class=\"skip-link\"") && HTML.contains("id=\"main-content\""),
+        "a skip link must target the main content (WCAG 2.4.1)"
+    );
+    assert!(
+        s.contains("function initTablist(") && s.contains("initTablist();"),
+        "initTablist must be defined and invoked"
+    );
+    assert!(
+        s.contains("\"role\", \"tab\"") && s.contains("\"role\", \"tabpanel\""),
+        "tabs and panels must carry ARIA roles"
+    );
+    for key in ["ArrowRight", "ArrowLeft", "Home", "End"] {
+        assert!(
+            s.contains(key),
+            "the tablist must support {key} keyboard navigation"
+        );
+    }
+}
