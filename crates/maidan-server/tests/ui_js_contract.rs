@@ -291,3 +291,32 @@ fn ui_js_wires_session_chrome_badges() {
         );
     }
 }
+
+/// Cluster 353.3: attenuation chrome — a minted token cannot widen the caller's
+/// grant. Guard the wiring: the ceiling loader + the widening classifier are
+/// defined, the classifier gates the mint handler, and the ceiling loads on the
+/// Tokens tab.
+#[test]
+fn ui_js_wires_attenuation_chrome() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function loadAttenuationCeiling("),
+        "loadAttenuationCeiling must be defined"
+    );
+    assert!(
+        s.contains("function capsExceedingGrant("),
+        "capsExceedingGrant must be defined"
+    );
+    assert!(
+        s.contains("capsExceedingGrant(caps)"),
+        "the mint handler must pre-flight the widening set"
+    );
+    assert!(
+        s.contains("\"tokens\") loadAttenuationCeiling()"),
+        "the Tokens tab must load the attenuation ceiling"
+    );
+    assert!(
+        HTML.contains("id=\"attenuation-warning\""),
+        "the attenuation warning element must exist"
+    );
+}
