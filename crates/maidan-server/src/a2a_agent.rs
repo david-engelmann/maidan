@@ -492,13 +492,13 @@ pub(crate) async fn dispatch_get_task(
     Ok(JsonRpcResponse::success(id, value))
 }
 
-/// A2A `ListTasks`: the authenticated workspace's tasks, most-recently-updated
-/// first, filtered by optional `contextId` and by per-channel access (a task whose
-/// context thread the caller cannot read is dropped). A task whose context thread
-/// has a pending held gate is overlaid `input-required` (Cluster 352 / H12) so an
-/// external agent can find it. Single-page for now (`nextPageToken` always empty);
-/// `pageSize` defaults to 50, clamped to 1..=200 (`status`/`statusTimestampAfter`
-/// filters + max 100 + real paging land in the H12 follow-ups).
+/// A2A `ListTasks`: the authenticated workspace's tasks, filtered by optional
+/// `contextId` + `status`, and by per-channel access (a task whose context thread
+/// the caller cannot read is dropped). Pending held gates lead the page as
+/// synthetic `input-required` tasks (Cluster 352 / H12), so a caller can query
+/// `status=input-required` to find exactly the gates. `pageSize` defaults to 50,
+/// clamped to 1..=100 (the A2A spec max). Single-page for now (`nextPageToken`
+/// always empty; `statusTimestampAfter` + real paging land in the H12 follow-ups).
 pub(crate) async fn dispatch_list_tasks(
     state: &AppState,
     auth: &AuthContext,
@@ -519,16 +519,36 @@ pub(crate) async fn dispatch_list_tasks(
             )
         })?
     };
-    let page_size = req.page_size.unwrap_or(50).clamp(1, 200);
+    let page_size = req.page_size.unwrap_or(50).clamp(1, 100);
+    // Cluster 352.2 / H12: an optional `status` filter (kebab/enum/full form).
+    let status_filter = match req.status.as_deref() {
+        None => None,
+        Some(s) => match maidan_a2a::normalize_task_state(s) {
+            Some(canonical) => Some(canonical),
+            None => {
+                return Err(JsonRpcResponse::error(
+                    id.clone(),
+                    ERR_PARAMS,
+                    format!("invalid status filter: {s}"),
+                ))
+            }
+        },
+    };
     // H12: pending held gates surface as `input-required` tasks. They're the
     // actionable "needs a human" items, so they lead the page (a small page still
     // shows them); RBAC-filtered by their context thread.
     let mut tasks: Vec<Task> = Vec::new();
-    let gates = state
-        .store
-        .list_pending_approval_gates(auth.workspace_id, page_size as i64)
-        .await
-        .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
+    // A gate-task is always `input-required`; a `status` filter for anything else
+    // excludes them all, so skip the gate fetch entirely.
+    let gates = if matches!(status_filter, Some(s) if s != TASK_STATE_INPUT_REQUIRED) {
+        Vec::new()
+    } else {
+        state
+            .store
+            .list_pending_approval_gates(auth.workspace_id, page_size as i64)
+            .await
+            .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?
+    };
     for gate in gates {
         let gate_task = gate_as_task(&gate);
         if let Some(ctx) = &req.context_id {
@@ -564,6 +584,9 @@ pub(crate) async fn dispatch_list_tasks(
             if task.context_id.as_deref() != Some(ctx.as_str()) {
                 continue;
             }
+        }
+        if matches!(status_filter, Some(s) if task.status.state != s) {
+            continue;
         }
         // Per-channel RBAC: drop tasks whose context thread the caller can't read.
         if let Some(context_id) = &task.context_id {
@@ -970,6 +993,9 @@ pub async fn rest_list_tasks(
     let mut params = serde_json::Map::new();
     if let Some(ctx) = q.get("contextId") {
         params.insert("contextId".into(), serde_json::Value::String(ctx.clone()));
+    }
+    if let Some(status) = q.get("status") {
+        params.insert("status".into(), serde_json::Value::String(status.clone()));
     }
     if let Some(ps) = q.get("pageSize").and_then(|v| v.parse::<i64>().ok()) {
         params.insert("pageSize".into(), serde_json::Value::from(ps));

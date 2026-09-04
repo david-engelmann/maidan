@@ -603,6 +603,49 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "the real per-message task is still listed"
     );
 
+    // Cluster 352.2: `status=input-required` returns exactly the gate; a filter for
+    // another state excludes it. `pageSize` is clamped to the spec max of 100.
+    let list_ir = |status: &str| {
+        let (client, base, token) = (client.clone(), base.clone(), token.clone());
+        let status = status.to_string();
+        async move {
+            client
+                .get(format!("{base}/a2a/v1/tasks?status={status}"))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let only_gates = list_ir("input-required").await;
+    let g = only_gates["tasks"].as_array().unwrap();
+    assert_eq!(g.len(), 1, "only the input-required gate matches");
+    assert_eq!(g[0]["id"], json!(gate_id));
+    let only_done = list_ir("TASK_STATE_COMPLETED").await;
+    let d = only_done["tasks"].as_array().unwrap();
+    assert!(
+        d.iter().any(|t| t["id"] == json!(real_task_id))
+            && !d.iter().any(|t| t["id"] == json!(gate_id)),
+        "status=completed returns the real task, not the gate"
+    );
+    let clamped: Value = client
+        .get(format!("{base}/a2a/v1/tasks?pageSize=500"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        clamped["pageSize"],
+        json!(100),
+        "pageSize is clamped to 100"
+    );
+
     // Resolving the gate makes the task disappear (no stale status).
     store
         .resolve_approval_gate(gate.id, agent.id, ApprovalGateState::Accepted, None)

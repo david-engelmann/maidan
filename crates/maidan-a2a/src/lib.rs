@@ -20,9 +20,10 @@ pub use outbound::Outbound;
 pub use peer::{validate_base_url, validate_peer_name, NewPeer, Peer};
 pub use protocol::{
     is_terminal_task_state, maidan_context_from_metadata, message_content,
-    message_parts_from_content, message_text, A2aMessage, DeleteTaskPushNotificationConfigRequest,
-    GetPushNotificationConfigResponse, GetTaskPushNotificationConfigRequest, GetTaskRequest,
-    JsonRpcId, JsonRpcRequest, JsonRpcResponse, ListTaskPushNotificationConfigsRequest,
+    message_parts_from_content, message_text, normalize_task_state, A2aMessage,
+    DeleteTaskPushNotificationConfigRequest, GetPushNotificationConfigResponse,
+    GetTaskPushNotificationConfigRequest, GetTaskRequest, JsonRpcId, JsonRpcRequest,
+    JsonRpcResponse, ListTaskPushNotificationConfigsRequest,
     ListTaskPushNotificationConfigsResponse, ListTasksRequest, ListTasksResponse, MaidanA2aContext,
     PushNotificationConfig, SendMessageRequest, SendMessageResponse,
     SetPushNotificationConfigRequest, StreamResponseStatusUpdate, StreamResponseTask, Task,

@@ -128,15 +128,39 @@ pub struct GetTaskRequest {
 }
 
 /// `ListTasks` request. Subset of the spec's `ListTasksRequest`: optional
-/// `contextId` filter and `pageSize` (default 50, min 1). The `status` filter and
-/// opaque page tokens are not yet implemented (single-page).
+/// `contextId` + `status` filters and `pageSize` (default 50, clamped to the spec
+/// max of 100). `statusTimestampAfter` + opaque page tokens land in the H12
+/// follow-ups (single-page for now).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListTasksRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_id: Option<String>,
+    /// Filter by task state (Cluster 352.2 / H12). Accepts the kebab
+    /// (`input-required`), bare-enum (`INPUT_REQUIRED`), or full
+    /// (`TASK_STATE_INPUT_REQUIRED`) form — normalized via [`normalize_task_state`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i32>,
+}
+
+/// Normalize a caller-supplied task-state filter to the canonical `TASK_STATE_*`
+/// wire form (Cluster 352.2 / H12). Case-insensitive; accepts the A2A kebab form
+/// (`input-required`), the bare enum (`INPUT_REQUIRED`), or the full string. `None`
+/// for an unrecognized state (the caller should reject the filter).
+pub fn normalize_task_state(s: &str) -> Option<&'static str> {
+    let norm = s.trim().to_ascii_uppercase().replace('-', "_");
+    let norm = norm.strip_prefix("TASK_STATE_").unwrap_or(&norm);
+    match norm {
+        "WORKING" => Some(TASK_STATE_WORKING),
+        "INPUT_REQUIRED" => Some(TASK_STATE_INPUT_REQUIRED),
+        "COMPLETED" => Some(TASK_STATE_COMPLETED),
+        "FAILED" => Some(TASK_STATE_FAILED),
+        "CANCELED" | "CANCELLED" => Some(TASK_STATE_CANCELED),
+        "REJECTED" => Some(TASK_STATE_REJECTED),
+        _ => None,
+    }
 }
 
 /// `ListTasks` response. `nextPageToken` is always empty until pagination lands.
@@ -354,6 +378,31 @@ mod tests {
         assert!(!is_terminal_task_state(TASK_STATE_INPUT_REQUIRED));
         assert!(!is_terminal_task_state("TASK_STATE_UNKNOWN"));
         assert!(!is_terminal_task_state(""));
+    }
+
+    #[test]
+    fn normalize_task_state_accepts_kebab_enum_and_full_forms() {
+        for s in [
+            "input-required",
+            "INPUT_REQUIRED",
+            "TASK_STATE_INPUT_REQUIRED",
+            "Input-Required",
+        ] {
+            assert_eq!(
+                normalize_task_state(s),
+                Some(TASK_STATE_INPUT_REQUIRED),
+                "{s}"
+            );
+        }
+        assert_eq!(normalize_task_state("working"), Some(TASK_STATE_WORKING));
+        assert_eq!(
+            normalize_task_state("completed"),
+            Some(TASK_STATE_COMPLETED)
+        );
+        assert_eq!(normalize_task_state("cancelled"), Some(TASK_STATE_CANCELED));
+        assert_eq!(normalize_task_state("rejected"), Some(TASK_STATE_REJECTED));
+        assert_eq!(normalize_task_state("not-a-state"), None);
+        assert_eq!(normalize_task_state(""), None);
     }
 
     #[test]
