@@ -561,6 +561,7 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/approval-gates",
             get(routes::list_approval_gates),
         )
+        .route("/ui/api/me", get(routes::get_me))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
