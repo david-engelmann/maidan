@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [353.0.0] — 2026-09-04
+
+Post-gate hardening (Phase XXIV). **Wave 1 #4 of the forward program — the
+identity chrome (N8 + B1 + N7).** A stacked cluster (353.1–353.4) giving the
+vanilla `/ui` the human-facing chrome for the 350/351/352 mechanics. No SPA, no
+new gate tag.
+
+### Added
+
+- **Capability card** (353.1): a "Session" tab renders `{can, can't}` from
+  `GET /me`'s real grant — a declared `allowed-tools` list is not a grant.
+  `WhoAmI` gains `known_capabilities` (= `capability::all()`) so a client
+  computes "can't" = vocabulary − granted; `/ui/api/me` added to the
+  session-authed read proxy.
+- **Session-chrome badges** (353.2): every thread in the sidebar shows a
+  running / idle / needs-input / needs-approval / done badge, derived from its
+  assignee + working clock (`work_started_at`) + state + pending gate (a gate
+  with a schema = needs-input, without = needs-approval). No backend change.
+- **Attenuation chrome** (353.3): the Tokens tab shows the caller's grant (the
+  ceiling) and blocks a mint that would widen it (`capsExceedingGrant`) — the
+  client mirror of the server's `validate_subset`.
+- **WCAG-AA keyboard operability** (353.4): the tab bar is a proper ARIA tablist
+  (roles, roving tabindex, Arrow/Home/End), a skip link → `#main-content`, and a
+  `:focus-visible` outline on every control. `lang="en"` was already present.
+
 ## [352.0.0] — 2026-09-04
 
 Post-gate hardening (Phase XXIV). **Wave 1 #3 of the forward program — the HITL

@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v353.0.0 — the identity chrome (Wave 1 #4)
+
+A stacked cluster (353.1–353.4) giving the vanilla `/ui` the human-facing chrome for the 350/351/352 mechanics — what a session can do, where each task's occupant sits, that a token cannot widen its grant — all keyboard-operable to WCAG 2.1 AA. No SPA; every badge and card derives from data the backend already serves (the only backend touch was one additive `WhoAmI` field + one proxy route).
+
+| Change | Where |
+|--------|-------|
+| **Capability card (353.1):** a Session tab renders `{can, can't}` from `/me`'s real grant; `WhoAmI.known_capabilities` + `/ui/api/me`. | `crates/maidan-server/src/{dto,app,routes/member}.rs`, `crates/maidan-server/static/index.html` |
+| **Session-chrome badges (353.2):** per-thread running / idle / needs-input / needs-approval / done, from assignee + working clock + state + gate schema. | `crates/maidan-server/static/index.html` |
+| **Attenuation chrome (353.3):** minting cannot widen the caller's grant (`capsExceedingGrant`, the client mirror of `validate_subset`). | `crates/maidan-server/static/index.html` |
+| **WCAG-AA tablist + skip link (353.4):** ARIA roles, roving tabindex, Arrow/Home/End, skip link, `:focus-visible`. | `crates/maidan-server/static/index.html` |
+
+Guarded by four new `ui_js_contract` static checks + four Playwright specs (`session`, `session-chrome`, `attenuation`, `a11y`) + a `ui_session_e2e` Rust test.
+
 ## v352.0.0 — the HITL list (Wave 1 #3)
 
 A stacked cluster (352.1–352.4) bringing A2A `tasks/list` up to the live A2A 1.0.0 conformance bar, so an **external** A2A agent can discover a pending Cluster-350 held gate by polling `tasks/list?status=input-required` — the gate it must answer now shows up as an `input-required` task.
