@@ -84,13 +84,16 @@ pub async fn list_tasks(
     pool: &PgPool,
     workspace_id: WorkspaceId,
     limit: i64,
+    updated_after: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
     let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
-        "SELECT task_json FROM maidan_a2a_tasks WHERE workspace_id = $1
+        "SELECT task_json FROM maidan_a2a_tasks
+         WHERE workspace_id = $1 AND ($3::timestamptz IS NULL OR updated_at > $3)
          ORDER BY updated_at DESC, id DESC LIMIT $2",
     )
     .bind(workspace_id.0)
     .bind(limit)
+    .bind(updated_after)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())

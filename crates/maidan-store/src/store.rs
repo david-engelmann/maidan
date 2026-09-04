@@ -1377,10 +1377,14 @@ pub trait A2aStore: Send + Sync {
     ) -> Result<Option<WorkspaceId>, StoreError>;
     /// List a workspace's A2A task JSON blobs, most-recently-updated first, up to
     /// `limit`. The A2A `ListTasks` operation filters + paginates over this.
+    /// A workspace's A2A tasks, most-recently-updated first. `updated_after`
+    /// (Cluster 352.4 / H12, the A2A `statusTimestampAfter` filter) keeps only tasks
+    /// whose status changed strictly after the given instant.
     async fn list_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
         limit: i64,
+        updated_after: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<Vec<serde_json::Value>, StoreError>;
 
     /// Per-task A2A push notification configs (A2A v1.0 spec model: many configs per

@@ -1777,8 +1777,9 @@ impl A2aStore for SqliteStore {
         &self,
         workspace_id: WorkspaceId,
         limit: i64,
+        updated_after: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<Vec<serde_json::Value>, StoreError> {
-        a2a::list_tasks(&self.pool, workspace_id, limit).await
+        a2a::list_tasks(&self.pool, workspace_id, limit, updated_after).await
     }
 
     async fn create_a2a_task_push_config(

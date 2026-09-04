@@ -102,19 +102,19 @@ async fn list_a2a_tasks_returns_workspace_tasks_within_limit() {
         .unwrap();
 
     // Workspace-scoped: ws_a sees only its 3 tasks, not ws_b's.
-    let a_tasks = store.list_a2a_tasks(ws_a.id, 50).await.unwrap();
+    let a_tasks = store.list_a2a_tasks(ws_a.id, 50, None).await.unwrap();
     assert_eq!(a_tasks.len(), 3);
     assert!(a_tasks
         .iter()
         .all(|t| t["id"].as_str().unwrap().starts_with("a-")));
 
     // Limit is honored.
-    let limited = store.list_a2a_tasks(ws_a.id, 2).await.unwrap();
+    let limited = store.list_a2a_tasks(ws_a.id, 2, None).await.unwrap();
     assert_eq!(limited.len(), 2);
 
     // Empty workspace lists nothing.
     let empty = store
-        .list_a2a_tasks(WorkspaceId(uuid::Uuid::new_v4()), 50)
+        .list_a2a_tasks(WorkspaceId(uuid::Uuid::new_v4()), 50, None)
         .await
         .unwrap();
     assert!(empty.is_empty());
