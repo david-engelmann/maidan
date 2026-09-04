@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v352.0.0 — the HITL list (Wave 1 #3)
+
+A stacked cluster (352.1–352.4) bringing A2A `tasks/list` up to the live A2A 1.0.0 conformance bar, so an **external** A2A agent can discover a pending Cluster-350 held gate by polling `tasks/list?status=input-required` — the gate it must answer now shows up as an `input-required` task.
+
+| Change | Where |
+|--------|-------|
+| **Gates as `input-required` tasks (352.1):** `gate_as_task` synthesizes a task view from a pending approval gate at read time; `tasks/get` falls back to a gate lookup, `tasks/list` leads with gate-tasks. RBAC-checked; no real task materialized. | `crates/maidan-server/src/a2a_agent.rs`, `crates/maidan-a2a/src/protocol.rs` |
+| **`status` filter + `pageSize` max 100 (352.2):** `normalize_task_state` (kebab/enum/bare → canonical); `pageSize` clamps `1..=100`. | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-server/src/a2a_agent.rs` |
+| **`application/a2a+json` + `includeArtifacts` (352.3):** REST §11 media type; `includeArtifacts` accepted on get + list (omitted when false). | `crates/maidan-server/src/a2a_agent.rs`, `crates/maidan-a2a/src/protocol.rs` |
+| **`statusTimestampAfter` filter (352.4):** `list_a2a_tasks` gains `updated_after` (both backends); malformed → 400. | `crates/maidan-store/src/{store,postgres/a2a,sqlite/a2a}.rs`, `crates/maidan-server/src/a2a_agent.rs` |
+
+Deferred: 352.5 real `nextPageToken` keyset paging (Open Work — needs RBAC-in-query first; the ≤`pageSize` case is already conformant).
+
 ## v351.0.0 — the occupancy clocks (Wave 1 #2)
 
 A multi-PR cluster (351.1–351.6): a live picture of where every task-thread's work sits, plus fencing against zombie holders. The centrepiece is **two clocks** — the claim clock (lease) and the working clock (acknowledge) — which separate a claimed-but-idle agent from one actively working.

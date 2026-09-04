@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [352.0.0] — 2026-09-04
+
+Post-gate hardening (Phase XXIV). **Wave 1 #3 of the forward program — the HITL
+list (A2A `tasks/list` conformance; EXPAND 282–289).** A stacked cluster
+(352.1–352.4). No new gate tag.
+
+### Added
+
+- **Pending held gates surface as A2A `input-required` tasks** (352.1). A Cluster-350
+  approval gate has no `maidan_a2a_tasks` row, so an external A2A agent could not
+  discover it. `tasks/get` and `tasks/list` now synthesize an `input-required` task
+  view from a pending gate at read time (`gate_as_task`), RBAC-checked so a caller
+  only sees gates on threads it can reach. The view disappears the instant the gate
+  resolves — no real task is materialized (that would break A2A task-state
+  monotonicity).
+- **`tasks/list` conformance filters** (352.2–352.4): a `status` filter that accepts
+  kebab / enum / bare spellings via `normalize_task_state` (`?status=input-required`
+  finds the gate); `pageSize` clamped to `1..=100` (live spec cap); a
+  `statusTimestampAfter` (RFC 3339) filter pushed into `list_a2a_tasks`
+  (`updated_after`, both backends) for "what changed since I last looked"; a
+  malformed timestamp is a `-32602` / 400, not a silent pass.
+- **REST §11 media type + `includeArtifacts`** (352.3): responses carry
+  `application/a2a+json`; `includeArtifacts` is accepted on `tasks/get` and
+  `tasks/list` (omitted when false).
+
+### Notes
+
+- **352.5 (real `nextPageToken` keyset paging) is deferred**, not shipped —
+  correct paging needs the per-channel RBAC filter pushed into the store query
+  (the current post-fetch filter breaks a cursor), and the always-`""` token is
+  already conformant for the ≤`pageSize` common case that H12 hits (a handful of
+  pending gates). Logged in Open Work behind its RBAC-in-query prerequisite.
+
 ## [351.0.0] — 2026-09-03
 
 Post-gate hardening (Phase XXIV). **Wave 1 #2 of the forward program — the occupancy
