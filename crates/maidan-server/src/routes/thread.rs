@@ -303,6 +303,43 @@ pub async fn get_thread_result(
     }
 }
 
+/// Set (upsert) a thread's persisted steer (Cluster 355, W1) — durable steering
+/// guidance from the owner/supervisor that survives claims and handoffs.
+/// Governance, so `thread:transition` + thread access. `steered_by` is the
+/// caller.
+pub async fn set_thread_steer(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadSteer>,
+) -> ApiResult<Json<ThreadSteer>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let steer = state
+        .store
+        .set_thread_steer(thread_id, auth.member_id, &body.steer)
+        .await?;
+    Ok(Json(steer))
+}
+
+/// A thread's current steer, or `404` if none is set (Cluster 355, W1). Any
+/// member with thread access reads it — a resuming/newly-assigned agent follows
+/// the current steer.
+pub async fn get_thread_steer(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadSteer>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_steer(thread_id).await? {
+        Some(steer) => Ok(Json(steer)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

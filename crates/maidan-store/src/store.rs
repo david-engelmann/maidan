@@ -113,6 +113,23 @@ pub trait ThreadResultStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait ThreadSteerStore: Send + Sync {
+    /// A thread's persisted steer (Cluster 355, W1): `set` upserts (latest wins),
+    /// `get` returns `None` until one is set. A durable instruction that survives
+    /// claims/handoffs — distinct from a Cluster-195 handoff note.
+    async fn set_thread_steer(
+        &self,
+        thread_id: ThreadId,
+        steered_by: MemberId,
+        steer: &str,
+    ) -> Result<ThreadSteer, StoreError>;
+    async fn get_thread_steer(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadSteer>, StoreError>;
+}
+
+#[async_trait]
 pub trait ApprovalGateStore: Send + Sync {
     /// A durable human-approval gate (Cluster 350, the held gate): `create` opens
     /// a `Pending` gate, `resolve` compare-and-sets it to accept/decline/cancel
@@ -1436,6 +1453,7 @@ pub trait Store:
     + MemberStore
     + SkillStore
     + ThreadResultStore
+    + ThreadSteerStore
     + ApprovalGateStore
     + GlossaryStore
     + NotificationStore
@@ -1478,6 +1496,7 @@ impl<
             + MemberStore
             + SkillStore
             + ThreadResultStore
+            + ThreadSteerStore
             + ApprovalGateStore
             + GlossaryStore
             + NotificationStore

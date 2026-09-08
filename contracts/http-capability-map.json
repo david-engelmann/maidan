@@ -516,6 +516,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/steer",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/steer",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/approval-gates",
     "capability": "workspace:read",

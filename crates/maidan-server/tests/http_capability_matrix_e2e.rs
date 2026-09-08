@@ -418,6 +418,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
     }
+    if path == "/threads/{id}/steer" && method == "PUT" {
+        return b.json(&json!({ "steer": "focus on the failing test first" }));
+    }
     if path == "/approval-gates/{id}/answer" && method == "POST" {
         return b.json(&json!({ "request_state": "x", "action": "accept" }));
     }
