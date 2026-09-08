@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v354.0.0 — the wait contract (Wave 1 #5)
+
+A stacked cluster (354.1–354.3, H4) hardening the `wait_for_*` long-polls. The waits were live-only — a signal that fired between the caller's last drain and the subscribe was silently missed (the drain/subscribe race). They now take an opt-in `since_log_id` lookback that closes the gap, and the surrounding contract (resume, idempotency, evict-on-wait) is written down.
+
+| Change | Where |
+|--------|-------|
+| **Member-wait lookback (354.1):** `wait_for_mention` / `wait_for_notification` gain `since_log_id`; replay the log for a matching event before parking live. | `crates/maidan-mcp/src/tools/member.rs`, `catalog.rs` |
+| **Thread/workspace-wait lookback (354.2):** `wait_for_result` / `wait_for_ready` / `wait_for_claim_expired` the same, via a shared `lookback_event`. | `crates/maidan-mcp/src/tools/thread.rs`, `catalog.rs` |
+| **The wait contract (354.3):** the no-occupancy-I/O-in-Drop invariant codified at `PresenceRegistration::drop`; the resume / idempotency / evict-on-wait contract documented in Integration.md. | `crates/maidan-server/src/presence.rs`, `docs/Integration.md` |
+
+Gapless by construction (subscribe-before-lookback), RBAC-preserving, opt-in (omit `since_log_id` for pure-live). No new store surface.
+
 ## v353.0.0 — the identity chrome (Wave 1 #4)
 
 A stacked cluster (353.1–353.4) giving the vanilla `/ui` the human-facing chrome for the 350/351/352 mechanics — what a session can do, where each task's occupant sits, that a token cannot widen its grant — all keyboard-operable to WCAG 2.1 AA. No SPA; every badge and card derives from data the backend already serves (the only backend touch was one additive `WhoAmI` field + one proxy route).

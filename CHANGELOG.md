@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [354.0.0] — 2026-09-08
+
+Post-gate hardening (Phase XXIV). **Wave 1 #5 of the forward program — the wait
+contract (H4).** A stacked cluster (354.1–354.3) hardening the `wait_for_*`
+long-polls. No new gate tag.
+
+### Added / Changed
+
+- **Lookback on the `wait_for_*` long-polls** (354.1–354.2). The waits were
+  live-only, so a signal that fired between the caller's last drain and the
+  subscribe was missed. All five (`wait_for_mention`, `wait_for_notification`,
+  `wait_for_result`, `wait_for_ready`, `wait_for_claim_expired`) now accept an
+  optional `since_log_id`: after subscribing, the wait replays the durable event
+  log for a matching event with `log_id > since_log_id` before parking live —
+  closing the race, RBAC-filtered like the live path. Subscribe-before-lookback
+  keeps it gapless; omit `since_log_id` for the unchanged live behaviour. Reuses
+  `Store::list_events_after` — no new store surface.
+
+### Notes
+
+- **The wait contract** (354.3), both already-holding invariants: a comment at
+  `PresenceRegistration::drop` codifies the **no-occupancy-I/O-in-Drop**
+  invariant (the tree's only `Drop`, and it touches only the store-less in-memory
+  presence hub); Integration.md documents the agent-author contract — resume with
+  `since_log_id`, make pre-wait side effects idempotent, and **evict-on-wait** (a
+  wait doesn't renew the claim lease, so a waiter that outlives its lease is
+  reclaimed).
+
 ## [353.0.0] — 2026-09-04
 
 Post-gate hardening (Phase XXIV). **Wave 1 #4 of the forward program — the
