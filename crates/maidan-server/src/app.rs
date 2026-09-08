@@ -224,6 +224,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/children", get(routes::list_child_threads))
         .route(
+            "/threads/:id/mute",
+            axum::routing::post(routes::mute_thread).delete(routes::unmute_thread),
+        )
+        .route(
             "/workspaces/:wid/approval-gates",
             axum::routing::get(routes::list_approval_gates),
         )

@@ -137,6 +137,43 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("tf2")
         .is_empty());
+
+    // Leaf mute (Cluster 356, F7) — independent of follows.
+    assert!(!store
+        .is_thread_muted(a.id, thread.id)
+        .await
+        .expect("not muted initially"));
+    store.mute_thread(a.id, thread.id).await.expect("a mutes");
+    store
+        .mute_thread(a.id, thread.id)
+        .await
+        .expect("mute idempotent");
+    store.mute_thread(b.id, thread.id).await.expect("b mutes");
+    assert!(store
+        .is_thread_muted(a.id, thread.id)
+        .await
+        .expect("a muted"));
+    let mut muters = store.thread_muters(thread.id).await.expect("muters");
+    muters.sort_by_key(|m| m.0);
+    let mut want = vec![a.id, b.id];
+    want.sort_by_key(|m| m.0);
+    assert_eq!(muters, want, "both members mute the thread");
+    assert!(store
+        .unmute_thread(a.id, thread.id)
+        .await
+        .expect("a unmutes"));
+    assert!(!store
+        .unmute_thread(a.id, thread.id)
+        .await
+        .expect("second unmute removes nothing"),);
+    assert!(!store
+        .is_thread_muted(a.id, thread.id)
+        .await
+        .expect("a no longer muted"));
+    assert_eq!(
+        store.thread_muters(thread.id).await.expect("muters2"),
+        vec![b.id]
+    );
 }
 
 #[tokio::test]

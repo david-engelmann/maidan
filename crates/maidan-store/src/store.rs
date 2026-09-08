@@ -293,6 +293,26 @@ pub trait FollowStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<Vec<ThreadFollow>, StoreError>;
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+
+    /// Mute a specific thread for a member (Cluster 356, F7 leaf mute). Idempotent;
+    /// the notification router suppresses notifications about a muted thread.
+    async fn mute_thread(&self, member_id: MemberId, thread_id: ThreadId)
+        -> Result<(), StoreError>;
+    /// Unmute a thread. `true` if it was muted.
+    async fn unmute_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError>;
+    /// Whether `member_id` has muted `thread_id`.
+    async fn is_thread_muted(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError>;
+    /// Members who have muted `thread_id` — the router subtracts them from a
+    /// `MessagePosted` fan-out in one batch query.
+    async fn thread_muters(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
 }
 
 #[async_trait]

@@ -376,6 +376,37 @@ pub async fn list_child_threads(
     Ok(Json(state.store.child_thread_summaries(thread_id).await?))
 }
 
+/// Mute a thread for the caller (Cluster 356, F7 leaf mute). The notification
+/// router then suppresses this thread's notifications for the caller. Personal to
+/// the caller (`auth.member_id`); `workspace:read` + thread access. Idempotent.
+pub async fn mute_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    state.store.mute_thread(auth.member_id, thread_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unmute a thread for the caller (Cluster 356, F7). `404` if it was not muted.
+pub async fn unmute_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state.store.unmute_thread(auth.member_id, thread_id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

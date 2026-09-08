@@ -248,6 +248,41 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         2,
         "a non-follower gets no follow notification"
     );
+
+    // Cluster 356 (F7 leaf mute): the follower mutes this thread, so a further post
+    // in it produces no new notification for them even though they still follow the
+    // channel.
+    store.mute_thread(follower.id, thread.id).await.unwrap();
+    let msg2 = store
+        .post_message(maidan_types::NewMessage {
+            thread_id: thread.id,
+            author_id: author.id,
+            body: "another reply".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let posted2 = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: thread.id,
+        dm_conversation_id: None,
+        message: msg2,
+    };
+    notification_router::route_event(&state, 6, &posted2)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_notifications(follower.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a leaf-muted thread produces no new notification for the follower"
+    );
 }
 
 /// Cluster 249: a recording transport that captures what would be emailed.

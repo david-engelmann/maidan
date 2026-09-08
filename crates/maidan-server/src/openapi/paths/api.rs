@@ -808,6 +808,18 @@ pub fn get_thread_steer() {}
     responses((status = 200, body = [ChildThreadSummary])))]
 pub fn list_child_threads() {}
 
+#[utoipa::path(post, path = "/threads/{id}/mute", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Thread muted for the caller")))]
+pub fn mute_thread() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/mute", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Thread unmuted"), (status = 404, description = "Was not muted")))]
+pub fn unmute_thread() {}
+
 // --- approval gates (the held gate, Cluster 350) ---
 
 #[utoipa::path(get, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
