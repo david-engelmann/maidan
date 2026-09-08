@@ -222,6 +222,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/:id/steer",
             axum::routing::put(routes::set_thread_steer).get(routes::get_thread_steer),
         )
+        .route("/threads/:id/children", get(routes::list_child_threads))
         .route(
             "/workspaces/:wid/approval-gates",
             axum::routing::get(routes::list_approval_gates),

@@ -739,6 +739,12 @@ impl ThreadStore for SqliteStore {
     ) -> Result<Vec<Thread>, StoreError> {
         threads::page_for_channel(&self.pool, channel_id, after, limit).await
     }
+    async fn child_thread_summaries(
+        &self,
+        parent_id: ThreadId,
+    ) -> Result<Vec<ChildThreadSummary>, StoreError> {
+        threads::child_summaries(&self.pool, parent_id).await
+    }
 
     async fn transition_thread(
         &self,

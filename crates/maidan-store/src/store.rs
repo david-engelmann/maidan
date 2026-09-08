@@ -573,6 +573,13 @@ pub trait ThreadStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Thread>, StoreError>;
 
+    /// A parent thread's child threads, collapsed with a message count each
+    /// (Cluster 356, F2). Oldest first; tombstoned children excluded.
+    async fn child_thread_summaries(
+        &self,
+        parent_id: ThreadId,
+    ) -> Result<Vec<ChildThreadSummary>, StoreError>;
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,
