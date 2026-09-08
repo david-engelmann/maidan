@@ -1111,6 +1111,37 @@ mod tests {
             unwrap_content(out.unwrap()).is_null(),
             "a ready task in an inaccessible private channel is filtered → timeout"
         );
+
+        // Cluster 354 lookback: readiness signalled BEFORE the waiter subscribes is
+        // caught when the caller passes since_log_id — no concurrent publish.
+        let id = server
+            .publish_event(ready(pub_thread.clone()))
+            .await
+            .unwrap();
+        let lookback_args = json!({ "timeout_ms": 300, "since_log_id": id - 1 });
+        let got = unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_ready", &lookback_args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["kind"], json!("thread_ready"));
+        assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+
+        // RBAC holds in the lookback path: a pre-subscribe ready in a private
+        // channel the agent can't access is filtered → null.
+        let sid = server
+            .publish_event(ready(secret_thread.clone()))
+            .await
+            .unwrap();
+        let priv_args = json!({ "timeout_ms": 300, "since_log_id": sid - 1 });
+        assert!(unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_ready", &priv_args)
+                .await
+                .unwrap()
+        )
+        .is_null());
     }
 
     #[tokio::test]
@@ -1223,6 +1254,35 @@ mod tests {
             unwrap_content(out.unwrap()).is_null(),
             "an expiry in an inaccessible private channel is filtered → timeout"
         );
+
+        // Cluster 354 lookback: an expiry reclaimed BEFORE the waiter subscribes is
+        // caught via since_log_id, and RBAC still filters a private one.
+        let id = server
+            .publish_event(expired(pub_thread.clone()))
+            .await
+            .unwrap();
+        let lookback_args = json!({ "timeout_ms": 300, "since_log_id": id - 1 });
+        let got = unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_claim_expired", &lookback_args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["kind"], json!("claim_expired"));
+        assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+
+        let sid = server
+            .publish_event(expired(secret_thread.clone()))
+            .await
+            .unwrap();
+        let priv_args = json!({ "timeout_ms": 300, "since_log_id": sid - 1 });
+        assert!(unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_claim_expired", &priv_args)
+                .await
+                .unwrap()
+        )
+        .is_null());
     }
 
     #[tokio::test]
@@ -1335,6 +1395,25 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(got["result"], payload);
+
+        // Cluster 354 lookback: wait_for_result with since_log_id catches a result
+        // SET before the call subscribes. dep1's result was just set, so a lookback
+        // from the head of the log finds its thread_result_set and returns the
+        // payload without waiting on a live event.
+        let looked = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "wait_for_result",
+                    &json!({ "thread_id": dep1.id.0, "timeout_ms": 300, "since_log_id": 0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            looked["result"], payload,
+            "lookback returns dep1's already-set result"
+        );
 
         // wait_for_result on dep2 wakes when its result is produced after subscribe.
         let dep2_payload = json!({ "answer": 7 });

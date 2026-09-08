@@ -18,6 +18,61 @@ use crate::error::McpError;
 /// `wait_for_mention`.
 const DEFAULT_WAIT_MS: i64 = 30_000;
 const MAX_WAIT_MS: i64 = 300_000;
+/// Page size for the lookback replay over the durable event log (Cluster 354).
+const LOOKBACK_BATCH: i64 = 256;
+
+/// Replay the durable event log for the earliest event of one of `kinds` with
+/// `log_id > since` (Cluster 354 lookback), optionally pinned to `channel_id`
+/// and/or `thread_id`, in the caller's workspace. When `rbac_thread` is set, an
+/// event in a thread the caller can't access is skipped (not revealed) — the
+/// live path's rule. Returns the deserialized `Event`, or `None` if the log has
+/// no such event. Filters on the `StoredEvent` columns before deserializing.
+async fn lookback_event(
+    store: &dyn Store,
+    auth: &AuthContext,
+    kinds: &std::collections::HashSet<EventKind>,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    since: i64,
+    rbac_thread: bool,
+) -> Result<Option<Event>, McpError> {
+    let mut after = since;
+    loop {
+        let batch = store
+            .list_events_after(auth.workspace_id, after, LOOKBACK_BATCH)
+            .await?;
+        let drained = (batch.len() as i64) < LOOKBACK_BATCH;
+        for stored in &batch {
+            after = stored.id;
+            if !kinds.contains(&stored.kind) {
+                continue;
+            }
+            if let Some(cid) = channel_id {
+                if stored.channel_id != Some(cid) {
+                    continue;
+                }
+            }
+            if let Some(tid) = thread_id {
+                if stored.thread_id != Some(tid) {
+                    continue;
+                }
+            }
+            let event: Event = serde_json::from_value(stored.payload.clone())
+                .map_err(|e| McpError::Internal(e.to_string()))?;
+            if rbac_thread && !auth.bypass {
+                if let Some(tid) = event.thread_id() {
+                    if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                        continue;
+                    }
+                }
+            }
+            return Ok(Some(event));
+        }
+        if drained {
+            return Ok(None);
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct ListThreadsArgs {
@@ -451,6 +506,12 @@ struct WaitForResultArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
+    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
+    /// replay the log for a `ThreadResultSet` on this thread with `log_id >
+    /// since_log_id` before parking live — so a result produced in the gap before
+    /// this call subscribes is not missed.
+    #[serde(default)]
+    since_log_id: Option<i64>,
 }
 
 /// Block until a task's structured result is produced — a `ThreadResultSet`
@@ -495,6 +556,21 @@ pub(super) async fn wait_for_result(
     // Access to `thread_id` is enforced by the pre-dispatch gate; the filter pins
     // the thread, so any event that arrives is the one we're waiting on.
     let store = server.store.as_ref();
+
+    // Lookback (Cluster 354): a result set in the gap before this subscribe is
+    // still caught. No RBAC re-check — the pre-dispatch gate already cleared the
+    // thread. Subscribe-before-lookback keeps it gapless.
+    if let Some(since) = a.since_log_id {
+        let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
+        if lookback_event(store, auth, &kinds, None, Some(thread_id), since, false)
+            .await?
+            .is_some()
+        {
+            let result = store.get_thread_result(thread_id).await?;
+            return Ok(content_json(&result));
+        }
+    }
+
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
@@ -556,6 +632,11 @@ struct WaitForReadyArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
+    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
+    /// replay the log for a `ThreadReady` with `log_id > since_log_id` (in scope,
+    /// RBAC-filtered) before parking live.
+    #[serde(default)]
+    since_log_id: Option<i64>,
 }
 
 /// Block until a task becomes ready — its last blocking dependency reached a
@@ -595,6 +676,26 @@ pub(super) async fn wait_for_ready(
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+
+    // Lookback (Cluster 354): a readiness signalled in the gap before this
+    // subscribe is still caught, RBAC-filtered like the live path.
+    if let Some(since) = a.since_log_id {
+        let kinds = std::collections::HashSet::from([EventKind::ThreadReady]);
+        if let Some(event) = lookback_event(
+            store,
+            auth,
+            &kinds,
+            a.channel_id.map(ChannelId),
+            None,
+            since,
+            true,
+        )
+        .await?
+        {
+            return Ok(content_json(&event));
+        }
+    }
+
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
@@ -627,6 +728,11 @@ struct WaitForClaimExpiredArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
+    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
+    /// replay the log for a `ClaimExpired` with `log_id > since_log_id` (in scope,
+    /// RBAC-filtered) before parking live.
+    #[serde(default)]
+    since_log_id: Option<i64>,
 }
 
 /// Block until a claim's lease lapses and its thread is reclaimed, emitting
@@ -665,6 +771,26 @@ pub(super) async fn wait_for_claim_expired(
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+
+    // Lookback (Cluster 354): an expiry reclaimed in the gap before this
+    // subscribe is still caught, RBAC-filtered like the live path.
+    if let Some(since) = a.since_log_id {
+        let kinds = std::collections::HashSet::from([EventKind::ClaimExpired]);
+        if let Some(event) = lookback_event(
+            store,
+            auth,
+            &kinds,
+            a.channel_id.map(ChannelId),
+            None,
+            since,
+            true,
+        )
+        .await?
+        {
+            return Ok(content_json(&event));
+        }
+    }
+
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
