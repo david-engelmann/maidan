@@ -195,3 +195,64 @@ pub async fn thread_muters(
         .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
         .collect())
 }
+
+/// Mute a whole channel for a member (Cluster 357, N3). Idempotent — the
+/// notification router suppresses the channel's firehose, but a mention breaks
+/// through (357.2).
+pub async fn mute_channel(
+    pool: &PgPool,
+    member_id: MemberId,
+    channel_id: ChannelId,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_channel_mutes (member_id, channel_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(member_id.0)
+    .bind(channel_id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn unmute_channel(
+    pool: &PgPool,
+    member_id: MemberId,
+    channel_id: ChannelId,
+) -> Result<bool, StoreError> {
+    let res =
+        sqlx::query("DELETE FROM maidan_channel_mutes WHERE member_id = $1 AND channel_id = $2")
+            .bind(member_id.0)
+            .bind(channel_id.0)
+            .execute(pool)
+            .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+pub async fn is_channel_muted(
+    pool: &PgPool,
+    member_id: MemberId,
+    channel_id: ChannelId,
+) -> Result<bool, StoreError> {
+    let row =
+        sqlx::query("SELECT 1 FROM maidan_channel_mutes WHERE member_id = $1 AND channel_id = $2")
+            .bind(member_id.0)
+            .bind(channel_id.0)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.is_some())
+}
+
+pub async fn channel_muters(
+    pool: &PgPool,
+    channel_id: ChannelId,
+) -> Result<Vec<MemberId>, StoreError> {
+    let rows = sqlx::query("SELECT member_id FROM maidan_channel_mutes WHERE channel_id = $1")
+        .bind(channel_id.0)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
+        .collect())
+}

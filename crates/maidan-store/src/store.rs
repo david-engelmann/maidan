@@ -313,6 +313,28 @@ pub trait FollowStore: Send + Sync {
     /// Members who have muted `thread_id` — the router subtracts them from a
     /// `MessagePosted` fan-out in one batch query.
     async fn thread_muters(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+    /// Mute a whole channel for a member (Cluster 357, N3). Idempotent; the
+    /// router suppresses the channel's firehose, but a mention breaks through.
+    async fn mute_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<(), StoreError>;
+    /// Unmute a channel. `true` if it was muted.
+    async fn unmute_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError>;
+    /// Whether `member_id` has muted `channel_id`.
+    async fn is_channel_muted(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError>;
+    /// Members who have muted `channel_id` — the router subtracts them from a
+    /// `MessagePosted` fan-out in one batch query.
+    async fn channel_muters(&self, channel_id: ChannelId) -> Result<Vec<MemberId>, StoreError>;
 }
 
 #[async_trait]
