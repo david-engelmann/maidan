@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [357.0.0] — 2026-09-08
+
+Post-gate hardening (Phase XXIV). **Wave 1 #8 of the forward program — scoped
+notification mute (N3).** A stacked cluster (357.1–357.3) adding a per-channel
+mute with mention-breakthrough semantics. No new gate tag.
+
+### Added
+
+- **Per-channel mute** (357.1): `maidan_channel_mutes` (member, channel) table
+  (pg 0062 / sqlite 0061) + store `mute_channel`/`unmute_channel`/
+  `is_channel_muted`/`channel_muters` (both backends). Mirrors the Cluster-356.3
+  leaf-mute pattern at channel granularity.
+- **Router wiring + mention breakthrough** (357.2): the notification router drops
+  a channel-muter from the `MessagePosted` fan-out and the `notify` path, but a
+  `MentionRecorded` **breaks through** a channel mute. The mute hierarchy: an
+  explicit kind-mute (242) always wins; a thread mute (356.3) suppresses even a
+  mention; a channel mute silences the firehose but is pierced by a mention. Plus
+  `POST`/`DELETE /channels/:cid/mute` (self-scoped, `workspace:read` + channel
+  access).
+- **Channel-mute MCP tools** (357.3): `mute_channel` / `unmute_channel`.
+
+### Notes
+
+- **Design:** per-scope side table (consistent with 356.3's `thread_mutes`), not
+  a migration of the kind-only `maidan_notification_prefs` PK — mute is now
+  scopeable to kind, channel, and thread.
+- **Deferred (N3 sub-item):** the *projector-kind overlay* (muting by Slack/GitHub
+  projector origin) needs the notification to carry its projector provenance — a
+  separate design, logged in Open Work.
+
 ## [356.0.0] — 2026-09-08
 
 Post-gate hardening (Phase XXIV). **Wave 1 #7 of the forward program — the
