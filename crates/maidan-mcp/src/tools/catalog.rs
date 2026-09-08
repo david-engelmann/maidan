@@ -294,12 +294,13 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_result",
-            "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Live-only: read get_thread_result first for an already-produced result.",
+            "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "timeout_ms": {"type": "integer", "description": "wait window ms (default 30000, clamped 1000-300000)"}
+                    "timeout_ms": {"type": "integer", "description": "wait window ms (default 30000, clamped 1000-300000)"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 },
                 "required": ["thread_id"]
             }
@@ -417,23 +418,25 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_ready",
-            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees readiness signalled after the call subscribes, so pick up already-ready work with claim_next_thread first.",
+            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
-                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 }
             }
         }),
         json!({
             "name": "wait_for_claim_expired",
-            "description": "Block until a claim's lease lapses and its thread is reclaimed by the next agent (emitting claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Live-only: it sees expiries reclaimed after the call subscribes. A lease that expires but is never reclaimed emits nothing (poll get_channel_occupancy for that).",
+            "description": "Block until a claim's lease lapses and its thread is reclaimed by the next agent (emitting claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease that expires but is never reclaimed emits nothing (poll get_channel_occupancy for that).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
-                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 }
             }
         }),
