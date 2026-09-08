@@ -149,6 +149,8 @@ impl Modify for SecurityAddon {
         paths::get_channel,
         paths::get_channel_queue_depth,
         paths::get_channel_occupancy,
+        paths::mute_channel,
+        paths::unmute_channel,
         paths::add_channel_member,
         paths::list_channel_members,
         paths::remove_channel_member,

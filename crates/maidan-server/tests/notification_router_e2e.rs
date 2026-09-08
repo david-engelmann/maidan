@@ -497,3 +497,145 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
         "an un-owned expiry notifies no one"
     );
 }
+
+/// Cluster 357 (N3): a member who mutes a channel is dropped from its
+/// `MessagePosted` firehose, but a `MentionRecorded` in that channel still
+/// notifies them (mention breakthrough). A thread mute is stronger — it
+/// suppresses even a mention.
+#[tokio::test]
+async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(store.clone(), artifacts, bus, search);
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "cm".into() })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "member".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let author = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "author".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "busy".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+        })
+        .await
+        .unwrap();
+
+    // The member follows and then MUTES the channel.
+    store.follow_channel(member.id, channel.id).await.unwrap();
+    store.mute_channel(member.id, channel.id).await.unwrap();
+
+    // A post in the channel — suppressed by the channel mute (no firehose).
+    let msg = store
+        .post_message(maidan_types::NewMessage {
+            thread_id: thread.id,
+            author_id: author.id,
+            body: "firehose".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let posted = Event::MessagePosted {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: thread.id,
+        dm_conversation_id: None,
+        message: msg,
+    };
+    notification_router::route_event(&state, 1, &posted)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .list_notifications(member.id, false, 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a channel-muted member gets no firehose notification"
+    );
+
+    // A mention in the SAME channel — breaks through the channel mute.
+    let mention = Event::MentionRecorded {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        thread_id: thread.id,
+        message_id: maidan_types::MessageId::new(),
+        member_id: member.id,
+    };
+    notification_router::route_event(&state, 2, &mention)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_notifications(member.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a mention breaks through the channel mute"
+    );
+
+    // A thread mute is stronger: it suppresses even a mention.
+    store.mute_thread(member.id, thread.id).await.unwrap();
+    let mention2 = Event::MentionRecorded {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        thread_id: thread.id,
+        message_id: maidan_types::MessageId::new(),
+        member_id: member.id,
+    };
+    notification_router::route_event(&state, 3, &mention2)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_notifications(member.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a thread mute suppresses even a mention (no new notification)"
+    );
+}
