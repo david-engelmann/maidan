@@ -67,6 +67,36 @@ pub(super) async fn remove_channel_member(
     Ok(content_json(&serde_json::json!({"ok": true})))
 }
 
+/// Mute a channel for the caller (Cluster 357, N3, the MCP twin of
+/// `POST /channels/:cid/mute`). The notification router then suppresses the
+/// channel's firehose for the caller — a mention still breaks through. Channel
+/// access is enforced pre-dispatch.
+pub(super) async fn mute_channel(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    store
+        .mute_channel(auth.member_id, ChannelId(a.channel_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "muted": true })))
+}
+
+/// Unmute a channel for the caller (Cluster 357, N3, the MCP twin of
+/// `DELETE /channels/:cid/mute`). `{unmuted}` is `false` when it was not muted.
+pub(super) async fn unmute_channel(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    let unmuted = store
+        .unmute_channel(auth.member_id, ChannelId(a.channel_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "unmuted": unmuted })))
+}
+
 pub(super) async fn list_channels(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

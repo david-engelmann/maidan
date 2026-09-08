@@ -156,6 +156,28 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "mute_channel",
+            "description": "Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "unmute_channel",
+            "description": "Unmute a channel you previously muted. Returns unmuted=false if it was not muted.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
             "name": "get_tool_transcript",
             "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
             "inputSchema": {
