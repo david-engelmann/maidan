@@ -20,6 +20,8 @@ use crate::error::McpError;
 /// Default long-poll window, and the ceiling a caller may request.
 const DEFAULT_WAIT_MS: i64 = 30_000;
 const MAX_WAIT_MS: i64 = 300_000;
+/// Page size for the lookback replay over the durable event log (Cluster 354).
+const LOOKBACK_BATCH: i64 = 256;
 
 /// Default + max list size, mirroring the context tools' clamp.
 fn clamp_limit(limit: Option<i64>) -> i64 {
@@ -74,6 +76,13 @@ struct WaitForMentionArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped to 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
+    /// Lookback anchor (Cluster 354): the caller's high-water `log_id` from its
+    /// last drain. When set, the wait first replays the durable log for a matching
+    /// event with `log_id > since_log_id` before parking on the live stream — so a
+    /// signal that fired in the gap between the drain and this subscribe is not
+    /// missed. Omit for the pure-live behaviour.
+    #[serde(default)]
+    since_log_id: Option<i64>,
 }
 
 /// Block until `member_id` is next @mentioned, or the timeout lapses (Cluster
@@ -96,6 +105,7 @@ pub(super) async fn wait_for_mention(
         MemberId(a.member_id),
         HashSet::from([EventKind::MentionRecorded]),
         a.timeout_ms,
+        a.since_log_id,
     )
     .await
 }
@@ -112,6 +122,7 @@ async fn wait_for_member_event(
     member_id: MemberId,
     kinds: HashSet<EventKind>,
     timeout_ms: Option<i64>,
+    since_log_id: Option<i64>,
 ) -> Result<Value, McpError> {
     let Some(bus) = server.event_bus.as_ref() else {
         return Err(McpError::InvalidParams(
@@ -122,15 +133,26 @@ async fn wait_for_member_event(
 
     let filter = EventFilter {
         member_id: Some(member_id),
-        kinds: Some(kinds),
+        kinds: Some(kinds.clone()),
         ..EventFilter::default()
     };
+    // Subscribe BEFORE the lookback so there is no gap: an event that commits
+    // between the lookback query and now is caught live; one that committed
+    // before the query is caught by the lookback. Any overlap resolves to a
+    // single return (the lookback wins and the live stream is dropped).
     let mut stream = bus
         .subscribe(filter)
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+
+    if let Some(since) = since_log_id {
+        if let Some(event) = lookback_member_event(store, auth, member_id, &kinds, since).await? {
+            return Ok(content_json(&event));
+        }
+    }
+
     let deadline = tokio::time::Instant::now() + Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
@@ -153,6 +175,49 @@ async fn wait_for_member_event(
             }
         }
         return Ok(content_json(&envelope.event));
+    }
+}
+
+/// Replay the durable event log for the earliest event of one of `kinds`
+/// addressed to `member_id` with `log_id > since` (Cluster 354 lookback). Returns
+/// the deserialized `Event`, RBAC-filtered like the live path (a match in a thread
+/// the caller can't access is skipped, not revealed), or `None` if the log has no
+/// such event. Scoped to `auth.workspace_id` — member-addressed events live there.
+async fn lookback_member_event(
+    store: &dyn Store,
+    auth: &AuthContext,
+    member_id: MemberId,
+    kinds: &HashSet<EventKind>,
+    since: i64,
+) -> Result<Option<Event>, McpError> {
+    let mut after = since;
+    loop {
+        let batch = store
+            .list_events_after(auth.workspace_id, after, LOOKBACK_BATCH)
+            .await?;
+        let drained = (batch.len() as i64) < LOOKBACK_BATCH;
+        for stored in &batch {
+            after = stored.id;
+            if !kinds.contains(&stored.kind) {
+                continue;
+            }
+            let event: Event = serde_json::from_value(stored.payload.clone())
+                .map_err(|e| McpError::Internal(e.to_string()))?;
+            if event.member_id() != Some(member_id) {
+                continue;
+            }
+            if !auth.bypass {
+                if let Some(tid) = event.thread_id() {
+                    if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                        continue;
+                    }
+                }
+            }
+            return Ok(Some(event));
+        }
+        if drained {
+            return Ok(None);
+        }
     }
 }
 
@@ -241,6 +306,7 @@ pub(super) async fn wait_for_notification(
         MemberId(a.member_id),
         notifiable_kinds(),
         a.timeout_ms,
+        a.since_log_id,
     )
     .await
 }
