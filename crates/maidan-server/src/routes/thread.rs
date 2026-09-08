@@ -350,6 +350,40 @@ pub async fn unassign_thread(
     Ok(Json(thread))
 }
 
+/// Set a thread's durable owner (Cluster 355, W1) — the accountable party,
+/// distinct from the assignee/claimer. Governance, so `thread:transition` +
+/// thread access. Once set, the owner opts the thread into separation of duties:
+/// the claimer can no longer land its own work (enforced in the FSM transition).
+/// `owner_id` is a target, not the caller, so there is no acting-member guard.
+pub async fn set_thread_owner(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadOwner>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let thread = state
+        .store
+        .set_thread_owner(thread_id, Some(MemberId(body.owner_id)))
+        .await?;
+    Ok(Json(thread))
+}
+
+/// Clear a thread's owner (Cluster 355, W1) — lifts separation of duties.
+pub async fn remove_thread_owner(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let thread = state.store.set_thread_owner(thread_id, None).await?;
+    Ok(Json(thread))
+}
+
 pub async fn claim_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

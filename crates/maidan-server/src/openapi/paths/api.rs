@@ -533,6 +533,19 @@ pub fn assign_thread() {}
     responses((status = 200, body = Thread)))]
 pub fn unassign_thread() {}
 
+#[utoipa::path(put, path = "/threads/{id}/owner", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadOwner,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread)))]
+pub fn set_thread_owner() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/owner", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread)))]
+pub fn remove_thread_owner() {}
+
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = ClaimThread,

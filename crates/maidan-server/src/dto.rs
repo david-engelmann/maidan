@@ -68,6 +68,13 @@ pub struct AssignThread {
     pub note: Option<String>,
 }
 
+/// Set a thread's durable owner (Cluster 355, W1) — the accountable party,
+/// distinct from the assignee/claimer.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadOwner {
+    pub owner_id: uuid::Uuid,
+}
+
 /// Atomically claim an unassigned thread for a member (Cluster 171). The
 /// claimer is both the actor and the assignee.
 #[derive(Debug, Deserialize, ToSchema)]

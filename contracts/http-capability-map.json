@@ -444,6 +444,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/owner",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/owner",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/assignee/claim",
     "capability": "thread:transition",

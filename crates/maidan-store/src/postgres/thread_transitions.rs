@@ -42,6 +42,16 @@ async fn transition_in_tx(
         ))
     })?;
 
+    // Separation of duties (Cluster 355, W1): on an owner-governed thread the
+    // claimer cannot land its own work — a terminal transition (the "merge") must
+    // be performed by the owner or another member. Un-owned threads are
+    // unrestricted, so this is inert until an owner is set.
+    if thread.owner_id.is_some() && to_state.is_terminal() && thread.assignee_id == Some(actor_id) {
+        return Err(StoreError::Conflict(
+            "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
+        ));
+    }
+
     if let Some(parent_id) = thread.parent_thread_id {
         let parent_row = sqlx::query(
             "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id

@@ -384,6 +384,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/assignee" && method == "DELETE" {
         return b.json(&json!({ "actor_id": f.member }));
     }
+    if path == "/threads/{id}/owner" && method == "PUT" {
+        return b.json(&json!({ "owner_id": f.member }));
+    }
     if path == "/threads/{id}/assignee/claim" && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
     }

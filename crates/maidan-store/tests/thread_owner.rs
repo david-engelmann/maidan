@@ -104,10 +104,81 @@ async fn run_owner_suite(store: &dyn Store) {
     assert!(matches!(missing, Err(StoreError::NotFound)));
 }
 
+/// Separation of duties (Cluster 355, W1): on an owner-governed thread the
+/// claimer cannot land its own work; the owner or another member must.
+async fn run_sod_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "sod".into() })
+        .await
+        .expect("ws");
+    let mk_member = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let owner = store
+        .create_member(mk_member("owner"))
+        .await
+        .expect("owner");
+    let claimer = store
+        .create_member(mk_member("claimer"))
+        .await
+        .expect("claimer");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("task".into()),
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_owner(thread.id, Some(owner.id))
+        .await
+        .expect("set owner");
+    store
+        .assign_thread(thread.id, claimer.id)
+        .await
+        .expect("assign");
+
+    // The claimer may move it into review (non-terminal — not a "land").
+    store
+        .transition_thread(thread.id, claimer.id, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .expect("claimer may start review");
+
+    // The claimer CANNOT land (close) its own owned work — separation of duties.
+    let denied = store
+        .transition_thread(thread.id, claimer.id, maidan_fsm::ThreadAction::Close)
+        .await;
+    assert!(
+        matches!(denied, Err(StoreError::Conflict(_))),
+        "claimer landing its own owned thread must be rejected, got {denied:?}"
+    );
+
+    // The owner (a non-claimer) may land it.
+    let landed = store
+        .transition_thread(thread.id, owner.id, maidan_fsm::ThreadAction::Close)
+        .await
+        .expect("owner may land the work");
+    assert_eq!(landed.to_state, maidan_types::ThreadState::Closed);
+}
+
 #[tokio::test]
 async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_sqlite() {
     let store = sqlite().await;
     run_owner_suite(&store).await;
+    run_sod_suite(&store).await;
 }
 
 #[tokio::test]
@@ -142,4 +213,5 @@ async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_owner_suite(&store).await;
+    run_sod_suite(&store).await;
 }
