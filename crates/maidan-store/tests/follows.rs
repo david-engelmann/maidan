@@ -174,6 +174,52 @@ async fn run_suite(store: &dyn Store) {
         store.thread_muters(thread.id).await.expect("muters2"),
         vec![b.id]
     );
+
+    // Per-channel mute (Cluster 357, N3) — independent of follows and thread mute.
+    assert!(!store
+        .is_channel_muted(a.id, channel.id)
+        .await
+        .expect("channel not muted initially"));
+    store
+        .mute_channel(a.id, channel.id)
+        .await
+        .expect("a mutes channel");
+    store
+        .mute_channel(a.id, channel.id)
+        .await
+        .expect("channel mute idempotent");
+    store
+        .mute_channel(b.id, channel.id)
+        .await
+        .expect("b mutes channel");
+    assert!(store
+        .is_channel_muted(a.id, channel.id)
+        .await
+        .expect("a channel-muted"));
+    let mut cm = store
+        .channel_muters(channel.id)
+        .await
+        .expect("channel muters");
+    cm.sort_by_key(|m| m.0);
+    let mut want_cm = vec![a.id, b.id];
+    want_cm.sort_by_key(|m| m.0);
+    assert_eq!(cm, want_cm, "both members mute the channel");
+    assert!(store
+        .unmute_channel(a.id, channel.id)
+        .await
+        .expect("a unmutes channel"));
+    assert!(!store
+        .unmute_channel(a.id, channel.id)
+        .await
+        .expect("second channel unmute removes nothing"),);
+    assert!(!store
+        .is_channel_muted(a.id, channel.id)
+        .await
+        .expect("a no longer channel-muted"));
+    assert_eq!(
+        store.channel_muters(channel.id).await.expect("cm2"),
+        vec![b.id]
+    );
 }
 
 #[tokio::test]

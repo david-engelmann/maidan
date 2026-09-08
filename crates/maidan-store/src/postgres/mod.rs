@@ -633,6 +633,30 @@ impl FollowStore for PostgresStore {
     async fn thread_muters(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_muters(self.read_pool(), thread_id).await
     }
+    async fn mute_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<(), StoreError> {
+        follows::mute_channel(&self.pool, member_id, channel_id).await
+    }
+    async fn unmute_channel(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError> {
+        follows::unmute_channel(&self.pool, member_id, channel_id).await
+    }
+    async fn is_channel_muted(
+        &self,
+        member_id: MemberId,
+        channel_id: ChannelId,
+    ) -> Result<bool, StoreError> {
+        follows::is_channel_muted(self.read_pool(), member_id, channel_id).await
+    }
+    async fn channel_muters(&self, channel_id: ChannelId) -> Result<Vec<MemberId>, StoreError> {
+        follows::channel_muters(self.read_pool(), channel_id).await
+    }
 }
 
 #[async_trait]
