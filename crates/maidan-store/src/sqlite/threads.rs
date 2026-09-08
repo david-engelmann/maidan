@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ChannelOccupancy, ClaimLeaseId, Event, MemberId, NewThread, QueueDepth, StoredEvent,
-    Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
+    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, Event, MemberId, NewThread,
+    QueueDepth, StoredEvent, Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -114,6 +114,32 @@ pub async fn assign(
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_thread(&row)
+}
+
+/// A parent thread's child threads, collapsed with a live message count each
+/// (Cluster 356, F2). Oldest first; tombstoned children excluded.
+pub async fn child_summaries(
+    pool: &SqlitePool,
+    parent_id: ThreadId,
+) -> Result<Vec<ChildThreadSummary>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
+                (SELECT COUNT(*) FROM maidan_messages m WHERE m.thread_id = t.id AND m.tombstoned_at IS NULL) AS message_count
+         FROM maidan_threads t
+         WHERE t.parent_thread_id = ? AND t.tombstoned_at IS NULL
+         ORDER BY t.created_at ASC, t.id ASC",
+    )
+    .bind(parent_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            Ok(ChildThreadSummary {
+                thread: row_to_thread(row)?,
+                message_count: row.get::<i64, _>("message_count"),
+            })
+        })
+        .collect()
 }
 
 /// Set (or clear) the durable owner (Cluster 355, W1). `NotFound` if absent or

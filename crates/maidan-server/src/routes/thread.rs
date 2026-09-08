@@ -340,6 +340,20 @@ pub async fn get_thread_steer(
     }
 }
 
+/// A parent thread's child threads, collapsed with a message count each
+/// (Cluster 356, F2). Lets a threaded view show "N replies" per child without
+/// loading each child's messages. `workspace:read` + thread access.
+pub async fn list_child_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ChildThreadSummary>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.child_thread_summaries(thread_id).await?))
+}
+
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

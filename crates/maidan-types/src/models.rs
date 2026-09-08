@@ -669,6 +669,16 @@ pub struct NewThread {
     pub title: Option<String>,
 }
 
+/// A child thread collapsed under its parent (Cluster 356, F2): the child thread
+/// plus a live count of its (non-tombstoned) messages, so a threaded view can show
+/// "N replies" without loading each child's messages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChildThreadSummary {
+    pub thread: Thread,
+    pub message_count: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ThreadTransitionResult {
     pub thread: Thread,
