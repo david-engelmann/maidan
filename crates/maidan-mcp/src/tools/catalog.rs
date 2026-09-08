@@ -475,12 +475,13 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_mention",
-            "description": "Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Live-only: it sees mentions recorded after the call subscribes, so drain existing ones with get_inbox first.",
+            "description": "Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "member_id": {"type": "string", "format": "uuid"},
-                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 },
                 "required": ["member_id"]
             }
@@ -523,12 +524,13 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_notification",
-            "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Live-only: drain existing notifications with list_notifications first.",
+            "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "member_id": {"type": "string", "format": "uuid"},
-                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"}
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 },
                 "required": ["member_id"]
             }

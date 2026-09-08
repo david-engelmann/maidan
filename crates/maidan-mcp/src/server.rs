@@ -958,6 +958,48 @@ mod tests {
             unwrap_content(out.unwrap()).is_null(),
             "a mention in an inaccessible private channel is filtered → timeout"
         );
+
+        // Cluster 354 lookback: a mention that lands BEFORE the waiter subscribes
+        // is still caught when the caller passes its last-drain high-water as
+        // since_log_id — no concurrent publish, the durable log replay finds it.
+        let id = server.publish_event(mention(pub_thread.id)).await.unwrap();
+        let lookback_args =
+            json!({ "member_id": agent.id.0, "timeout_ms": 300, "since_log_id": id - 1 });
+        let got = unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_mention", &lookback_args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["kind"], json!("mention_recorded"));
+        assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+
+        // since_log_id at the high-water (already seen) → nothing newer → null,
+        // and it returns promptly rather than parking the full window.
+        let seen_args = json!({ "member_id": agent.id.0, "timeout_ms": 300, "since_log_id": id });
+        assert!(unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_mention", &seen_args)
+                .await
+                .unwrap()
+        )
+        .is_null());
+
+        // RBAC holds in the lookback path too: a pre-subscribe mention in a private
+        // channel the agent can't access is filtered → null.
+        let sid = server
+            .publish_event(mention(secret_thread.id))
+            .await
+            .unwrap();
+        let priv_args =
+            json!({ "member_id": agent.id.0, "timeout_ms": 300, "since_log_id": sid - 1 });
+        assert!(unwrap_content(
+            server
+                .call_tool(&auth, "wait_for_mention", &priv_args)
+                .await
+                .unwrap()
+        )
+        .is_null());
     }
 
     #[tokio::test]
