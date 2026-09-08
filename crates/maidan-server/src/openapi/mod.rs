@@ -201,6 +201,8 @@ impl Modify for SecurityAddon {
         paths::set_thread_steer,
         paths::get_thread_steer,
         paths::list_child_threads,
+        paths::mute_thread,
+        paths::unmute_thread,
         paths::list_approval_gates,
         paths::answer_approval_gate,
         paths::upload_artifact,

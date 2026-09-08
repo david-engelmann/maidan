@@ -401,6 +401,30 @@ impl FollowStore for SqliteStore {
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_followers(&self.pool, thread_id).await
     }
+    async fn mute_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<(), StoreError> {
+        follows::mute_thread(&self.pool, member_id, thread_id).await
+    }
+    async fn unmute_thread(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError> {
+        follows::unmute_thread(&self.pool, member_id, thread_id).await
+    }
+    async fn is_thread_muted(
+        &self,
+        member_id: MemberId,
+        thread_id: ThreadId,
+    ) -> Result<bool, StoreError> {
+        follows::is_thread_muted(&self.pool, member_id, thread_id).await
+    }
+    async fn thread_muters(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
+        follows::thread_muters(&self.pool, thread_id).await
+    }
 }
 
 #[async_trait]

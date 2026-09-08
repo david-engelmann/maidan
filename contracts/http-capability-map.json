@@ -540,6 +540,18 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/mute",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/mute",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/approval-gates",
     "capability": "workspace:read",

@@ -267,9 +267,23 @@ async fn fan_out_message_posted(
     for _ in &muted {
         crate::metrics::record_notification_suppressed("muted");
     }
+    // Leaf mute (Cluster 356, F7): members who muted this thread are dropped from the
+    // fan-out in one batch query, alongside the kind-mute filter above.
+    let thread_muted: HashSet<MemberId> = state
+        .store
+        .thread_muters(thread_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect();
+    for m in &thread_muted {
+        if !muted.contains(m) && recipients.contains(m) {
+            crate::metrics::record_notification_suppressed("thread_muted");
+        }
+    }
     let new_rows: Vec<NewNotification> = recipients
         .into_iter()
-        .filter(|m| !muted.contains(m))
+        .filter(|m| !muted.contains(m) && !thread_muted.contains(m))
         .map(|member_id| NewNotification {
             workspace_id,
             member_id,
@@ -327,6 +341,19 @@ async fn notify(
     {
         crate::metrics::record_notification_suppressed("muted");
         return Ok(false);
+    }
+    // Leaf mute (Cluster 356, F7): a member who muted this specific thread is not
+    // notified about it, even for an otherwise-unmuted kind.
+    if let Some(tid) = thread_id {
+        if state
+            .store
+            .is_thread_muted(member_id, tid)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            crate::metrics::record_notification_suppressed("thread_muted");
+            return Ok(false);
+        }
     }
     write_notification(
         state,

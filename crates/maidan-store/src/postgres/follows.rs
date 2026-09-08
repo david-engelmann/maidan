@@ -135,3 +135,63 @@ pub async fn thread_followers(
         .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
         .collect())
 }
+
+/// Mute a specific thread for a member (Cluster 356, F7 leaf mute). Idempotent —
+/// the notification router suppresses notifications about a muted thread.
+pub async fn mute_thread(
+    pool: &PgPool,
+    member_id: MemberId,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_thread_mutes (member_id, thread_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(member_id.0)
+    .bind(thread_id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn unmute_thread(
+    pool: &PgPool,
+    member_id: MemberId,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
+    let res =
+        sqlx::query("DELETE FROM maidan_thread_mutes WHERE member_id = $1 AND thread_id = $2")
+            .bind(member_id.0)
+            .bind(thread_id.0)
+            .execute(pool)
+            .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+pub async fn is_thread_muted(
+    pool: &PgPool,
+    member_id: MemberId,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
+    let row =
+        sqlx::query("SELECT 1 FROM maidan_thread_mutes WHERE member_id = $1 AND thread_id = $2")
+            .bind(member_id.0)
+            .bind(thread_id.0)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.is_some())
+}
+
+pub async fn thread_muters(
+    pool: &PgPool,
+    thread_id: ThreadId,
+) -> Result<Vec<MemberId>, StoreError> {
+    let rows = sqlx::query("SELECT member_id FROM maidan_thread_mutes WHERE thread_id = $1")
+        .bind(thread_id.0)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
+        .collect())
+}
