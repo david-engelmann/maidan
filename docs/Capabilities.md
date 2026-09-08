@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v357.0.0 — scoped notification mute (Wave 1 #8)
+
+A stacked cluster (357.1–357.3, N3) adding a **per-channel** mute with **mention breakthrough** — silence a busy channel's firehose while still getting @mentioned. With Cluster 356.3's per-thread mute, notification mute is now scopeable at kind, channel, and thread granularity.
+
+| Change | Where |
+|--------|-------|
+| **Per-channel mute (357.1):** `maidan_channel_mutes` (pg 0062 / sqlite 0061) + `mute_channel`/`unmute_channel`/`is_channel_muted`/`channel_muters` (both backends). | `migrations/*/00{62,61}_channel_mutes.sql`, `crates/maidan-store/src/*/follows.rs` |
+| **Router + mention breakthrough (357.2):** the router drops a channel-muter from the `MessagePosted` fan-out + `notify` path, but a `MentionRecorded` pierces a channel mute. Hierarchy: kind-mute > thread-mute (suppresses even a mention) > channel-mute (pierced by a mention). Plus `POST`/`DELETE /channels/:cid/mute`. | `crates/maidan-server/src/notification_router.rs`, `crates/maidan-server/src/routes/channel.rs` |
+| **MCP tools (357.3):** `mute_channel` / `unmute_channel`. | `crates/maidan-mcp/src/tools/channel.rs` |
+
+**Deferred (N3 sub-item):** the *projector-kind overlay* (muting by Slack/GitHub projector origin) — a separate design.
+
 ## v356.0.0 — the threading cluster (Wave 1 #7)
 
 A stacked cluster (356.1–356.5, F1 + F2 + F7) making a thread a first-class, titled, navigable object: a parent's replies collapse to per-child summaries, a post floats its thread up an activity-ordered list, a thread can be renamed after creation, and a member can mute one thread without leaving the channel.
