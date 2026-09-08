@@ -1669,6 +1669,142 @@ mod tests {
         assert_eq!(depth["assigned"], json!(0));
     }
 
+    /// Cluster 356.5: the threading MCP parity tools — collapsed children, recent
+    /// activity, and self leaf mute/unmute.
+    #[tokio::test]
+    async fn threading_tools_children_recent_and_mute() {
+        use maidan_auth::capability::WORKSPACE_READ;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "th".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "threads".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let parent = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("parent".into()),
+            })
+            .await
+            .unwrap();
+        let child = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: Some(parent.id),
+                title: Some("child".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .post_message(NewMessage {
+                thread_id: child.id,
+                author_id: member.id,
+                body: "hi".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Collapsed children: one child with a message count of 1.
+        let children = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_child_threads",
+                    &json!({ "thread_id": parent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let children = children.as_array().unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0]["message_count"], json!(1));
+        assert_eq!(children[0]["thread"]["id"], json!(child.id.0));
+
+        // Recent activity: both threads appear, child (posted-to) first.
+        let recent = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_recently_active_threads",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let recent = recent.as_array().unwrap();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(
+            recent[0]["id"],
+            json!(child.id.0),
+            "the posted-to thread bumps to the top"
+        );
+
+        // Leaf mute/unmute (self).
+        let muted = unwrap_content(
+            server
+                .call_tool(&auth, "mute_thread", &json!({ "thread_id": child.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(muted["muted"], json!(true));
+        assert!(store.is_thread_muted(member.id, child.id).await.unwrap());
+        let unmuted = unwrap_content(
+            server
+                .call_tool(&auth, "unmute_thread", &json!({ "thread_id": child.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(unmuted["unmuted"], json!(true));
+        let again = unwrap_content(
+            server
+                .call_tool(&auth, "unmute_thread", &json!({ "thread_id": child.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
+    }
+
     #[tokio::test]
     async fn notification_tools_list_count_mark_and_wait() {
         use chrono::Utc;

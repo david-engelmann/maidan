@@ -104,6 +104,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "follow_thread"
         | "unfollow_thread"
         | "list_thread_follows"
+        | "list_child_threads"
+        | "list_recently_active_threads"
+        | "mute_thread"
+        | "unmute_thread"
         | "get_glossary_term"
         | "list_glossary_terms"
         | "list_slack_channel_links"
@@ -187,6 +191,7 @@ async fn enforce_channel_access(
         | "wait_for_claim_expired"
         | "get_queue_depth"
         | "get_channel_occupancy"
+        | "list_recently_active_threads"
         | "create_task_schedule"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
@@ -220,6 +225,9 @@ async fn enforce_channel_access(
         | "rename_thread"
         | "set_thread_steer"
         | "get_thread_steer"
+        | "list_child_threads"
+        | "mute_thread"
+        | "unmute_thread"
         | "wait_for_result"
         | "get_dependency_results"
         | "request_approval"
@@ -285,6 +293,10 @@ pub async fn dispatch(
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, args).await,
         "list_threads" => thread::list_threads(store, args).await,
+        "list_child_threads" => thread::list_child_threads(store, args).await,
+        "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,
+        "mute_thread" => thread::mute_thread(store, auth, args).await,
+        "unmute_thread" => thread::unmute_thread(store, auth, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, args).await,
         "claim_thread" => thread::claim_thread(server, args).await,
