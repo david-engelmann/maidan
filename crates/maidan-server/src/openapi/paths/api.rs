@@ -442,6 +442,18 @@ pub fn get_channel_queue_depth() {}
     responses((status = 200, body = ChannelOccupancy)))]
 pub fn get_channel_occupancy() {}
 
+#[utoipa::path(post, path = "/channels/{cid}/mute", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Channel muted for the caller")))]
+pub fn mute_channel() {}
+
+#[utoipa::path(delete, path = "/channels/{cid}/mute", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Channel unmuted"), (status = 404, description = "Was not muted")))]
+pub fn unmute_channel() {}
+
 #[utoipa::path(post, path = "/channels/{cid}/members", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = AddChannelMember,

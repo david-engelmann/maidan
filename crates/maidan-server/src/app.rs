@@ -267,6 +267,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_channel_occupancy),
         )
         .route(
+            "/channels/:cid/mute",
+            post(routes::mute_channel).delete(routes::unmute_channel),
+        )
+        .route(
             "/channels/:cid/members",
             post(routes::add_channel_member).get(routes::list_channel_members),
         )

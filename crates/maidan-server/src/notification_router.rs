@@ -281,9 +281,24 @@ async fn fan_out_message_posted(
             crate::metrics::record_notification_suppressed("thread_muted");
         }
     }
+    // Per-channel mute (Cluster 357, N3): members who muted this channel are dropped
+    // too — a `MessagePosted` is the firehose that channel mute silences (a mention,
+    // which breaks through, is a distinct `MentionRecorded` event, not this path).
+    let channel_muted: HashSet<MemberId> = state
+        .store
+        .channel_muters(channel_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect();
+    for m in &channel_muted {
+        if !muted.contains(m) && !thread_muted.contains(m) && recipients.contains(m) {
+            crate::metrics::record_notification_suppressed("channel_muted");
+        }
+    }
     let new_rows: Vec<NewNotification> = recipients
         .into_iter()
-        .filter(|m| !muted.contains(m) && !thread_muted.contains(m))
+        .filter(|m| !muted.contains(m) && !thread_muted.contains(m) && !channel_muted.contains(m))
         .map(|member_id| NewNotification {
             workspace_id,
             member_id,
@@ -343,7 +358,8 @@ async fn notify(
         return Ok(false);
     }
     // Leaf mute (Cluster 356, F7): a member who muted this specific thread is not
-    // notified about it, even for an otherwise-unmuted kind.
+    // notified about it, even for an otherwise-unmuted kind. A thread mute is the
+    // strongest scope — it suppresses even a mention (you're done with this thread).
     if let Some(tid) = thread_id {
         if state
             .store
@@ -353,6 +369,23 @@ async fn notify(
         {
             crate::metrics::record_notification_suppressed("thread_muted");
             return Ok(false);
+        }
+    }
+    // Per-channel mute (Cluster 357, N3): a member who muted this channel is not
+    // notified about its firehose — EXCEPT a `MentionRecorded` breaks through (you
+    // muted the noise but still want to be named). The thread mute above already
+    // covered the "even mentions" case; an explicit kind mute (top) always wins.
+    if kind != EventKind::MentionRecorded {
+        if let Some(cid) = channel_id {
+            if state
+                .store
+                .is_channel_muted(member_id, cid)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                crate::metrics::record_notification_suppressed("channel_muted");
+                return Ok(false);
+            }
         }
     }
     write_notification(

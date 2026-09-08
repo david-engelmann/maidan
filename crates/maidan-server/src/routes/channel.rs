@@ -13,7 +13,7 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
-use crate::error::ApiJson;
+use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
 pub async fn create_channel(
@@ -117,6 +117,44 @@ pub async fn get_channel_occupancy(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let occupancy = state.store.channel_occupancy(channel.id).await?;
     Ok(Json(occupancy))
+}
+
+/// Mute a channel for the caller (Cluster 357, N3). The notification router then
+/// suppresses this channel's firehose (`MessagePosted` follow notifications) for
+/// the caller — but a mention still breaks through. Personal to the caller
+/// (`auth.member_id`); `workspace:read` + channel access. Idempotent.
+pub async fn mute_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    state.store.mute_channel(auth.member_id, channel.id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unmute a channel for the caller (Cluster 357, N3). `404` if it was not muted.
+pub async fn unmute_channel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    if state
+        .store
+        .unmute_channel(auth.member_id, channel.id)
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 pub async fn add_channel_member(

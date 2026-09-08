@@ -144,6 +144,18 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/channels/{cid}/mute",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/channels/{cid}/mute",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/dm/{id}",
     "capability": "workspace:read",
