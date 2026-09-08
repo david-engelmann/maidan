@@ -258,6 +258,28 @@ A2A JSON-RPC method strings are the canonical A2A v1.0 operation names (the spec
 - `SubscribeToTask` — SSE task updates for non-terminal tasks.
 - `CancelTask` — cancel non-terminal task.
 
+### Long-poll waits (`wait_for_*`)
+
+The MCP `wait_for_mention` / `wait_for_notification` / `wait_for_result` /
+`wait_for_ready` / `wait_for_claim_expired` tools block until their signal
+arrives or the timeout lapses. Three rules for using them safely:
+
+- **Resume without missing a signal — pass `since_log_id`.** A wait is live by
+  default (it only sees events after it subscribes), so a signal that fired
+  between your last drain and the call would be missed. Pass `since_log_id` (the
+  high-water `log_id` from your last drain, i.e. the last event you processed)
+  and the wait first replays the durable log for a match after that point, then
+  parks live — closing the gap. Reconnect-and-retry with the same `since_log_id`
+  is therefore safe: it returns the signal you missed rather than blocking to the
+  timeout.
+- **Make pre-wait side effects idempotent.** A dropped connection and retry
+  replays whatever you did before the wait, so those effects must be safe to
+  repeat (key writes on a stable id, not blind appends).
+- **A wait does not renew your claim.** Parking in a wait does not heartbeat the
+  claim lease, so a waiter that outlives its lease is reclaimed and its work
+  returns to the queue (evict-on-wait). Keep a wait shorter than your lease, or
+  `renew_claim` around a long one, if you must hold the claim across it.
+
 ### Installed apps (OAuth-style)
 
 Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.

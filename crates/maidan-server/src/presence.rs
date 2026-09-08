@@ -82,6 +82,12 @@ pub struct PresenceRegistration {
 }
 
 impl Drop for PresenceRegistration {
+    // Invariant (Cluster 354, H4): NO occupancy/store I/O in Drop. `unregister`
+    // mutates only the in-memory `PresenceHub` (it holds no `Store` handle), so
+    // this stays synchronous and non-blocking. Drop can't be async and runs on
+    // whatever task drops the guard; a durable write here would either block that
+    // task or be silently lost. Occupancy that must persist (the claim lease /
+    // working clock) is written by explicit calls, never a destructor.
     fn drop(&mut self) {
         self.hub
             .unregister(self.conn_id, self.workspace_id, self.member_id);
