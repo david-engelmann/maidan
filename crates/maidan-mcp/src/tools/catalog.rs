@@ -111,6 +111,51 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_child_threads",
+            "description": "A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "The parent thread id."}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_recently_active_threads",
+            "description": "A channel's threads ordered by last activity — most-recently-posted first. A post floats its thread to the top; a rename does not.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 50, "description": "Max threads to return (clamped 1..=200)."}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "mute_thread",
+            "description": "Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "unmute_thread",
+            "description": "Unmute a thread you previously muted. Returns unmuted=false if it was not muted.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "get_tool_transcript",
             "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
             "inputSchema": {

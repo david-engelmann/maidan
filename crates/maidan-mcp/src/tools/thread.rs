@@ -97,6 +97,75 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
 }
 
 #[derive(Deserialize)]
+struct ThreadIdArg {
+    thread_id: uuid::Uuid,
+}
+
+/// A parent thread's child threads, collapsed with a message count each
+/// (Cluster 356, F2, the MCP twin of `GET /threads/:id/children`). Thread access
+/// is enforced pre-dispatch.
+pub(super) async fn list_child_threads(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let summaries = store.child_thread_summaries(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&summaries))
+}
+
+#[derive(Deserialize)]
+struct RecentThreadsArgs {
+    channel_id: uuid::Uuid,
+    /// Max threads to return (default 50, clamped 1..=200).
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// A channel's threads ordered by last activity — most-recently bumped first
+/// (Cluster 356, F7, the MCP twin of `GET /channels/:cid/recent-threads`).
+/// Channel access is enforced pre-dispatch.
+pub(super) async fn list_recently_active_threads(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RecentThreadsArgs = serde_json::from_value(args.clone())?;
+    let limit = a.limit.unwrap_or(50).clamp(1, 200);
+    let threads = store
+        .list_recently_active_threads(ChannelId(a.channel_id), limit)
+        .await?;
+    Ok(content_json(&threads))
+}
+
+/// Mute a thread for the caller (Cluster 356, F7, the MCP twin of
+/// `POST /threads/:id/mute`). The notification router then suppresses this
+/// thread's notifications for the caller. Thread access is enforced pre-dispatch.
+pub(super) async fn mute_thread(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    store
+        .mute_thread(auth.member_id, ThreadId(a.thread_id))
+        .await?;
+    Ok(content_json(&json!({ "muted": true })))
+}
+
+/// Unmute a thread for the caller (Cluster 356, F7, the MCP twin of
+/// `DELETE /threads/:id/mute`). `{unmuted}` is `false` when it was not muted.
+pub(super) async fn unmute_thread(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let unmuted = store
+        .unmute_thread(auth.member_id, ThreadId(a.thread_id))
+        .await?;
+    Ok(content_json(&json!({ "unmuted": unmuted })))
+}
+
+#[derive(Deserialize)]
 struct ToolTranscriptArgs {
     thread_id: uuid::Uuid,
     /// Max messages to scan (default 200, clamped 1..=500).
