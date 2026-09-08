@@ -275,6 +275,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_thread).get(routes::list_threads),
         )
         .route(
+            "/channels/:cid/recent-threads",
+            get(routes::list_recently_active_threads),
+        )
+        .route(
             "/channels/:cid/threads/claim-next",
             post(routes::claim_next_thread),
         )

@@ -745,6 +745,13 @@ impl ThreadStore for SqliteStore {
     ) -> Result<Vec<ChildThreadSummary>, StoreError> {
         threads::child_summaries(&self.pool, parent_id).await
     }
+    async fn list_recently_active_threads(
+        &self,
+        channel_id: ChannelId,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::list_recently_active(&self.pool, channel_id, limit).await
+    }
 
     async fn transition_thread(
         &self,

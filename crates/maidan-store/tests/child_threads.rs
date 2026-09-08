@@ -90,10 +90,75 @@ async fn run_child_suite(store: &dyn Store) {
         .is_empty());
 }
 
+/// Activity bump (Cluster 356, F7): a post bumps its thread to the top of the
+/// recently-active list.
+async fn run_bump_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "bump".into(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mk = |title: &str| NewThread {
+        channel_id: channel.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    let t1 = store.create_thread(mk("t1")).await.expect("t1");
+    let t2 = store.create_thread(mk("t2")).await.expect("t2");
+    let post = |thread_id| NewMessage {
+        thread_id,
+        author_id: member.id,
+        body: "activity".into(),
+        metadata: serde_json::json!({}),
+        content: None,
+    };
+
+    // Post to t2, then (a real gap later, so the millisecond-truncated activity
+    // clocks don't tie) to t1 — the more-recently-active thread floats to the top.
+    store
+        .post_message_with_event(post(t2.id), None)
+        .await
+        .expect("post t2");
+    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+    store
+        .post_message_with_event(post(t1.id), None)
+        .await
+        .expect("post t1");
+    let recent = store
+        .list_recently_active_threads(channel.id, 10)
+        .await
+        .expect("recent");
+    assert_eq!(
+        recent[0].id, t1.id,
+        "the most-recently-posted thread is first"
+    );
+    assert_eq!(recent[1].id, t2.id);
+}
+
 #[tokio::test]
 async fn child_thread_summaries_count_messages_per_child_sqlite() {
     let store = sqlite().await;
     run_child_suite(&store).await;
+    run_bump_suite(&store).await;
 }
 
 #[tokio::test]
@@ -128,4 +193,5 @@ async fn child_thread_summaries_count_messages_per_child_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_child_suite(&store).await;
+    run_bump_suite(&store).await;
 }

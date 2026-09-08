@@ -153,6 +153,7 @@ impl Modify for SecurityAddon {
         paths::list_channel_members,
         paths::remove_channel_member,
         paths::list_threads,
+        paths::list_recently_active_threads,
         paths::create_thread,
         paths::get_thread,
         paths::get_thread_context,

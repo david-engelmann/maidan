@@ -580,6 +580,14 @@ pub trait ThreadStore: Send + Sync {
         parent_id: ThreadId,
     ) -> Result<Vec<ChildThreadSummary>, StoreError>;
 
+    /// A channel's threads ordered by last activity — most-recently bumped first
+    /// (Cluster 356, F7). A post bumps its thread's `updated_at`, floating it here.
+    async fn list_recently_active_threads(
+        &self,
+        channel_id: ChannelId,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError>;
+
     async fn transition_thread(
         &self,
         thread_id: ThreadId,

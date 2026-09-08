@@ -171,6 +171,30 @@ pub async fn child_summaries(
         .collect()
 }
 
+/// A channel's threads ordered by last activity (Cluster 356, F7): most-recently
+/// bumped first, tombstoned excluded, capped at `limit`. The bump-to-top read —
+/// a post touches `updated_at`, floating its thread here. Distinct from the
+/// keyset-paginated, creation-ordered `page_for_channel` (whose stable sort key
+/// this mutable ordering would break).
+pub async fn list_recently_active(
+    pool: &PgPool,
+    channel_id: ChannelId,
+    limit: i64,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
+         FROM maidan_threads
+         WHERE channel_id = $1 AND tombstoned_at IS NULL
+         ORDER BY updated_at DESC, id DESC
+         LIMIT $2",
+    )
+    .bind(channel_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 /// Set (or clear) the durable owner (Cluster 355, W1). `NotFound` if absent or
 /// tombstoned. Touches only `owner_id` — orthogonal to the claim axis.
 pub async fn set_owner(
