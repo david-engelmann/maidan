@@ -199,6 +199,34 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             )
             .await?;
         }
+        Event::ClaimExpired {
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            thread,
+            ..
+        } => {
+            // W1 (Cluster 355): an expired claim means the task is stuck — its
+            // holder's lease lapsed and it was reclaimed. If the thread has a
+            // durable owner, notify them so they can re-steer or reassign. The
+            // dead holder is the actor. Un-owned threads notify no one (the
+            // occupancy view / `wait_for_claim_expired` already surface expiry).
+            if let Some(owner_id) = thread.owner_id {
+                notify(
+                    state,
+                    *workspace_id,
+                    owner_id,
+                    EventKind::ClaimExpired,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*member_id),
+                )
+                .await?;
+            }
+        }
         _ => {}
     }
     Ok(())

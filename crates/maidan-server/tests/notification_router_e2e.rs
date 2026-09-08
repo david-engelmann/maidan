@@ -347,3 +347,118 @@ async fn email_delivery_when_configured_and_address_present() {
     assert_eq!(sent.len(), 1, "only the member with an address is emailed");
     assert_eq!(sent[0].0, "user@example.com");
 }
+
+/// Cluster 355 (W1): when an owned task's claim expires (it got stuck — the
+/// holder's lease lapsed and it was reclaimed), the router notifies the owner.
+/// An un-owned expiry notifies no one.
+#[tokio::test]
+async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(store.clone(), artifacts, bus, search);
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w1".into() })
+        .await
+        .unwrap();
+    let mk = |h: &str| NewMember {
+        workspace_id: ws.id,
+        handle: h.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let owner = store.create_member(mk("owner")).await.unwrap();
+    let holder = store.create_member(mk("holder")).await.unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let owned = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("owned".into()),
+        })
+        .await
+        .unwrap();
+    // Give it an owner, then re-read so the event carries owner_id.
+    store
+        .set_thread_owner(owned.id, Some(owner.id))
+        .await
+        .unwrap();
+    let owned = store.get_thread(owned.id).await.unwrap();
+
+    let expired = Event::ClaimExpired {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: owned.id,
+        member_id: holder.id,
+        thread: owned.clone(),
+    };
+    notification_router::route_event(&state, 1, &expired)
+        .await
+        .unwrap();
+    let notes = store.list_notifications(owner.id, false, 10).await.unwrap();
+    assert_eq!(
+        notes.len(),
+        1,
+        "owner is notified their owned task got stuck"
+    );
+    assert_eq!(notes[0].kind, EventKind::ClaimExpired);
+    assert_eq!(notes[0].thread_id, Some(owned.id));
+    assert_eq!(
+        notes[0].actor_id,
+        Some(holder.id),
+        "the dead holder is the actor"
+    );
+
+    // An un-owned thread's expiry notifies no one.
+    let orphan = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("orphan".into()),
+        })
+        .await
+        .unwrap();
+    let orphan_expired = Event::ClaimExpired {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: orphan.id,
+        member_id: holder.id,
+        thread: orphan.clone(),
+    };
+    notification_router::route_event(&state, 2, &orphan_expired)
+        .await
+        .unwrap();
+    // No new notifications for anyone (owner still has just the one).
+    assert_eq!(
+        store
+            .list_notifications(owner.id, false, 10)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "an un-owned expiry notifies no one"
+    );
+}
