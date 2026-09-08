@@ -80,6 +80,7 @@ fn sample() -> WorkspaceImport {
             assignment_expires_at: None,
             claim_lease_id: Some(lease),
             work_started_at: Some(now),
+            owner_id: None,
             created_at: now,
             updated_at: now,
             tombstoned_at: None,

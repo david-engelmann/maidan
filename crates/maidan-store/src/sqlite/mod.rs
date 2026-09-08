@@ -805,6 +805,13 @@ impl AssignmentStore for SqliteStore {
     ) -> Result<Thread, StoreError> {
         threads::assign(&self.pool, thread_id, assignee_id).await
     }
+    async fn set_thread_owner(
+        &self,
+        thread_id: ThreadId,
+        owner_id: Option<MemberId>,
+    ) -> Result<Thread, StoreError> {
+        threads::set_owner(&self.pool, thread_id, owner_id).await
+    }
     async fn assign_thread_with_event(
         &self,
         thread_id: ThreadId,

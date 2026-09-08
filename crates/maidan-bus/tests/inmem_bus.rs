@@ -41,6 +41,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         assignment_expires_at: None,
         claim_lease_id: None,
         work_started_at: None,
+        owner_id: None,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         tombstoned_at: None,

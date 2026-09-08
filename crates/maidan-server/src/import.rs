@@ -115,6 +115,7 @@ pub fn remap(bundle: WorkspaceImport, mut new_id: impl FnMut() -> uuid::Uuid) ->
                 channel_id: channels[&t.channel_id],
                 parent_thread_id: t.parent_thread_id.map(|p| threads[&p]),
                 assignee_id: t.assignee_id.map(|a| members[&a]),
+                owner_id: t.owner_id.map(|o| members[&o]),
                 ..t
             })
             .collect(),
@@ -218,6 +219,7 @@ mod tests {
                     assignment_expires_at: None,
                     claim_lease_id: None,
                     work_started_at: None,
+                    owner_id: None,
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
@@ -232,6 +234,7 @@ mod tests {
                     assignment_expires_at: None,
                     claim_lease_id: None,
                     work_started_at: None,
+                    owner_id: None,
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,

@@ -635,6 +635,14 @@ pub struct Thread {
     /// claimed-but-idle agent from one actively working.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_started_at: Option<DateTime<Utc>>,
+    /// The durable OWNER of this task/thread (Cluster 355, W1): the accountable
+    /// party — a human, typically — distinct from the [`Thread::assignee_id`]
+    /// claimer that does the work. Orthogonal to the FSM and the claim axis. The
+    /// owner receives stuck notifications and, once set, opts the thread into
+    /// separation-of-duties (the claimer cannot land its own work). `None` = no
+    /// designated owner (unrestricted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
