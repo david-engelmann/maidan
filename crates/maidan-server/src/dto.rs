@@ -169,6 +169,12 @@ pub struct SetThreadResult {
     pub result: serde_json::Value,
 }
 
+/// Set a thread's persisted steer (Cluster 355, W1) — durable steering guidance.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadSteer {
+    pub steer: String,
+}
+
 /// Answer a human-approval gate (Cluster 350.3): accept / decline / cancel, with
 /// the HMAC `request_state` the server issued alongside the pending gate.
 #[derive(Debug, Deserialize, ToSchema)]

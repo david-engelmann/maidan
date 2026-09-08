@@ -219,6 +219,10 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(routes::set_thread_result).get(routes::get_thread_result),
         )
         .route(
+            "/threads/:id/steer",
+            axum::routing::put(routes::set_thread_steer).get(routes::get_thread_steer),
+        )
+        .route(
             "/workspaces/:wid/approval-gates",
             axum::routing::get(routes::list_approval_gates),
         )

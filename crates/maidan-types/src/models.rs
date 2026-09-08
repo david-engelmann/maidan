@@ -254,6 +254,20 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// Persisted steering guidance for a task/thread (Cluster 355, W1). A durable
+/// instruction from the owner (or a supervisor) that survives claims and
+/// handoffs, so a resuming or newly-assigned agent reads the CURRENT steer. One
+/// per thread (a re-set overwrites). Distinct from a Cluster-195 handoff note,
+/// which rides an assignment event and is not persisted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadSteer {
+    pub thread_id: ThreadId,
+    pub steer: String,
+    pub steered_by: MemberId,
+    pub steered_at: DateTime<Utc>,
+}
+
 /// The state of an approval gate (Cluster 350, the held gate). A gate opens
 /// `Pending`; a human resolves it to exactly one of accept/decline/cancel.
 /// Silence never resolves a gate (there is no timeout auto-approve), and a

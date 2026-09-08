@@ -174,11 +174,86 @@ async fn run_sod_suite(store: &dyn Store) {
     assert_eq!(landed.to_state, maidan_types::ThreadState::Closed);
 }
 
+/// Persisted steer (Cluster 355, W1): set upserts (latest wins), get is None
+/// until set. A durable per-thread instruction.
+async fn run_steer_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "steer".into(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "owner".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("task".into()),
+        })
+        .await
+        .expect("thread");
+
+    // No steer yet.
+    assert!(store
+        .get_thread_steer(thread.id)
+        .await
+        .expect("get0")
+        .is_none());
+
+    // Set it.
+    let set = store
+        .set_thread_steer(thread.id, member.id, "focus on the failing test first")
+        .await
+        .expect("set");
+    assert_eq!(set.steer, "focus on the failing test first");
+    assert_eq!(set.steered_by, member.id);
+    let got = store
+        .get_thread_steer(thread.id)
+        .await
+        .expect("get1")
+        .expect("some");
+    assert_eq!(got.steer, "focus on the failing test first");
+
+    // Re-set overwrites (latest wins).
+    let updated = store
+        .set_thread_steer(thread.id, member.id, "now ship it")
+        .await
+        .expect("reset");
+    assert_eq!(updated.steer, "now ship it");
+    assert_eq!(
+        store
+            .get_thread_steer(thread.id)
+            .await
+            .expect("get2")
+            .expect("some")
+            .steer,
+        "now ship it"
+    );
+}
+
 #[tokio::test]
 async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_sqlite() {
     let store = sqlite().await;
     run_owner_suite(&store).await;
     run_sod_suite(&store).await;
+    run_steer_suite(&store).await;
 }
 
 #[tokio::test]
@@ -214,4 +289,5 @@ async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_postgres() {
     let store = PostgresStore::new(pool);
     run_owner_suite(&store).await;
     run_sod_suite(&store).await;
+    run_steer_suite(&store).await;
 }

@@ -48,6 +48,7 @@ mod task_schedules;
 mod thread_deps;
 mod thread_results;
 mod thread_skills;
+mod thread_steer;
 mod thread_transitions;
 mod threads;
 mod token_quotas;
@@ -411,6 +412,24 @@ impl ThreadResultStore for PostgresStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(self.read_pool(), thread_id).await
+    }
+}
+
+#[async_trait]
+impl ThreadSteerStore for PostgresStore {
+    async fn set_thread_steer(
+        &self,
+        thread_id: ThreadId,
+        steered_by: MemberId,
+        steer: &str,
+    ) -> Result<ThreadSteer, StoreError> {
+        thread_steer::set(&self.pool, thread_id, steered_by, steer).await
+    }
+    async fn get_thread_steer(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadSteer>, StoreError> {
+        thread_steer::get(self.read_pool(), thread_id).await
     }
 }
 

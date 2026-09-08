@@ -783,6 +783,19 @@ pub fn set_thread_result() {}
     responses((status = 200, body = ThreadResult)))]
 pub fn get_thread_result() {}
 
+#[utoipa::path(put, path = "/threads/{id}/steer", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadSteer,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadSteer)))]
+pub fn set_thread_steer() {}
+
+#[utoipa::path(get, path = "/threads/{id}/steer", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadSteer)))]
+pub fn get_thread_steer() {}
+
 // --- approval gates (the held gate, Cluster 350) ---
 
 #[utoipa::path(get, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
