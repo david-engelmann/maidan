@@ -3,6 +3,20 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v355.0.0 — the owner/steer cluster (Wave 1 #6)
+
+A stacked cluster (355.1–355.5, W1) giving a task thread a durable **owner** (the accountable party, distinct from the assignee/claimer), enforcing that the claimer cannot land its own owned work, persisting steering guidance across handoffs, and notifying the owner when an owned task gets stuck.
+
+| Change | Where |
+|--------|-------|
+| **Owner axis (355.1):** `Thread.owner_id` (pg 0059 / sqlite 0058) + `Store::set_thread_owner`, orthogonal to the claim axis. | `migrations/*/00{59,58}_threads_owner.sql`, `crates/maidan-store/src/*/threads.rs`, `crates/maidan-types/src/models.rs` |
+| **Owner REST + separation of duties (355.2):** `PUT`/`DELETE /threads/:id/owner`; a terminal transition by the assignee on an owner-governed thread is rejected in the shared transition core. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-store/src/*/thread_transitions.rs` |
+| **Persist steer (355.3):** `maidan_thread_steer` + `ThreadSteerStore` + `PUT`/`GET /threads/:id/steer` (latest wins, survives handoffs). | `migrations/*/00{60,59}_thread_steer.sql`, `crates/maidan-store/src/*/thread_steer.rs` |
+| **Notify owner on stuck (355.4):** the router turns a `ClaimExpired` on an owned thread into a notification to the owner. | `crates/maidan-server/src/notification_router.rs` |
+| **MCP surface (355.5):** `set_thread_owner` / `set_thread_steer` / `get_thread_steer`. | `crates/maidan-mcp/src/tools/thread.rs` |
+
+Owner-governance is opt-in (setting an owner enables SoD); un-owned threads are unrestricted.
+
 ## v354.0.0 — the wait contract (Wave 1 #5)
 
 A stacked cluster (354.1–354.3, H4) hardening the `wait_for_*` long-polls. The waits were live-only — a signal that fired between the caller's last drain and the subscribe was silently missed (the drain/subscribe race). They now take an opt-in `since_log_id` lookback that closes the gap, and the surrounding contract (resume, idempotency, evict-on-wait) is written down.

@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [355.0.0] — 2026-09-08
+
+Post-gate hardening (Phase XXIV). **Wave 1 #6 of the forward program — the
+owner/steer cluster (W1 = G-dev-2 + G-dev-4).** A stacked cluster (355.1–355.5).
+No new gate tag.
+
+### Added
+
+- **A durable thread owner** (355.1): `Thread.owner_id` (pg 0059 / sqlite 0058) +
+  `Store::set_thread_owner`, the accountable party distinct from the
+  assignee/claimer. Orthogonal to the claim axis.
+- **Owner REST + separation of duties** (355.2): `PUT`/`DELETE /threads/:id/owner`;
+  and the claimer-cannot-land-its-own-work rule enforced in the shared thread
+  transition — on an owner-governed thread, a terminal transition by the assignee
+  is rejected (the owner or another member must). Inert until an owner is set.
+- **Persisted steer** (355.3): `maidan_thread_steer` (pg 0060 / sqlite 0059) +
+  `ThreadSteerStore` + `PUT`/`GET /threads/:id/steer` — durable steering guidance
+  (latest wins) that survives claims and handoffs.
+- **Notify owner on stuck** (355.4): the notification router now turns a
+  `ClaimExpired` on an owner-governed thread into a per-recipient notification to
+  the owner (mute-checked, inbox + email).
+- **MCP surface** (355.5): `set_thread_owner` (set/clear), `set_thread_steer`,
+  `get_thread_steer` — parity with the REST owner/steer surface.
+
 ## [354.0.0] — 2026-09-08
 
 Post-gate hardening (Phase XXIV). **Wave 1 #5 of the forward program — the wait
