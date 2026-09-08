@@ -462,6 +462,12 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/title",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/assignee/claim",
     "capability": "thread:transition",

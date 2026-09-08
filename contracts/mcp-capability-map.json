@@ -70,6 +70,7 @@
   "release_claim": "thread:transition",
   "remove_channel_member": "channel:admin",
   "remove_reaction": "workspace:write",
+  "rename_thread": "thread:transition",
   "renew_claim": "thread:transition",
   "request_approval": "workspace:read",
   "search_messages": "search:query",

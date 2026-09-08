@@ -153,6 +153,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "add_thread_required_skill"
         | "set_thread_result"
         | "set_thread_owner"
+        | "rename_thread"
         | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -216,6 +217,7 @@ async fn enforce_channel_access(
         | "set_thread_result"
         | "get_thread_result"
         | "set_thread_owner"
+        | "rename_thread"
         | "set_thread_steer"
         | "get_thread_steer"
         | "wait_for_result"
@@ -322,6 +324,7 @@ pub async fn dispatch(
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
+        "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
         "get_thread_steer" => thread::get_thread_steer(store, args).await,
         "wait_for_result" => thread::wait_for_result(server, auth, args).await,

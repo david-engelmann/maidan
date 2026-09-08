@@ -305,6 +305,18 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "rename_thread",
+            "description": "Rename a thread — give a titled thread a new name (e.g. name a post-derived child thread). The title must not be blank. A rename is metadata, not activity, so it does not float the thread in the recent-activity order.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "title": {"type": "string", "description": "the new thread title"}
+                },
+                "required": ["thread_id", "title"]
+            }
+        }),
+        json!({
             "name": "set_thread_steer",
             "description": "Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.",
             "inputSchema": {

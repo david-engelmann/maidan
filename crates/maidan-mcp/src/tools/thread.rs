@@ -524,6 +524,26 @@ pub(super) async fn set_thread_owner(
 }
 
 #[derive(Deserialize)]
+struct RenameThreadArgs {
+    thread_id: uuid::Uuid,
+    title: String,
+}
+
+/// Rename a thread (Cluster 356, F1, the MCP twin of `PUT /threads/:id/title`).
+/// Rejects a blank title. Thread access is enforced pre-dispatch.
+pub(super) async fn rename_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: RenameThreadArgs = serde_json::from_value(args.clone())?;
+    let title = a.title.trim();
+    if title.is_empty() {
+        return Err(McpError::InvalidParams("title must not be empty".into()));
+    }
+    let thread = store
+        .set_thread_title(ThreadId(a.thread_id), Some(title.to_string()))
+        .await?;
+    Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
 struct SetThreadSteerArgs {
     thread_id: uuid::Uuid,
     steer: String,

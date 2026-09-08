@@ -313,6 +313,10 @@ pub fn router(state: AppState) -> Router {
             "/threads/:id/owner",
             axum::routing::put(routes::set_thread_owner).delete(routes::remove_thread_owner),
         )
+        .route(
+            "/threads/:id/title",
+            axum::routing::put(routes::rename_thread),
+        )
         .route("/threads/:id/assignee/claim", post(routes::claim_thread))
         .route(
             "/threads/:id/dependencies",

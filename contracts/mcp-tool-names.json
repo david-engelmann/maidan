@@ -70,6 +70,7 @@
   "release_claim",
   "remove_channel_member",
   "remove_reaction",
+  "rename_thread",
   "renew_claim",
   "request_approval",
   "search_messages",

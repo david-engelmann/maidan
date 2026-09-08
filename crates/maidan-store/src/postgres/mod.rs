@@ -1076,6 +1076,13 @@ impl AssignmentStore for PostgresStore {
     ) -> Result<Thread, StoreError> {
         threads::set_owner(&self.pool, thread_id, owner_id).await
     }
+    async fn set_thread_title(
+        &self,
+        thread_id: ThreadId,
+        title: Option<String>,
+    ) -> Result<Thread, StoreError> {
+        threads::set_title(&self.pool, thread_id, title).await
+    }
     async fn assign_thread_with_event(
         &self,
         thread_id: ThreadId,
