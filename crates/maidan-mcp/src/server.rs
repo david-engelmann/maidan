@@ -1715,6 +1715,11 @@ mod tests {
             })
             .await
             .unwrap();
+        // Gap so the child's post-bumped `updated_at` is strictly after the
+        // parent's creation at SQLite's millisecond precision — otherwise a
+        // same-millisecond tie makes the recent-activity order fall back to the
+        // random-UUID tiebreak (flaky under compressed timing, e.g. llvm-cov).
+        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
         let child = store
             .create_thread(NewThread {
                 channel_id: channel.id,
