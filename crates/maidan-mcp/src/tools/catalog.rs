@@ -293,6 +293,41 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_thread_owner",
+            "description": "Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "owner_id": {"type": "string", "format": "uuid", "description": "the owner to set; omit to clear"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "set_thread_steer",
+            "description": "Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "steer": {"type": "string", "description": "the steering instruction"}
+                },
+                "required": ["thread_id", "steer"]
+            }
+        }),
+        json!({
+            "name": "get_thread_steer",
+            "description": "Read a thread's current steer, or null if none is set. A resuming or newly-assigned agent reads this to follow the current steering guidance.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "wait_for_result",
             "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result).",
             "inputSchema": {

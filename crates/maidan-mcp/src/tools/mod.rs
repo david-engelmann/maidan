@@ -84,6 +84,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_member_skills"
         | "list_thread_required_skills"
         | "get_thread_result"
+        | "get_thread_steer"
         | "wait_for_result"
         | "get_dependency_results"
         | "list_notifications"
@@ -150,7 +151,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "release_claim"
         | "add_thread_dependency"
         | "add_thread_required_skill"
-        | "set_thread_result" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "set_thread_result"
+        | "set_thread_owner"
+        | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -212,6 +215,9 @@ async fn enforce_channel_access(
         | "list_thread_required_skills"
         | "set_thread_result"
         | "get_thread_result"
+        | "set_thread_owner"
+        | "set_thread_steer"
+        | "get_thread_steer"
         | "wait_for_result"
         | "get_dependency_results"
         | "request_approval"
@@ -315,6 +321,9 @@ pub async fn dispatch(
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
+        "set_thread_owner" => thread::set_thread_owner(store, args).await,
+        "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
+        "get_thread_steer" => thread::get_thread_steer(store, args).await,
         "wait_for_result" => thread::wait_for_result(server, auth, args).await,
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
