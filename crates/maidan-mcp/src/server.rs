@@ -1805,6 +1805,90 @@ mod tests {
         assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
     }
 
+    /// Cluster 357.3 (N3): the per-channel mute MCP tools (self-scoped).
+    #[tokio::test]
+    async fn channel_mute_tools_mute_and_unmute() {
+        use maidan_auth::capability::WORKSPACE_READ;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "cm".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "busy".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let muted = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "mute_channel",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(muted["muted"], json!(true));
+        assert!(store.is_channel_muted(member.id, channel.id).await.unwrap());
+        let unmuted = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "unmute_channel",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(unmuted["unmuted"], json!(true));
+        let again = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "unmute_channel",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
+    }
+
     #[tokio::test]
     async fn notification_tools_list_count_mark_and_wait() {
         use chrono::Utc;

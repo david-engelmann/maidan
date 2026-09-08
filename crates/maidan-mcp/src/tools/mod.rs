@@ -108,6 +108,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_recently_active_threads"
         | "mute_thread"
         | "unmute_thread"
+        | "mute_channel"
+        | "unmute_channel"
         | "get_glossary_term"
         | "list_glossary_terms"
         | "list_slack_channel_links"
@@ -192,6 +194,8 @@ async fn enforce_channel_access(
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "list_recently_active_threads"
+        | "mute_channel"
+        | "unmute_channel"
         | "create_task_schedule"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
@@ -297,6 +301,8 @@ pub async fn dispatch(
         "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,
         "mute_thread" => thread::mute_thread(store, auth, args).await,
         "unmute_thread" => thread::unmute_thread(store, auth, args).await,
+        "mute_channel" => channel::mute_channel(store, auth, args).await,
+        "unmute_channel" => channel::unmute_channel(store, auth, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, args).await,
         "claim_thread" => thread::claim_thread(server, args).await,
