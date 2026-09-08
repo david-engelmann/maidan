@@ -701,6 +701,14 @@ pub trait AssignmentStore: Send + Sync {
         thread_id: ThreadId,
         owner_id: Option<MemberId>,
     ) -> Result<Thread, StoreError>;
+    /// Rename a thread (Cluster 356, F1) — titled threads become editable.
+    /// `NotFound` if the thread is absent or tombstoned. Touches only `title`; a
+    /// rename is metadata, not activity, so it does not bump the activity-sort key.
+    async fn set_thread_title(
+        &self,
+        thread_id: ThreadId,
+        title: Option<String>,
+    ) -> Result<Thread, StoreError>;
     /// Assign a thread and append its `ThreadAssignmentChanged` event atomically
     /// (Cluster 209). Captures the previous assignee in the same tx.
     async fn assign_thread_with_event(

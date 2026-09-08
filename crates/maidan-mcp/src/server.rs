@@ -1586,6 +1586,28 @@ mod tests {
         );
         assert_eq!(got["steer"], json!("focus on the failing test"));
         assert_eq!(got["steered_by"], json!(caller.id.0));
+
+        // Rename (Cluster 356, F1): the new title round-trips; a blank title is
+        // rejected.
+        let renamed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "rename_thread",
+                    &json!({ "thread_id": thread.id.0, "title": "renamed via mcp" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(renamed["title"], json!("renamed via mcp"));
+        assert!(server
+            .call_tool(
+                &auth,
+                "rename_thread",
+                &json!({ "thread_id": thread.id.0, "title": "   " }),
+            )
+            .await
+            .is_err());
     }
 
     #[tokio::test]

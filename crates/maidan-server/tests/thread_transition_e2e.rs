@@ -127,3 +127,86 @@ async fn transition_thread_publishes_thread_state_changed() {
         .unwrap();
     assert_eq!(conflict.status(), 409);
 }
+
+/// Cluster 356 (F1): `PUT /threads/:id/title` renames a thread; a blank title is
+/// a `400`.
+#[tokio::test]
+async fn rename_thread_via_rest_updates_title() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(256));
+
+    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    let ws: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "rn-ws"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap();
+    let ch: serde_json::Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "ch"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let thread: serde_json::Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "old"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = thread["id"].as_str().unwrap();
+
+    // Rename → 200 with the new title (whitespace trimmed).
+    let renamed: serde_json::Value = client
+        .put(format!("{base}/threads/{thread_id}/title"))
+        .json(&json!({"title": "  new name  "}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(renamed["title"], "new name");
+
+    // Blank title → 400.
+    let blank = client
+        .put(format!("{base}/threads/{thread_id}/title"))
+        .json(&json!({"title": "   "}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(blank.status(), 400);
+}

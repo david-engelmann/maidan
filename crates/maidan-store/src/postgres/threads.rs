@@ -215,6 +215,27 @@ pub async fn set_owner(
     row_to_thread(&row)
 }
 
+/// Rename a thread (Cluster 356, F1). `NotFound` if absent or tombstoned.
+/// Touches only `title` — a rename is metadata, not activity, so it does not bump
+/// `updated_at` (the activity-sort key of Cluster 356.2).
+pub async fn set_title(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    title: Option<String>,
+) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET title = $1
+         WHERE id = $2 AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+    )
+    .bind(title)
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
 /// Clear the assignee (Cluster 171). `NotFound` if absent.
 pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(

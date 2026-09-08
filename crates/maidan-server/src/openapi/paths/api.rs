@@ -552,6 +552,13 @@ pub fn set_thread_owner() {}
     responses((status = 200, body = Thread)))]
 pub fn remove_thread_owner() {}
 
+#[utoipa::path(put, path = "/threads/{id}/title", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = RenameThread,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Thread), (status = 400, description = "Empty title")))]
+pub fn rename_thread() {}
+
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = ClaimThread,

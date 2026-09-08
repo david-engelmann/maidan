@@ -248,12 +248,61 @@ async fn run_steer_suite(store: &dyn Store) {
     );
 }
 
+/// Rename (Cluster 356, F1): `set_thread_title` updates the title, is readable
+/// back, does NOT bump the activity clock (`updated_at`), and is `NotFound` on a
+/// missing/tombstoned thread.
+async fn run_rename_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "rename".into(),
+        })
+        .await
+        .expect("ws");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("old title".into()),
+        })
+        .await
+        .expect("thread");
+    let before = thread.updated_at;
+
+    let renamed = store
+        .set_thread_title(thread.id, Some("new title".into()))
+        .await
+        .expect("rename");
+    assert_eq!(renamed.title.as_deref(), Some("new title"));
+    assert_eq!(
+        renamed.updated_at, before,
+        "a rename is metadata, not activity — it must not bump updated_at"
+    );
+
+    let got = store.get_thread(thread.id).await.expect("get");
+    assert_eq!(got.title.as_deref(), Some("new title"));
+
+    let missing = store
+        .set_thread_title(ThreadId(uuid::Uuid::new_v4()), Some("x".into()))
+        .await;
+    assert!(matches!(missing, Err(StoreError::NotFound)));
+}
+
 #[tokio::test]
 async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_sqlite() {
     let store = sqlite().await;
     run_owner_suite(&store).await;
     run_sod_suite(&store).await;
     run_steer_suite(&store).await;
+    run_rename_suite(&store).await;
 }
 
 #[tokio::test]
@@ -290,4 +339,5 @@ async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_postgres() {
     run_owner_suite(&store).await;
     run_sod_suite(&store).await;
     run_steer_suite(&store).await;
+    run_rename_suite(&store).await;
 }

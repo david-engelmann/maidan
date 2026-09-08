@@ -455,6 +455,29 @@ pub async fn unassign_thread(
 }
 
 /// Set a thread's durable owner (Cluster 355, W1) — the accountable party,
+/// Rename a thread (Cluster 356, F1) — titled threads become editable so a
+/// post-derived thread can be given a real name. `thread:transition` + thread
+/// access. Rejects a blank title (a rename must name the thread).
+pub async fn rename_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<RenameThread>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let title = body.title.trim();
+    if title.is_empty() {
+        return Err(ApiError::BadRequest("title must not be empty".into()));
+    }
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let thread = state
+        .store
+        .set_thread_title(thread_id, Some(title.to_string()))
+        .await?;
+    Ok(Json(thread))
+}
+
 /// distinct from the assignee/claimer. Governance, so `thread:transition` +
 /// thread access. Once set, the owner opts the thread into separation of duties:
 /// the claimer can no longer land its own work (enforced in the FSM transition).

@@ -75,6 +75,13 @@ pub struct SetThreadOwner {
     pub owner_id: uuid::Uuid,
 }
 
+/// Rename a thread (Cluster 356, F1). The title is required and non-empty — a
+/// rename gives the thread a name, so a blank title is rejected.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RenameThread {
+    pub title: String,
+}
+
 /// Atomically claim an unassigned thread for a member (Cluster 171). The
 /// claimer is both the actor and the assignee.
 #[derive(Debug, Deserialize, ToSchema)]
