@@ -501,6 +501,68 @@ pub(super) async fn get_thread_result(
 }
 
 #[derive(Deserialize)]
+struct SetThreadOwnerArgs {
+    thread_id: uuid::Uuid,
+    /// The owner to set; omit (or null) to clear the owner (Cluster 355, W1).
+    #[serde(default)]
+    owner_id: Option<uuid::Uuid>,
+}
+
+/// Set (or clear, by omitting `owner_id`) a thread's durable owner (Cluster 355,
+/// W1, the MCP twin of `PUT`/`DELETE /threads/:id/owner`). Thread access is
+/// enforced pre-dispatch. Once an owner is set, the claimer can no longer land
+/// its own work (separation of duties, enforced in the FSM transition).
+pub(super) async fn set_thread_owner(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadOwnerArgs = serde_json::from_value(args.clone())?;
+    let thread = store
+        .set_thread_owner(ThreadId(a.thread_id), a.owner_id.map(MemberId))
+        .await?;
+    Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
+struct SetThreadSteerArgs {
+    thread_id: uuid::Uuid,
+    steer: String,
+}
+
+/// Set (upsert) a thread's persisted steer (Cluster 355, W1, the MCP twin of
+/// `PUT /threads/:id/steer`). `steered_by` is the caller. Thread access is
+/// enforced pre-dispatch.
+pub(super) async fn set_thread_steer(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadSteerArgs = serde_json::from_value(args.clone())?;
+    let steer = server
+        .store
+        .set_thread_steer(ThreadId(a.thread_id), auth.member_id, &a.steer)
+        .await?;
+    Ok(content_json(&steer))
+}
+
+#[derive(Deserialize)]
+struct GetThreadSteerArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// Read a thread's current steer, or `null` if none is set (Cluster 355, W1, the
+/// MCP twin of `GET /threads/:id/steer`). A resuming/newly-assigned agent reads
+/// this to follow the current steer. Thread access is enforced pre-dispatch.
+pub(super) async fn get_thread_steer(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetThreadSteerArgs = serde_json::from_value(args.clone())?;
+    let steer = store.get_thread_steer(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&steer))
+}
+
+#[derive(Deserialize)]
 struct WaitForResultArgs {
     thread_id: uuid::Uuid,
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).

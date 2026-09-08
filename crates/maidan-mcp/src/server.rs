@@ -1459,6 +1459,136 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn owner_and_steer_tools_set_get_and_clear() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_bus::InMemoryBus;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "ow".into() })
+            .await
+            .unwrap();
+        let mk_member = |handle: String, store: Arc<dyn Store>| async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle,
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        };
+        let caller = mk_member("caller".into(), store.clone()).await;
+        let owner = mk_member("owner".into(), store.clone()).await;
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        // A real session member so steered_by (a NOT-NULL FK) resolves.
+        let auth = AuthContext::from_session(
+            caller.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Set the owner.
+        let owned = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_owner",
+                    &json!({ "thread_id": thread.id.0, "owner_id": owner.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(owned["owner_id"], json!(owner.id.0));
+
+        // Clear it (omit owner_id).
+        let cleared = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_owner",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(cleared["owner_id"].is_null());
+
+        // No steer yet.
+        assert!(unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_steer",
+                    &json!({ "thread_id": thread.id.0 })
+                )
+                .await
+                .unwrap()
+        )
+        .is_null());
+
+        // Set + read the steer.
+        server
+            .call_tool(
+                &auth,
+                "set_thread_steer",
+                &json!({ "thread_id": thread.id.0, "steer": "focus on the failing test" }),
+            )
+            .await
+            .unwrap();
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_steer",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["steer"], json!("focus on the failing test"));
+        assert_eq!(got["steered_by"], json!(caller.id.0));
+    }
+
+    #[tokio::test]
     async fn get_queue_depth_tool_reports_counts() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
