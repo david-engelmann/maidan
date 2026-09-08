@@ -3,6 +3,20 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v356.0.0 — the threading cluster (Wave 1 #7)
+
+A stacked cluster (356.1–356.5, F1 + F2 + F7) making a thread a first-class, titled, navigable object: a parent's replies collapse to per-child summaries, a post floats its thread up an activity-ordered list, a thread can be renamed after creation, and a member can mute one thread without leaving the channel.
+
+| Change | Where |
+|--------|-------|
+| **Collapsed child threads (356.1):** `ChildThreadSummary` + `Store::child_thread_summaries` + `GET /threads/:id/children` — "N replies" per child without loading its messages. | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/*/threads.rs`, `crates/maidan-server/src/routes/thread.rs` |
+| **Thread activity bump (356.2):** a post bumps its thread's `updated_at` in-tx + `Store::list_recently_active_threads` + `GET /channels/:cid/recent-threads`. No new event (`MessagePosted` carries the `thread_id`). | `crates/maidan-store/src/*/{messages,threads}.rs`, `crates/maidan-server/src/routes/thread.rs` |
+| **Leaf mute (356.3):** `maidan_thread_mutes` (pg 0061 / sqlite 0060) + store mute/unmute/is-muted/muters + `POST`/`DELETE /threads/:id/mute`; the notification router skips a muted recipient (per-kind-independent). | `migrations/*/00{61,60}_thread_mutes.sql`, `crates/maidan-store/src/*/follows.rs`, `crates/maidan-server/src/notification_router.rs` |
+| **Rename thread (356.4):** `Store::set_thread_title` + `PUT /threads/:id/title` + MCP `rename_thread` (blank → 400). A rename does not bump the activity clock. | `crates/maidan-store/src/*/threads.rs`, `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
+| **Threading MCP parity (356.5):** `list_child_threads`, `list_recently_active_threads`, `mute_thread`/`unmute_thread`. | `crates/maidan-mcp/src/tools/thread.rs` |
+
+**Deferred (stretch sub-item of #7):** *Automerge as thread collab* (causal edits on the same titled thread) — the event log stays the log; a separate, larger design.
+
 ## v355.0.0 — the owner/steer cluster (Wave 1 #6)
 
 A stacked cluster (355.1–355.5, W1) giving a task thread a durable **owner** (the accountable party, distinct from the assignee/claimer), enforcing that the claimer cannot land its own owned work, persisting steering guidance across handoffs, and notifying the owner when an owned task gets stuck.

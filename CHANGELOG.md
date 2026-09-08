@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [356.0.0] — 2026-09-08
+
+Post-gate hardening (Phase XXIV). **Wave 1 #7 of the forward program — the
+threading cluster (F1 + F2 + F7).** A stacked cluster (356.1–356.5) making a
+thread a first-class, titled, navigable object. No new gate tag.
+
+### Added
+
+- **Collapsed child threads** (356.1): `ChildThreadSummary {thread, message_count}`
+  + `Store::child_thread_summaries` (both backends) + `GET /threads/:id/children`
+  — a threaded view shows "N replies" per child without loading each child's
+  messages.
+- **Thread activity bump** (356.2): a post bumps its thread's `updated_at` in the
+  same tx as the insert + `Store::list_recently_active_threads` +
+  `GET /channels/:cid/recent-threads` (activity-ordered). No new `ThreadBumped`
+  event — `MessagePosted` already carries the `thread_id`.
+- **Leaf mute** (356.3): `maidan_thread_mutes` (pg 0061 / sqlite 0060) + store
+  `mute`/`unmute`/`is_thread_muted`/`thread_muters` + `POST`/`DELETE
+  /threads/:id/mute` (self-scoped). The notification router now skips a muted
+  recipient (the `notify` path + the `MessagePosted` fan-out), per-kind-independent.
+- **Rename thread** (356.4): `Store::set_thread_title` + `PUT /threads/:id/title`
+  + MCP `rename_thread` (`thread:transition`; blank title → 400 / InvalidParams).
+  A rename does not bump the activity clock — it is metadata, not activity.
+- **Threading MCP parity** (356.5): `list_child_threads`,
+  `list_recently_active_threads`, and self `mute_thread`/`unmute_thread` — the
+  MCP twins of 356.1–356.3.
+
+### Notes
+
+- **Deferred (a stretch sub-item of #7):** *Automerge as thread collab* — causal
+  edits on the same titled thread. The event log stays the log, so this is a
+  separate, larger design, not folded here.
+
 ## [355.0.0] — 2026-09-08
 
 Post-gate hardening (Phase XXIV). **Wave 1 #6 of the forward program — the
