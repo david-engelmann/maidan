@@ -640,6 +640,15 @@ pub trait AssignmentStore: Send + Sync {
         thread_id: ThreadId,
         assignee_id: MemberId,
     ) -> Result<Thread, StoreError>;
+    /// Set (or clear, with `None`) a thread's durable owner (Cluster 355, W1) —
+    /// the accountable party, distinct from the assignee/claimer. `NotFound` if
+    /// the thread is absent or tombstoned. Orthogonal to assignment; does not
+    /// touch the claim lease or working clock.
+    async fn set_thread_owner(
+        &self,
+        thread_id: ThreadId,
+        owner_id: Option<MemberId>,
+    ) -> Result<Thread, StoreError>;
     /// Assign a thread and append its `ThreadAssignmentChanged` event atomically
     /// (Cluster 209). Captures the previous assignee in the same tx.
     async fn assign_thread_with_event(

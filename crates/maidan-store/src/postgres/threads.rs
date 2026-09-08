@@ -15,7 +15,7 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(id)
     .bind(new.channel_id.0)
@@ -38,7 +38,7 @@ pub async fn create_with_event(
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(id)
     .bind(new.channel_id.0)
@@ -65,7 +65,7 @@ pub async fn create_with_event(
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
          FROM maidan_threads WHERE id = $1",
     )
     .bind(id.0)
@@ -77,7 +77,7 @@ pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
 
 pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at
+        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
          FROM maidan_threads WHERE channel_id = $1 ORDER BY created_at DESC",
     )
     .bind(channel_id.0)
@@ -97,7 +97,7 @@ pub async fn assign(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
     .bind(thread_id.0)
@@ -131,7 +131,7 @@ pub async fn assign_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
     .bind(thread_id.0)
@@ -145,12 +145,32 @@ pub async fn assign_with_event(
     Ok((thread, stored))
 }
 
+/// Set (or clear) the durable owner (Cluster 355, W1). `NotFound` if absent or
+/// tombstoned. Touches only `owner_id` — orthogonal to the claim axis.
+pub async fn set_owner(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    owner_id: Option<MemberId>,
+) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET owner_id = $1, updated_at = NOW()
+         WHERE id = $2 AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+    )
+    .bind(owner_id.map(|o| o.0))
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
 /// Clear the assignee (Cluster 171). `NotFound` if absent.
 pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -177,7 +197,7 @@ pub async fn unassign_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -246,7 +266,7 @@ pub async fn claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(member_id.0)
     .bind(thread_id.0)
@@ -278,7 +298,7 @@ pub async fn claim_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(member_id.0)
     .bind(thread_id.0)
@@ -321,7 +341,7 @@ pub async fn list_assigned(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1 AND t.assignee_id = $2 AND t.tombstoned_at IS NULL
@@ -377,7 +397,7 @@ pub async fn claim_next(
          )
          UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
-         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at",
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id",
     )
     .bind(member_id.0)
     .bind(channel_id.0)
@@ -522,7 +542,7 @@ pub async fn claim_next_with_event(
          )
          UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
-         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, next.prev_assignee",
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, next.prev_assignee",
     )
     .bind(member_id.0)
     .bind(channel_id.0)
@@ -563,7 +583,7 @@ pub async fn renew_claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignment_expires_at = $1, updated_at = NOW()
          WHERE id = $2 AND assignee_id = $3 AND claim_lease_id = $4 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(expires)
     .bind(thread_id.0)
@@ -591,7 +611,7 @@ pub async fn acknowledge_claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, NOW()), updated_at = NOW()
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
@@ -616,7 +636,7 @@ pub async fn release_claim(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
@@ -640,7 +660,7 @@ pub async fn release_claim_with_event(
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at",
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
@@ -661,7 +681,7 @@ pub async fn list_for_workspace(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1
@@ -685,7 +705,7 @@ pub async fn page_for_workspace(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1
@@ -716,7 +736,7 @@ pub async fn page_for_channel(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          WHERE t.channel_id = $1
            AND t.tombstoned_at IS NULL
@@ -764,6 +784,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
     let state = parse_state(&state_str)?;
     let parent: Option<Uuid> = row.get("parent_thread_id");
     let assignee: Option<Uuid> = row.get("assignee_id");
+    let owner: Option<Uuid> = row.get("owner_id");
     Ok(Thread {
         id: ThreadId(row.get::<Uuid, _>("id")),
         channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
@@ -776,6 +797,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
             .get::<Option<Uuid>, _>("claim_lease_id")
             .map(ClaimLeaseId),
         work_started_at: row.get::<Option<DateTime<Utc>>, _>("work_started_at"),
+        owner_id: owner.map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
