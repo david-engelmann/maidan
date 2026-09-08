@@ -64,6 +64,28 @@ pub async fn list_threads(
     ))
 }
 
+/// A channel's threads ordered by last activity — most-recently bumped first
+/// (Cluster 356, F7). A post bumps its thread's `updated_at`, floating it here.
+/// Not keyset-paginated (the sort key is mutable); a `limit` caps it.
+pub async fn list_recently_active_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(channel_id): Path<uuid::Uuid>,
+    Query(q): Query<ListThreadsQuery>,
+) -> ApiResult<Json<Vec<Thread>>> {
+    let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, ctx.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    Ok(Json(
+        state
+            .store
+            .list_recently_active_threads(ChannelId(channel_id), limit)
+            .await?,
+    ))
+}
+
 pub async fn get_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

@@ -470,6 +470,12 @@ pub fn remove_channel_member() {}
     responses((status = 200, body = Vec<Thread>)))]
 pub fn list_threads() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/recent-threads", tag = "threads",
+    params(("cid" = Uuid, Path, description = "Channel id"), ListThreadsQuery),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Thread>)))]
+pub fn list_recently_active_threads() {}
+
 #[utoipa::path(post, path = "/channels/{cid}/threads", tag = "threads",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = CreateThread,

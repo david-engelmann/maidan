@@ -953,6 +953,13 @@ impl ThreadStore for PostgresStore {
     ) -> Result<Vec<ChildThreadSummary>, StoreError> {
         threads::child_summaries(self.read_pool(), parent_id).await
     }
+    async fn list_recently_active_threads(
+        &self,
+        channel_id: ChannelId,
+        limit: i64,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::list_recently_active(self.read_pool(), channel_id, limit).await
+    }
 
     async fn transition_thread(
         &self,

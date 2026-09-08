@@ -114,6 +114,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/channels/{cid}/recent-threads",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/channels/{cid}/threads",
     "capability": "workspace:write",

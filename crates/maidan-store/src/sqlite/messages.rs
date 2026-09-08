@@ -80,6 +80,13 @@ pub async fn create_with_event(
         message: message.clone(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
+    // Cluster 356 (F7): a post bumps its thread's activity clock (`updated_at`) so
+    // a recently-active view can float it to the top. In-tx, atomic with the post.
+    sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(thread_id.0)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok((message, stored))
 }
@@ -297,6 +304,13 @@ pub async fn edit_with_posted_event(
         message: message.clone(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
+    // Cluster 356 (F7): a post bumps its thread's activity clock (`updated_at`) so
+    // a recently-active view can float it to the top. In-tx, atomic with the post.
+    sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(thread_id.0)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok((message, stored))
 }
