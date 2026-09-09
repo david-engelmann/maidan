@@ -1894,6 +1894,130 @@ mod tests {
         assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
     }
 
+    /// Cluster 358.4 (T1/T5): the budget MCP tools — set, report (stop on
+    /// exceed), and read the DLQ.
+    #[tokio::test]
+    async fn budget_tools_set_report_and_dlq() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, agent.id).await.unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let set = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_budget",
+                    &json!({ "thread_id": thread.id.0, "max_tokens": 100 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["max_tokens"], json!(100));
+
+        let under = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "report_usage",
+                    &json!({ "thread_id": thread.id.0, "tokens": 50 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(under["stopped"], json!(false));
+
+        let over = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "report_usage",
+                    &json!({ "thread_id": thread.id.0, "tokens": 60 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(over["stopped"], json!(true));
+        assert_eq!(over["reason"], json!("tokens"));
+        assert_eq!(
+            store.get_thread(thread.id).await.unwrap().assignee_id,
+            None,
+            "claim released on stop"
+        );
+
+        let dlq = unwrap_content(
+            server
+                .call_tool(&auth, "list_dlq", &json!({ "channel_id": channel.id.0 }))
+                .await
+                .unwrap(),
+        );
+        let dlq = dlq.as_array().unwrap();
+        assert_eq!(dlq.len(), 1);
+        assert_eq!(dlq[0]["reason"], json!("tokens"));
+        assert_eq!(dlq[0]["member_id"], json!(agent.id.0));
+
+        let got = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_budget",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["used_tokens"], json!(110));
+    }
+
     #[tokio::test]
     async fn notification_tools_list_count_mark_and_wait() {
         use chrono::Utc;
