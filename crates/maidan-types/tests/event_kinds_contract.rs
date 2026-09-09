@@ -23,6 +23,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ThreadResultSet,
         EventKind::ClaimExpired,
         EventKind::ClaimFailed,
+        EventKind::ThreadLanded,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

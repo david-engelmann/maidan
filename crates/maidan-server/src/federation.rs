@@ -351,6 +351,29 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             reason,
             thread,
         },
+        // Non-federatable (a locally-derived GitHub projector fact, Cluster 361) —
+        // never actually ingested/remapped, but the exhaustive match must classify it.
+        ThreadLanded {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            repo,
+            pr_number,
+            merged_by,
+            merge_commit_sha,
+            title,
+        } => ThreadLanded {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            repo,
+            pr_number,
+            merged_by,
+            merge_commit_sha,
+            title,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,
