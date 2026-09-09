@@ -407,6 +407,58 @@ pub async fn unmute_thread(
     }
 }
 
+/// Set (upsert) a thread's budget envelope (Cluster 358, T1/T5). Governance, so
+/// `thread:transition` + thread access. Accumulated usage is preserved.
+pub async fn set_thread_budget(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(limits): ApiJson<BudgetLimits>,
+) -> ApiResult<Json<ThreadBudget>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let budget = state.store.set_thread_budget(thread_id, limits).await?;
+    Ok(Json(budget))
+}
+
+/// A thread's budget, or `404` until one is set / usage is first reported
+/// (Cluster 358). `workspace:read` + thread access.
+pub async fn get_thread_budget(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadBudget>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_budget(thread_id).await? {
+        Some(budget) => Ok(Json(budget)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
+/// Report incremental resource usage against a thread's budget (Cluster 358) — the
+/// claim-holder's heartbeat. Accumulates the delta; if it pushes the thread over
+/// budget and a run is claimed, the run is STOPPED (claim released, `ClaimFailed`
+/// emitted, DLQ entry recorded) and the response's `stopped`/`reason` say so.
+/// Gated on `thread:transition` (the claim-lifecycle cap) plus thread access.
+pub async fn report_thread_usage(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(delta): ApiJson<UsageDelta>,
+) -> ApiResult<Json<UsageReport>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let (report, stored) = state.store.report_thread_usage(thread_id, delta).await?;
+    if let Some(stored) = stored {
+        publish_stored(&state, stored).await;
+    }
+    Ok(Json(report))
+}
+
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

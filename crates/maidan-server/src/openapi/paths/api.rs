@@ -454,6 +454,12 @@ pub fn mute_channel() {}
     responses((status = 204, description = "Channel unmuted"), (status = 404, description = "Was not muted")))]
 pub fn unmute_channel() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/dlq", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id"), DlqQuery),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [DlqEntry])))]
+pub fn list_channel_dlq() {}
+
 #[utoipa::path(post, path = "/channels/{cid}/members", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = AddChannelMember,
@@ -570,6 +576,26 @@ pub fn remove_thread_owner() {}
     security(("bearerAuth" = [])),
     responses((status = 200, body = Thread), (status = 400, description = "Empty title")))]
 pub fn rename_thread() {}
+
+#[utoipa::path(put, path = "/threads/{id}/budget", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = BudgetLimits,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadBudget)))]
+pub fn set_thread_budget() {}
+
+#[utoipa::path(get, path = "/threads/{id}/budget", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadBudget), (status = 404, description = "No budget set")))]
+pub fn get_thread_budget() {}
+
+#[utoipa::path(post, path = "/threads/{id}/usage", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = UsageDelta,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = UsageReport)))]
+pub fn report_thread_usage() {}
 
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -270,6 +270,7 @@ pub fn router(state: AppState) -> Router {
             "/channels/:cid/mute",
             post(routes::mute_channel).delete(routes::unmute_channel),
         )
+        .route("/channels/:cid/dlq", get(routes::list_channel_dlq))
         .route(
             "/channels/:cid/members",
             post(routes::add_channel_member).get(routes::list_channel_members),
@@ -321,6 +322,11 @@ pub fn router(state: AppState) -> Router {
             "/threads/:id/title",
             axum::routing::put(routes::rename_thread),
         )
+        .route(
+            "/threads/:id/budget",
+            axum::routing::put(routes::set_thread_budget).get(routes::get_thread_budget),
+        )
+        .route("/threads/:id/usage", post(routes::report_thread_usage))
         .route("/threads/:id/assignee/claim", post(routes::claim_thread))
         .route(
             "/threads/:id/dependencies",

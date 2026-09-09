@@ -12,6 +12,18 @@ const COLS: &str = "id, workspace_id, channel_id, thread_id, member_id, reason, 
 /// assigned here; `failed_at` is bound rfc3339 (not the `datetime('now')` default)
 /// so it reads back as `DateTime<Utc>` cleanly.
 pub async fn record(pool: &SqlitePool, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
+    let mut tx = pool.begin().await?;
+    let entry = record_in_tx(&mut tx, new).await?;
+    tx.commit().await?;
+    Ok(entry)
+}
+
+/// Record a dead-lettered run on a caller-supplied tx (Cluster 358.3) — so the
+/// DLQ write is atomic with the claim release + `ClaimFailed` append.
+pub async fn record_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    new: &NewDlqEntry,
+) -> Result<DlqEntry, StoreError> {
     let id = Uuid::new_v4();
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
@@ -32,7 +44,7 @@ pub async fn record(pool: &SqlitePool, new: &NewDlqEntry) -> Result<DlqEntry, St
     .bind(new.used_usd_micros)
     .bind(new.used_turns)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await?;
     Ok(row_to_dlq(&row))
 }

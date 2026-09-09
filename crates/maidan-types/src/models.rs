@@ -304,6 +304,19 @@ pub struct UsageDelta {
     pub turns: i64,
 }
 
+/// The outcome of reporting usage against a thread's budget (Cluster 358). Always
+/// carries the new totals; `stopped` is true when this report pushed the thread
+/// over budget and its claimed run was stopped (claim released + `ClaimFailed` +
+/// DLQ), with `reason` the dimension that bound.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UsageReport {
+    pub budget: ThreadBudget,
+    pub stopped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// Which budget dimension was exceeded (Cluster 358) — the reason a run was
 /// stopped, carried on the `ClaimFailed` event and the DLQ entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
