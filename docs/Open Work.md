@@ -241,7 +241,7 @@ than minting a new one.
   (resource indicators / token audience / consent — elicit, don't silently expand — `NEW-mcp-step-up-auth`);
   **broken-premise hold** (uncertainty → ask/stuck, not a confident land — BullshitBench). **Do not** reopen J3
   (`ttlMs`/`cacheScope`/`server/discover`/`request_client`), restore `Mcp-Session-Id`, mint a second
-  elicitation cluster, or add a fourth interrupt.
+  elicitation cluster, or add a fourth interrupt. LangChain client interrupt ↔ Maidan durable gate interop notes live in [[research-langchain-mcp]].
 - **HITL list — 282–289 follow-up ← H12 (Wave 1 #3). ✅ SHIPPED — Cluster 352 (`v352.0.0`), PRs #628–#631**
   ([[Retros/Cluster 352]]). Delivered: `status` incl. `input-required`/`INPUT_REQUIRED` (`normalize_task_state`
   accepts every spelling); `statusTimestampAfter`; `includeArtifacts` (omitted when false); `application/a2a+json`;
