@@ -131,6 +131,7 @@ pub async fn get_thread_context(
             include_edits: q.include_edits,
             include_glossary: q.include_glossary,
             as_of: q.as_of,
+            token_budget: q.token_budget,
         },
     )
     .await?;
@@ -171,6 +172,7 @@ pub async fn snapshot_thread_context(
             include_edits: q.include_edits,
             include_glossary: q.include_glossary,
             as_of: q.as_of,
+            token_budget: q.token_budget,
         },
     )
     .await?;
