@@ -178,6 +178,58 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_thread_budget",
+            "description": "Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs. Omitted dimensions are unbounded. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "max_tokens": {"type": "integer"},
+                    "max_usd_micros": {"type": "integer", "description": "USD in micros ($1 = 1000000)"},
+                    "max_turns": {"type": "integer"},
+                    "max_wall_secs": {"type": "integer", "description": "wall-clock budget vs the working clock"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_thread_budget",
+            "description": "A thread's budget envelope with accumulated usage, or null if none is set.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "report_usage",
+            "description": "Report incremental resource usage against a thread's budget — your run's heartbeat. If it pushes a claimed thread over budget, the run is STOPPED (claim released + claim_failed event + DLQ) and the response's stopped/reason say so. Report as you go so a runaway run is caught early.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "tokens": {"type": "integer", "default": 0},
+                    "usd_micros": {"type": "integer", "default": 0, "description": "USD in micros ($1 = 1000000)"},
+                    "turns": {"type": "integer", "default": 0}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_dlq",
+            "description": "A channel's agent-work dead-letter queue — runs stopped for exceeding their budget, newest first. Triage these (retry, raise the budget, give up).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 50, "description": "clamped 1..=200"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
             "name": "get_tool_transcript",
             "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
             "inputSchema": {

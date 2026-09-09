@@ -17,6 +17,7 @@ use crate::error::McpError;
 mod approval;
 mod artifact;
 mod automation;
+mod budget;
 mod catalog;
 mod channel;
 mod glossary;
@@ -110,6 +111,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "unmute_thread"
         | "mute_channel"
         | "unmute_channel"
+        | "get_thread_budget"
+        | "list_dlq"
         | "get_glossary_term"
         | "list_glossary_terms"
         | "list_slack_channel_links"
@@ -160,6 +163,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_thread_result"
         | "set_thread_owner"
         | "rename_thread"
+        | "set_thread_budget"
+        | "report_usage"
         | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -196,6 +201,7 @@ async fn enforce_channel_access(
         | "list_recently_active_threads"
         | "mute_channel"
         | "unmute_channel"
+        | "list_dlq"
         | "create_task_schedule"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
@@ -229,6 +235,9 @@ async fn enforce_channel_access(
         | "rename_thread"
         | "set_thread_steer"
         | "get_thread_steer"
+        | "set_thread_budget"
+        | "get_thread_budget"
+        | "report_usage"
         | "list_child_threads"
         | "mute_thread"
         | "unmute_thread"
@@ -303,6 +312,10 @@ pub async fn dispatch(
         "unmute_thread" => thread::unmute_thread(store, auth, args).await,
         "mute_channel" => channel::mute_channel(store, auth, args).await,
         "unmute_channel" => channel::unmute_channel(store, auth, args).await,
+        "set_thread_budget" => budget::set_thread_budget(store, args).await,
+        "get_thread_budget" => budget::get_thread_budget(store, args).await,
+        "report_usage" => budget::report_usage(server, args).await,
+        "list_dlq" => budget::list_dlq(store, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, args).await,
         "claim_thread" => thread::claim_thread(server, args).await,
