@@ -81,6 +81,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "list_assigned_threads"
+        | "get_wip_limit"
+        | "get_member_wip"
         | "list_thread_dependencies"
         | "list_task_schedules"
         | "list_member_skills"
@@ -135,6 +137,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "create_task_schedule"
         | "set_glossary_term"
         | "seed_from_message"
+        | "set_wip_limit"
         | "add_member_skill" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
@@ -326,6 +329,9 @@ pub async fn dispatch(
         "claim_thread" => thread::claim_thread(server, args).await,
         "unassign_thread" => thread::unassign_thread(server, args).await,
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
+        "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
+        "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
+        "get_member_wip" => thread::get_member_wip(store, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
         "renew_claim" => thread::renew_claim(server, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, args).await,
