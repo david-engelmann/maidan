@@ -227,6 +227,43 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 .await?;
             }
         }
+        Event::ThreadLanded {
+            workspace_id,
+            channel_id,
+            thread_id,
+            ..
+        } => {
+            // G-dev-7 (Cluster 361): the work landed (its linked PR merged). Reach
+            // the people accountable for or watching the thread — its durable owner
+            // (if any) plus its followers. Per-recipient mutes are honored by
+            // `notify`. No member actor: the merger is a GitHub login, not a member.
+            // A PR merge is infrequent (not a hot path like MessagePosted), so a
+            // per-recipient loop over the small union is fine.
+            let mut recipients: HashSet<MemberId> = HashSet::new();
+            if let Ok(thread) = state.store.get_thread(*thread_id).await {
+                if let Some(owner_id) = thread.owner_id {
+                    recipients.insert(owner_id);
+                }
+            }
+            match state.store.thread_followers(*thread_id).await {
+                Ok(followers) => recipients.extend(followers),
+                Err(err) => tracing::warn!(error = %err, "thread_landed: follower lookup failed"),
+            }
+            for member_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    member_id,
+                    EventKind::ThreadLanded,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    None,
+                )
+                .await?;
+            }
+        }
         _ => {}
     }
     Ok(())

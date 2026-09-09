@@ -498,6 +498,94 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
     );
 }
 
+/// Cluster 361 (G-dev-7): when a thread lands (its linked PR merged), the router
+/// notifies the thread's owner and its followers; a non-follower gets nothing.
+#[tokio::test]
+async fn router_notifies_owner_and_followers_when_a_thread_lands() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(store.clone(), artifacts, bus, search);
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w1".into() })
+        .await
+        .unwrap();
+    let mk = |h: &str| NewMember {
+        workspace_id: ws.id,
+        handle: h.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let owner = store.create_member(mk("owner")).await.unwrap();
+    let follower = store.create_member(mk("follower")).await.unwrap();
+    let bystander = store.create_member(mk("bystander")).await.unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("landed".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .set_thread_owner(thread.id, Some(owner.id))
+        .await
+        .unwrap();
+    store.follow_thread(follower.id, thread.id).await.unwrap();
+
+    let landed = Event::ThreadLanded {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        thread_id: thread.id,
+        repo: "o/r".into(),
+        pr_number: 7,
+        merged_by: Some("octocat".into()),
+        merge_commit_sha: Some("abc123".into()),
+        title: Some("add the widget".into()),
+    };
+    notification_router::route_event(&state, 1, &landed)
+        .await
+        .unwrap();
+
+    for (who, id) in [("owner", owner.id), ("follower", follower.id)] {
+        let notes = store.list_notifications(id, false, 10).await.unwrap();
+        assert_eq!(notes.len(), 1, "{who} is notified the thread landed");
+        assert_eq!(notes[0].kind, EventKind::ThreadLanded);
+        assert_eq!(notes[0].thread_id, Some(thread.id));
+    }
+    assert!(
+        store
+            .list_notifications(bystander.id, false, 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a non-owner non-follower is not notified"
+    );
+}
+
 /// Cluster 357 (N3): a member who mutes a channel is dropped from its
 /// `MessagePosted` firehose, but a `MentionRecorded` in that channel still
 /// notifies them (mention breakthrough). A thread mute is stronger — it
