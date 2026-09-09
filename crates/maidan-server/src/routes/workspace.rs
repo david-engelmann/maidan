@@ -230,6 +230,9 @@ pub async fn get_workspace_context(
         include_glossary: q.include_glossary,
         as_of: None, // as-of replay is thread-scoped (Cluster 326)
         token_budget: q.token_budget,
+        // Overridden to false per nested thread inside build_workspace_context
+        // (grounding is the focused single-thread view, not the firehose).
+        include_parent_grounding: false,
     };
     let mut packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),

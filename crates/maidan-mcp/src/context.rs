@@ -120,6 +120,11 @@ struct ThreadContextArgs {
     /// kept, the middle is elided into an auditable `elision` marker on the
     /// response. Omit to cap by rows only.
     token_budget: Option<i64>,
+    /// Attach parent grounding to a child thread's pack (Cluster 360): the parent's
+    /// opening ask + latest decision, orienting a fresh claimer. Default `true`;
+    /// absent for root threads and withheld for a cross-channel or DM parent.
+    #[serde(default = "default_true")]
+    include_parent_grounding: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +156,42 @@ fn apply_token_budget(
         Some(budget) => fold_messages_to_budget(messages, budget.max(1) as usize),
         None => (messages, None),
     }
+}
+
+/// Parent grounding for a child thread (Cluster 360) — the MCP twin of the REST
+/// assembler's `build_parent_grounding`. The same-channel + non-DM safety rule
+/// lives in `maidan_types::ParentGrounding::assemble`; this fetches its inputs.
+async fn build_parent_grounding(
+    store: &dyn Store,
+    thread: &Thread,
+    channel: &Channel,
+) -> Option<ParentGrounding> {
+    let parent_id = thread.parent_thread_id?;
+    if channel.name == DM_CHANNEL_NAME {
+        return None;
+    }
+    let parent = store.get_thread(parent_id).await.ok()?;
+    if parent.channel_id != channel.id || parent.tombstoned_at.is_some() {
+        return None;
+    }
+    let opening_message = store
+        .list_messages_after(parent_id, None, 1)
+        .await
+        .ok()
+        .and_then(|mut v| v.drain(..).next());
+    let latest_result = store
+        .get_thread_result(parent_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.result);
+    ParentGrounding::assemble(
+        parent,
+        channel.id,
+        channel.name == DM_CHANNEL_NAME,
+        opening_message,
+        latest_result,
+    )
 }
 
 fn default_message_limit() -> i64 {
@@ -218,6 +259,13 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     });
     if let Some(elision) = elision {
         out["elision"] = serde_json::to_value(&elision)?;
+    }
+    // Parent grounding for a child thread (Cluster 360): the parent's opening ask +
+    // latest decision. Absent for root threads / cross-channel / DM parents.
+    if a.include_parent_grounding {
+        if let Some(grounding) = build_parent_grounding(store, &thread, &channel).await {
+            out["parent_grounding"] = serde_json::to_value(&grounding)?;
+        }
     }
     // The glossary grounds the pack in the workspace's shared vocabulary (Cluster
     // 323). Attached only when present + requested, so an empty glossary costs no
@@ -359,6 +407,8 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
                 "include_glossary": false,
                 // The token budget applies per nested thread (Cluster 360).
                 "token_budget": a.token_budget,
+                // Grounding is the focused single-thread view, not the firehose.
+                "include_parent_grounding": false,
             }),
         )
         .await?;
@@ -821,5 +871,107 @@ mod tests {
             .unwrap();
         assert_eq!(full["messages"].as_array().unwrap().len(), N);
         assert!(full.get("elision").is_none());
+    }
+
+    #[tokio::test]
+    async fn child_thread_pack_carries_parent_grounding() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "g".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let parent = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("parent task".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .post_message(NewMessage {
+                thread_id: parent.id,
+                author_id: member.id,
+                body: "build the widget".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(parent.id, member.id, &json!({"decision": "approved"}))
+            .await
+            .unwrap();
+        let child = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: Some(parent.id),
+                title: Some("child subtask".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .post_message(NewMessage {
+                thread_id: child.id,
+                author_id: member.id,
+                body: "working on it".into(),
+                metadata: json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+
+        // Child pack grounds on the parent by default.
+        let ctx = get_thread_context(store.as_ref(), &json!({ "thread_id": child.id.0 }))
+            .await
+            .unwrap();
+        let g = &ctx["parent_grounding"];
+        assert_eq!(g["thread_id"], json!(parent.id.0));
+        assert_eq!(g["title"], "parent task");
+        assert_eq!(g["opening_message"]["body"], "build the widget");
+        assert_eq!(g["latest_result"], json!({"decision": "approved"}));
+
+        // Opt-out drops it.
+        let off = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": child.id.0, "include_parent_grounding": false }),
+        )
+        .await
+        .unwrap();
+        assert!(off.get("parent_grounding").is_none());
+
+        // A root thread never grounds.
+        let root = get_thread_context(store.as_ref(), &json!({ "thread_id": parent.id.0 }))
+            .await
+            .unwrap();
+        assert!(root.get("parent_grounding").is_none());
     }
 }
