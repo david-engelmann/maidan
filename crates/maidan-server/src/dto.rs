@@ -449,6 +449,12 @@ pub struct SearchQuery {
     pub channel: Option<uuid::Uuid>,
     /// Restrict hits to messages whose author has this kind (`human` / `agent`).
     pub kind: Option<MemberKind>,
+    /// Date-range facet (Cluster 359, N4): only messages posted at/after this
+    /// RFC 3339 instant (inclusive lower bound).
+    pub after: Option<chrono::DateTime<chrono::Utc>>,
+    /// Date-range facet (Cluster 359, N4): only messages posted strictly before
+    /// this RFC 3339 instant (exclusive upper bound — a half-open window).
+    pub before: Option<chrono::DateTime<chrono::Utc>>,
     /// Semantic only: query this model's embedding table (default: active provider).
     pub embedding_model: Option<String>,
     /// Hybrid only: semantic weight in `[0,1]` (default `0.5`). `combined =

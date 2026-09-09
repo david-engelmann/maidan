@@ -33,6 +33,10 @@ struct SearchMessagesArgs {
     author_id: Option<uuid::Uuid>,
     channel_id: Option<uuid::Uuid>,
     kind: Option<maidan_types::MemberKind>,
+    /// Date-range facet (Cluster 359, N4): RFC 3339 lower/upper bounds on
+    /// `posted_at` — a half-open `[after, before)` window.
+    after: Option<chrono::DateTime<chrono::Utc>>,
+    before: Option<chrono::DateTime<chrono::Utc>>,
     embedding_model: Option<String>,
     hybrid_weight: Option<f64>,
     /// Drop full `body` from each hit, keeping only the snippet (Cluster 175,
@@ -63,6 +67,8 @@ pub(super) async fn search_messages(
         author_id: a.author_id.map(maidan_types::MemberId),
         channel_id: a.channel_id.map(maidan_types::ChannelId),
         author_kind: a.kind,
+        after: a.after,
+        before: a.before,
         deny_channels,
     };
     let hits = match a.mode {

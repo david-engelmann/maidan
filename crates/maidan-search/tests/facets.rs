@@ -25,4 +25,5 @@ async fn sqlite_faceted_search_filters_hits() {
     let fx = common::seed(&*store).await;
     common::assert_faceted_search(&search, &fx).await;
     common::assert_deny_channels_filter(&search, &fx).await;
+    common::assert_date_range_filter(&search, &fx).await;
 }

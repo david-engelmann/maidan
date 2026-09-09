@@ -1146,6 +1146,8 @@ pub fn catalog() -> Vec<Value> {
                     "author_id": {"type": "string", "format": "uuid"},
                     "channel_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string", "enum": ["human", "agent"]},
+                    "after": {"type": "string", "format": "date-time", "description": "Only messages posted at/after this RFC 3339 instant (inclusive)."},
+                    "before": {"type": "string", "format": "date-time", "description": "Only messages posted before this RFC 3339 instant (exclusive) — a half-open window with after."},
                     "embedding_model": {
                         "type": "string",
                         "description": "Semantic/hybrid only: registered model name (default: active provider)."
