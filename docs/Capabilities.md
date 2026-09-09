@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v358.0.0 — the budget envelope (Wave 1 #9)
+
+A stacked cluster (358.1–358.4, T1/T5) giving a task/run a **budget envelope** — token, USD, turn, and wall-clock maxima — that **stops the run** when exceeded, records the stop as a **failure** (not a close), and **dead-letters** it for triage. Over REST + MCP.
+
+| Change | Where |
+|--------|-------|
+| **Budget + usage store (358.1):** `maidan_thread_budgets` (pg 0063 / sqlite 0062) — optional `max_{tokens,usd_micros,turns,wall_secs}` + accumulated `used_*`; `BudgetStore` set/get/add-usage; `ThreadBudget::exceeded`. USD as integer micros; wall from the Cluster-351 working clock. | `migrations/*/00{63,62}_thread_budgets.sql`, `crates/maidan-store/src/*/budget.rs`, `crates/maidan-types/src/models.rs` |
+| **`ClaimFailed` + agent-work DLQ (358.2):** `EventKind::ClaimFailed` (hard stop ≠ success; non-federatable) + `maidan_agent_work_dlq` (pg 0064 / sqlite 0063) + record/list. | `crates/maidan-types/src/events.rs`, `migrations/*/00{64,63}_agent_work_dlq.sql`, `crates/maidan-store/src/*/dlq.rs` |
+| **Enforcement + REST (358.3):** `report_thread_usage` — over-budget on a claimed thread atomically releases the claim + `ClaimFailed` + DLQ; `PUT`/`GET /threads/:id/budget`, `POST /threads/:id/usage`, `GET /channels/:cid/dlq`. | `crates/maidan-store/src/*/budget.rs`, `crates/maidan-server/src/routes/{thread,channel}.rs` |
+| **MCP (358.4):** `set_thread_budget` / `get_thread_budget` / `report_usage` / `list_dlq`. | `crates/maidan-mcp/src/tools/budget.rs` |
+
+Budget-exhaustion is a claim-level failure, not a new terminal thread state; enforcement is at the report heartbeat (no reaper). Not a billing SKU.
+
 ## v357.0.0 — scoped notification mute (Wave 1 #8)
 
 A stacked cluster (357.1–357.3, N3) adding a **per-channel** mute with **mention breakthrough** — silence a busy channel's firehose while still getting @mentioned. With Cluster 356.3's per-thread mute, notification mute is now scopeable at kind, channel, and thread granularity.
