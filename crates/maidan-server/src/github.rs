@@ -54,8 +54,9 @@ impl GithubConfig {
 
 /// `POST /integrations/github/events` — the GitHub webhook ingress. Returns `404`
 /// when the projector isn't configured, `401` on a bad `X-Hub-Signature-256`,
-/// `200` for the `ping` setup event and (for now) other events — `issue_comment`
-/// routing to a Maidan thread lands in Cluster 311.
+/// `200` for the `ping` setup event, an `issue_comment` (projected to the linked
+/// Maidan thread, Cluster 311), a merged `pull_request` (a `ThreadLanded` fact,
+/// Cluster 361), and (with no side effect) any other event.
 pub async fn github_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -84,8 +85,80 @@ pub async fn github_events(
             route_github_issue_comment(&state, &payload).await;
             StatusCode::OK.into_response()
         }
+        // A merged PR on a linked issue/PR → a `ThreadLanded` fact (Cluster 361).
+        "pull_request" => {
+            route_github_pull_request(&state, &payload).await;
+            StatusCode::OK.into_response()
+        }
         _ => StatusCode::OK.into_response(),
     }
+}
+
+/// Route an inbound GitHub `pull_request` event: when a PR **linked** to a Maidan
+/// thread is **merged** (`action == "closed"` with `pull_request.merged == true`),
+/// emit a `ThreadLanded` fact on that thread (Cluster 361, G-dev-7). This "steals
+/// the landed fact" — it records that the work landed; it does **not** transition
+/// the thread's FSM (not an automation product). Best-effort; the ingress always
+/// ACKs. A closed-but-unmerged PR, or a PR not linked to a thread, is ignored.
+async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value) {
+    if payload.get("action").and_then(|v| v.as_str()) != Some("closed") {
+        return; // only a close can be a merge
+    }
+    let pr = payload.get("pull_request");
+    let merged = pr
+        .and_then(|p| p.get("merged"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !merged {
+        return; // closed without merging is not a land
+    }
+    let (Some(repo), Some(pr_number)) = (
+        payload
+            .get("repository")
+            .and_then(|r| r.get("full_name"))
+            .and_then(|v| v.as_str()),
+        pr.and_then(|p| p.get("number")).and_then(|v| v.as_i64()),
+    ) else {
+        return;
+    };
+    // A PR number lives in the shared issue/PR number namespace, so it links the
+    // same way an issue does (Cluster 346).
+    let link = match state.store.get_github_issue_link(repo, pr_number).await {
+        Ok(Some(l)) => l,
+        Ok(None) => return, // PR not linked to a thread — ignore
+        Err(err) => {
+            tracing::warn!(error = %err, "github pull_request: link lookup failed");
+            return;
+        }
+    };
+    let merged_by = pr
+        .and_then(|p| p.get("merged_by"))
+        .and_then(|u| u.get("login"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let merge_commit_sha = pr
+        .and_then(|p| p.get("merge_commit_sha"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let title = pr
+        .and_then(|p| p.get("title"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    crate::routes::publish(
+        state,
+        maidan_types::Event::ThreadLanded {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: link.workspace_id,
+            channel_id: link.channel_id,
+            thread_id: link.thread_id,
+            repo: repo.to_string(),
+            pr_number,
+            merged_by,
+            merge_commit_sha,
+            title,
+        },
+    )
+    .await;
 }
 
 /// Route an inbound GitHub `issue_comment` event: a new comment on a linked
