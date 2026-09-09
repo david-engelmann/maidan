@@ -1254,7 +1254,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_thread_context",
-            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent).",
+            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable 'elision' marker (Lost-in-the-Middle).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1263,7 +1263,8 @@ pub fn catalog() -> Vec<Value> {
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
                     "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."},
                     "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."},
-                    "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."}
+                    "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."},
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."}
                 },
                 "required": ["thread_id"]
             }
@@ -1279,7 +1280,8 @@ pub fn catalog() -> Vec<Value> {
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
                     "include_edits": {"type": "boolean", "default": false},
                     "include_glossary": {"type": "boolean", "default": true},
-                    "as_of": {"type": "integer", "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack."}
+                    "as_of": {"type": "integer", "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack."},
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens before freezing (see get_thread_context)."}
                 },
                 "required": ["thread_id"]
             }
@@ -1294,7 +1296,8 @@ pub fn catalog() -> Vec<Value> {
                     "thread_limit": {"type": "integer", "minimum": 1, "maximum": 50},
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
-                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it."}
+                    "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it."},
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap each nested thread's message page by estimated tokens (see get_thread_context). Omit to cap by rows only."}
                 },
                 "required": ["workspace_id"]
             }

@@ -115,6 +115,11 @@ struct ThreadContextArgs {
     /// this event-log id, deterministic over the immutable log. Omit for the live
     /// pack.
     as_of: Option<i64>,
+    /// Token budget for the message page (Cluster 360, G-dev-1). When set, an
+    /// over-budget page is folded — the opening message and the recent tail are
+    /// kept, the middle is elided into an auditable `elision` marker on the
+    /// response. Omit to cap by rows only.
+    token_budget: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,6 +136,21 @@ struct WorkspaceContextArgs {
     /// 323). Default `true`; omitted when empty. `false` drops it.
     #[serde(default = "default_true")]
     include_glossary: bool,
+    /// Token budget applied to **each** nested thread's message page (Cluster 360).
+    /// Omit for row-only caps.
+    token_budget: Option<i64>,
+}
+
+/// Apply an optional token budget to a message page (Cluster 360), the MCP twin of
+/// the REST assembler's `apply_token_budget`. `None` leaves the page untouched.
+fn apply_token_budget(
+    messages: Vec<Message>,
+    token_budget: Option<i64>,
+) -> (Vec<Message>, Option<PackElision>) {
+    match token_budget {
+        Some(budget) => fold_messages_to_budget(messages, budget.max(1) as usize),
+        None => (messages, None),
+    }
 }
 
 fn default_message_limit() -> i64 {
@@ -170,6 +190,9 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         None
     };
     let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
+    // Token-budget fold (Cluster 360): keep the opener + recent tail, elide the
+    // middle — before the refs/edits/artifacts reads, so the whole pack shrinks.
+    let (messages, elision) = apply_token_budget(messages, a.token_budget);
     let transitions = store
         .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
         .await?;
@@ -193,6 +216,9 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         },
         "next_message_cursor": next_message_cursor,
     });
+    if let Some(elision) = elision {
+        out["elision"] = serde_json::to_value(&elision)?;
+    }
     // The glossary grounds the pack in the workspace's shared vocabulary (Cluster
     // 323). Attached only when present + requested, so an empty glossary costs no
     // tokens and a workspace-context pack (which carries it once at the top) can
@@ -237,6 +263,9 @@ async fn get_thread_context_as_of(
         None
     };
     let messages: Vec<Message> = all.into_iter().take(page_limit as usize).collect();
+    // Token-budget fold (Cluster 360) — same as the live pack, on the reconstructed
+    // page before the additive components are read from it.
+    let (messages, elision) = apply_token_budget(messages, a.token_budget);
 
     // Cluster 335: batched refs/edits + artifacts (shared with the live path), then
     // cut to the anchor's time — the additive components as they stood at `as_of`.
@@ -257,7 +286,7 @@ async fn get_thread_context_as_of(
         .map(|t| t.to_state)
         .unwrap_or(ThreadState::Open);
 
-    Ok(json!({
+    let mut out = json!({
         "workspace_id": channel.workspace_id.0,
         "channel_id": thread.channel_id.0,
         "as_of": as_of,
@@ -268,7 +297,11 @@ async fn get_thread_context_as_of(
         "artifacts": artifacts,
         "fsm": { "state": state, "transitions": transitions },
         "next_message_cursor": next_message_cursor,
-    }))
+    });
+    if let Some(elision) = elision {
+        out["elision"] = serde_json::to_value(&elision)?;
+    }
+    Ok(out)
 }
 
 pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
@@ -324,6 +357,8 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
                 // The glossary rides the workspace level once (below); suppress it
                 // per nested thread so it is not repeated N times.
                 "include_glossary": false,
+                // The token budget applies per nested thread (Cluster 360).
+                "token_budget": a.token_budget,
             }),
         )
         .await?;
@@ -695,5 +730,96 @@ mod tests {
         let artifacts = ctx["artifacts"].as_array().expect("artifacts present");
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0]["sha256"], json!(sha));
+    }
+
+    #[tokio::test]
+    async fn token_budget_folds_the_pack_and_surfaces_elision() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "g".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+
+        const N: usize = 6;
+        for i in 0..N {
+            store
+                .post_message(NewMessage {
+                    thread_id: thread.id,
+                    author_id: member.id,
+                    body: format!("m{i}-{}", (b'a' + i as u8) as char).repeat(120),
+                    metadata: json!({}),
+                    content: None,
+                })
+                .await
+                .unwrap();
+        }
+
+        // Tight budget → opener + recent tail kept, middle elided, marker present.
+        let folded = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": thread.id.0, "token_budget": 400 }),
+        )
+        .await
+        .unwrap();
+        let kept = folded["messages"].as_array().unwrap();
+        assert!(kept.len() >= 2 && kept.len() < N);
+        assert!(kept.first().unwrap()["body"]
+            .as_str()
+            .unwrap()
+            .starts_with("m0-a"));
+        assert!(kept.last().unwrap()["body"]
+            .as_str()
+            .unwrap()
+            .starts_with("m5-f"));
+        let elision = &folded["elision"];
+        assert!(!elision.is_null());
+        assert_eq!(
+            elision["elided_message_count"].as_u64().unwrap() as usize,
+            N - kept.len()
+        );
+        assert!(elision["summary"].as_str().unwrap().contains("elided"));
+
+        // No budget → all messages, no elision.
+        let full = get_thread_context(store.as_ref(), &json!({ "thread_id": thread.id.0 }))
+            .await
+            .unwrap();
+        assert_eq!(full["messages"].as_array().unwrap().len(), N);
+        assert!(full.get("elision").is_none());
     }
 }
