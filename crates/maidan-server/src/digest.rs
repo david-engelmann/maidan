@@ -63,6 +63,40 @@ fn digest_body(unread_count: i64) -> String {
     format!("You have {unread_count} unread {noun} in Maidan. Open Maidan to catch up.")
 }
 
+/// Compose the buried-decisions digest body (Cluster 359, N2) — the decisions the
+/// member may have missed, one per line, newest first. `unread_count` tails it so
+/// the member still sees the raw backlog size.
+fn decisions_body(decisions: &[maidan_types::BuriedDecision], unread_count: i64) -> String {
+    let mut body = String::from("Decisions you may have missed while you were away:\n\n");
+    for d in decisions {
+        let title = d.thread_title.as_deref().unwrap_or("(untitled thread)");
+        // A compact one-line summary of the result value.
+        let summary = match &d.result {
+            serde_json::Value::String(s) => s.clone(),
+            other => {
+                let mut s = other.to_string();
+                if s.len() > 140 {
+                    // Truncate on a char boundary.
+                    let end = s
+                        .char_indices()
+                        .take_while(|(i, _)| *i < 140)
+                        .last()
+                        .map(|(i, c)| i + c.len_utf8())
+                        .unwrap_or(0);
+                    s.truncate(end);
+                    s.push('…');
+                }
+                s
+            }
+        };
+        body.push_str(&format!("• {title}: {summary}\n"));
+    }
+    body.push_str(&format!(
+        "\nYou have {unread_count} unread notification(s) total. Open Maidan to catch up."
+    ));
+    body
+}
+
 /// Send a digest to every member currently due, advancing each watermark on a
 /// successful send. Returns the number of digests sent (for tests / logging).
 /// No-op when no mail transport is configured.
@@ -82,10 +116,24 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         }
     };
     let now = chrono::Utc::now();
+    let epoch = chrono::DateTime::from_timestamp(0, 0).unwrap_or(now);
     let mut sent = 0u32;
     for member in due {
+        // Buried decisions (Cluster 359, N2): the digest leads with the decisions
+        // the member missed since their last digest, falling back to the bare
+        // unread-count line when there are none.
+        let since = member.last_digest_at.unwrap_or(epoch);
+        let decisions = state
+            .store
+            .buried_decisions_for_member(member.member_id, since, 20)
+            .await
+            .unwrap_or_default();
         let subject = digest_subject();
-        let body = digest_body(member.unread_count);
+        let body = if decisions.is_empty() {
+            digest_body(member.unread_count)
+        } else {
+            decisions_body(&decisions, member.unread_count)
+        };
         match mail.send(&member.email, &subject, &body).await {
             Ok(()) => {
                 // Advance the watermark only on success, so a failed send retries

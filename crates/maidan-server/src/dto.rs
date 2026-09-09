@@ -504,6 +504,15 @@ pub struct SnoozeNotification {
     pub until: chrono::DateTime<chrono::Utc>,
 }
 
+/// Query for a member's buried decisions (Cluster 359, N2).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct DecisionsQuery {
+    /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Max decisions to return (default 50, clamp 1..=200).
+    pub limit: Option<i64>,
+}
+
 /// Query params for workspace import (Cluster 270).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ImportQuery {

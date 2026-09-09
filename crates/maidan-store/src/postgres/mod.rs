@@ -856,6 +856,14 @@ impl PresenceDigestStore for PostgresStore {
     async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError> {
         email_digest::members_due_for_digest(&self.pool, limit).await
     }
+    async fn buried_decisions_for_member(
+        &self,
+        member_id: MemberId,
+        since: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<BuriedDecision>, StoreError> {
+        email_digest::buried_decisions_for_member(self.read_pool(), member_id, since, limit).await
+    }
 }
 
 #[async_trait]

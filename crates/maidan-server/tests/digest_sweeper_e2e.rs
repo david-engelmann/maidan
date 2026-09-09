@@ -10,8 +10,8 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{digest, notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewMember, NewNotification, NewWorkspace,
-    WorkspaceId,
+    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewNotification,
+    NewThread, NewWorkspace, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -170,5 +170,73 @@ async fn digest_sweeper_sends_rollup_then_advances_watermark() {
         mailer.sent.lock().unwrap().len(),
         1,
         "still just the one digest"
+    );
+}
+
+/// Cluster 359 (N2): the digest leads with buried decisions — a task result
+/// produced by someone else in a channel the member follows, listed in the email.
+#[tokio::test]
+async fn digest_leads_with_buried_decisions() {
+    let (state, mailer, store) = state_with_mailer().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let follower = member_with_email(store.as_ref(), ws.id, "f", "f@example.com").await;
+    store
+        .set_delivery_mode(follower, EmailDeliveryMode::Digest)
+        .await
+        .unwrap();
+    let producer = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "producer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    store.follow_channel(follower, channel.id).await.unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("the rollout".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .set_thread_result(
+            thread.id,
+            producer.id,
+            &serde_json::json!("shipped the fix"),
+        )
+        .await
+        .unwrap();
+    // Make the follower due for a digest (an unread notification since epoch).
+    add_unread(store.as_ref(), ws.id, follower, 1).await;
+
+    let n = digest::sweep_once(&state).await;
+    assert_eq!(n, 1, "one digest sent");
+    let sent = mailer.sent.lock().unwrap();
+    assert_eq!(sent[0].0, "f@example.com");
+    assert!(
+        sent[0].1.to_lowercase().contains("decision"),
+        "digest is framed as buried decisions, got: {}",
+        sent[0].1
+    );
+    assert!(
+        sent[0].1.contains("the rollout") && sent[0].1.contains("shipped the fix"),
+        "digest lists the decision's thread + result, got: {}",
+        sent[0].1
     );
 }

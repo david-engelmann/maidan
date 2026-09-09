@@ -769,6 +769,26 @@ pub struct DigestDue {
     pub member_id: MemberId,
     pub email: String,
     pub unread_count: i64,
+    /// The member's digest watermark (Cluster 359, N2) — decisions produced after
+    /// this instant are the "buried" ones the digest surfaces. `None` = never
+    /// digested (treat as the epoch).
+    pub last_digest_at: Option<DateTime<Utc>>,
+}
+
+/// A decision the member may have missed (Cluster 359, N2) — a task result
+/// (Cluster 234 `ThreadResult`) produced by someone else in a channel or thread
+/// the member follows, since their last digest. The buried-decisions digest lists
+/// these instead of a bare unread count; it's also queryable directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct BuriedDecision {
+    pub thread_id: ThreadId,
+    pub channel_id: ChannelId,
+    pub thread_title: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub result: serde_json::Value,
+    pub produced_by: MemberId,
+    pub produced_at: DateTime<Utc>,
 }
 
 /// System channel name for DM threads in a workspace.

@@ -321,6 +321,15 @@ pub fn list_member_notifications() {}
     responses((status = 200, body = [NotificationThreadGroup])))]
 pub fn list_member_notifications_grouped() {}
 
+#[utoipa::path(get, path = "/members/{id}/decisions", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        DecisionsQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [BuriedDecision])))]
+pub fn list_member_decisions() {}
+
 #[utoipa::path(get, path = "/members/{id}/notifications/unread-count", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
     security(("bearerAuth" = [])),

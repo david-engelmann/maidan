@@ -37,6 +37,7 @@
   "link_github_issue": "workspace:write",
   "link_slack_channel": "workspace:write",
   "list_assigned_threads": "workspace:read",
+  "list_buried_decisions": "workspace:read",
   "list_channel_follows": "workspace:read",
   "list_channel_members": "channel:admin",
   "list_channels": "workspace:read",
