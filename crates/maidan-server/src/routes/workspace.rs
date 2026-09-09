@@ -229,6 +229,7 @@ pub async fn get_workspace_context(
         include_edits: q.include_edits,
         include_glossary: q.include_glossary,
         as_of: None, // as-of replay is thread-scoped (Cluster 326)
+        token_budget: q.token_budget,
     };
     let mut packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),

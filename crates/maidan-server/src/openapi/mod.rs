@@ -289,6 +289,7 @@ impl Modify for SecurityAddon {
         ThreadContext,
         crate::thread_context::MessageEditView,
         ThreadFsmContext,
+        maidan_types::PackElision,
         WorkspaceContext,
         ThreadContextQuery,
         ToolTranscriptQuery,
