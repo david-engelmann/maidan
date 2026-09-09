@@ -16,8 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::MessageId;
-use crate::models::Message;
+use crate::ids::{ChannelId, MessageId, ThreadId};
+use crate::models::{Message, Thread, ThreadState};
 
 /// Rough prompt-token estimate: ~4 characters per token, the widely-cited
 /// approximation for English BPE tokenizers. Exact counts are tokenizer-specific;
@@ -56,6 +56,65 @@ pub struct PackElision {
     pub last_elided_id: MessageId,
     /// A human/agent-readable summary naming the omission and how to recover it.
     pub summary: String,
+}
+
+/// Grounding for a **child** thread's context pack (Cluster 360, G-dev-1): a
+/// compact orientation to the parent it was spawned from, so a fresh claimer of a
+/// sub-task knows *why it exists* (the parent's opening ask) and *what the parent
+/// concluded* (its latest recorded decision). Deliberately bounded — one framing
+/// message plus one decision payload, not the parent's whole history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ParentGrounding {
+    pub thread_id: ThreadId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub state: ThreadState,
+    /// The parent's opening (oldest) message — the framing / task statement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opening_message: Option<Message>,
+    /// The parent's latest recorded decision/result payload (Cluster 234), if any.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_result: Option<serde_json::Value>,
+}
+
+impl ParentGrounding {
+    /// Decide whether a child thread may carry grounding for its (already-fetched)
+    /// parent, and build it. Returns `None` — grounding withheld — when:
+    /// - the parent is in a **different channel** than the child (the child's
+    ///   access does not imply access to a parent elsewhere), or
+    /// - the child's channel is a **DM** channel (grounding is a task concept; DM
+    ///   threads are conversational and share the one `__dm__` channel across
+    ///   unrelated conversations, so same-channel is not same-audience), or
+    /// - the parent is **tombstoned**.
+    ///
+    /// The same-channel + non-DM rule is what makes grounding safe without a second
+    /// access check: a caller that passed `ensure_thread_access` on the child, whose
+    /// parent shares that non-DM channel, is by construction allowed to read the
+    /// parent. `child_channel_is_dm` and `child_channel_id` describe the *child's*
+    /// channel.
+    pub fn assemble(
+        parent: Thread,
+        child_channel_id: ChannelId,
+        child_channel_is_dm: bool,
+        opening_message: Option<Message>,
+        latest_result: Option<serde_json::Value>,
+    ) -> Option<Self> {
+        if parent.tombstoned_at.is_some()
+            || parent.channel_id != child_channel_id
+            || child_channel_is_dm
+        {
+            return None;
+        }
+        Some(Self {
+            thread_id: parent.id,
+            title: parent.title,
+            state: parent.state,
+            opening_message,
+            latest_result,
+        })
+    }
 }
 
 /// Fold a page of messages (ordered oldest→newest) to fit `budget_tokens`,
@@ -145,6 +204,61 @@ mod tests {
     use super::*;
     use crate::ids::{MemberId, ThreadId};
     use chrono::Utc;
+
+    fn parent_thread(channel_id: ChannelId, tombstoned: bool) -> Thread {
+        Thread {
+            id: ThreadId::new(),
+            channel_id,
+            parent_thread_id: None,
+            title: Some("parent task".into()),
+            state: ThreadState::Open,
+            assignee_id: None,
+            assignment_expires_at: None,
+            claim_lease_id: None,
+            work_started_at: None,
+            owner_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            tombstoned_at: tombstoned.then(Utc::now),
+        }
+    }
+
+    #[test]
+    fn grounding_is_produced_for_a_same_channel_non_dm_parent() {
+        let ch = ChannelId::new();
+        let g = ParentGrounding::assemble(
+            parent_thread(ch, false),
+            ch,
+            false,
+            Some(msg("do the thing")),
+            Some(serde_json::json!({"decision": "ship"})),
+        );
+        let g = g.expect("same-channel non-dm parent grounds");
+        assert_eq!(g.title.as_deref(), Some("parent task"));
+        assert!(g.opening_message.is_some());
+        assert_eq!(
+            g.latest_result,
+            Some(serde_json::json!({"decision": "ship"}))
+        );
+    }
+
+    #[test]
+    fn grounding_is_withheld_cross_channel_dm_or_tombstoned() {
+        let ch = ChannelId::new();
+        let other = ChannelId::new();
+        // Cross-channel parent: the child's access does not imply the parent's.
+        assert!(
+            ParentGrounding::assemble(parent_thread(other, false), ch, false, None, None).is_none()
+        );
+        // DM channel: same-channel is not same-audience.
+        assert!(
+            ParentGrounding::assemble(parent_thread(ch, false), ch, true, None, None).is_none()
+        );
+        // Tombstoned parent.
+        assert!(
+            ParentGrounding::assemble(parent_thread(ch, true), ch, false, None, None).is_none()
+        );
+    }
 
     fn msg(body: &str) -> Message {
         Message {

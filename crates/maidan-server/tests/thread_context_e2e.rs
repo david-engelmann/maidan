@@ -458,3 +458,154 @@ async fn token_budget_folds_the_middle_and_records_elision() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn child_thread_context_grounds_on_its_parent() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let app = router(AppState::for_tests(
+        store.clone(),
+        artifacts.clone(),
+        bus,
+        search,
+    ));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "grounding-ws".into(),
+        })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let parent = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("parent task".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .post_message(NewMessage {
+            thread_id: parent.id,
+            author_id: member.id,
+            body: "ship the widget".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    store
+        .set_thread_result(parent.id, member.id, &serde_json::json!({"decision": "go"}))
+        .await
+        .unwrap();
+    let child = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: Some(parent.id),
+            title: Some("child subtask".into()),
+        })
+        .await
+        .unwrap();
+
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: Some("ctx".into()),
+            capabilities: vec!["workspace:read".into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let auth = format!("Bearer {}", secret.as_str());
+
+    // The child pack grounds on the parent (opening ask + latest decision).
+    let grounded: serde_json::Value = client
+        .get(format!("{base}/threads/{}/context", child.id.0))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let g = &grounded["parent_grounding"];
+    assert_eq!(g["thread_id"], parent.id.0.to_string());
+    assert_eq!(g["title"], "parent task");
+    assert_eq!(g["opening_message"]["body"], "ship the widget");
+    assert_eq!(g["latest_result"], serde_json::json!({"decision": "go"}));
+
+    // Opt-out drops grounding.
+    let lean: serde_json::Value = client
+        .get(format!(
+            "{base}/threads/{}/context?include_parent_grounding=false",
+            child.id.0
+        ))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(lean.get("parent_grounding").is_none());
+
+    // A root thread never grounds.
+    let root: serde_json::Value = client
+        .get(format!("{base}/threads/{}/context", parent.id.0))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(root.get("parent_grounding").is_none());
+
+    server.abort();
+}

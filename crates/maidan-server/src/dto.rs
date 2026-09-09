@@ -329,6 +329,12 @@ pub struct ThreadContextQuery {
     /// the middle is elided into an auditable `elision` marker on the response.
     /// Omit to cap by rows only.
     pub token_budget: Option<i64>,
+    /// Attach parent grounding to a child thread's pack (Cluster 360): the parent's
+    /// opening ask + latest decision, orienting a fresh claimer. Default `true`;
+    /// absent for root threads and withheld for a cross-channel or DM parent. Set
+    /// `false` for the leanest possible pack.
+    #[serde(default = "default_true")]
+    pub include_parent_grounding: bool,
 }
 
 /// Query for `GET /threads/:id/tool-transcript` (Cluster 197).

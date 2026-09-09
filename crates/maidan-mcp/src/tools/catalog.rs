@@ -1264,7 +1264,8 @@ pub fn catalog() -> Vec<Value> {
                     "include_edits": {"type": "boolean", "default": false, "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only."},
                     "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."},
                     "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."},
-                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."}
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."},
+                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack."}
                 },
                 "required": ["thread_id"]
             }
@@ -1281,7 +1282,8 @@ pub fn catalog() -> Vec<Value> {
                     "include_edits": {"type": "boolean", "default": false},
                     "include_glossary": {"type": "boolean", "default": true},
                     "as_of": {"type": "integer", "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack."},
-                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens before freezing (see get_thread_context)."}
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens before freezing (see get_thread_context)."},
+                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "Attach parent grounding before freezing (see get_thread_context)."}
                 },
                 "required": ["thread_id"]
             }

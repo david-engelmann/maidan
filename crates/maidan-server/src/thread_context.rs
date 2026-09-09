@@ -78,6 +78,13 @@ pub struct ThreadContext {
     /// message and its most-recent tail.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elision: Option<PackElision>,
+    /// Grounding for a child thread (Cluster 360): a compact orientation to the
+    /// parent it was spawned from (the parent's opening ask + latest decision).
+    /// Present only for a thread whose parent shares its (non-DM) channel, and only
+    /// when requested (`include_parent_grounding`, default true; suppressed in a
+    /// workspace pack). Absent for root threads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_grounding: Option<ParentGrounding>,
     /// Present when more messages exist (`message_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_message_cursor: Option<String>,
@@ -119,6 +126,12 @@ pub struct ThreadContextLimits {
     /// `ThreadContext.elision`. `None` = no fold (cap by rows only). Applies per
     /// thread, so a workspace-context pack budgets each nested thread.
     pub token_budget: Option<i64>,
+    /// Attach parent grounding to a child thread's pack (Cluster 360). Default
+    /// `true`; a workspace-context build sets this `false` on its nested threads
+    /// (grounding is the focused-claimer view, not the firehose). Absent for root
+    /// threads and withheld for a cross-channel or DM parent (see
+    /// [`maidan_types::ParentGrounding::assemble`]).
+    pub include_parent_grounding: bool,
 }
 
 impl Default for ThreadContextLimits {
@@ -131,6 +144,7 @@ impl Default for ThreadContextLimits {
             include_glossary: true,
             as_of: None,
             token_budget: None,
+            include_parent_grounding: true,
         }
     }
 }
@@ -232,6 +246,12 @@ pub async fn build_thread_context(
         Vec::new()
     };
 
+    let parent_grounding = if limits.include_parent_grounding {
+        build_parent_grounding(store, &thread, &channel).await
+    } else {
+        None
+    };
+
     Ok(ThreadContext {
         workspace_id,
         channel_id: thread.channel_id,
@@ -246,6 +266,7 @@ pub async fn build_thread_context(
         },
         glossary,
         elision,
+        parent_grounding,
         next_message_cursor,
     })
 }
@@ -261,6 +282,47 @@ fn apply_token_budget(
         Some(budget) => fold_messages_to_budget(messages, budget.max(1) as usize),
         None => (messages, None),
     }
+}
+
+/// Build parent grounding for a child thread (Cluster 360, G-dev-1): the parent's
+/// opening (framing) message and latest decision, for a fresh claimer. Returns
+/// `None` for a root thread, or when the parent is not safely readable via the
+/// child's access — the same-channel + non-DM rule is enforced in
+/// [`maidan_types::ParentGrounding::assemble`], which this fetches the inputs for.
+/// The MCP twin lives in `crates/maidan-mcp/src/context.rs`.
+async fn build_parent_grounding(
+    store: &dyn Store,
+    thread: &Thread,
+    channel: &Channel,
+) -> Option<ParentGrounding> {
+    let parent_id = thread.parent_thread_id?;
+    // Cheap pre-checks before the extra reads: a cross-channel or DM parent is
+    // withheld, so don't fetch its message/result.
+    if channel.name == DM_CHANNEL_NAME {
+        return None;
+    }
+    let parent = store.get_thread(parent_id).await.ok()?;
+    if parent.channel_id != channel.id || parent.tombstoned_at.is_some() {
+        return None;
+    }
+    let opening_message = store
+        .list_messages_after(parent_id, None, 1)
+        .await
+        .ok()
+        .and_then(|mut v| v.drain(..).next());
+    let latest_result = store
+        .get_thread_result(parent_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.result);
+    ParentGrounding::assemble(
+        parent,
+        channel.id,
+        channel.name == DM_CHANNEL_NAME,
+        opening_message,
+        latest_result,
+    )
 }
 
 /// Reconstruct a thread's context as it stood at event-log id `as_of` (Cluster
@@ -392,6 +454,9 @@ async fn build_thread_context_as_of(
         // An as-of pack omits the glossary (current vocabulary, not thread history).
         glossary: Vec::new(),
         elision,
+        // Grounding reflects the parent's *current* state, not a historical replay,
+        // so it is omitted from an as-of pack.
+        parent_grounding: None,
         next_message_cursor,
     })
 }
@@ -414,6 +479,9 @@ pub async fn build_workspace_context(
     };
     let nested_limits = ThreadContextLimits {
         include_glossary: false,
+        // Grounding is the focused single-thread claimer view, not the workspace
+        // firehose — suppress it per nested thread (and avoid the extra reads).
+        include_parent_grounding: false,
         ..limits
     };
     let page_limit = thread_limit.clamp(1, 50);
