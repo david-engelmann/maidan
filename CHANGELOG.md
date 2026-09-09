@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [361.0.0] — 2026-09-09
+
+Post-gate hardening (Phase XXIV). **Wave 1 #12 of the forward program — the landed
+fact (G-dev-7).** A stacked cluster (361.1–361.4). No new gate tag.
+
+### Added
+
+- **`ThreadLanded` event** (361.1): `EventKind::ThreadLanded` +
+  `Event::ThreadLanded { workspace_id, channel_id, thread_id, repo, pr_number,
+  merged_by?, merge_commit_sha?, title? }` — non-federatable (a locally-derived
+  projector fact). Full EventKind drill + contracts.
+- **Projector ingress: merged PR → `ThreadLanded`** (361.2): `POST
+  /integrations/github/events` handles the `pull_request` event — a merged PR
+  (`action=closed` + `merged=true`) linked to a thread publishes `ThreadLanded`.
+  Reuses `get_github_issue_link` (a PR shares the issue number namespace). Steals
+  the landed fact; does **not** transition the FSM.
+- **Notification reach on land** (361.3): the notification router notifies the
+  thread's owner + followers when it lands (mute-honoring).
+- **`wait_for_landed` MCP long-poll** (361.4): block until a thread's PR lands
+  (`thread_id`/`channel_id`-scoped, `since_log_id` lookback, RBAC-filtered) — the
+  `wait_for_ready` analogue.
+
 ## [360.0.0] — 2026-09-09
 
 Post-gate hardening (Phase XXIV). **Wave 1 #11 of the forward program — the
