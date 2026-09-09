@@ -77,6 +77,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_mention"
         | "wait_for_ready"
         | "wait_for_claim_expired"
+        | "wait_for_landed"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "list_assigned_threads"
@@ -199,6 +200,7 @@ async fn enforce_channel_access(
         | "claim_next_thread"
         | "wait_for_ready"
         | "wait_for_claim_expired"
+        | "wait_for_landed"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "list_recently_active_threads"
@@ -356,6 +358,7 @@ pub async fn dispatch(
         "list_thread_follows" => member::list_thread_follows(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "wait_for_claim_expired" => thread::wait_for_claim_expired(server, auth, args).await,
+        "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,

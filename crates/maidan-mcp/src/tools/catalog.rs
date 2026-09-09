@@ -607,6 +607,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "wait_for_landed",
+            "description": "Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room 'steals the landed fact' — it does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional: wait for this thread's PR to land"},
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's threads"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
+                }
+            }
+        }),
+        json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
             "inputSchema": {

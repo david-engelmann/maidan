@@ -962,3 +962,101 @@ pub(super) async fn wait_for_claim_expired(
         return Ok(content_json(&envelope.event));
     }
 }
+
+#[derive(serde::Deserialize)]
+struct WaitForLandedArgs {
+    /// Optional thread to scope to — wait for *this* thread's PR to land. Omit to
+    /// await any accessible land in the caller's workspace (or channel).
+    #[serde(default)]
+    thread_id: Option<uuid::Uuid>,
+    /// Optional channel to scope to; omit to await any accessible land in the
+    /// caller's workspace.
+    #[serde(default)]
+    channel_id: Option<uuid::Uuid>,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
+    /// replay the log for a `ThreadLanded` with `log_id > since_log_id` (in scope,
+    /// RBAC-filtered) before parking live.
+    #[serde(default)]
+    since_log_id: Option<i64>,
+}
+
+/// `wait_for_landed` — block until a thread's linked GitHub PR lands (Cluster 361,
+/// G-dev-7): subscribe to `ThreadLanded` and return the fact, so an agent (or a
+/// reviewer awaiting a merge) needn't poll. Scoped to `thread_id` and/or
+/// `channel_id` when given, else any accessible land in the caller's workspace;
+/// returns the `ThreadLanded` event or `null` on timeout. **Live** primitive (only
+/// sees lands emitted *after* it subscribes); the `GET /mcp/stream` SSE transport,
+/// `kinds=thread_landed`, is the resumable alternative. The `wait_for_ready`
+/// analogue.
+pub(super) async fn wait_for_landed(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitForLandedArgs = serde_json::from_value(args.clone())?;
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(
+            "wait_for_landed requires an event bus".into(),
+        ));
+    };
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        channel_id: a.channel_id.map(ChannelId),
+        thread_id: a.thread_id.map(ThreadId),
+        kinds: Some(std::collections::HashSet::from([EventKind::ThreadLanded])),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    let store = server.store.as_ref();
+
+    // Lookback (Cluster 354): a land emitted in the gap before this subscribe is
+    // still caught, RBAC-filtered like the live path.
+    if let Some(since) = a.since_log_id {
+        let kinds = std::collections::HashSet::from([EventKind::ThreadLanded]);
+        if let Some(event) = lookback_event(
+            store,
+            auth,
+            &kinds,
+            a.channel_id.map(ChannelId),
+            a.thread_id.map(ThreadId),
+            since,
+            true,
+        )
+        .await?
+        {
+            return Ok(content_json(&event));
+        }
+    }
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        let maidan_bus::BusItem::Event(envelope) = item else {
+            continue;
+        };
+        // Don't reveal a land in a thread the caller can't access.
+        if !auth.bypass {
+            if let Some(tid) = envelope.event.thread_id() {
+                if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                    continue;
+                }
+            }
+        }
+        return Ok(content_json(&envelope.event));
+    }
+}
