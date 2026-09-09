@@ -15,6 +15,7 @@
   "reference_added",
   "thread_assignment_changed",
   "thread_created",
+  "thread_landed",
   "thread_ready",
   "thread_result_set",
   "thread_state_changed",

@@ -39,6 +39,7 @@ pub enum EventKind {
     ThreadResultSet,
     ClaimExpired,
     ClaimFailed,
+    ThreadLanded,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -65,6 +66,7 @@ impl EventKind {
             Self::ThreadResultSet => "thread_result_set",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimFailed => "claim_failed",
+            Self::ThreadLanded => "thread_landed",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -91,6 +93,7 @@ impl EventKind {
             "thread_result_set" => Some(Self::ThreadResultSet),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_failed" => Some(Self::ClaimFailed),
+            "thread_landed" => Some(Self::ThreadLanded),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -123,6 +126,7 @@ impl EventKind {
         Self::ThreadResultSet,
         Self::ClaimExpired,
         Self::ClaimFailed,
+        Self::ThreadLanded,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -178,6 +182,9 @@ impl EventKind {
             // A budget-exhaustion / run failure is a locally-derived signal
             // (this deployment's budget accounting); a peer must not inject one.
             Self::ClaimFailed => false,
+            // A "landed" fact is derived from *this* deployment's GitHub projector
+            // webhook (Cluster 361); a peer must not inject one for our threads.
+            Self::ThreadLanded => false,
         }
     }
 }
@@ -284,6 +291,31 @@ pub enum Event {
         reason: String,
         thread: Thread,
     },
+    /// The GitHub PR linked to a thread was **merged** — the work landed
+    /// (Cluster 361, G-dev-7). A derived fact projected from an inbound
+    /// `pull_request` (`action=closed`, `merged=true`) webhook on a linked issue/PR;
+    /// the room "steals the landed fact" without becoming a CI/automation product —
+    /// the thread's FSM is not auto-transitioned. A locally-derived projector
+    /// signal: not federatable.
+    ThreadLanded {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The GitHub repo (`owner/name`) whose merged PR landed this work.
+        repo: String,
+        /// The merged PR number (in the shared issue/PR number namespace).
+        pr_number: i64,
+        /// The GitHub login that merged it, when the webhook carried it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        merged_by: Option<String>,
+        /// The merge commit sha, when present.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        merge_commit_sha: Option<String>,
+        /// The PR title, when present.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -382,6 +414,7 @@ impl Event {
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
+            Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -408,6 +441,7 @@ impl Event {
             | Self::ThreadResultSet { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
+            | Self::ThreadLanded { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -434,6 +468,7 @@ impl Event {
             | Self::ThreadResultSet { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
+            | Self::ThreadLanded { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -457,6 +492,7 @@ impl Event {
             | Self::ThreadResultSet { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
+            | Self::ThreadLanded { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -475,6 +511,7 @@ impl Event {
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
+            Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -779,6 +816,7 @@ mod kind_tests {
                 | EventKind::ThreadResultSet
                 | EventKind::ClaimExpired
                 | EventKind::ClaimFailed
+                | EventKind::ThreadLanded
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -826,6 +864,7 @@ mod kind_tests {
             EventKind::ThreadResultSet,
             EventKind::ClaimExpired,
             EventKind::ClaimFailed,
+            EventKind::ThreadLanded,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);
