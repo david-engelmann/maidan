@@ -72,6 +72,12 @@ pub struct ThreadContext {
     /// top-level `WorkspaceContext.glossary` instead (not repeated per thread).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub glossary: Vec<GlossaryTerm>,
+    /// Set when a `token_budget` folded the message page (Cluster 360): an
+    /// auditable record of the elided middle. Absent when the pack fit its budget
+    /// or no budget was given. The kept `messages` keep the thread's opening
+    /// message and its most-recent tail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elision: Option<PackElision>,
     /// Present when more messages exist (`message_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_message_cursor: Option<String>,
@@ -107,6 +113,12 @@ pub struct ThreadContextLimits {
     /// stood at this event-log id — deterministic over the immutable log, no fresh
     /// search. `None` = the live pack.
     pub as_of: Option<i64>,
+    /// Token budget for the message page (Cluster 360, G-dev-1). When set, a page
+    /// whose estimated tokens exceed it is folded to fit — the opening message and
+    /// the most-recent tail are kept, the middle is elided into
+    /// `ThreadContext.elision`. `None` = no fold (cap by rows only). Applies per
+    /// thread, so a workspace-context pack budgets each nested thread.
+    pub token_budget: Option<i64>,
 }
 
 impl Default for ThreadContextLimits {
@@ -118,6 +130,7 @@ impl Default for ThreadContextLimits {
             include_edits: false,
             include_glossary: true,
             as_of: None,
+            token_budget: None,
         }
     }
 }
@@ -149,6 +162,10 @@ pub async fn build_thread_context(
         None
     };
     let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
+    // Token-budget fold (Cluster 360): keep the opener + recent tail, elide the
+    // middle. Done before the refs/edits/artifacts reads below, so those cover only
+    // the kept messages — the whole pack shrinks, not just the message array.
+    let (messages, elision) = apply_token_budget(messages, limits.token_budget);
     let transitions = store
         .list_thread_transitions(thread_id, limits.transition_limit)
         .await?;
@@ -228,8 +245,22 @@ pub async fn build_thread_context(
             transitions,
         },
         glossary,
+        elision,
         next_message_cursor,
     })
+}
+
+/// Apply an optional token budget to a message page (Cluster 360). `None` leaves
+/// the page untouched (cap by rows only); `Some(n)` folds it via
+/// `maidan_types::fold_messages_to_budget` (clamped to at least 1 token).
+fn apply_token_budget(
+    messages: Vec<Message>,
+    token_budget: Option<i64>,
+) -> (Vec<Message>, Option<PackElision>) {
+    match token_budget {
+        Some(budget) => fold_messages_to_budget(messages, budget.max(1) as usize),
+        None => (messages, None),
+    }
 }
 
 /// Reconstruct a thread's context as it stood at event-log id `as_of` (Cluster
@@ -276,6 +307,9 @@ async fn build_thread_context_as_of(
         None
     };
     let messages: Vec<Message> = all_messages.into_iter().take(page_limit as usize).collect();
+    // Token-budget fold (Cluster 360) — same as the live pack, applied to the
+    // reconstructed page before the additive components are read from it.
+    let (messages, elision) = apply_token_budget(messages, limits.token_budget);
 
     // Edits — immutable rows, cut by the anchor's time; ordered like the live pack.
     let message_ids: Vec<MessageId> = messages.iter().map(|m| m.id).collect();
@@ -357,6 +391,7 @@ async fn build_thread_context_as_of(
         fsm: ThreadFsmContext { state, transitions },
         // An as-of pack omits the glossary (current vocabulary, not thread history).
         glossary: Vec::new(),
+        elision,
         next_message_cursor,
     })
 }

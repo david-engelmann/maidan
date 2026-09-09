@@ -324,6 +324,11 @@ pub struct ThreadContextQuery {
     /// this event-log id, deterministic over the immutable log. Omit for the live
     /// pack. An unknown id is `404`.
     pub as_of: Option<i64>,
+    /// Token budget for the message page (Cluster 360, G-dev-1). When set, a page
+    /// over budget is folded — the opening message and the recent tail are kept,
+    /// the middle is elided into an auditable `elision` marker on the response.
+    /// Omit to cap by rows only.
+    pub token_budget: Option<i64>,
 }
 
 /// Query for `GET /threads/:id/tool-transcript` (Cluster 197).
@@ -361,6 +366,9 @@ pub struct WorkspaceContextQuery {
     /// `true`; omitted when empty. Set `false` to drop it.
     #[serde(default = "default_true")]
     pub include_glossary: bool,
+    /// Token budget applied to **each** nested thread's message page (Cluster 360).
+    /// Omit for row-only caps.
+    pub token_budget: Option<i64>,
 }
 
 fn default_workspace_thread_limit() -> i64 {
