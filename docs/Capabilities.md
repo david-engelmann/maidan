@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v359.0.0 — inbox & search depth (Wave 1 #10)
+
+A stacked cluster (359.1–359.4, N2 / N5 / N4) making the notification inbox legible — group by thread, snooze the noise, surface the decisions you missed — and search time-scopable.
+
+| Change | Where |
+|--------|-------|
+| **Date-range search (359.1, N4):** `SearchFilters {after, before}` — a half-open window on `posted_at`, both backends × lexical + semantic (hybrid inherits); REST + MCP. | `crates/maidan-search/src/{filters,postgres,sqlite}.rs`, `crates/maidan-server/src/routes/search.rs`, `crates/maidan-mcp/src/tools/search.rs` |
+| **Notification snooze (359.2, N5):** `snoozed_until` (pg 0065 / sqlite 0064) — snoozed notifications leave the inbox + badge, resurface on lapse; `POST /members/:id/notifications/:nid/snooze` + MCP. | `migrations/*/00{65,64}_notification_snooze.sql`, `crates/maidan-store/src/*/notifications.rs`, `crates/maidan-server/src/routes/member.rs` |
+| **Inbox grouped by thread (359.3, N5):** `group_notifications_by_thread` (pure) → one group/thread; `GET /members/:id/notifications/grouped` + MCP. | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/routes/member.rs`, `crates/maidan-mcp/src/tools/member.rs` |
+| **Buried-decisions digest (359.4, N2):** the digest leads with `ThreadResult`s a member missed in followed channels/threads; `Store::buried_decisions_for_member` + `GET /members/:id/decisions` + MCP. | `crates/maidan-store/src/*/email_digest.rs`, `crates/maidan-server/src/digest.rs` |
+
 ## v358.0.0 — the budget envelope (Wave 1 #9)
 
 A stacked cluster (358.1–358.4, T1/T5) giving a task/run a **budget envelope** — token, USD, turn, and wall-clock maxima — that **stops the run** when exceeded, records the stop as a **failure** (not a close), and **dead-letters** it for triage. Over REST + MCP.

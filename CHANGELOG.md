@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [359.0.0] — 2026-09-09
+
+Post-gate hardening (Phase XXIV). **Wave 1 #10 of the forward program — inbox &
+search depth (N2 / N5 / N4).** A stacked cluster (359.1–359.4). No new gate tag.
+
+### Added
+
+- **Date-range search** (359.1, N4): `SearchFilters {after, before}` — a half-open
+  `[after, before)` window on `posted_at`, both backends × lexical + semantic
+  (hybrid inherits), over REST `GET …/search` + MCP `search_messages`. Additive,
+  no new route.
+- **Notification snooze** (359.2, N5): `snoozed_until` on `maidan_notifications`
+  (pg 0065 / sqlite 0064) — a snoozed notification drops out of the inbox + badge
+  and resurfaces automatically. `Store::snooze_notification` +
+  `POST /members/:id/notifications/:nid/snooze` + MCP.
+- **Inbox grouped by thread** (359.3, N5): `group_notifications_by_thread` (a pure
+  grouping, no SQL) → one `NotificationThreadGroup` per thread
+  (count/unread_count/latest), over `GET /members/:id/notifications/grouped` + MCP.
+- **Buried-decisions digest** (359.4, N2): the digest leads with the task results
+  (`ThreadResult`) a member missed in followed channels/threads since their last
+  digest, instead of a bare unread count. `Store::buried_decisions_for_member` +
+  `GET /members/:id/decisions` + MCP `list_buried_decisions`.
+
 ## [358.0.0] — 2026-09-08
 
 Post-gate hardening (Phase XXIV). **Wave 1 #9 of the forward program — the budget
