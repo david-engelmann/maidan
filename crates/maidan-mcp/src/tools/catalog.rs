@@ -682,6 +682,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_buried_decisions",
+            "description": "A member's buried decisions — task results (decisions) produced by someone else in a channel or thread the member follows, since a given instant (default 7 days ago), newest first. The decisions the digest surfaces, queryable directly.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "since": {"type": "string", "format": "date-time", "description": "default 7 days ago"},
+                    "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "get_unread_count",
             "description": "A member's unread-notification badge count.",
             "inputSchema": {

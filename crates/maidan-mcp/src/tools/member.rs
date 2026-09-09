@@ -252,6 +252,35 @@ pub(super) async fn list_notifications(
     Ok(content_json(&notes))
 }
 
+#[derive(Deserialize)]
+struct BuriedDecisionsArgs {
+    member_id: uuid::Uuid,
+    /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).
+    #[serde(default)]
+    since: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// A member's buried decisions (Cluster 359, N2, the MCP twin of
+/// `GET /members/:id/decisions`) — task results produced by someone else in a
+/// channel/thread the member follows, since `since` (default 7 days ago), newest
+/// first. The decisions the digest surfaces, queryable directly.
+pub(super) async fn list_buried_decisions(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: BuriedDecisionsArgs = serde_json::from_value(args.clone())?;
+    let since = a
+        .since
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+    let limit = a.limit.unwrap_or(50).clamp(1, 200);
+    let decisions = store
+        .buried_decisions_for_member(MemberId(a.member_id), since, limit)
+        .await?;
+    Ok(content_json(&decisions))
+}
+
 /// A member's notifications collapsed into per-thread groups, newest-activity
 /// first (Cluster 359, N5) — the MCP twin of `GET /members/:id/notifications/grouped`.
 /// A busy thread shows as one group instead of flooding the flat list.

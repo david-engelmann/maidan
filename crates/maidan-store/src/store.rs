@@ -516,6 +516,15 @@ pub trait PresenceDigestStore: Send + Sync {
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
     async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
+    /// Task results ("decisions", Cluster 359, N2) produced by someone else after
+    /// `since`, in a channel or thread the member follows — the "buried decisions"
+    /// the digest surfaces, and a queryable read. Newest first.
+    async fn buried_decisions_for_member(
+        &self,
+        member_id: MemberId,
+        since: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<BuriedDecision>, StoreError>;
 }
 
 #[async_trait]

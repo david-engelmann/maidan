@@ -173,6 +173,31 @@ pub async fn list_member_notifications_grouped(
     Ok(Json(maidan_types::group_notifications_by_thread(&notes)))
 }
 
+/// A member's buried decisions (Cluster 359, N2) — task results produced by
+/// someone else in a channel/thread the member follows, since `since` (default
+/// 7 days ago), newest first. The queryable form of the buried-decisions digest.
+/// Self-only for a session caller; `workspace:read`.
+pub async fn list_member_decisions(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<DecisionsQuery>,
+) -> ApiResult<Json<Vec<BuriedDecision>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    let since = q
+        .since
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let decisions = state
+        .store
+        .buried_decisions_for_member(MemberId(id), since, limit)
+        .await?;
+    Ok(Json(decisions))
+}
+
 /// A member's unread-notification badge count (Cluster 239). Self-only for sessions.
 pub async fn member_unread_notification_count(
     State(state): State<AppState>,

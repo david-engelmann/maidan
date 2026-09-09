@@ -37,6 +37,7 @@
   "link_github_issue",
   "link_slack_channel",
   "list_assigned_threads",
+  "list_buried_decisions",
   "list_channel_follows",
   "list_channel_members",
   "list_channels",
