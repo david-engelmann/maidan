@@ -57,6 +57,7 @@ mod token_quotas;
 mod tokens;
 mod votes;
 mod webhooks;
+mod wip;
 mod workspaces;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -330,6 +331,18 @@ impl WorkspaceStore for PostgresStore {
     }
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
         workspaces::usage(self.read_pool(), id).await
+    }
+    async fn set_wip_limit(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: Option<i64>,
+    ) -> Result<(), StoreError> {
+        wip::set_limit(&self.pool, workspace_id, limit).await
+    }
+    async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError> {
+        // Primary, not the read replica: WIP enforcement must not act on a lagged
+        // limit (a soft over/under-claim is worse than one extra primary read).
+        wip::get_limit(&self.pool, workspace_id).await
     }
 }
 
@@ -1256,6 +1269,10 @@ impl AssignmentStore for PostgresStore {
         lease_id: ClaimLeaseId,
     ) -> Result<(Thread, StoredEvent), StoreError> {
         threads::release_claim_with_event(&self.pool, thread_id, member_id, lease_id).await
+    }
+    async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
+        // Primary read: enforcement must not act on a lagged claim count.
+        wip::count_live_claims(&self.pool, member_id).await
     }
 }
 

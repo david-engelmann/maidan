@@ -41,6 +41,17 @@ pub trait WorkspaceStore: Send + Sync {
     /// Live per-workspace usage counts (members/channels/threads/messages,
     /// excluding tombstoned rows) for metering (Cluster 188).
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
+
+    /// Set (or clear) the workspace's WIP limit (Cluster 362, G11): the max
+    /// concurrent *live* claims any one member may hold. `Some(n)` upserts (`0`
+    /// freezes claiming); `None` removes the cap (unlimited).
+    async fn set_wip_limit(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: Option<i64>,
+    ) -> Result<(), StoreError>;
+    /// The workspace's WIP limit, or `None` if unset (unlimited).
+    async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 }
 
 #[async_trait]
@@ -905,6 +916,12 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_id: ClaimLeaseId,
     ) -> Result<(Thread, StoredEvent), StoreError>;
+
+    /// Count a member's *live* claims (Cluster 362, G11): threads assigned to them
+    /// that are non-terminal, non-tombstoned, and whose lease has not expired (a
+    /// durable, no-lease assignment counts; an expired lease does not — it is a
+    /// reclaimable ghost, not live work). This is the quantity a WIP limit caps.
+    async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError>;
 }
 
 #[async_trait]
