@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [360.0.0] — 2026-09-09
+
+Post-gate hardening (Phase XXIV). **Wave 1 #11 of the forward program — the
+token-budgeted context pack (G-dev-1).** A stacked cluster (360.1–360.4). No new
+gate tag.
+
+### Added
+
+- **Token-budget pack primitive** (360.1): `maidan_types::pack` —
+  `estimate_tokens` (`chars/4`, model-independent; promoted from the Cluster-318
+  `token_pack` evidence test), `message_tokens`, `PackElision` (the auditable
+  elided-middle record), and `fold_messages_to_budget` — a framing-and-recency-
+  preserving fold ("Lost in the Middle": keep the opener + recent tail, fold the
+  middle). Pure, unit-tested, zero wiring.
+- **Token-budgeted REST context pack** (360.2): `ThreadContextLimits.token_budget`
+  + `ThreadContext.elision`; `GET /threads/:id/context?token_budget=N` (and the
+  workspace pack's, per nested thread) fold the page before the refs/edits/
+  artifacts reads, so the whole pack shrinks. Live + as-of builders; `PackElision`
+  in the OpenAPI schemas.
+- **Token-budgeted MCP context pack** (360.3): the twin fold on
+  `get_thread_context` / `snapshot_thread_context` / `get_workspace_context` over
+  the shared `fold_messages_to_budget`; `elision` on the response + catalog
+  schemas.
+- **Child grounds** (360.4): `maidan_types::ParentGrounding` +
+  `ParentGrounding::assemble` — a child thread's pack carries the parent's opening
+  (framing) message + latest decision (Cluster-234 `ThreadResult`), so a fresh
+  claimer knows why the thread exists. REST `ThreadContext.parent_grounding` +
+  `include_parent_grounding` (default true) + the MCP twin. Withheld for a
+  cross-channel / DM / tombstoned parent (safe with no second access check).
+
 ## [359.0.0] — 2026-09-09
 
 Post-gate hardening (Phase XXIV). **Wave 1 #10 of the forward program — inbox &

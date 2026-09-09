@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v360.0.0 — the token-budgeted context pack (Wave 1 #11)
+
+A stacked cluster (360.1–360.4, G-dev-1) making the scoped context pack budget itself by **tokens**, not just rows: give it a `token_budget` and it keeps the thread's framing (opening message) and its recent tail, folds the elided middle into an auditable `elision` marker ("Lost in the Middle"), and — for a child task — grounds the pack in its parent's ask and decision.
+
+| Change | Where |
+|--------|-------|
+| **Pack primitive (360.1):** `maidan_types::pack` — `estimate_tokens` (`chars/4`), `message_tokens`, `PackElision`, `fold_messages_to_budget` (keep opener + recent tail, fold the middle). Pure, unit-tested. | `crates/maidan-types/src/pack.rs`, `crates/maidan-server/tests/token_pack.rs` |
+| **Token-budgeted REST pack (360.2):** `?token_budget=N` on `GET /threads/:id/context` (+ workspace pack, per nested thread) → folds before the refs/edits/artifacts reads; `ThreadContext.elision`. | `crates/maidan-server/src/thread_context.rs`, `crates/maidan-server/src/{dto,routes/thread,routes/workspace,openapi/mod}.rs` |
+| **Token-budgeted MCP pack (360.3):** `token_budget` on `get_thread_context`/`snapshot_thread_context`/`get_workspace_context`; `elision` on the response + catalog schemas. | `crates/maidan-mcp/src/context.rs`, `crates/maidan-mcp/src/tools/catalog.rs` |
+| **Child grounds (360.4):** `ParentGrounding` (parent's opening ask + latest decision) on a child thread's pack; `include_parent_grounding` (default true). Withheld for cross-channel / DM / tombstoned parents. | `crates/maidan-types/src/pack.rs`, `crates/maidan-server/src/thread_context.rs`, `crates/maidan-mcp/src/context.rs` |
+
 ## v359.0.0 — inbox & search depth (Wave 1 #10)
 
 A stacked cluster (359.1–359.4, N2 / N5 / N4) making the notification inbox legible — group by thread, snooze the noise, surface the decisions you missed — and search time-scopable.
