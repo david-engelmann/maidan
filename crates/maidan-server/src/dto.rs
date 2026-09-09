@@ -333,6 +333,13 @@ pub struct ToolTranscriptQuery {
     pub limit: Option<i64>,
 }
 
+/// Query for a channel's agent-work DLQ (Cluster 358).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct DlqQuery {
+    /// Max entries to return (default 50, clamped 1..=200).
+    pub limit: Option<i64>,
+}
+
 fn default_transition_limit() -> i64 {
     50
 }

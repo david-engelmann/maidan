@@ -157,6 +157,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{cid}/dlq",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/dm/{id}",
     "capability": "workspace:read",
     "surface": "http"
@@ -476,6 +482,24 @@
   {
     "method": "PUT",
     "path": "/threads/{id}/title",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/threads/{id}/budget",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/budget",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/usage",
     "capability": "thread:transition",
     "surface": "http"
   },

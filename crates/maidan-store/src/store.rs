@@ -151,6 +151,16 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError>;
+    /// Report usage and enforce the budget (Cluster 358.3) — the "stop the run"
+    /// path. Accumulates `delta`; if the thread is now over budget AND has an
+    /// active claim, atomically releases the claim, appends a `ClaimFailed` event,
+    /// and records a DLQ entry. Returns the new totals + whether the run stopped,
+    /// plus the `ClaimFailed` event to publish (`None` when not stopped).
+    async fn report_thread_usage(
+        &self,
+        thread_id: ThreadId,
+        delta: UsageDelta,
+    ) -> Result<(UsageReport, Option<StoredEvent>), StoreError>;
     /// Record a dead-lettered agent run (Cluster 358) — a run stopped for exceeding
     /// its budget. `id`/`failed_at` are assigned by the store.
     async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError>;

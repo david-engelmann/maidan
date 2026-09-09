@@ -11,6 +11,18 @@ const COLS: &str = "id, workspace_id, channel_id, thread_id, member_id, reason, 
 /// Record a dead-lettered agent run (Cluster 358, T1/T5). `id`/`failed_at` are
 /// assigned here.
 pub async fn record(pool: &PgPool, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
+    let mut tx = pool.begin().await?;
+    let entry = record_in_tx(&mut tx, new).await?;
+    tx.commit().await?;
+    Ok(entry)
+}
+
+/// Record a dead-lettered run on a caller-supplied tx (Cluster 358.3) — so the
+/// DLQ write is atomic with the claim release + `ClaimFailed` append.
+pub async fn record_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new: &NewDlqEntry,
+) -> Result<DlqEntry, StoreError> {
     let id = Uuid::new_v4();
     let row = sqlx::query(
         "INSERT INTO maidan_agent_work_dlq
@@ -29,7 +41,7 @@ pub async fn record(pool: &PgPool, new: &NewDlqEntry) -> Result<DlqEntry, StoreE
     .bind(new.used_tokens)
     .bind(new.used_usd_micros)
     .bind(new.used_turns)
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await?;
     Ok(row_to_dlq(&row))
 }

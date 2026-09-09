@@ -4,8 +4,8 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetReason, ChannelId, MemberKind, NewChannel, NewDlqEntry, NewMember,
-    NewThread, NewWorkspace, ThreadId, UsageDelta,
+    BudgetLimits, BudgetReason, ChannelId, EventKind, MemberKind, NewChannel, NewDlqEntry,
+    NewMember, NewThread, NewWorkspace, ThreadId, UsageDelta,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -220,10 +220,143 @@ async fn run_suite(store: &dyn Store) {
         .is_empty());
 }
 
+/// Enforcement (Cluster 358.3): reporting usage that pushes a *claimed* thread
+/// over budget stops the run — the claim is released, a `ClaimFailed` event is
+/// returned, and a DLQ entry is recorded, all atomically.
+async fn run_enforce_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "enforce".into(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("task".into()),
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_budget(
+            thread.id,
+            BudgetLimits {
+                max_tokens: Some(100),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("budget");
+    store
+        .assign_thread(thread.id, member.id)
+        .await
+        .expect("assign");
+
+    // Under budget → not stopped, claim intact, no event.
+    let (r, ev) = store
+        .report_thread_usage(
+            thread.id,
+            UsageDelta {
+                tokens: 50,
+                usd_micros: 0,
+                turns: 0,
+            },
+        )
+        .await
+        .expect("report under");
+    assert!(!r.stopped);
+    assert!(ev.is_none());
+    assert_eq!(r.budget.used_tokens, 50);
+    assert_eq!(
+        store.get_thread(thread.id).await.expect("t1").assignee_id,
+        Some(member.id),
+        "claim intact under budget"
+    );
+    assert!(store
+        .list_channel_dlq(channel.id, 10)
+        .await
+        .expect("dlq0")
+        .is_empty());
+
+    // Over budget → stopped: claim released, ClaimFailed event, DLQ entry.
+    let (r2, ev2) = store
+        .report_thread_usage(
+            thread.id,
+            UsageDelta {
+                tokens: 60,
+                usd_micros: 0,
+                turns: 0,
+            },
+        )
+        .await
+        .expect("report over");
+    assert!(r2.stopped, "over budget stops the run");
+    assert_eq!(r2.reason.as_deref(), Some("tokens"));
+    assert_eq!(r2.budget.used_tokens, 110);
+    let stored = ev2.expect("ClaimFailed event");
+    assert_eq!(stored.kind, EventKind::ClaimFailed);
+    assert_eq!(
+        store.get_thread(thread.id).await.expect("t2").assignee_id,
+        None,
+        "claim released on stop"
+    );
+    let dlq = store.list_channel_dlq(channel.id, 10).await.expect("dlq1");
+    assert_eq!(dlq.len(), 1);
+    assert_eq!(dlq[0].reason, "tokens");
+    assert_eq!(dlq[0].member_id, member.id);
+    assert_eq!(dlq[0].used_tokens, 110);
+    assert_eq!(dlq[0].thread_id, thread.id);
+
+    // A further report on the now-unassigned thread is over budget but has no run
+    // to stop → not stopped, no new event/DLQ.
+    let (r3, ev3) = store
+        .report_thread_usage(
+            thread.id,
+            UsageDelta {
+                tokens: 5,
+                usd_micros: 0,
+                turns: 0,
+            },
+        )
+        .await
+        .expect("report unassigned");
+    assert!(!r3.stopped, "no claim → nothing to stop");
+    assert!(ev3.is_none());
+    assert_eq!(
+        store
+            .list_channel_dlq(channel.id, 10)
+            .await
+            .expect("dlq2")
+            .len(),
+        1,
+        "no duplicate DLQ entry"
+    );
+}
+
 #[tokio::test]
 async fn thread_budget_set_get_accumulate_and_exceed_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_enforce_suite(&store).await;
 }
 
 #[tokio::test]
@@ -258,4 +391,5 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
+    run_enforce_suite(&store).await;
 }

@@ -249,6 +249,13 @@ impl BudgetStore for SqliteStore {
     ) -> Result<ThreadBudget, StoreError> {
         budget::add_usage(&self.pool, thread_id, delta).await
     }
+    async fn report_thread_usage(
+        &self,
+        thread_id: ThreadId,
+        delta: UsageDelta,
+    ) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
+        budget::report_usage(&self.pool, thread_id, delta).await
+    }
     async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
         dlq::record(&self.pool, new).await
     }

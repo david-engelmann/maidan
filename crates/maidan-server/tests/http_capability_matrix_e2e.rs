@@ -390,6 +390,12 @@ fn apply_route_defaults(
     if path == "/threads/{id}/title" && method == "PUT" {
         return b.json(&json!({ "title": "cap matrix rename" }));
     }
+    if path == "/threads/{id}/budget" && method == "PUT" {
+        return b.json(&json!({ "max_tokens": 1000 }));
+    }
+    if path == "/threads/{id}/usage" && method == "POST" {
+        return b.json(&json!({ "tokens": 1 }));
+    }
     if path == "/threads/{id}/assignee/claim" && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
     }

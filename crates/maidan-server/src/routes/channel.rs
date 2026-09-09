@@ -157,6 +157,25 @@ pub async fn unmute_channel(
     }
 }
 
+/// A channel's agent-work dead-letter queue (Cluster 358, T1/T5) — runs stopped
+/// for exceeding their budget, newest first. An orchestrator triages these
+/// (retry / raise the budget / give up). `workspace:read` + channel access;
+/// `limit` clamps 1..=200 (default 50).
+pub async fn list_channel_dlq(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    axum::extract::Query(q): axum::extract::Query<DlqQuery>,
+) -> ApiResult<Json<Vec<DlqEntry>>> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let entries = state.store.list_channel_dlq(channel.id, limit).await?;
+    Ok(Json(entries))
+}
+
 pub async fn add_channel_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
