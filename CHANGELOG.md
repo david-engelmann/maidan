@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [362.0.0] — 2026-09-09
+
+Post-gate hardening (Phase XXIV). **Wave 1 #13 of the forward program — the WIP
+limit (G11).** A stacked cluster (362.1–362.3). No new gate tag.
+
+### Added
+
+- **WIP-limit store foundation** (362.1): `maidan_wip_limits` (pg 0066 / sqlite
+  0065) — a per-workspace cap on the max concurrent **live** claims one member may
+  hold (no row = unlimited; `0` = frozen). `WorkspaceStore::set_wip_limit`/
+  `get_wip_limit`; `AssignmentStore::count_live_claims` (the exact complement of
+  the `claim_next` claimability predicate — expired-lease ghosts don't count).
+- **WIP enforcement + admin API (REST)** (362.2): `claim_next` returns null at the
+  cap; explicit `claim` returns **409** (a re-claim of a held thread is exempt);
+  `PUT`/`GET /workspaces/:wid/wip-limit` + `GET /members/:id/wip`.
+- **WIP enforcement + tools (MCP)** (362.3): the same enforcement on
+  `claim_thread` (InvalidParams) / `claim_next_thread` (null); `set_wip_limit` /
+  `get_wip_limit` / `get_member_wip` tools.
+
 ## [361.0.0] — 2026-09-09
 
 Post-gate hardening (Phase XXIV). **Wave 1 #12 of the forward program — the landed
