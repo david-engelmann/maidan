@@ -288,6 +288,32 @@ pub(super) async fn mark_notification_read(
     Ok(content_json(&serde_json::json!({ "marked": marked })))
 }
 
+#[derive(Deserialize)]
+struct SnoozeNotificationArgs {
+    member_id: uuid::Uuid,
+    notification_id: uuid::Uuid,
+    /// RFC 3339 instant to snooze until.
+    until: chrono::DateTime<chrono::Utc>,
+}
+
+/// Snooze one of a member's notifications until `until` (Cluster 359, N5) — it
+/// drops out of the inbox + badge until then. Recipient-scoped, so
+/// `{snoozed: false}` when the id isn't this member's.
+pub(super) async fn snooze_notification(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SnoozeNotificationArgs = serde_json::from_value(args.clone())?;
+    let snoozed = store
+        .snooze_notification(
+            MemberId(a.member_id),
+            NotificationId(a.notification_id),
+            a.until,
+        )
+        .await?;
+    Ok(content_json(&serde_json::json!({ "snoozed": snoozed })))
+}
+
 /// Block until `member_id` gets a new notification-worthy event, or the timeout
 /// lapses (Cluster 240). The general form of `wait_for_mention`: it waits on the
 /// event kinds the notification router acts on (today: mentions), filtered to this

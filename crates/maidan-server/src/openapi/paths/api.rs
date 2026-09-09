@@ -333,6 +333,16 @@ pub fn mark_all_member_notifications_read() {}
     responses((status = 200, body = UnreadCount)))]
 pub fn mark_member_notification_read() {}
 
+#[utoipa::path(post, path = "/members/{id}/notifications/{nid}/snooze", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ("nid" = Uuid, Path, description = "Notification id"),
+    ),
+    request_body = SnoozeNotification,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = UnreadCount), (status = 404, description = "Not this member's notification")))]
+pub fn snooze_member_notification() {}
+
 #[utoipa::path(put, path = "/members/{id}/notification-prefs", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
     request_body = SetNotificationPref,

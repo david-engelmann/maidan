@@ -91,6 +91,7 @@
   "set_thread_result",
   "set_thread_steer",
   "snapshot_thread_context",
+  "snooze_notification",
   "unassign_thread",
   "unfollow_channel",
   "unfollow_thread",

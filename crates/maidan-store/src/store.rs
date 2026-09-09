@@ -266,6 +266,15 @@ pub trait NotificationStore: Send + Sync {
         member_id: MemberId,
         id: NotificationId,
     ) -> Result<bool, StoreError>;
+    /// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped;
+    /// it drops out of the default inbox + unread count until the snooze lapses.
+    /// Returns whether the `(member_id, id)` row exists.
+    async fn snooze_notification(
+        &self,
+        member_id: MemberId,
+        id: NotificationId,
+        until: DateTime<Utc>,
+    ) -> Result<bool, StoreError>;
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError>;
     async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError>;
 

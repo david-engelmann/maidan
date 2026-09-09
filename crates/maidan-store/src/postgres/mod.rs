@@ -567,6 +567,14 @@ impl NotificationStore for PostgresStore {
     ) -> Result<bool, StoreError> {
         notifications::mark_read(&self.pool, member_id, id).await
     }
+    async fn snooze_notification(
+        &self,
+        member_id: MemberId,
+        id: NotificationId,
+        until: DateTime<Utc>,
+    ) -> Result<bool, StoreError> {
+        notifications::snooze(&self.pool, member_id, id, until).await
+    }
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError> {
         notifications::mark_all_read(&self.pool, member_id).await
     }

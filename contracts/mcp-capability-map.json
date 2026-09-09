@@ -91,6 +91,7 @@
   "set_thread_result": "thread:transition",
   "set_thread_steer": "thread:transition",
   "snapshot_thread_context": "artifact:upload",
+  "snooze_notification": "workspace:read",
   "unassign_thread": "thread:transition",
   "unfollow_channel": "workspace:read",
   "unfollow_thread": "workspace:read",

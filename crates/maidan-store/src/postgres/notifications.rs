@@ -17,7 +17,7 @@ pub async fn create(pool: &PgPool, new: NewNotification) -> Result<Notification,
              message_id, actor_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                   message_id, actor_id, created_at, read_at",
+                   message_id, actor_id, created_at, read_at, snoozed_until",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -47,7 +47,7 @@ pub async fn create_if_absent(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (member_id, source_log_id) DO NOTHING
          RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                   message_id, actor_id, created_at, read_at",
+                   message_id, actor_id, created_at, read_at, snoozed_until",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -93,7 +93,7 @@ pub async fn create_batch(
                               $6::uuid[], $7::uuid[], $8::uuid[], $9::uuid[])
          ON CONFLICT (member_id, source_log_id) DO NOTHING
          RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                   message_id, actor_id, created_at, read_at",
+                   message_id, actor_id, created_at, read_at, snoozed_until",
     )
     .bind(&ids)
     .bind(&workspace_ids)
@@ -115,17 +115,21 @@ pub async fn list_for_member(
     unread_only: bool,
     limit: i64,
 ) -> Result<Vec<Notification>, StoreError> {
+    // Currently-snoozed notifications (snoozed_until in the future) are hidden
+    // from the default inbox and resurface when the snooze lapses (Cluster 359, N5).
     let sql = if unread_only {
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                message_id, actor_id, created_at, read_at
+                message_id, actor_id, created_at, read_at, snoozed_until
          FROM maidan_notifications
          WHERE member_id = $1 AND read_at IS NULL
+           AND (snoozed_until IS NULL OR snoozed_until <= now())
          ORDER BY created_at DESC LIMIT $2"
     } else {
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                message_id, actor_id, created_at, read_at
+                message_id, actor_id, created_at, read_at, snoozed_until
          FROM maidan_notifications
          WHERE member_id = $1
+           AND (snoozed_until IS NULL OR snoozed_until <= now())
          ORDER BY created_at DESC LIMIT $2"
     };
     let rows = sqlx::query(sql)
@@ -155,6 +159,25 @@ pub async fn mark_read(
     Ok(res.rows_affected() > 0)
 }
 
+/// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped
+/// like [`mark_read`]; returns whether the `(member_id, id)` row exists.
+pub async fn snooze(
+    pool: &PgPool,
+    member_id: MemberId,
+    id: NotificationId,
+    until: chrono::DateTime<chrono::Utc>,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_notifications SET snoozed_until = $3 WHERE id = $1 AND member_id = $2",
+    )
+    .bind(id.0)
+    .bind(member_id.0)
+    .bind(until)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 pub async fn mark_all_read(pool: &PgPool, member_id: MemberId) -> Result<u64, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_notifications SET read_at = now() WHERE member_id = $1 AND read_at IS NULL",
@@ -167,7 +190,9 @@ pub async fn mark_all_read(pool: &PgPool, member_id: MemberId) -> Result<u64, St
 
 pub async fn unread_count(pool: &PgPool, member_id: MemberId) -> Result<i64, StoreError> {
     let row = sqlx::query(
-        "SELECT COUNT(*) AS n FROM maidan_notifications WHERE member_id = $1 AND read_at IS NULL",
+        "SELECT COUNT(*) AS n FROM maidan_notifications
+         WHERE member_id = $1 AND read_at IS NULL
+           AND (snoozed_until IS NULL OR snoozed_until <= now())",
     )
     .bind(member_id.0)
     .fetch_one(pool)
@@ -191,5 +216,6 @@ fn row_to_notification(row: &sqlx::postgres::PgRow) -> Result<Notification, Stor
         actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         read_at: row.get::<Option<DateTime<Utc>>, _>("read_at"),
+        snoozed_until: row.get::<Option<DateTime<Utc>>, _>("snoozed_until"),
     })
 }

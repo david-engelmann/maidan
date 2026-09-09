@@ -692,6 +692,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "snooze_notification",
+            "description": "Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "notification_id": {"type": "string", "format": "uuid"},
+                    "until": {"type": "string", "format": "date-time"}
+                },
+                "required": ["member_id", "notification_id", "until"]
+            }
+        }),
+        json!({
             "name": "wait_for_notification",
             "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).",
             "inputSchema": {

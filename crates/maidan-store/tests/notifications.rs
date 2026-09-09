@@ -4,7 +4,7 @@
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EventKind, MemberKind, NewChannel, NewMember, NewNotification, NewThread, NewWorkspace,
-    NotificationId,
+    Notification, NotificationId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -183,6 +183,75 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("actor list")
         .is_empty());
+
+    // Snooze (Cluster 359, N5): a snoozed-into-the-future notification drops out of
+    // the list + badge; snoozing into the past leaves it visible. (Prior
+    // notifications from this suite are already read, so the badge starts at 0.)
+    let fresh = store.create_notification(mk(50)).await.expect("create n50");
+    let visible = |list: &[Notification]| list.iter().any(|n| n.id == fresh.id);
+    assert!(
+        visible(
+            &store
+                .list_notifications(recipient.id, false, 50)
+                .await
+                .expect("list before snooze")
+        ),
+        "the fresh notification is visible"
+    );
+    assert_eq!(
+        store
+            .unread_notification_count(recipient.id)
+            .await
+            .expect("count before snooze"),
+        1,
+        "only the fresh notification is unread"
+    );
+    let future = chrono::Utc::now() + chrono::Duration::hours(1);
+    assert!(store
+        .snooze_notification(recipient.id, fresh.id, future)
+        .await
+        .expect("snooze"));
+    assert!(
+        !visible(
+            &store
+                .list_notifications(recipient.id, false, 50)
+                .await
+                .expect("list after snooze")
+        ),
+        "a future-snoozed notification is hidden"
+    );
+    assert_eq!(
+        store
+            .unread_notification_count(recipient.id)
+            .await
+            .expect("count after snooze"),
+        0,
+        "a snoozed notification is off the badge"
+    );
+    // Snoozing to a past instant resurfaces it (as if the snooze lapsed).
+    let past = chrono::Utc::now() - chrono::Duration::hours(1);
+    assert!(store
+        .snooze_notification(recipient.id, fresh.id, past)
+        .await
+        .expect("un-snooze"));
+    assert!(
+        visible(
+            &store
+                .list_notifications(recipient.id, false, 50)
+                .await
+                .expect("list resurfaced")
+        ),
+        "a lapsed snooze resurfaces the notification"
+    );
+    // Snoozing an unknown id is false, not an error; another member can't snooze it.
+    assert!(!store
+        .snooze_notification(recipient.id, NotificationId::new(), future)
+        .await
+        .expect("snooze unknown"));
+    assert!(!store
+        .snooze_notification(actor.id, fresh.id, future)
+        .await
+        .expect("snooze as non-recipient"));
 }
 
 /// Batch fan-out insert (Cluster 349): `create_notifications_batch` inserts a

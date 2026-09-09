@@ -515,6 +515,11 @@ pub struct Notification {
     pub created_at: DateTime<Utc>,
     /// `None` = unread.
     pub read_at: Option<DateTime<Utc>>,
+    /// Snoozed until this instant (Cluster 359, N5) — while in the future the
+    /// notification is hidden from the default inbox + badge, then resurfaces.
+    /// `None` = not snoozed. Orthogonal to `read_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snoozed_until: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]

@@ -2144,6 +2144,31 @@ mod tests {
         );
         assert_eq!(unread.as_array().unwrap().len(), 1);
 
+        // Snooze (Cluster 359, N5): snoozing the remaining unread notification into
+        // the future clears the badge.
+        let snoozed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "snooze_notification",
+                    &json!({ "member_id": member.id.0, "notification_id": ids[1].0, "until": "2999-01-01T00:00:00Z" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(snoozed["snoozed"], json!(true));
+        let count = unwrap_content(
+            server
+                .call_tool(&auth, "get_unread_count", &mid)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            count["count"],
+            json!(0),
+            "a snoozed notification is off the badge"
+        );
+
         // wait_for_notification wakes on the member's next mention event.
         let wait_args = json!({ "member_id": member.id.0, "timeout_ms": 5000 });
         let mention = Event::MentionRecorded {
