@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v361.0.0 — the landed fact (Wave 1 #12)
+
+A stacked cluster (361.1–361.4, G-dev-7) that **steals the landed fact**: an inbound `pull_request.merged` webhook on a linked PR becomes a durable `ThreadLanded` event, which reaches the accountable owner + followers and can be awaited over MCP. Not an automation product — the fact is recorded; the thread's FSM is not touched.
+
+| Change | Where |
+|--------|-------|
+| **`ThreadLanded` event (361.1):** `EventKind`/`Event::ThreadLanded {repo, pr_number, merged_by?, merge_commit_sha?, title?}`; non-federatable; full EventKind drill + contracts. | `crates/maidan-types/src/events.rs`, `contracts/event-kinds.json`, `crates/maidan-server/src/federation.rs` |
+| **Projector ingress (361.2):** `POST /integrations/github/events` `pull_request` merge → `ThreadLanded` on the linked thread (reuses `get_github_issue_link`); does not transition the FSM. | `crates/maidan-server/src/github.rs` |
+| **Notification reach (361.3):** the router notifies the thread's owner + followers on land (mute-honoring). | `crates/maidan-server/src/notification_router.rs` |
+| **`wait_for_landed` MCP (361.4):** block until a thread's PR lands (`thread_id`/`channel_id`-scoped, `since_log_id` lookback, RBAC-filtered) — the `wait_for_ready` analogue. | `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-mcp/src/tools/{mod,catalog}.rs` |
+
 ## v360.0.0 — the token-budgeted context pack (Wave 1 #11)
 
 A stacked cluster (360.1–360.4, G-dev-1) making the scoped context pack budget itself by **tokens**, not just rows: give it a `token_budget` and it keeps the thread's framing (opening message) and its recent tail, folds the elided middle into an auditable `elision` marker ("Lost in the Middle"), and — for a child task — grounds the pack in its parent's ask and decision.
