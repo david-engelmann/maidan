@@ -30,6 +30,8 @@ pub async fn search_messages(
         author_id: q.author.map(MemberId),
         channel_id: q.channel.map(ChannelId),
         author_kind: q.kind,
+        after: q.after,
+        before: q.before,
         deny_channels,
     };
     let mut hits = match q.mode {

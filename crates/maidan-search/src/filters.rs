@@ -1,5 +1,6 @@
 //! Optional lexical-search facets (v1.2.2).
 
+use chrono::{DateTime, Utc};
 use maidan_types::{ChannelId, MemberId, MemberKind};
 
 /// Facets applied in addition to the workspace scope and FTS match.
@@ -9,6 +10,14 @@ pub struct SearchFilters {
     pub channel_id: Option<ChannelId>,
     /// Restrict to messages whose author has this [`MemberKind`].
     pub author_kind: Option<MemberKind>,
+    /// Date-range facet (Cluster 359, N4): only messages posted at/after this
+    /// instant. Inclusive lower bound on `posted_at`.
+    pub after: Option<DateTime<Utc>>,
+    /// Date-range facet (Cluster 359, N4): only messages posted strictly before
+    /// this instant. Exclusive upper bound on `posted_at` — a half-open
+    /// `[after, before)` window so adjacent day-ranges don't double-count a
+    /// midnight boundary.
+    pub before: Option<DateTime<Utc>>,
     /// RBAC pre-filter (Cluster 200): channels whose messages must be excluded at
     /// the query level — the private channels the caller isn't a member of. Not a
     /// user-settable facet; the server computes it so inaccessible hits never
@@ -21,7 +30,11 @@ impl SearchFilters {
     /// `true` when no **user** facet is set. The RBAC `deny_channels` pre-filter is
     /// deliberately excluded — it is applied by the query regardless.
     pub fn is_empty(&self) -> bool {
-        self.author_id.is_none() && self.channel_id.is_none() && self.author_kind.is_none()
+        self.author_id.is_none()
+            && self.channel_id.is_none()
+            && self.author_kind.is_none()
+            && self.after.is_none()
+            && self.before.is_none()
     }
 }
 
@@ -54,5 +67,17 @@ mod tests {
             ..Default::default()
         };
         assert!(!with_kind.is_empty());
+
+        let with_after = SearchFilters {
+            after: Some(chrono::Utc::now()),
+            ..Default::default()
+        };
+        assert!(!with_after.is_empty());
+
+        let with_before = SearchFilters {
+            before: Some(chrono::Utc::now()),
+            ..Default::default()
+        };
+        assert!(!with_before.is_empty());
     }
 }

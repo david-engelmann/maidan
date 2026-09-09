@@ -308,3 +308,64 @@ pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
         .unwrap();
     assert!(hits.is_empty(), "denying every channel yields no hits");
 }
+
+/// Date-range facet (Cluster 359, N4): the `after`/`before` bounds on `posted_at`
+/// filter and compose. The fixture posts everything at ~now, so this asserts the
+/// bounds hold at the all-or-nothing extremes (far past/future) plus the full
+/// window — which validates both bounds without depending on per-message times.
+#[allow(dead_code)]
+pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
+    let far_past = chrono::DateTime::from_timestamp(946_684_800, 0).unwrap(); // 2000-01-01
+    let far_future = chrono::DateTime::from_timestamp(32_503_680_000, 0).unwrap(); // 3000-01-01
+
+    let baseline = search
+        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .await
+        .unwrap();
+    let n = baseline.len();
+    assert!(n > 0, "baseline has rust hits");
+
+    // `after` in the far future excludes everything.
+    let after_future = SearchFilters {
+        after: Some(far_future),
+        ..SearchFilters::default()
+    };
+    assert!(
+        search
+            .search_messages(fx.workspace_id, "rust", 10, &after_future)
+            .await
+            .unwrap()
+            .is_empty(),
+        "after a far-future instant excludes all hits"
+    );
+
+    // `before` in the far past excludes everything.
+    let before_past = SearchFilters {
+        before: Some(far_past),
+        ..SearchFilters::default()
+    };
+    assert!(
+        search
+            .search_messages(fx.workspace_id, "rust", 10, &before_past)
+            .await
+            .unwrap()
+            .is_empty(),
+        "before a far-past instant excludes all hits"
+    );
+
+    // The full half-open window returns the whole baseline set.
+    let window = SearchFilters {
+        after: Some(far_past),
+        before: Some(far_future),
+        ..SearchFilters::default()
+    };
+    let windowed = search
+        .search_messages(fx.workspace_id, "rust", 10, &window)
+        .await
+        .unwrap();
+    assert_eq!(
+        windowed.len(),
+        n,
+        "the full window returns the baseline set"
+    );
+}

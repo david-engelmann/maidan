@@ -215,6 +215,8 @@ impl Search for PostgresSearch {
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)
               AND t.channel_id <> ALL($8)
+              AND ($9::timestamptz IS NULL OR m.posted_at >= $9)
+              AND ($10::timestamptz IS NULL OR m.posted_at < $10)
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT $3
             "#,
@@ -227,6 +229,8 @@ impl Search for PostgresSearch {
         .bind(author_kind)
         .bind(websearch)
         .bind(deny)
+        .bind(filters.after)
+        .bind(filters.before)
         .fetch_all(self.read_pool())
         .await?;
 
@@ -337,6 +341,8 @@ impl Search for PostgresSearch {
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)
               AND t.channel_id <> ALL($7)
+              AND ($8::timestamptz IS NULL OR m.posted_at >= $8)
+              AND ($9::timestamptz IS NULL OR m.posted_at < $9)
             ORDER BY e.embedding <=> $2
             LIMIT $3
             "#
@@ -348,7 +354,9 @@ impl Search for PostgresSearch {
             .bind(author_id)
             .bind(channel_id)
             .bind(author_kind)
-            .bind(deny);
+            .bind(deny)
+            .bind(filters.after)
+            .bind(filters.before);
         // When `ef_search` is configured, set it for this query only via a
         // transaction-scoped `SET LOCAL` (pooled connections are reused, so a
         // session-level SET would leak to other queries).

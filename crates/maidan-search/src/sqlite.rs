@@ -73,6 +73,8 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
+              AND (? IS NULL OR m.posted_at >= ?)
+              AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT ?
@@ -86,7 +88,11 @@ impl Search for SqliteSearch {
             .bind(channel_id)
             .bind(channel_id)
             .bind(author_kind.as_deref())
-            .bind(author_kind.as_deref());
+            .bind(author_kind.as_deref())
+            .bind(filters.after)
+            .bind(filters.after)
+            .bind(filters.before)
+            .bind(filters.before);
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
         }
@@ -170,6 +176,8 @@ impl Search for SqliteSearch {
                   AND (? IS NULL OR m.author_id = ?)
                   AND (? IS NULL OR t.channel_id = ?)
                   AND (? IS NULL OR mem.kind = ?)
+                  AND (? IS NULL OR m.posted_at >= ?)
+                  AND (? IS NULL OR m.posted_at < ?)
                   {deny_clause}
                 ORDER BY vec_distance_cosine(e.embedding, ?)
                 LIMIT ?
@@ -183,7 +191,11 @@ impl Search for SqliteSearch {
                 .bind(channel_id)
                 .bind(channel_id)
                 .bind(author_kind.as_deref())
-                .bind(author_kind.as_deref());
+                .bind(author_kind.as_deref())
+                .bind(filters.after)
+                .bind(filters.after)
+                .bind(filters.before)
+                .bind(filters.before);
             for cid in &filters.deny_channels {
                 q = q.bind(cid.0);
             }
@@ -222,6 +234,8 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
+              AND (? IS NULL OR m.posted_at >= ?)
+              AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
             "#
         );
@@ -232,7 +246,11 @@ impl Search for SqliteSearch {
             .bind(channel_id)
             .bind(channel_id)
             .bind(author_kind.as_deref())
-            .bind(author_kind.as_deref());
+            .bind(author_kind.as_deref())
+            .bind(filters.after)
+            .bind(filters.after)
+            .bind(filters.before)
+            .bind(filters.before);
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
         }
