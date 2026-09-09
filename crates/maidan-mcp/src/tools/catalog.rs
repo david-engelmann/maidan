@@ -669,6 +669,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_notifications_grouped",
+            "description": "A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "unread_only": {"type": "boolean", "default": false},
+                    "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "get_unread_count",
             "description": "A member's unread-notification badge count.",
             "inputSchema": {

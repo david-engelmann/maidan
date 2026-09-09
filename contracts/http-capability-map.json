@@ -205,6 +205,12 @@
   },
   {
     "method": "GET",
+    "path": "/members/{id}/notifications/grouped",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}/notifications/unread-count",
     "capability": "workspace:read",
     "surface": "http"

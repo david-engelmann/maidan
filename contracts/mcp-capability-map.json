@@ -51,6 +51,7 @@
   "list_messages": "workspace:read",
   "list_notification_prefs": "workspace:read",
   "list_notifications": "workspace:read",
+  "list_notifications_grouped": "workspace:read",
   "list_pins": "workspace:read",
   "list_reactions": "workspace:read",
   "list_recently_active_threads": "workspace:read",

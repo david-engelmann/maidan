@@ -89,6 +89,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_result"
         | "get_dependency_results"
         | "list_notifications"
+        | "list_notifications_grouped"
         | "get_unread_count"
         | "mark_notification_read"
         | "snooze_notification"
@@ -334,6 +335,7 @@ pub async fn dispatch(
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "list_notifications" => member::list_notifications(store, args).await,
         "get_unread_count" => member::get_unread_count(store, args).await,
+        "list_notifications_grouped" => member::list_notifications_grouped(store, args).await,
         "mark_notification_read" => member::mark_notification_read(store, args).await,
         "snooze_notification" => member::snooze_notification(store, args).await,
         "wait_for_notification" => member::wait_for_notification(server, auth, args).await,

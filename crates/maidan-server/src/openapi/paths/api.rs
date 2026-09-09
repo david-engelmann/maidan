@@ -312,6 +312,15 @@ pub fn mark_member_inbox_read() {}
     responses((status = 200, body = Vec<Notification>)))]
 pub fn list_member_notifications() {}
 
+#[utoipa::path(get, path = "/members/{id}/notifications/grouped", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ListNotificationsQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [NotificationThreadGroup])))]
+pub fn list_member_notifications_grouped() {}
+
 #[utoipa::path(get, path = "/members/{id}/notifications/unread-count", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
     security(("bearerAuth" = [])),

@@ -150,6 +150,29 @@ pub async fn list_member_notifications(
     ))
 }
 
+/// A member's notifications collapsed into per-thread groups, newest-activity
+/// first (Cluster 359, N5) — so a busy thread shows as one row instead of
+/// flooding the flat inbox. `limit` bounds how many notifications are scanned
+/// (default 200, clamp 1..=500); `unread_only` groups only unread ones. Self-only
+/// for a session caller.
+pub async fn list_member_notifications_grouped(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ListNotificationsQuery>,
+) -> ApiResult<Json<Vec<NotificationThreadGroup>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    let limit = q.limit.clamp(1, 500);
+    let notes = state
+        .store
+        .list_notifications(MemberId(id), q.unread_only, limit)
+        .await?;
+    Ok(Json(maidan_types::group_notifications_by_thread(&notes)))
+}
+
 /// A member's unread-notification badge count (Cluster 239). Self-only for sessions.
 pub async fn member_unread_notification_count(
     State(state): State<AppState>,
