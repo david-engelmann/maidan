@@ -89,6 +89,8 @@ const POSTGRES_UP_V61: &str = include_str!("../../../migrations/postgres/0061_th
 const POSTGRES_UP_V62: &str = include_str!("../../../migrations/postgres/0062_channel_mutes.sql");
 const POSTGRES_UP_V63: &str = include_str!("../../../migrations/postgres/0063_thread_budgets.sql");
 const POSTGRES_UP_V64: &str = include_str!("../../../migrations/postgres/0064_agent_work_dlq.sql");
+const POSTGRES_UP_V65: &str =
+    include_str!("../../../migrations/postgres/0065_notification_snooze.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -162,6 +164,7 @@ const SQLITE_UP_V60: &str = include_str!("../../../migrations/sqlite/0060_thread
 const SQLITE_UP_V61: &str = include_str!("../../../migrations/sqlite/0061_channel_mutes.sql");
 const SQLITE_UP_V62: &str = include_str!("../../../migrations/sqlite/0062_thread_budgets.sql");
 const SQLITE_UP_V63: &str = include_str!("../../../migrations/sqlite/0063_agent_work_dlq.sql");
+const SQLITE_UP_V64: &str = include_str!("../../../migrations/sqlite/0064_notification_snooze.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -278,6 +281,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 62, POSTGRES_UP_V62).await?;
     apply_postgres(pool, 63, POSTGRES_UP_V63).await?;
     apply_postgres(pool, 64, POSTGRES_UP_V64).await?;
+    apply_postgres(pool, 65, POSTGRES_UP_V65).await?;
     Ok(())
 }
 
@@ -355,6 +359,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 61, SQLITE_UP_V61).await?;
     apply_sqlite(pool, 62, SQLITE_UP_V62).await?;
     apply_sqlite(pool, 63, SQLITE_UP_V63).await?;
+    apply_sqlite(pool, 64, SQLITE_UP_V64).await?;
     Ok(())
 }
 

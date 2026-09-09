@@ -167,6 +167,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::mark_member_notification_read),
         )
         .route(
+            "/members/:id/notifications/:nid/snooze",
+            post(routes::snooze_member_notification),
+        )
+        .route(
             "/members/:id/notification-prefs",
             axum::routing::put(routes::set_member_notification_pref)
                 .get(routes::list_member_notification_prefs),

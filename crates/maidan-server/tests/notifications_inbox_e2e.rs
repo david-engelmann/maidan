@@ -212,4 +212,48 @@ async fn inbox_list_count_mark_and_read_all() {
         .await
         .unwrap();
     assert_eq!(after["count"], 0);
+
+    // Snooze (Cluster 359, N5): a fresh unread notification snoozed into the future
+    // leaves the badge; an unknown id is a 404.
+    let fresh = store
+        .create_notification(NewNotification {
+            workspace_id: ws.id,
+            member_id: member.id,
+            kind: EventKind::MentionRecorded,
+            source_log_id: 99,
+            channel_id: Some(channel.id),
+            thread_id: Some(thread.id),
+            message_id: None,
+            actor_id: None,
+        })
+        .await
+        .unwrap();
+    let snoozed = client
+        .post(format!(
+            "{base}/members/{mid}/notifications/{}/snooze",
+            fresh.id.0
+        ))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "until": "2999-01-01T00:00:00Z" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(snoozed.status(), StatusCode::OK);
+    let snoozed_body: Value = snoozed.json().await.unwrap();
+    assert_eq!(
+        snoozed_body["count"], 0,
+        "snoozed notification is off the badge"
+    );
+
+    let unknown = client
+        .post(format!(
+            "{base}/members/{mid}/notifications/{}/snooze",
+            uuid::Uuid::new_v4()
+        ))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "until": "2999-01-01T00:00:00Z" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
 }

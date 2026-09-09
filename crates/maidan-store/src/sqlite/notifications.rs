@@ -15,10 +15,10 @@ pub async fn create(pool: &SqlitePool, new: NewNotification) -> Result<Notificat
     let row = sqlx::query(
         "INSERT INTO maidan_notifications
             (id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-             message_id, actor_id, created_at, read_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+             message_id, actor_id, created_at, read_at, snoozed_until)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
          RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                   message_id, actor_id, created_at, read_at",
+                   message_id, actor_id, created_at, read_at, snoozed_until",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -46,11 +46,11 @@ pub async fn create_if_absent(
     let row = sqlx::query(
         "INSERT INTO maidan_notifications
             (id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-             message_id, actor_id, created_at, read_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+             message_id, actor_id, created_at, read_at, snoozed_until)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
          ON CONFLICT (member_id, source_log_id) DO NOTHING
          RETURNING id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                   message_id, actor_id, created_at, read_at",
+                   message_id, actor_id, created_at, read_at, snoozed_until",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -81,12 +81,12 @@ pub async fn create_batch(
         return Ok(Vec::new());
     }
     const COLS: &str = "id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id, \
-                        message_id, actor_id, created_at, read_at";
+                        message_id, actor_id, created_at, read_at, snoozed_until";
     const CHUNK: usize = 90;
     let now = Utc::now().to_rfc3339();
     let mut out = Vec::with_capacity(rows.len());
     for chunk in rows.chunks(CHUNK) {
-        let values = vec!["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)"; chunk.len()].join(", ");
+        let values = vec!["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)"; chunk.len()].join(", ");
         let sql = format!(
             "INSERT INTO maidan_notifications ({COLS})
              VALUES {values}
@@ -122,21 +122,26 @@ pub async fn list_for_member(
     unread_only: bool,
     limit: i64,
 ) -> Result<Vec<Notification>, StoreError> {
+    // Currently-snoozed notifications are hidden until the snooze lapses (N5).
     let sql = if unread_only {
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                message_id, actor_id, created_at, read_at
+                message_id, actor_id, created_at, read_at, snoozed_until
          FROM maidan_notifications
          WHERE member_id = ? AND read_at IS NULL
+           AND (snoozed_until IS NULL OR snoozed_until <= ?)
          ORDER BY created_at DESC LIMIT ?"
     } else {
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                message_id, actor_id, created_at, read_at
+                message_id, actor_id, created_at, read_at, snoozed_until
          FROM maidan_notifications
          WHERE member_id = ?
+           AND (snoozed_until IS NULL OR snoozed_until <= ?)
          ORDER BY created_at DESC LIMIT ?"
     };
+    let now = Utc::now().to_rfc3339();
     let rows = sqlx::query(sql)
         .bind(member_id.0)
+        .bind(&now)
         .bind(limit)
         .fetch_all(pool)
         .await?;
@@ -164,6 +169,25 @@ pub async fn mark_read(
     Ok(res.rows_affected() > 0)
 }
 
+/// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped;
+/// returns whether the `(member_id, id)` row exists.
+pub async fn snooze(
+    pool: &SqlitePool,
+    member_id: MemberId,
+    id: NotificationId,
+    until: chrono::DateTime<chrono::Utc>,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_notifications SET snoozed_until = ? WHERE id = ? AND member_id = ?",
+    )
+    .bind(until.to_rfc3339())
+    .bind(id.0)
+    .bind(member_id.0)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 /// Mark all of a member's unread notifications read (Cluster 237). Returns the
 /// number cleared.
 pub async fn mark_all_read(pool: &SqlitePool, member_id: MemberId) -> Result<u64, StoreError> {
@@ -180,10 +204,14 @@ pub async fn mark_all_read(pool: &SqlitePool, member_id: MemberId) -> Result<u64
 
 /// The unread-notification badge count for a member (Cluster 237).
 pub async fn unread_count(pool: &SqlitePool, member_id: MemberId) -> Result<i64, StoreError> {
+    let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
-        "SELECT COUNT(*) AS n FROM maidan_notifications WHERE member_id = ? AND read_at IS NULL",
+        "SELECT COUNT(*) AS n FROM maidan_notifications
+         WHERE member_id = ? AND read_at IS NULL
+           AND (snoozed_until IS NULL OR snoozed_until <= ?)",
     )
     .bind(member_id.0)
+    .bind(&now)
     .fetch_one(pool)
     .await?;
     Ok(row.get::<i64, _>("n"))
@@ -205,5 +233,6 @@ fn row_to_notification(row: &sqlx::sqlite::SqliteRow) -> Result<Notification, St
         actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         read_at: row.get::<Option<DateTime<Utc>>, _>("read_at"),
+        snoozed_until: row.get::<Option<DateTime<Utc>>, _>("snoozed_until"),
     })
 }

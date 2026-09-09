@@ -187,6 +187,30 @@ pub async fn mark_member_notification_read(
     Ok(Json(UnreadCount { count }))
 }
 
+/// Snooze one notification until `until` (Cluster 359, N5) — it drops out of the
+/// inbox + badge until then. Self-only for a session caller; `404` when the
+/// notification isn't this member's. Returns the new unread count.
+pub async fn snooze_member_notification(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, nid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiJson(body): ApiJson<SnoozeNotification>,
+) -> ApiResult<Json<UnreadCount>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if !state
+        .store
+        .snooze_notification(MemberId(id), NotificationId(nid), body.until)
+        .await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    let count = state.store.unread_notification_count(MemberId(id)).await?;
+    Ok(Json(UnreadCount { count }))
+}
+
 /// Mark all of a member's notifications read (Cluster 239). Self-only for sessions.
 pub async fn mark_all_member_notifications_read(
     State(state): State<AppState>,

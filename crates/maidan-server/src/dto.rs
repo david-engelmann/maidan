@@ -498,6 +498,12 @@ pub struct UnreadCount {
     pub count: i64,
 }
 
+/// Snooze a notification until this RFC 3339 instant (Cluster 359, N5).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SnoozeNotification {
+    pub until: chrono::DateTime<chrono::Utc>,
+}
+
 /// Query params for workspace import (Cluster 270).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ImportQuery {
