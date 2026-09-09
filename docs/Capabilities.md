@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v362.0.0 — the WIP limit (Wave 1 #13)
+
+A stacked cluster (362.1–362.3, G11) giving a workspace a **work-in-progress cap**: the max concurrent **live** claims any one member may hold. An agent can no longer grab unbounded concurrent work; a capped member's `claim_next` finds nothing and an explicit `claim` is refused (409). Counts live claims, never queued-never-started ghosts.
+
+| Change | Where |
+|--------|-------|
+| **Store foundation (362.1):** `maidan_wip_limits` (pg 0066 / sqlite 0065) — per-workspace cap; `set_wip_limit`/`get_wip_limit` + `count_live_claims` (complement of the `claim_next` predicate). No row = unlimited; `0` = frozen. | `migrations/*/006{6,5}_wip_limits.sql`, `crates/maidan-store/src/{sqlite,postgres}/wip.rs`, `crates/maidan-store/src/store.rs` |
+| **REST enforcement + admin (362.2):** `claim_next` → null / `claim` → 409 at the cap (`routes::at_wip_limit`); `PUT`/`GET /workspaces/:wid/wip-limit` + `GET /members/:id/wip`. | `crates/maidan-server/src/routes/{mod,thread,workspace}.rs` |
+| **MCP enforcement + tools (362.3):** same on `claim_thread`/`claim_next_thread`; `set_wip_limit`/`get_wip_limit`/`get_member_wip` tools. | `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-mcp/src/tools/{mod,catalog}.rs` |
+
 ## v361.0.0 — the landed fact (Wave 1 #12)
 
 A stacked cluster (361.1–361.4, G-dev-7) that **steals the landed fact**: an inbound `pull_request.merged` webhook on a linked PR becomes a durable `ThreadLanded` event, which reaches the accountable owner + followers and can be awaited over MCP. Not an automation product — the fact is recorded; the thread's FSM is not touched.
