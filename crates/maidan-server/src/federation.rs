@@ -332,6 +332,25 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             member_id,
             thread,
         },
+        // Non-federatable (a locally-derived budget-exhaustion / run failure) —
+        // never actually ingested/remapped, but the exhaustive match must classify it.
+        ClaimFailed {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            member_id,
+            reason,
+            thread,
+        } => ClaimFailed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            reason,
+            thread,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

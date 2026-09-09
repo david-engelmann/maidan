@@ -38,6 +38,7 @@ pub enum EventKind {
     ThreadReady,
     ThreadResultSet,
     ClaimExpired,
+    ClaimFailed,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -63,6 +64,7 @@ impl EventKind {
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
             Self::ClaimExpired => "claim_expired",
+            Self::ClaimFailed => "claim_failed",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -88,6 +90,7 @@ impl EventKind {
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
             "claim_expired" => Some(Self::ClaimExpired),
+            "claim_failed" => Some(Self::ClaimFailed),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -119,6 +122,7 @@ impl EventKind {
         Self::ThreadReady,
         Self::ThreadResultSet,
         Self::ClaimExpired,
+        Self::ClaimFailed,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -171,6 +175,9 @@ impl EventKind {
             // A lease expiry is detected locally (this deployment's clock + reclaim);
             // a peer must not inject a claim of one.
             Self::ClaimExpired => false,
+            // A budget-exhaustion / run failure is a locally-derived signal
+            // (this deployment's budget accounting); a peer must not inject one.
+            Self::ClaimFailed => false,
         }
     }
 }
@@ -259,6 +266,22 @@ pub enum Event {
         thread_id: ThreadId,
         /// The previous holder whose lease expired.
         member_id: MemberId,
+        thread: Thread,
+    },
+    /// A claimed run was stopped because it exceeded its budget envelope
+    /// (Cluster 358, T1/T5) — a hard stop, distinct from a normal close (success).
+    /// The claim is released and the run is dead-lettered. A locally-derived
+    /// signal (this deployment's budget accounting): not federatable.
+    ClaimFailed {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The holder whose run was stopped.
+        member_id: MemberId,
+        /// Which budget dimension was exceeded (`BudgetReason::as_str`):
+        /// `tokens` | `usd` | `turns` | `wall`.
+        reason: String,
         thread: Thread,
     },
     MessagePosted {
@@ -358,6 +381,7 @@ impl Event {
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
+            Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -383,6 +407,7 @@ impl Event {
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
+            | Self::ClaimFailed { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -408,6 +433,7 @@ impl Event {
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
+            | Self::ClaimFailed { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -430,6 +456,7 @@ impl Event {
             | Self::ThreadReady { channel_id, .. }
             | Self::ThreadResultSet { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
+            | Self::ClaimFailed { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -447,6 +474,7 @@ impl Event {
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
+            Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -482,6 +510,7 @@ impl Event {
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
+            Self::ClaimFailed { member_id, .. } => Some(*member_id),
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
             | Self::ReactionAdded { member_id, .. }
@@ -749,6 +778,7 @@ mod kind_tests {
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
                 | EventKind::ClaimExpired
+                | EventKind::ClaimFailed
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -795,6 +825,7 @@ mod kind_tests {
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
             EventKind::ClaimExpired,
+            EventKind::ClaimFailed,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);
