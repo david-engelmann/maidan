@@ -6,6 +6,7 @@ mod apps;
 mod artifacts;
 mod audit;
 mod automation_deliveries;
+mod budget;
 mod channel_members;
 mod channels;
 pub mod delivery_cursor;
@@ -430,6 +431,30 @@ impl ThreadSteerStore for PostgresStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadSteer>, StoreError> {
         thread_steer::get(self.read_pool(), thread_id).await
+    }
+}
+
+#[async_trait]
+impl BudgetStore for PostgresStore {
+    async fn set_thread_budget(
+        &self,
+        thread_id: ThreadId,
+        limits: BudgetLimits,
+    ) -> Result<ThreadBudget, StoreError> {
+        budget::set_budget(&self.pool, thread_id, limits).await
+    }
+    async fn get_thread_budget(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBudget>, StoreError> {
+        budget::get_budget(self.read_pool(), thread_id).await
+    }
+    async fn add_thread_usage(
+        &self,
+        thread_id: ThreadId,
+        delta: UsageDelta,
+    ) -> Result<ThreadBudget, StoreError> {
+        budget::add_usage(&self.pool, thread_id, delta).await
     }
 }
 

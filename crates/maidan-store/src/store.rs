@@ -130,6 +130,30 @@ pub trait ThreadSteerStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait BudgetStore: Send + Sync {
+    /// Set (upsert) a thread's budget maxima (Cluster 358, T1/T5). Accumulated
+    /// usage is preserved — only the `max_*` dimensions are touched.
+    async fn set_thread_budget(
+        &self,
+        thread_id: ThreadId,
+        limits: BudgetLimits,
+    ) -> Result<ThreadBudget, StoreError>;
+    /// A thread's budget, or `None` until one is set / usage is first reported.
+    async fn get_thread_budget(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBudget>, StoreError>;
+    /// Accumulate reported usage onto a thread's budget, creating the row (no
+    /// maxima) when the thread has none yet. Returns the new totals. Enforcement
+    /// (stop-the-run on exceed) is a route/tool concern layered on top (Cluster 358.3).
+    async fn add_thread_usage(
+        &self,
+        thread_id: ThreadId,
+        delta: UsageDelta,
+    ) -> Result<ThreadBudget, StoreError>;
+}
+
+#[async_trait]
 pub trait ApprovalGateStore: Send + Sync {
     /// A durable human-approval gate (Cluster 350, the held gate): `create` opens
     /// a `Pending` gate, `resolve` compare-and-sets it to accept/decline/cancel
@@ -1519,6 +1543,7 @@ pub trait Store:
     + SkillStore
     + ThreadResultStore
     + ThreadSteerStore
+    + BudgetStore
     + ApprovalGateStore
     + GlossaryStore
     + NotificationStore
@@ -1562,6 +1587,7 @@ impl<
             + SkillStore
             + ThreadResultStore
             + ThreadSteerStore
+            + BudgetStore
             + ApprovalGateStore
             + GlossaryStore
             + NotificationStore
