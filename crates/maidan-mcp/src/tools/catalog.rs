@@ -291,6 +291,32 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_wip_limit",
+            "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": ["integer", "null"], "minimum": 0, "description": "max concurrent live claims per member; null/omit = unlimited"}
+                }
+            }
+        }),
+        json!({
+            "name": "get_wip_limit",
+            "description": "This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
+            "name": "get_member_wip",
+            "description": "A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "claim_next_thread",
             "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread, or null when there is no claimable work.",
             "inputSchema": {

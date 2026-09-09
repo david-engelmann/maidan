@@ -256,6 +256,19 @@ pub(super) async fn assign_thread(
     Ok(content_json(&thread))
 }
 
+/// Whether `member` is at (or over) their workspace's WIP limit (Cluster 362,
+/// G11) — the MCP twin of `routes::at_wip_limit`. `false` when unset (unlimited).
+async fn at_wip_limit(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<bool, McpError> {
+    match store.get_wip_limit(workspace_id).await? {
+        Some(limit) => Ok(store.count_live_claims(member_id).await? >= limit),
+        None => Ok(false),
+    }
+}
+
 pub(super) async fn claim_thread(
     server: &crate::server::McpServer,
     args: &Value,
@@ -263,6 +276,17 @@ pub(super) async fn claim_thread(
     let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
     let member_id = MemberId(a.member_id);
+    // WIP limit (Cluster 362, G11): refuse a NEW claim past the cap (the REST
+    // 409 analogue); a re-claim of a thread the member already holds is exempt.
+    let thread = server.store.get_thread(thread_id).await?;
+    if thread.assignee_id != Some(member_id) {
+        let channel = server.store.get_channel(thread.channel_id).await?;
+        if at_wip_limit(server.store.as_ref(), channel.workspace_id, member_id).await? {
+            return Err(McpError::InvalidParams(
+                "member is at the workspace WIP limit; release or finish a claim first".into(),
+            ));
+        }
+    }
     let result = server.store.claim_thread(thread_id, member_id).await?;
     if result.claimed {
         publish_assignment(server, &result.thread, member_id, None, None).await?;
@@ -280,6 +304,62 @@ pub(super) async fn unassign_thread(
     let thread = server.store.unassign_thread(thread_id).await?;
     publish_assignment(server, &thread, MemberId(a.actor_id), previous, None).await?;
     Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
+struct SetWipLimitArgs {
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// Set (or clear) the caller's workspace WIP limit (Cluster 362, G11): the max
+/// concurrent live claims per member. `limit >= 0` caps (0 freezes); omit/null
+/// clears it (unlimited). `workspace:write`.
+pub(super) async fn set_wip_limit(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetWipLimitArgs = serde_json::from_value(args.clone())?;
+    if let Some(limit) = a.limit {
+        if limit < 0 {
+            return Err(McpError::InvalidParams("limit must be >= 0".into()));
+        }
+    }
+    store.set_wip_limit(auth.workspace_id, a.limit).await?;
+    Ok(content_json(&json!({ "limit": a.limit })))
+}
+
+/// The caller's workspace WIP limit, or null (unlimited) (Cluster 362).
+/// `workspace:read`.
+pub(super) async fn get_wip_limit(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    _args: &Value,
+) -> Result<Value, McpError> {
+    let limit = store.get_wip_limit(auth.workspace_id).await?;
+    Ok(content_json(&json!({ "limit": limit })))
+}
+
+#[derive(Deserialize)]
+struct MemberWipArgs {
+    member_id: uuid::Uuid,
+}
+
+/// A member's live-claim count vs the workspace WIP limit (Cluster 362).
+/// Member-scoped (the member's own workspace). `workspace:read`.
+pub(super) async fn get_member_wip(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberWipArgs = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let member = store.get_member(member_id).await?;
+    let live_claims = store.count_live_claims(member_id).await?;
+    let limit = store.get_wip_limit(member.workspace_id).await?;
+    Ok(content_json(
+        &json!({ "live_claims": live_claims, "limit": limit }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -332,6 +412,12 @@ pub(super) async fn claim_next_thread(
 ) -> Result<Value, McpError> {
     let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
+    // WIP limit (Cluster 362, G11): a capped member is dispatched nothing (null),
+    // the same shape as an empty queue.
+    let channel = server.store.get_channel(ChannelId(a.channel_id)).await?;
+    if at_wip_limit(server.store.as_ref(), channel.workspace_id, member_id).await? {
+        return Ok(content_json(&Value::Null));
+    }
     let claimed = server
         .store
         .claim_next_thread(ChannelId(a.channel_id), member_id, a.lease_secs)

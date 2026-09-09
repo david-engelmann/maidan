@@ -1800,6 +1800,146 @@ mod tests {
         assert_eq!(depth["assigned"], json!(0));
     }
 
+    /// Cluster 362 (G11): the WIP admin/visibility tools + enforcement on the MCP
+    /// claim path (explicit claim errors at the cap; claim_next returns null).
+    #[tokio::test]
+    async fn wip_limit_tools_enforce_the_cap() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "wip".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let mk = |title: &str| NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        };
+        let t1 = store.create_thread(mk("t1")).await.unwrap();
+        let t2 = store.create_thread(mk("t2")).await.unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![
+                WORKSPACE_READ.to_string(),
+                WORKSPACE_WRITE.to_string(),
+                THREAD_TRANSITION.to_string(),
+            ],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Cap the workspace at one live claim per member.
+        let set = server
+            .call_tool(&auth, "set_wip_limit", &json!({ "limit": 1 }))
+            .await
+            .unwrap();
+        assert_eq!(body(set)["limit"], json!(1));
+        assert_eq!(
+            body(
+                server
+                    .call_tool(&auth, "get_wip_limit", &json!({}))
+                    .await
+                    .unwrap()
+            )["limit"],
+            json!(1)
+        );
+        let wip0 = body(
+            server
+                .call_tool(&auth, "get_member_wip", &json!({ "member_id": agent.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(wip0["live_claims"], json!(0));
+        assert_eq!(wip0["limit"], json!(1));
+
+        // First claim OK; a second explicit claim errors at the cap.
+        server
+            .call_tool(
+                &auth,
+                "claim_thread",
+                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
+            )
+            .await
+            .unwrap();
+        assert!(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_thread",
+                    &json!({ "thread_id": t2.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .is_err(),
+            "a second claim past the WIP cap errors"
+        );
+        // claim_next hands out nothing while at the cap.
+        let next = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(next.is_null());
+
+        // Clearing the cap lets the second claim through.
+        server
+            .call_tool(&auth, "set_wip_limit", &json!({ "limit": Value::Null }))
+            .await
+            .unwrap();
+        let claimed = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_thread",
+                    &json!({ "thread_id": t2.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(claimed["claimed"], json!(true));
+    }
+
     /// Cluster 356.5: the threading MCP parity tools — collapsed children, recent
     /// activity, and self leaf mute/unmute.
     #[tokio::test]
