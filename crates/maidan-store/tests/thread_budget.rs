@@ -4,8 +4,8 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetReason, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
-    ThreadId, UsageDelta,
+    BudgetLimits, BudgetReason, ChannelId, MemberKind, NewChannel, NewDlqEntry, NewMember,
+    NewThread, NewWorkspace, ThreadId, UsageDelta,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -29,7 +29,7 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("ws");
-    let _member = store
+    let member = store
         .create_member(NewMember {
             workspace_id: ws.id,
             handle: "a".into(),
@@ -182,6 +182,42 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("get missing");
     assert!(missing.is_none());
+
+    // Agent-work DLQ (Cluster 358.2): record a dead-lettered run + list it.
+    assert!(store
+        .list_channel_dlq(channel.id, 10)
+        .await
+        .expect("dlq empty")
+        .is_empty());
+    let e = store
+        .record_dlq_entry(&NewDlqEntry {
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: member.id,
+            reason: BudgetReason::Tokens.as_str().into(),
+            used_tokens: 1100,
+            used_usd_micros: 100_000,
+            used_turns: 3,
+        })
+        .await
+        .expect("record dlq");
+    assert_eq!(e.reason, "tokens");
+    assert_eq!(e.thread_id, thread.id);
+    assert_eq!(e.used_tokens, 1100);
+    let listed = store
+        .list_channel_dlq(channel.id, 10)
+        .await
+        .expect("dlq list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, e.id);
+    assert_eq!(listed[0].member_id, member.id);
+    // A different channel's DLQ is isolated.
+    assert!(store
+        .list_channel_dlq(ChannelId(uuid::Uuid::new_v4()), 10)
+        .await
+        .expect("other channel dlq")
+        .is_empty());
 }
 
 #[tokio::test]

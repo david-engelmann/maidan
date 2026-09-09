@@ -151,6 +151,15 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError>;
+    /// Record a dead-lettered agent run (Cluster 358) — a run stopped for exceeding
+    /// its budget. `id`/`failed_at` are assigned by the store.
+    async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError>;
+    /// A channel's dead-lettered runs, newest first (Cluster 358).
+    async fn list_channel_dlq(
+        &self,
+        channel_id: ChannelId,
+        limit: i64,
+    ) -> Result<Vec<DlqEntry>, StoreError>;
 }
 
 #[async_trait]

@@ -351,6 +351,42 @@ impl ThreadBudget {
     }
 }
 
+/// A dead-lettered agent run (Cluster 358, T1/T5). When a claimed run is stopped
+/// because it exceeded its budget envelope, the claim fails and a DLQ entry is
+/// recorded — so the failed work is triageable (retry, raise the budget, give up)
+/// rather than silently lost or silently marked done. Captures the failure
+/// snapshot: which thread, which agent, why, and usage at the moment of failure.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DlqEntry {
+    pub id: DlqEntryId,
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    /// The agent whose run was stopped.
+    pub member_id: MemberId,
+    /// The budget dimension that bound (`BudgetReason::as_str`).
+    pub reason: String,
+    pub used_tokens: i64,
+    pub used_usd_micros: i64,
+    pub used_turns: i64,
+    pub failed_at: DateTime<Utc>,
+}
+
+/// A new dead-letter entry to record (Cluster 358). `id`/`failed_at` are assigned
+/// by the store.
+#[derive(Debug, Clone)]
+pub struct NewDlqEntry {
+    pub workspace_id: WorkspaceId,
+    pub channel_id: ChannelId,
+    pub thread_id: ThreadId,
+    pub member_id: MemberId,
+    pub reason: String,
+    pub used_tokens: i64,
+    pub used_usd_micros: i64,
+    pub used_turns: i64,
+}
+
 /// Persisted steering guidance for a task/thread (Cluster 355, W1). A durable
 /// instruction from the owner (or a supervisor) that survives claims and
 /// handoffs, so a resuming or newly-assigned agent reads the CURRENT steer. One

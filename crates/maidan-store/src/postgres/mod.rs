@@ -10,6 +10,7 @@ mod budget;
 mod channel_members;
 mod channels;
 pub mod delivery_cursor;
+mod dlq;
 mod dm;
 mod email_digest;
 mod erase_workspace;
@@ -455,6 +456,16 @@ impl BudgetStore for PostgresStore {
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError> {
         budget::add_usage(&self.pool, thread_id, delta).await
+    }
+    async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
+        dlq::record(&self.pool, new).await
+    }
+    async fn list_channel_dlq(
+        &self,
+        channel_id: ChannelId,
+        limit: i64,
+    ) -> Result<Vec<DlqEntry>, StoreError> {
+        dlq::list_for_channel(self.read_pool(), channel_id, limit).await
     }
 }
 
