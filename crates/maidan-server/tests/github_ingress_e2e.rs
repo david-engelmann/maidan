@@ -182,3 +182,102 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
 
     server.abort();
 }
+
+/// Cluster 361 (G-dev-7): a merged PR linked to a thread emits a `ThreadLanded`
+/// fact; a closed-but-unmerged PR, and an unlinked PR, emit nothing.
+#[tokio::test]
+async fn github_pull_request_merged_emits_thread_landed() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let bot = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "ghbot".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("pr-7".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .link_github_issue(NewGithubIssueLink {
+            repo: "o/r".into(),
+            issue_number: 7,
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: bot.id,
+        })
+        .await
+        .unwrap();
+
+    let post = |event: &'static str, body: String| {
+        let client = client.clone();
+        async move {
+            let sig = sign_payload(SECRET, &body);
+            client
+                .post(format!("http://{addr}/integrations/github/events"))
+                .header("x-github-event", event)
+                .header("x-hub-signature-256", &sig)
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    // A closed-but-unmerged PR is not a land.
+    let unmerged = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":7,"merged":false,"title":"wip"}}"#;
+    assert_eq!(post("pull_request", unmerged.into()).await, StatusCode::OK);
+
+    // An unrelated (unlinked) merged PR is ignored.
+    let unlinked = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":999,"merged":true,"title":"other"}}"#;
+    assert_eq!(post("pull_request", unlinked.into()).await, StatusCode::OK);
+
+    let landed = |s: &maidan_types::StoredEvent| s.kind == maidan_types::EventKind::ThreadLanded;
+    let before = store.list_events_after(ws.id, 0, 100).await.unwrap();
+    assert!(
+        !before.iter().any(landed),
+        "no ThreadLanded before a real merge"
+    );
+
+    // The merge: action=closed, merged=true, linked PR #7.
+    let merged = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":7,"merged":true,"title":"add the widget","merge_commit_sha":"abc123","merged_by":{"login":"octocat"}}}"#;
+    assert_eq!(post("pull_request", merged.into()).await, StatusCode::OK);
+
+    let events = store.list_events_after(ws.id, 0, 100).await.unwrap();
+    let landed_event = events
+        .iter()
+        .find(|e| landed(e))
+        .expect("a ThreadLanded fact was emitted on the merge");
+    assert_eq!(landed_event.thread_id, Some(thread.id));
+    let payload = &landed_event.payload;
+    assert_eq!(payload["repo"], "o/r");
+    assert_eq!(payload["pr_number"], 7);
+    assert_eq!(payload["merged_by"], "octocat");
+    assert_eq!(payload["merge_commit_sha"], "abc123");
+    assert_eq!(payload["title"], "add the widget");
+
+    server.abort();
+}
