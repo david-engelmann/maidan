@@ -581,6 +581,20 @@ pub async fn claim_thread(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
+    // WIP limit (Cluster 362, G11): refuse an explicit claim that would push the
+    // member past their workspace cap — 409, distinct from `claim_next`'s silent
+    // null. Skipped when the member already holds this thread (a re-claim is not a
+    // new slot), so a heartbeat-style re-claim never 409s.
+    let thread = state.store.get_thread(thread_id).await?;
+    if thread.assignee_id != Some(member_id) {
+        let channel = state.store.get_channel(thread.channel_id).await?;
+        if super::at_wip_limit(state.store.as_ref(), channel.workspace_id, member_id).await? {
+            return Err(ApiError::Conflict(format!(
+                "member {} is at the workspace WIP limit; release or finish a claim first",
+                member_id.0
+            )));
+        }
+    }
     let (result, stored) = state
         .store
         .claim_thread_with_event(thread_id, member_id)
@@ -618,6 +632,24 @@ pub async fn list_assigned_threads(
     Ok(Json(visible))
 }
 
+/// `GET /members/:id/wip` (Cluster 362, G11) — a member's live-claim count against
+/// their workspace's WIP limit, for occupancy/backpressure decisions.
+/// `workspace:read`, same-workspace.
+pub async fn get_member_wip(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<MemberWipView>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member_id = MemberId(id);
+    let member = state.store.get_member(member_id).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    Ok(Json(MemberWipView {
+        live_claims: state.store.count_live_claims(member_id).await?,
+        limit: state.store.get_wip_limit(member.workspace_id).await?,
+    }))
+}
+
 /// Atomically claim the oldest unassigned thread in a channel (Cluster 190) —
 /// the "pull the next task" primitive. Returns the claimed thread, or `null`
 /// when the channel has no unassigned work.
@@ -633,6 +665,13 @@ pub async fn claim_next_thread(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
+    // WIP limit (Cluster 362, G11): a member already at their workspace cap is
+    // handed no further work — `claim_next` returns null (nothing dispatched),
+    // the same shape as an empty queue. `wait_for_ready` / the occupancy view show
+    // whether there is work waiting vs. the caller being capped.
+    if super::at_wip_limit(state.store.as_ref(), channel.workspace_id, member_id).await? {
+        return Ok(Json(None));
+    }
     let (claimed, events) = state
         .store
         .claim_next_thread_with_event(channel.id, member_id, body.lease_secs)

@@ -82,6 +82,10 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/:id/export", get(routes::export_workspace))
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
+        .route(
+            "/workspaces/:id/wip-limit",
+            axum::routing::put(routes::set_wip_limit).get(routes::get_wip_limit),
+        )
         .route("/me", get(routes::get_me))
         .route(
             "/workspaces/:wid/glossary",
@@ -141,6 +145,7 @@ pub fn router(state: AppState) -> Router {
             "/members/:id/assigned-threads",
             get(routes::list_assigned_threads),
         )
+        .route("/members/:id/wip", get(routes::get_member_wip))
         .route(
             "/members/:id/mentions",
             get(routes::list_mentions_for_member),
