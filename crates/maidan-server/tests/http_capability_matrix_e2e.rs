@@ -330,6 +330,9 @@ fn apply_route_defaults(
     if path.ends_with("/delivery-mode") && method == "PUT" {
         return b.json(&json!({ "mode": "digest" }));
     }
+    if path.ends_with("/wip-limit") && method == "PUT" {
+        return b.json(&json!({ "limit": 5 }));
+    }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
     }

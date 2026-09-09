@@ -344,6 +344,28 @@ pub struct ToolTranscriptQuery {
     pub limit: Option<i64>,
 }
 
+/// Body for `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11). `limit: null`
+/// clears the cap (unlimited); a value caps concurrent live claims per member
+/// (`0` freezes claiming).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetWipLimit {
+    pub limit: Option<i64>,
+}
+
+/// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WipLimitView {
+    pub limit: Option<i64>,
+}
+
+/// A member's WIP status (Cluster 362): current live-claim count + the workspace
+/// limit (`null` = unlimited).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MemberWipView {
+    pub live_claims: i64,
+    pub limit: Option<i64>,
+}
+
 /// Query for a channel's agent-work DLQ (Cluster 358).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct DlqQuery {
