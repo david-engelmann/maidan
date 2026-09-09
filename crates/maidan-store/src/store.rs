@@ -922,6 +922,27 @@ pub trait AssignmentStore: Send + Sync {
     /// durable, no-lease assignment counts; an expired lease does not — it is a
     /// reclaimable ghost, not live work). This is the quantity a WIP limit caps.
     async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError>;
+
+    /// Park a thread from dispatch (Cluster 363, G3): while marked, `claim_next`
+    /// skips it and an explicit claim is refused. Upserts the reason/actor.
+    async fn mark_thread_unclaimable(
+        &self,
+        thread_id: ThreadId,
+        reason: &str,
+        marked_by: MemberId,
+    ) -> Result<ThreadUnclaimable, StoreError>;
+    /// Clear a thread's dispatch park (Cluster 363). `true` if it was parked.
+    async fn mark_thread_claimable(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    /// The thread's dispatch park, or `None` if it is claimable (Cluster 363).
+    async fn get_thread_unclaimable(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadUnclaimable>, StoreError>;
+    /// The parked (unclaimable) threads in a channel (Cluster 363), newest first.
+    async fn list_unclaimable_threads(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ThreadUnclaimable>, StoreError>;
 }
 
 #[async_trait]

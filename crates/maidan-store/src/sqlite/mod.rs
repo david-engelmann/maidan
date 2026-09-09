@@ -58,6 +58,7 @@ mod thread_transitions;
 mod threads;
 mod token_quotas;
 mod tokens;
+mod unclaimable;
 mod votes;
 mod webhooks;
 mod wip;
@@ -1062,6 +1063,29 @@ impl AssignmentStore for SqliteStore {
     }
     async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
         wip::count_live_claims(&self.pool, member_id).await
+    }
+    async fn mark_thread_unclaimable(
+        &self,
+        thread_id: ThreadId,
+        reason: &str,
+        marked_by: MemberId,
+    ) -> Result<ThreadUnclaimable, StoreError> {
+        unclaimable::mark(&self.pool, thread_id, reason, marked_by).await
+    }
+    async fn mark_thread_claimable(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        unclaimable::clear(&self.pool, thread_id).await
+    }
+    async fn get_thread_unclaimable(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadUnclaimable>, StoreError> {
+        unclaimable::get(&self.pool, thread_id).await
+    }
+    async fn list_unclaimable_threads(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ThreadUnclaimable>, StoreError> {
+        unclaimable::list_for_channel(&self.pool, channel_id).await
     }
 }
 

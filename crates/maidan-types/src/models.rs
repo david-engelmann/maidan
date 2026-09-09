@@ -254,6 +254,19 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// A thread parked from dispatch (Cluster 363, G3): while this exists, `claim_next`
+/// skips the thread and an explicit `claim` is refused, until it is cleared. An
+/// explicit human/owner park (needs triage, waiting on external, broken) — distinct
+/// from blocked-by-deps, blocked-by-gate, and skill-miss.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadUnclaimable {
+    pub thread_id: ThreadId,
+    pub reason: String,
+    pub marked_by: MemberId,
+    pub marked_at: DateTime<Utc>,
+}
+
 /// A per-thread budget envelope (Cluster 358, T1/T5). An orchestrator sets any of
 /// the optional maxima; an agent reports incremental usage as it works, and when
 /// a dimension is exceeded the run is stopped (the claim fails → DLQ). USD is
