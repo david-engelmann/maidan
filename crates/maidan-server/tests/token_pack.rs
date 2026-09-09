@@ -22,17 +22,14 @@ use std::sync::Arc;
 use maidan_server::thread_context::{build_thread_context, ThreadContextLimits};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EditMessage, MemberKind, Message, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
+    estimate_tokens, EditMessage, MemberKind, Message, NewChannel, NewMember, NewMessage,
+    NewThread, NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-/// Rough prompt-token estimate: ~4 characters per token (the widely-cited
-/// approximation for English BPE tokenizers). Exact counts depend on the model's
-/// tokenizer; the byte counts reported alongside are exact, and the pack-vs-naive
-/// *ratio* is stable across estimators.
-fn estimate_tokens(s: &str) -> usize {
-    s.chars().count().div_ceil(4)
-}
+// The token estimator (`chars/4`) lives in `maidan_types::pack` (Cluster 360) so
+// the budget fold and this evidence harness share one definition. Its own math is
+// unit-tested there; the round-trip check below stays as a local guard.
 
 /// naive / pack, guarding against divide-by-zero.
 fn reduction_ratio(naive: usize, pack: usize) -> f64 {
