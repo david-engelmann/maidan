@@ -254,6 +254,103 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// A per-thread budget envelope (Cluster 358, T1/T5). An orchestrator sets any of
+/// the optional maxima; an agent reports incremental usage as it works, and when
+/// a dimension is exceeded the run is stopped (the claim fails → DLQ). USD is
+/// integer micros ($1 = 1_000_000) to keep money out of floats. Wall time is not
+/// stored — it derives from the thread's Cluster-351 working clock
+/// (`work_started_at`) against `max_wall_secs`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadBudget {
+    pub thread_id: ThreadId,
+    pub max_tokens: Option<i64>,
+    pub max_usd_micros: Option<i64>,
+    pub max_turns: Option<i64>,
+    pub max_wall_secs: Option<i64>,
+    pub used_tokens: i64,
+    pub used_usd_micros: i64,
+    pub used_turns: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// The maxima an orchestrator sets on a thread's budget (Cluster 358). Each
+/// dimension is optional — set the ones you want to bind; omit (or `None`) leaves
+/// that dimension unbounded. Does not touch accumulated usage.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct BudgetLimits {
+    #[serde(default)]
+    pub max_tokens: Option<i64>,
+    #[serde(default)]
+    pub max_usd_micros: Option<i64>,
+    #[serde(default)]
+    pub max_turns: Option<i64>,
+    #[serde(default)]
+    pub max_wall_secs: Option<i64>,
+}
+
+/// An increment of resource usage an agent reports against a thread's budget
+/// (Cluster 358). Each dimension defaults to 0.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UsageDelta {
+    #[serde(default)]
+    pub tokens: i64,
+    #[serde(default)]
+    pub usd_micros: i64,
+    #[serde(default)]
+    pub turns: i64,
+}
+
+/// Which budget dimension was exceeded (Cluster 358) — the reason a run was
+/// stopped, carried on the `ClaimFailed` event and the DLQ entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetReason {
+    Tokens,
+    Usd,
+    Turns,
+    Wall,
+}
+
+impl BudgetReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tokens => "tokens",
+            Self::Usd => "usd",
+            Self::Turns => "turns",
+            Self::Wall => "wall",
+        }
+    }
+}
+
+impl ThreadBudget {
+    /// The first budget dimension exceeded, if any — checked in a fixed order
+    /// (tokens, usd, turns, wall). `wall_secs_elapsed` is the thread's working-clock
+    /// elapsed time (Cluster 351); pass `None` when the thread isn't working (the
+    /// wall dimension is then never exceeded). A dimension with no maximum, or a
+    /// non-positive maximum, never binds.
+    pub fn exceeded(&self, wall_secs_elapsed: Option<i64>) -> Option<BudgetReason> {
+        let bound = |used: i64, max: Option<i64>| max.is_some_and(|m| m > 0 && used >= m);
+        if bound(self.used_tokens, self.max_tokens) {
+            return Some(BudgetReason::Tokens);
+        }
+        if bound(self.used_usd_micros, self.max_usd_micros) {
+            return Some(BudgetReason::Usd);
+        }
+        if bound(self.used_turns, self.max_turns) {
+            return Some(BudgetReason::Turns);
+        }
+        if let (Some(max), Some(elapsed)) = (self.max_wall_secs, wall_secs_elapsed) {
+            if max > 0 && elapsed >= max {
+                return Some(BudgetReason::Wall);
+            }
+        }
+        None
+    }
+}
+
 /// Persisted steering guidance for a task/thread (Cluster 355, W1). A durable
 /// instruction from the owner (or a supervisor) that survives claims and
 /// handoffs, so a resuming or newly-assigned agent reads the CURRENT steer. One
@@ -1984,5 +2081,100 @@ mod tool_transcript_tests {
         // The call was tombstoned, so its result has no live match → orphan.
         assert!(t.entries.is_empty());
         assert_eq!(t.orphan_results.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    fn budget(
+        max_tokens: Option<i64>,
+        max_usd_micros: Option<i64>,
+        max_turns: Option<i64>,
+        max_wall_secs: Option<i64>,
+        used_tokens: i64,
+        used_usd_micros: i64,
+        used_turns: i64,
+    ) -> ThreadBudget {
+        ThreadBudget {
+            thread_id: ThreadId(uuid::Uuid::from_u128(1)),
+            max_tokens,
+            max_usd_micros,
+            max_turns,
+            max_wall_secs,
+            used_tokens,
+            used_usd_micros,
+            used_turns,
+            created_at: DateTime::from_timestamp(0, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(0, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn no_maxima_never_binds() {
+        let b = budget(None, None, None, None, 1_000_000, 1_000_000, 1_000_000);
+        assert_eq!(b.exceeded(None), None);
+        assert_eq!(b.exceeded(Some(1_000_000)), None);
+    }
+
+    #[test]
+    fn each_dimension_binds_at_or_over_its_max() {
+        assert_eq!(
+            budget(Some(10), None, None, None, 10, 0, 0).exceeded(None),
+            Some(BudgetReason::Tokens)
+        );
+        assert_eq!(
+            budget(None, Some(10), None, None, 0, 11, 0).exceeded(None),
+            Some(BudgetReason::Usd)
+        );
+        assert_eq!(
+            budget(None, None, Some(3), None, 0, 0, 3).exceeded(None),
+            Some(BudgetReason::Turns)
+        );
+        assert_eq!(
+            budget(None, None, None, Some(60), 0, 0, 0).exceeded(Some(60)),
+            Some(BudgetReason::Wall)
+        );
+        // Just under each does not bind.
+        assert_eq!(
+            budget(Some(10), None, None, None, 9, 0, 0).exceeded(None),
+            None
+        );
+        assert_eq!(
+            budget(None, None, None, Some(60), 0, 0, 0).exceeded(Some(59)),
+            None
+        );
+    }
+
+    #[test]
+    fn checked_in_fixed_order_tokens_first() {
+        // Both tokens and turns over → tokens wins (checked first).
+        let b = budget(Some(1), None, Some(1), None, 5, 0, 5);
+        assert_eq!(b.exceeded(None), Some(BudgetReason::Tokens));
+    }
+
+    #[test]
+    fn non_positive_max_never_binds() {
+        // A zero/negative maximum is treated as unbounded (guards a nonsense set).
+        assert_eq!(
+            budget(Some(0), None, None, None, 100, 0, 0).exceeded(None),
+            None
+        );
+    }
+
+    #[test]
+    fn wall_only_checked_when_working() {
+        let b = budget(None, None, None, Some(60), 0, 0, 0);
+        assert_eq!(b.exceeded(None), None, "not working → no wall check");
+        assert_eq!(b.exceeded(Some(60)), Some(BudgetReason::Wall));
+    }
+
+    #[test]
+    fn reason_as_str_roundtrip() {
+        assert_eq!(BudgetReason::Tokens.as_str(), "tokens");
+        assert_eq!(BudgetReason::Usd.as_str(), "usd");
+        assert_eq!(BudgetReason::Turns.as_str(), "turns");
+        assert_eq!(BudgetReason::Wall.as_str(), "wall");
     }
 }
