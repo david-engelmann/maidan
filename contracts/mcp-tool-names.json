@@ -51,6 +51,7 @@
   "list_messages",
   "list_notification_prefs",
   "list_notifications",
+  "list_notifications_grouped",
   "list_pins",
   "list_reactions",
   "list_recently_active_threads",

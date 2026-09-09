@@ -256,4 +256,22 @@ async fn inbox_list_count_mark_and_read_all() {
         .await
         .unwrap();
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+
+    // Grouped inbox (Cluster 359, N5b): the three seeded notifications share one
+    // thread, so the grouped view collapses them into a single group (the snoozed
+    // fresh one is hidden).
+    let grouped: Value = client
+        .get(format!("{base}/members/{mid}/notifications/grouped"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let grouped = grouped.as_array().unwrap();
+    assert_eq!(grouped.len(), 1, "one thread → one group");
+    assert_eq!(grouped[0]["thread_id"], serde_json::json!(thread.id.0));
+    assert_eq!(grouped[0]["count"], 3);
+    assert_eq!(grouped[0]["unread_count"], 0, "all three were read");
 }

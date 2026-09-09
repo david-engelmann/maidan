@@ -364,6 +364,58 @@ impl ThreadBudget {
     }
 }
 
+/// A member's notifications for one thread, collapsed (Cluster 359, N5). The
+/// grouped inbox shows one row per thread — the newest notification plus how many
+/// (and how many unread) it stands for — so a busy thread doesn't flood the flat
+/// list. `thread_id` is `None` for the group of notifications that carry no thread.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct NotificationThreadGroup {
+    pub thread_id: Option<ThreadId>,
+    pub count: i64,
+    pub unread_count: i64,
+    /// The newest notification in the group (its `created_at` orders the groups).
+    pub latest: Notification,
+}
+
+/// Collapse a member's notifications into per-thread groups (Cluster 359, N5),
+/// newest-activity first. Each group's `latest` is its most recent notification;
+/// groups are ordered by that notification's `created_at` (descending). The input
+/// is assumed newest-first (as [`Notification`] lists are), so the first
+/// notification seen for a thread is its latest. Pure — the caller fetches the
+/// list (already snooze-filtered) and groups it.
+pub fn group_notifications_by_thread(
+    notifications: &[Notification],
+) -> Vec<NotificationThreadGroup> {
+    let mut order: Vec<Option<ThreadId>> = Vec::new();
+    let mut groups: std::collections::HashMap<Option<ThreadId>, NotificationThreadGroup> =
+        std::collections::HashMap::new();
+    for n in notifications {
+        let entry = groups.entry(n.thread_id).or_insert_with(|| {
+            order.push(n.thread_id);
+            NotificationThreadGroup {
+                thread_id: n.thread_id,
+                count: 0,
+                unread_count: 0,
+                latest: n.clone(),
+            }
+        });
+        entry.count += 1;
+        if n.read_at.is_none() {
+            entry.unread_count += 1;
+        }
+        if n.created_at > entry.latest.created_at {
+            entry.latest = n.clone();
+        }
+    }
+    let mut out: Vec<NotificationThreadGroup> = order
+        .into_iter()
+        .filter_map(|k| groups.remove(&k))
+        .collect();
+    out.sort_by(|a, b| b.latest.created_at.cmp(&a.latest.created_at));
+    out
+}
+
 /// A dead-lettered agent run (Cluster 358, T1/T5). When a claimed run is stopped
 /// because it exceeded its budget envelope, the claim fails and a DLQ entry is
 /// recorded — so the failed work is triageable (retry, raise the budget, give up)
@@ -2230,5 +2282,65 @@ mod budget_tests {
         assert_eq!(BudgetReason::Usd.as_str(), "usd");
         assert_eq!(BudgetReason::Turns.as_str(), "turns");
         assert_eq!(BudgetReason::Wall.as_str(), "wall");
+    }
+}
+
+#[cfg(test)]
+mod notification_group_tests {
+    use super::*;
+
+    fn note(thread: Option<u128>, ts: i64, read: bool) -> Notification {
+        Notification {
+            id: NotificationId(uuid::Uuid::new_v4()),
+            workspace_id: WorkspaceId(uuid::Uuid::from_u128(1)),
+            member_id: MemberId(uuid::Uuid::from_u128(2)),
+            kind: crate::EventKind::MentionRecorded,
+            source_log_id: ts,
+            channel_id: None,
+            thread_id: thread.map(|t| ThreadId(uuid::Uuid::from_u128(t))),
+            message_id: None,
+            actor_id: None,
+            created_at: DateTime::from_timestamp(ts, 0).unwrap(),
+            read_at: read.then(|| DateTime::from_timestamp(ts, 0).unwrap()),
+            snoozed_until: None,
+        }
+    }
+
+    #[test]
+    fn groups_by_thread_with_counts_and_latest() {
+        // Newest-first input (as a Notification list arrives).
+        let notes = vec![
+            note(Some(10), 300, false), // thread A, newest, unread
+            note(Some(20), 250, true),  // thread B, read
+            note(Some(10), 200, true),  // thread A, older, read
+            note(None, 150, false),     // no thread, unread
+        ];
+        let groups = group_notifications_by_thread(&notes);
+        assert_eq!(groups.len(), 3, "A, B, and the no-thread group");
+
+        // Ordered by latest activity: A (300) > B (250) > none (150).
+        assert_eq!(
+            groups[0].thread_id,
+            Some(ThreadId(uuid::Uuid::from_u128(10)))
+        );
+        assert_eq!(groups[0].count, 2);
+        assert_eq!(groups[0].unread_count, 1);
+        assert_eq!(groups[0].latest.created_at.timestamp(), 300);
+
+        assert_eq!(
+            groups[1].thread_id,
+            Some(ThreadId(uuid::Uuid::from_u128(20)))
+        );
+        assert_eq!(groups[1].count, 1);
+        assert_eq!(groups[1].unread_count, 0);
+
+        assert_eq!(groups[2].thread_id, None);
+        assert_eq!(groups[2].count, 1);
+        assert_eq!(groups[2].unread_count, 1);
+    }
+
+    #[test]
+    fn empty_input_yields_no_groups() {
+        assert!(group_notifications_by_thread(&[]).is_empty());
     }
 }

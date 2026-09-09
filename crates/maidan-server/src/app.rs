@@ -155,6 +155,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_member_notifications),
         )
         .route(
+            "/members/:id/notifications/grouped",
+            get(routes::list_member_notifications_grouped),
+        )
+        .route(
             "/members/:id/notifications/unread-count",
             get(routes::member_unread_notification_count),
         )

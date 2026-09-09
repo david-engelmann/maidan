@@ -252,6 +252,22 @@ pub(super) async fn list_notifications(
     Ok(content_json(&notes))
 }
 
+/// A member's notifications collapsed into per-thread groups, newest-activity
+/// first (Cluster 359, N5) — the MCP twin of `GET /members/:id/notifications/grouped`.
+/// A busy thread shows as one group instead of flooding the flat list.
+pub(super) async fn list_notifications_grouped(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListNotificationsArgs = serde_json::from_value(args.clone())?;
+    let notes = store
+        .list_notifications(MemberId(a.member_id), a.unread_only, clamp_limit(a.limit))
+        .await?;
+    Ok(content_json(&maidan_types::group_notifications_by_thread(
+        &notes,
+    )))
+}
+
 #[derive(Deserialize)]
 struct MemberIdArg {
     member_id: uuid::Uuid,
