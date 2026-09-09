@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [358.0.0] — 2026-09-08
+
+Post-gate hardening (Phase XXIV). **Wave 1 #9 of the forward program — the budget
+envelope (T1/T5).** A stacked cluster (358.1–358.4) giving a task/run a budget
+that stops it on exceed. No new gate tag.
+
+### Added
+
+- **Budget + usage store** (358.1): `maidan_thread_budgets` (pg 0063 / sqlite
+  0062) — optional `max_{tokens,usd_micros,turns,wall_secs}` + accumulated `used_*`
+  (USD as integer micros; wall time derives from the Cluster-351 working clock) +
+  `ThreadBudget`/`BudgetLimits`/`UsageDelta`/`BudgetReason` + `BudgetStore` (set /
+  get / add-usage), both backends.
+- **`ClaimFailed` event + agent-work DLQ** (358.2): `EventKind::ClaimFailed` (a
+  hard stop, distinct from a close = success; non-federatable) +
+  `maidan_agent_work_dlq` (pg 0064 / sqlite 0063) + `DlqEntry` + record/list.
+- **Enforcement + REST** (358.3): `report_thread_usage` — over-budget on a claimed
+  thread atomically releases the claim, appends `ClaimFailed`, and dead-letters the
+  run (one tx). `PUT`/`GET /threads/:id/budget`, `POST /threads/:id/usage`,
+  `GET /channels/:cid/dlq`.
+- **MCP** (358.4): `set_thread_budget` / `get_thread_budget` / `report_usage` /
+  `list_dlq`.
+
+### Notes
+
+- **Design:** budget-exhaustion is a claim-level failure (release + `ClaimFailed`
+  + DLQ), not a new terminal `ThreadState` — a hard stop ≠ success. Enforcement is
+  at the report heartbeat (no reaper); a silent hung agent is still caught by
+  lease-expiry reclaim (351). Not a billing SKU.
+
 ## [357.0.0] — 2026-09-08
 
 Post-gate hardening (Phase XXIV). **Wave 1 #8 of the forward program — scoped
