@@ -50,6 +50,37 @@ pub fn import_workspace() {}
 pub fn get_workspace_usage() {}
 
 #[utoipa::path(
+    put,
+    path = "/workspaces/{id}/wip-limit",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetWipLimit,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = WipLimitView, description = "The WIP limit (set or cleared)"))
+)]
+pub fn set_wip_limit() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/wip-limit",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = WipLimitView, description = "The workspace WIP limit (null = unlimited)"))
+)]
+pub fn get_wip_limit() {}
+
+#[utoipa::path(
+    get,
+    path = "/members/{id}/wip",
+    tag = "threads",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberWipView, description = "The member's live-claim count vs the workspace limit"))
+)]
+pub fn get_member_wip() {}
+
+#[utoipa::path(
     get,
     path = "/me",
     tag = "workspaces",

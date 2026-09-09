@@ -76,6 +76,23 @@ pub(crate) fn ensure_acting_member(auth: &AuthContext, claimed: MemberId) -> Api
     Ok(())
 }
 
+/// Whether `member` is at (or over) their workspace's WIP limit (Cluster 362,
+/// G11): they already hold ≥ the cap in concurrent live claims, so `claim`/
+/// `claim_next` must not hand them more. `false` when the workspace has no limit
+/// set (unlimited). A soft limit — the count and the limit are read on the primary
+/// but not in the claim's transaction, so a member self-racing two concurrent
+/// claims could momentarily reach limit+1; the occupancy view shows the truth.
+pub(crate) async fn at_wip_limit(
+    store: &dyn maidan_store::Store,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> ApiResult<bool> {
+    match store.get_wip_limit(workspace_id).await? {
+        Some(limit) => Ok(store.count_live_claims(member_id).await? >= limit),
+        None => Ok(false),
+    }
+}
+
 pub(crate) fn ensure_message_edit(
     auth: &AuthContext,
     editor_id: MemberId,

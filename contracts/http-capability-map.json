@@ -786,6 +786,24 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/workspaces/{id}/wip-limit",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/wip-limit",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/wip",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/me",
     "capability": "workspace:read",

@@ -143,6 +143,42 @@ pub async fn get_workspace_usage(
     Ok(Json(state.store.workspace_usage(workspace_id).await?))
 }
 
+/// `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11) — set or clear the
+/// workspace's WIP limit (max concurrent live claims per member). `{limit: n}`
+/// caps (0 freezes); `{limit: null}` removes the cap. `workspace:write`.
+pub async fn set_wip_limit(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetWipLimit>,
+) -> ApiResult<Json<WipLimitView>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    if let Some(limit) = body.limit {
+        if limit < 0 {
+            return Err(ApiError::BadRequest("wip limit must be >= 0".into()));
+        }
+    }
+    state.store.set_wip_limit(workspace_id, body.limit).await?;
+    Ok(Json(WipLimitView { limit: body.limit }))
+}
+
+/// `GET /workspaces/:wid/wip-limit` (Cluster 362) — the workspace's WIP limit, or
+/// `null` when unset (unlimited). `workspace:read`.
+pub async fn get_wip_limit(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<WipLimitView>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(WipLimitView {
+        limit: state.store.get_wip_limit(workspace_id).await?,
+    }))
+}
+
 pub async fn replay_quarantined_outbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
