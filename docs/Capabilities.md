@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v363.0.0 — Unclaimable (Wave 1 #13 cont.)
+
+A stacked cluster (363.1–363.4, G3) letting a thread be **parked from dispatch** with a reason — distinct from blocked-by-deps, blocked-by-gate, and skill-miss. A parked thread stays open but `claim_next` skips it and an explicit `claim` is refused (409), until un-parked.
+
+| Change | Where |
+|--------|-------|
+| **Store (363.1):** `maidan_thread_unclaimable` (pg 0067 / sqlite 0066); `mark_thread_unclaimable`/`mark_thread_claimable`/`get_thread_unclaimable`/`list_unclaimable_threads`; presence = parked. | `migrations/*/006{7,6}_thread_unclaimable.sql`, `crates/maidan-store/src/{sqlite,postgres}/unclaimable.rs` |
+| **Dispatch (363.2):** `claim_next` skips parked threads (both backends); `QueueDepth` gains an `unclaimable` bucket (4-way partition of `open`). | `crates/maidan-store/src/{sqlite,postgres}/threads.rs`, `crates/maidan-types/src/models.rs` |
+| **REST (363.3):** `PUT`/`DELETE /threads/:id/unclaimable` + `GET /channels/:cid/unclaimable`; explicit `claim` → 409 on a parked thread. | `crates/maidan-server/src/routes/{thread,channel}.rs` |
+| **MCP (363.4):** `mark_unclaimable`/`mark_claimable`/`list_unclaimable` + the claim refusal. | `crates/maidan-mcp/src/tools/thread.rs` |
+
 ## v362.0.0 — the WIP limit (Wave 1 #13)
 
 A stacked cluster (362.1–362.3, G11) giving a workspace a **work-in-progress cap**: the max concurrent **live** claims any one member may hold. An agent can no longer grab unbounded concurrent work; a capped member's `claim_next` finds nothing and an explicit `claim` is refused (409). Counts live claims, never queued-never-started ghosts.
