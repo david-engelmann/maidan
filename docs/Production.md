@@ -49,6 +49,16 @@ metrics push available.
 | `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or `X-Forwarded-For` / `anonymous`). Default off. `/health/*` and `/metrics` exempt. |
 | `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push (Cluster 366, N1). All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
 | `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
+
+**SCIM 2.0 provisioning (Cluster 366, SCIM-as-OIDC-P3).** An IdP (Okta / Azure AD /
+…) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`
+(`ServiceProviderConfig` + `Users` create / read / list-with-`userName eq`-filter /
+replace / patch / delete). Point the IdP's SCIM connector at
+`https://<host>/scim/v2` with a `token:admin` bearer token (scoped to the target
+workspace). A SCIM `id` is the Maidan member id and `userName` the member handle;
+deactivation (`active=false`) and delete revoke the member's API tokens. No env
+config — the endpoint is always available, gated on `token:admin`. Not yet
+supported (P3 scope): Groups, userName/displayName rename, and complex filters.
 | `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
 | `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | When **> 0**, per-workspace fairness limit (`v110.0.0`): caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). Default off. Independent of the global limit; reuses the Redis backend when set. |

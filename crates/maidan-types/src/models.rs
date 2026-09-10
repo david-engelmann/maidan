@@ -879,6 +879,20 @@ pub struct NewPushSubscription {
     pub auth: String,
 }
 
+/// SCIM 2.0 provisioning link for a member (Cluster 366, SCIM-as-OIDC-P3). Holds
+/// the SCIM-specific fields — the IdP's `externalId` and the `active` flag — while
+/// `userName`/`id` map to the member's handle/id. Deactivation revokes the
+/// member's tokens.
+#[derive(Debug, Clone)]
+pub struct ScimUser {
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub external_id: Option<String>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
 /// row — a digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra

@@ -90,6 +90,31 @@ pub trait MemberStore: Send + Sync {
         handle: &str,
     ) -> Result<Member, StoreError>;
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
+
+    /// Create the SCIM provisioning link for a member (Cluster 366, SCIM-as-OIDC-P3).
+    async fn create_scim_user(
+        &self,
+        member_id: MemberId,
+        workspace_id: WorkspaceId,
+        external_id: Option<&str>,
+        active: bool,
+    ) -> Result<ScimUser, StoreError>;
+    /// The member's SCIM link, or `None` if the member isn't SCIM-provisioned
+    /// (Cluster 366).
+    async fn get_scim_user(&self, member_id: MemberId) -> Result<Option<ScimUser>, StoreError>;
+    /// Every SCIM-provisioned user in a workspace (Cluster 366) — the SCIM list.
+    async fn list_scim_users(&self, workspace_id: WorkspaceId)
+        -> Result<Vec<ScimUser>, StoreError>;
+    /// Update a SCIM link's `external_id` + `active` and bump `updated_at`
+    /// (Cluster 366). `None` when the member has no SCIM link.
+    async fn update_scim_user(
+        &self,
+        member_id: MemberId,
+        external_id: Option<&str>,
+        active: bool,
+    ) -> Result<Option<ScimUser>, StoreError>;
+    /// Remove a member's SCIM link (Cluster 366) — `true` when one existed.
+    async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
