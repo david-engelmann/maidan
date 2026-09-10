@@ -564,6 +564,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/priority",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/priority",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "DELETE",
     "path": "/threads/{id}/pins",
     "capability": "workspace:write",

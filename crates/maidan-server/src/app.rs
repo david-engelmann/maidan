@@ -358,6 +358,10 @@ pub fn router(state: AppState) -> Router {
                 .get(routes::get_thread_wait),
         )
         .route(
+            "/threads/:id/priority",
+            axum::routing::put(routes::set_thread_priority).get(routes::get_thread_priority),
+        )
+        .route(
             "/threads/:id/dependencies",
             post(routes::add_thread_dependency).get(routes::list_thread_dependencies),
         )

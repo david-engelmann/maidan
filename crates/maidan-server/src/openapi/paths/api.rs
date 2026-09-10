@@ -670,6 +670,19 @@ pub fn cancel_thread_wait() {}
     responses((status = 200, body = ThreadWait), (status = 404, description = "No wait is set")))]
 pub fn get_thread_wait() {}
 
+#[utoipa::path(put, path = "/threads/{id}/priority", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadPriority,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadPriority, description = "The dispatch priority (set/updated)")))]
+pub fn set_thread_priority() {}
+
+#[utoipa::path(get, path = "/threads/{id}/priority", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadPriority), (status = 404, description = "No explicit priority (defaults to 0)")))]
+pub fn get_thread_priority() {}
+
 #[utoipa::path(get, path = "/threads/{tid}/messages", tag = "messages",
     params(
         ("tid" = Uuid, Path, description = "Thread id"),
