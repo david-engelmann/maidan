@@ -363,6 +363,36 @@ pub(super) async fn get_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Val
 }
 
 #[derive(Deserialize)]
+struct SetPriorityArgs {
+    thread_id: uuid::Uuid,
+    priority: i64,
+}
+
+/// Set (upsert) a thread's dispatch priority (Cluster 365, G3 fair dispatch).
+/// Higher = more urgent; `claim_next` orders by an effective rank that ages this
+/// priority up the longer a thread waits, so priority jumps the queue without
+/// starving long-waiting tasks. `thread:transition`; thread access enforced.
+pub(super) async fn set_priority(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetPriorityArgs = serde_json::from_value(args.clone())?;
+    let priority = store
+        .set_thread_priority(ThreadId(a.thread_id), a.priority, auth.member_id)
+        .await?;
+    Ok(content_json(&priority))
+}
+
+/// The thread's dispatch-priority record, or null (= the default priority 0)
+/// (Cluster 365). `workspace:read`; thread access enforced.
+pub(super) async fn get_priority(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let priority = store.get_thread_priority(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&priority))
+}
+
+#[derive(Deserialize)]
 struct MarkUnclaimableArgs {
     thread_id: uuid::Uuid,
     reason: String,
