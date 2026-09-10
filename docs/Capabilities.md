@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v366.0.0 — Wave 1 #14: legal hold, OTel gate, web push, SCIM
+
+Four independent tracks (the backlog's "four bullets, not one cluster"), each shipped as its own PR to `main`.
+
+| Change | Where |
+|--------|-------|
+| **T6 legal hold (366.1):** `maidan_legal_holds` (pg 0070 / sqlite 0069). A held workspace's events survive retention pruning (in-SQL `NOT IN`), audit pruning freezes, purge/erase → 409. REST place/lift/get (`token:admin`) + `/operator/legal-holds`. | `crates/maidan-store/src/*/legal_hold.rs`, `crates/maidan-server/src/routes/workspace.rs` |
+| **H15 OTel feature-gate (366.2):** OTLP trace + metrics is a default-on cargo feature `otel`; `--no-default-features` compiles the OpenTelemetry/tonic stack out (plain tracing + Prometheus scrape stay); the bootstrap-strip job covers the no-otel build. | `crates/maidan-observability/{Cargo.toml,src/*}`, `crates/maidan-server/{Cargo.toml,src/metrics.rs}` |
+| **N1 web push (366.3):** `maidan_push_subscriptions` (pg 0071 / sqlite 0070) + VAPID (RFC 8292) + aes128gcm encryption (RFC 8291), RustCrypto (no openssl). Router delivers iff no live WS; `410 Gone` prunes. REST register/list/delete. | `crates/maidan-server/src/web_push.rs`, `crates/maidan-store/src/*/push_subscriptions.rs` |
+| **SCIM-as-OIDC-P3 (366.4):** `/scim/v2/` (ServiceProviderConfig + Users create/read/list-filter/replace/patch/delete); `maidan_scim_users` (pg 0072 / sqlite 0071); deactivation/delete revoke tokens; `token:admin`, outside OpenAPI+map (the `/mcp` precedent). | `crates/maidan-server/src/scim.rs`, `crates/maidan-store/src/*/scim_users.rs` |
+
 ## v365.0.0 — fair dispatch (Wave 1 #13 cont.)
 
 A stacked cluster (365.1–365.4, G3) giving a thread a **dispatch priority** with **aging**, so `claim_next` is no longer strict FIFO. A high-priority task jumps the queue, but a long-waiting normal task ages one rank per hour until it overtakes newer higher-priority work — priority alone would starve the low end; the aging makes it *fair*. With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364 + fair dispatch 365).
