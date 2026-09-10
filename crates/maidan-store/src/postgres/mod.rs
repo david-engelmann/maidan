@@ -37,6 +37,7 @@ mod oidc;
 pub mod outbox;
 mod peers;
 mod pins;
+mod priorities;
 mod purge_workspace;
 mod reactions;
 mod refs;
@@ -1326,6 +1327,21 @@ impl AssignmentStore for PostgresStore {
         now: DateTime<Utc>,
     ) -> Result<Option<ThreadWait>, StoreError> {
         waits::claim_next_due(&self.pool, now).await
+    }
+    async fn set_thread_priority(
+        &self,
+        thread_id: ThreadId,
+        priority: i64,
+        set_by: MemberId,
+    ) -> Result<ThreadPriority, StoreError> {
+        // Primary: a dispatch-ordering write the next claim must observe.
+        priorities::set(&self.pool, thread_id, priority, set_by).await
+    }
+    async fn get_thread_priority(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadPriority>, StoreError> {
+        priorities::get(self.read_pool(), thread_id).await
     }
 }
 

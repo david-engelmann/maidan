@@ -826,6 +826,20 @@ pub struct ThreadWait {
     pub fired_at: Option<DateTime<Utc>>,
 }
 
+/// A thread's dispatch priority (Cluster 365, G3 fair dispatch). Higher = more
+/// urgent; the default (no row) is `0` (normal). `claim_next` orders by an
+/// effective rank = `priority` aged upward the longer a thread has waited, so a
+/// high-priority task jumps the queue while a long-waiting normal task is never
+/// starved. One priority per thread.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadPriority {
+    pub thread_id: ThreadId,
+    pub priority: i64,
+    pub set_by: MemberId,
+    pub set_at: DateTime<Utc>,
+}
+
 /// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
 /// row — a digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra

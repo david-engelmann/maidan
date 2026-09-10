@@ -969,6 +969,23 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Option<ThreadWait>, StoreError>;
+
+    /// Set (upsert) a thread's dispatch priority (Cluster 365, G3 fair dispatch).
+    /// Higher = more urgent; the default (no row) is `0`. `claim_next` orders by an
+    /// effective rank that ages this base priority up the longer a thread has
+    /// waited, so priority jumps the queue without starving long-waiting tasks.
+    async fn set_thread_priority(
+        &self,
+        thread_id: ThreadId,
+        priority: i64,
+        set_by: MemberId,
+    ) -> Result<ThreadPriority, StoreError>;
+    /// The thread's dispatch priority record, or `None` (= the default 0)
+    /// (Cluster 365).
+    async fn get_thread_priority(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadPriority>, StoreError>;
 }
 
 #[async_trait]
