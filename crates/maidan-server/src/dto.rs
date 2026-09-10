@@ -359,6 +359,18 @@ pub struct MarkUnclaimable {
     pub reason: String,
 }
 
+/// Body for `PUT /threads/:id/wait` (Cluster 364, G2) — set a wait timer. On
+/// `wait_until` the sweeper escalates via `on_timeout` (default `notify`); an
+/// optional `reason` records why the thread is waiting.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadWait {
+    pub wait_until: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    pub on_timeout: Option<maidan_types::EscalationPolicy>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 /// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WipLimitView {

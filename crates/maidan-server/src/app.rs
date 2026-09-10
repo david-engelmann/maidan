@@ -352,6 +352,12 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::mark_thread_claimable),
         )
         .route(
+            "/threads/:id/wait",
+            axum::routing::put(routes::set_thread_wait)
+                .delete(routes::cancel_thread_wait)
+                .get(routes::get_thread_wait),
+        )
+        .route(
             "/threads/:id/dependencies",
             post(routes::add_thread_dependency).get(routes::list_thread_dependencies),
         )
