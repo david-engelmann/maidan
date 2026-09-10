@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [366.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 1 #14 — four independent tracks**
+(T6 / H15 / N1 / SCIM), each shipped as its own PR to `main`. No new gate tag.
+
+### Added
+
+- **Legal hold** (366.1, T6): `maidan_legal_holds` (pg 0070 / sqlite 0069). A held
+  workspace's events are exempt from retention pruning, audit pruning freezes while
+  any hold is active, and purge/erase are refused (409). REST `PUT`/`DELETE`/`GET
+  /workspaces/:id/legal-hold` (`token:admin`) + `GET /operator/legal-holds`.
+- **OTel compile-time feature gate** (366.2, H15): OpenTelemetry (OTLP trace +
+  metrics) is a default-on cargo feature `otel` on `maidan-observability`, forwarded
+  by `maidan-server`. `--no-default-features` builds without the OTLP/tonic stack
+  (plain tracing + Prometheus scrape stay).
+- **Web Push** (366.3, N1): `maidan_push_subscriptions` (pg 0071 / sqlite 0070) +
+  VAPID (RFC 8292) + aes128gcm payload encryption (RFC 8291) — RustCrypto, no
+  openssl. The notification router delivers a Web Push message to a member's
+  subscriptions when they have no live WebSocket; a `410 Gone` prunes the
+  subscription. REST `POST`/`GET /members/:id/push-subscriptions` + `DELETE …/:sub_id`.
+- **SCIM 2.0 provisioning** (366.4, SCIM-as-OIDC-P3): `maidan_scim_users` (pg 0072 /
+  sqlite 0071) + `/scim/v2/` (`ServiceProviderConfig` + `Users` create/read/list-
+  with-`userName eq`-filter/replace/patch/delete). Deactivation and delete revoke
+  the member's API tokens. `token:admin`, workspace-scoped.
+
 ## [365.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G3 fair dispatch.** A
