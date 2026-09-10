@@ -134,10 +134,82 @@ async fn run_suite(store: &dyn Store) {
     );
 }
 
+/// claim_next skips a parked thread (even an older one) and the queue-depth
+/// `unclaimable` bucket counts it; un-parking makes it claimable again.
+async fn run_claim_skip_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "us".into() })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "cs".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    // t1 is older (claim_next prefers it) but parked; t2 is claimable.
+    let t1 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t1".into()),
+        })
+        .await
+        .expect("t1");
+    let t2 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t2".into()),
+        })
+        .await
+        .expect("t2");
+    store
+        .mark_thread_unclaimable(t1.id, "parked", member.id)
+        .await
+        .expect("park");
+
+    // The queue-depth bucket counts the parked thread; it is not `ready`.
+    let depth = store.channel_queue_depth(channel.id).await.expect("depth");
+    assert_eq!(depth.open, 2);
+    assert_eq!(depth.unclaimable, 1, "t1 is parked");
+    assert_eq!(depth.ready, 1, "only t2 is ready");
+
+    // claim_next skips the older parked t1 and claims t2.
+    let claimed = store
+        .claim_next_thread(channel.id, member.id, None)
+        .await
+        .expect("claim_next")
+        .expect("claimed something");
+    assert_eq!(claimed.id, t2.id, "the parked t1 is skipped");
+
+    // Un-park t1 → it becomes claimable.
+    assert!(store.mark_thread_claimable(t1.id).await.expect("unpark"));
+    let claimed2 = store
+        .claim_next_thread(channel.id, member.id, None)
+        .await
+        .expect("claim_next")
+        .expect("claimed something");
+    assert_eq!(claimed2.id, t1.id, "un-parked t1 is now claimable");
+}
+
 #[tokio::test]
 async fn thread_unclaimable_mark_clear_get_list_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_claim_skip_suite(&store).await;
 }
 
 #[tokio::test]
@@ -172,4 +244,5 @@ async fn thread_unclaimable_mark_clear_get_list_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
+    run_claim_skip_suite(&store).await;
 }

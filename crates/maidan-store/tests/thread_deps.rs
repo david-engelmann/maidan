@@ -431,7 +431,8 @@ async fn run_queue_depth_suite(store: &dyn Store) {
             open: 0,
             ready: 0,
             assigned: 0,
-            blocked: 0
+            blocked: 0,
+            unclaimable: 0,
         }
     );
 
@@ -465,6 +466,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
             ready: 2,    // ready1 + dep
             assigned: 1, // assigned1
             blocked: 1,  // blocked1
+            unclaimable: 0,
         },
         "queue-depth partitions open threads"
     );
@@ -479,6 +481,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
             ready: 2,    // ready1 + blocked1 (now unblocked)
             assigned: 1, // assigned1
             blocked: 0,
+            unclaimable: 0,
         },
         "closing the dependency moves blocked1 to ready"
     );
