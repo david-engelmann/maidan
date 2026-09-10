@@ -83,6 +83,12 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
         .route(
+            "/workspaces/:id/legal-hold",
+            axum::routing::put(routes::place_legal_hold)
+                .delete(routes::lift_legal_hold)
+                .get(routes::get_legal_hold),
+        )
+        .route(
             "/workspaces/:id/wip-limit",
             axum::routing::put(routes::set_wip_limit).get(routes::get_wip_limit),
         )
@@ -503,6 +509,7 @@ pub fn router(state: AppState) -> Router {
             get(reindex_ops::get_reindex_embeddings_job),
         )
         .route("/operator/audit", get(routes::list_global_audit))
+        .route("/operator/legal-holds", get(routes::list_legal_holds))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
             "/operator/mail/dead/:id/requeue",

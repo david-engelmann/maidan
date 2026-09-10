@@ -342,6 +342,9 @@ fn apply_route_defaults(
     if path.ends_with("/priority") && method == "PUT" {
         return b.json(&json!({ "priority": 5 }));
     }
+    if path.ends_with("/legal-hold") && method == "PUT" {
+        return b.json(&json!({ "reason": "cap matrix" }));
+    }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
     }

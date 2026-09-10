@@ -378,6 +378,13 @@ pub struct SetThreadPriority {
     pub priority: i64,
 }
 
+/// Body for `PUT /workspaces/:id/legal-hold` (Cluster 366, T6) — place a legal
+/// hold. `reason` is required (non-empty).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PlaceLegalHold {
+    pub reason: String,
+}
+
 /// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WipLimitView {

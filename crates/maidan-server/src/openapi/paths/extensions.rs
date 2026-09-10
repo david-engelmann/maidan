@@ -49,6 +49,30 @@ pub fn import_workspace() {}
 )]
 pub fn get_workspace_usage() {}
 
+#[utoipa::path(put, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = PlaceLegalHold,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = LegalHold, description = "The legal hold (placed/updated)")))]
+pub fn place_legal_hold() {}
+
+#[utoipa::path(delete, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Lifted"), (status = 404, description = "No hold was placed")))]
+pub fn lift_legal_hold() {}
+
+#[utoipa::path(get, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = LegalHold), (status = 404, description = "Not under a legal hold")))]
+pub fn get_legal_hold() {}
+
+#[utoipa::path(get, path = "/operator/legal-holds", tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [LegalHold], description = "Active legal holds across all workspaces")))]
+pub fn list_legal_holds() {}
+
 #[utoipa::path(
     put,
     path = "/workspaces/{id}/wip-limit",
