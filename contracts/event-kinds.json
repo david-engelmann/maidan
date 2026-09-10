@@ -20,5 +20,6 @@
   "thread_result_set",
   "thread_state_changed",
   "vote_cast",
+  "wait_timed_out",
   "workspace_created"
 ]
