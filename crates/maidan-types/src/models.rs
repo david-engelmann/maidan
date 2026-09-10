@@ -773,6 +773,59 @@ impl EmailDeliveryMode {
     }
 }
 
+/// What a thread wait does when its deadline lapses (Cluster 364, G4). **Never a
+/// decision** — the "TimedOut ≠ Decline" rule: a timeout must not invent a human
+/// refusal (or approval). Both variants emit a `WaitTimedOut` event (the
+/// notification router then reaches the thread's owner); `Park` additionally marks
+/// the thread unclaimable (Cluster 363) so `claim_next` won't dispatch a stuck
+/// thread until a human intervenes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum EscalationPolicy {
+    /// Emit `WaitTimedOut` (reach the owner). No thread state change.
+    #[default]
+    Notify,
+    /// Emit `WaitTimedOut` + park the thread from dispatch (unclaimable).
+    Park,
+}
+
+impl EscalationPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Notify => "notify",
+            Self::Park => "park",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "notify" => Some(Self::Notify),
+            "park" => Some(Self::Park),
+            _ => None,
+        }
+    }
+}
+
+/// A durable timer on a thread (Cluster 364, G2): the thread is waiting until
+/// `wait_until`, and on timeout the `on_timeout` policy escalates. Either
+/// cancelled (satisfied — the awaited thing happened) or fired by the sweeper
+/// (`fired_at` set). One wait per thread. Steals the Restate/Temporal promise/timer
+/// *shape* — this is not a workflow engine.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadWait {
+    pub thread_id: ThreadId,
+    pub wait_until: DateTime<Utc>,
+    pub on_timeout: EscalationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub created_by: MemberId,
+    pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fired_at: Option<DateTime<Utc>>,
+}
+
 /// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
 /// row — a digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra
