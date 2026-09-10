@@ -254,6 +254,12 @@ pub fn record_task_schedule_fired(outcome: &str) {
     counter!("maidan_task_schedules_fired_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// A thread wait timed out and the sweeper escalated (Cluster 364), labeled by the
+/// escalation policy applied (`notify` | `park`).
+pub fn record_wait_timed_out(policy: &str) {
+    counter!("maidan_wait_timed_out_total", "policy" => policy.to_string()).increment(1);
+}
+
 fn sync_hydrate_counters(current: HydrateSnapshot) {
     let mut guard = LAST_HYDRATE.lock().unwrap_or_else(PoisonError::into_inner);
     let last = guard.unwrap_or_default();

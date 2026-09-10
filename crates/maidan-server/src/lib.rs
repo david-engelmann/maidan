@@ -62,6 +62,7 @@ pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
 pub mod thread_context;
+pub mod wait_sweeper;
 pub mod webhook_worker;
 pub mod webhooks;
 pub mod ws;
