@@ -264,6 +264,33 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 .await?;
             }
         }
+        Event::WaitTimedOut {
+            workspace_id,
+            channel_id,
+            thread_id,
+            ..
+        } => {
+            // G2/G4 (Cluster 364): a thread's wait timed out unsatisfied — the room
+            // must reach a human (never invent a decision). Notify the thread's
+            // durable owner (the accountable party) if one is set. Mute-honoring via
+            // `notify`; no member actor (the timer fired).
+            if let Ok(thread) = state.store.get_thread(*thread_id).await {
+                if let Some(owner_id) = thread.owner_id {
+                    notify(
+                        state,
+                        *workspace_id,
+                        owner_id,
+                        EventKind::WaitTimedOut,
+                        log_id,
+                        Some(*channel_id),
+                        Some(*thread_id),
+                        None,
+                        None,
+                    )
+                    .await?;
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
