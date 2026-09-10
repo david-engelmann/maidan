@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [368.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 2 #16 — the waiting-on-you inbox** (G15 +
+G9). A stacked cluster (368.1–368.3). No new gate tag.
+
+### Added
+
+- **The waiting inbox aggregate + REST** (368.1): a pure `assemble_waiting_inbox`
+  (`WaitingKind`/`WaitingItem`/`WaitingInbox` in maidan-types) merging a member's
+  assigned non-terminal threads + the workspace's pending approval gates + their
+  unread mentions, oldest-waiting first, each aged against an SLA (overdue flag).
+  `GET /members/:id/waiting?sla_secs=N` (default 24h) composes the three existing
+  store reads + the assembler — no new store code. `workspace:read` + self-only.
+- **MCP** (368.2): `get_waiting_inbox` — the same composition over the shared assembler.
+- **`/ui`** (368.3): a "Waiting on you" section at the top of the Work tab, oldest
+  first with an overdue flag and a tunable SLA.
+
 ## [367.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 2 #15 — the human work console.** A stacked

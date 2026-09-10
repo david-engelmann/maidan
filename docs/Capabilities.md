@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v368.0.0 — Wave 2 #16: the waiting-on-you inbox
+
+A stacked cluster (368.1–368.3, G15/G9): a member-centric aggregate of everything needing their attention — assigned tasks, open gates, unread mentions — one member's queue, each aged against an SLA. Not `@everyone`.
+
+| Change | Where |
+|--------|-------|
+| **Aggregate + REST (368.1):** pure `assemble_waiting_inbox` (WaitingKind/Item/Inbox) — drops terminal/tombstoned assigned threads, merges 3 sources, sorts oldest-first, flags overdue; `GET /members/:id/waiting?sla_secs=N` composes 3 existing store reads + the assembler (no new store code). | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/routes/member.rs` |
+| **MCP (368.2):** `get_waiting_inbox` over the shared assembler. | `crates/maidan-mcp/src/tools/member.rs` |
+| **`/ui` (368.3):** a "Waiting on you" section atop the Work tab, oldest first, overdue flag, tunable SLA. | `crates/maidan-server/static/index.html` |
+
 ## v367.0.0 — Wave 2 #15: the human work console (`/ui`)
 
 A stacked `/ui` cluster (367.1–367.3) letting a human inhabit the workplace loop — vanilla, no SPA. All the machinery shipped in Wave 1; this surfaces it.
