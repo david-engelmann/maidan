@@ -721,6 +721,44 @@ pub async fn get_thread_wait(
     }
 }
 
+/// `PUT /threads/:id/priority` (Cluster 365, G3 fair dispatch) — set (upsert) a
+/// thread's dispatch priority. `claim_next` orders by an effective rank = this
+/// priority aged up the longer a thread waits, so priority jumps the queue without
+/// starving long-waiting tasks. `thread:transition` + thread access.
+pub async fn set_thread_priority(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadPriority>,
+) -> ApiResult<Json<ThreadPriority>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(
+        state
+            .store
+            .set_thread_priority(thread_id, body.priority, auth.member_id)
+            .await?,
+    ))
+}
+
+/// `GET /threads/:id/priority` (Cluster 365) — the thread's dispatch-priority
+/// record, or `404` (absence = the default priority 0). `workspace:read` + thread
+/// access.
+pub async fn get_thread_priority(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadPriority>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_priority(thread_id).await? {
+        Some(priority) => Ok(Json(priority)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
 /// A member's work queue: threads assigned to them (Cluster 190). Filtered to
 /// threads the *caller* can access (RBAC-consistent with search / context).
 pub async fn list_assigned_threads(

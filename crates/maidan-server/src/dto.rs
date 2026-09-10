@@ -371,6 +371,13 @@ pub struct SetThreadWait {
     pub reason: Option<String>,
 }
 
+/// Body for `PUT /threads/:id/priority` (Cluster 365, G3 fair dispatch) — set a
+/// thread's dispatch priority. Higher = more urgent; the default is 0.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadPriority {
+    pub priority: i64,
+}
+
 /// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WipLimitView {
