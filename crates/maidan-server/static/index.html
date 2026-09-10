@@ -355,6 +355,7 @@
         <button type="button" data-tab="presence">Presence</button>
         <button type="button" data-tab="work">Work</button>
         <button type="button" data-tab="prefs">Prefs</button>
+        <button type="button" data-tab="glass">Looking glass</button>
         <button type="button" data-tab="notifications">Notifications</button>
         <button type="button" data-tab="approvals">Approvals</button>
         <button type="button" data-tab="thread">FSM</button>
@@ -544,6 +545,42 @@
           <button id="prefs-follow-thread-btn" type="button">Follow</button>
         </div>
         <ul id="prefs-thread-follows" class="muted"></ul>
+      </section>
+      <section id="panel-glass" class="panel">
+        <p class="muted">
+          The looking glass — inspect the room's primitives by kind, thread, sha, or
+          peer. Reads use your session (or a bearer token) + the workspace above.
+        </p>
+        <h4>Events by kind</h4>
+        <div>
+          <select id="glass-kind">
+            <option value="message_posted">message_posted</option>
+            <option value="mention_recorded">mention_recorded</option>
+            <option value="thread_created">thread_created</option>
+            <option value="thread_transitioned">thread_transitioned</option>
+            <option value="thread_ready">thread_ready</option>
+            <option value="thread_result_set">thread_result_set</option>
+            <option value="thread_landed">thread_landed</option>
+            <option value="claim_expired">claim_expired</option>
+          </select>
+          <button id="glass-kind-btn" type="button">Show</button>
+        </div>
+        <ul id="glass-events" class="muted"></ul>
+        <h4>Thread by id</h4>
+        <div>
+          <input id="glass-thread" placeholder="thread id" />
+          <button id="glass-thread-btn" type="button">Inspect</button>
+        </div>
+        <ul id="glass-thread-messages" class="muted"></ul>
+        <h4>Artifact by sha</h4>
+        <div>
+          <input id="glass-sha" placeholder="sha256 hex" />
+          <button id="glass-sha-btn" type="button">Look up</button>
+        </div>
+        <div id="glass-artifact" class="muted"></div>
+        <h4>Federation peers</h4>
+        <div><button id="glass-peers-btn" type="button">List peers</button></div>
+        <ul id="glass-peers" class="muted"></ul>
       </section>
       <section id="panel-notifications" class="panel">
         <p class="muted">
@@ -2172,6 +2209,135 @@
         await loadPrefs();
       }
 
+      // --- Looking glass (Cluster 367.3, Wave 2 #15): kind / thread / sha / peer
+      // read-only explorer. Each section is button-driven. ---
+      function loadGlass() {
+        /* on-demand — each section loads on its own button */
+      }
+
+      async function glassEventsByKind() {
+        const list = document.getElementById("glass-events");
+        const ws = document.getElementById("workspace").value.trim();
+        const kind = document.getElementById("glass-kind").value;
+        if (!ws) {
+          list.innerHTML = "<li class='muted'>Set a workspace above.</li>";
+          return;
+        }
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/events?limit=200`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            return;
+          }
+          const events = (await res.json()).filter((e) => e.kind === kind);
+          list.innerHTML = "";
+          if (!events.length) {
+            list.innerHTML = `<li class='muted'>No recent ${escapeHtml(kind)} events.</li>`;
+            return;
+          }
+          for (const e of events.slice(-50).reverse()) {
+            const li = document.createElement("li");
+            const where = e.thread_id
+              ? ` thread ${e.thread_id}`
+              : e.channel_id
+                ? ` channel ${e.channel_id}`
+                : "";
+            li.textContent = `#${e.id} ${e.kind}${where}`;
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
+      async function glassThread() {
+        const list = document.getElementById("glass-thread-messages");
+        const tid = document.getElementById("glass-thread").value.trim();
+        if (!tid) return;
+        try {
+          const res = await fetch(uiReadPath(`/threads/${tid}/messages?limit=50`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            return;
+          }
+          const msgs = await res.json();
+          list.innerHTML = "";
+          if (!msgs.length) {
+            list.innerHTML = "<li class='muted'>No messages.</li>";
+            return;
+          }
+          for (const m of msgs) {
+            const li = document.createElement("li");
+            li.textContent = `${m.author_id}: ${m.body}`;
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
+      async function glassArtifact() {
+        const el = document.getElementById("glass-artifact");
+        const sha = document.getElementById("glass-sha").value.trim();
+        if (!sha) return;
+        el.textContent = "Looking up…";
+        try {
+          const res = await fetch(uiReadPath(`/artifacts/${sha}/meta`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (res.status === 404) {
+            el.textContent = "Not found (or not in this workspace).";
+            return;
+          }
+          if (!res.ok) {
+            el.textContent = `Failed (HTTP ${res.status}).`;
+            return;
+          }
+          el.textContent = JSON.stringify(await res.json(), null, 2);
+        } catch (e) {
+          el.textContent = `Error: ${e}`;
+        }
+      }
+
+      async function glassPeers() {
+        const list = document.getElementById("glass-peers");
+        const ws = document.getElementById("workspace").value.trim();
+        if (!ws) {
+          list.innerHTML = "<li class='muted'>Set a workspace above.</li>";
+          return;
+        }
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/peers`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            return;
+          }
+          const peers = await res.json();
+          list.innerHTML = "";
+          if (!peers.length) {
+            list.innerHTML = "<li class='muted'>No peers.</li>";
+            return;
+          }
+          for (const p of peers) {
+            const li = document.createElement("li");
+            li.textContent = `${p.name ?? p.id} — ${p.base_url ?? ""}`;
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
       async function loadApprovals() {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
@@ -2354,6 +2520,7 @@
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "work") loadWork();
           if (btn.dataset.tab === "prefs") loadPrefs();
+          if (btn.dataset.tab === "glass") loadGlass();
           if (btn.dataset.tab === "notifications") loadNotifications();
           if (btn.dataset.tab === "approvals") loadApprovals();
           if (btn.dataset.tab === "session") loadSession();
@@ -2709,6 +2876,10 @@
         followTarget("channel-follows");
       document.getElementById("prefs-follow-thread-btn").onclick = () =>
         followTarget("thread-follows");
+      document.getElementById("glass-kind-btn").onclick = () => glassEventsByKind();
+      document.getElementById("glass-thread-btn").onclick = () => glassThread();
+      document.getElementById("glass-sha-btn").onclick = () => glassArtifact();
+      document.getElementById("glass-peers-btn").onclick = () => glassPeers();
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
       document.getElementById("approvals-refresh").onclick = () => loadApprovals();
       document.getElementById("session-refresh").onclick = () => loadSession();

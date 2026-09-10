@@ -700,6 +700,12 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/members/:id/thread-follows",
             get(routes::list_member_thread_follows),
         )
+        // Looking-glass explorer (Cluster 367.3, Wave 2 #15): artifact metadata by
+        // sha (events/threads/peers reuse the routes above).
+        .route(
+            "/ui/api/artifacts/:sha/meta",
+            get(routes::get_artifact_metadata),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
