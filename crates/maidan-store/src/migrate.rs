@@ -98,6 +98,8 @@ const POSTGRES_UP_V68: &str = include_str!("../../../migrations/postgres/0068_th
 const POSTGRES_UP_V69: &str =
     include_str!("../../../migrations/postgres/0069_thread_priorities.sql");
 const POSTGRES_UP_V70: &str = include_str!("../../../migrations/postgres/0070_legal_holds.sql");
+const POSTGRES_UP_V71: &str =
+    include_str!("../../../migrations/postgres/0071_push_subscriptions.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -177,6 +179,7 @@ const SQLITE_UP_V66: &str = include_str!("../../../migrations/sqlite/0066_thread
 const SQLITE_UP_V67: &str = include_str!("../../../migrations/sqlite/0067_thread_waits.sql");
 const SQLITE_UP_V68: &str = include_str!("../../../migrations/sqlite/0068_thread_priorities.sql");
 const SQLITE_UP_V69: &str = include_str!("../../../migrations/sqlite/0069_legal_holds.sql");
+const SQLITE_UP_V70: &str = include_str!("../../../migrations/sqlite/0070_push_subscriptions.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -299,6 +302,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 68, POSTGRES_UP_V68).await?;
     apply_postgres(pool, 69, POSTGRES_UP_V69).await?;
     apply_postgres(pool, 70, POSTGRES_UP_V70).await?;
+    apply_postgres(pool, 71, POSTGRES_UP_V71).await?;
     Ok(())
 }
 
@@ -382,6 +386,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 67, SQLITE_UP_V67).await?;
     apply_sqlite(pool, 68, SQLITE_UP_V68).await?;
     apply_sqlite(pool, 69, SQLITE_UP_V69).await?;
+    apply_sqlite(pool, 70, SQLITE_UP_V70).await?;
     Ok(())
 }
 

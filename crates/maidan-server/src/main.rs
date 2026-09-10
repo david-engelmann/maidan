@@ -449,6 +449,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Web Push sender (Cluster 366, N1): built from VAPID_* when configured. The
+    // router delivers to a member's subscriptions when they have no live WS.
+    if let Some(config) = maidan_server::web_push::WebPushConfig::from_env() {
+        state.attach_web_push(std::sync::Arc::new(
+            maidan_server::web_push::VapidWebPushSender::new(config),
+        ));
+        tracing::info!("web push (VAPID) configured");
+    }
+
     // Background mail-outbox worker (Cluster 305): drains the durable mail queue
     // with retry/backoff + dead-lettering. Runs whenever a transport is
     // configured (the router enqueues only then). Tick via

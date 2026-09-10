@@ -219,6 +219,14 @@ pub fn router(state: AppState) -> Router {
                 .get(routes::get_member_delivery_mode),
         )
         .route(
+            "/members/:id/push-subscriptions",
+            post(routes::register_push_subscription).get(routes::list_push_subscriptions),
+        )
+        .route(
+            "/members/:id/push-subscriptions/:sub_id",
+            delete(routes::delete_push_subscription),
+        )
+        .route(
             "/members/:id/skills",
             post(routes::add_member_skill).get(routes::list_member_skills),
         )

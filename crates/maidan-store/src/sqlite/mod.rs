@@ -44,6 +44,7 @@ mod pins;
 mod pragmas;
 mod priorities;
 mod purge_workspace;
+mod push_subscriptions;
 mod reactions;
 mod refs;
 mod reindex_jobs;
@@ -436,6 +437,25 @@ impl NotificationStore for SqliteStore {
         members: &[MemberId],
     ) -> Result<Vec<MemberId>, StoreError> {
         notification_prefs::filter_muted(&self.pool, kind, members).await
+    }
+    async fn add_push_subscription(
+        &self,
+        new: NewPushSubscription,
+    ) -> Result<PushSubscription, StoreError> {
+        push_subscriptions::add(&self.pool, new).await
+    }
+    async fn list_push_subscriptions(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<PushSubscription>, StoreError> {
+        push_subscriptions::list(&self.pool, member_id).await
+    }
+    async fn delete_push_subscription(
+        &self,
+        member_id: MemberId,
+        id: PushSubscriptionId,
+    ) -> Result<bool, StoreError> {
+        push_subscriptions::delete(&self.pool, member_id, id).await
     }
 }
 

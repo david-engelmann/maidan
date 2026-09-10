@@ -450,6 +450,25 @@ pub fn set_member_delivery_mode() {}
     responses((status = 200, body = DeliveryModeView)))]
 pub fn get_member_delivery_mode() {}
 
+#[utoipa::path(post, path = "/members/{id}/push-subscriptions", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = RegisterPushSubscription,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = PushSubscription, description = "The registered Web Push subscription")))]
+pub fn register_push_subscription() {}
+
+#[utoipa::path(get, path = "/members/{id}/push-subscriptions", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [PushSubscription], description = "The member's Web Push subscriptions")))]
+pub fn list_push_subscriptions() {}
+
+#[utoipa::path(delete, path = "/members/{id}/push-subscriptions/{sub_id}", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id"), ("sub_id" = Uuid, Path, description = "Subscription id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Removed"), (status = 404, description = "No such subscription")))]
+pub fn delete_push_subscription() {}
+
 // --- channels ---
 
 #[utoipa::path(get, path = "/channels/{id}", tag = "channels",

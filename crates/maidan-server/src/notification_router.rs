@@ -393,6 +393,15 @@ async fn fan_out_message_posted(
                 deliver_notification_email(&st, member_id, kind, log_id).await;
             });
         }
+        // Web Push (Cluster 366, N1), only when a sender is configured. Spawned +
+        // presence-gated inside (notify iff no live WS); best-effort.
+        if state.web_push.is_some() {
+            let st = state.clone();
+            let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
+            tokio::spawn(async move {
+                deliver_notification_web_push(&st, member_id, kind, log_id).await;
+            });
+        }
     }
     Ok(())
 }
@@ -508,6 +517,13 @@ async fn write_notification(
                 deliver_notification_email(&st, member_id, kind, source_log_id).await;
             });
         }
+        // Web Push (Cluster 366, N1): notify iff no live WS (gated inside).
+        if state.web_push.is_some() {
+            let st = state.clone();
+            tokio::spawn(async move {
+                deliver_notification_web_push(&st, member_id, kind, source_log_id).await;
+            });
+        }
     }
     Ok(created.is_some())
 }
@@ -607,6 +623,87 @@ pub async fn deliver_notification_email(
         Err(err) => {
             warn!(error = %err, "notification email: enqueue failed");
             crate::metrics::record_email_delivered("failed");
+        }
+    }
+}
+
+/// The "live" window (seconds) for the Web Push presence gate (Cluster 366, N1):
+/// a member seen within this window is treated as connected (they got the
+/// realtime WS event) so a Web Push message is skipped. Default 60s;
+/// `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` overrides. Web Push is "notify iff no live
+/// WS", so unlike the email gate this window is always active (a sensible default,
+/// not opt-in).
+fn web_push_live_window_secs() -> i64 {
+    std::env::var("MAIDAN_WEBPUSH_LIVE_WINDOW_SECS")
+        .ok()
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|&s| s > 0)
+        .unwrap_or(60)
+}
+
+/// Deliver one notification to a member over Web Push (Cluster 366, N1) — but only
+/// when the member has **no live WebSocket** (they were not seen within the live
+/// window), so an online member isn't double-notified. Best-effort + spawned so a
+/// slow push service never blocks routing; a `410 Gone`/`404` prunes the dead
+/// subscription. Extracted so a test can await it directly. `pub` for the e2e.
+pub async fn deliver_notification_web_push(
+    state: &AppState,
+    member_id: MemberId,
+    kind: EventKind,
+    source_log_id: i64,
+) {
+    let Some(sender) = state.web_push.clone() else {
+        return;
+    };
+    // Presence gate: skip when the member is currently connected (seen within the
+    // live window). Fail-open (a read error → send): a duplicate push to an online
+    // member is harmless; dropping one to an offline member defeats the feature.
+    match state.store.get_member_last_seen(member_id).await {
+        Ok(Some(last_seen)) => {
+            let idle = chrono::Utc::now().signed_duration_since(last_seen);
+            if idle.num_seconds() < web_push_live_window_secs() {
+                crate::metrics::record_web_push_delivered("skipped_present");
+                return;
+            }
+        }
+        Ok(None) => {} // never seen -> offline -> send
+        Err(err) => {
+            warn!(error = %err, "web push: last-seen lookup failed");
+        }
+    }
+    let subs = match state.store.list_push_subscriptions(member_id).await {
+        Ok(subs) if !subs.is_empty() => subs,
+        Ok(_) => return, // no subscriptions -> nothing to send
+        Err(err) => {
+            warn!(error = %err, "web push: subscription lookup failed");
+            return;
+        }
+    };
+    let payload = serde_json::json!({
+        "title": "Maidan",
+        "body": format!("New notification ({})", kind.as_str()),
+        "kind": kind.as_str(),
+        "log_id": source_log_id,
+    })
+    .to_string()
+    .into_bytes();
+    for sub in subs {
+        match sender.send(&sub, &payload).await {
+            Ok(()) => crate::metrics::record_web_push_delivered("sent"),
+            Err(err) if err.is_gone() => {
+                crate::metrics::record_web_push_delivered("pruned");
+                if let Err(e) = state
+                    .store
+                    .delete_push_subscription(member_id, sub.id)
+                    .await
+                {
+                    warn!(error = %e, "web push: pruning gone subscription failed");
+                }
+            }
+            Err(err) => {
+                warn!(error = %err, "web push: send failed");
+                crate::metrics::record_web_push_delivered("failed");
+            }
         }
     }
 }

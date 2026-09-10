@@ -141,6 +141,11 @@ pub struct AppState {
     /// no email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
+    /// Web Push sender (Cluster 366, N1), built from `VAPID_*` at startup. `None`
+    /// when VAPID isn't configured — the config gate: no sender, no web push. Set
+    /// only by the server binary via [`AppState::attach_web_push`], so
+    /// tests/embedders (which build via [`AppState::new`]) never send.
+    pub web_push: Option<Arc<dyn crate::web_push::WebPushSender>>,
     /// Slack projector config (Cluster 307), built from `MAIDAN_SLACK_*` at startup.
     /// `None` when unset — the config gate: the `/integrations/slack/events` route
     /// then returns `404`. Set only by the server binary via [`AppState::attach_slack`].
@@ -227,6 +232,7 @@ impl AppState {
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
+            web_push: None,
             slack: None,
             slack_sender: None,
             github: None,
@@ -236,6 +242,12 @@ impl AppState {
             read_routing_metrics: None,
             search_read_routing_metrics: None,
         }
+    }
+
+    /// Wire the Web Push sender (Cluster 366, N1). Called by the server binary when
+    /// `VAPID_*` is configured; left `None` (no web push) otherwise and in tests.
+    pub fn attach_web_push(&mut self, sender: Arc<dyn crate::web_push::WebPushSender>) {
+        self.web_push = Some(sender);
     }
 
     /// Wire the email transport (Cluster 249). Called by the server binary when
