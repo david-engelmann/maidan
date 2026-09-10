@@ -85,6 +85,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_member_wip"
         | "list_unclaimable"
         | "get_wait"
+        | "get_priority"
         | "list_thread_dependencies"
         | "list_task_schedules"
         | "list_member_skills"
@@ -178,6 +179,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mark_claimable"
         | "set_wait"
         | "cancel_wait"
+        | "set_priority"
         | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -264,6 +266,8 @@ async fn enforce_channel_access(
         | "set_wait"
         | "cancel_wait"
         | "get_wait"
+        | "set_priority"
+        | "get_priority"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -350,6 +354,8 @@ pub async fn dispatch(
         "set_wait" => thread::set_wait(store, auth, args).await,
         "cancel_wait" => thread::cancel_wait(store, args).await,
         "get_wait" => thread::get_wait(store, args).await,
+        "set_priority" => thread::set_priority(store, auth, args).await,
+        "get_priority" => thread::get_priority(store, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
         "renew_claim" => thread::renew_claim(server, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, args).await,
