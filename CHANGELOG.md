@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [364.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G2 wait-edges + G4
+on_timeout escalation.** A stacked cluster (364.1–364.5). No new gate tag. With
+this, **Wave 1 #13 is complete** (G11 WIP + G3 Unclaimable + G2/G4 wait-edges).
+
+### Added
+
+- **Wait-timer store foundation** (364.1): `maidan_thread_waits` (pg 0068 /
+  sqlite 0067) — a durable one-shot timer on a thread with a `wait_until` deadline
+  and an `on_timeout` escalation policy (`EscalationPolicy`: `Notify` / `Park`).
+  `AssignmentStore::set_thread_wait`/`cancel_thread_wait`/`get_thread_wait` +
+  `claim_next_due_wait` (the atomic fire-once claim — `FOR UPDATE SKIP LOCKED`).
+- **`WaitTimedOut` event** (364.2): a new `EventKind`/`Event` (non-federatable)
+  naming the escalation `policy` applied.
+- **Wait sweeper + escalation** (364.3): `wait_sweeper.rs` (opt-in
+  `MAIDAN_WAIT_SWEEP_TICK_SECS`) drains due waits, applies the policy (`Park` marks
+  the thread unclaimable, reusing Cluster 363), and publishes `WaitTimedOut`; the
+  notification router notifies the thread's **owner** off that event.
+  `maidan_wait_timed_out_total{policy}`. `on_timeout` never invents a
+  decision (reach + park only — the "TimedOut ≠ Decline" rule).
+- **REST** (364.4): `PUT`/`DELETE`/`GET /threads/:id/wait`.
+- **MCP** (364.5): `set_wait`/`cancel_wait`/`get_wait`.
+
 ## [363.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G3 Unclaimable.** A

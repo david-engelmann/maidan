@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v364.0.0 — wait-edges + on_timeout escalation (Wave 1 #13 cont.)
+
+A stacked cluster (364.1–364.5, G2/G4) giving a thread a **durable wait timer** with an escalation policy. A thread declares a deadline and an `on_timeout` action; either it is cancelled (the awaited thing happened) or a background sweeper fires it on timeout — reaching the thread's owner and optionally **parking** the thread (reuse of Cluster 363). It steals the Restate/Temporal timer *shape* — it is not a workflow engine, and `on_timeout` **never invents a decision** (reach + park only, the "TimedOut ≠ Decline" rule). With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364).
+
+| Change | Where |
+|--------|-------|
+| **Store (364.1):** `maidan_thread_waits` (pg 0068 / sqlite 0067); `EscalationPolicy` (`Notify`/`Park`); `set_thread_wait`/`cancel_thread_wait`/`get_thread_wait` + `claim_next_due_wait` (atomic fire-once). | `migrations/*/006{8,7}_thread_waits.sql`, `crates/maidan-store/src/{sqlite,postgres}/waits.rs`, `crates/maidan-types/src/models.rs` |
+| **Event (364.2):** `WaitTimedOut` (non-federatable), naming the `policy` applied. | `crates/maidan-types/src/events.rs` |
+| **Sweeper + escalation (364.3):** opt-in `wait_sweeper.rs` fires due waits (`Park` → unclaimable) + publishes `WaitTimedOut`; the notification router notifies the thread owner. `maidan_wait_timed_out_total{policy}`. | `crates/maidan-server/src/{wait_sweeper,notification_router,main}.rs` |
+| **REST (364.4):** `PUT`/`DELETE`/`GET /threads/:id/wait`. | `crates/maidan-server/src/routes/thread.rs` |
+| **MCP (364.5):** `set_wait`/`cancel_wait`/`get_wait`. | `crates/maidan-mcp/src/tools/thread.rs` |
+
 ## v363.0.0 — Unclaimable (Wave 1 #13 cont.)
 
 A stacked cluster (363.1–363.4, G3) letting a thread be **parked from dispatch** with a reason — distinct from blocked-by-deps, blocked-by-gate, and skill-miss. A parked thread stays open but `claim_next` skips it and an explicit `claim` is refused (409), until un-parked.
