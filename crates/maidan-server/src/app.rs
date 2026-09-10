@@ -277,6 +277,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_channel_queue_depth),
         )
         .route(
+            "/channels/:cid/unclaimable",
+            get(routes::list_channel_unclaimable),
+        )
+        .route(
             "/channels/:cid/occupancy",
             get(routes::get_channel_occupancy),
         )
@@ -342,6 +346,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/usage", post(routes::report_thread_usage))
         .route("/threads/:id/assignee/claim", post(routes::claim_thread))
+        .route(
+            "/threads/:id/unclaimable",
+            axum::routing::put(routes::mark_thread_unclaimable)
+                .delete(routes::mark_thread_claimable),
+        )
         .route(
             "/threads/:id/dependencies",
             post(routes::add_thread_dependency).get(routes::list_thread_dependencies),

@@ -139,6 +139,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{cid}/unclaimable",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/channels/{cid}/occupancy",
     "capability": "workspace:read",
     "surface": "http"
@@ -524,6 +530,18 @@
   {
     "method": "POST",
     "path": "/threads/{id}/assignee/claim",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/threads/{id}/unclaimable",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/unclaimable",
     "capability": "thread:transition",
     "surface": "http"
   },
