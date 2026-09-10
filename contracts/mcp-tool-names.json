@@ -37,6 +37,7 @@
   "get_tool_transcript",
   "get_unread_count",
   "get_wait",
+  "get_waiting_inbox",
   "get_wip_limit",
   "get_workspace_context",
   "link_github_issue",
