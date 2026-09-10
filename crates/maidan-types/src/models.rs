@@ -940,6 +940,9 @@ pub struct ThreadClaimResult {
 /// - `ready`: claimable now — unassigned or lease-expired, and every dependency
 ///   terminal (the `claim_next` predicate).
 /// - `blocked`: unassigned/lease-expired but waiting on a non-terminal dependency.
+/// - `unclaimable`: unassigned/lease-expired but parked from dispatch (Cluster 363,
+///   G3) — `claim_next` skips it. Takes precedence over ready/blocked, so the four
+///   sub-counts partition `open` exactly.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct QueueDepth {
@@ -947,6 +950,7 @@ pub struct QueueDepth {
     pub ready: i64,
     pub assigned: i64,
     pub blocked: i64,
+    pub unclaimable: i64,
 }
 
 /// The occupancy of a channel's **open** task threads (Cluster 351) — the
