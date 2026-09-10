@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [367.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 2 #15 — the human work console.** A stacked
+`/ui` cluster (367.1–367.3), vanilla, no SPA. No new gate tag.
+
+### Added
+
+- **Work tab** (367.1, B2): a human work-observability console — queue depth
+  (Cluster 224) + occupancy (351) for a channel, its threads, and a thread's result
+  (234) + DAG dependencies (217); plus the workspace's task schedules (226). Five
+  session-proxied `/ui/api` reads.
+- **Prefs console** (367.2, B11): self-service notification preferences — delivery
+  mode (256), delivery email (250), muted kinds (242), followed channels + threads
+  (245). Twelve `/ui/api` routes.
+- **Looking glass** (367.3, B3): a read-only explorer — events by kind, thread by
+  id, artifact by sha, federation peers. One new `/ui/api` read (artifact meta).
+
 ## [366.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 1 #14 — four independent tracks**
