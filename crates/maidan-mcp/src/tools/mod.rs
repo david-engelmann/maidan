@@ -94,6 +94,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_steer"
         | "wait_for_result"
         | "get_dependency_results"
+        | "get_waiting_inbox"
         | "list_notifications"
         | "list_notifications_grouped"
         | "list_buried_decisions"
@@ -366,6 +367,7 @@ pub async fn dispatch(
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
+        "get_waiting_inbox" => member::get_waiting_inbox(store, args).await,
         "list_notifications" => member::list_notifications(store, args).await,
         "get_unread_count" => member::get_unread_count(store, args).await,
         "list_notifications_grouped" => member::list_notifications_grouped(store, args).await,

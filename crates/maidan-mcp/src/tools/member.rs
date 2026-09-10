@@ -253,6 +253,43 @@ pub(super) async fn list_notifications(
 }
 
 #[derive(Deserialize)]
+struct WaitingArgs {
+    member_id: uuid::Uuid,
+    /// Seconds an item may wait before it is flagged overdue (default 86400 = 24h).
+    #[serde(default)]
+    sla_secs: Option<i64>,
+}
+
+/// The waiting-on-you inbox (Cluster 368, Wave 2 #16, the MCP twin of
+/// `GET /members/:id/waiting`): a member's assigned non-terminal threads + the
+/// workspace's pending approval gates + their unread mentions, oldest-waiting
+/// first, each aged against `sla_secs`. `workspace:read`.
+pub(super) async fn get_waiting_inbox(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitingArgs = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let member = store.get_member(member_id).await?;
+    let sla = a.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
+    let assigned = store
+        .list_assigned_threads(member.workspace_id, member_id)
+        .await?;
+    let gates = store
+        .list_pending_approval_gates(member.workspace_id, 200)
+        .await?;
+    let all_mentions = store.list_mentions_for_member(member_id, 100).await?;
+    let last_read = store.get_inbox_last_read_at(member_id).await?;
+    let unread: Vec<_> = all_mentions
+        .into_iter()
+        .filter(|m| m.created_at > last_read)
+        .collect();
+    let inbox =
+        maidan_types::assemble_waiting_inbox(&assigned, &gates, &unread, chrono::Utc::now(), sla);
+    Ok(content_json(&inbox))
+}
+
+#[derive(Deserialize)]
 struct BuriedDecisionsArgs {
     member_id: uuid::Uuid,
     /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).

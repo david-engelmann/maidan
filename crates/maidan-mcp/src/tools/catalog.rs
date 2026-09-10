@@ -801,6 +801,18 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_waiting_inbox",
+            "description": "The waiting-on-you inbox: everything needing a member's attention — their assigned non-terminal threads, the workspace's pending approval gates, and their unread mentions — oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "sla_secs": {"type": "integer", "description": "overdue threshold in seconds (default 86400)"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
             "name": "list_notifications_grouped",
             "description": "A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.",
             "inputSchema": {

@@ -2633,6 +2633,94 @@ mod tests {
         assert_eq!(got["used_tokens"], json!(110));
     }
 
+    /// Cluster 368 (Wave 2 #16): the get_waiting_inbox tool composes a member's
+    /// assigned non-terminal threads + the workspace's pending gates.
+    #[tokio::test]
+    async fn waiting_inbox_tool_composes_assigned_and_gates() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "wi".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, agent.id).await.unwrap();
+        store
+            .create_approval_gate(&maidan_types::NewApprovalGate {
+                workspace_id: ws.id,
+                thread_id: Some(thread.id),
+                requested_by: agent.id,
+                prompt: "approve".into(),
+                schema: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::bypass();
+        let inbox: Value = serde_json::from_str(
+            server
+                .call_tool(
+                    &auth,
+                    "get_waiting_inbox",
+                    &json!({ "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap()["content"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(inbox["total"], json!(2));
+        let kinds: Vec<&str> = inbox["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["kind"].as_str().unwrap())
+            .collect();
+        assert!(kinds.contains(&"assigned_thread"));
+        assert!(kinds.contains(&"open_gate"));
+    }
+
     #[tokio::test]
     async fn notification_tools_list_count_mark_and_wait() {
         use chrono::Utc;

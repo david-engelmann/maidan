@@ -37,6 +37,7 @@
   "get_tool_transcript": "workspace:read",
   "get_unread_count": "workspace:read",
   "get_wait": "workspace:read",
+  "get_waiting_inbox": "workspace:read",
   "get_wip_limit": "workspace:read",
   "get_workspace_context": "workspace:read",
   "link_github_issue": "workspace:write",
