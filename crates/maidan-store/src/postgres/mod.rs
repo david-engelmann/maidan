@@ -57,6 +57,7 @@ mod token_quotas;
 mod tokens;
 mod unclaimable;
 mod votes;
+mod waits;
 mod webhooks;
 mod wip;
 mod workspaces;
@@ -1299,6 +1300,32 @@ impl AssignmentStore for PostgresStore {
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadUnclaimable>, StoreError> {
         unclaimable::list_for_channel(self.read_pool(), channel_id).await
+    }
+    async fn set_thread_wait(
+        &self,
+        thread_id: ThreadId,
+        wait_until: DateTime<Utc>,
+        on_timeout: EscalationPolicy,
+        reason: Option<&str>,
+        created_by: MemberId,
+    ) -> Result<ThreadWait, StoreError> {
+        waits::set(
+            &self.pool, thread_id, wait_until, on_timeout, reason, created_by,
+        )
+        .await
+    }
+    async fn cancel_thread_wait(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        waits::cancel(&self.pool, thread_id).await
+    }
+    async fn get_thread_wait(&self, thread_id: ThreadId) -> Result<Option<ThreadWait>, StoreError> {
+        // Primary: a due-check / sweeper coordination read must not lag.
+        waits::get(&self.pool, thread_id).await
+    }
+    async fn claim_next_due_wait(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Option<ThreadWait>, StoreError> {
+        waits::claim_next_due(&self.pool, now).await
     }
 }
 

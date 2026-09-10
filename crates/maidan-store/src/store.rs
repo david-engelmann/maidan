@@ -943,6 +943,32 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadUnclaimable>, StoreError>;
+
+    /// Set (upsert) a thread's wait timer (Cluster 364, G2): the thread is waiting
+    /// until `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets
+    /// `fired_at` (a fresh timer). One wait per thread.
+    async fn set_thread_wait(
+        &self,
+        thread_id: ThreadId,
+        wait_until: chrono::DateTime<chrono::Utc>,
+        on_timeout: EscalationPolicy,
+        reason: Option<&str>,
+        created_by: MemberId,
+    ) -> Result<ThreadWait, StoreError>;
+    /// Cancel a thread's wait — the awaited thing happened (Cluster 364). `true`
+    /// when a wait existed.
+    async fn cancel_thread_wait(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    /// The thread's wait, or `None` (Cluster 364).
+    async fn get_thread_wait(&self, thread_id: ThreadId) -> Result<Option<ThreadWait>, StoreError>;
+    /// Atomically claim the oldest **due** un-fired wait (`wait_until <= now`) and
+    /// stamp `fired_at = now`, returning it (Cluster 364) — the sweeper's
+    /// fire-once primitive. `FOR UPDATE SKIP LOCKED` on Postgres so concurrent
+    /// replicas never double-fire one wait; SQLite serializes writers. `None` when
+    /// nothing is due.
+    async fn claim_next_due_wait(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<ThreadWait>, StoreError>;
 }
 
 #[async_trait]
