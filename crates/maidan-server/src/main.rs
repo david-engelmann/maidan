@@ -521,6 +521,16 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Background wait-timer sweeper (Cluster 364, G2/G4): opt-in via
+    // `MAIDAN_WAIT_SWEEP_TICK_SECS`. Fires each thread wait past its deadline —
+    // emitting `WaitTimedOut` and (per policy) parking the thread.
+    if let Some(wait_cfg) = maidan_server::wait_sweeper::config_from_env() {
+        let wait_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::wait_sweeper::run(wait_state, wait_cfg).await;
+        });
+    }
+
     // Background email-digest sweeper (Cluster 255): opt-in via
     // `MAIDAN_DIGEST_TICK_SECS`. Emails digest-mode members an unread rollup.
     if let Some(digest_cfg) = maidan_server::digest::config_from_env() {
