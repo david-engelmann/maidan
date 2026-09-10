@@ -659,6 +659,28 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_approval_gates),
         )
         .route("/ui/api/me", get(routes::get_me))
+        // Work tab (Cluster 367, Wave 2 #15): the human work-observability console —
+        // queue depth, occupancy, task results, DAG dependencies, and schedules.
+        .route(
+            "/ui/api/channels/:cid/queue-depth",
+            get(routes::get_channel_queue_depth),
+        )
+        .route(
+            "/ui/api/channels/:cid/occupancy",
+            get(routes::get_channel_occupancy),
+        )
+        .route(
+            "/ui/api/threads/:tid/result",
+            get(routes::get_thread_result),
+        )
+        .route(
+            "/ui/api/threads/:tid/dependencies",
+            get(routes::list_thread_dependencies),
+        )
+        .route(
+            "/ui/api/workspaces/:wid/task-schedules",
+            get(routes::list_task_schedules),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,

@@ -346,3 +346,37 @@ fn ui_js_wires_wcag_tablist_and_skip_link() {
         );
     }
 }
+
+/// Cluster 367.1 (Wave 2 #15): the Work tab. No browser in the required jobs, so
+/// guard the wiring statically — the loaders are defined + invoked, the tab switch
+/// calls `loadWork`, and the panel + channel selector exist.
+#[test]
+fn ui_js_wires_work_tab() {
+    let s = script(HTML);
+    for f in [
+        "async function loadWork(",
+        "async function loadWorkChannels(",
+        "async function loadWorkDepth(",
+        "async function loadWorkThreads(",
+        "async function showWorkThread(",
+        "async function loadWorkSchedules(",
+    ] {
+        assert!(s.contains(f), "the Work tab must define {f}");
+    }
+    assert!(
+        s.contains("=== \"work\") loadWork()"),
+        "the tab switch must call loadWork() for the Work tab"
+    );
+    assert!(
+        s.contains("loadWorkDepth()") && s.contains("loadWorkThreads()"),
+        "the channel selector must load depth + threads"
+    );
+    assert!(
+        HTML.contains("id=\"panel-work\"") && HTML.contains("id=\"work-channel\""),
+        "the Work panel + channel selector must exist"
+    );
+    assert!(
+        HTML.contains("data-tab=\"work\""),
+        "the Work tab button must exist"
+    );
+}

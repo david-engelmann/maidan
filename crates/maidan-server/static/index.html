@@ -353,6 +353,7 @@
         <button type="button" data-tab="search">Search</button>
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
+        <button type="button" data-tab="work">Work</button>
         <button type="button" data-tab="notifications">Notifications</button>
         <button type="button" data-tab="approvals">Approvals</button>
         <button type="button" data-tab="thread">FSM</button>
@@ -466,6 +467,33 @@
         <h4>Online now</h4>
         <ul id="presence-list" class="muted">
           <li>Connect the WebSocket to populate.</li>
+        </ul>
+      </section>
+      <section id="panel-work" class="panel">
+        <p class="muted">
+          The work console — inhabit the room's task loop. Pick a channel to see its
+          queue depth and occupancy, browse its threads, and inspect a task's result
+          and dependencies. Also lists the workspace's task schedules. Reads use your
+          signed-in session (or a bearer token).
+        </p>
+        <div>
+          <label
+            >Channel
+            <select id="work-channel">
+              <option value="">— select a channel —</option>
+            </select></label
+          >
+          <button id="work-refresh" type="button">Refresh</button>
+        </div>
+        <div id="work-depth" class="muted">Select a channel to load its queue.</div>
+        <h4>Threads</h4>
+        <ul id="work-thread-list" class="muted">
+          <li>Select a channel.</li>
+        </ul>
+        <div id="work-thread-detail"></div>
+        <h4>Task schedules</h4>
+        <ul id="work-schedule-list" class="muted">
+          <li>Load a workspace to see its schedules.</li>
         </ul>
       </section>
       <section id="panel-notifications" class="panel">
@@ -1769,6 +1797,186 @@
         await loadNotifications();
       }
 
+      // --- Work tab (Cluster 367, Wave 2 #15): the work-observability console. ---
+      async function loadWork() {
+        await loadWorkChannels();
+        await loadWorkSchedules();
+      }
+
+      async function loadWorkChannels() {
+        const sel = document.getElementById("work-channel");
+        const ws = document.getElementById("workspace").value.trim();
+        if (!ws) {
+          sel.innerHTML = "<option value=''>— set a workspace above —</option>";
+          return;
+        }
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/channels`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            sel.innerHTML = `<option value=''>load failed (HTTP ${res.status})</option>`;
+            return;
+          }
+          const chans = await res.json();
+          const prev = sel.value;
+          sel.innerHTML = "<option value=''>— select a channel —</option>";
+          for (const c of chans) {
+            const o = document.createElement("option");
+            o.value = c.id;
+            o.textContent = c.name;
+            sel.appendChild(o);
+          }
+          if (prev) sel.value = prev;
+        } catch (e) {
+          sel.innerHTML = "<option value=''>error</option>";
+        }
+      }
+
+      async function loadWorkDepth() {
+        const el = document.getElementById("work-depth");
+        const cid = document.getElementById("work-channel").value;
+        if (!cid) {
+          el.textContent = "Select a channel to load its queue.";
+          return;
+        }
+        try {
+          const [dres, ores] = await Promise.all([
+            fetch(uiReadPath(`/channels/${cid}/queue-depth`), {
+              headers: headers(),
+              credentials: "include",
+            }),
+            fetch(uiReadPath(`/channels/${cid}/occupancy`), {
+              headers: headers(),
+              credentials: "include",
+            }),
+          ]);
+          if (!dres.ok) {
+            el.textContent = `Queue depth failed (HTTP ${dres.status}).`;
+            return;
+          }
+          const d = await dres.json();
+          let occ = "";
+          if (ores.ok) {
+            const o = await ores.json();
+            occ = ` · occupancy — queued ${o.queued}, claimed ${o.claimed}, working ${o.working}, blocked ${o.blocked}`;
+          }
+          el.textContent = `Queue — open ${d.open}, ready ${d.ready}, assigned ${d.assigned}, blocked ${d.blocked}, unclaimable ${d.unclaimable}${occ}`;
+        } catch (e) {
+          el.textContent = `Error: ${e}`;
+        }
+      }
+
+      async function loadWorkThreads() {
+        const list = document.getElementById("work-thread-list");
+        const cid = document.getElementById("work-channel").value;
+        document.getElementById("work-thread-detail").innerHTML = "";
+        if (!cid) {
+          list.innerHTML = "<li class='muted'>Select a channel.</li>";
+          return;
+        }
+        try {
+          const res = await fetch(uiReadPath(`/channels/${cid}/threads`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            return;
+          }
+          const threads = await res.json();
+          list.innerHTML = "";
+          if (!threads.length) {
+            list.innerHTML = "<li class='muted'>No threads.</li>";
+            return;
+          }
+          for (const t of threads) {
+            const li = document.createElement("li");
+            li.textContent = `${t.title || "(untitled)"} — ${t.state}`;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Inspect";
+            btn.style.marginLeft = "0.5rem";
+            btn.onclick = () => showWorkThread(t.id);
+            li.appendChild(btn);
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
+      async function showWorkThread(tid) {
+        const el = document.getElementById("work-thread-detail");
+        el.innerHTML = "Loading…";
+        try {
+          const [rres, dres] = await Promise.all([
+            fetch(uiReadPath(`/threads/${tid}/result`), {
+              headers: headers(),
+              credentials: "include",
+            }),
+            fetch(uiReadPath(`/threads/${tid}/dependencies`), {
+              headers: headers(),
+              credentials: "include",
+            }),
+          ]);
+          let html = `<h4>Thread ${escapeHtml(tid)}</h4>`;
+          if (rres.ok) {
+            const r = await rres.json();
+            html += `<p><strong>Result</strong> (by ${escapeHtml(r.produced_by)}): <code>${escapeHtml(JSON.stringify(r.result))}</code></p>`;
+          } else if (rres.status === 404) {
+            html += "<p class='muted'>No result recorded yet.</p>";
+          } else {
+            html += `<p class='muted'>Result load failed (HTTP ${rres.status}).</p>`;
+          }
+          if (dres.ok) {
+            const d = await dres.json();
+            const deps =
+              (d.dependencies || [])
+                .map((x) => escapeHtml(x.depends_on_thread_id))
+                .join(", ") || "none";
+            html += `<p><strong>Depends on:</strong> ${deps} · <strong>ready:</strong> ${d.ready}</p>`;
+          }
+          el.innerHTML = html;
+        } catch (e) {
+          el.innerHTML = `<p class='muted'>Error: ${escapeHtml(String(e))}</p>`;
+        }
+      }
+
+      async function loadWorkSchedules() {
+        const list = document.getElementById("work-schedule-list");
+        const ws = document.getElementById("workspace").value.trim();
+        if (!ws) {
+          list.innerHTML = "<li class='muted'>Set a workspace above.</li>";
+          return;
+        }
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/task-schedules`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            return;
+          }
+          const scheds = await res.json();
+          list.innerHTML = "";
+          if (!scheds.length) {
+            list.innerHTML = "<li class='muted'>No schedules.</li>";
+            return;
+          }
+          for (const s of scheds) {
+            const li = document.createElement("li");
+            const cadence = s.interval_secs ? `every ${s.interval_secs}s` : "one-shot";
+            li.textContent = `${s.title} — ${cadence} (${s.active ? "active" : "paused"}), next ${s.next_run_at}`;
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
+      }
+
       async function loadApprovals() {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
@@ -1949,6 +2157,7 @@
           btn.tabIndex = 0;
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+          if (btn.dataset.tab === "work") loadWork();
           if (btn.dataset.tab === "notifications") loadNotifications();
           if (btn.dataset.tab === "approvals") loadApprovals();
           if (btn.dataset.tab === "session") loadSession();
@@ -2286,6 +2495,11 @@
       document.getElementById("ws-disconnect").onclick = disconnectWs;
       document.getElementById("presence-online").onclick = () => setPresence("online");
       document.getElementById("presence-away").onclick = () => setPresence("away");
+      document.getElementById("work-refresh").onclick = () => loadWork();
+      document.getElementById("work-channel").onchange = () => {
+        loadWorkDepth();
+        loadWorkThreads();
+      };
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
       document.getElementById("approvals-refresh").onclick = () => loadApprovals();
       document.getElementById("session-refresh").onclick = () => loadSession();
