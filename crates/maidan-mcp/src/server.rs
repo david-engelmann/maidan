@@ -1800,6 +1800,138 @@ mod tests {
         assert_eq!(depth["assigned"], json!(0));
     }
 
+    /// Cluster 363 (G3): the unclaimable tools — park/un-park/list + the explicit
+    /// claim refusal + claim_next skip on the MCP path.
+    #[tokio::test]
+    async fn unclaimable_tools_park_a_thread_from_dispatch() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "un".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let mk = |title: &str| NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        };
+        let t1 = store.create_thread(mk("t1")).await.unwrap();
+        let t2 = store.create_thread(mk("t2")).await.unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // Real member: mark_unclaimable persists auth.member_id (marked_by FK).
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Park t1.
+        let marked = body(
+            server
+                .call_tool(
+                    &auth,
+                    "mark_unclaimable",
+                    &json!({ "thread_id": t1.id.0, "reason": "triage" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(marked["reason"], "triage");
+        // The channel list shows it.
+        let listed = body(
+            server
+                .call_tool(
+                    &auth,
+                    "list_unclaimable",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+
+        // An explicit claim of the parked thread errors.
+        assert!(server
+            .call_tool(
+                &auth,
+                "claim_thread",
+                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
+            )
+            .await
+            .is_err());
+        // claim_next skips t1 and claims t2.
+        let next = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(next["id"], json!(t2.id.0));
+
+        // Un-park → cleared true, then false; now claimable.
+        assert_eq!(
+            body(
+                server
+                    .call_tool(&auth, "mark_claimable", &json!({ "thread_id": t1.id.0 }))
+                    .await
+                    .unwrap()
+            )["cleared"],
+            json!(true)
+        );
+        let claimed = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_thread",
+                    &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(claimed["claimed"], json!(true));
+    }
+
     /// Cluster 362 (G11): the WIP admin/visibility tools + enforcement on the MCP
     /// claim path (explicit claim errors at the cap; claim_next returns null).
     #[tokio::test]

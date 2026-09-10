@@ -291,6 +291,40 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "mark_unclaimable",
+            "description": "Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "reason": {"type": "string", "description": "why the thread is parked"}
+                },
+                "required": ["thread_id", "reason"]
+            }
+        }),
+        json!({
+            "name": "mark_claimable",
+            "description": "Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_unclaimable",
+            "description": "The parked (unclaimable) threads in a channel (G3), newest first — for triage.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
+            }
+        }),
+        json!({
             "name": "set_wip_limit",
             "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
             "inputSchema": {

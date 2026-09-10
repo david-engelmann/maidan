@@ -276,6 +276,14 @@ pub(super) async fn claim_thread(
     let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
     let member_id = MemberId(a.member_id);
+    // Unclaimable (Cluster 363, G3): a parked thread refuses an explicit claim,
+    // just as `claim_next` skips it (the REST 409 analogue).
+    if let Some(u) = server.store.get_thread_unclaimable(thread_id).await? {
+        return Err(McpError::InvalidParams(format!(
+            "thread is parked (unclaimable): {}",
+            u.reason
+        )));
+    }
     // WIP limit (Cluster 362, G11): refuse a NEW claim past the cap (the REST
     // 409 analogue); a re-claim of a thread the member already holds is exempt.
     let thread = server.store.get_thread(thread_id).await?;
@@ -304,6 +312,60 @@ pub(super) async fn unassign_thread(
     let thread = server.store.unassign_thread(thread_id).await?;
     publish_assignment(server, &thread, MemberId(a.actor_id), previous, None).await?;
     Ok(content_json(&thread))
+}
+
+#[derive(Deserialize)]
+struct MarkUnclaimableArgs {
+    thread_id: uuid::Uuid,
+    reason: String,
+}
+
+/// Park a thread from dispatch (Cluster 363, G3): `claim_next` skips it and an
+/// explicit `claim` is refused, until cleared. `thread:transition`; thread access
+/// is enforced pre-dispatch. Empty reason → InvalidParams.
+pub(super) async fn mark_unclaimable(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MarkUnclaimableArgs = serde_json::from_value(args.clone())?;
+    let reason = a.reason.trim();
+    if reason.is_empty() {
+        return Err(McpError::InvalidParams("reason must not be empty".into()));
+    }
+    let marked = store
+        .mark_thread_unclaimable(ThreadId(a.thread_id), reason, auth.member_id)
+        .await?;
+    Ok(content_json(&marked))
+}
+
+/// Un-park a thread (Cluster 363) — it becomes claimable again. `{cleared}` is
+/// `false` when it was not parked. `thread:transition`; thread access enforced.
+pub(super) async fn mark_claimable(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let cleared = store.mark_thread_claimable(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&json!({ "cleared": cleared })))
+}
+
+#[derive(Deserialize)]
+struct ChannelIdArg {
+    channel_id: uuid::Uuid,
+}
+
+/// The parked (unclaimable) threads in a channel (Cluster 363), newest first.
+/// `workspace:read`; channel access enforced pre-dispatch.
+pub(super) async fn list_unclaimable(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelIdArg = serde_json::from_value(args.clone())?;
+    let parked = store
+        .list_unclaimable_threads(ChannelId(a.channel_id))
+        .await?;
+    Ok(content_json(&parked))
 }
 
 #[derive(Deserialize)]
