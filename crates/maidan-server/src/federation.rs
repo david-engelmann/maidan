@@ -374,6 +374,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             merge_commit_sha,
             title,
         },
+        // Non-federatable (a locally-derived wait-timer signal, Cluster 364) —
+        // never actually ingested/remapped, but the exhaustive match must classify it.
+        WaitTimedOut {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            policy,
+            reason,
+        } => WaitTimedOut {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            policy,
+            reason,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

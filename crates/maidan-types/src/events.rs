@@ -40,6 +40,7 @@ pub enum EventKind {
     ClaimExpired,
     ClaimFailed,
     ThreadLanded,
+    WaitTimedOut,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -67,6 +68,7 @@ impl EventKind {
             Self::ClaimExpired => "claim_expired",
             Self::ClaimFailed => "claim_failed",
             Self::ThreadLanded => "thread_landed",
+            Self::WaitTimedOut => "wait_timed_out",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -94,6 +96,7 @@ impl EventKind {
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_failed" => Some(Self::ClaimFailed),
             "thread_landed" => Some(Self::ThreadLanded),
+            "wait_timed_out" => Some(Self::WaitTimedOut),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -127,6 +130,7 @@ impl EventKind {
         Self::ClaimExpired,
         Self::ClaimFailed,
         Self::ThreadLanded,
+        Self::WaitTimedOut,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -185,6 +189,9 @@ impl EventKind {
             // A "landed" fact is derived from *this* deployment's GitHub projector
             // webhook (Cluster 361); a peer must not inject one for our threads.
             Self::ThreadLanded => false,
+            // A wait timeout is fired by *this* deployment's sweeper (this clock);
+            // a peer must not inject one (Cluster 364).
+            Self::WaitTimedOut => false,
         }
     }
 }
@@ -316,6 +323,22 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
     },
+    /// A thread's wait timer lapsed (Cluster 364, G2/G4). Fired by *this*
+    /// deployment's wait sweeper when a wait passed its deadline unsatisfied. The
+    /// escalation `policy` names what the sweeper did (`notify` reaches the owner;
+    /// `park` additionally marks the thread unclaimable) — **never a decision**.
+    /// A locally-derived timer signal: not federatable.
+    WaitTimedOut {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The escalation applied (`EscalationPolicy::as_str`): `notify` | `park`.
+        policy: String,
+        /// Why the thread was waiting, if a reason was recorded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -415,6 +438,7 @@ impl Event {
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
+            Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -442,6 +466,7 @@ impl Event {
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
+            | Self::WaitTimedOut { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -469,6 +494,7 @@ impl Event {
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
+            | Self::WaitTimedOut { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -493,6 +519,7 @@ impl Event {
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
+            | Self::WaitTimedOut { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -512,6 +539,7 @@ impl Event {
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
+            Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -817,6 +845,7 @@ mod kind_tests {
                 | EventKind::ClaimExpired
                 | EventKind::ClaimFailed
                 | EventKind::ThreadLanded
+                | EventKind::WaitTimedOut
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -865,6 +894,7 @@ mod kind_tests {
             EventKind::ClaimExpired,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
+            EventKind::WaitTimedOut,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);
