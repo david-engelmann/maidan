@@ -352,6 +352,13 @@ pub struct SetWipLimit {
     pub limit: Option<i64>,
 }
 
+/// Body for `PUT /threads/:id/unclaimable` (Cluster 363, G3) — park a thread from
+/// dispatch with a reason (must be non-empty).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MarkUnclaimable {
+    pub reason: String,
+}
+
 /// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WipLimitView {
