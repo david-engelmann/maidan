@@ -1,4 +1,6 @@
-//! OTLP metrics recorder wiring (stdout exporter; no network).
+//! OTLP metrics recorder wiring (stdout exporter; no network). Requires the
+//! `otel` feature (Cluster 366, H15) — compiled out under `--no-default-features`.
+#![cfg(feature = "otel")]
 
 use std::time::Duration;
 

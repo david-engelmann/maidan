@@ -2,12 +2,18 @@
 
 use std::time::Duration;
 
+#[cfg(feature = "otel")]
 use metrics_exporter_opentelemetry::Recorder;
+#[cfg(feature = "otel")]
 use opentelemetry::KeyValue;
+#[cfg(feature = "otel")]
 use opentelemetry_otlp::{MetricExporter, WithExportConfig};
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::Resource;
 
+#[cfg(feature = "otel")]
 use crate::InitError;
 
 /// Push interval and OTLP endpoint for metrics export.
@@ -19,8 +25,10 @@ pub struct MetricsPushConfig {
 }
 
 /// Keeps the SDK meter provider alive until [`MeterGuard::shutdown`].
+#[cfg(feature = "otel")]
 pub struct MeterGuard(SdkMeterProvider);
 
+#[cfg(feature = "otel")]
 impl MeterGuard {
     pub fn shutdown(self) {
         if let Err(err) = self.0.shutdown() {
@@ -83,6 +91,7 @@ pub fn otlp_metrics_interval_from_env() -> Duration {
 }
 
 /// Build an OpenTelemetry [`Recorder`] backed by a periodic OTLP push exporter.
+#[cfg(feature = "otel")]
 pub fn build_otlp_metrics_recorder(
     config: &MetricsPushConfig,
 ) -> Result<(MeterGuard, Recorder), InitError> {

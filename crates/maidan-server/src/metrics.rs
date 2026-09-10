@@ -15,17 +15,20 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
+#[cfg(feature = "otel")]
 use maidan_observability::{
     build_otlp_metrics_recorder, otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env,
     MeterGuard, MetricsPushConfig,
 };
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+#[cfg(feature = "otel")]
 use metrics_util::layers::FanoutBuilder;
 
 use crate::state::AppState;
 
 static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
+#[cfg(feature = "otel")]
 static OTLP_METER: OnceLock<MeterGuard> = OnceLock::new();
 static INIT: Once = Once::new();
 static LAST_HYDRATE: Mutex<Option<HydrateSnapshot>> = Mutex::new(None);
@@ -39,47 +42,60 @@ fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
     });
 }
 
+/// Install the global metrics recorder, fanning out to OTLP push when configured
+/// (Cluster 366, H15 — the `otel` build).
+#[cfg(feature = "otel")]
+fn install_global_recorder(prom_recorder: metrics_exporter_prometheus::PrometheusRecorder) {
+    if let Some(endpoint) = otlp_metrics_endpoint_from_env() {
+        let service_name =
+            std::env::var("OTLP_SERVICE_NAME").unwrap_or_else(|_| "maidan-server".to_string());
+        let push_config = MetricsPushConfig {
+            service_name,
+            endpoint,
+            interval: otlp_metrics_interval_from_env(),
+        };
+        match build_otlp_metrics_recorder(&push_config) {
+            Ok((meter_guard, otel_recorder)) => {
+                let fanout = FanoutBuilder::default()
+                    .add_recorder(prom_recorder)
+                    .add_recorder(otel_recorder)
+                    .build();
+                if let Err(err) = metrics::set_global_recorder(fanout) {
+                    tracing::error!(%err, "failed to install metrics recorder");
+                }
+                let _ = OTLP_METER.set(meter_guard);
+                tracing::info!(
+                    endpoint = %push_config.endpoint,
+                    interval_secs = push_config.interval.as_secs(),
+                    "OTLP metrics push enabled (Prometheus scrape unchanged)"
+                );
+            }
+            Err(err) => {
+                tracing::error!(%err, "OTLP metrics recorder init failed; Prometheus only");
+                if let Err(err) = metrics::set_global_recorder(prom_recorder) {
+                    tracing::error!(%err, "failed to install metrics recorder");
+                }
+            }
+        }
+    } else if let Err(err) = metrics::set_global_recorder(prom_recorder) {
+        tracing::error!(%err, "failed to install metrics recorder");
+    }
+}
+
+/// Install the global metrics recorder (Prometheus only — the no-`otel` build).
+#[cfg(not(feature = "otel"))]
+fn install_global_recorder(prom_recorder: metrics_exporter_prometheus::PrometheusRecorder) {
+    if let Err(err) = metrics::set_global_recorder(prom_recorder) {
+        tracing::error!(%err, "failed to install metrics recorder");
+    }
+}
+
 /// Install the global metrics recorder (idempotent).
 pub fn init() {
     INIT.call_once(|| {
         let prom_recorder = PrometheusBuilder::new().build_recorder();
         let handle = prom_recorder.handle();
-
-        if let Some(endpoint) = otlp_metrics_endpoint_from_env() {
-            let service_name =
-                std::env::var("OTLP_SERVICE_NAME").unwrap_or_else(|_| "maidan-server".to_string());
-            let push_config = MetricsPushConfig {
-                service_name,
-                endpoint,
-                interval: otlp_metrics_interval_from_env(),
-            };
-            match build_otlp_metrics_recorder(&push_config) {
-                Ok((meter_guard, otel_recorder)) => {
-                    let fanout = FanoutBuilder::default()
-                        .add_recorder(prom_recorder)
-                        .add_recorder(otel_recorder)
-                        .build();
-                    if let Err(err) = metrics::set_global_recorder(fanout) {
-                        tracing::error!(%err, "failed to install metrics recorder");
-                    }
-                    let _ = OTLP_METER.set(meter_guard);
-                    tracing::info!(
-                        endpoint = %push_config.endpoint,
-                        interval_secs = push_config.interval.as_secs(),
-                        "OTLP metrics push enabled (Prometheus scrape unchanged)"
-                    );
-                }
-                Err(err) => {
-                    tracing::error!(%err, "OTLP metrics recorder init failed; Prometheus only");
-                    if let Err(err) = metrics::set_global_recorder(prom_recorder) {
-                        tracing::error!(%err, "failed to install metrics recorder");
-                    }
-                }
-            }
-        } else if let Err(err) = metrics::set_global_recorder(prom_recorder) {
-            tracing::error!(%err, "failed to install metrics recorder");
-        }
-
+        install_global_recorder(prom_recorder);
         spawn_prometheus_upkeep(handle.clone());
         let _ = PROMETHEUS.set(handle);
         describe_counter!(

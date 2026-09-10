@@ -9,16 +9,30 @@ authors.workspace = true
 publish.workspace = true
 description = "OpenTelemetry + tracing setup for Maidan."
 
+[features]
+# OpenTelemetry (OTLP trace + metrics export) is a default-on feature so it can be
+# compiled out (`--no-default-features`) for a leaner build that keeps plain tracing
+# + Prometheus scrape (Cluster 366, H15). The crates stay pinned; the feature only
+# gates whether they are compiled and initialized.
+default = ["otel"]
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry_sdk",
+    "dep:tracing-opentelemetry",
+    "dep:metrics-exporter-opentelemetry",
+]
+
 [dependencies]
-opentelemetry = { version = "0.31", features = ["trace", "metrics"] }
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "metrics"] }
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace", "metrics"] }
+opentelemetry = { version = "0.31", features = ["trace", "metrics"], optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "metrics"], optional = true }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace", "metrics"], optional = true }
 metrics = "0.24"
 metrics-util = "0.20"
-metrics-exporter-opentelemetry = "0.2"
+metrics-exporter-opentelemetry = { version = "0.2", optional = true }
 thiserror.workspace = true
 tracing.workspace = true
-tracing-opentelemetry = "0.32"
+tracing-opentelemetry = { version = "0.32", optional = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [dev-dependencies]

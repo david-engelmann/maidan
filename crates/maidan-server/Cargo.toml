@@ -27,7 +27,7 @@ maidan-mcp = { path = "../maidan-mcp" }
 maidan-search = { path = "../maidan-search", default-features = false }
 maidan-router = { path = "../maidan-router" }
 maidan-a2a = { path = "../maidan-a2a" }
-maidan-observability = { path = "../maidan-observability" }
+maidan-observability = { path = "../maidan-observability", default-features = false }
 async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
@@ -69,8 +69,12 @@ hex = "0.4"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 [features]
-default = ["bootstrap"]
+default = ["bootstrap", "otel"]
 bootstrap = []
+# OpenTelemetry OTLP export (Cluster 366, H15). Default-on; `--no-default-features`
+# builds a leaner server without the OTLP/tonic stack (plain tracing + Prometheus
+# scrape stay). Forwards to the maidan-observability `otel` feature.
+otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
