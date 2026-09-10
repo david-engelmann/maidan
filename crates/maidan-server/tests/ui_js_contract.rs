@@ -380,3 +380,28 @@ fn ui_js_wires_work_tab() {
         "the Work tab button must exist"
     );
 }
+
+/// Cluster 367.2 (Wave 2 #15): the Prefs console. Static guard — the loaders +
+/// mutators are defined, the tab switch calls `loadPrefs`, and the panel exists.
+#[test]
+fn ui_js_wires_prefs_tab() {
+    let s = script(HTML);
+    for f in [
+        "async function loadPrefs(",
+        "async function loadPrefsFollows(",
+        "async function setPrefsDeliveryMode(",
+        "async function setPrefsMute(",
+        "async function followTarget(",
+        "async function unfollowTarget(",
+    ] {
+        assert!(s.contains(f), "the Prefs tab must define {f}");
+    }
+    assert!(
+        s.contains("=== \"prefs\") loadPrefs()"),
+        "the tab switch must call loadPrefs() for the Prefs tab"
+    );
+    assert!(
+        HTML.contains("id=\"panel-prefs\"") && HTML.contains("data-tab=\"prefs\""),
+        "the Prefs panel + tab button must exist"
+    );
+}

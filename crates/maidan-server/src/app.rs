@@ -681,6 +681,25 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/task-schedules",
             get(routes::list_task_schedules),
         )
+        // Prefs console (Cluster 367.2, Wave 2 #15): a member's notification
+        // preferences, delivery, and follows — self-only reads.
+        .route(
+            "/ui/api/members/:id/notification-prefs",
+            get(routes::list_member_notification_prefs),
+        )
+        .route(
+            "/ui/api/members/:id/delivery-mode",
+            get(routes::get_member_delivery_mode),
+        )
+        .route("/ui/api/members/:id/email", get(routes::get_member_email))
+        .route(
+            "/ui/api/members/:id/channel-follows",
+            get(routes::list_member_channel_follows),
+        )
+        .route(
+            "/ui/api/members/:id/thread-follows",
+            get(routes::list_member_thread_follows),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
@@ -744,6 +763,35 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/approval-gates/:id/answer",
             post(routes::answer_approval_gate),
+        )
+        // Prefs console (Cluster 367.2, Wave 2 #15): self-only writes.
+        .route(
+            "/ui/api/members/:id/notification-prefs",
+            put(routes::set_member_notification_pref),
+        )
+        .route(
+            "/ui/api/members/:id/delivery-mode",
+            put(routes::set_member_delivery_mode),
+        )
+        .route(
+            "/ui/api/members/:id/email",
+            put(routes::set_member_email).delete(routes::delete_member_email),
+        )
+        .route(
+            "/ui/api/members/:id/channel-follows",
+            post(routes::follow_member_channel),
+        )
+        .route(
+            "/ui/api/members/:id/channel-follows/:cid",
+            delete(routes::unfollow_member_channel),
+        )
+        .route(
+            "/ui/api/members/:id/thread-follows",
+            post(routes::follow_member_thread),
+        )
+        .route(
+            "/ui/api/members/:id/thread-follows/:tid",
+            delete(routes::unfollow_member_thread),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

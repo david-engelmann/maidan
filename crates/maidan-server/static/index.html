@@ -354,6 +354,7 @@
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
         <button type="button" data-tab="work">Work</button>
+        <button type="button" data-tab="prefs">Prefs</button>
         <button type="button" data-tab="notifications">Notifications</button>
         <button type="button" data-tab="approvals">Approvals</button>
         <button type="button" data-tab="thread">FSM</button>
@@ -495,6 +496,54 @@
         <ul id="work-schedule-list" class="muted">
           <li>Load a workspace to see its schedules.</li>
         </ul>
+      </section>
+      <section id="panel-prefs" class="panel">
+        <p class="muted">
+          Your notification preferences, delivery, and follows. Self-only — requires
+          a signed-in session (yours is the acting member).
+        </p>
+        <div>
+          <button id="prefs-refresh" type="button">Refresh</button>
+          <span id="prefs-delivery" class="muted"></span>
+        </div>
+        <h4>Delivery mode</h4>
+        <div>
+          <button id="prefs-mode-immediate" type="button">Immediate</button>
+          <button id="prefs-mode-digest" type="button">Digest</button>
+        </div>
+        <h4>Email address</h4>
+        <div>
+          <input id="prefs-email" type="email" placeholder="you@example.com" />
+          <button id="prefs-email-set" type="button">Set</button>
+          <button id="prefs-email-clear" type="button">Clear</button>
+          <span id="prefs-email-current" class="muted"></span>
+        </div>
+        <h4>Muted notification kinds</h4>
+        <div>
+          <select id="prefs-mute-kind">
+            <option value="message_posted">message_posted</option>
+            <option value="mention_recorded">mention_recorded</option>
+            <option value="thread_ready">thread_ready</option>
+            <option value="thread_result_set">thread_result_set</option>
+            <option value="claim_expired">claim_expired</option>
+            <option value="thread_landed">thread_landed</option>
+          </select>
+          <button id="prefs-mute" type="button">Mute</button>
+          <button id="prefs-unmute" type="button">Unmute</button>
+        </div>
+        <ul id="prefs-mute-list" class="muted"></ul>
+        <h4>Followed channels</h4>
+        <div>
+          <input id="prefs-follow-channel" placeholder="channel id" />
+          <button id="prefs-follow-channel-btn" type="button">Follow</button>
+        </div>
+        <ul id="prefs-channel-follows" class="muted"></ul>
+        <h4>Followed threads</h4>
+        <div>
+          <input id="prefs-follow-thread" placeholder="thread id" />
+          <button id="prefs-follow-thread-btn" type="button">Follow</button>
+        </div>
+        <ul id="prefs-thread-follows" class="muted"></ul>
       </section>
       <section id="panel-notifications" class="panel">
         <p class="muted">
@@ -1977,6 +2026,152 @@
         }
       }
 
+      // --- Prefs console (Cluster 367.2, Wave 2 #15): notification prefs, delivery,
+      // email, and follows — all self-only (the acting session member). ---
+      async function loadPrefs() {
+        const el = document.getElementById("prefs-delivery");
+        if (!sessionMemberId) {
+          el.textContent = "Sign in (session) to manage preferences.";
+          return;
+        }
+        const id = sessionMemberId;
+        try {
+          const res = await fetch(uiReadPath(`/members/${id}/delivery-mode`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          el.textContent = res.ok
+            ? `Delivery mode: ${(await res.json()).mode}`
+            : "";
+        } catch (e) {
+          el.textContent = "";
+        }
+        try {
+          const res = await fetch(uiReadPath(`/members/${id}/email`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          document.getElementById("prefs-email-current").textContent = res.ok
+            ? `current: ${(await res.json()).email}`
+            : "(none set)";
+        } catch (e) {
+          /* ignore */
+        }
+        try {
+          const res = await fetch(uiReadPath(`/members/${id}/notification-prefs`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          const list = document.getElementById("prefs-mute-list");
+          list.innerHTML = "";
+          if (res.ok) {
+            const muted = (await res.json()).filter((p) => p.muted);
+            if (!muted.length) {
+              list.innerHTML = "<li class='muted'>No muted kinds.</li>";
+            }
+            for (const p of muted) {
+              const li = document.createElement("li");
+              li.textContent = p.kind;
+              list.appendChild(li);
+            }
+          }
+        } catch (e) {
+          /* ignore */
+        }
+        await loadPrefsFollows("channel-follows", "prefs-channel-follows", "channel_id");
+        await loadPrefsFollows("thread-follows", "prefs-thread-follows", "thread_id");
+      }
+
+      async function loadPrefsFollows(path, listId, idField) {
+        const list = document.getElementById(listId);
+        list.innerHTML = "";
+        try {
+          const res = await fetch(
+            uiReadPath(`/members/${sessionMemberId}/${path}`),
+            { headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) {
+            list.innerHTML = "<li class='muted'>load failed</li>";
+            return;
+          }
+          const follows = await res.json();
+          if (!follows.length) {
+            list.innerHTML = "<li class='muted'>None.</li>";
+            return;
+          }
+          for (const f of follows) {
+            const targetId = f[idField];
+            const li = document.createElement("li");
+            li.textContent = targetId + " ";
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Unfollow";
+            btn.onclick = () => unfollowTarget(path, targetId);
+            li.appendChild(btn);
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = "<li class='muted'>error</li>";
+        }
+      }
+
+      async function prefsWrite(method, suffix, body) {
+        if (!requireAuthForWrite()) return null;
+        try {
+          const opts = { method, headers: headers(!!body), credentials: "include" };
+          if (body) opts.body = JSON.stringify(body);
+          const res = await fetch(apiWritePath(suffix), opts);
+          if (!res.ok) {
+            setStatus(`HTTP ${res.status}`, "err");
+            return null;
+          }
+          return res;
+        } catch (e) {
+          setStatus(String(e), "err");
+          return null;
+        }
+      }
+
+      async function setPrefsDeliveryMode(mode) {
+        await prefsWrite("PUT", `/members/${sessionMemberId}/delivery-mode`, { mode });
+        await loadPrefs();
+      }
+      async function setPrefsEmail() {
+        const email = document.getElementById("prefs-email").value.trim();
+        if (!email) return;
+        await prefsWrite("PUT", `/members/${sessionMemberId}/email`, { email });
+        await loadPrefs();
+      }
+      async function clearPrefsEmail() {
+        await prefsWrite("DELETE", `/members/${sessionMemberId}/email`, null);
+        await loadPrefs();
+      }
+      async function setPrefsMute(muted) {
+        const kind = document.getElementById("prefs-mute-kind").value;
+        await prefsWrite("PUT", `/members/${sessionMemberId}/notification-prefs`, {
+          kind,
+          muted,
+        });
+        await loadPrefs();
+      }
+      async function followTarget(path) {
+        const field = path === "channel-follows" ? "channel" : "thread";
+        const val = document.getElementById(`prefs-follow-${field}`).value.trim();
+        if (!val) return;
+        const body =
+          path === "channel-follows" ? { channel_id: val } : { thread_id: val };
+        await prefsWrite("POST", `/members/${sessionMemberId}/${path}`, body);
+        await loadPrefs();
+      }
+      async function unfollowTarget(path, targetId) {
+        await prefsWrite(
+          "DELETE",
+          `/members/${sessionMemberId}/${path}/${targetId}`,
+          null,
+        );
+        await loadPrefs();
+      }
+
       async function loadApprovals() {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
@@ -2158,6 +2353,7 @@
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "work") loadWork();
+          if (btn.dataset.tab === "prefs") loadPrefs();
           if (btn.dataset.tab === "notifications") loadNotifications();
           if (btn.dataset.tab === "approvals") loadApprovals();
           if (btn.dataset.tab === "session") loadSession();
@@ -2500,6 +2696,19 @@
         loadWorkDepth();
         loadWorkThreads();
       };
+      document.getElementById("prefs-refresh").onclick = () => loadPrefs();
+      document.getElementById("prefs-mode-immediate").onclick = () =>
+        setPrefsDeliveryMode("immediate");
+      document.getElementById("prefs-mode-digest").onclick = () =>
+        setPrefsDeliveryMode("digest");
+      document.getElementById("prefs-email-set").onclick = () => setPrefsEmail();
+      document.getElementById("prefs-email-clear").onclick = () => clearPrefsEmail();
+      document.getElementById("prefs-mute").onclick = () => setPrefsMute(true);
+      document.getElementById("prefs-unmute").onclick = () => setPrefsMute(false);
+      document.getElementById("prefs-follow-channel-btn").onclick = () =>
+        followTarget("channel-follows");
+      document.getElementById("prefs-follow-thread-btn").onclick = () =>
+        followTarget("thread-follows");
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
       document.getElementById("approvals-refresh").onclick = () => loadApprovals();
       document.getElementById("session-refresh").onclick = () => loadSession();
