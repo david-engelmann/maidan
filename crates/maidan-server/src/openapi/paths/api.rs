@@ -330,6 +330,15 @@ pub fn list_member_notifications_grouped() {}
     responses((status = 200, body = [BuriedDecision])))]
 pub fn list_member_decisions() {}
 
+#[utoipa::path(get, path = "/members/{id}/waiting", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        WaitingQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = WaitingInbox, description = "What is waiting on the member, oldest first")))]
+pub fn get_member_waiting() {}
+
 #[utoipa::path(get, path = "/members/{id}/notifications/unread-count", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
     security(("bearerAuth" = [])),

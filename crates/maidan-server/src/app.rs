@@ -188,6 +188,7 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_member_notifications_grouped),
         )
         .route("/members/:id/decisions", get(routes::list_member_decisions))
+        .route("/members/:id/waiting", get(routes::get_member_waiting))
         .route(
             "/members/:id/notifications/unread-count",
             get(routes::member_unread_notification_count),

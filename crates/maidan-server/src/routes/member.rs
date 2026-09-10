@@ -511,6 +511,50 @@ pub async fn get_member_delivery_mode(
     Ok(Json(DeliveryModeView { mode }))
 }
 
+/// The waiting-on-you inbox (Cluster 368, Wave 2 #16 — G15/G9): everything that
+/// needs this member's attention — their assigned non-terminal threads, the
+/// workspace's pending approval gates, and their unread mentions — oldest-waiting
+/// first, each aged against `?sla_secs` (default 24h). `workspace:read` + self-only
+/// for a session (a bearer orchestrator may query any member).
+pub async fn get_member_waiting(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<WaitingQuery>,
+) -> ApiResult<Json<WaitingInbox>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    let sla = q.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
+    let assigned = state
+        .store
+        .list_assigned_threads(member.workspace_id, MemberId(id))
+        .await?;
+    let gates = state
+        .store
+        .list_pending_approval_gates(member.workspace_id, 200)
+        .await?;
+    let all_mentions = state
+        .store
+        .list_mentions_for_member(MemberId(id), 100)
+        .await?;
+    // Only mentions the member hasn't read yet are "waiting on you" (the inbox
+    // cursor defaults to the epoch, so a never-read inbox keeps everything).
+    let last_read = state.store.get_inbox_last_read_at(MemberId(id)).await?;
+    let unread = all_mentions
+        .into_iter()
+        .filter(|m| m.created_at > last_read)
+        .collect::<Vec<_>>();
+    Ok(Json(assemble_waiting_inbox(
+        &assigned,
+        &gates,
+        &unread,
+        chrono::Utc::now(),
+        sla,
+    )))
+}
+
 /// Register (upsert) a Web Push subscription for a member (Cluster 366, N1). Body
 /// is the browser's `PushSubscription` JSON (`{endpoint, keys:{p256dh, auth}}`).
 /// `workspace:read` + self-only for a session caller.
