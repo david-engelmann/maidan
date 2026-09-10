@@ -29,7 +29,7 @@ use crate::{
     a2a_agent, app_oauth, apps, auth, automation_deliveries, consistency, delivery_ops, dm,
     federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications, mcp_stream,
     mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes,
-    session, slack, slash_commands, state::AppState, webhooks, ws,
+    scim, session, slack, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -87,6 +87,24 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(routes::place_legal_hold)
                 .delete(routes::lift_legal_hold)
                 .get(routes::get_legal_hold),
+        )
+        // SCIM 2.0 provisioning (Cluster 366) — outside OpenAPI/capability-map (like
+        // /mcp); each handler enforces token:admin inline and scopes to the token's
+        // workspace.
+        .route(
+            "/scim/v2/ServiceProviderConfig",
+            get(scim::service_provider_config),
+        )
+        .route(
+            "/scim/v2/Users",
+            post(scim::create_user).get(scim::list_users),
+        )
+        .route(
+            "/scim/v2/Users/:id",
+            get(scim::get_user)
+                .put(scim::replace_user)
+                .patch(scim::patch_user)
+                .delete(scim::delete_user),
         )
         .route(
             "/workspaces/:id/wip-limit",

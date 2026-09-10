@@ -49,6 +49,7 @@ mod reactions;
 mod refs;
 mod reindex_jobs;
 mod retention;
+mod scim_users;
 mod sessions;
 mod slack_links;
 mod slash_commands;
@@ -184,6 +185,35 @@ impl MemberStore for SqliteStore {
         handle: &str,
     ) -> Result<Member, StoreError> {
         members::get_by_handle(&self.pool, workspace_id, handle).await
+    }
+    async fn create_scim_user(
+        &self,
+        member_id: MemberId,
+        workspace_id: WorkspaceId,
+        external_id: Option<&str>,
+        active: bool,
+    ) -> Result<ScimUser, StoreError> {
+        scim_users::create(&self.pool, member_id, workspace_id, external_id, active).await
+    }
+    async fn get_scim_user(&self, member_id: MemberId) -> Result<Option<ScimUser>, StoreError> {
+        scim_users::get(&self.pool, member_id).await
+    }
+    async fn list_scim_users(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<ScimUser>, StoreError> {
+        scim_users::list(&self.pool, workspace_id).await
+    }
+    async fn update_scim_user(
+        &self,
+        member_id: MemberId,
+        external_id: Option<&str>,
+        active: bool,
+    ) -> Result<Option<ScimUser>, StoreError> {
+        scim_users::update(&self.pool, member_id, external_id, active).await
+    }
+    async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError> {
+        scim_users::delete(&self.pool, member_id).await
     }
 }
 
