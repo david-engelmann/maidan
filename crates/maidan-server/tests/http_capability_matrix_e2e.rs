@@ -339,6 +339,9 @@ fn apply_route_defaults(
     if path.ends_with("/wait") && method == "PUT" {
         return b.json(&json!({ "wait_until": "2099-01-01T00:00:00Z" }));
     }
+    if path.ends_with("/priority") && method == "PUT" {
+        return b.json(&json!({ "priority": 5 }));
+    }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
     }
