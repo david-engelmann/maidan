@@ -651,6 +651,25 @@ pub fn mark_thread_unclaimable() {}
     responses((status = 204, description = "Un-parked"), (status = 404, description = "Was not parked")))]
 pub fn mark_thread_claimable() {}
 
+#[utoipa::path(put, path = "/threads/{id}/wait", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadWait,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadWait, description = "The wait timer (set/reset)")))]
+pub fn set_thread_wait() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/wait", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Cancelled"), (status = 404, description = "No wait was set")))]
+pub fn cancel_thread_wait() {}
+
+#[utoipa::path(get, path = "/threads/{id}/wait", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadWait), (status = 404, description = "No wait is set")))]
+pub fn get_thread_wait() {}
+
 #[utoipa::path(get, path = "/threads/{tid}/messages", tag = "messages",
     params(
         ("tid" = Uuid, Path, description = "Thread id"),

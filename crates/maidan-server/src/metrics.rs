@@ -156,6 +156,10 @@ pub fn init() {
             "Task schedules fired by the scheduler sweeper (a thread was created), by outcome"
         );
         describe_counter!(
+            "maidan_wait_timed_out_total",
+            "Thread wait timers fired by the wait sweeper, by escalation policy (notify/park)"
+        );
+        describe_counter!(
             "maidan_replica_reads_total",
             "Store reads routed to the primary vs a read replica (LSN-token read routing)"
         );

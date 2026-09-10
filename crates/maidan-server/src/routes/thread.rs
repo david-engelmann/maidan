@@ -656,6 +656,71 @@ pub async fn mark_thread_claimable(
     }
 }
 
+/// `PUT /threads/:id/wait` (Cluster 364, G2) — set (upsert) a wait timer on a
+/// thread: it is waiting until `wait_until`, and on timeout the sweeper escalates
+/// via `on_timeout` (default `notify`) — never a decision. `thread:transition` +
+/// thread access.
+pub async fn set_thread_wait(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadWait>,
+) -> ApiResult<Json<ThreadWait>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let reason = body
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty());
+    Ok(Json(
+        state
+            .store
+            .set_thread_wait(
+                thread_id,
+                body.wait_until,
+                body.on_timeout.unwrap_or_default(),
+                reason,
+                auth.member_id,
+            )
+            .await?,
+    ))
+}
+
+/// `DELETE /threads/:id/wait` (Cluster 364) — cancel a thread's wait (the awaited
+/// thing happened). `204` when a wait existed, `404` when not. `thread:transition`.
+pub async fn cancel_thread_wait(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state.store.cancel_thread_wait(thread_id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// `GET /threads/:id/wait` (Cluster 364) — the thread's wait, or `404`.
+/// `workspace:read` + thread access.
+pub async fn get_thread_wait(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadWait>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_wait(thread_id).await? {
+        Some(wait) => Ok(Json(wait)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
 /// A member's work queue: threads assigned to them (Cluster 190). Filtered to
 /// threads the *caller* can access (RBAC-consistent with search / context).
 pub async fn list_assigned_threads(
