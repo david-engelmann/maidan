@@ -315,6 +315,54 @@ pub(super) async fn unassign_thread(
 }
 
 #[derive(Deserialize)]
+struct SetWaitArgs {
+    thread_id: uuid::Uuid,
+    wait_until: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    on_timeout: Option<EscalationPolicy>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+/// Set (upsert) a wait timer on a thread (Cluster 364, G2): it is waiting until
+/// `wait_until`, and on timeout the sweeper escalates via `on_timeout` (default
+/// `notify`) — never a decision. `thread:transition`; thread access enforced.
+pub(super) async fn set_wait(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetWaitArgs = serde_json::from_value(args.clone())?;
+    let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
+    let wait = store
+        .set_thread_wait(
+            ThreadId(a.thread_id),
+            a.wait_until,
+            a.on_timeout.unwrap_or_default(),
+            reason,
+            auth.member_id,
+        )
+        .await?;
+    Ok(content_json(&wait))
+}
+
+/// Cancel a thread's wait — the awaited thing happened (Cluster 364). `{cancelled}`
+/// is `false` when no wait was set. `thread:transition`; thread access enforced.
+pub(super) async fn cancel_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let cancelled = store.cancel_thread_wait(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&json!({ "cancelled": cancelled })))
+}
+
+/// The thread's wait, or null (Cluster 364). `workspace:read`; thread access
+/// enforced.
+pub(super) async fn get_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let wait = store.get_thread_wait(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&wait))
+}
+
+#[derive(Deserialize)]
 struct MarkUnclaimableArgs {
     thread_id: uuid::Uuid,
     reason: String,
