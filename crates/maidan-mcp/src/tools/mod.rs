@@ -83,6 +83,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_assigned_threads"
         | "get_wip_limit"
         | "get_member_wip"
+        | "list_unclaimable"
         | "list_thread_dependencies"
         | "list_task_schedules"
         | "list_member_skills"
@@ -172,6 +173,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "rename_thread"
         | "set_thread_budget"
         | "report_usage"
+        | "mark_unclaimable"
+        | "mark_claimable"
         | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -211,6 +214,7 @@ async fn enforce_channel_access(
         | "unmute_channel"
         | "list_dlq"
         | "create_task_schedule"
+        | "list_unclaimable"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
@@ -252,6 +256,8 @@ async fn enforce_channel_access(
         | "wait_for_result"
         | "get_dependency_results"
         | "request_approval"
+        | "mark_unclaimable"
+        | "mark_claimable"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -332,6 +338,9 @@ pub async fn dispatch(
         "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
         "get_member_wip" => thread::get_member_wip(store, args).await,
+        "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
+        "mark_claimable" => thread::mark_claimable(store, args).await,
+        "list_unclaimable" => thread::list_unclaimable(store, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, args).await,
         "renew_claim" => thread::renew_claim(server, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, args).await,
