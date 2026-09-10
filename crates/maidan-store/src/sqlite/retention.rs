@@ -21,10 +21,14 @@ pub async fn prune_events(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
+        // Cluster 366 (T6): held workspaces' events are exempt (system events with
+        // NULL workspace_id are never under a tenant hold, so they still prune).
         "DELETE FROM maidan_events
          WHERE id IN (
              SELECT id FROM maidan_events
              WHERE id <= ? AND occurred_at < ?
+               AND (workspace_id IS NULL
+                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
              ORDER BY id ASC
              LIMIT ?
          )",
@@ -43,10 +47,13 @@ pub async fn prune_audit(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
+        // Cluster 366 (T6): maidan_audit is not workspace-tagged, so a legal hold
+        // freezes audit pruning entirely while any hold is active.
         "DELETE FROM maidan_audit
          WHERE id IN (
              SELECT id FROM maidan_audit
              WHERE occurred_at < ?
+               AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds)
              ORDER BY id ASC
              LIMIT ?
          )",

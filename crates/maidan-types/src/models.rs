@@ -840,6 +840,20 @@ pub struct ThreadPriority {
     pub set_at: DateTime<Utc>,
 }
 
+/// A legal hold on a workspace (Cluster 366, T6). While held, the workspace's
+/// event-log rows are exempt from retention pruning, audit pruning is frozen, and
+/// workspace purge/erase is refused — evidence is preserved for litigation. One
+/// active hold per workspace; presence of the record = under hold.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LegalHold {
+    pub workspace_id: WorkspaceId,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placed_by: Option<MemberId>,
+    pub placed_at: DateTime<Utc>,
+}
+
 /// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
 /// row — a digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra

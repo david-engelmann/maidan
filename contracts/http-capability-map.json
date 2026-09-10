@@ -835,6 +835,30 @@
   },
   {
     "method": "PUT",
+    "path": "/workspaces/{id}/legal-hold",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{id}/legal-hold",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/legal-hold",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/legal-holds",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
     "path": "/workspaces/{id}/wip-limit",
     "capability": "workspace:write",
     "surface": "http"

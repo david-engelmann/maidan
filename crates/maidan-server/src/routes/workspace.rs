@@ -315,6 +315,7 @@ pub async fn purge_workspace(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
     state.store.get_workspace(workspace_id).await?;
+    ensure_not_under_legal_hold(&state, workspace_id).await?;
     let mut result = state.store.purge_workspace_messages(workspace_id).await?;
     let mut artifact_blobs_deleted = 0u64;
     for sha_hex in &result.artifact_shas {
@@ -365,6 +366,7 @@ pub async fn erase_workspace(
         ));
     }
     state.store.get_workspace(workspace_id).await?;
+    ensure_not_under_legal_hold(&state, workspace_id).await?;
     state
         .store
         .append_audit(NewAuditEvent {
@@ -390,6 +392,107 @@ pub async fn erase_workspace(
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result))
+}
+
+/// Refuse a destructive workspace operation while the workspace is under a legal
+/// hold (Cluster 366, T6) — 409 Conflict. Read on the primary (the pg store routes
+/// `get_legal_hold` there) so a lagged replica can never let evidence be destroyed.
+async fn ensure_not_under_legal_hold(state: &AppState, workspace_id: WorkspaceId) -> ApiResult<()> {
+    if state.store.get_legal_hold(workspace_id).await?.is_some() {
+        return Err(ApiError::Conflict(
+            "workspace is under a legal hold; lift it before deleting workspace data".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// `PUT /workspaces/:id/legal-hold` (Cluster 366, T6) — place (or update) a legal
+/// hold. `token:admin` (a higher bar than the `workspace:write` that purges, so a
+/// workspace admin can't lift-then-destroy). Body `{reason}`.
+pub async fn place_legal_hold(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<PlaceLegalHold>,
+) -> ApiResult<Json<LegalHold>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let reason = body.reason.trim();
+    if reason.is_empty() {
+        return Err(ApiError::BadRequest("reason must not be empty".into()));
+    }
+    state.store.get_workspace(workspace_id).await?;
+    let hold = state
+        .store
+        .place_legal_hold(workspace_id, reason, Some(auth.member_id))
+        .await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "legal_hold.place".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({ "reason": reason }),
+        },
+    )
+    .await;
+    Ok(Json(hold))
+}
+
+/// `DELETE /workspaces/:id/legal-hold` (Cluster 366) — lift the hold. `204` when a
+/// hold existed, `404` when not. `token:admin`.
+pub async fn lift_legal_hold(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    if state.store.lift_legal_hold(workspace_id).await? {
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "legal_hold.lift".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await;
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// `GET /workspaces/:id/legal-hold` (Cluster 366) — the hold, or `404`.
+/// `workspace:read`.
+pub async fn get_legal_hold(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<LegalHold>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    match state.store.get_legal_hold(workspace_id).await? {
+        Some(hold) => Ok(Json(hold)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
+/// `GET /operator/legal-holds` (Cluster 366) — every active hold across all
+/// workspaces, newest first. `token:admin` — the operator/compliance view.
+pub async fn list_legal_holds(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> ApiResult<Json<Vec<LegalHold>>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    Ok(Json(state.store.list_legal_holds().await?))
 }
 
 pub async fn list_workspace_audit(

@@ -42,6 +42,26 @@ pub trait WorkspaceStore: Send + Sync {
     /// excluding tombstoned rows) for metering (Cluster 188).
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
 
+    /// Place (or update) a legal hold on a workspace (Cluster 366, T6). While
+    /// held, the workspace's events are exempt from retention pruning, audit
+    /// pruning is frozen, and purge/erase is refused. Upserts (one hold per
+    /// workspace).
+    async fn place_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        placed_by: Option<MemberId>,
+    ) -> Result<LegalHold, StoreError>;
+    /// Lift a workspace's legal hold (Cluster 366). `true` when a hold existed.
+    async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError>;
+    /// The workspace's legal hold, or `None` (Cluster 366).
+    async fn get_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<LegalHold>, StoreError>;
+    /// Every active legal hold, newest first (Cluster 366) — the operator view.
+    async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError>;
+
     /// Set (or clear) the workspace's WIP limit (Cluster 362, G11): the max
     /// concurrent *live* claims any one member may hold. `Some(n)` upserts (`0`
     /// freezes claiming); `None` removes the cap (unlimited).

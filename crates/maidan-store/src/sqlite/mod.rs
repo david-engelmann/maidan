@@ -25,6 +25,7 @@ mod glossary;
 mod group_dm;
 mod import;
 mod inbox;
+mod legal_hold;
 mod mail_outbox;
 mod member_emails;
 mod member_last_seen;
@@ -126,6 +127,26 @@ impl WorkspaceStore for SqliteStore {
     }
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
         workspaces::usage(&self.pool, id).await
+    }
+    async fn place_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        placed_by: Option<MemberId>,
+    ) -> Result<LegalHold, StoreError> {
+        legal_hold::place(&self.pool, workspace_id, reason, placed_by).await
+    }
+    async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
+        legal_hold::lift(&self.pool, workspace_id).await
+    }
+    async fn get_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<LegalHold>, StoreError> {
+        legal_hold::get(&self.pool, workspace_id).await
+    }
+    async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError> {
+        legal_hold::list(&self.pool).await
     }
     async fn set_wip_limit(
         &self,
