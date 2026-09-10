@@ -102,6 +102,23 @@ pub async fn get_channel_queue_depth(
     Ok(Json(depth))
 }
 
+/// `GET /channels/:cid/unclaimable` (Cluster 363, G3) — the parked (unclaimable)
+/// threads in a channel, newest first, for triage. `workspace:read` + channel
+/// access.
+pub async fn list_channel_unclaimable(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ThreadUnclaimable>>> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    Ok(Json(
+        state.store.list_unclaimable_threads(channel.id).await?,
+    ))
+}
+
 /// Channel occupancy (Cluster 351): the two-clocks view — queued / claimed /
 /// working / blocked counts of the channel's open task threads, so an
 /// orchestrator sees how much held work is actually underway. `workspace:read` +

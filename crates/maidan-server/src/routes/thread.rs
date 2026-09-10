@@ -581,6 +581,14 @@ pub async fn claim_thread(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
+    // Unclaimable (Cluster 363, G3): a parked thread refuses an explicit claim,
+    // just as `claim_next` skips it. Un-park it (DELETE …/unclaimable) to work it.
+    if let Some(u) = state.store.get_thread_unclaimable(thread_id).await? {
+        return Err(ApiError::Conflict(format!(
+            "thread is parked (unclaimable): {}",
+            u.reason
+        )));
+    }
     // WIP limit (Cluster 362, G11): refuse an explicit claim that would push the
     // member past their workspace cap — 409, distinct from `claim_next`'s silent
     // null. Skipped when the member already holds this thread (a re-claim is not a
@@ -603,6 +611,49 @@ pub async fn claim_thread(
         super::publish_stored(&state, stored).await;
     }
     Ok(Json(result))
+}
+
+/// `PUT /threads/:id/unclaimable` (Cluster 363, G3) — park a thread from dispatch
+/// with a reason: `claim_next` skips it and an explicit `claim` is refused, until
+/// cleared. `thread:transition` + thread access. Upserts (a re-mark updates the
+/// reason/actor).
+pub async fn mark_thread_unclaimable(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<MarkUnclaimable>,
+) -> ApiResult<Json<ThreadUnclaimable>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let reason = body.reason.trim();
+    if reason.is_empty() {
+        return Err(ApiError::BadRequest("reason must not be empty".into()));
+    }
+    Ok(Json(
+        state
+            .store
+            .mark_thread_unclaimable(thread_id, reason, auth.member_id)
+            .await?,
+    ))
+}
+
+/// `DELETE /threads/:id/unclaimable` (Cluster 363) — un-park a thread (it becomes
+/// claimable again). `204` when it was parked, `404` when it was not.
+/// `thread:transition` + thread access.
+pub async fn mark_thread_claimable(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state.store.mark_thread_claimable(thread_id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 /// A member's work queue: threads assigned to them (Cluster 190). Filtered to

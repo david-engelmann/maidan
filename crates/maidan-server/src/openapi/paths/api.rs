@@ -464,6 +464,12 @@ pub fn get_channel() {}
     responses((status = 200, body = QueueDepth)))]
 pub fn get_channel_queue_depth() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/unclaimable", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadUnclaimable>, description = "Parked threads, newest first")))]
+pub fn list_channel_unclaimable() {}
+
 #[utoipa::path(get, path = "/channels/{cid}/occupancy", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     security(("bearerAuth" = [])),
@@ -631,6 +637,19 @@ pub fn report_thread_usage() {}
     security(("bearerAuth" = [])),
     responses((status = 200, body = ThreadClaimResult)))]
 pub fn claim_thread() {}
+
+#[utoipa::path(put, path = "/threads/{id}/unclaimable", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = MarkUnclaimable,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadUnclaimable, description = "The thread parked from dispatch")))]
+pub fn mark_thread_unclaimable() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/unclaimable", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Un-parked"), (status = 404, description = "Was not parked")))]
+pub fn mark_thread_claimable() {}
 
 #[utoipa::path(get, path = "/threads/{tid}/messages", tag = "messages",
     params(

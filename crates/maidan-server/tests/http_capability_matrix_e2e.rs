@@ -333,6 +333,9 @@ fn apply_route_defaults(
     if path.ends_with("/wip-limit") && method == "PUT" {
         return b.json(&json!({ "limit": 5 }));
     }
+    if path.ends_with("/unclaimable") && method == "PUT" {
+        return b.json(&json!({ "reason": "cap matrix" }));
+    }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
     }
