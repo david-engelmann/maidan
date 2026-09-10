@@ -443,6 +443,7 @@ pub async fn claim_next(
     let row = sqlx::query(
         "WITH next AS (
              SELECT c.id FROM maidan_threads c
+             LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
              WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
                AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
                AND NOT EXISTS (
@@ -465,9 +466,9 @@ pub async fn claim_next(
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
                )
-             ORDER BY c.created_at ASC, c.id ASC
+             ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
              LIMIT 1
-             FOR UPDATE SKIP LOCKED
+             FOR UPDATE OF c SKIP LOCKED
          )
          UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
@@ -597,6 +598,7 @@ pub async fn claim_next_with_event(
     let row = sqlx::query(
         "WITH next AS (
              SELECT c.id, c.assignee_id AS prev_assignee FROM maidan_threads c
+             LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
              WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
                AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
                AND NOT EXISTS (
@@ -619,9 +621,9 @@ pub async fn claim_next_with_event(
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
                )
-             ORDER BY c.created_at ASC, c.id ASC
+             ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
              LIMIT 1
-             FOR UPDATE SKIP LOCKED
+             FOR UPDATE OF c SKIP LOCKED
          )
          UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
