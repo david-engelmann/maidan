@@ -327,6 +327,29 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_priority",
+            "description": "Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urgent (default 0). claim_next orders by an effective rank = this priority aged up the longer the thread waits, so priority jumps the queue without starving long-waiting tasks. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "priority": {"type": "integer", "description": "higher = more urgent; default 0"}
+                },
+                "required": ["thread_id", "priority"]
+            }
+        }),
+        json!({
+            "name": "get_priority",
+            "description": "The thread's dispatch-priority record, or null (which means the default priority 0) (G3).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "mark_unclaimable",
             "description": "Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.",
             "inputSchema": {
