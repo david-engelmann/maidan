@@ -478,6 +478,18 @@
           and dependencies. Also lists the workspace's task schedules. Reads use your
           signed-in session (or a bearer token).
         </p>
+        <h4>Waiting on you</h4>
+        <div>
+          <label
+            >SLA (s)
+            <input id="waiting-sla" type="number" value="86400" style="width: 8rem"
+          /></label>
+          <button id="waiting-refresh" type="button">Load</button>
+          <span id="waiting-summary" class="muted"></span>
+        </div>
+        <ul id="waiting-list" class="muted">
+          <li>Load to see what needs your attention.</li>
+        </ul>
         <div>
           <label
             >Channel
@@ -1885,8 +1897,50 @@
 
       // --- Work tab (Cluster 367, Wave 2 #15): the work-observability console. ---
       async function loadWork() {
+        await loadWaiting();
         await loadWorkChannels();
         await loadWorkSchedules();
+      }
+
+      // Waiting-on-you inbox (Cluster 368.3, Wave 2 #16).
+      async function loadWaiting() {
+        const list = document.getElementById("waiting-list");
+        const summary = document.getElementById("waiting-summary");
+        const id = authorId();
+        if (!id) {
+          list.innerHTML =
+            "<li class='muted'>Sign in (session) or set an actor id above.</li>";
+          summary.textContent = "";
+          return;
+        }
+        const sla = document.getElementById("waiting-sla").value.trim() || "86400";
+        try {
+          const res = await fetch(
+            uiReadPath(`/members/${id}/waiting?sla_secs=${encodeURIComponent(sla)}`),
+            { headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) {
+            list.innerHTML = `<li class='muted'>Failed (HTTP ${res.status}).</li>`;
+            summary.textContent = "";
+            return;
+          }
+          const inbox = await res.json();
+          summary.textContent = `${inbox.total} waiting, ${inbox.overdue} overdue`;
+          list.innerHTML = "";
+          if (!inbox.items.length) {
+            list.innerHTML = "<li class='muted'>Nothing waiting on you. 🎉</li>";
+            return;
+          }
+          for (const it of inbox.items) {
+            const li = document.createElement("li");
+            const hrs = Math.floor(it.age_secs / 3600);
+            li.textContent = `[${it.kind}] ${it.summary} — ${hrs}h${it.overdue ? " ⚠ overdue" : ""}`;
+            if (it.overdue) li.className = "err";
+            list.appendChild(li);
+          }
+        } catch (e) {
+          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+        }
       }
 
       async function loadWorkChannels() {
@@ -2859,6 +2913,7 @@
       document.getElementById("presence-online").onclick = () => setPresence("online");
       document.getElementById("presence-away").onclick = () => setPresence("away");
       document.getElementById("work-refresh").onclick = () => loadWork();
+      document.getElementById("waiting-refresh").onclick = () => loadWaiting();
       document.getElementById("work-channel").onchange = () => {
         loadWorkDepth();
         loadWorkThreads();

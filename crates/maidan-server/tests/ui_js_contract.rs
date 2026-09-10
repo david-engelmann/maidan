@@ -429,3 +429,26 @@ fn ui_js_wires_looking_glass_tab() {
         "the looking-glass panel + tab button must exist"
     );
 }
+
+/// Cluster 368.3 (Wave 2 #16): the waiting-on-you inbox in the Work tab. Static
+/// guard — the loader is defined + invoked from loadWork, and the section exists.
+#[test]
+fn ui_js_wires_waiting_inbox() {
+    let s = script(HTML);
+    assert!(
+        s.contains("async function loadWaiting("),
+        "loadWaiting must be defined"
+    );
+    assert!(
+        s.contains("await loadWaiting()"),
+        "loadWork must invoke loadWaiting"
+    );
+    assert!(
+        s.contains("/waiting?sla_secs="),
+        "loadWaiting must call the waiting inbox with an sla_secs"
+    );
+    assert!(
+        HTML.contains("id=\"waiting-list\"") && HTML.contains("id=\"waiting-sla\""),
+        "the waiting-on-you section must exist"
+    );
+}
