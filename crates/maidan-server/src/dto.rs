@@ -645,6 +645,14 @@ pub struct SetEmail {
     pub email: String,
 }
 
+/// Query for `GET /members/:id/waiting` (Cluster 368, Wave 2 #16) — the SLA in
+/// seconds an item may wait before it is flagged overdue (default 86400 = 24h).
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct WaitingQuery {
+    #[serde(default)]
+    pub sla_secs: Option<i64>,
+}
+
 /// The keys of a browser `PushSubscription` (Cluster 366, N1) — base64url.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PushKeys {

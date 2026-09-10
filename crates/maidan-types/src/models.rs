@@ -1438,6 +1438,147 @@ pub struct Mention {
     pub created_at: DateTime<Utc>,
 }
 
+/// What is waiting on a member (Cluster 368, Wave 2 #16 — G15/G9): the class of a
+/// [`WaitingItem`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum WaitingKind {
+    /// A non-terminal thread assigned to the member.
+    AssignedThread,
+    /// A pending approval gate needing a human.
+    OpenGate,
+    /// An unread @mention of the member.
+    Mention,
+}
+
+/// One thing waiting on a member (Cluster 368) — with its age and whether it has
+/// breached the SLA.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WaitingItem {
+    pub kind: WaitingKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<ThreadId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate_id: Option<ApprovalGateId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<MessageId>,
+    pub summary: String,
+    pub since: DateTime<Utc>,
+    pub age_secs: i64,
+    pub overdue: bool,
+}
+
+/// The waiting-on-you inbox (Cluster 368): everything that needs a member's
+/// attention — assigned tasks, open gates, unread mentions — oldest-waiting first,
+/// with an SLA marking the overdue ones. Not `@everyone`: it is one member's queue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WaitingInbox {
+    pub items: Vec<WaitingItem>,
+    pub total: usize,
+    pub overdue: usize,
+    pub sla_secs: i64,
+}
+
+fn truncate_summary(s: &str, max_chars: usize) -> String {
+    let trimmed = s.trim();
+    if trimmed.chars().count() <= max_chars {
+        trimmed.to_string()
+    } else {
+        let head: String = trimmed.chars().take(max_chars).collect();
+        format!("{head}…")
+    }
+}
+
+fn waiting_item(
+    kind: WaitingKind,
+    thread_id: Option<ThreadId>,
+    gate_id: Option<ApprovalGateId>,
+    message_id: Option<MessageId>,
+    summary: String,
+    since: DateTime<Utc>,
+    now: DateTime<Utc>,
+    sla_secs: i64,
+) -> WaitingItem {
+    let age_secs = (now - since).num_seconds().max(0);
+    WaitingItem {
+        kind,
+        thread_id,
+        gate_id,
+        message_id,
+        summary,
+        since,
+        age_secs,
+        overdue: age_secs > sla_secs,
+    }
+}
+
+/// Assemble a member's waiting-on-you inbox from the three sources (Cluster 368):
+/// their assigned **non-terminal** threads, the workspace's pending approval gates
+/// (they need a human), and their unread mentions. Pure — the caller fetches the
+/// sources and the unread-mention filter; items come back oldest-waiting first,
+/// each aged against `sla_secs`.
+pub fn assemble_waiting_inbox(
+    assigned: &[Thread],
+    pending_gates: &[ApprovalGate],
+    unread_mentions: &[Mention],
+    now: DateTime<Utc>,
+    sla_secs: i64,
+) -> WaitingInbox {
+    let mut items = Vec::new();
+    for t in assigned {
+        if t.state.is_terminal() || t.tombstoned_at.is_some() {
+            continue;
+        }
+        items.push(waiting_item(
+            WaitingKind::AssignedThread,
+            Some(t.id),
+            None,
+            None,
+            t.title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string()),
+            t.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    for g in pending_gates {
+        items.push(waiting_item(
+            WaitingKind::OpenGate,
+            g.thread_id,
+            Some(g.id),
+            None,
+            truncate_summary(&g.prompt, 120),
+            g.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    for m in unread_mentions {
+        items.push(waiting_item(
+            WaitingKind::Mention,
+            None,
+            None,
+            Some(m.message_id),
+            format!("mention in message {}", m.message_id.0),
+            m.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    items.sort_by(|a, b| a.since.cmp(&b.since));
+    let overdue = items.iter().filter(|i| i.overdue).count();
+    WaitingInbox {
+        total: items.len(),
+        overdue,
+        sla_secs,
+        items,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
