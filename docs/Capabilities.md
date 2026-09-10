@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v367.0.0 — Wave 2 #15: the human work console (`/ui`)
+
+A stacked `/ui` cluster (367.1–367.3) letting a human inhabit the workplace loop — vanilla, no SPA. All the machinery shipped in Wave 1; this surfaces it.
+
+| Change | Where |
+|--------|-------|
+| **Work tab (367.1, B2):** channel queue depth (224) + occupancy (351), threads, a thread's result (234) + DAG deps (217), task schedules (226). 5 `/ui/api` reads. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
+| **Prefs console (367.2, B11):** delivery mode (256), email (250), muted kinds (242), channel + thread follows (245) — self-only. 12 `/ui/api` routes. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
+| **Looking glass (367.3, B3):** events by kind, thread by id, artifact by sha (404 → not-found), peers — read-only explorer. 1 new `/ui/api` read. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
+| Guards: `ui_js_wires_{work,prefs,looking_glass}_tab` static checks + `work.spec.ts` / `glass.spec.ts` Playwright specs. | `crates/maidan-server/tests/ui_js_contract.rs`, `ui-tests/tests/` |
+
 ## v366.0.0 — Wave 1 #14: legal hold, OTel gate, web push, SCIM
 
 Four independent tracks (the backlog's "four bullets, not one cluster"), each shipped as its own PR to `main`.
