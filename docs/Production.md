@@ -37,6 +37,15 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `OTLP_METRICS` | no | Set to `1` to push the same `metrics` crate instruments to OTLP (fanout with Prometheus scrape). Requires `OTLP_ENDPOINT` unless `OTLP_METRICS_ENDPOINT` is set. |
 | `OTLP_METRICS_ENDPOINT` | no | Override OTLP gRPC URL for metrics only. |
 | `OTLP_METRICS_INTERVAL_SECS` | no | Periodic push interval (default `15`). |
+
+**Compiling OpenTelemetry out (Cluster 366, H15).** OTLP export is a default-on
+cargo feature (`otel`) on `maidan-server`. Building with `--no-default-features`
+(or a custom feature set that omits `otel`) drops the OpenTelemetry/OTLP/tonic
+stack entirely for a leaner binary — plain `tracing` logs and the Prometheus
+`/metrics` scrape are unaffected. In such a build the `OTLP_*` variables above are
+inert (an `OTLP_ENDPOINT` that is set is reported to stderr at startup and
+otherwise ignored). Leave the feature on (the default) to keep OTLP traces +
+metrics push available.
 | `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or `X-Forwarded-For` / `anonymous`). Default off. `/health/*` and `/metrics` exempt. |
 | `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |

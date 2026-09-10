@@ -5,19 +5,26 @@
 
 mod metrics;
 
+#[cfg(feature = "otel")]
 use std::time::Duration;
 
+#[cfg(feature = "otel")]
 use opentelemetry::trace::TracerProvider as OtelTracerProvider;
+#[cfg(feature = "otel")]
 use opentelemetry::KeyValue;
+#[cfg(feature = "otel")]
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::Resource;
 use thiserror::Error;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer as _};
 
+#[cfg(feature = "otel")]
+pub use metrics::{build_otlp_metrics_recorder, MeterGuard};
 pub use metrics::{
-    build_otlp_metrics_recorder, otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env,
-    MeterGuard, MetricsPushConfig,
+    otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env, MetricsPushConfig,
 };
 
 /// Log output format.
@@ -75,26 +82,34 @@ pub enum InitError {
     AlreadyInitialized,
 }
 
-/// Handle keeping OTel providers alive until [`Guard::shutdown`].
+/// Handle keeping OTel providers alive until [`Guard::shutdown`]. When the `otel`
+/// feature is compiled out this carries nothing and `shutdown` is a no-op.
 pub struct Guard {
+    #[cfg(feature = "otel")]
     tracer_provider: Option<SdkTracerProvider>,
+    #[cfg(feature = "otel")]
     meter_provider: Option<metrics::MeterGuard>,
 }
 
 impl Guard {
-    pub fn shutdown(mut self) {
-        if let Some(provider) = self.meter_provider.take() {
-            provider.shutdown();
-        }
-        if let Some(provider) = self.tracer_provider.take() {
-            if let Err(err) = provider.shutdown() {
-                eprintln!("opentelemetry trace shutdown error: {err}");
+    pub fn shutdown(self) {
+        #[cfg(feature = "otel")]
+        {
+            if let Some(provider) = self.meter_provider {
+                provider.shutdown();
+            }
+            if let Some(provider) = self.tracer_provider {
+                if let Err(err) = provider.shutdown() {
+                    eprintln!("opentelemetry trace shutdown error: {err}");
+                }
             }
         }
     }
 }
 
-/// Initialize global `tracing` + optional OTLP trace export.
+/// Initialize global `tracing` + optional OTLP trace export. With the `otel`
+/// feature off, only plain `tracing` is installed (OTLP is compiled out); an
+/// `OTLP_ENDPOINT` set in that build is reported and otherwise ignored.
 pub fn init(config: Config) -> Result<Guard, InitError> {
     let filter = EnvFilter::try_new(&config.log_filter).unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -106,44 +121,61 @@ pub fn init(config: Config) -> Result<Guard, InitError> {
             .boxed(),
     };
 
-    let mut tracer_provider = None;
-
     let registry = tracing_subscriber::registry().with(filter).with(fmt_layer);
 
-    if let Some(endpoint) = config.otlp_endpoint {
-        let exporter = SpanExporter::builder()
-            .with_tonic()
-            .with_endpoint(endpoint)
-            .with_timeout(Duration::from_secs(3))
-            .build()
-            .map_err(|e| InitError::Otlp(e.to_string()))?;
+    #[cfg(feature = "otel")]
+    let guard = {
+        let mut tracer_provider = None;
+        if let Some(endpoint) = config.otlp_endpoint {
+            let exporter = SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(endpoint)
+                .with_timeout(Duration::from_secs(3))
+                .build()
+                .map_err(|e| InitError::Otlp(e.to_string()))?;
 
-        let resource = Resource::builder()
-            .with_attributes([KeyValue::new("service.name", config.service_name.clone())])
-            .build();
+            let resource = Resource::builder()
+                .with_attributes([KeyValue::new("service.name", config.service_name.clone())])
+                .build();
 
-        let provider = SdkTracerProvider::builder()
-            .with_batch_exporter(exporter)
-            .with_resource(resource)
-            .build();
+            let provider = SdkTracerProvider::builder()
+                .with_batch_exporter(exporter)
+                .with_resource(resource)
+                .build();
 
-        let tracer = OtelTracerProvider::tracer(&provider, "maidan");
-        let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+            let tracer = OtelTracerProvider::tracer(&provider, "maidan");
+            let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+            registry
+                .with(otel_layer)
+                .try_init()
+                .map_err(|_| InitError::AlreadyInitialized)?;
+            tracer_provider = Some(provider);
+        } else {
+            registry
+                .try_init()
+                .map_err(|_| InitError::AlreadyInitialized)?;
+        }
+        Guard {
+            tracer_provider,
+            meter_provider: None,
+        }
+    };
+
+    #[cfg(not(feature = "otel"))]
+    let guard = {
+        if config.otlp_endpoint.is_some() {
+            eprintln!(
+                "OTLP_ENDPOINT is set but this build was compiled without the `otel` feature; \
+                 OTLP trace export is disabled (plain tracing + Prometheus scrape unaffected)"
+            );
+        }
         registry
-            .with(otel_layer)
             .try_init()
             .map_err(|_| InitError::AlreadyInitialized)?;
-        tracer_provider = Some(provider);
-    } else {
-        registry
-            .try_init()
-            .map_err(|_| InitError::AlreadyInitialized)?;
-    }
+        Guard {}
+    };
 
-    Ok(Guard {
-        tracer_provider,
-        meter_provider: None,
-    })
+    Ok(guard)
 }
 
 #[cfg(test)]
