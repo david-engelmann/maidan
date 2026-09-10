@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [363.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G3 Unclaimable.** A
+stacked cluster (363.1–363.4). No new gate tag.
+
+### Added
+
+- **Unclaimable store foundation** (363.1): `maidan_thread_unclaimable` (pg 0067 /
+  sqlite 0066) — park a thread from dispatch with a reason (`marked_by`/`marked_at`);
+  presence = parked, absence = claimable. `AssignmentStore::mark_thread_unclaimable`/
+  `mark_thread_claimable`/`get_thread_unclaimable`/`list_unclaimable_threads`.
+- **Dispatch enforcement** (363.2): `claim_next` (both backends) skips parked
+  threads (a `NOT EXISTS` clause beside deps/skill/gate); `QueueDepth` gains an
+  `unclaimable` bucket (a 4-way partition of `open`).
+- **REST** (363.3): `PUT`/`DELETE /threads/:id/unclaimable` (park/un-park) + `GET
+  /channels/:cid/unclaimable`; explicit `claim` refuses a parked thread with 409.
+- **MCP** (363.4): the same refusal + `mark_unclaimable`/`mark_claimable`/
+  `list_unclaimable` tools.
+
 ## [362.0.0] — 2026-09-09
 
 Post-gate hardening (Phase XXIV). **Wave 1 #13 of the forward program — the WIP
