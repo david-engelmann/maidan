@@ -482,6 +482,9 @@ pub async fn claim_next(
                    SELECT 1 FROM maidan_approval_gates g
                    WHERE g.thread_id = t.id AND g.state = 'pending'
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
+               )
              ORDER BY t.created_at ASC, t.id ASC
              LIMIT 1
          )
@@ -514,22 +517,28 @@ pub async fn channel_queue_depth(
                        AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
                      THEN 1 ELSE 0 END), 0) AS assigned_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
                        AND NOT EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
                      THEN 1 ELSE 0 END), 0) AS ready_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
                        AND EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS blocked_count
+                     THEN 1 ELSE 0 END), 0) AS blocked_count,
+             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+                       AND EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
+                     THEN 1 ELSE 0 END), 0) AS unclaimable_count
          FROM maidan_threads t
          WHERE t.channel_id = ?
            AND t.state NOT IN ('closed', 'archived')
            AND t.tombstoned_at IS NULL",
     )
+    .bind(&now)
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -541,6 +550,7 @@ pub async fn channel_queue_depth(
         ready: row.get::<i64, _>("ready_count"),
         assigned: row.get::<i64, _>("assigned_count"),
         blocked: row.get::<i64, _>("blocked_count"),
+        unclaimable: row.get::<i64, _>("unclaimable_count"),
     })
 }
 
@@ -635,6 +645,9 @@ pub async fn claim_next_with_event(
            AND NOT EXISTS (
                SELECT 1 FROM maidan_approval_gates g
                WHERE g.thread_id = t.id AND g.state = 'pending'
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
            )
          ORDER BY t.created_at ASC, t.id ASC
          LIMIT 1",
