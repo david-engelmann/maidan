@@ -707,6 +707,11 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/artifacts/:sha/meta",
             get(routes::get_artifact_metadata),
         )
+        // Waiting-on-you inbox (Cluster 368.3, Wave 2 #16).
+        .route(
+            "/ui/api/members/:id/waiting",
+            get(routes::get_member_waiting),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::session_or_bearer_middleware,
