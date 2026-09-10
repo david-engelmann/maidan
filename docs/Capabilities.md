@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v365.0.0 — fair dispatch (Wave 1 #13 cont.)
+
+A stacked cluster (365.1–365.4, G3) giving a thread a **dispatch priority** with **aging**, so `claim_next` is no longer strict FIFO. A high-priority task jumps the queue, but a long-waiting normal task ages one rank per hour until it overtakes newer higher-priority work — priority alone would starve the low end; the aging makes it *fair*. With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364 + fair dispatch 365).
+
+| Change | Where |
+|--------|-------|
+| **Store (365.1):** `maidan_thread_priorities` (pg 0069 / sqlite 0068); `ThreadPriority`; `set_thread_priority`/`get_thread_priority`; absence = default 0. | `migrations/*/006{9,8}_thread_priorities.sql`, `crates/maidan-store/src/{sqlite,postgres}/priorities.rs` |
+| **Dispatch (365.2):** both `claim_next` variants order by `priority + floor(age_seconds / 3600)` DESC (created_at tiebreak); pg `FOR UPDATE OF c`, sqlite `strftime('%s',…)`. The by-id `claim` is untouched. | `crates/maidan-store/src/{sqlite,postgres}/threads.rs` |
+| **REST (365.3):** `PUT`/`GET /threads/:id/priority`. | `crates/maidan-server/src/routes/thread.rs` |
+| **MCP (365.4):** `set_priority`/`get_priority`. | `crates/maidan-mcp/src/tools/thread.rs` |
+
 ## v364.0.0 — wait-edges + on_timeout escalation (Wave 1 #13 cont.)
 
 A stacked cluster (364.1–364.5, G2/G4) giving a thread a **durable wait timer** with an escalation policy. A thread declares a deadline and an `on_timeout` action; either it is cancelled (the awaited thing happened) or a background sweeper fires it on timeout — reaching the thread's owner and optionally **parking** the thread (reuse of Cluster 363). It steals the Restate/Temporal timer *shape* — it is not a workflow engine, and `on_timeout` **never invents a decision** (reach + park only, the "TimedOut ≠ Decline" rule). With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364).

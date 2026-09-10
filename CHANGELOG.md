@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [365.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G3 fair dispatch.** A
+stacked cluster (365.1–365.4). No new gate tag. With this, **Wave 1 #13 is
+complete** (G11 WIP + G3 Unclaimable + G2/G4 wait-edges + G3 fair dispatch).
+
+### Added
+
+- **Dispatch-priority store foundation** (365.1): `maidan_thread_priorities`
+  (pg 0069 / sqlite 0068) — one row per thread; absence = the default priority 0,
+  higher = more urgent. `ThreadPriority` + `AssignmentStore::set_thread_priority`/
+  `get_thread_priority`.
+- **Aged-rank fair dispatch** (365.2): both `claim_next` variants (both backends)
+  order by an effective rank = `priority + floor(age_seconds / 3600)` — base
+  priority plus one boost per hour waited — so a high-priority task jumps the FIFO
+  queue while a long-waiting normal task ages up and is never starved. (Priority
+  alone would starve low-priority tasks; the aging is what makes it *fair*.) The
+  explicit by-id `claim` is untouched; the REST claim-next route + MCP
+  `claim_next_thread` tool are fair-dispatch for free.
+- **REST** (365.3): `PUT`/`GET /threads/:id/priority`.
+- **MCP** (365.4): `set_priority`/`get_priority`.
+
 ## [364.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 1 #13 (cont.) — G2 wait-edges + G4
