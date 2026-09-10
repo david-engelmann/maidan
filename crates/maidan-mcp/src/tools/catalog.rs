@@ -291,6 +291,42 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_wait",
+            "description": "Set (upsert) a wait timer on a thread (G2): it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout — never a decision (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "wait_until": {"type": "string", "format": "date-time", "description": "deadline (RFC 3339)"},
+                    "on_timeout": {"type": "string", "enum": ["notify", "park"], "default": "notify", "description": "escalation policy on timeout"},
+                    "reason": {"type": "string", "description": "why the thread is waiting"}
+                },
+                "required": ["thread_id", "wait_until"]
+            }
+        }),
+        json!({
+            "name": "cancel_wait",
+            "description": "Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false when no wait was set. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_wait",
+            "description": "The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "mark_unclaimable",
             "description": "Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.",
             "inputSchema": {

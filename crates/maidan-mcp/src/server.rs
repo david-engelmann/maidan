@@ -1800,6 +1800,123 @@ mod tests {
         assert_eq!(depth["assigned"], json!(0));
     }
 
+    /// Cluster 364 (G2): the wait tools — set/get/cancel on the MCP path.
+    #[tokio::test]
+    async fn wait_tools_set_get_cancel() {
+        use chrono::{Duration, Utc};
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "wt".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // Real member: set_wait persists auth.member_id (created_by FK).
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let until = (Utc::now() + Duration::hours(1)).to_rfc3339();
+
+        // Get before set → null.
+        assert!(body(
+            server
+                .call_tool(&auth, "get_wait", &json!({ "thread_id": thread.id.0 }))
+                .await
+                .unwrap()
+        )
+        .is_null());
+
+        // Set a park wait.
+        let set = body(
+            server
+                .call_tool(
+                    &auth,
+                    "set_wait",
+                    &json!({ "thread_id": thread.id.0, "wait_until": until, "on_timeout": "park", "reason": "blocked" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["on_timeout"], "park");
+        assert_eq!(set["reason"], "blocked");
+
+        // Get returns it.
+        let got = body(
+            server
+                .call_tool(&auth, "get_wait", &json!({ "thread_id": thread.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["thread_id"], json!(thread.id.0));
+
+        // Cancel → true, then false.
+        assert_eq!(
+            body(
+                server
+                    .call_tool(&auth, "cancel_wait", &json!({ "thread_id": thread.id.0 }))
+                    .await
+                    .unwrap()
+            )["cancelled"],
+            json!(true)
+        );
+        assert_eq!(
+            body(
+                server
+                    .call_tool(&auth, "cancel_wait", &json!({ "thread_id": thread.id.0 }))
+                    .await
+                    .unwrap()
+            )["cancelled"],
+            json!(false)
+        );
+    }
+
     /// Cluster 363 (G3): the unclaimable tools — park/un-park/list + the explicit
     /// claim refusal + claim_next skip on the MCP path.
     #[tokio::test]
