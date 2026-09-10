@@ -405,3 +405,27 @@ fn ui_js_wires_prefs_tab() {
         "the Prefs panel + tab button must exist"
     );
 }
+
+/// Cluster 367.3 (Wave 2 #15): the looking-glass explorer. Static guard — the
+/// explorers are defined, the tab switch calls `loadGlass`, and the panel exists.
+#[test]
+fn ui_js_wires_looking_glass_tab() {
+    let s = script(HTML);
+    for f in [
+        "function loadGlass(",
+        "async function glassEventsByKind(",
+        "async function glassThread(",
+        "async function glassArtifact(",
+        "async function glassPeers(",
+    ] {
+        assert!(s.contains(f), "the looking glass must define {f}");
+    }
+    assert!(
+        s.contains("=== \"glass\") loadGlass()"),
+        "the tab switch must call loadGlass() for the looking-glass tab"
+    );
+    assert!(
+        HTML.contains("id=\"panel-glass\"") && HTML.contains("data-tab=\"glass\""),
+        "the looking-glass panel + tab button must exist"
+    );
+}
