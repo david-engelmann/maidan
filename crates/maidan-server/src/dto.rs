@@ -645,6 +645,21 @@ pub struct SetEmail {
     pub email: String,
 }
 
+/// The keys of a browser `PushSubscription` (Cluster 366, N1) — base64url.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PushKeys {
+    pub p256dh: String,
+    pub auth: String,
+}
+
+/// Body for `POST /members/:id/push-subscriptions` (Cluster 366, N1) — the
+/// browser's `PushSubscription.toJSON()` shape.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegisterPushSubscription {
+    pub endpoint: String,
+    pub keys: PushKeys,
+}
+
 /// Set a member's email delivery mode (Cluster 256). An unknown `mode` fails
 /// deserialization → `400`.
 #[derive(Debug, Deserialize, ToSchema)]

@@ -209,6 +209,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{id}", &f.member)
             .replace("{nid}", &f.member)
+            .replace("{sub_id}", &f.member)
             .replace("{cid}", &f.channel)
             .replace("{tid}", &f.thread)
             .replace("{skill}", "testskill");
@@ -459,6 +460,12 @@ fn apply_route_defaults(
     }
     if path.ends_with("/skills") && method == "POST" && path.contains("/members/") {
         return b.json(&json!({ "skill": "cap-matrix" }));
+    }
+    if path.ends_with("/push-subscriptions") && method == "POST" {
+        return b.json(&json!({
+            "endpoint": "https://push.example.com/x",
+            "keys": { "p256dh": "x", "auth": "y" }
+        }));
     }
     if path.ends_with("/required-skills") && method == "POST" {
         return b.json(&json!({ "skill": "cap-matrix" }));

@@ -199,6 +199,10 @@ pub fn init() {
             "maidan_email_delivered_total",
             "Notification emails the router attempted to send, by outcome (sent/failed)"
         );
+        describe_counter!(
+            "maidan_web_push_delivered_total",
+            "Web Push notifications by outcome (sent/failed/pruned/skipped_present)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -256,6 +260,12 @@ pub fn record_notification_suppressed(reason: &str) {
 /// leaves the watermark so the next sweep retries).
 pub fn record_email_delivered(outcome: &str) {
     counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
+}
+
+/// Web Push delivery outcomes (Cluster 366, N1): `sent` / `failed` / `pruned`
+/// (subscription gone) / `skipped_present` (member has a live WS).
+pub fn record_web_push_delivered(outcome: &str) {
+    counter!("maidan_web_push_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
 
 /// Slack projector egress outcomes (Cluster 309): `sent` / `failed`.

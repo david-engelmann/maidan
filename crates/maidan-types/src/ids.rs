@@ -54,3 +54,4 @@ id_newtype!(MailOutboxId);
 id_newtype!(ApprovalGateId);
 id_newtype!(ClaimLeaseId);
 id_newtype!(DlqEntryId);
+id_newtype!(PushSubscriptionId);

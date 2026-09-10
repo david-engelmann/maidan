@@ -324,6 +324,24 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/members/{id}/push-subscriptions",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/push-subscriptions",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/push-subscriptions/{sub_id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",

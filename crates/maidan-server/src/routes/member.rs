@@ -510,3 +510,73 @@ pub async fn get_member_delivery_mode(
     let mode = state.store.get_delivery_mode(MemberId(id)).await?;
     Ok(Json(DeliveryModeView { mode }))
 }
+
+/// Register (upsert) a Web Push subscription for a member (Cluster 366, N1). Body
+/// is the browser's `PushSubscription` JSON (`{endpoint, keys:{p256dh, auth}}`).
+/// `workspace:read` + self-only for a session caller.
+pub async fn register_push_subscription(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<RegisterPushSubscription>,
+) -> ApiResult<Json<PushSubscription>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if body.endpoint.trim().is_empty()
+        || body.keys.p256dh.trim().is_empty()
+        || body.keys.auth.trim().is_empty()
+    {
+        return Err(ApiError::BadRequest(
+            "endpoint, keys.p256dh, and keys.auth are required".into(),
+        ));
+    }
+    let sub = state
+        .store
+        .add_push_subscription(NewPushSubscription {
+            member_id: MemberId(id),
+            endpoint: body.endpoint,
+            p256dh: body.keys.p256dh,
+            auth: body.keys.auth,
+        })
+        .await?;
+    Ok(Json(sub))
+}
+
+/// A member's Web Push subscriptions (Cluster 366, N1). Self-only for a session.
+pub async fn list_push_subscriptions(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<PushSubscription>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    Ok(Json(
+        state.store.list_push_subscriptions(MemberId(id)).await?,
+    ))
+}
+
+/// Remove one of a member's Web Push subscriptions (Cluster 366, N1) — recipient-
+/// scoped in the store (`404` when it isn't this member's). Self-only for a session.
+pub async fn delete_push_subscription(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, sub_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member = state.store.get_member(MemberId(id)).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, MemberId(id))?;
+    if state
+        .store
+        .delete_push_subscription(MemberId(id), PushSubscriptionId(sub_id))
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}

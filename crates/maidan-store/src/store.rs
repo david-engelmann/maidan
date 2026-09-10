@@ -337,6 +337,27 @@ pub trait NotificationStore: Send + Sync {
         kind: EventKind,
         members: &[MemberId],
     ) -> Result<Vec<MemberId>, StoreError>;
+
+    /// Register (upsert) a member's Web Push subscription (Cluster 366, N1). Keyed
+    /// on `(member_id, endpoint)` — re-subscribing the same device refreshes its
+    /// keys.
+    async fn add_push_subscription(
+        &self,
+        new: NewPushSubscription,
+    ) -> Result<PushSubscription, StoreError>;
+    /// A member's Web Push subscriptions (Cluster 366) — the router's delivery
+    /// targets when the member has no live WebSocket.
+    async fn list_push_subscriptions(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Vec<PushSubscription>, StoreError>;
+    /// Remove one of a member's push subscriptions (Cluster 366) — recipient-scoped
+    /// (`member_id` + `id`); `true` when a row was removed.
+    async fn delete_push_subscription(
+        &self,
+        member_id: MemberId,
+        id: PushSubscriptionId,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

@@ -854,6 +854,31 @@ pub struct LegalHold {
     pub placed_at: DateTime<Utc>,
 }
 
+/// A member's Web Push subscription (Cluster 366, N1) — one browser/device. From
+/// the browser's `PushManager.subscribe()`: `endpoint` is the push service URL,
+/// `p256dh` the subscription's public ECDH key and `auth` its auth secret (both
+/// base64url). The notification router delivers a Web Push message to `endpoint`
+/// when the member has no live WebSocket connection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PushSubscription {
+    pub id: PushSubscriptionId,
+    pub member_id: MemberId,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A new Web Push subscription to register (Cluster 366, N1).
+#[derive(Debug, Clone)]
+pub struct NewPushSubscription {
+    pub member_id: MemberId,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+}
+
 /// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
 /// row — a digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra
