@@ -463,6 +463,7 @@ pub async fn claim_next(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
          WHERE id = (
              SELECT t.id FROM maidan_threads t
+             LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
              WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
                AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
                AND NOT EXISTS (
@@ -485,7 +486,7 @@ pub async fn claim_next(
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
                )
-             ORDER BY t.created_at ASC, t.id ASC
+             ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
              LIMIT 1
          )
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
@@ -627,6 +628,7 @@ pub async fn claim_next_with_event(
     // (RETURNING would only give the post-update row).
     let candidate = sqlx::query(
         "SELECT t.id, t.assignee_id FROM maidan_threads t
+         LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
          WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
            AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
            AND NOT EXISTS (
@@ -649,7 +651,7 @@ pub async fn claim_next_with_event(
            AND NOT EXISTS (
                SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
            )
-         ORDER BY t.created_at ASC, t.id ASC
+         ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
          LIMIT 1",
     )
     .bind(channel_id.0)
