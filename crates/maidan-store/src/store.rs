@@ -873,6 +873,27 @@ pub trait RecipeStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait SecretStore: Send + Sync {
+    /// Named-secret store (Cluster 371, Wave 2 #19). The value is stored
+    /// AEAD-encrypted (the route layer holds the key); `get_secret_ciphertext` is
+    /// the only read that returns it, and `list_secrets` returns metadata only.
+    /// `create_secret` upserts on `(workspace_id, name)` — re-creating a name
+    /// rotates its value.
+    async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError>;
+    async fn get_secret_ciphertext(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<Option<String>, StoreError>;
+    async fn list_secrets(&self, workspace_id: WorkspaceId) -> Result<Vec<Secret>, StoreError>;
+    async fn delete_secret(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<bool, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1770,6 +1791,7 @@ pub trait Store:
     + ThreadStore
     + TaskScheduleStore
     + RecipeStore
+    + SecretStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1815,6 +1837,7 @@ impl<
             + ThreadStore
             + TaskScheduleStore
             + RecipeStore
+            + SecretStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore
