@@ -844,6 +844,17 @@ pub trait TaskScheduleStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait RecipeStore: Send + Sync {
+    /// Recipe blueprint CRUD (Cluster 370, Wave 2 #18). A recipe is a reusable
+    /// thread-type; instantiation (`instantiate_recipe`, Cluster 370.2) builds a
+    /// parent + DAG children from it. Zero-blast-radius foundation — no routes yet.
+    async fn create_recipe(&self, new: NewRecipe) -> Result<Recipe, StoreError>;
+    async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError>;
+    async fn list_recipes(&self, workspace_id: WorkspaceId) -> Result<Vec<Recipe>, StoreError>;
+    async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1740,6 +1751,7 @@ pub trait Store:
     + DmStore
     + ThreadStore
     + TaskScheduleStore
+    + RecipeStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1784,6 +1796,7 @@ impl<
             + DmStore
             + ThreadStore
             + TaskScheduleStore
+            + RecipeStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore

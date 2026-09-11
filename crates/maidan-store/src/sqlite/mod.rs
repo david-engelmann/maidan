@@ -46,6 +46,7 @@ mod priorities;
 mod purge_workspace;
 mod push_subscriptions;
 mod reactions;
+mod recipes;
 mod refs;
 mod reindex_jobs;
 mod retention;
@@ -1017,6 +1018,22 @@ impl TaskScheduleStore for SqliteStore {
         active: bool,
     ) -> Result<TaskSchedule, StoreError> {
         task_schedules::set_active(&self.pool, id, active).await
+    }
+}
+
+#[async_trait]
+impl RecipeStore for SqliteStore {
+    async fn create_recipe(&self, new: NewRecipe) -> Result<Recipe, StoreError> {
+        recipes::create(&self.pool, new).await
+    }
+    async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError> {
+        recipes::get(&self.pool, id).await
+    }
+    async fn list_recipes(&self, workspace_id: WorkspaceId) -> Result<Vec<Recipe>, StoreError> {
+        recipes::list(&self.pool, workspace_id).await
+    }
+    async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError> {
+        recipes::delete(&self.pool, id).await
     }
 }
 

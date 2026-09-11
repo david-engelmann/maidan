@@ -42,6 +42,7 @@ mod priorities;
 mod purge_workspace;
 mod push_subscriptions;
 mod reactions;
+mod recipes;
 mod refs;
 mod reindex_jobs;
 pub mod replication;
@@ -1230,6 +1231,22 @@ impl TaskScheduleStore for PostgresStore {
         active: bool,
     ) -> Result<TaskSchedule, StoreError> {
         task_schedules::set_active(&self.pool, id, active).await
+    }
+}
+
+#[async_trait]
+impl RecipeStore for PostgresStore {
+    async fn create_recipe(&self, new: NewRecipe) -> Result<Recipe, StoreError> {
+        recipes::create(&self.pool, new).await
+    }
+    async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError> {
+        recipes::get(self.read_pool(), id).await
+    }
+    async fn list_recipes(&self, workspace_id: WorkspaceId) -> Result<Vec<Recipe>, StoreError> {
+        recipes::list(self.read_pool(), workspace_id).await
+    }
+    async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError> {
+        recipes::delete(&self.pool, id).await
     }
 }
 
