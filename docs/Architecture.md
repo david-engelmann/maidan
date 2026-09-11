@@ -124,7 +124,7 @@ flowchart LR
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
 | Events | `GET /workspaces/:wid/events`, outbox admin routes | Replay + quarantined-outbox list/replay |
-| Subscribe | `GET /ws/subscribe`, `GET /mcp/stream` | Live bus + resume tokens + `at_least_once` + lean frames |
+| Subscribe | `GET /ws/subscribe`, `GET /mcp/stream`, `GET /agui/stream` | Live bus + resume tokens + `at_least_once` + lean frames; `/agui/stream` maps events to AG-UI run frames (a thread is a run) |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
 | A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `A2AService` (task read/cancel/list), `/.well-known/agent-card.json` | JSON-RPC + REST complete; gRPC partial (`get_task`/`cancel_task`/`list_tasks` only — send/push/streaming over JSON-RPC/REST); Agent Card negotiation; `/a2a/v1/events` federation ingest |

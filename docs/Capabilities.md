@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v369.0.0 — Wave 2 #17: an AG-UI door (H1)
+
+Two impl PRs (369.1–369.2): a second front-end protocol on the event stream — [AG-UI](https://docs.ag-ui.com), what CopilotKit and agent IDEs speak. A **thread is a run**, so the door is a *view* over the existing resumable bus, not a new runtime. Output direction only (Maidan → AG-UI); the UI→agent input direction is a follow-up.
+
+| Change | Where |
+|--------|-------|
+| **Event types + pure mapping (369.1):** `AgUiEvent` (AG-UI wire shape) + `agui_events_for(&Event)` — `ThreadCreated`→`RUN_STARTED`, terminal `ThreadStateChanged`→`RUN_FINISHED`/non-terminal→`STEP_STARTED`, `ClaimFailed`→`RUN_ERROR`, `MessagePosted`→`TEXT_MESSAGE_*` + `TOOL_CALL_*` per content block, `ThreadLanded`→`CUSTOM`. Pure + unit-tested. | `crates/maidan-server/src/agui.rs` |
+| **SSE door (369.2):** `GET /agui/stream` (workspace/channel/thread scoped) emits the mapped frames; reuses `/mcp/stream` bus-subscribe + replay; `Last-Event-ID`/`after_id` resume with per-frame source `id:`; per-event RBAC (`can_access_thread`/`can_access_channel`); off-contract (`event:subscribe` inline, like `/mcp/stream`). | `crates/maidan-server/src/agui_stream.rs`, `app.rs` |
+
 ## v368.0.0 — Wave 2 #16: the waiting-on-you inbox
 
 A stacked cluster (368.1–368.3, G15/G9): a member-centric aggregate of everything needing their attention — assigned tasks, open gates, unread mentions — one member's queue, each aged against an SLA. Not `@everyone`.
