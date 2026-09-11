@@ -1248,6 +1248,23 @@ impl RecipeStore for PostgresStore {
     async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError> {
         recipes::delete(&self.pool, id).await
     }
+    async fn instantiate_recipe(
+        &self,
+        recipe_id: RecipeId,
+        params: serde_json::Value,
+        actor: MemberId,
+    ) -> Result<(RecipeRun, Vec<StoredEvent>), StoreError> {
+        recipes::instantiate(&self.pool, recipe_id, params, actor).await
+    }
+    async fn get_recipe_run(&self, id: RecipeRunId) -> Result<RecipeRun, StoreError> {
+        recipes::get_run(self.read_pool(), id).await
+    }
+    async fn latest_recipe_run(
+        &self,
+        recipe_id: RecipeId,
+    ) -> Result<Option<RecipeRun>, StoreError> {
+        recipes::latest_run(self.read_pool(), recipe_id).await
+    }
 }
 
 #[async_trait]

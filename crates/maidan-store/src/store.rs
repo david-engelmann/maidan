@@ -852,6 +852,24 @@ pub trait RecipeStore: Send + Sync {
     async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError>;
     async fn list_recipes(&self, workspace_id: WorkspaceId) -> Result<Vec<Recipe>, StoreError>;
     async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError>;
+    /// Instantiate a recipe (Cluster 370.2): in one transaction, create the parent
+    /// thread + a child thread per `spec.children`, wire the readiness DAG (each
+    /// child depends on its `depends_on` siblings; the parent depends on every
+    /// child so it lands last), attach each child's required skills, and record a
+    /// `maidan_recipe_runs` row freezing the recipe bytes + `params` (copy-on-fire).
+    /// Returns the run plus every `ThreadCreated` event (the caller publishes them).
+    /// `InvalidInput` if `params` fails the spec's required-param check.
+    async fn instantiate_recipe(
+        &self,
+        recipe_id: RecipeId,
+        params: serde_json::Value,
+        actor: MemberId,
+    ) -> Result<(RecipeRun, Vec<StoredEvent>), StoreError>;
+    async fn get_recipe_run(&self, id: RecipeRunId) -> Result<RecipeRun, StoreError>;
+    /// The most recent run of a recipe, or `None` if never instantiated — the
+    /// dedup basis for the scheduler's `ScheduleSkipped` (Cluster 370.5).
+    async fn latest_recipe_run(&self, recipe_id: RecipeId)
+        -> Result<Option<RecipeRun>, StoreError>;
 }
 
 #[async_trait]
