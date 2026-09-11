@@ -53,22 +53,21 @@ cluster cadence: retro + `vX.0.0` tag each).
   event via the atomic `*_with_event` path like REST (WS/SSE, at-least-once, federation, notifications).
   **⚠️ CORRECTION (2026-09-10 audit — was over-claimed as "every MCP mutation"):** the **assignment
   path was never migrated. See P1.1c.**
-- **P1.1c — MCP assignment dual-write (the P0, home of the 209/351 write-path). ⏳ NEXT (Cluster 374).**
-  MCP `assign_thread`/`claim_thread`/`unassign_thread`/`claim_next_thread` (`tools/thread.rs`) call the
-  **non-`*_with_event`** store methods and then `publish_event` **separately** — a non-atomic dual-write
-  (a crash between the commit and the publish drops the event), the exact hazard the 205–214 outbox
-  migration closed for REST. Worse, MCP `claim_next` calls `claim_next_thread` (not `…_with_event`), so a
-  reclaim of an **expired lease does not emit `ClaimExpired`** (REST's `claim_next_thread_with_event`
-  emits `ClaimExpired` then `ThreadAssignmentChanged` in one tx, Cluster 351). Since MCP is the
-  agent-primary surface this is the higher-value copy of the write-path. **Fix:** point the four MCP
-  handlers at `*_with_event` + `publish_stored` (delete the `publish_assignment` helper); **DoD:** an MCP
-  reclaim e2e shows `ClaimExpired` + `ThreadAssignmentChanged`. Bundle the cheap `StoreError::Conflict`
-  → proper `McpError` mapping (currently falls to `Internal`, `error.rs`). No new Wave number.
-- **P1.1d — no MCP `transition_thread` twin. ⏳ P1 (confirm intent first).** REST has `transition_thread`
-  (`routes/thread.rs`, `transition_thread_with_event`, separation-of-duties enforced in the FSM), but there
-  is **no MCP tool to advance a thread's FSM state** — an agent over MCP can claim/assign/set-result but
-  cannot itself land/close a thread. Confirm whether this is a deliberate land-gate (Wave 2 #22 reviewers /
-  #25 soundcheck own the close) or a genuine gap; if a gap, add the MCP twin. No new Wave number.
+- **P1.1c — MCP assignment dual-write (the P0, home of the 209/351 write-path). ✅ FIXED (Cluster 374).**
+  MCP `assign_thread`/`claim_thread`/`unassign_thread`/`claim_next_thread`/`release_claim`
+  (`tools/thread.rs`) now call their `*_with_event` store variants + `publish_stored` (the atomic
+  bus-notify — no double-log); the `publish_assignment` helper is deleted. `claim_next` publishes **every**
+  returned event, so a reclaim of an expired lease emits `ClaimExpired` (the dead holder) +
+  `ThreadAssignmentChanged` — parity with REST's crash-consistency, on the agent-primary surface. Also
+  fixed `StoreError::Conflict` → `McpError::InvalidParams` (was `Internal`, a `-32603` for a client error).
+  **DoD met:** `mcp_claim_next_reclaim_emits_claim_expired_then_assignment` (m1 claims a `lease_secs=-1`
+  dead-agent lease, m2 reclaims → the bus shows `ClaimExpired{m1}` + `ThreadAssignmentChanged{m2}`,
+  deterministic). All 79 mcp lib tests + the server mcp matrix green. **⇒ The MCP write path now matches
+  REST end to end (message, social, assignment). Still tracked: P1.1d.**
+- **P1.1d — no MCP `transition_thread` twin. ⏳ P1 (confirm intent).** REST has `transition_thread`
+  (`transition_thread_with_event`, SoD in the FSM); MCP has no tool to advance a thread's FSM state
+  (an agent can claim/assign/set-result but not itself land/close). Confirm land-gate (Wave 2 #22
+  reviewers / #25 soundcheck own the close) vs gap; if a gap, add the MCP twin. No new Wave number.
 - **P1.1 MCP write-path parity — the ORIGINAL finding (SUPERSEDED).** *(Kept for provenance. The
   message/social half of this was FIXED in Clusters 333–334 — see P1.1a/b above; the assignment half is
   P1.1c. This paragraph describes the pre-333 state and no longer reflects `main`.)* ~~The 8 event-less
@@ -810,7 +809,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest merged: Cluster 373 (Wave 2 #21 — attachable labeled memory as room objects, H11) on `main`; tags `v350.0.0`–`v373.0.0` pending the maintainer.** Four impl PRs (#752 store, #753 REST, #754 MCP, #755 event + `wait_for_memory_block`) + a retro — see [[Retros/Cluster 373]]. A Letta-shaped memory block, attachable to a thread; a parent watches a child's result block without a nested runtime via the `MemoryBlockUpdated` event + MCP long-poll. **Wave 1 (#1–14) + Wave 2 #15–21 are COMPLETE. Next: Cluster 374 (the P1.1c P0 — MCP assignment dual-write, below), then Wave 2 #22** (G5 + G-dev-5 — required reviewers). *(v350–v373 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **A 2026-09-10 world-class audit** of the MCP write path (verified against live code) surfaced that **P1.1 was over-claimed**: the message/social write tools were migrated to the atomic `*_with_event` path (Clusters 333–334), but the **assignment path was not** — MCP `assign_thread`/`claim_thread`/`unassign_thread`/`claim_next_thread` still use non-event store methods + a separate `publish_event` (a non-atomic dual-write), and MCP `claim_next` skips `ClaimExpired` on a lease-expiry reclaim (REST's `claim_next_thread_with_event` emits it). Tracked as **P1.1c** (fixed in Cluster 374). The audit also flagged `StoreError::Conflict` → `McpError::Internal` (should be a client error) and no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap) — see P1 below. **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746, a pool warm-up before the measured builds).**
+- **Latest merged: Cluster 374 (P1.1c — the MCP assignment dual-write, the P0) on `main`; tags `v350.0.0`–`v374.0.0` pending the maintainer.** One impl PR (#757) + a retro — see [[Retros/Cluster 374]]. The MCP assignment tools (`assign`/`claim`/`unassign`/`claim_next`/`release_claim`) now use their `*_with_event` store variants + `publish_stored`, so agent-driven claims are crash-atomic and a reclaim emits `ClaimExpired` + `ThreadAssignmentChanged` — parity with REST end to end (message, social, assignment). Also `StoreError::Conflict` → `McpError::InvalidParams`. **Wave 1 (#1–14) + Wave 2 #15–21 + P1.1c are COMPLETE. Next: Wave 2 #22** (G5 + G-dev-5 — required reviewers). *(v350–v374 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* Cluster 373 (Wave 2 #21 — attachable labeled memory as room objects, H11) shipped just before, PRs #752/#753/#754/#755 + retro #756 ([[Retros/Cluster 373]]). **A 2026-09-10 world-class audit** of the MCP write path (verified against live code) surfaced that P1.1 had been over-claimed — the assignment path was never migrated to `*_with_event`; that was closed by Cluster 374 above. Still open from the audit: **P1.1d** — no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap; see P1 below). **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746, a pool warm-up before the measured builds).**
 - **(prior) Cluster 367 (Wave 2 #15 — the human work console) on `main`** — stacked `/ui` PRs #722/#723/#724, [[Retros/Cluster 367]].
 - **(prior) Cluster 366 (Wave 1 #14) on `main`** — four independent PRs (#717/#718/#719/#720), [[Retros/Cluster 366]].
 - **(prior) Cluster 365 (fair dispatch) on `main`; tags `v350.0.0`–`v365.0.0` pending the maintainer.** The forward program's **Wave 1 #1 (held gate, 350), #2 (occupancy clocks, 351), #3 (HITL list, 352), #4 (identity chrome, 353), #5 (wait contract, 354), #6 (owner/steer, 355), #7 (threading, 356), #8 (scoped notification mute, 357), #9 (the budget envelope, 358), #10 (inbox & search depth, 359), #11 (the token-budgeted context pack, 360), #12 (the landed fact, 361), and #13 in full — G11 hard WIP (362), G3 Unclaimable (363), G2/G4 wait-edges + escalation (364), and G3 fair dispatch (Cluster 365, PRs #708/#712/#713/#715) — are all SHIPPED** ([[Retros/Cluster 350]]–[[Retros/Cluster 365]]). `claim_next` now orders by an aged dispatch priority (priority jumps the FIFO queue, long-waiting tasks age up and never starve); a thread can declare a durable wait timer with an `on_timeout` policy; a thread can be parked from dispatch; the WIP limit caps concurrent live claims — all over REST + MCP. **Wave 1 #13 is COMPLETE. Next up: Wave 1 #14** (N1 web-push / T6 legal-hold / H15 OTel gate / SCIM-as-OIDC-P3 — four bullets, not one cluster). *(v350–v365 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)*

@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [374.0.0] — 2026-09-11
+
+Post-gate hardening (Phase XXIV). **P1.1c — the MCP assignment dual-write (the
+P0)**, surfaced by a 2026-09-10 audit of the MCP write path. One impl PR (374.1)
++ a retro. No new gate tag, no new Wave number (folds under the existing outbox
+program).
+
+The MCP assignment tools (`assign`/`claim`/`unassign`/`claim_next`/
+`release_claim`) called non-`*_with_event` store methods + a separate
+`publish_event` — a non-atomic dual-write — and MCP `claim_next` skipped
+`ClaimExpired` on a lease-expiry reclaim. They now use their `*_with_event`
+variants + `publish_stored` (the atomic bus-notify), so agent-driven claims are
+crash-atomic and a reclaim emits `ClaimExpired` + `ThreadAssignmentChanged` —
+parity with REST end to end (message, social, assignment). Also
+`StoreError::Conflict` → `McpError::InvalidParams` (was `Internal`). DoD:
+`mcp_claim_next_reclaim_emits_claim_expired_then_assignment`.
+
 ## [373.0.0] — 2026-09-11
 
 Post-gate hardening (Phase XXIV). **Wave 2 #21 — attachable labeled memory as
