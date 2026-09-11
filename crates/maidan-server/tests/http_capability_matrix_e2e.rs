@@ -467,6 +467,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/secrets" && method == "POST" {
         return b.json(&json!({ "name": "capsecret", "value": "v" }));
     }
+    if path == "/members/{id}/freeze" && method == "POST" {
+        return b.json(&json!({}));
+    }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
     }

@@ -946,6 +946,33 @@ pub fn resolve_secret() {}
     responses((status = 204)))]
 pub fn delete_secret() {}
 
+// --- member freeze kill-switch (Cluster 372) ---
+
+#[utoipa::path(post, path = "/members/{id}/freeze", tag = "freeze",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = FreezeMember,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = FreezeResult)))]
+pub fn freeze_member() {}
+
+#[utoipa::path(delete, path = "/members/{id}/freeze", tag = "freeze",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn unfreeze_member() {}
+
+#[utoipa::path(get, path = "/members/{id}/freeze", tag = "freeze",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberFreeze)))]
+pub fn get_member_freeze() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/frozen-members", tag = "freeze",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemberFreeze>)))]
+pub fn list_frozen_members() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",

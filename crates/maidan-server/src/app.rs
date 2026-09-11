@@ -499,6 +499,16 @@ pub fn router(state: AppState) -> Router {
             delete(routes::delete_secret),
         )
         .route(
+            "/members/:id/freeze",
+            post(routes::freeze_member)
+                .delete(routes::unfreeze_member)
+                .get(routes::get_member_freeze),
+        )
+        .route(
+            "/workspaces/:wid/frozen-members",
+            get(routes::list_frozen_members),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )
