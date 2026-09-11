@@ -835,6 +835,18 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "wait_for_memory_block",
+            "description": "Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "timeout_ms": {"type": "integer", "description": "long-poll window (default 30000, clamped 1000-300000)"}
+                },
+                "required": ["label"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {

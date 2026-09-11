@@ -557,6 +557,22 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             occurred_at,
             artifact,
         },
+        // Non-federatable (a locally-derived memory-block update, Cluster 373) —
+        // never actually ingested/remapped, but the exhaustive match must
+        // classify it.
+        MemoryBlockUpdated {
+            occurred_at,
+            workspace_id: _,
+            block_id,
+            label,
+            updated_by,
+        } => MemoryBlockUpdated {
+            occurred_at,
+            workspace_id,
+            block_id,
+            label,
+            updated_by,
+        },
     }
 }
 

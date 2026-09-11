@@ -136,6 +136,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_memory_block"
         | "list_memory_blocks"
         | "list_thread_memory_blocks"
+        | "wait_for_memory_block"
         | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -435,12 +436,13 @@ pub async fn dispatch(
         "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
         "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
         "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,
-        "set_memory_block_value" => memory_block::set_memory_block_value(store, auth, args).await,
+        "set_memory_block_value" => memory_block::set_memory_block_value(server, auth, args).await,
         "attach_memory_block" => memory_block::attach_memory_block(store, auth, args).await,
         "detach_memory_block" => memory_block::detach_memory_block(store, auth, args).await,
         "list_thread_memory_blocks" => {
             memory_block::list_thread_memory_blocks(store, auth, args).await
         }
+        "wait_for_memory_block" => memory_block::wait_for_memory_block(server, auth, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,

@@ -112,6 +112,19 @@ pub async fn set_memory_block_value(
         .store
         .set_memory_block_value(block_id, &body.value)
         .await?;
+    // A "go fetch" pointer so a parent watching the block reacts without polling
+    // (Cluster 373.4). Best-effort — a bus hiccup never fails the write.
+    super::publish(
+        &state,
+        Event::MemoryBlockUpdated {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: updated.workspace_id,
+            block_id: updated.id,
+            label: updated.label.clone(),
+            updated_by: auth.member_id,
+        },
+    )
+    .await;
     Ok(Json(updated))
 }
 

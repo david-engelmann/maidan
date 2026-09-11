@@ -4,6 +4,7 @@
   "claim_expired",
   "claim_failed",
   "member_joined",
+  "memory_block_updated",
   "mention_recorded",
   "message_edited",
   "message_pinned",
