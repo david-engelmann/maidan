@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [370.0.0] — 2026-09-11
+
+Post-gate hardening (Phase XXIV). **Wave 2 #18 — a recipe / thread-type** (G8 +
+W5 + G-dev-9). Five impl PRs (370.1–370.5) + a retro. No new gate tag.
+
+### Added
+
+- **Recipe blueprint store** (370.1): `maidan_recipes` (pg 0073 / sqlite 0072) +
+  the `RecipeSpec` blueprint types (params, definition of done, retry, inline DAG
+  children) + a pure `RecipeSpec::validate` (unique non-empty child keys, deps
+  reference real siblings, no self-dep, acyclic child DAG via Kahn's algorithm) +
+  `validate_params` + the `RecipeStore` CRUD, both backends. Zero-blast-radius.
+- **Recipe instantiation** (370.2): `maidan_recipe_runs` (pg 0074 / sqlite 0073) +
+  `instantiate_recipe` — in one transaction, create the parent thread + a child
+  per `spec.children`, wire the readiness DAG (each child depends on its
+  `depends_on` siblings; the parent depends on every child so it lands last),
+  attach each child's required skills, and record a copy-on-fire snapshot of the
+  recipe bytes + params. **Not a recipe VM** — retry/DoD ride the snapshot,
+  unenforced; children are inline (sub-recipe references are a follow-up).
+- **Recipe REST** (370.3): `POST/GET /workspaces/:wid/recipes`,
+  `GET/DELETE /workspaces/:wid/recipes/:id`, `POST …/:id/instantiate` (→ a
+  `RecipeRun`, publishing the `ThreadCreated` events). `workspace:write` + channel
+  access for the writes; `workspace:read` for the reads.
+- **Recipe MCP tools** (370.4): `create_recipe` / `list_recipes` /
+  `instantiate_recipe`, the agent-native twins.
+- **Scheduled recipe runs** (370.5): `maidan_task_schedules.recipe_id` (pg 0075 /
+  sqlite 0074); the sweeper instantiates the recipe (copy-on-fire) on each firing
+  instead of a bare thread, and emits `ScheduleSkipped` (a new non-federatable
+  `EventKind`) when the prior run is still in flight so runs don't pile up. REST +
+  MCP `create_task_schedule` accept an optional `recipe_id`.
+
 ## [369.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 2 #17 — an AG-UI door** (H1). Two impl
