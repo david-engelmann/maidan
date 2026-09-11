@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [369.0.0] — 2026-09-10
+
+Post-gate hardening (Phase XXIV). **Wave 2 #17 — an AG-UI door** (H1). Two impl
+PRs (369.1–369.2) + a retro. No new gate tag.
+
+### Added
+
+- **AG-UI event types + pure mapping** (369.1): `AgUiEvent` (the
+  [AG-UI](https://docs.ag-ui.com) wire shape — a `SCREAMING_SNAKE_CASE` `type`
+  tag + `camelCase` fields) and a pure `agui_events_for(&Event) -> Vec<AgUiEvent>`
+  mapping a Maidan domain event to AG-UI protocol events. **A thread is a run:**
+  `ThreadCreated` → `RUN_STARTED` (runId = threadId), a terminal
+  `ThreadStateChanged` → `RUN_FINISHED` / non-terminal → `STEP_STARTED`,
+  `ClaimFailed` → `RUN_ERROR`, `MessagePosted` → `TEXT_MESSAGE_START/CONTENT/END`
+  + a `TOOL_CALL_*` triple per `ToolUse` block + a `TOOL_CALL_RESULT` per
+  `ToolResult`, `ThreadLanded` → `CUSTOM`; the rest map to nothing.
+  (`crates/maidan-server/src/agui.rs`)
+- **The AG-UI SSE door** (369.2): `GET /agui/stream?workspace_id=…[&thread_id=…]
+  [&channel_id=…]` subscribes to the event bus and emits the mapped AG-UI frames,
+  so an AG-UI-compatible frontend/IDE renders agent activity with no adapter (no
+  CopilotKit). Reuses the `/mcp/stream` machinery (bus subscribe +
+  `envelope_from_stored` replay). Resume is SSE-standard — the `Last-Event-ID`
+  header (or an `after_id` query param) replays persisted events past what was
+  seen, and every frame carries its source event-log `id:`. Each event is
+  RBAC-filtered per recipient (`can_access_thread` / `can_access_channel`), so a
+  workspace-wide stream never leaks a private channel; a bus lag surfaces as a
+  `CUSTOM` `lagged` frame. Off-contract like `/mcp/stream` and `/scim/v2/*` —
+  auth (`event:subscribe`) enforced inline, in neither OpenAPI nor the capability
+  map. Output direction only; the UI→agent input direction is a follow-up.
+  (`crates/maidan-server/src/agui_stream.rs`, `app.rs`)
+
 ## [368.0.0] — 2026-09-10
 
 Post-gate hardening (Phase XXIV). **Wave 2 #16 — the waiting-on-you inbox** (G15 +
