@@ -24,6 +24,7 @@ mod channel;
 mod freeze;
 mod glossary;
 mod member;
+mod memory_block;
 mod message;
 mod projector;
 mod recipe;
@@ -132,6 +133,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_glossary_terms"
         | "list_slack_channel_links"
         | "list_github_issue_links"
+        | "get_memory_block"
+        | "list_memory_blocks"
+        | "list_thread_memory_blocks"
         | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -149,7 +153,11 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_glossary_term"
         | "seed_from_message"
         | "set_wip_limit"
-        | "add_member_skill" => Ok(WORKSPACE_WRITE),
+        | "add_member_skill"
+        | "create_memory_block"
+        | "set_memory_block_value"
+        | "attach_memory_block"
+        | "detach_memory_block" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -279,6 +287,9 @@ async fn enforce_channel_access(
         | "get_wait"
         | "set_priority"
         | "get_priority"
+        | "attach_memory_block"
+        | "detach_memory_block"
+        | "list_thread_memory_blocks"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -421,6 +432,15 @@ pub async fn dispatch(
         "freeze_member" => freeze::freeze_member(store, auth, args).await,
         "unfreeze_member" => freeze::unfreeze_member(store, auth, args).await,
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
+        "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
+        "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
+        "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,
+        "set_memory_block_value" => memory_block::set_memory_block_value(store, auth, args).await,
+        "attach_memory_block" => memory_block::attach_memory_block(store, auth, args).await,
+        "detach_memory_block" => memory_block::detach_memory_block(store, auth, args).await,
+        "list_thread_memory_blocks" => {
+            memory_block::list_thread_memory_blocks(store, auth, args).await
+        }
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
