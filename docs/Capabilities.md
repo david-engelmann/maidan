@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v370.0.0 — Wave 2 #18: a recipe / thread-type (G8 + W5 + G-dev-9)
+
+Five impl PRs (370.1–370.5). A **recipe** is a reusable thread-type blueprint (the Goose-recipe *shape*: params, a definition of done, a retry policy, inline child sub-tasks forming a DAG). Instantiating one builds a parent thread + its DAG children + attaches skills, freezing the recipe bytes into a run snapshot (copy-on-fire). A schedule can seed a run, skipping when the prior run is still in flight. **Not a recipe VM** — a blueprint the room instantiates.
+
+| Change | Where |
+|--------|-------|
+| **Store foundation (370.1):** `maidan_recipes` (pg 0073/sqlite 0072) + `RecipeSpec` types + pure `validate` (acyclic child DAG via Kahn) + `validate_params` + `RecipeStore` CRUD, both backends. | `crates/maidan-types/src/recipe.rs`, `crates/maidan-store/src/{postgres,sqlite}/recipes.rs` |
+| **Instantiation (370.2):** `maidan_recipe_runs` (pg 0074/sqlite 0073) + `instantiate_recipe` — parent + DAG children + skills + copy-on-fire snapshot, in one tx (reuses `create_thread_with_event` + the dep/skill tables). | `recipes.rs`, `store.rs` |
+| **REST (370.3):** create/list/get/delete + `instantiate` (→ RecipeRun, publishes ThreadCreated); full new-route preflight. | `crates/maidan-server/src/routes/recipe.rs` |
+| **MCP (370.4):** `create_recipe` / `list_recipes` / `instantiate_recipe`. | `crates/maidan-mcp/src/tools/recipe.rs` |
+| **Scheduled runs (370.5):** `task_schedules.recipe_id` (pg 0075/sqlite 0074); the sweeper instantiates the recipe per firing, or emits `ScheduleSkipped` (new non-federatable EventKind) when the prior run is still in flight. | `crates/maidan-server/src/scheduler.rs`, `crates/maidan-types/src/events.rs` |
+
 ## v369.0.0 — Wave 2 #17: an AG-UI door (H1)
 
 Two impl PRs (369.1–369.2): a second front-end protocol on the event stream — [AG-UI](https://docs.ag-ui.com), what CopilotKit and agent IDEs speak. A **thread is a run**, so the door is a *view* over the existing resumable bus, not a new runtime. Output direction only (Maidan → AG-UI); the UI→agent input direction is a follow-up.

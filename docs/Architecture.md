@@ -121,6 +121,7 @@ flowchart LR
 |---------|---------------|---------|
 | HTTP CRUD | workspaces, members, channels, threads, messages, DMs + group DMs, pins, reactions, votes | Authoritative entity API; RFC 7807 errors |
 | Thread FSM + tasks | `POST /threads/:id`, assignee/claim/renew, dependencies, required-skills, result, tool-transcript | Lifecycle + the agentic task layer |
+| Recipes | `/workspaces/:wid/recipes` (CRUD + `/instantiate`), `task_schedules.recipe_id` | Reusable thread-type blueprints; instantiate = parent + DAG children + skills, copy-on-fire snapshot; a schedule seeds a run (`ScheduleSkipped` if the prior run is in flight) |
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
 | Events | `GET /workspaces/:wid/events`, outbox admin routes | Replay + quarantined-outbox list/replay |
