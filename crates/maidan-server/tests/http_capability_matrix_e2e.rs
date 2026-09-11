@@ -227,6 +227,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{tid}", &f.thread)
             .replace("{dep_id}", &f.thread)
+            .replace("{block_id}", &f.thread)
             .replace("{skill}", "testskill")
             .replace("{id}", &f.thread);
     }
@@ -469,6 +470,12 @@ fn apply_route_defaults(
     }
     if path == "/members/{id}/freeze" && method == "POST" {
         return b.json(&json!({}));
+    }
+    if path == "/workspaces/{wid}/memory-blocks" && method == "POST" {
+        return b.json(&json!({ "label": "cap-matrix" }));
+    }
+    if path == "/workspaces/{wid}/memory-blocks/{id}" && method == "PUT" {
+        return b.json(&json!({ "value": "cap matrix" }));
     }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));

@@ -1309,6 +1309,54 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/memory-blocks",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/memory-blocks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/memory-blocks/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{wid}/memory-blocks/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/memory-blocks/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/memory-blocks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/memory-blocks/{block_id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/memory-blocks/{block_id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
     "surface": "http"
