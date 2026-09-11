@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [371.0.0] — 2026-09-11
+
+Post-gate hardening (Phase XXIV). **Wave 2 #19 — secret-ref** (G19 + T3). Four
+impl PRs (371.1–371.4) + a retro. No new gate tag.
+
+### Added
+
+- **Secret store** (371.1): `maidan_secrets` (pg 0076 / sqlite 0075) storing only
+  `value_ciphertext`; `Secret` (metadata only) / `SecretId`; the pure `secret://`
+  reference helpers (`secret_refs_in`, `substitute_secret_refs` — resolve known
+  refs, leave unknown ones literal + report them); `SecretStore` CRUD (create
+  upserts = rotation), both backends. The value **never enters the event log** —
+  the log carries a `secret://<name>` reference, this table holds the value.
+- **Secret REST + capabilities** (371.2): `secret:read` (resolve/list) +
+  `secret:admin` (create/rotate/delete), granted-on-purpose. `POST/GET
+  /workspaces/:wid/secrets`, `POST …/:name/resolve` (→ the value; "Pi fetches at
+  exec"), `DELETE …/:name`. The value is AEAD-encrypted at rest (the Cluster-189
+  keyring) and crosses the wire only on create + resolve.
+- **Secret MCP tools** (371.3): `list_secrets` / `resolve_secret` (`secret:read`);
+  `McpServer` gained an `encryption_key` set at startup so the resolve tool
+  decrypts.
+- **Egress SecretBroker** (371.4): on an outbound webhook delivery, `secret://`
+  refs are substituted with the real value **only when the target host is on
+  `MAIDAN_SECRET_EGRESS_ALLOWLIST`**; a non-allowlisted host gets the literal ref
+  (the secret is never leaked). Substitution happens at send time — the plaintext
+  never persists in the delivery queue.
+
 ## [370.0.0] — 2026-09-11
 
 Post-gate hardening (Phase XXIV). **Wave 2 #18 — a recipe / thread-type** (G8 +

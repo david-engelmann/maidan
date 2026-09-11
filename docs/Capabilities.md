@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v371.0.0 — Wave 2 #19: secret-ref (G19 + T3)
+
+Four impl PRs (371.1–371.4). A named secret whose **value never enters the event log** — the log carries a `secret://<name>` reference, the store holds the AEAD-encrypted value, and it's materialized only transiently: Pi resolves it at exec, or the egress broker substitutes it on the way out to an allowlisted host.
+
+| Change | Where |
+|--------|-------|
+| **Store (371.1):** `maidan_secrets` (pg 0076 / sqlite 0075, ciphertext only) + `Secret`/`SecretId` + pure `secret://` ref helpers (`secret_refs_in`, `substitute_secret_refs`) + `SecretStore` CRUD (create = rotate), both backends. | `crates/maidan-types/src/secret.rs`, `crates/maidan-store/src/{postgres,sqlite}/secrets.rs` |
+| **REST + caps (371.2):** `secret:read`/`secret:admin`; create (encrypts) / list (metadata) / `resolve` (decrypts — "Pi fetches at exec") / delete; the value crosses the wire only on create + resolve. | `crates/maidan-server/src/routes/secret.rs` |
+| **MCP (371.3):** `list_secrets` / `resolve_secret`; `McpServer` gains an at-rest key set at startup. | `crates/maidan-mcp/src/tools/secret.rs` |
+| **Egress broker (371.4):** substitutes `secret://` refs on a webhook delivery only for hosts on `MAIDAN_SECRET_EGRESS_ALLOWLIST`; a non-allowlisted host gets the literal ref; substitution at send time, never persisted. | `crates/maidan-server/src/secret_broker.rs`, `webhook_worker.rs` |
+
 ## v370.0.0 — Wave 2 #18: a recipe / thread-type (G8 + W5 + G-dev-9)
 
 Five impl PRs (370.1–370.5). A **recipe** is a reusable thread-type blueprint (the Goose-recipe *shape*: params, a definition of done, a retry policy, inline child sub-tasks forming a DAG). Instantiating one builds a parent thread + its DAG children + attaches skills, freezing the recipe bytes into a run snapshot (copy-on-fire). A schedule can seed a run, skipping when the prior run is still in flight. **Not a recipe VM** — a blueprint the room instantiates.
