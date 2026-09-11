@@ -154,6 +154,8 @@ fn http_deny_caps(required: &str) -> Vec<String> {
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),
         ],
+        capability::SECRET_READ => vec![capability::WORKSPACE_READ.into()],
+        capability::SECRET_ADMIN => vec![capability::WORKSPACE_READ.into()],
         other => panic!("unsupported capability in http map: {other}"),
     }
 }
@@ -186,6 +188,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
             .replace("{term}", "testterm")
+            .replace("{name}", "capsecret")
             .replace("{slack_channel_id}", "CTEST")
             .replace("{did}", delivery_id);
     }
@@ -460,6 +463,9 @@ fn apply_route_defaults(
     }
     if path == "/workspaces/{wid}/recipes/{id}/instantiate" && method == "POST" {
         return b.json(&json!({ "params": {} }));
+    }
+    if path == "/workspaces/{wid}/secrets" && method == "POST" {
+        return b.json(&json!({ "name": "capsecret", "value": "v" }));
     }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));

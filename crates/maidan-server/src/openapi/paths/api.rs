@@ -917,6 +917,35 @@ pub fn delete_recipe() {}
     responses((status = 201, body = RecipeRun)))]
 pub fn instantiate_recipe() {}
 
+// --- secrets (Cluster 371) ---
+
+#[utoipa::path(post, path = "/workspaces/{wid}/secrets", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateSecret,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = Secret)))]
+pub fn create_secret() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/secrets", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Secret>)))]
+pub fn list_secrets() {}
+
+#[utoipa::path(post, path = "/workspaces/{wid}/secrets/{name}/resolve", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("name" = String, Path, description = "Secret name")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SecretValue)))]
+pub fn resolve_secret() {}
+
+#[utoipa::path(delete, path = "/workspaces/{wid}/secrets/{name}", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("name" = String, Path, description = "Secret name")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn delete_secret() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",

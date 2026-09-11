@@ -487,6 +487,18 @@ pub fn router(state: AppState) -> Router {
             post(routes::instantiate_recipe),
         )
         .route(
+            "/workspaces/:wid/secrets",
+            post(routes::create_secret).get(routes::list_secrets),
+        )
+        .route(
+            "/workspaces/:wid/secrets/:name/resolve",
+            post(routes::resolve_secret),
+        )
+        .route(
+            "/workspaces/:wid/secrets/:name",
+            delete(routes::delete_secret),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

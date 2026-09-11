@@ -170,6 +170,22 @@ pub struct InstantiateRecipe {
     pub params: serde_json::Value,
 }
 
+/// Create (or rotate) a named secret (Cluster 371.2). The `value` is encrypted at
+/// rest and never returned by `list` — only by `resolve`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateSecret {
+    pub name: String,
+    pub value: String,
+}
+
+/// A resolved secret value (Cluster 371.2) — the `resolve` response body. This is
+/// the only place a secret value crosses the wire out of Maidan.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SecretValue {
+    pub name: String,
+    pub value: String,
+}
+
 /// Pause (`false`) or resume (`true`) a schedule (Cluster 228).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetTaskScheduleActive {
