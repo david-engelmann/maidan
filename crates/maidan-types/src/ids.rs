@@ -58,3 +58,4 @@ id_newtype!(PushSubscriptionId);
 id_newtype!(RecipeId);
 id_newtype!(RecipeRunId);
 id_newtype!(SecretId);
+id_newtype!(MemoryBlockId);

@@ -29,6 +29,7 @@ mod member_freezes;
 mod member_last_seen;
 mod member_skills;
 mod members;
+mod memory_blocks;
 mod mentions;
 mod message_edits;
 mod messages;
@@ -1290,6 +1291,59 @@ impl SecretStore for PostgresStore {
         name: &str,
     ) -> Result<bool, StoreError> {
         secrets::delete(&self.pool, workspace_id, name).await
+    }
+}
+
+#[async_trait]
+impl MemoryBlockStore for PostgresStore {
+    async fn create_memory_block(&self, new: NewMemoryBlock) -> Result<MemoryBlock, StoreError> {
+        memory_blocks::create(&self.pool, new).await
+    }
+    async fn get_memory_block(&self, id: MemoryBlockId) -> Result<Option<MemoryBlock>, StoreError> {
+        memory_blocks::get(self.read_pool(), id).await
+    }
+    async fn get_memory_block_by_label(
+        &self,
+        workspace_id: WorkspaceId,
+        label: &str,
+    ) -> Result<Option<MemoryBlock>, StoreError> {
+        memory_blocks::get_by_label(self.read_pool(), workspace_id, label).await
+    }
+    async fn list_memory_blocks(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<MemoryBlock>, StoreError> {
+        memory_blocks::list(self.read_pool(), workspace_id).await
+    }
+    async fn set_memory_block_value(
+        &self,
+        id: MemoryBlockId,
+        value: &str,
+    ) -> Result<MemoryBlock, StoreError> {
+        memory_blocks::set_value(&self.pool, id, value).await
+    }
+    async fn delete_memory_block(&self, id: MemoryBlockId) -> Result<bool, StoreError> {
+        memory_blocks::delete(&self.pool, id).await
+    }
+    async fn attach_memory_block(
+        &self,
+        thread_id: ThreadId,
+        block_id: MemoryBlockId,
+    ) -> Result<bool, StoreError> {
+        memory_blocks::attach(&self.pool, thread_id, block_id).await
+    }
+    async fn detach_memory_block(
+        &self,
+        thread_id: ThreadId,
+        block_id: MemoryBlockId,
+    ) -> Result<bool, StoreError> {
+        memory_blocks::detach(&self.pool, thread_id, block_id).await
+    }
+    async fn list_thread_memory_blocks(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<MemoryBlock>, StoreError> {
+        memory_blocks::list_for_thread(self.read_pool(), thread_id).await
     }
 }
 

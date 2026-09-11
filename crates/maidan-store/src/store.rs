@@ -918,6 +918,53 @@ pub trait MemberFreezeStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait MemoryBlockStore: Send + Sync {
+    /// Attachable labeled memory blocks (Cluster 373, Wave 2 #21, H11). A block
+    /// is a Letta-shaped `{label, description, limit, read_only, value}` object a
+    /// thread can attach to (a "room object"), letting a parent watch a child's
+    /// result block without a nested runtime.
+    ///
+    /// `create_memory_block` is concurrent-safe on `(workspace_id, label)` — a
+    /// racing create returns the existing block rather than erroring, so two
+    /// racers converge on one block. `set_memory_block_value` is a full rewrite
+    /// (last-writer-wins) that returns `InvalidInput` for a read-only block or a
+    /// value over the block's char limit, and `NotFound` for an unknown block.
+    /// `attach_memory_block` / `detach_memory_block` are idempotent and report
+    /// whether they changed anything.
+    async fn create_memory_block(&self, new: NewMemoryBlock) -> Result<MemoryBlock, StoreError>;
+    async fn get_memory_block(&self, id: MemoryBlockId) -> Result<Option<MemoryBlock>, StoreError>;
+    async fn get_memory_block_by_label(
+        &self,
+        workspace_id: WorkspaceId,
+        label: &str,
+    ) -> Result<Option<MemoryBlock>, StoreError>;
+    async fn list_memory_blocks(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<MemoryBlock>, StoreError>;
+    async fn set_memory_block_value(
+        &self,
+        id: MemoryBlockId,
+        value: &str,
+    ) -> Result<MemoryBlock, StoreError>;
+    async fn delete_memory_block(&self, id: MemoryBlockId) -> Result<bool, StoreError>;
+    async fn attach_memory_block(
+        &self,
+        thread_id: ThreadId,
+        block_id: MemoryBlockId,
+    ) -> Result<bool, StoreError>;
+    async fn detach_memory_block(
+        &self,
+        thread_id: ThreadId,
+        block_id: MemoryBlockId,
+    ) -> Result<bool, StoreError>;
+    async fn list_thread_memory_blocks(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<MemoryBlock>, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1817,6 +1864,7 @@ pub trait Store:
     + RecipeStore
     + SecretStore
     + MemberFreezeStore
+    + MemoryBlockStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1864,6 +1912,7 @@ impl<
             + RecipeStore
             + SecretStore
             + MemberFreezeStore
+            + MemoryBlockStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore
