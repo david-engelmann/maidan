@@ -6,6 +6,7 @@
 
 pub mod a2a_agent;
 pub mod a2a_grpc;
+pub mod agui;
 pub mod app;
 pub mod app_oauth;
 pub mod apps;
