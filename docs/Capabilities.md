@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v373.0.0 — Wave 2 #21: attachable labeled memory as room objects (H11)
+
+Four impl PRs (373.1–373.4) + a retro. A **memory block** is a Letta-shaped `{label, description, limit, read_only, value}` workspace object attachable to a thread. A parent watches a child's result block **without a nested runtime** via the reactive `MemoryBlockUpdated` event + the MCP `wait_for_memory_block` long-poll. Full rewrite, last-writer-wins — **not a transcript, not RAG**.
+
+| Change | Where |
+|--------|-------|
+| **Store (373.1):** `maidan_memory_blocks` (pg 0078 / sqlite 0077, `UNIQUE(workspace, label)`) + `maidan_thread_memory_blocks` + `MemoryBlock`/`MemoryBlockId` + pure `fits_char_limit`/`is_valid_block_label` + `MemoryBlockStore` (concurrent-safe create, full-rewrite `set_value`, attach/detach), both backends. | `crates/maidan-types/src/memory_block.rs`, `crates/maidan-store/src/{postgres,sqlite}/memory_blocks.rs` |
+| **REST (373.2):** CRUD under `/workspaces/:wid/memory-blocks[/:id]` + attach/detach/list under `/threads/:id/memory-blocks[/:block_id]`, `workspace:read`/`write`; read-only/over-limit → 400, cross-tenant → 404. | `crates/maidan-server/src/routes/memory_block.rs` |
+| **MCP (373.3):** label-addressed `create`/`get`/`list`/`set`/`attach`/`detach`/`list_thread` memory-block tools. | `crates/maidan-mcp/src/tools/memory_block.rs` |
+| **Reactive watch (373.4):** `MemoryBlockUpdated` event on set-value (REST + MCP, non-federatable "go fetch" pointer) + MCP `wait_for_memory_block` long-poll. | `crates/maidan-types/src/events.rs`, `crates/maidan-mcp/src/tools/memory_block.rs` |
+
 ## v372.0.0 — Wave 2 #20: a freeze-member kill-switch (G17 + B25)
 
 Four impl PRs (372.1–372.4) + operator docs. An operator (or an orchestrator agent) freezes a compromised/runaway **member**: it drops their leases, `claim_next` refuses them, and they stay frozen until an explicit unfreeze. **Not G4 PAUSE** (which pauses a thread/workspace) — this stops one member.
