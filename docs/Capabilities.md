@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v374.0.0 — P1.1c: the MCP assignment dual-write (the P0)
+
+One impl PR (374.1) + a retro. Closes the last MCP write-path-parity gap the transactional-outbox migration (205–214) was meant to cover, surfaced by a 2026-09-10 audit. The MCP assignment tools now match REST's crash-consistency — and a reclaim finally emits `ClaimExpired` on the agent-primary surface. No new Wave number (folds under the outbox program).
+
+| Change | Where |
+|--------|-------|
+| **Atomic MCP assignment (374.1):** `assign`/`claim`/`unassign`/`claim_next`/`release_claim` use their `*_with_event` store variants + `publish_stored`; the `publish_assignment` helper is deleted. `claim_next` publishes every returned event → a reclaim emits `ClaimExpired` (dead holder) + `ThreadAssignmentChanged`. | `crates/maidan-mcp/src/tools/thread.rs` |
+| **Conflict mapping (374.1):** `StoreError::Conflict` → `McpError::InvalidParams` (a client error, not `-32603` Internal). | `crates/maidan-mcp/src/error.rs` |
+
 ## v373.0.0 — Wave 2 #21: attachable labeled memory as room objects (H11)
 
 Four impl PRs (373.1–373.4) + a retro. A **memory block** is a Letta-shaped `{label, description, limit, read_only, value}` workspace object attachable to a thread. A parent watches a child's result block **without a nested runtime** via the reactive `MemoryBlockUpdated` event + the MCP `wait_for_memory_block` long-poll. Full rewrite, last-writer-wins — **not a transcript, not RAG**.
