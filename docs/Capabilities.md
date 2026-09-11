@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v372.0.0 — Wave 2 #20: a freeze-member kill-switch (G17 + B25)
+
+Four impl PRs (372.1–372.4) + operator docs. An operator (or an orchestrator agent) freezes a compromised/runaway **member**: it drops their leases, `claim_next` refuses them, and they stay frozen until an explicit unfreeze. **Not G4 PAUSE** (which pauses a thread/workspace) — this stops one member.
+
+| Change | Where |
+|--------|-------|
+| **Store (372.1):** `maidan_member_freezes` (pg 0077 / sqlite 0076) + `MemberFreezeStore` — `freeze_member` records the freeze + drops the member's active leases in one tx (returns the count released); unfreeze/is-frozen/get/list, both backends. | `crates/maidan-types/src/freeze.rs`, `crates/maidan-store/src/{postgres,sqlite}/member_freezes.rs` |
+| **Claim enforcement (372.2):** both `claim_next` variants refuse a frozen member via an atomic `NOT EXISTS` clause. | `crates/maidan-store/src/{postgres,sqlite}/threads.rs` |
+| **REST (372.3):** `POST/DELETE/GET /members/:id/freeze` + `GET /workspaces/:wid/frozen-members`, `token:admin`, audited. | `crates/maidan-server/src/routes/freeze.rs` |
+| **MCP (372.4):** `freeze_member`/`unfreeze_member`/`list_frozen_members` — the first `token:admin` MCP tools. | `crates/maidan-mcp/src/tools/freeze.rs` |
+| **Operator docs:** a "Kill switches" catalog (the freeze API + the `MAIDAN_*` env flags). | `docs/Operations.md` |
+
 ## v371.0.0 — Wave 2 #19: secret-ref (G19 + T3)
 
 Four impl PRs (371.1–371.4). A named secret whose **value never enters the event log** — the log carries a `secret://<name>` reference, the store holds the AEAD-encrypted value, and it's materialized only transiently: Pi resolves it at exec, or the egress broker substitutes it on the way out to an allowlisted host.

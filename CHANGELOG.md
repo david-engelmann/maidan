@@ -7,6 +7,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [372.0.0] — 2026-09-11
+
+Post-gate hardening (Phase XXIV). **Wave 2 #20 — a freeze-member kill-switch**
+(G17 + B25). Four impl PRs (372.1–372.4) + a retro. No new gate tag.
+
+### Added
+
+- **Member-freeze store** (372.1): `maidan_member_freezes` (pg 0077 / sqlite 0076)
+  + `MemberFreeze` + `MemberFreezeStore` — `freeze_member` records the freeze AND
+  releases the member's active claims (drops leases) in one transaction, returning
+  the count released; plus unfreeze / is-frozen / get / list, both backends.
+- **Claim enforcement** (372.2): both `claim_next` variants refuse a frozen member
+  via an `AND NOT EXISTS (… maidan_member_freezes …)` clause — atomic (in the same
+  statement as the claim UPDATE), so a member frozen mid-flight can't slip a claim.
+- **Freeze REST** (372.3): `POST/DELETE/GET /members/:id/freeze` +
+  `GET /workspaces/:wid/frozen-members`, gated `token:admin`; freeze/unfreeze are
+  audited (`member.freeze` / `member.unfreeze`).
+- **Freeze MCP tools** (372.4): `freeze_member` / `unfreeze_member` /
+  `list_frozen_members` — the first `token:admin` MCP tools, so an orchestrator
+  agent can kill-switch a misbehaving member.
+
+### Docs
+
+- A **Kill switches (operator levers)** section in `docs/Operations.md`: the
+  per-member freeze API + a catalog of the `MAIDAN_*` kill-switch env flags
+  (auth ack, rate-limit floor, body cap, secret egress allowlist, federation
+  toggle, statement timeout, the opt-in worker ticks, retention).
+
 ## [371.0.0] — 2026-09-11
 
 Post-gate hardening (Phase XXIV). **Wave 2 #19 — secret-ref** (G19 + T3). Four
