@@ -48,6 +48,7 @@ mod reindex_jobs;
 pub mod replication;
 mod retention;
 mod scim_users;
+mod secrets;
 mod sessions;
 mod slack_links;
 mod slash_commands;
@@ -1264,6 +1265,30 @@ impl RecipeStore for PostgresStore {
         recipe_id: RecipeId,
     ) -> Result<Option<RecipeRun>, StoreError> {
         recipes::latest_run(self.read_pool(), recipe_id).await
+    }
+}
+
+#[async_trait]
+impl SecretStore for PostgresStore {
+    async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError> {
+        secrets::create(&self.pool, new).await
+    }
+    async fn get_secret_ciphertext(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<Option<String>, StoreError> {
+        secrets::get_ciphertext(&self.pool, workspace_id, name).await
+    }
+    async fn list_secrets(&self, workspace_id: WorkspaceId) -> Result<Vec<Secret>, StoreError> {
+        secrets::list(self.read_pool(), workspace_id).await
+    }
+    async fn delete_secret(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+    ) -> Result<bool, StoreError> {
+        secrets::delete(&self.pool, workspace_id, name).await
     }
 }
 
