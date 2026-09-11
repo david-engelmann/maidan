@@ -3595,6 +3595,117 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recipe_tools_create_list_and_instantiate() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rec".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "q".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // A real member session so `created_by` satisfies its FK.
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let created = content(
+            server
+                .call_tool(
+                    &auth,
+                    "create_recipe",
+                    &json!({
+                        "channel_id": channel.id.0,
+                        "name": "ship",
+                        "spec": {
+                            "params": [{ "name": "repo", "required": true }],
+                            "children": [
+                                { "key": "build", "title": "build it", "required_skills": ["rust"] },
+                                { "key": "review", "title": "review it", "depends_on": ["build"] }
+                            ]
+                        }
+                    }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(created["name"], json!("ship"));
+        let recipe_id = created["id"].as_str().unwrap();
+
+        let list = content(
+            server
+                .call_tool(&auth, "list_recipes", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        let run = content(
+            server
+                .call_tool(
+                    &auth,
+                    "instantiate_recipe",
+                    &json!({ "recipe_id": recipe_id, "params": { "repo": "x/y" } }),
+                )
+                .await
+                .unwrap(),
+        );
+        // The run's root thread carries the two children.
+        let root =
+            ThreadId(uuid::Uuid::parse_str(run["root_thread_id"].as_str().unwrap()).unwrap());
+        assert_eq!(store.child_thread_summaries(root).await.unwrap().len(), 2);
+
+        // A missing required param is rejected.
+        assert!(server
+            .call_tool(
+                &auth,
+                "instantiate_recipe",
+                &json!({ "recipe_id": recipe_id, "params": {} }),
+            )
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 
