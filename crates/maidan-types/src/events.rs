@@ -53,6 +53,7 @@ pub enum EventKind {
     MessageUnpinned,
     ReferenceAdded,
     ArtifactUpserted,
+    MemoryBlockUpdated,
 }
 
 impl EventKind {
@@ -82,6 +83,7 @@ impl EventKind {
             Self::MessageUnpinned => "message_unpinned",
             Self::ReferenceAdded => "reference_added",
             Self::ArtifactUpserted => "artifact_upserted",
+            Self::MemoryBlockUpdated => "memory_block_updated",
         }
     }
 
@@ -111,6 +113,7 @@ impl EventKind {
             "message_unpinned" => Some(Self::MessageUnpinned),
             "reference_added" => Some(Self::ReferenceAdded),
             "artifact_upserted" => Some(Self::ArtifactUpserted),
+            "memory_block_updated" => Some(Self::MemoryBlockUpdated),
             _ => None,
         }
     }
@@ -146,6 +149,7 @@ impl EventKind {
         Self::MessageUnpinned,
         Self::ReferenceAdded,
         Self::ArtifactUpserted,
+        Self::MemoryBlockUpdated,
     ];
 
     /// Whether a federated peer may push this event kind on ingest (Cluster 215
@@ -199,6 +203,9 @@ impl EventKind {
             // A skipped firing is *this* deployment's scheduler decision (Cluster
             // 370); a peer must not inject one.
             Self::ScheduleSkipped => false,
+            // A memory-block update is a locally-derived signal over local shared
+            // state (Cluster 373); a peer must not inject one.
+            Self::MemoryBlockUpdated => false,
         }
     }
 }
@@ -440,6 +447,17 @@ pub enum Event {
         occurred_at: DateTime<Utc>,
         artifact: Artifact,
     },
+    /// A memory block's value was rewritten (Cluster 373). A small "go fetch"
+    /// pointer — a waiter reacts and reads the value via `get_memory_block`, so
+    /// the (possibly large) value isn't carried inline. Derived + local: not
+    /// federatable. `updated_by` is the member who rewrote it.
+    MemoryBlockUpdated {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        block_id: MemoryBlockId,
+        label: String,
+        updated_by: MemberId,
+    },
 }
 
 impl Event {
@@ -467,6 +485,7 @@ impl Event {
             Self::ReactionRemoved { .. } => EventKind::ReactionRemoved,
             Self::MessagePinned { .. } => EventKind::MessagePinned,
             Self::MessageUnpinned { .. } => EventKind::MessageUnpinned,
+            Self::MemoryBlockUpdated { .. } => EventKind::MemoryBlockUpdated,
             Self::ReferenceAdded { .. } => EventKind::ReferenceAdded,
             Self::ArtifactUpserted { .. } => EventKind::ArtifactUpserted,
         }
@@ -497,7 +516,8 @@ impl Event {
             | Self::MessagePinned { occurred_at, .. }
             | Self::MessageUnpinned { occurred_at, .. }
             | Self::ReferenceAdded { occurred_at, .. }
-            | Self::ArtifactUpserted { occurred_at, .. } => *occurred_at,
+            | Self::ArtifactUpserted { occurred_at, .. }
+            | Self::MemoryBlockUpdated { occurred_at, .. } => *occurred_at,
         }
     }
 
@@ -524,7 +544,8 @@ impl Event {
             | Self::ReactionAdded { workspace_id, .. }
             | Self::ReactionRemoved { workspace_id, .. }
             | Self::MessagePinned { workspace_id, .. }
-            | Self::MessageUnpinned { workspace_id, .. } => Some(*workspace_id),
+            | Self::MessageUnpinned { workspace_id, .. }
+            | Self::MemoryBlockUpdated { workspace_id, .. } => Some(*workspace_id),
             Self::ReferenceAdded { .. } | Self::ArtifactUpserted { .. } => None,
         }
     }
@@ -605,6 +626,7 @@ impl Event {
             | Self::MessagePinned { member_id, .. }
             | Self::MessageUnpinned { member_id, .. } => Some(*member_id),
             Self::MessageEdited { editor_id, .. } => Some(*editor_id),
+            Self::MemoryBlockUpdated { updated_by, .. } => Some(*updated_by),
             _ => None,
         }
     }
@@ -879,7 +901,8 @@ mod kind_tests {
                 | EventKind::MessagePinned
                 | EventKind::MessageUnpinned
                 | EventKind::ReferenceAdded
-                | EventKind::ArtifactUpserted => {}
+                | EventKind::ArtifactUpserted
+                | EventKind::MemoryBlockUpdated => {}
             }
             assert_eq!(
                 EventKind::parse(kind.as_str()),
@@ -919,6 +942,7 @@ mod kind_tests {
             EventKind::ThreadLanded,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
+            EventKind::MemoryBlockUpdated,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);

@@ -37,6 +37,7 @@ fn event_kinds_match_contract_file() {
         EventKind::MessageUnpinned,
         EventKind::ReferenceAdded,
         EventKind::ArtifactUpserted,
+        EventKind::MemoryBlockUpdated,
     ]
     .into_iter()
     .map(|k| k.as_str().to_string())

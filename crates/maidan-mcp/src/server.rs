@@ -4058,6 +4058,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn memory_block_wait_wakes_on_update() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_bus::InMemoryBus;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "mbw".into() })
+            .await
+            .unwrap();
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth = AuthContext::from_session(
+            owner.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // A child's result block, created empty.
+        server
+            .call_tool(
+                &auth,
+                "create_memory_block",
+                &json!({ "label": "child.result" }),
+            )
+            .await
+            .unwrap();
+
+        // A parent waits; the child rewrites the block → the wait wakes with the
+        // fresh value (proving the MemoryBlockUpdated emit + the wait match).
+        let wait_args = json!({ "label": "child.result", "timeout_ms": 5000 });
+        let set_args = json!({ "label": "child.result", "value": "done" });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_memory_block", &wait_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                server
+                    .call_tool(&auth, "set_memory_block_value", &set_args)
+                    .await
+                    .unwrap();
+            }
+        );
+        let woke = content(out.unwrap());
+        assert_eq!(woke["value"], "done");
+        assert_eq!(woke["label"], "child.result");
+
+        // An update to a DIFFERENT block does not wake this waiter → it times out.
+        server
+            .call_tool(&auth, "create_memory_block", &json!({ "label": "other" }))
+            .await
+            .unwrap();
+        let wait_args = json!({ "label": "child.result", "timeout_ms": 400 });
+        let other_args = json!({ "label": "other", "value": "x" });
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "wait_for_memory_block", &wait_args),
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                server
+                    .call_tool(&auth, "set_memory_block_value", &other_args)
+                    .await
+                    .unwrap();
+            }
+        );
+        assert!(
+            content(out.unwrap()).is_null(),
+            "an update to another block must not wake this waiter"
+        );
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 

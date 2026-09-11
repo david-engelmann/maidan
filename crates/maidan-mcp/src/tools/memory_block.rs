@@ -6,14 +6,19 @@
 
 use std::sync::Arc;
 
+use chrono::Utc;
+use futures::StreamExt;
 use maidan_auth::AuthContext;
 use maidan_store::Store;
-use maidan_types::{MemoryBlockId, NewMemoryBlock, ThreadId};
+use maidan_types::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
+
+const DEFAULT_WAIT_MS: i64 = 30_000;
+const MAX_WAIT_MS: i64 = 300_000;
 
 #[derive(Deserialize)]
 struct CreateArgs {
@@ -96,16 +101,32 @@ struct SetArgs {
 /// `InvalidParams`; a read-only block or over-limit value → `InvalidParams` (the
 /// store's `InvalidInput`).
 pub(super) async fn set_memory_block_value(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetArgs = serde_json::from_value(args.clone())?;
-    let block = store
+    let block = server
+        .store
         .get_memory_block_by_label(auth.workspace_id, a.label.trim())
         .await?
         .ok_or_else(|| McpError::InvalidParams("no such memory block".into()))?;
-    let updated = store.set_memory_block_value(block.id, &a.value).await?;
+    let updated = server
+        .store
+        .set_memory_block_value(block.id, &a.value)
+        .await?;
+    // A "go fetch" pointer so a parent watching the block wakes (Cluster 373.4).
+    if server.event_bus.is_some() {
+        server
+            .publish_event(Event::MemoryBlockUpdated {
+                occurred_at: Utc::now(),
+                workspace_id: updated.workspace_id,
+                block_id: updated.id,
+                label: updated.label.clone(),
+                updated_by: auth.member_id,
+            })
+            .await;
+    }
     Ok(content_json(&updated))
 }
 
@@ -170,4 +191,71 @@ pub(super) async fn detach_memory_block(
         .detach_memory_block(ThreadId(a.thread_id), MemoryBlockId(a.block_id))
         .await?;
     Ok(content_json(&json!({ "detached": detached })))
+}
+
+#[derive(Deserialize)]
+struct WaitArgs {
+    label: String,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+}
+
+/// Block until a memory block (by label) is rewritten — a `MemoryBlockUpdated`
+/// event (Cluster 373.4) in the caller's workspace — or the timeout lapses.
+/// Returns the block (with its fresh value) or `null` on timeout. This is how a
+/// parent watches a child's result block without a nested runtime. **Live**
+/// primitive: it only sees updates produced *after* it subscribes, so read the
+/// current value with `get_memory_block` first (the `GET /mcp/stream` SSE
+/// transport, `kinds=memory_block_updated`, is the resumable alternative).
+pub(super) async fn wait_for_memory_block(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WaitArgs = serde_json::from_value(args.clone())?;
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(
+            "wait_for_memory_block requires an event bus".into(),
+        ));
+    };
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+    let label = a.label.trim().to_string();
+
+    // Blocks aren't channel/thread-scoped, so the filter pins workspace + kind;
+    // the specific block is matched by label as events arrive.
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        kinds: Some(std::collections::HashSet::from([
+            EventKind::MemoryBlockUpdated,
+        ])),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        let maidan_bus::BusItem::Event(env) = item else {
+            continue; // a lag marker — keep waiting on the same deadline.
+        };
+        if let Event::MemoryBlockUpdated { label: l, .. } = &env.event {
+            if l == &label {
+                let block = server
+                    .store
+                    .get_memory_block_by_label(auth.workspace_id, &label)
+                    .await?;
+                return Ok(content_json(&block));
+            }
+        }
+    }
 }

@@ -133,6 +133,7 @@
   "upload_artifact_multipart_part",
   "wait_for_claim_expired",
   "wait_for_landed",
+  "wait_for_memory_block",
   "wait_for_mention",
   "wait_for_notification",
   "wait_for_ready",
