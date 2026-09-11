@@ -26,10 +26,10 @@ pub fn max_body_bytes_from_env() -> usize {
 #[cfg(feature = "bootstrap")]
 use crate::bootstrap;
 use crate::{
-    a2a_agent, app_oauth, apps, auth, automation_deliveries, consistency, delivery_ops, dm,
-    federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications, mcp_stream,
-    mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, routes,
-    scim, session, slack, slash_commands, state::AppState, webhooks, ws,
+    a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
+    delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications,
+    mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id,
+    routes, scim, session, slack, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -75,6 +75,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/mcp/notifications", get(mcp_notifications::stream))
         .route("/mcp/stream", get(mcp_stream::stream))
+        .route("/agui/stream", get(agui_stream::stream))
         .route("/workspaces/:id", get(routes::get_workspace))
         .route("/workspaces/:id/purge", post(routes::purge_workspace))
         .route("/workspaces/:id", delete(routes::erase_workspace))
