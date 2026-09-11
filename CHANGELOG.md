@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [373.0.0] — 2026-09-11
+
+Post-gate hardening (Phase XXIV). **Wave 2 #21 — attachable labeled memory as
+room objects** (H11). Four impl PRs (373.1–373.4) + a retro. No new gate tag.
+
+A **memory block** is a Letta-shaped `{label, description, limit, read_only,
+value}` workspace object attachable to a thread. A parent watches a child's
+result block without a nested runtime via the reactive `MemoryBlockUpdated`
+event + the MCP `wait_for_memory_block` long-poll. Not a transcript, not RAG.
+
+- **373.1** store foundation — `maidan_memory_blocks` (pg 0078 / sqlite 0077,
+  `UNIQUE(workspace, label)`) + `maidan_thread_memory_blocks` + `MemoryBlockStore`
+  (concurrent-safe create, full-rewrite `set_value` refusing read-only/over-limit,
+  attach/detach), both backends.
+- **373.2** REST (`/workspaces/:wid/memory-blocks` + `/threads/:id/memory-blocks`,
+  `workspace:read`/`write`).
+- **373.3** MCP (label-addressed create/get/list/set/attach/detach/list-thread).
+- **373.4** the reactive watch — `MemoryBlockUpdated` (a non-federatable "go
+  fetch" pointer, full 11-site EventKind drill) + MCP `wait_for_memory_block`.
+
+The 373.5 retro also folds a 2026-09-10 audit of the MCP write path: **P1.1 was
+over-claimed** (the assignment path was never migrated to `*_with_event`) → the
+MCP assignment dual-write is tracked as **P1.1c** and fixed in Cluster 374.
+
 ## [372.0.0] — 2026-09-11
 
 Post-gate hardening (Phase XXIV). **Wave 2 #20 — a freeze-member kill-switch**
