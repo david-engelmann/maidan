@@ -1231,6 +1231,36 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/recipes",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/recipes",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/recipes/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/recipes/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/recipes/{id}/instantiate",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
     "surface": "http"

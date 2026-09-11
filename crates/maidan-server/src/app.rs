@@ -475,6 +475,18 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::delete_task_schedule),
         )
         .route(
+            "/workspaces/:wid/recipes",
+            post(routes::create_recipe).get(routes::list_recipes),
+        )
+        .route(
+            "/workspaces/:wid/recipes/:id",
+            get(routes::get_recipe).delete(routes::delete_recipe),
+        )
+        .route(
+            "/workspaces/:wid/recipes/:id/instantiate",
+            post(routes::instantiate_recipe),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

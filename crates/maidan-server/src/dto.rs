@@ -148,6 +148,24 @@ pub struct CreateTaskSchedule {
     pub first_run_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Create a recipe blueprint (Cluster 370.3). `spec` is the `RecipeSpec`
+/// (params, definition of done, retry, inline DAG children).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateRecipe {
+    pub channel_id: uuid::Uuid,
+    pub name: String,
+    pub spec: maidan_types::RecipeSpec,
+}
+
+/// Instantiate a recipe (Cluster 370.3): `params` are validated against the
+/// recipe's declared params (required ones must be present).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct InstantiateRecipe {
+    #[serde(default)]
+    #[schema(value_type = Object)]
+    pub params: serde_json::Value,
+}
+
 /// Pause (`false`) or resume (`true`) a schedule (Cluster 228).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetTaskScheduleActive {

@@ -22,6 +22,7 @@ use crate::ids::{ChannelId, MemberId, RecipeId, RecipeRunId, ThreadId, Workspace
 /// A stored recipe blueprint. `spec` is the frozen [`RecipeSpec`]; identity and
 /// the target channel are the only first-class columns.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Recipe {
     pub id: RecipeId,
     pub workspace_id: WorkspaceId,
@@ -46,6 +47,7 @@ pub struct NewRecipe {
 /// The recipe blueprint: params, a definition of done, a retry policy, and the
 /// inline child sub-tasks (a DAG). Serialized as the `spec` JSON column.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeSpec {
     #[serde(default)]
     pub params: Vec<RecipeParam>,
@@ -61,6 +63,7 @@ pub struct RecipeSpec {
 
 /// A named parameter a recipe consumes at instantiation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeParam {
     pub name: String,
     #[serde(default)]
@@ -72,6 +75,7 @@ pub struct RecipeParam {
 /// A retry policy carried in the snapshot (not enforced by the room — a claimer
 /// or Pi reads it). `max_attempts` is advisory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeRetry {
     pub max_attempts: u32,
 }
@@ -81,6 +85,7 @@ pub struct RecipeRetry {
 /// thread so `claim_next` routes it; `depends_on` are the keys of sibling
 /// children this one waits on.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeChild {
     pub key: String,
     pub title: String,
@@ -186,11 +191,13 @@ impl RecipeSpec {
 /// freezes the recipe bytes at fire time so a later edit to the recipe never
 /// changes what this run was, and `root_thread_id` is the parent thread created.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeRun {
     pub id: RecipeRunId,
     pub recipe_id: RecipeId,
     pub workspace_id: WorkspaceId,
     pub root_thread_id: ThreadId,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub params: serde_json::Value,
     pub spec_snapshot: RecipeSpec,
     pub created_by: MemberId,
