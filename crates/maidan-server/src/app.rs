@@ -509,6 +509,24 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_frozen_members),
         )
         .route(
+            "/workspaces/:wid/memory-blocks",
+            post(routes::create_memory_block).get(routes::list_memory_blocks),
+        )
+        .route(
+            "/workspaces/:wid/memory-blocks/:id",
+            get(routes::get_memory_block)
+                .put(routes::set_memory_block_value)
+                .delete(routes::delete_memory_block),
+        )
+        .route(
+            "/threads/:id/memory-blocks",
+            get(routes::list_thread_memory_blocks),
+        )
+        .route(
+            "/threads/:id/memory-blocks/:block_id",
+            post(routes::attach_memory_block).delete(routes::detach_memory_block),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

@@ -178,6 +178,29 @@ pub struct CreateSecret {
     pub value: String,
 }
 
+/// Create a memory block (Cluster 373.2). `label` is the block's within-workspace
+/// key; `value` defaults to empty, `read_only` to false. Creating an existing
+/// label returns the existing block (concurrent-safe).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateMemoryBlock {
+    pub label: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub char_limit: Option<i64>,
+    #[serde(default)]
+    pub read_only: bool,
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// Full-rewrite a memory block's value (Cluster 373.2, last-writer-wins). A
+/// read-only block or a value over the block's char limit is rejected (400).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetMemoryBlockValue {
+    pub value: String,
+}
+
 /// A resolved secret value (Cluster 371.2) — the `resolve` response body. This is
 /// the only place a secret value crosses the wire out of Maidan.
 #[derive(Debug, Serialize, ToSchema)]

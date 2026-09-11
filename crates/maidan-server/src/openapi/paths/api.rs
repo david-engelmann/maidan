@@ -973,6 +973,63 @@ pub fn get_member_freeze() {}
     responses((status = 200, body = Vec<MemberFreeze>)))]
 pub fn list_frozen_members() {}
 
+// --- memory blocks (attachable labeled memory, Cluster 373) ---
+
+#[utoipa::path(post, path = "/workspaces/{wid}/memory-blocks", tag = "memory",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateMemoryBlock,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = MemoryBlock)))]
+pub fn create_memory_block() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/memory-blocks", tag = "memory",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemoryBlock>)))]
+pub fn list_memory_blocks() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/memory-blocks/{id}", tag = "memory",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Memory block id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemoryBlock)))]
+pub fn get_memory_block() {}
+
+#[utoipa::path(put, path = "/workspaces/{wid}/memory-blocks/{id}", tag = "memory",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Memory block id")),
+    request_body = SetMemoryBlockValue,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemoryBlock)))]
+pub fn set_memory_block_value() {}
+
+#[utoipa::path(delete, path = "/workspaces/{wid}/memory-blocks/{id}", tag = "memory",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Memory block id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn delete_memory_block() {}
+
+#[utoipa::path(get, path = "/threads/{id}/memory-blocks", tag = "memory",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemoryBlock>)))]
+pub fn list_thread_memory_blocks() {}
+
+#[utoipa::path(post, path = "/threads/{id}/memory-blocks/{block_id}", tag = "memory",
+    params(("id" = Uuid, Path, description = "Thread id"),
+        ("block_id" = Uuid, Path, description = "Memory block id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn attach_memory_block() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/memory-blocks/{block_id}", tag = "memory",
+    params(("id" = Uuid, Path, description = "Thread id"),
+        ("block_id" = Uuid, Path, description = "Memory block id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn detach_memory_block() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",
