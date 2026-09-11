@@ -4156,6 +4156,147 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mcp_claim_next_reclaim_emits_claim_expired_then_assignment() {
+        // Cluster 374 (P1.1c): the MCP claim_next path now goes through the atomic
+        // `claim_next_thread_with_event` + `publish_stored`, so reclaiming a dead
+        // holder's expired lease emits ClaimExpired (for the holder) THEN
+        // ThreadAssignmentChanged — parity with REST. The old non-event path
+        // dropped ClaimExpired on the agent surface entirely.
+        use futures::StreamExt;
+        use maidan_auth::capability::THREAD_TRANSITION;
+        use maidan_bus::{BusItem, EventBus, InMemoryBus};
+        use std::collections::HashSet;
+        use std::time::Duration;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rc".into() })
+            .await
+            .unwrap();
+        let m1 = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "dead".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let m2 = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "reclaimer".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let ch = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        store
+            .create_thread(NewThread {
+                channel_id: ch.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+
+        let bus = Arc::new(InMemoryBus::new());
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(bus.clone());
+        let text = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // m1 claims with an already-past lease (a dead agent).
+        let auth1 = AuthContext::from_session(m1.id, ws.id, vec![THREAD_TRANSITION.to_string()]);
+        let claimed1 = text(
+            server
+                .call_tool(
+                    &auth1,
+                    "claim_next_thread",
+                    &json!({ "channel_id": ch.id.0, "member_id": m1.id.0, "lease_secs": -1 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(!claimed1.is_null(), "m1 claimed the thread");
+
+        // Subscribe BEFORE the reclaim so both events are captured.
+        let filter = EventFilter {
+            workspace_id: Some(ws.id),
+            kinds: Some(HashSet::from([
+                EventKind::ClaimExpired,
+                EventKind::ThreadAssignmentChanged,
+            ])),
+            ..EventFilter::default()
+        };
+        let mut stream = bus.subscribe(filter).await.unwrap();
+
+        // m2 reclaims the expired lease via the MCP tool.
+        let auth2 = AuthContext::from_session(m2.id, ws.id, vec![THREAD_TRANSITION.to_string()]);
+        let reclaimed = text(
+            server
+                .call_tool(
+                    &auth2,
+                    "claim_next_thread",
+                    &json!({ "channel_id": ch.id.0, "member_id": m2.id.0, "lease_secs": 3600 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            reclaimed["assignee_id"],
+            m2.id.0.to_string(),
+            "m2 reclaimed the thread"
+        );
+
+        // The reclaim emitted ClaimExpired (for the dead m1) + ThreadAssignmentChanged (m2).
+        let mut events = vec![];
+        for _ in 0..2 {
+            match tokio::time::timeout(Duration::from_secs(2), stream.next()).await {
+                Ok(Some(BusItem::Event(env))) => events.push(env.event),
+                _ => break,
+            }
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::ClaimExpired { member_id, .. } if *member_id == m1.id)),
+            "the MCP reclaim must emit ClaimExpired for the dead holder (the P1.1c fix); got {events:?}"
+        );
+        assert!(
+            events.iter().any(
+                |e| matches!(e, Event::ThreadAssignmentChanged { assignee_id, .. } if *assignee_id == Some(m2.id))
+            ),
+            "the MCP reclaim must emit ThreadAssignmentChanged for the reclaimer"
+        );
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 
