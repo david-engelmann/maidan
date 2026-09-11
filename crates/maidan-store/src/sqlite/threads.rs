@@ -486,6 +486,9 @@ pub async fn claim_next(
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = ?
+               )
              ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
              LIMIT 1
          )
@@ -497,6 +500,7 @@ pub async fn claim_next(
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
+    .bind(member_id.0)
     .bind(member_id.0)
     .fetch_optional(pool)
     .await?;
@@ -651,11 +655,15 @@ pub async fn claim_next_with_event(
            AND NOT EXISTS (
                SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
            )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = ?
+           )
          ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
          LIMIT 1",
     )
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
+    .bind(member_id.0)
     .bind(member_id.0)
     .fetch_optional(&mut *tx)
     .await?;
