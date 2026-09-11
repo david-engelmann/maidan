@@ -210,49 +210,25 @@ struct UnassignThreadArgs {
     actor_id: uuid::Uuid,
 }
 
-/// Emit a `ThreadAssignmentChanged` event for an assignment mutation
-/// (Cluster 171). No-op when the bus is unconfigured.
-async fn publish_assignment(
-    server: &crate::server::McpServer,
-    thread: &Thread,
-    actor_id: MemberId,
-    previous_assignee_id: Option<MemberId>,
-    note: Option<String>,
-) -> Result<(), McpError> {
-    if server.event_bus.is_none() {
-        return Ok(());
-    }
-    let ctx = resolve_thread_context(server.store.as_ref(), thread.id)
-        .await
-        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    server
-        .publish_event(Event::ThreadAssignmentChanged {
-            occurred_at: Utc::now(),
-            workspace_id: ctx.workspace_id,
-            channel_id: ctx.channel_id,
-            thread_id: thread.id,
-            actor_id,
-            previous_assignee_id,
-            assignee_id: thread.assignee_id,
-            note,
-            thread: thread.clone(),
-        })
-        .await;
-    Ok(())
-}
-
 pub(super) async fn assign_thread(
     server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AssignThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
-    let previous = server.store.get_thread(thread_id).await?.assignee_id;
-    let thread = server
+    // Atomic domain-write + event (Cluster 374, P1.1c): the store captures the
+    // previous assignee in-tx and appends ThreadAssignmentChanged with it, so the
+    // agent-driven assignment matches REST's crash-consistency (no dual-write).
+    let (thread, stored) = server
         .store
-        .assign_thread(thread_id, MemberId(a.assignee_id))
+        .assign_thread_with_event(
+            thread_id,
+            MemberId(a.assignee_id),
+            MemberId(a.actor_id),
+            a.note,
+        )
         .await?;
-    publish_assignment(server, &thread, MemberId(a.actor_id), previous, a.note).await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
 
@@ -295,9 +271,14 @@ pub(super) async fn claim_thread(
             ));
         }
     }
-    let result = server.store.claim_thread(thread_id, member_id).await?;
-    if result.claimed {
-        publish_assignment(server, &result.thread, member_id, None, None).await?;
+    // Atomic (Cluster 374, P1.1c): the event is appended in the claim's tx and
+    // returned only when the CAS actually claimed.
+    let (result, stored) = server
+        .store
+        .claim_thread_with_event(thread_id, member_id)
+        .await?;
+    if let Some(stored) = stored {
+        server.publish_stored(&stored).await;
     }
     Ok(content_json(&result))
 }
@@ -308,9 +289,13 @@ pub(super) async fn unassign_thread(
 ) -> Result<Value, McpError> {
     let a: UnassignThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
-    let previous = server.store.get_thread(thread_id).await?.assignee_id;
-    let thread = server.store.unassign_thread(thread_id).await?;
-    publish_assignment(server, &thread, MemberId(a.actor_id), previous, None).await?;
+    // Atomic (Cluster 374, P1.1c): the store captures the previous assignee in-tx
+    // and appends ThreadAssignmentChanged with it.
+    let (thread, stored) = server
+        .store
+        .unassign_thread_with_event(thread_id, MemberId(a.actor_id))
+        .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
 
@@ -558,12 +543,16 @@ pub(super) async fn claim_next_thread(
     if at_wip_limit(server.store.as_ref(), channel.workspace_id, member_id).await? {
         return Ok(content_json(&Value::Null));
     }
-    let claimed = server
+    // Atomic (Cluster 374, P1.1c): `_with_event` appends the events in the claim's
+    // tx and returns them — the reclaim's ThreadAssignmentChanged, PRECEDED by a
+    // ClaimExpired when the claim took over an expired lease (the dead holder).
+    // The old non-event path dropped ClaimExpired entirely on the agent surface.
+    let (claimed, events) = server
         .store
-        .claim_next_thread(ChannelId(a.channel_id), member_id, a.lease_secs)
+        .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, a.lease_secs)
         .await?;
-    if let Some(thread) = &claimed {
-        publish_assignment(server, thread, member_id, None, None).await?;
+    for stored in &events {
+        server.publish_stored(stored).await;
     }
     Ok(content_json(&claimed))
 }
@@ -641,15 +630,16 @@ pub(super) async fn release_claim(
 ) -> Result<Value, McpError> {
     let a: ReleaseClaimArgs = serde_json::from_value(args.clone())?;
     let member = MemberId(a.member_id);
-    let thread = server
+    // Atomic (Cluster 374, P1.1c): release + ThreadAssignmentChanged in one tx.
+    let (thread, stored) = server
         .store
-        .release_claim(
+        .release_claim_with_event(
             ThreadId(a.thread_id),
             member,
             ClaimLeaseId(a.claim_lease_id),
         )
         .await?;
-    publish_assignment(server, &thread, member, Some(member), None).await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
 

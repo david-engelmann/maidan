@@ -92,6 +92,9 @@ impl From<maidan_store::StoreError> for McpError {
         match err {
             maidan_store::StoreError::NotFound => Self::NotFound,
             maidan_store::StoreError::InvalidInput(m) => Self::InvalidParams(m),
+            // A uniqueness/state conflict is a client error, not an internal one
+            // (Cluster 374) — surface it as invalid params, not -32603 Internal.
+            maidan_store::StoreError::Conflict(m) => Self::InvalidParams(m),
             other => Self::Internal(other.to_string()),
         }
     }
@@ -193,9 +196,10 @@ mod tests {
             McpError::from(maidan_store::StoreError::InvalidInput("bad".into())),
             McpError::InvalidParams(_)
         ));
+        // A conflict is a client error (Cluster 374) — invalid params, not internal.
         assert!(matches!(
             McpError::from(maidan_store::StoreError::Conflict("dup".into())),
-            McpError::Internal(_)
+            McpError::InvalidParams(_)
         ));
     }
 
