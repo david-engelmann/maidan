@@ -3805,6 +3805,108 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn freeze_tools_freeze_unfreeze_and_list() {
+        use maidan_auth::capability::TOKEN_ADMIN;
+        use maidan_types::NewThread;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "frz".into() })
+            .await
+            .unwrap();
+        let op = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "op".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, agent.id).await.unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(op.id, ws.id, vec![TOKEN_ADMIN.to_string()]);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Freeze drops the agent's lease.
+        let frozen = content(
+            server
+                .call_tool(&auth, "freeze_member", &json!({ "member_id": agent.id.0 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(frozen["released"], json!(1));
+        assert_eq!(store.get_thread(thread.id).await.unwrap().assignee_id, None);
+
+        // List shows the frozen agent.
+        let list = content(
+            server
+                .call_tool(&auth, "list_frozen_members", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Unfreeze lifts it.
+        let un = content(
+            server
+                .call_tool(
+                    &auth,
+                    "unfreeze_member",
+                    &json!({ "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(un["unfrozen"], json!(true));
+        assert!(!store.is_member_frozen(agent.id).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 

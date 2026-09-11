@@ -723,6 +723,37 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "freeze_member",
+            "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released. The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "reason": {"type": "string", "description": "optional audit note"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "unfreeze_member",
+            "description": "Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "list_frozen_members",
+            "description": "List the frozen members in the caller's workspace (member_id, frozen_at, frozen_by, reason). Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {

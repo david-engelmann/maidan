@@ -7,7 +7,8 @@
 //! `dispatch`) and the shared [`content_json`] helper live here.
 
 use maidan_auth::capability::{
-    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_READ, WORKSPACE_READ, WORKSPACE_WRITE,
+    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_READ, TOKEN_ADMIN, WORKSPACE_READ,
+    WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -20,6 +21,7 @@ mod automation;
 mod budget;
 mod catalog;
 mod channel;
+mod freeze;
 mod glossary;
 mod member;
 mod message;
@@ -156,6 +158,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "snapshot_thread_context" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         "list_secrets" | "resolve_secret" => Ok(SECRET_READ),
+        "freeze_member" | "unfreeze_member" | "list_frozen_members" => Ok(TOKEN_ADMIN),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
         "list_references" => Ok(WORKSPACE_READ),
@@ -415,6 +418,9 @@ pub async fn dispatch(
         "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
         "list_secrets" => secret::list_secrets(store, auth, args).await,
         "resolve_secret" => secret::resolve_secret(server, auth, args).await,
+        "freeze_member" => freeze::freeze_member(store, auth, args).await,
+        "unfreeze_member" => freeze::unfreeze_member(store, auth, args).await,
+        "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
