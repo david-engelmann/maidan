@@ -1261,6 +1261,30 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/secrets",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/secrets",
+    "capability": "secret:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/secrets/{name}/resolve",
+    "capability": "secret:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/secrets/{name}",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
     "surface": "http"
