@@ -455,6 +455,12 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/task-schedules" && method == "POST" {
         return b.json(&json!({ "channel_id": f.channel, "title": "cap matrix" }));
     }
+    if path == "/workspaces/{wid}/recipes" && method == "POST" {
+        return b.json(&json!({ "channel_id": f.channel, "name": "cap matrix", "spec": {} }));
+    }
+    if path == "/workspaces/{wid}/recipes/{id}/instantiate" && method == "POST" {
+        return b.json(&json!({ "params": {} }));
+    }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
     }

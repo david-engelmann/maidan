@@ -880,6 +880,43 @@ pub fn set_task_schedule_active() {}
     responses((status = 204)))]
 pub fn delete_task_schedule() {}
 
+// --- recipes (Cluster 370) ---
+
+#[utoipa::path(post, path = "/workspaces/{wid}/recipes", tag = "recipes",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateRecipe,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = Recipe)))]
+pub fn create_recipe() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/recipes", tag = "recipes",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<Recipe>)))]
+pub fn list_recipes() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/recipes/{id}", tag = "recipes",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Recipe id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Recipe)))]
+pub fn get_recipe() {}
+
+#[utoipa::path(delete, path = "/workspaces/{wid}/recipes/{id}", tag = "recipes",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Recipe id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn delete_recipe() {}
+
+#[utoipa::path(post, path = "/workspaces/{wid}/recipes/{id}/instantiate", tag = "recipes",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Recipe id")),
+    request_body = InstantiateRecipe,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = RecipeRun)))]
+pub fn instantiate_recipe() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",
