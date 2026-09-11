@@ -146,6 +146,10 @@ pub struct CreateTaskSchedule {
     pub interval_secs: Option<i64>,
     #[serde(default)]
     pub first_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When set, each firing instantiates this recipe (parent + DAG children)
+    /// instead of creating one bare thread (Cluster 370.5).
+    #[serde(default)]
+    pub recipe_id: Option<uuid::Uuid>,
 }
 
 /// Create a recipe blueprint (Cluster 370.3). `spec` is the `RecipeSpec`

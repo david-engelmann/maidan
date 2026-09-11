@@ -41,6 +41,7 @@ pub enum EventKind {
     ClaimFailed,
     ThreadLanded,
     WaitTimedOut,
+    ScheduleSkipped,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -69,6 +70,7 @@ impl EventKind {
             Self::ClaimFailed => "claim_failed",
             Self::ThreadLanded => "thread_landed",
             Self::WaitTimedOut => "wait_timed_out",
+            Self::ScheduleSkipped => "schedule_skipped",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -97,6 +99,7 @@ impl EventKind {
             "claim_failed" => Some(Self::ClaimFailed),
             "thread_landed" => Some(Self::ThreadLanded),
             "wait_timed_out" => Some(Self::WaitTimedOut),
+            "schedule_skipped" => Some(Self::ScheduleSkipped),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -131,6 +134,7 @@ impl EventKind {
         Self::ClaimFailed,
         Self::ThreadLanded,
         Self::WaitTimedOut,
+        Self::ScheduleSkipped,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -192,6 +196,9 @@ impl EventKind {
             // A wait timeout is fired by *this* deployment's sweeper (this clock);
             // a peer must not inject one (Cluster 364).
             Self::WaitTimedOut => false,
+            // A skipped firing is *this* deployment's scheduler decision (Cluster
+            // 370); a peer must not inject one.
+            Self::ScheduleSkipped => false,
         }
     }
 }
@@ -339,6 +346,17 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
+    /// A recipe-backed schedule was due but its previous run is still in flight,
+    /// so the sweeper skipped this firing (Cluster 370.5) — no new run.
+    ScheduleSkipped {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        schedule_id: TaskScheduleId,
+        recipe_id: RecipeId,
+        /// Why the firing was skipped (e.g. the prior run is not yet terminal).
+        reason: String,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -439,6 +457,7 @@ impl Event {
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
+            Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -467,6 +486,7 @@ impl Event {
             | Self::ClaimFailed { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
+            | Self::ScheduleSkipped { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -495,6 +515,7 @@ impl Event {
             | Self::ClaimFailed { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
+            | Self::ScheduleSkipped { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -520,6 +541,7 @@ impl Event {
             | Self::ClaimFailed { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
+            | Self::ScheduleSkipped { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -846,6 +868,7 @@ mod kind_tests {
                 | EventKind::ClaimFailed
                 | EventKind::ThreadLanded
                 | EventKind::WaitTimedOut
+                | EventKind::ScheduleSkipped
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -895,6 +918,7 @@ mod kind_tests {
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
             EventKind::WaitTimedOut,
+            EventKind::ScheduleSkipped,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);

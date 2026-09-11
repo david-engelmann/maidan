@@ -23,6 +23,8 @@ struct CreateScheduleArgs {
     interval_secs: Option<i64>,
     #[serde(default)]
     first_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    recipe_id: Option<uuid::Uuid>,
 }
 
 /// Create a task schedule (Cluster 229). When due, the sweeper materializes a
@@ -54,6 +56,18 @@ pub(super) async fn create_task_schedule(
             "channel is not in the caller's workspace".into(),
         ));
     }
+    let recipe_id = match a.recipe_id {
+        Some(rid) => {
+            let recipe = store.get_recipe(RecipeId(rid)).await?;
+            if recipe.workspace_id != ctx.workspace_id {
+                return Err(McpError::InvalidParams(
+                    "recipe is not in the caller's workspace".into(),
+                ));
+            }
+            Some(RecipeId(rid))
+        }
+        None => None,
+    };
     let schedule = store
         .create_task_schedule(NewTaskSchedule {
             workspace_id: ctx.workspace_id,
@@ -62,6 +76,7 @@ pub(super) async fn create_task_schedule(
             interval_secs: a.interval_secs,
             next_run_at: a.first_run_at.unwrap_or_else(chrono::Utc::now),
             created_by: auth.member_id,
+            recipe_id,
         })
         .await?;
     Ok(content_json(&schedule))

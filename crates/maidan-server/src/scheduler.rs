@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use maidan_types::NewThread;
+use maidan_types::{Event, NewThread, TaskSchedule};
 
 use crate::state::AppState;
 
@@ -56,24 +56,9 @@ pub async fn sweep_once(state: &AppState) -> u32 {
             }
         };
         fired += 1;
-        match state
-            .store
-            .create_thread_with_event(NewThread {
-                channel_id: sched.channel_id,
-                parent_thread_id: None,
-                title: Some(sched.title.clone()),
-            })
-            .await
-        {
-            Ok((thread, stored)) => {
-                crate::routes::publish_stored(state, stored).await;
-                crate::metrics::record_task_schedule_fired("created");
-                tracing::info!(schedule = %sched.id, thread = %thread.id, "scheduler fired");
-            }
-            Err(err) => {
-                crate::metrics::record_task_schedule_fired("failed");
-                tracing::warn!(error = %err, schedule = %sched.id, "scheduler: thread create failed");
-            }
+        match sched.recipe_id {
+            Some(_) => fire_recipe(state, &sched).await,
+            None => fire_bare_thread(state, &sched).await,
         }
     }
     if fired == MAX_FIRINGS_PER_TICK {
@@ -83,6 +68,87 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         );
     }
     fired
+}
+
+/// Fire a plain schedule: create one titled thread in its channel (Cluster 227).
+async fn fire_bare_thread(state: &AppState, sched: &TaskSchedule) {
+    match state
+        .store
+        .create_thread_with_event(NewThread {
+            channel_id: sched.channel_id,
+            parent_thread_id: None,
+            title: Some(sched.title.clone()),
+        })
+        .await
+    {
+        Ok((thread, stored)) => {
+            crate::routes::publish_stored(state, stored).await;
+            crate::metrics::record_task_schedule_fired("created");
+            tracing::info!(schedule = %sched.id, thread = %thread.id, "scheduler fired");
+        }
+        Err(err) => {
+            crate::metrics::record_task_schedule_fired("failed");
+            tracing::warn!(error = %err, schedule = %sched.id, "scheduler: thread create failed");
+        }
+    }
+}
+
+/// Fire a recipe-backed schedule (Cluster 370.5): instantiate the recipe (a
+/// parent thread with DAG children, copy-on-fire), unless its previous run is
+/// still in flight — in which case skip and emit `ScheduleSkipped` so the run
+/// doesn't pile up. A dangling `recipe_id` (a recipe deleted under a SQLite
+/// schedule) falls back to a bare thread. Fires param-less; a recipe with
+/// required params can't be scheduled (schedule-level params are a follow-up).
+async fn fire_recipe(state: &AppState, sched: &TaskSchedule) {
+    let Some(recipe_id) = sched.recipe_id else {
+        return;
+    };
+    let recipe = match state.store.get_recipe(recipe_id).await {
+        Ok(r) => r,
+        Err(_) => {
+            // The recipe is gone (SQLite has no FK); fall back to a bare thread.
+            fire_bare_thread(state, sched).await;
+            return;
+        }
+    };
+
+    // Skip when the previous run's root thread hasn't reached a terminal state.
+    if let Ok(Some(prev)) = state.store.latest_recipe_run(recipe_id).await {
+        if let Ok(root) = state.store.get_thread(prev.root_thread_id).await {
+            if !root.state.is_terminal() {
+                let event = Event::ScheduleSkipped {
+                    occurred_at: chrono::Utc::now(),
+                    workspace_id: recipe.workspace_id,
+                    channel_id: recipe.channel_id,
+                    schedule_id: sched.id,
+                    recipe_id,
+                    reason: format!("previous run still in flight ({})", root.state.as_str()),
+                };
+                crate::routes::publish(state, event).await;
+                crate::metrics::record_task_schedule_fired("skipped");
+                tracing::info!(schedule = %sched.id, %recipe_id, "scheduler skipped: prior run in flight");
+                return;
+            }
+        }
+    }
+
+    match state
+        .store
+        .instantiate_recipe(recipe_id, serde_json::Value::Null, sched.created_by)
+        .await
+    {
+        Ok((run, events)) => {
+            for stored in events {
+                crate::routes::publish_stored(state, stored).await;
+            }
+            crate::metrics::record_task_schedule_fired("created");
+            tracing::info!(schedule = %sched.id, %recipe_id, root = %run.root_thread_id, "scheduler fired recipe");
+        }
+        Err(err) => {
+            crate::metrics::record_task_schedule_fired("failed");
+            tracing::warn!(error = %err, schedule = %sched.id, %recipe_id, "scheduler: recipe instantiate failed");
+        }
+    }
 }
 
 /// Loop: sweep, then sleep `cfg.tick`. Spawned once at startup when configured.

@@ -58,6 +58,7 @@ async fn run_suite(store: &dyn Store) {
             interval_secs: Some(3600),
             next_run_at: past,
             created_by: member.id,
+            recipe_id: None,
         })
         .await
         .expect("create due");
@@ -73,6 +74,7 @@ async fn run_suite(store: &dyn Store) {
             interval_secs: None,
             next_run_at: future,
             created_by: member.id,
+            recipe_id: None,
         })
         .await
         .expect("create future");
@@ -175,6 +177,7 @@ async fn run_claim_suite(store: &dyn Store) {
             interval_secs: None,
             next_run_at: now - Duration::hours(2),
             created_by: member.id,
+            recipe_id: None,
         })
         .await
         .expect("once");
@@ -186,6 +189,7 @@ async fn run_claim_suite(store: &dyn Store) {
             interval_secs: Some(60),
             next_run_at: now - Duration::hours(1),
             created_by: member.id,
+            recipe_id: None,
         })
         .await
         .expect("rec");

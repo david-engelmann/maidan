@@ -13,6 +13,7 @@
   "reaction_added",
   "reaction_removed",
   "reference_added",
+  "schedule_skipped",
   "thread_assignment_changed",
   "thread_created",
   "thread_landed",
