@@ -509,6 +509,11 @@ async fn main() -> anyhow::Result<()> {
     state.mcp.set_slash_dispatcher(std::sync::Arc::new(
         maidan_server::slash_commands::ServerSlashDispatcher::new(state.clone()),
     ));
+    // The at-rest encryption key powers `resolve_secret` over MCP (Cluster 371),
+    // mirroring the REST resolve; unset means the tool reports it's unavailable.
+    if let Some(key) = state.federation.encryption_key.clone() {
+        state.mcp.set_encryption_key(key);
+    }
 
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
