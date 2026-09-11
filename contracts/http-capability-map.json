@@ -1356,6 +1356,60 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/review-requirement",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/review-requirement",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/review-requirement",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/reviewers",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/reviewers",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/reviewers/{member_id}",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/reviews",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/reviews",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/review-status",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",

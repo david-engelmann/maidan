@@ -201,6 +201,29 @@ pub struct SetMemoryBlockValue {
     pub value: String,
 }
 
+/// Set a thread's review requirement (Cluster 375.3): `required_count` distinct
+/// qualifying approvals before it can `close`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetReviewRequirement {
+    pub required_count: i64,
+}
+
+/// Name a reviewer for a thread (Cluster 375.3) — the eligible set (empty = open
+/// review).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddReviewer {
+    pub member_id: uuid::Uuid,
+}
+
+/// Submit a review decision (Cluster 375.3). The reviewer is the caller; an
+/// owner/assignee may submit but it won't count toward the requirement.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SubmitReview {
+    pub decision: maidan_types::ReviewDecision,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
 /// A resolved secret value (Cluster 371.2) — the `resolve` response body. This is
 /// the only place a secret value crosses the wire out of Maidan.
 #[derive(Debug, Serialize, ToSchema)]

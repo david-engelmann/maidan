@@ -527,6 +527,25 @@ pub fn router(state: AppState) -> Router {
             post(routes::attach_memory_block).delete(routes::detach_memory_block),
         )
         .route(
+            "/threads/:id/review-requirement",
+            put(routes::set_review_requirement)
+                .get(routes::get_review_requirement)
+                .delete(routes::clear_review_requirement),
+        )
+        .route(
+            "/threads/:id/reviewers",
+            post(routes::add_reviewer).get(routes::list_reviewers),
+        )
+        .route(
+            "/threads/:id/reviewers/:member_id",
+            delete(routes::remove_reviewer),
+        )
+        .route(
+            "/threads/:id/reviews",
+            post(routes::submit_review).get(routes::list_reviews),
+        )
+        .route("/threads/:id/review-status", get(routes::get_review_status))
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

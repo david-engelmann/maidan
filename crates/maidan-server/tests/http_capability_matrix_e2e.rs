@@ -228,6 +228,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{tid}", &f.thread)
             .replace("{dep_id}", &f.thread)
             .replace("{block_id}", &f.thread)
+            .replace("{member_id}", &f.member)
             .replace("{skill}", "testskill")
             .replace("{id}", &f.thread);
     }
@@ -476,6 +477,15 @@ fn apply_route_defaults(
     }
     if path == "/workspaces/{wid}/memory-blocks/{id}" && method == "PUT" {
         return b.json(&json!({ "value": "cap matrix" }));
+    }
+    if path == "/threads/{id}/review-requirement" && method == "PUT" {
+        return b.json(&json!({ "required_count": 1 }));
+    }
+    if path == "/threads/{id}/reviewers" && method == "POST" {
+        return b.json(&json!({ "member_id": f.member }));
+    }
+    if path == "/threads/{id}/reviews" && method == "POST" {
+        return b.json(&json!({ "decision": "approve" }));
     }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
