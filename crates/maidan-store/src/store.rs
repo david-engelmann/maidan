@@ -894,6 +894,30 @@ pub trait SecretStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait MemberFreezeStore: Send + Sync {
+    /// Member-freeze kill-switch (Cluster 372, Wave 2 #20). `freeze_member`
+    /// records the freeze AND drops the member's active leases in one tx,
+    /// returning the freeze + the number of threads released; `claim_next`
+    /// refuses a frozen member (Cluster 372.2). Re-freezing refreshes the record.
+    async fn freeze_member(
+        &self,
+        member_id: MemberId,
+        frozen_by: MemberId,
+        reason: Option<&str>,
+    ) -> Result<(MemberFreeze, u64), StoreError>;
+    async fn unfreeze_member(&self, member_id: MemberId) -> Result<bool, StoreError>;
+    async fn is_member_frozen(&self, member_id: MemberId) -> Result<bool, StoreError>;
+    async fn get_member_freeze(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<MemberFreeze>, StoreError>;
+    async fn list_frozen_members(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<MemberFreeze>, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1792,6 +1816,7 @@ pub trait Store:
     + TaskScheduleStore
     + RecipeStore
     + SecretStore
+    + MemberFreezeStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1838,6 +1863,7 @@ impl<
             + TaskScheduleStore
             + RecipeStore
             + SecretStore
+            + MemberFreezeStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore

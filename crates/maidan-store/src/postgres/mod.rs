@@ -25,6 +25,7 @@ mod inbox;
 mod legal_hold;
 mod mail_outbox;
 mod member_emails;
+mod member_freezes;
 mod member_last_seen;
 mod member_skills;
 mod members;
@@ -1289,6 +1290,36 @@ impl SecretStore for PostgresStore {
         name: &str,
     ) -> Result<bool, StoreError> {
         secrets::delete(&self.pool, workspace_id, name).await
+    }
+}
+
+#[async_trait]
+impl MemberFreezeStore for PostgresStore {
+    async fn freeze_member(
+        &self,
+        member_id: MemberId,
+        frozen_by: MemberId,
+        reason: Option<&str>,
+    ) -> Result<(MemberFreeze, u64), StoreError> {
+        member_freezes::freeze(&self.pool, member_id, frozen_by, reason).await
+    }
+    async fn unfreeze_member(&self, member_id: MemberId) -> Result<bool, StoreError> {
+        member_freezes::unfreeze(&self.pool, member_id).await
+    }
+    async fn is_member_frozen(&self, member_id: MemberId) -> Result<bool, StoreError> {
+        member_freezes::is_frozen(self.read_pool(), member_id).await
+    }
+    async fn get_member_freeze(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<MemberFreeze>, StoreError> {
+        member_freezes::get(self.read_pool(), member_id).await
+    }
+    async fn list_frozen_members(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<MemberFreeze>, StoreError> {
+        member_freezes::list(self.read_pool(), workspace_id).await
     }
 }
 
