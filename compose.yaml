@@ -35,7 +35,7 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: maidan-minio
     command: server /data --console-address ":9001"
     environment:
@@ -55,7 +55,7 @@ services:
       - full
 
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: maidan-minio-init
     depends_on:
       minio:
@@ -167,7 +167,7 @@ services:
   # compose network, so the harness never collides with host ports (locally or
   # in CI) and is fully isolated from the `full` profile's minio.
   minio-scale:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: maidan-minio-scale
     command: server /data
     environment:
@@ -184,7 +184,7 @@ services:
       - scale
 
   minio-scale-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: maidan-minio-scale-init
     depends_on:
       minio-scale:
