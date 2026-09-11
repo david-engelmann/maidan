@@ -144,6 +144,15 @@ async fn thread_context_query_count_is_independent_of_message_count() {
 
     let limits = ThreadContextLimits::default();
 
+    // Warm the pool + prepared-statement cache so neither measured build counts a
+    // one-time connection/prepare query (the source of a recurring ±1 flake).
+    let _ = build_thread_context(&store, small.id, limits)
+        .await
+        .unwrap();
+    let _ = build_thread_context(&store, large.id, limits)
+        .await
+        .unwrap();
+
     counter.reset();
     let small_ctx = build_thread_context(&store, small.id, limits)
         .await
