@@ -11,6 +11,7 @@ pub mod lsn;
 pub mod models;
 pub mod pack;
 pub mod purge;
+pub mod recipe;
 pub mod usage;
 
 pub use erase::*;
@@ -20,4 +21,5 @@ pub use lsn::*;
 pub use models::*;
 pub use pack::*;
 pub use purge::*;
+pub use recipe::*;
 pub use usage::*;
