@@ -391,6 +391,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             policy,
             reason,
         },
+        // Non-federatable (a locally-derived scheduler decision, Cluster 370) —
+        // never actually ingested/remapped, but the exhaustive match must classify it.
+        ScheduleSkipped {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            schedule_id,
+            recipe_id,
+            reason,
+        } => ScheduleSkipped {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            schedule_id,
+            recipe_id,
+            reason,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

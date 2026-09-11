@@ -50,6 +50,20 @@ pub async fn create_task_schedule(
     }
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel_id).await?;
 
+    // A recipe-backed schedule must reference a recipe in this workspace.
+    let recipe_id = match body.recipe_id {
+        Some(rid) => {
+            let recipe = state.store.get_recipe(RecipeId(rid)).await?;
+            if recipe.workspace_id != workspace_id {
+                return Err(ApiError::BadRequest(
+                    "recipe is not in this workspace".into(),
+                ));
+            }
+            Some(RecipeId(rid))
+        }
+        None => None,
+    };
+
     let schedule = state
         .store
         .create_task_schedule(NewTaskSchedule {
@@ -59,6 +73,7 @@ pub async fn create_task_schedule(
             interval_secs: body.interval_secs,
             next_run_at: body.first_run_at.unwrap_or_else(chrono::Utc::now),
             created_by: auth.member_id,
+            recipe_id,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(schedule)))

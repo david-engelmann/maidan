@@ -103,6 +103,8 @@ const POSTGRES_UP_V71: &str =
 const POSTGRES_UP_V72: &str = include_str!("../../../migrations/postgres/0072_scim_users.sql");
 const POSTGRES_UP_V73: &str = include_str!("../../../migrations/postgres/0073_recipes.sql");
 const POSTGRES_UP_V74: &str = include_str!("../../../migrations/postgres/0074_recipe_runs.sql");
+const POSTGRES_UP_V75: &str =
+    include_str!("../../../migrations/postgres/0075_task_schedule_recipe.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -186,6 +188,8 @@ const SQLITE_UP_V70: &str = include_str!("../../../migrations/sqlite/0070_push_s
 const SQLITE_UP_V71: &str = include_str!("../../../migrations/sqlite/0071_scim_users.sql");
 const SQLITE_UP_V72: &str = include_str!("../../../migrations/sqlite/0072_recipes.sql");
 const SQLITE_UP_V73: &str = include_str!("../../../migrations/sqlite/0073_recipe_runs.sql");
+const SQLITE_UP_V74: &str =
+    include_str!("../../../migrations/sqlite/0074_task_schedule_recipe.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -312,6 +316,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 72, POSTGRES_UP_V72).await?;
     apply_postgres(pool, 73, POSTGRES_UP_V73).await?;
     apply_postgres(pool, 74, POSTGRES_UP_V74).await?;
+    apply_postgres(pool, 75, POSTGRES_UP_V75).await?;
     Ok(())
 }
 
@@ -399,6 +404,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 71, SQLITE_UP_V71).await?;
     apply_sqlite(pool, 72, SQLITE_UP_V72).await?;
     apply_sqlite(pool, 73, SQLITE_UP_V73).await?;
+    apply_sqlite(pool, 74, SQLITE_UP_V74).await?;
     Ok(())
 }
 

@@ -1116,6 +1116,10 @@ pub struct TaskSchedule {
     pub created_by: MemberId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When set, firing this schedule instantiates the recipe (parent + DAG
+    /// children, copy-on-fire) instead of creating one bare thread (Cluster 370.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipe_id: Option<RecipeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -1126,6 +1130,7 @@ pub struct NewTaskSchedule {
     pub interval_secs: Option<i64>,
     pub next_run_at: DateTime<Utc>,
     pub created_by: MemberId,
+    pub recipe_id: Option<RecipeId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

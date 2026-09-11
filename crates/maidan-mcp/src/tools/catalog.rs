@@ -649,14 +649,15 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "create_task_schedule",
-            "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id`. interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
+            "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id` (or, when recipe_id is set, instantiates that recipe — parent + DAG children — instead). interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
                     "title": {"type": "string"},
                     "interval_secs": {"type": "integer", "description": "recurrence period in seconds; omit for a one-shot"},
-                    "first_run_at": {"type": "string", "format": "date-time", "description": "when to first fire (default: now)"}
+                    "first_run_at": {"type": "string", "format": "date-time", "description": "when to first fire (default: now)"},
+                    "recipe_id": {"type": "string", "format": "uuid", "description": "when set, each firing instantiates this recipe instead of a bare thread (skipped if the prior run is still in flight)"}
                 },
                 "required": ["channel_id", "title"]
             }

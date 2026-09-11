@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, MemberId, NewTaskSchedule, TaskSchedule, TaskScheduleId, WorkspaceId,
+    ChannelId, MemberId, NewTaskSchedule, RecipeId, TaskSchedule, TaskScheduleId, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at";
+const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id";
 
 /// Create a task schedule (Cluster 226). Starts active; `last_run_at` is NULL
 /// until the sweeper first fires it.
@@ -16,9 +16,9 @@ pub async fn create(pool: &SqlitePool, new: NewTaskSchedule) -> Result<TaskSched
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
         "INSERT INTO maidan_task_schedules
-             (id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?)
-         RETURNING id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at",
+             (id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?)
+         RETURNING id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -29,6 +29,7 @@ pub async fn create(pool: &SqlitePool, new: NewTaskSchedule) -> Result<TaskSched
     .bind(new.created_by.0)
     .bind(&now)
     .bind(&now)
+    .bind(new.recipe_id.map(|r| r.0))
     .fetch_one(pool)
     .await?;
     Ok(row_to_schedule(&row))
@@ -168,5 +169,6 @@ fn row_to_schedule(row: &sqlx::sqlite::SqliteRow) -> TaskSchedule {
         created_by: MemberId(row.get::<Uuid, _>("created_by")),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
+        recipe_id: row.get::<Option<Uuid>, _>("recipe_id").map(RecipeId),
     }
 }

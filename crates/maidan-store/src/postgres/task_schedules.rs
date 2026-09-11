@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, MemberId, NewTaskSchedule, TaskSchedule, TaskScheduleId, WorkspaceId,
+    ChannelId, MemberId, NewTaskSchedule, RecipeId, TaskSchedule, TaskScheduleId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at";
+const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id";
 
 /// Create a task schedule (Cluster 226) — see the SQLite twin. `active`,
 /// `last_run_at`, and the timestamps take their column defaults.
@@ -15,9 +15,9 @@ pub async fn create(pool: &PgPool, new: NewTaskSchedule) -> Result<TaskSchedule,
     let id = TaskScheduleId::new();
     let row = sqlx::query(
         "INSERT INTO maidan_task_schedules
-             (id, workspace_id, channel_id, title, interval_secs, next_run_at, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at",
+             (id, workspace_id, channel_id, title, interval_secs, next_run_at, created_by, recipe_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id",
     )
     .bind(id.0)
     .bind(new.workspace_id.0)
@@ -26,6 +26,7 @@ pub async fn create(pool: &PgPool, new: NewTaskSchedule) -> Result<TaskSchedule,
     .bind(new.interval_secs)
     .bind(new.next_run_at)
     .bind(new.created_by.0)
+    .bind(new.recipe_id.map(|r| r.0))
     .fetch_one(pool)
     .await?;
     Ok(row_to_schedule(&row))
@@ -105,7 +106,7 @@ pub async fn claim_next_due(
                                 ELSE $1 + make_interval(secs => t.interval_secs) END
          FROM due
          WHERE t.id = due.id
-         RETURNING t.id, t.workspace_id, t.channel_id, t.title, t.interval_secs, t.next_run_at, t.last_run_at, t.active, t.created_by, t.created_at, t.updated_at",
+         RETURNING t.id, t.workspace_id, t.channel_id, t.title, t.interval_secs, t.next_run_at, t.last_run_at, t.active, t.created_by, t.created_at, t.updated_at, t.recipe_id",
     )
     .bind(now)
     .fetch_optional(pool)
@@ -145,5 +146,6 @@ fn row_to_schedule(row: &sqlx::postgres::PgRow) -> TaskSchedule {
         created_by: MemberId(row.get::<Uuid, _>("created_by")),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
+        recipe_id: row.get::<Option<Uuid>, _>("recipe_id").map(RecipeId),
     }
 }
