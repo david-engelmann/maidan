@@ -24,6 +24,7 @@ mod glossary;
 mod member;
 mod message;
 mod projector;
+mod recipe;
 mod reference;
 mod schedule;
 mod search;
@@ -88,6 +89,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_priority"
         | "list_thread_dependencies"
         | "list_task_schedules"
+        | "list_recipes"
         | "list_member_skills"
         | "list_thread_required_skills"
         | "get_thread_result"
@@ -139,6 +141,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "unpin_message"
         | "add_reference"
         | "create_task_schedule"
+        | "create_recipe"
+        | "instantiate_recipe"
         | "set_glossary_term"
         | "seed_from_message"
         | "set_wip_limit"
@@ -220,6 +224,7 @@ async fn enforce_channel_access(
         | "unmute_channel"
         | "list_dlq"
         | "create_task_schedule"
+        | "create_recipe"
         | "list_unclaimable"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
@@ -403,6 +408,9 @@ pub async fn dispatch(
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
         "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
+        "create_recipe" => recipe::create_recipe(store, auth, args).await,
+        "list_recipes" => recipe::list_recipes(store, auth, args).await,
+        "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,

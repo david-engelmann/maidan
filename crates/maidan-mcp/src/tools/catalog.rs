@@ -670,6 +670,39 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "create_recipe",
+            "description": "Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of_done, retry, children}, where each child is {key, title, required_skills, depends_on (sibling keys)}. Instantiating it (instantiate_recipe) builds a parent thread + a child per child + wires the DAG + attaches skills. NOT a recipe VM — a blueprint the room instantiates.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                    "spec": {"type": "object", "description": "the RecipeSpec (params, definition_of_done, retry, children)"}
+                },
+                "required": ["channel_id", "name", "spec"]
+            }
+        }),
+        json!({
+            "name": "list_recipes",
+            "description": "List the caller's workspace recipes (filtered to channels the caller can access).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "instantiate_recipe",
+            "description": "Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the recipe bytes are frozen into the run). params are validated against the recipe's declared params (required ones must be present). Returns the RecipeRun.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {"type": "string", "format": "uuid"},
+                    "params": {"type": "object", "description": "instantiation params (must satisfy the recipe's required params)"}
+                },
+                "required": ["recipe_id"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {
