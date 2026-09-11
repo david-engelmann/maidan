@@ -466,6 +466,9 @@ pub async fn claim_next(
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
                )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = $1
+               )
              ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
              LIMIT 1
              FOR UPDATE OF c SKIP LOCKED
@@ -620,6 +623,9 @@ pub async fn claim_next_with_event(
                )
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = $1
                )
              ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
              LIMIT 1
