@@ -51,6 +51,7 @@ fn deny_caps(required: &str) -> Vec<String> {
             capability::WORKSPACE_WRITE.into(),
         ],
         capability::SECRET_READ => vec![capability::WORKSPACE_READ.into()],
+        capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
         other => panic!("unknown capability in map: {other}"),
     }
 }
