@@ -186,6 +186,22 @@ pub struct SecretValue {
     pub value: String,
 }
 
+/// Freeze a member (Cluster 372.3) — the kill-switch. `reason` is an optional
+/// audit note.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FreezeMember {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// The result of freezing a member (Cluster 372.3): the freeze record + the
+/// number of active claims released (leases dropped).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FreezeResult {
+    pub freeze: maidan_types::MemberFreeze,
+    pub released: u64,
+}
+
 /// Pause (`false`) or resume (`true`) a schedule (Cluster 228).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetTaskScheduleActive {

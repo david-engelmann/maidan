@@ -1285,6 +1285,30 @@
   },
   {
     "method": "POST",
+    "path": "/members/{id}/freeze",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/freeze",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/freeze",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/frozen-members",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
     "surface": "http"
