@@ -4,8 +4,8 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewRecipe, NewWorkspace, RecipeChild, RecipeParam,
-    RecipeSpec,
+    EventKind, MemberKind, NewChannel, NewMember, NewRecipe, NewWorkspace, RecipeChild,
+    RecipeParam, RecipeSpec,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -103,6 +103,78 @@ async fn run_suite(store: &dyn Store) {
     let list = store.list_recipes(ws.id).await.expect("list");
     assert_eq!(list.len(), 2);
     assert_eq!(list[0].id, second.id, "newest first");
+
+    // --- Instantiation (Cluster 370.2): build + review(←build), build needs "rust".
+    let (run, evs) = store
+        .instantiate_recipe(recipe.id, serde_json::json!({ "repo": "x/y" }), member.id)
+        .await
+        .expect("instantiate");
+    // Parent + two children each emit a ThreadCreated.
+    assert_eq!(evs.len(), 3, "parent + 2 children");
+    assert!(evs.iter().all(|e| e.kind == EventKind::ThreadCreated));
+    assert_eq!(run.recipe_id, recipe.id);
+    assert_eq!(
+        run.spec_snapshot, recipe.spec,
+        "copy-on-fire freezes the spec"
+    );
+
+    // The root thread is the parent, titled after the recipe.
+    let root = store.get_thread(run.root_thread_id).await.expect("root");
+    assert_eq!(root.title.as_deref(), Some("ship-a-feature"));
+
+    // Two children under the parent; the parent depends on both (lands last).
+    let children = store
+        .child_thread_summaries(run.root_thread_id)
+        .await
+        .expect("children");
+    assert_eq!(children.len(), 2);
+    assert_eq!(
+        store
+            .list_thread_dependencies(run.root_thread_id)
+            .await
+            .expect("parent deps")
+            .len(),
+        2,
+        "parent depends on every child"
+    );
+
+    // Exactly one inter-child edge (review←build); build carries the "rust" skill.
+    let mut child_edges = 0;
+    let mut skills = 0;
+    for c in &children {
+        child_edges += store
+            .list_thread_dependencies(c.thread.id)
+            .await
+            .expect("child deps")
+            .len();
+        skills += store
+            .list_thread_required_skills(c.thread.id)
+            .await
+            .expect("skills")
+            .len();
+    }
+    assert_eq!(child_edges, 1, "review depends on build");
+    assert_eq!(skills, 1, "build requires one skill");
+
+    // Run reads round-trip; latest is this run.
+    assert_eq!(
+        store.get_recipe_run(run.id).await.expect("get run").id,
+        run.id
+    );
+    assert_eq!(
+        store
+            .latest_recipe_run(recipe.id)
+            .await
+            .expect("latest")
+            .map(|r| r.id),
+        Some(run.id)
+    );
+
+    // A missing required param is rejected (no threads created).
+    assert!(store
+        .instantiate_recipe(recipe.id, serde_json::json!({}), member.id)
+        .await
+        .is_err());
 
     // Delete removes it; a second delete is a no-op (false); get → NotFound.
     assert!(store.delete_recipe(recipe.id).await.expect("delete"));
