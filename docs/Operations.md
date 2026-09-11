@@ -30,6 +30,49 @@ mdbook build book
 mdbook serve book   # preview at http://127.0.0.1:3000
 ```
 
+## Kill switches (operator levers)
+
+When something is going wrong — a runaway agent, a leaked token, a traffic spike,
+an untrusted egress target — these are the levers to pull. Two shapes: a
+**per-member freeze** (a runtime API, no restart) and **`MAIDAN_*` env flags**
+(set-and-restart).
+
+### Freeze a member (Cluster 372, runtime, no restart)
+
+Freezing a member drops their active leases (their claimed threads return to the
+queue) and makes `claim_next` refuse them; they stay frozen until an explicit
+unfreeze. It is **not** a thread/workspace pause — it stops one member. Requires
+`token:admin`.
+
+```bash
+# freeze (optionally with an audit reason); returns the freeze + how many claims were released
+curl -sX POST "$BASE/members/$MEMBER_ID/freeze" -H "Authorization: Bearer $ADMIN" \
+     -H 'content-type: application/json' -d '{"reason":"compromised token"}'
+curl -s "$BASE/workspaces/$WS/frozen-members" -H "Authorization: Bearer $ADMIN"   # who is frozen
+curl -sX DELETE "$BASE/members/$MEMBER_ID/freeze" -H "Authorization: Bearer $ADMIN"  # unfreeze
+```
+
+MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
+`token:admin`). Freeze/unfreeze are written to the audit log
+(`member.freeze` / `member.unfreeze`).
+
+### `MAIDAN_*` env flags (set + restart)
+
+| Flag | Lever |
+|------|-------|
+| `MAIDAN_ALLOW_INSECURE_NO_AUTH` (+ `AUTH_DISABLED`) | Auth is fail-closed: disabling it needs this explicit ack, and never in production (Cluster 157). Leave unset in prod. |
+| `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables (Cluster 183). Lower it to throttle a spike. |
+| `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413` (Cluster 183). |
+| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hosts the SecretBroker may substitute `secret://` refs for on webhook egress; a non-allowlisted host gets the literal ref (Cluster 371). Empty ⇒ never substitute. |
+| `FEDERATION_DISABLED` | Turns off federation ingress + the pull worker. |
+| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query (Cluster 156). |
+| Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS`, `MAIDAN_MAIL_WORKER_TICK_SECS`, `MAIDAN_RETENTION_SWEEP_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests / mail / retention pruning). |
+| `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event (Cluster 186). |
+
+Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
+keyring; rotate with `FEDERATION_DECRYPT_KEYS` (Cluster 189). See
+[Production.md](Production.md) for the full config surface.
+
 ## Load & soak testing (Cluster 198, Arc D)
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread
