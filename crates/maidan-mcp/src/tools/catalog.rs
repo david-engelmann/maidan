@@ -704,6 +704,25 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_secrets",
+            "description": "List the caller's workspace secrets (metadata only — id, name, timestamps; NEVER the value). Use resolve_secret to fetch a value at exec.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "resolve_secret",
+            "description": "Resolve a named secret to its value (the 'fetch at exec' path). The value is decrypted server-side and returned only in this response — it never enters the event log. Returns null-name error if the secret is unknown.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "the secret name (the part after secret://)"}
+                },
+                "required": ["name"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {

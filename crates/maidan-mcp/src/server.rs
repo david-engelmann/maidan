@@ -80,6 +80,10 @@ pub struct McpServer {
     /// startup via [`Self::set_slash_dispatcher`]; `None` (never set) means MCP
     /// posts skip slash dispatch (the pre-345 behaviour, and how tests run).
     slash_dispatcher: std::sync::OnceLock<Arc<dyn crate::slash_dispatch::SlashDispatcher>>,
+    /// The at-rest encryption key for resolving named secrets (Cluster 371). Set
+    /// once at startup from the server's keyring; unset in tests/embedders that
+    /// don't configure one, in which case `resolve_secret` reports it's unavailable.
+    encryption_key: std::sync::OnceLock<Arc<[u8; 32]>>,
 }
 
 impl McpServer {
@@ -104,7 +108,19 @@ impl McpServer {
             event_bus: None,
             resource_notifier: None,
             slash_dispatcher: std::sync::OnceLock::new(),
+            encryption_key: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Set the at-rest encryption key for `resolve_secret` (Cluster 371). Called
+    /// once at startup; unset in tests/embedders. Works through `&self` (the
+    /// server is `Arc`-shared).
+    pub fn set_encryption_key(&self, key: Arc<[u8; 32]>) {
+        let _ = self.encryption_key.set(key);
+    }
+
+    pub(crate) fn encryption_key(&self) -> Option<&Arc<[u8; 32]>> {
+        self.encryption_key.get()
     }
 
     /// Attach the server-side slash-command dispatcher (Cluster 345). Called once
@@ -3701,6 +3717,89 @@ mod tests {
                 "instantiate_recipe",
                 &json!({ "recipe_id": recipe_id, "params": {} }),
             )
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn secret_tools_list_and_resolve() {
+        use maidan_auth::capability::SECRET_READ;
+        use maidan_types::NewSecret;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sec".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+
+        // Seed a secret whose ciphertext is encrypted with the same key the server
+        // will hold (the route layer does this in production).
+        let key: Arc<[u8; 32]> = Arc::new([9u8; 32]);
+        let ciphertext = maidan_auth::encrypt_peer_secret("s3cr3t", &key).unwrap();
+        store
+            .create_secret(NewSecret {
+                workspace_id: ws.id,
+                name: "api-key".into(),
+                value_ciphertext: ciphertext,
+                created_by: member.id,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        server.set_encryption_key(key);
+        let auth = AuthContext::from_session(member.id, ws.id, vec![SECRET_READ.to_string()]);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // List returns metadata only.
+        let list = content(
+            server
+                .call_tool(&auth, "list_secrets", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["name"], json!("api-key"));
+        assert!(list[0].get("value").is_none());
+
+        // Resolve decrypts the value.
+        let resolved = content(
+            server
+                .call_tool(&auth, "resolve_secret", &json!({ "name": "api-key" }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(resolved["value"], json!("s3cr3t"));
+
+        // An unknown name is a not-found error.
+        assert!(server
+            .call_tool(&auth, "resolve_secret", &json!({ "name": "ghost" }))
             .await
             .is_err());
     }
