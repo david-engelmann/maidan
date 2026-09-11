@@ -3907,6 +3907,157 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn memory_block_tools_create_read_rewrite_and_attach() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_types::NewThread;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "mb".into() })
+            .await
+            .unwrap();
+        // A real member: create_memory_block stamps owner_id (a NOT-NULL FK), so
+        // the nil-member bypass would FK-fail — use a from_session auth.
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            owner.id,
+            ws.id,
+            vec![WORKSPACE_WRITE.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // Create + get by label.
+        let created = content(
+            server
+                .call_tool(
+                    &auth,
+                    "create_memory_block",
+                    &json!({ "label": "shared", "char_limit": 10, "value": "hello" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(created["value"], "hello");
+        let block_id = created["id"].as_str().unwrap().to_string();
+        let got = content(
+            server
+                .call_tool(&auth, "get_memory_block", &json!({ "label": "shared" }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["value"], "hello");
+        // list.
+        let list = content(
+            server
+                .call_tool(&auth, "list_memory_blocks", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Full-rewrite by label.
+        let updated = content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_memory_block_value",
+                    &json!({ "label": "shared", "value": "world" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(updated["value"], "world");
+        // Over the char limit → error.
+        assert!(server
+            .call_tool(
+                &auth,
+                "set_memory_block_value",
+                &json!({ "label": "shared", "value": "this is way too long" }),
+            )
+            .await
+            .is_err());
+
+        // Attach by label → the thread lists it → detach by id.
+        let attached = content(
+            server
+                .call_tool(
+                    &auth,
+                    "attach_memory_block",
+                    &json!({ "thread_id": thread.id.0, "label": "shared" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(attached["attached"], json!(true));
+        let on_thread = content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_thread_memory_blocks",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(on_thread.as_array().unwrap().len(), 1);
+        let detached = content(
+            server
+                .call_tool(
+                    &auth,
+                    "detach_memory_block",
+                    &json!({ "thread_id": thread.id.0, "block_id": block_id }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(detached["detached"], json!(true));
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 

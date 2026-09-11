@@ -754,6 +754,87 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "create_memory_block",
+            "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "description": "the block's within-workspace key"},
+                    "description": {"type": "string", "description": "what the block is for"},
+                    "char_limit": {"type": "integer", "description": "optional max value length in characters"},
+                    "read_only": {"type": "boolean", "description": "refuse writes when true (default false)"},
+                    "value": {"type": "string", "description": "initial content (default empty)"}
+                },
+                "required": ["label"]
+            }
+        }),
+        json!({
+            "name": "get_memory_block",
+            "description": "Get a memory block by label within the caller's workspace, or null if none. This is the watch-a-child's-result-block read (poll it).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"}
+                },
+                "required": ["label"]
+            }
+        }),
+        json!({
+            "name": "list_memory_blocks",
+            "description": "List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "set_memory_block_value",
+            "description": "Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "value": {"type": "string"}
+                },
+                "required": ["label", "value"]
+            }
+        }),
+        json!({
+            "name": "attach_memory_block",
+            "description": "Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "label": {"type": "string"}
+                },
+                "required": ["thread_id", "label"]
+            }
+        }),
+        json!({
+            "name": "detach_memory_block",
+            "description": "Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "block_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "block_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_memory_blocks",
+            "description": "List the memory blocks attached to a thread (its room objects), by label.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {
