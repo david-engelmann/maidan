@@ -221,13 +221,23 @@ async fn poll_deliveries(
             continue;
         };
         let kind = event_kind_from_payload(&delivery.payload);
+        // Egress SecretBroker (Cluster 371): substitute `secret://` refs with real
+        // values only when the target host is allowlisted; the plaintext is
+        // resolved at send time and never persisted.
+        let body = crate::secret_broker::substitute_for_egress(
+            state,
+            sub.subscription.workspace_id,
+            &sub.subscription.url,
+            &delivery.payload,
+        )
+        .await;
         match deliver_http(
             client,
             &sub.subscription.url,
             delivery.id,
             kind,
             &secret,
-            &delivery.payload,
+            &body,
         )
         .await
         {

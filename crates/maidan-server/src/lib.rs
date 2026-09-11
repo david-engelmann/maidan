@@ -57,6 +57,7 @@ pub mod retention;
 pub mod routes;
 pub mod scheduler;
 pub mod scim;
+pub mod secret_broker;
 pub mod session;
 pub mod slack;
 pub mod slash_commands;
