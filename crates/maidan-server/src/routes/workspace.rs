@@ -179,6 +179,65 @@ pub async fn get_wip_limit(
     }))
 }
 
+/// `PUT /workspaces/:id/spawn-budget` (Cluster 376, G6/G-dev-3/W3) — set the
+/// workspace's spawn budget: max direct child threads per parent, max thread
+/// nesting depth, max tool calls per thread. A full replace — an omitted or
+/// `null` axis is unlimited, so `{}` clears the budget; `0` freezes an axis.
+/// Enforced on thread create (Cluster 376.2) and message post (376.3). Set the
+/// caps well below the fan-out a hosted agent platform allows: coordination
+/// cost grows as n(n−1)/2. `workspace:write`.
+pub async fn set_spawn_budget(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetSpawnBudget>,
+) -> ApiResult<Json<SpawnBudgetView>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    for (axis, limit) in [
+        ("max_children", body.max_children),
+        ("max_depth", body.max_depth),
+        ("max_tools", body.max_tools),
+    ] {
+        if limit.is_some_and(|l| l < 0) {
+            return Err(ApiError::BadRequest(format!("{axis} must be >= 0")));
+        }
+    }
+    state
+        .store
+        .set_spawn_budget(
+            workspace_id,
+            body.max_children,
+            body.max_depth,
+            body.max_tools,
+        )
+        .await?;
+    Ok(Json(SpawnBudgetView {
+        max_children: body.max_children,
+        max_depth: body.max_depth,
+        max_tools: body.max_tools,
+    }))
+}
+
+/// `GET /workspaces/:id/spawn-budget` (Cluster 376) — the workspace's spawn
+/// budget; every axis is `null` when unset (unlimited). `workspace:read`.
+pub async fn get_spawn_budget(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<SpawnBudgetView>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let budget = state.store.get_spawn_budget(workspace_id).await?;
+    Ok(Json(SpawnBudgetView {
+        max_children: budget.as_ref().and_then(|b| b.max_children),
+        max_depth: budget.as_ref().and_then(|b| b.max_depth),
+        max_tools: budget.as_ref().and_then(|b| b.max_tools),
+    }))
+}
+
 pub async fn replay_quarantined_outbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

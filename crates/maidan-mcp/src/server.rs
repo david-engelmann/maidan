@@ -4422,6 +4422,139 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn spawn_budget_tools_set_get_and_gate_the_spawn() {
+        use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_store::StoreError;
+        use maidan_types::NewThread;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sb".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "op".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let parent = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), WORKSPACE_WRITE.to_string()],
+        );
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let child = || {
+            let store = store.clone();
+            let (channel_id, parent_thread_id) = (channel.id, parent.id);
+            async move {
+                store
+                    .create_thread(NewThread {
+                        channel_id,
+                        parent_thread_id: Some(parent_thread_id),
+                        title: None,
+                    })
+                    .await
+            }
+        };
+
+        // Unset = unlimited on every axis.
+        let before = content(
+            server
+                .call_tool(&auth, "get_spawn_budget", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert!(before["max_children"].is_null());
+
+        // Set the caller's own workspace budget; the read-back matches.
+        let set = content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_spawn_budget",
+                    &json!({ "max_children": 1, "max_depth": 3, "max_tools": 16 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(set["max_children"], 1);
+        assert_eq!(set["max_depth"], 3);
+        assert_eq!(set["max_tools"], 16);
+        let read_back = content(
+            server
+                .call_tool(&auth, "get_spawn_budget", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(read_back, set, "get must read back what set stored");
+
+        // The configured cap is the one the gate enforces (Cluster 376.2).
+        child()
+            .await
+            .expect("the first child is within max_children");
+        let denied = child().await;
+        assert!(
+            matches!(denied, Err(StoreError::Conflict(ref m)) if m.contains("spawn budget")),
+            "a 2nd child past max_children=1 must be refused, got {denied:?}"
+        );
+
+        // No arguments = a full replace with no caps → the budget is cleared and
+        // spawning re-opens.
+        server
+            .call_tool(&auth, "set_spawn_budget", &json!({}))
+            .await
+            .unwrap();
+        assert!(store.get_spawn_budget(ws.id).await.unwrap().is_none());
+        child().await.expect("cleared budget re-opens spawning");
+
+        // A negative axis is invalid params.
+        assert!(server
+            .call_tool(&auth, "set_spawn_budget", &json!({ "max_tools": -1 }))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 
