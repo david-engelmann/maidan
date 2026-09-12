@@ -4297,6 +4297,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn review_tools_set_require_name_submit_and_status() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::NewThread;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rv".into() })
+            .await
+            .unwrap();
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let reviewer = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "reviewer".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let caps = vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()];
+        let op = AuthContext::from_session(owner.id, ws.id, caps.clone());
+        let rev = AuthContext::from_session(reviewer.id, ws.id, caps);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let tid = json!(thread.id.0);
+
+        // Require 1 approval; name the reviewer; status is 0 of 1.
+        server
+            .call_tool(
+                &op,
+                "set_review_requirement",
+                &json!({ "thread_id": tid, "required_count": 1 }),
+            )
+            .await
+            .unwrap();
+        let added = content(
+            server
+                .call_tool(
+                    &op,
+                    "add_reviewer",
+                    &json!({ "thread_id": tid, "member_id": reviewer.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(added["added"], json!(true));
+        let s0 = content(
+            server
+                .call_tool(&op, "get_review_status", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(s0["required_count"], 1);
+        assert_eq!(s0["approvals_met"], json!(false));
+
+        // The reviewer approves (as themselves) → status flips to met.
+        server
+            .call_tool(
+                &rev,
+                "submit_review",
+                &json!({ "thread_id": tid, "decision": "approve", "note": "lgtm" }),
+            )
+            .await
+            .unwrap();
+        let s1 = content(
+            server
+                .call_tool(&op, "get_review_status", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(s1["approvals"], 1);
+        assert_eq!(s1["approvals_met"], json!(true));
+        let reviews = content(
+            server
+                .call_tool(&op, "list_reviews", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(reviews.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 

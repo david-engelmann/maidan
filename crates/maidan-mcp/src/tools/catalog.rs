@@ -847,6 +847,65 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_review_requirement",
+            "description": "Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "required_count": {"type": "integer", "description": "approvals needed (>= 0)"}
+                },
+                "required": ["thread_id", "required_count"]
+            }
+        }),
+        json!({
+            "name": "add_reviewer",
+            "description": "Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "submit_review",
+            "description": "Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). Re-submitting changes your decision. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "decision": {"type": "string", "enum": ["approve", "request_changes"]},
+                    "note": {"type": "string"}
+                },
+                "required": ["thread_id", "decision"]
+            }
+        }),
+        json!({
+            "name": "get_review_status",
+            "description": "Read a thread's review standing: required_count, approvals (distinct qualifying), and approvals_met. This is the approval side of the close-gate; a refutes edge is checked separately when closing.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_reviews",
+            "description": "List a thread's review decisions (reviewer, decision, note).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {
