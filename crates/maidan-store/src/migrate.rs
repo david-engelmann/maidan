@@ -111,6 +111,7 @@ const POSTGRES_UP_V78: &str = include_str!("../../../migrations/postgres/0078_me
 const POSTGRES_UP_V79: &str = include_str!("../../../migrations/postgres/0079_thread_reviews.sql");
 const POSTGRES_UP_V80: &str = include_str!("../../../migrations/postgres/0080_spawn_budgets.sql");
 const POSTGRES_UP_V81: &str = include_str!("../../../migrations/postgres/0081_github_link_cap.sql");
+const POSTGRES_UP_V82: &str = include_str!("../../../migrations/postgres/0082_egress_outbox.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -202,6 +203,7 @@ const SQLITE_UP_V77: &str = include_str!("../../../migrations/sqlite/0077_memory
 const SQLITE_UP_V78: &str = include_str!("../../../migrations/sqlite/0078_thread_reviews.sql");
 const SQLITE_UP_V79: &str = include_str!("../../../migrations/sqlite/0079_spawn_budgets.sql");
 const SQLITE_UP_V80: &str = include_str!("../../../migrations/sqlite/0080_github_link_cap.sql");
+const SQLITE_UP_V81: &str = include_str!("../../../migrations/sqlite/0081_egress_outbox.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -335,6 +337,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 79, POSTGRES_UP_V79).await?;
     apply_postgres(pool, 80, POSTGRES_UP_V80).await?;
     apply_postgres(pool, 81, POSTGRES_UP_V81).await?;
+    apply_postgres(pool, 82, POSTGRES_UP_V82).await?;
     Ok(())
 }
 
@@ -429,6 +432,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 78, SQLITE_UP_V78).await?;
     apply_sqlite(pool, 79, SQLITE_UP_V79).await?;
     apply_sqlite(pool, 80, SQLITE_UP_V80).await?;
+    apply_sqlite(pool, 81, SQLITE_UP_V81).await?;
     Ok(())
 }
 

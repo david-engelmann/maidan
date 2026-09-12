@@ -4,6 +4,7 @@
 //! Artifact, AuditEvent, plus typed IDs. Other crates depend on this one
 //! for shared schema; nothing here depends on other Maidan crates.
 
+pub mod egress;
 pub mod erase;
 pub mod events;
 pub mod freeze;
@@ -19,6 +20,7 @@ pub mod secret;
 pub mod spawn;
 pub mod usage;
 
+pub use egress::*;
 pub use erase::*;
 pub use events::*;
 pub use freeze::*;
