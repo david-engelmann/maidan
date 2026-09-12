@@ -704,6 +704,11 @@ pub struct SlackChannelLink {
     pub thread_id: ThreadId,
     pub member_id: MemberId,
     pub created_at: DateTime<Utc>,
+    /// When egress to this channel was disabled after an auth/config-class
+    /// failure (Cluster 377.3). `None` = enabled; re-linking clears it. Ingress is
+    /// unaffected — a revoked *write* scope does not stop Slack from reaching us.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_at: Option<DateTime<Utc>>,
 }
 
 /// A new Slack channel link to create (Cluster 308).
@@ -730,6 +735,11 @@ pub struct GithubIssueLink {
     pub thread_id: ThreadId,
     pub member_id: MemberId,
     pub created_at: DateTime<Utc>,
+    /// When egress to this issue/PR was disabled after an auth/config-class
+    /// failure (Cluster 377.3). `None` = enabled; re-linking clears it. Ingress is
+    /// unaffected — the webhook keeps delivering comments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_at: Option<DateTime<Utc>>,
 }
 
 /// A new GitHub issue/PR link to create (Cluster 311).

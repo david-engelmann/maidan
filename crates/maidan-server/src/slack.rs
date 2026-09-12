@@ -195,6 +195,39 @@ pub enum SlackError {
     Api(String),
 }
 
+/// Slack's config-class `chat.postMessage` errors — the analogue of GitHub's
+/// 401/403/404 (Cluster 377.3). Slack answers logically, not by status code, so
+/// the discriminator is the error string. Notably **absent**: `ratelimited`,
+/// `fatal_error` and `service_unavailable`, which are transient and must retry.
+const SLACK_MISCONFIGURATION_ERRORS: &[&str] = &[
+    // Credentials.
+    "invalid_auth",
+    "not_authed",
+    "account_inactive",
+    "token_revoked",
+    "token_expired",
+    "missing_scope",
+    "not_allowed_token_type",
+    "no_permission",
+    // Destination.
+    "channel_not_found",
+    "not_in_channel",
+    "is_archived",
+    "restricted_action",
+];
+
+impl SlackError {
+    /// Whether this failure is a misconfiguration rather than a transient fault
+    /// (Cluster 377.3) — a revoked token, a missing scope, a channel the bot was
+    /// removed from or that no longer exists. Retrying cannot fix any of them.
+    pub fn is_misconfiguration(&self) -> bool {
+        match self {
+            Self::Http(_) => false,
+            Self::Api(code) => SLACK_MISCONFIGURATION_ERRORS.contains(&code.as_str()),
+        }
+    }
+}
+
 /// Outbound Slack sender — `chat.postMessage` in production, a mock in tests.
 #[async_trait::async_trait]
 pub trait SlackSender: Send + Sync {
@@ -286,7 +319,11 @@ pub async fn route_message_to_slack(
         .get_slack_channel_link_by_thread(thread_id)
         .await
     {
-        Ok(Some(l)) => l,
+        Ok(Some(l)) if l.disabled_at.is_none() => l,
+        // Disabled by an auth/config-class failure (Cluster 377.3): queueing into
+        // a link a retry cannot fix only grows the dead-letter queue. Re-linking
+        // turns it back on.
+        Ok(Some(_)) => return,
         Ok(None) => return, // thread not linked to a Slack channel
         Err(err) => {
             tracing::warn!(error = %err, "slack egress: link lookup failed");
@@ -433,5 +470,37 @@ mod tests {
             "v0=deadbeef",
             1000
         ));
+    }
+
+    #[test]
+    fn credential_and_destination_errors_are_misconfigurations() {
+        for code in [
+            "invalid_auth",
+            "token_revoked",
+            "missing_scope",
+            "channel_not_found",
+            "not_in_channel",
+            "is_archived",
+        ] {
+            assert!(
+                SlackError::Api(code.into()).is_misconfiguration(),
+                "{code} should disable the link"
+            );
+        }
+    }
+
+    #[test]
+    fn transient_errors_are_not_misconfigurations() {
+        // A rate limit or a Slack outage must keep retrying — disabling the link
+        // over one would take an operator's re-link to undo.
+        for code in ["ratelimited", "fatal_error", "service_unavailable"] {
+            assert!(
+                !SlackError::Api(code.into()).is_misconfiguration(),
+                "{code} should be retried"
+            );
+        }
+        assert!(!SlackError::Http("connection reset".into()).is_misconfiguration());
+        // An error Slack adds later is retried, not treated as fatal.
+        assert!(!SlackError::Api("some_new_code".into()).is_misconfiguration());
     }
 }

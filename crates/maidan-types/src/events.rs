@@ -43,6 +43,7 @@ pub enum EventKind {
     WaitTimedOut,
     ScheduleSkipped,
     ThreadSpawnDenied,
+    ProjectorMisconfigured,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -74,6 +75,7 @@ impl EventKind {
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
             Self::ThreadSpawnDenied => "thread_spawn_denied",
+            Self::ProjectorMisconfigured => "projector_misconfigured",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -105,6 +107,7 @@ impl EventKind {
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
             "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
+            "projector_misconfigured" => Some(Self::ProjectorMisconfigured),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -142,6 +145,7 @@ impl EventKind {
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
         Self::ThreadSpawnDenied,
+        Self::ProjectorMisconfigured,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -210,6 +214,10 @@ impl EventKind {
             // A refused spawn is *this* deployment's budget decision (Cluster 376);
             // a peer must not inject one for our threads.
             Self::ThreadSpawnDenied => false,
+            // A broken projector link is *this* deployment's connector credentials
+            // and *this* deployment's link table (Cluster 377.3); a peer has no
+            // standing to declare our egress misconfigured.
+            Self::ProjectorMisconfigured => false,
             // A memory-block update is a locally-derived signal over local shared
             // state (Cluster 373); a peer must not inject one.
             Self::MemoryBlockUpdated => false,
@@ -385,6 +393,30 @@ pub enum Event {
         /// What the thread already holds on that axis.
         observed: i64,
     },
+    /// A projector egress link is broken and has been disabled (Cluster 377.3):
+    /// a delivery failed with an auth/config-class error (GitHub 401/403/404,
+    /// Slack `invalid_auth`/`channel_not_found`/…) — a wrong token, a revoked
+    /// scope, a deleted channel. Retrying cannot fix any of those, so the link is
+    /// turned off, the delivery dead-letters, and this says so loudly instead of
+    /// the queue grinding through eight attempts per message forever.
+    ///
+    /// Re-linking the channel/issue clears the disabled flag. A locally-derived
+    /// operations signal about this deployment's own credentials: not federatable.
+    ProjectorMisconfigured {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        /// The link's channel, resolved best-effort from the thread (`None` if it
+        /// could not be read — the event is never withheld for want of context).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        channel_id: Option<ChannelId>,
+        thread_id: ThreadId,
+        /// The external surface (`EgressSurface::as_str`): `slack` | `github`.
+        surface: String,
+        /// The per-surface destination: a Slack channel id, or `owner/name#123`.
+        selector: String,
+        /// What the surface said, verbatim — the operator's actual diagnostic.
+        error: String,
+    },
     /// A recipe-backed schedule was due but its previous run is still in flight,
     /// so the sweeper skipped this firing (Cluster 370.5) — no new run.
     ScheduleSkipped {
@@ -509,6 +541,7 @@ impl Event {
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
+            Self::ProjectorMisconfigured { .. } => EventKind::ProjectorMisconfigured,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -540,6 +573,7 @@ impl Event {
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
             | Self::ThreadSpawnDenied { occurred_at, .. }
+            | Self::ProjectorMisconfigured { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -571,6 +605,7 @@ impl Event {
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
             | Self::ThreadSpawnDenied { workspace_id, .. }
+            | Self::ProjectorMisconfigured { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -604,6 +639,8 @@ impl Event {
             | Self::MessageTombstoned { channel_id, .. }
             | Self::MessagePinned { channel_id, .. }
             | Self::MessageUnpinned { channel_id, .. } => Some(*channel_id),
+            // Already optional: resolved best-effort from the thread (Cluster 377.3).
+            Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
             _ => None,
         }
     }
@@ -620,6 +657,7 @@ impl Event {
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
+            Self::ProjectorMisconfigured { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -930,6 +968,7 @@ mod kind_tests {
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
                 | EventKind::ThreadSpawnDenied
+                | EventKind::ProjectorMisconfigured
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -982,6 +1021,7 @@ mod kind_tests {
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
             EventKind::ThreadSpawnDenied,
+            EventKind::ProjectorMisconfigured,
             EventKind::MemoryBlockUpdated,
         ];
         for &kind in EventKind::ALL {

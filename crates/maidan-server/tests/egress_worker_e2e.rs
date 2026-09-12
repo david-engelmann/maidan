@@ -8,22 +8,25 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_bus::InMemoryBus;
+use maidan_bus::{BusItem, InMemoryBus};
 use maidan_server::{
     egress_worker,
-    slack::{SlackError, SlackSender},
+    slack::{route_message_to_slack, SlackError, SlackSender},
     AppState,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressTarget, NewChannel, NewEgressOutbox, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    EgressTarget, Event, EventFilter, EventKind, MemberKind, NewChannel, NewEgressOutbox,
+    NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 struct CountingSlack {
     attempts: AtomicUsize,
-    fail: bool,
+    /// What every post returns: `None` succeeds.
+    fail_with: Option<SlackError>,
     sent: Mutex<Vec<(String, String)>>,
 }
 
@@ -31,8 +34,10 @@ struct CountingSlack {
 impl SlackSender for CountingSlack {
     async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
-        if self.fail {
-            return Err(SlackError::Http("simulated outage".into()));
+        match &self.fail_with {
+            Some(SlackError::Http(m)) => return Err(SlackError::Http(m.clone())),
+            Some(SlackError::Api(m)) => return Err(SlackError::Api(m.clone())),
+            None => {}
         }
         self.sent
             .lock()
@@ -42,10 +47,10 @@ impl SlackSender for CountingSlack {
     }
 }
 
-fn slack_sender(fail: bool) -> Arc<CountingSlack> {
+fn slack_sender(fail_with: Option<SlackError>) -> Arc<CountingSlack> {
     Arc::new(CountingSlack {
         attempts: AtomicUsize::new(0),
-        fail,
+        fail_with,
         sent: Mutex::new(Vec::new()),
     })
 }
@@ -113,7 +118,7 @@ fn queued(ws: WorkspaceId, thread: ThreadId, log_id: i64) -> NewEgressOutbox {
 
 #[tokio::test]
 async fn worker_delivers_a_queued_message_once() {
-    let sender = slack_sender(false);
+    let sender = slack_sender(None);
     let (state, store, _pool) = state_with(Some(sender.clone())).await;
     let (ws, thread) = scope(store.as_ref()).await;
     store.enqueue_egress(queued(ws, thread, 1)).await.unwrap();
@@ -138,7 +143,7 @@ async fn worker_delivers_a_queued_message_once() {
 
 #[tokio::test]
 async fn worker_reschedules_on_failure_instead_of_dropping() {
-    let sender = slack_sender(true);
+    let sender = slack_sender(Some(SlackError::Http("simulated outage".into())));
     let (state, store, _pool) = state_with(Some(sender.clone())).await;
     let (ws, thread) = scope(store.as_ref()).await;
     store.enqueue_egress(queued(ws, thread, 1)).await.unwrap();
@@ -168,7 +173,7 @@ async fn worker_reschedules_on_failure_instead_of_dropping() {
 
 #[tokio::test]
 async fn an_undecodable_destination_dead_letters_without_a_post() {
-    let sender = slack_sender(false);
+    let sender = slack_sender(None);
     let (state, store, pool) = state_with(Some(sender.clone())).await;
     let (ws, thread) = scope(store.as_ref()).await;
     // A GitHub selector with no issue number cannot address anything. Written
@@ -196,6 +201,140 @@ async fn an_undecodable_destination_dead_letters_without_a_post() {
     assert_eq!(stats.retried, 0, "and is never rescheduled");
     assert_eq!(sender.attempts.load(Ordering::SeqCst), 0);
     assert_eq!(store.count_dead_egress().await.unwrap(), 1);
+}
+
+/// Cluster 377.3: retry-then-disable. An auth/config-class failure is not
+/// retried — the link is turned off, the delivery dead-letters, a
+/// `ProjectorMisconfigured` says so, and later messages stop queueing.
+#[tokio::test]
+async fn a_misconfigured_link_is_disabled_announced_and_stops_queueing() {
+    let sender = slack_sender(Some(SlackError::Api("channel_not_found".into())));
+    let (state, store, _pool) = state_with(Some(sender.clone())).await;
+    let (ws, thread) = scope(store.as_ref()).await;
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store.get_thread(thread).await.unwrap().channel_id;
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C1".into(),
+            workspace_id: ws,
+            channel_id: channel,
+            thread_id: thread,
+            member_id: agent.id,
+        })
+        .await
+        .unwrap();
+    let mut events = state
+        .bus
+        .subscribe(EventFilter::all().with_kinds([EventKind::ProjectorMisconfigured]))
+        .await
+        .unwrap();
+
+    store.enqueue_egress(queued(ws, thread, 1)).await.unwrap();
+    let stats = egress_worker::sweep_once(&state).await;
+    assert_eq!(stats.disabled, 1, "the link was turned off");
+    assert_eq!(stats.dead, 1, "and the delivery dead-lettered");
+    assert_eq!(stats.retried, 0, "a revoked destination is never retried");
+    assert_eq!(sender.attempts.load(Ordering::SeqCst), 1, "posted once");
+
+    // The link is disabled, naming when.
+    let link = store
+        .get_slack_channel_link("C1")
+        .await
+        .unwrap()
+        .expect("link");
+    assert!(link.disabled_at.is_some());
+
+    // ...and it was announced, with the operator's actual diagnostic.
+    let item = tokio::time::timeout(std::time::Duration::from_secs(5), events.next())
+        .await
+        .expect("timeout waiting for ProjectorMisconfigured")
+        .expect("subscriber ended without event");
+    let BusItem::Event(envelope) = item else {
+        panic!("expected event, got lag or end");
+    };
+    match envelope.event {
+        Event::ProjectorMisconfigured {
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface,
+            selector,
+            error,
+            ..
+        } => {
+            assert_eq!(workspace_id, ws);
+            assert_eq!(channel_id, Some(channel));
+            assert_eq!(thread_id, thread);
+            assert_eq!(surface, "slack");
+            assert_eq!(selector, "C1");
+            assert!(error.contains("channel_not_found"), "got {error}");
+        }
+        other => panic!("expected ProjectorMisconfigured, got {other:?}"),
+    }
+    // Durable too, not just a live notification.
+    let stored = store
+        .get_stored_event(envelope.log_id)
+        .await
+        .expect("event logged");
+    assert_eq!(stored.kind, EventKind::ProjectorMisconfigured);
+    assert_eq!(stored.payload["selector"], "C1");
+
+    // A later message into the disabled link does not queue at all, so the
+    // dead-letter queue stops growing one row per message.
+    let message = store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: thread,
+                author_id: agent.id,
+                body: "after the break".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .0;
+    route_message_to_slack(&state, 2, thread, &message).await;
+    assert_eq!(
+        egress_worker::sweep_once(&state).await,
+        egress_worker::EgressSweepStats::default(),
+        "nothing was queued for a disabled link"
+    );
+    assert_eq!(store.count_dead_egress().await.unwrap(), 1);
+
+    // Re-linking is the re-enable path — no separate route.
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C1".into(),
+            workspace_id: ws,
+            channel_id: channel,
+            thread_id: thread,
+            member_id: agent.id,
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .get_slack_channel_link("C1")
+        .await
+        .unwrap()
+        .expect("link")
+        .disabled_at
+        .is_none());
+    route_message_to_slack(&state, 3, thread, &message).await;
+    assert_eq!(
+        egress_worker::sweep_once(&state).await.disabled,
+        1,
+        "a re-linked channel queues and delivers again (and breaks again here)"
+    );
 }
 
 #[tokio::test]

@@ -8,7 +8,8 @@ use maidan_types::{
     ChannelId, GithubIssueLink, MemberId, NewGithubIssueLink, ThreadId, WorkspaceId,
 };
 
-const COLS: &str = "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at";
+const COLS: &str =
+    "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at, disabled_at";
 
 pub async fn link(
     pool: &SqlitePool,
@@ -21,7 +22,8 @@ pub async fn link(
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (repo, issue_number) DO UPDATE
            SET workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
-               thread_id = excluded.thread_id, member_id = excluded.member_id
+               thread_id = excluded.thread_id, member_id = excluded.member_id,
+               disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.repo)
@@ -101,6 +103,19 @@ pub async fn unlink(pool: &SqlitePool, repo: &str, issue_number: i64) -> Result<
     Ok(res.rows_affected() > 0)
 }
 
+pub async fn disable(pool: &SqlitePool, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_github_issue_links SET disabled_at = ?
+         WHERE repo = ? AND issue_number = ? AND disabled_at IS NULL",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(repo)
+    .bind(issue_number)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> GithubIssueLink {
     GithubIssueLink {
         repo: row.get("repo"),
@@ -110,5 +125,6 @@ fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> GithubIssueLink {
         thread_id: ThreadId(row.get("thread_id")),
         member_id: MemberId(row.get("member_id")),
         created_at: row.get("created_at"),
+        disabled_at: row.get("disabled_at"),
     }
 }

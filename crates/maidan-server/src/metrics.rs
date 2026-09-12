@@ -278,6 +278,27 @@ pub fn record_github_egress(outcome: &str) {
     counter!("maidan_github_egress_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// A projector-egress delivery leaving the durable queue (Cluster 377), by
+/// `surface` (`slack` | `github`) and `outcome`:
+/// - `sent` — posted to the external surface.
+/// - `retry` — failed transiently; rescheduled with backoff (377.2).
+/// - `dead` — dead-lettered after exhausting its attempts (377.2).
+/// - `disabled` — an auth/config-class failure; the link was turned off and the
+///   delivery dead-lettered without further retries (377.3).
+/// - `unroutable` — the stored destination does not decode, so no sender can
+///   address it; dead-lettered on sight (377.2).
+///
+/// The queue-level companion to `maidan_{slack,github}_egress_total`, which stay
+/// a count of *post attempts* against each surface.
+pub fn record_egress_delivery(surface: &str, outcome: &str) {
+    counter!(
+        "maidan_egress_deliveries_total",
+        "surface" => surface.to_string(),
+        "outcome" => outcome.to_string(),
+    )
+    .increment(1);
+}
+
 /// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
 /// `created` when the task thread was created, `failed` when creation errored.
 pub fn record_task_schedule_fired(outcome: &str) {

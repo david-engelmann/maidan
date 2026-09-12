@@ -227,8 +227,35 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
 pub enum GithubError {
     #[error("github http error: {0}")]
     Http(String),
-    #[error("github api error: status {0}")]
-    Api(u16),
+    #[error("github api error: status {status}")]
+    Api {
+        status: u16,
+        /// Whether GitHub said this was a rate limit rather than a permission
+        /// problem. GitHub answers a secondary rate limit with **403**, the same
+        /// status as a genuinely revoked token, so the status alone cannot tell
+        /// them apart — the response headers can (Cluster 377.3).
+        rate_limited: bool,
+    },
+}
+
+impl GithubError {
+    /// Whether this failure is a misconfiguration rather than a transient fault
+    /// (Cluster 377.3): a wrong or revoked token (401), a missing permission
+    /// (403), a repo or issue that isn't there (404). Retrying cannot fix any of
+    /// them, so the link is disabled instead of grinding through its attempts.
+    ///
+    /// A rate-limited 403 is explicitly **not** one: it is the most transient
+    /// failure GitHub has, and disabling a link over it would take an operator's
+    /// re-link to undo.
+    pub fn is_misconfiguration(&self) -> bool {
+        match self {
+            Self::Http(_) => false,
+            Self::Api {
+                rate_limited: true, ..
+            } => false,
+            Self::Api { status, .. } => matches!(status, 401 | 403 | 404),
+        }
+    }
 }
 
 /// Outbound GitHub sender — posts an issue/PR comment in production, a mock in tests.
@@ -291,11 +318,26 @@ impl GithubSender for GithubApiClient {
             .await
             .map_err(|e| GithubError::Http(e.to_string()))?;
         if resp.status().is_success() {
-            Ok(())
-        } else {
-            Err(GithubError::Api(resp.status().as_u16()))
+            return Ok(());
         }
+        Err(GithubError::Api {
+            status: resp.status().as_u16(),
+            rate_limited: is_rate_limited(resp.headers()),
+        })
     }
+}
+
+/// Whether a non-success GitHub response is a rate limit. GitHub signals a
+/// primary limit with `x-ratelimit-remaining: 0` and a secondary one with
+/// `retry-after`, both on a 403 — the same status as a permission failure.
+fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
+    if headers.contains_key("retry-after") {
+        return true;
+    }
+    headers
+        .get("x-ratelimit-remaining")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim() == "0")
 }
 
 /// GitHub projector egress (Cluster 312, made durable in 377.2): relay a Maidan
@@ -324,7 +366,10 @@ pub async fn route_message_to_github(
         return; // originated in GitHub — don't echo it back
     }
     let link = match state.store.get_github_issue_link_by_thread(thread_id).await {
-        Ok(Some(l)) => l,
+        Ok(Some(l)) if l.disabled_at.is_none() => l,
+        // Disabled by an auth/config-class failure (Cluster 377.3) — see the Slack
+        // twin. Re-linking the issue/PR turns it back on.
+        Ok(Some(_)) => return,
         Ok(None) => return, // thread not linked to a GitHub issue/PR
         Err(err) => {
             tracing::warn!(error = %err, "github egress: link lookup failed");
@@ -447,5 +492,42 @@ mod tests {
         };
         assert_eq!(cfg.webhook_secret, "s");
         assert!(cfg.api_token.is_none());
+    }
+
+    fn api(status: u16, rate_limited: bool) -> GithubError {
+        GithubError::Api {
+            status,
+            rate_limited,
+        }
+    }
+
+    #[test]
+    fn auth_and_not_found_statuses_are_misconfigurations() {
+        for status in [401, 403, 404] {
+            assert!(
+                api(status, false).is_misconfiguration(),
+                "{status} should disable the link"
+            );
+        }
+    }
+
+    #[test]
+    fn transient_statuses_are_not_misconfigurations() {
+        for status in [429, 500, 502, 503] {
+            assert!(
+                !api(status, false).is_misconfiguration(),
+                "{status} should be retried"
+            );
+        }
+        assert!(!GithubError::Http("connection reset".into()).is_misconfiguration());
+    }
+
+    #[test]
+    fn a_rate_limited_403_is_retried_not_disabled() {
+        // GitHub answers a secondary rate limit with 403 — the same status as a
+        // revoked token. Disabling a link over a rate limit would take an
+        // operator's re-link to undo, so the headers, not the status, decide.
+        assert!(!api(403, true).is_misconfiguration());
+        assert!(api(403, false).is_misconfiguration());
     }
 }

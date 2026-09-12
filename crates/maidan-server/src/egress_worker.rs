@@ -11,6 +11,12 @@
 //! projectors did, where a transient 502 dropped the message with a log line:
 //! `route_message_to_slack` / `route_message_to_github` now only *enqueue*.
 //!
+//! **Retry-then-disable (Cluster 377.3):** an auth/config-class failure — GitHub
+//! 401/403/404, Slack `invalid_auth`/`channel_not_found` — is not retried at all.
+//! No number of attempts fixes a revoked token or a deleted channel, so the link
+//! is disabled (later messages stop enqueueing), the delivery dead-letters, and a
+//! `ProjectorMisconfigured` event names the surface, the selector and the error.
+//!
 //! **Runs whenever a projector sender is configured** (spawned in `main.rs` only
 //! then — and the projectors only enqueue then, so an unconfigured deployment
 //! neither queues nor drains). Tick defaults to 5s, tunable via
@@ -74,56 +80,90 @@ fn backoff_for(attempts: i64) -> Duration {
     Duration::from_secs(secs)
 }
 
-/// Outcome tallies for a sweep (for tests / logging).
+/// Outcome tallies for a sweep (for tests / logging). `disabled` counts the
+/// deliveries that dead-lettered because their link was turned off — a subset of
+/// the dead-lettered ones, called out because it is the actionable kind.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct EgressSweepStats {
     pub sent: u32,
     pub retried: u32,
     pub dead: u32,
+    pub disabled: u32,
 }
 
-/// Post one claimed delivery through the sender for its surface. `Err` carries
-/// the message recorded as the row's `last_error`.
-async fn deliver(state: &AppState, target: &EgressTarget, body: &str) -> Result<(), String> {
+/// A failed delivery attempt: what to record, and whether retrying could ever
+/// help. A `misconfiguration` is a wrong token, a revoked scope, a channel that
+/// no longer exists — no number of retries fixes any of those.
+struct DeliveryFailure {
+    message: String,
+    misconfiguration: bool,
+}
+
+/// Post one claimed delivery through the sender for its surface.
+async fn deliver(
+    state: &AppState,
+    target: &EgressTarget,
+    body: &str,
+) -> Result<(), DeliveryFailure> {
     match target {
         EgressTarget::Slack { channel_id } => {
-            let sender = state
-                .slack_sender
-                .as_ref()
-                .ok_or_else(|| "no slack sender configured".to_string())?;
-            let result = sender.post_message(channel_id, body).await;
-            crate::metrics::record_slack_egress(if result.is_ok() { "sent" } else { "failed" });
-            result.map_err(|e| e.to_string())
+            let Some(sender) = state.slack_sender.as_ref() else {
+                return Err(DeliveryFailure {
+                    message: "no slack sender configured".into(),
+                    misconfiguration: false,
+                });
+            };
+            match sender.post_message(channel_id, body).await {
+                Ok(()) => {
+                    crate::metrics::record_slack_egress("sent");
+                    Ok(())
+                }
+                Err(err) => {
+                    crate::metrics::record_slack_egress("failed");
+                    Err(DeliveryFailure {
+                        message: err.to_string(),
+                        misconfiguration: err.is_misconfiguration(),
+                    })
+                }
+            }
         }
         EgressTarget::Github { repo, issue_number } => {
-            let sender = state
-                .github_sender
-                .as_ref()
-                .ok_or_else(|| "no github sender configured".to_string())?;
-            let result = sender.post_comment(repo, *issue_number, body).await;
-            crate::metrics::record_github_egress(if result.is_ok() { "sent" } else { "failed" });
-            result.map_err(|e| e.to_string())
+            let Some(sender) = state.github_sender.as_ref() else {
+                return Err(DeliveryFailure {
+                    message: "no github sender configured".into(),
+                    misconfiguration: false,
+                });
+            };
+            match sender.post_comment(repo, *issue_number, body).await {
+                Ok(()) => {
+                    crate::metrics::record_github_egress("sent");
+                    Ok(())
+                }
+                Err(err) => {
+                    crate::metrics::record_github_egress("failed");
+                    Err(DeliveryFailure {
+                        message: err.to_string(),
+                        misconfiguration: err.is_misconfiguration(),
+                    })
+                }
+            }
         }
     }
 }
 
-/// Record a failed delivery: reschedule with backoff, or dead-letter once the
-/// attempts are exhausted.
+/// Dead-letter a delivery without rescheduling it.
+async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
+    if let Err(e) = state.store.mark_egress_failed(entry.id, error, None).await {
+        tracing::warn!(error = %e, id = %entry.id, "egress worker: dead-letter failed");
+    }
+}
+
+/// Record a transient failure: reschedule with backoff, or dead-letter once the
+/// attempts are exhausted. Returns whether it dead-lettered.
 async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> bool {
     let dead = entry.attempts >= MAX_ATTEMPTS;
-    let retry_at = (!dead).then(|| {
-        chrono::Utc::now()
-            + chrono::Duration::from_std(backoff_for(entry.attempts))
-                .unwrap_or_else(|_| chrono::Duration::seconds(BACKOFF_BASE_SECS as i64))
-    });
-    if let Err(e) = state
-        .store
-        .mark_egress_failed(entry.id, error, retry_at)
-        .await
-    {
-        tracing::warn!(error = %e, id = %entry.id, "egress worker: recording the failure failed");
-    }
     if dead {
+        dead_letter(state, entry, error).await;
         tracing::warn!(
             error = %error,
             id = %entry.id,
@@ -131,8 +171,73 @@ async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> 
             surface = %entry.surface,
             "egress worker: dead-lettered"
         );
+        return true;
     }
-    dead
+    let retry_at = chrono::Utc::now()
+        + chrono::Duration::from_std(backoff_for(entry.attempts))
+            .unwrap_or_else(|_| chrono::Duration::seconds(BACKOFF_BASE_SECS as i64));
+    if let Err(e) = state
+        .store
+        .mark_egress_failed(entry.id, error, Some(retry_at))
+        .await
+    {
+        tracing::warn!(error = %e, id = %entry.id, "egress worker: reschedule failed");
+    }
+    false
+}
+
+/// Retry-then-disable (Cluster 377.3): the link is broken in a way no retry
+/// fixes, so turn it off, dead-letter this delivery, and say so loudly — a
+/// `ProjectorMisconfigured` event, once, on the transition to disabled. Later
+/// messages into the link stop enqueueing entirely, so the queue doesn't grind
+/// through eight doomed attempts per message; re-linking re-enables it.
+async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTarget, error: &str) {
+    dead_letter(state, entry, error).await;
+    let disabled = match target {
+        EgressTarget::Slack { channel_id } => state.store.disable_slack_channel_link(channel_id),
+        EgressTarget::Github { repo, issue_number } => {
+            state.store.disable_github_issue_link(repo, *issue_number)
+        }
+    }
+    .await;
+    match disabled {
+        // Already disabled — another delivery in flight got there first, and the
+        // event has already been emitted. Don't announce it twice.
+        Ok(false) => return,
+        Ok(true) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, id = %entry.id, "egress worker: disabling the link failed");
+            return;
+        }
+    }
+    tracing::warn!(
+        %error,
+        id = %entry.id,
+        surface = %entry.surface,
+        selector = %entry.selector,
+        "egress worker: projector link disabled (misconfigured)"
+    );
+    // Best-effort, and resolved the same way the notification router resolves a
+    // mention's channel: the event is never withheld for want of context.
+    let channel_id = state
+        .store
+        .get_thread(entry.thread_id)
+        .await
+        .ok()
+        .map(|t| t.channel_id);
+    crate::routes::publish(
+        state,
+        maidan_types::Event::ProjectorMisconfigured {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: entry.workspace_id,
+            channel_id,
+            thread_id: entry.thread_id,
+            surface: entry.surface.clone(),
+            selector: entry.selector.clone(),
+            error: error.to_string(),
+        },
+    )
+    .await;
 }
 
 /// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when no projector sender is
@@ -161,24 +266,33 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 "unroutable destination: {}:{}",
                 entry.surface, entry.selector
             );
-            if let Err(e) = state.store.mark_egress_failed(entry.id, &error, None).await {
-                tracing::warn!(error = %e, id = %entry.id, "egress worker: dead-letter failed");
-            }
+            dead_letter(state, &entry, &error).await;
             tracing::warn!(id = %entry.id, %error, "egress worker: dead-lettered");
+            crate::metrics::record_egress_delivery(&entry.surface, "unroutable");
             stats.dead += 1;
             continue;
         };
+        let surface = target.surface().as_str();
         match deliver(state, &target, &entry.body).await {
             Ok(()) => {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }
+                crate::metrics::record_egress_delivery(surface, "sent");
                 stats.sent += 1;
             }
-            Err(error) => {
-                if record_failure(state, &entry, &error).await {
+            Err(failure) if failure.misconfiguration => {
+                disable_link(state, &entry, &target, &failure.message).await;
+                crate::metrics::record_egress_delivery(surface, "disabled");
+                stats.dead += 1;
+                stats.disabled += 1;
+            }
+            Err(failure) => {
+                if record_failure(state, &entry, &failure.message).await {
+                    crate::metrics::record_egress_delivery(surface, "dead");
                     stats.dead += 1;
                 } else {
+                    crate::metrics::record_egress_delivery(surface, "retry");
                     stats.retried += 1;
                 }
             }

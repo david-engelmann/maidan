@@ -571,6 +571,12 @@ pub trait ProjectorLinkStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlackChannelLink>, StoreError>;
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
+    /// Turn egress to a Slack channel off after an auth/config-class failure
+    /// (Cluster 377.3) — a retry can't fix a revoked token or a deleted channel.
+    /// Idempotent (an already-disabled link keeps its original timestamp);
+    /// returns whether this call did the disabling, so only the first failure
+    /// announces it. Re-linking clears the flag; ingress is unaffected.
+    async fn disable_slack_channel_link(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
 
     /// GitHub projector issue/PR links (Cluster 311): map a GitHub issue/PR
     /// (`repo`, `issue_number`) to the Maidan channel/thread it projects into.
@@ -594,6 +600,13 @@ pub trait ProjectorLinkStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<GithubIssueLink>, StoreError>;
     async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError>;
+    /// The GitHub twin of [`disable_slack_channel_link`](Self::disable_slack_channel_link)
+    /// (Cluster 377.3).
+    async fn disable_github_issue_link(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

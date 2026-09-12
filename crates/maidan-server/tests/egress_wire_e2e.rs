@@ -35,6 +35,9 @@ struct TestSrv {
     rec: Arc<Mutex<Vec<Recorded>>>,
     status: StatusCode,
     response: Value,
+    /// Response headers to echo back — how GitHub distinguishes a rate-limited
+    /// 403 from a permission-denied one (Cluster 377.3).
+    response_headers: Vec<(String, String)>,
 }
 
 async fn handler(
@@ -58,17 +61,37 @@ async fn handler(
         user_agent: get("user-agent"),
         body: serde_json::from_slice(&body).unwrap_or(Value::Null),
     });
-    (srv.status, Json(srv.response.clone())).into_response()
+    let mut response = (srv.status, Json(srv.response.clone())).into_response();
+    for (name, value) in &srv.response_headers {
+        response.headers_mut().insert(
+            axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+            value.parse().unwrap(),
+        );
+    }
+    response
 }
 
 /// Spawn a loopback server that records every request and answers with
 /// `(status, response)`. Returns its base URL and the shared recorder.
 async fn spawn(status: StatusCode, response: Value) -> (String, Arc<Mutex<Vec<Recorded>>>) {
+    spawn_with_headers(status, response, &[]).await
+}
+
+/// [`spawn`], plus response headers.
+async fn spawn_with_headers(
+    status: StatusCode,
+    response: Value,
+    response_headers: &[(&str, &str)],
+) -> (String, Arc<Mutex<Vec<Recorded>>>) {
     let rec = Arc::new(Mutex::new(Vec::new()));
     let srv = TestSrv {
         rec: rec.clone(),
         status,
         response,
+        response_headers: response_headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
     };
     let app = Router::new().fallback(any(handler)).with_state(srv);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -138,7 +161,45 @@ async fn github_client_maps_non_success_to_api_error() {
         .await
         .unwrap_err();
     match err {
-        GithubError::Api(code) => assert_eq!(code, 404),
+        GithubError::Api {
+            status,
+            rate_limited,
+        } => {
+            assert_eq!(status, 404);
+            assert!(!rate_limited, "a plain 404 carries no rate-limit headers");
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+}
+
+/// GitHub answers a secondary rate limit with **403** — the same status as a
+/// revoked token — so the classification that decides whether to disable a link
+/// (Cluster 377.3) has to read the headers, not the status.
+#[tokio::test]
+async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
+    let (base, _rec) = spawn_with_headers(
+        StatusCode::FORBIDDEN,
+        json!({ "message": "API rate limit exceeded" }),
+        &[("x-ratelimit-remaining", "0")],
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .post_comment("acme/widgets", 1, "x")
+        .await
+        .unwrap_err();
+    match err {
+        GithubError::Api {
+            status,
+            rate_limited,
+        } => {
+            assert_eq!(status, 403);
+            assert!(rate_limited);
+            assert!(
+                !err.is_misconfiguration(),
+                "a rate limit must not disable the link"
+            );
+        }
         other => panic!("expected Api error, got {other:?}"),
     }
 }
