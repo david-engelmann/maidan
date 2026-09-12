@@ -965,6 +965,47 @@ pub trait MemoryBlockStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait ReviewStore: Send + Sync {
+    /// Required reviewers (Cluster 375, Wave 2 #22). `set_review_requirement`
+    /// upserts the required approval count `k`; `add_reviewer` names the reviewer
+    /// set (empty = open review — any qualifying member); `submit_review` upserts
+    /// a reviewer's decision (re-submitting changes it). `review_status` counts
+    /// the DISTINCT **qualifying** approvals — decision = approve, the reviewer is
+    /// neither the thread's owner nor its assignee (separation of duties), and, when
+    /// a named set exists, is in it — which the FSM close-gate (375.2) reads.
+    async fn set_review_requirement(
+        &self,
+        thread_id: ThreadId,
+        required_count: i64,
+    ) -> Result<ThreadReviewRequirement, StoreError>;
+    async fn get_review_requirement(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadReviewRequirement>, StoreError>;
+    async fn clear_review_requirement(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    async fn add_reviewer(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError>;
+    async fn remove_reviewer(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError>;
+    async fn list_reviewers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+    async fn submit_review(
+        &self,
+        thread_id: ThreadId,
+        reviewer_id: MemberId,
+        decision: ReviewDecision,
+        note: Option<&str>,
+    ) -> Result<ThreadReview, StoreError>;
+    async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
+    async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1865,6 +1906,7 @@ pub trait Store:
     + SecretStore
     + MemberFreezeStore
     + MemoryBlockStore
+    + ReviewStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1913,6 +1955,7 @@ impl<
             + SecretStore
             + MemberFreezeStore
             + MemoryBlockStore
+            + ReviewStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore

@@ -49,6 +49,7 @@ mod refs;
 mod reindex_jobs;
 pub mod replication;
 mod retention;
+mod reviews;
 mod scim_users;
 mod secrets;
 mod sessions;
@@ -1291,6 +1292,58 @@ impl SecretStore for PostgresStore {
         name: &str,
     ) -> Result<bool, StoreError> {
         secrets::delete(&self.pool, workspace_id, name).await
+    }
+}
+
+#[async_trait]
+impl ReviewStore for PostgresStore {
+    async fn set_review_requirement(
+        &self,
+        thread_id: ThreadId,
+        required_count: i64,
+    ) -> Result<ThreadReviewRequirement, StoreError> {
+        reviews::set_requirement(&self.pool, thread_id, required_count).await
+    }
+    async fn get_review_requirement(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadReviewRequirement>, StoreError> {
+        reviews::get_requirement(self.read_pool(), thread_id).await
+    }
+    async fn clear_review_requirement(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        reviews::clear_requirement(&self.pool, thread_id).await
+    }
+    async fn add_reviewer(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        reviews::add_reviewer(&self.pool, thread_id, member_id).await
+    }
+    async fn remove_reviewer(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        reviews::remove_reviewer(&self.pool, thread_id, member_id).await
+    }
+    async fn list_reviewers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
+        reviews::list_reviewers(self.read_pool(), thread_id).await
+    }
+    async fn submit_review(
+        &self,
+        thread_id: ThreadId,
+        reviewer_id: MemberId,
+        decision: ReviewDecision,
+        note: Option<&str>,
+    ) -> Result<ThreadReview, StoreError> {
+        reviews::submit_review(&self.pool, thread_id, reviewer_id, decision, note).await
+    }
+    async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError> {
+        reviews::list_reviews(self.read_pool(), thread_id).await
+    }
+    async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError> {
+        reviews::review_status(self.read_pool(), thread_id).await
     }
 }
 

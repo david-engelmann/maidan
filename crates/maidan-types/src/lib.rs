@@ -14,6 +14,7 @@ pub mod models;
 pub mod pack;
 pub mod purge;
 pub mod recipe;
+pub mod review;
 pub mod secret;
 pub mod usage;
 
@@ -27,5 +28,6 @@ pub use models::*;
 pub use pack::*;
 pub use purge::*;
 pub use recipe::*;
+pub use review::*;
 pub use secret::*;
 pub use usage::*;
