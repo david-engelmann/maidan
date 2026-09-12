@@ -198,6 +198,12 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
         "filter": filter,
         "after_id": 0
     });
+    // Don't post until the server has acknowledged the subscription. A fixed
+    // sleep here is a guess about how long the handshake takes, and on a loaded
+    // runner the post lands first: the event is then past the replay's high-water
+    // snapshot and ahead of the live subscriber, so neither path delivers it and
+    // the receive below times out.
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
     let ws_task = tokio::spawn(async move {
         let (mut socket, _) = tokio_tungstenite::connect_async(&ws_url)
             .await
@@ -207,11 +213,18 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
             .send(WsMessage::Text(subscribe_frame.to_string()))
             .await
             .expect("subscribe send");
+        let mut ready_tx = Some(ready_tx);
         loop {
             let msg = socket.next().await;
             let Some(Ok(WsMessage::Text(text))) = msg else {
                 break;
             };
+            if text.contains("subscribe_ack") {
+                if let Some(tx) = ready_tx.take() {
+                    let _ = tx.send(());
+                }
+                continue;
+            }
             if text.contains("message_posted") {
                 let _ = notify_tx.send(text).await;
                 break;
@@ -219,7 +232,10 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
         }
     });
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::timeout(Duration::from_secs(5), ready_rx)
+        .await
+        .expect("timed out waiting for subscribe_ack")
+        .expect("ws task ended before acknowledging the subscription");
 
     let resp = client
         .post(format!("{base}/dm/{dm_id}/messages"))
