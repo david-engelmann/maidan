@@ -187,6 +187,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
+            .replace("{tid}", &f.workspace)
             .replace("{term}", "testterm")
             .replace("{name}", "capsecret")
             .replace("{slack_channel_id}", "CTEST")
@@ -547,6 +548,10 @@ fn apply_route_defaults(
             "handler_kind": "http",
             "handler_target": "https://example.com/slash"
         }));
+    }
+    // A valid selector, so the extractor passes and it is `cap()` that answers.
+    if path.contains("/egress-targets") && method == "POST" {
+        return b.json(&json!({ "surface": "slack", "selector": "C0123ABCDEF" }));
     }
     if path.contains("/slack-links") && method == "POST" {
         return b.json(&json!({

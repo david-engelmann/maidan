@@ -7,8 +7,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, ChannelId, ContentBlock,
-    EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide, RelationKind, ThreadId,
-    WebhookSubscriptionId, WorkspaceId,
+    EgressSurface, EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide, RelationKind,
+    ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -828,6 +828,18 @@ pub struct LinkSlackChannel {
     pub slack_channel_id: String,
     pub thread_id: uuid::Uuid,
     pub member_id: uuid::Uuid,
+}
+
+/// Bless an external destination for egress (Cluster 378.1). `selector` must be
+/// an **id**: a Slack channel id (`C…`/`G…`), or a GitHub repository
+/// `owner/name` — not a `#channel-name`, and not `owner/name#123`. A name is
+/// mutable, so an allowlist keyed on one is not an allowlist; and on GitHub the
+/// operator blesses the repository, since per-issue blessing would mean a ticket
+/// per PR.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AllowEgressTarget {
+    pub surface: EgressSurface,
+    pub selector: String,
 }
 
 /// Link a GitHub issue/PR to a Maidan thread (Cluster 346). `repo` is the

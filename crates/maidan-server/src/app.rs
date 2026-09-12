@@ -584,6 +584,14 @@ pub fn router(state: AppState) -> Router {
                 .delete(github::unlink_github_issue),
         )
         .route(
+            "/workspaces/:wid/egress-targets",
+            post(routes::allow_egress_target).get(routes::list_egress_targets),
+        )
+        .route(
+            "/workspaces/:wid/egress-targets/:tid",
+            delete(routes::revoke_egress_target),
+        )
+        .route(
             "/workspaces/:wid/fsm-hooks",
             post(fsm_hooks::create_fsm_hook).get(fsm_hooks::list_fsm_hooks),
         )

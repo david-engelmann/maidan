@@ -550,6 +550,40 @@ pub trait EgressStore: Send + Sync {
     /// Requeue a dead delivery (`pending`, due now, `attempts` reset); returns
     /// whether a dead row was actually requeued.
     async fn requeue_dead_egress(&self, id: EgressOutboxId) -> Result<bool, StoreError>;
+
+    /// The egress trust boundary (Cluster 378.1): a per-workspace allowlist of the
+    /// destinations Maidan may deliver to. A result's `deliver_to` is written by an
+    /// *agent*, while the connector credentials are operator-held and reach many
+    /// repositories and channels — so `deliver_to` **selects** and this allowlist
+    /// **authorizes**, and an empty allowlist authorizes nothing (the Cluster-371
+    /// secret-broker fail-safe).
+    ///
+    /// `allow_egress_target` is idempotent (re-blessing keeps the original entry)
+    /// and rejects a selector that is not an id — a Slack `#name` or a GitHub
+    /// `owner/name#123` — because an allowlist keyed on a mutable name is not an
+    /// allowlist and the authorization grain on GitHub is the *repository*.
+    /// `revoke_egress_target` is workspace-scoped so one admin cannot revoke
+    /// another workspace's entry by guessing an id. `is_egress_target_allowed`
+    /// takes the allowlist grain, i.e. `EgressTarget::allowlist_selector()`.
+    async fn allow_egress_target(
+        &self,
+        new: NewEgressTarget,
+    ) -> Result<AllowedEgressTarget, StoreError>;
+    async fn list_egress_targets(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<AllowedEgressTarget>, StoreError>;
+    async fn revoke_egress_target(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressTargetId,
+    ) -> Result<bool, StoreError>;
+    async fn is_egress_target_allowed(
+        &self,
+        workspace_id: WorkspaceId,
+        surface: EgressSurface,
+        selector: &str,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

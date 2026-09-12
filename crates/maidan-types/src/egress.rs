@@ -16,7 +16,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{EgressOutboxId, ThreadId, WorkspaceId};
+use crate::ids::{EgressOutboxId, EgressTargetId, ThreadId, WorkspaceId};
 
 /// An external surface a projector can deliver to. Lowercase identifiers, as in
 /// the `deliver_to` grammar pinned in `docs/Result Delivery.md`.
@@ -81,6 +81,18 @@ impl EgressTarget {
         }
     }
 
+    /// The key this target is *authorized* by in the Cluster-378 allowlist, which
+    /// is deliberately coarser than [`Self::selector`] on GitHub: an operator
+    /// blesses the **repository**, not each issue, because per-issue blessing
+    /// would mean an operator ticket per PR. Slack has no such split — a channel
+    /// id is already the unit an operator thinks in.
+    pub fn allowlist_selector(&self) -> String {
+        match self {
+            Self::Slack { channel_id } => channel_id.clone(),
+            Self::Github { repo, .. } => repo.clone(),
+        }
+    }
+
     /// Decode a persisted `(surface, selector)` pair. `None` when the selector is
     /// malformed for its surface, which is the caller's cue to dead-letter the row
     /// rather than retry it forever.
@@ -106,6 +118,76 @@ impl EgressTarget {
 impl fmt::Display for EgressTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.surface(), self.selector())
+    }
+}
+
+/// A destination a workspace's operator has blessed for egress (Cluster 378.1).
+///
+/// `surface` is stored as text rather than an [`EgressSurface`], for the same
+/// reason [`EgressOutbox`] does: a row written by a newer build and read after a
+/// downgrade must still be *listable*, or the operator cannot see the entry they
+/// need to revoke. The write side is typed ([`NewEgressTarget`]), so a surface
+/// this build cannot deliver to can never be blessed in the first place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AllowedEgressTarget {
+    pub id: EgressTargetId,
+    pub workspace_id: WorkspaceId,
+    pub surface: String,
+    pub selector: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A destination to bless. Typed on the way in — see [`AllowedEgressTarget`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewEgressTarget {
+    pub workspace_id: WorkspaceId,
+    pub surface: EgressSurface,
+    pub selector: String,
+}
+
+/// Validate an operator-supplied allowlist selector, returning why it was
+/// rejected. Pure, so the store can enforce it on every write path and the
+/// reasons can be unit-tested without a database.
+///
+/// The Slack rule is the load-bearing one: a channel **id** (`C…`/`G…`), never a
+/// `#name`. Names are mutable and ambiguous, and an allowlist keyed on a mutable
+/// name is not an allowlist — the channel a name points at can change under the
+/// blessing. See `docs/Result Delivery.md`.
+pub fn validate_allowlist_selector(
+    surface: EgressSurface,
+    selector: &str,
+) -> Result<(), &'static str> {
+    if selector.trim() != selector || selector.is_empty() {
+        return Err("selector must be non-empty and free of surrounding whitespace");
+    }
+    match surface {
+        EgressSurface::Slack => {
+            if selector.starts_with('#') {
+                return Err("slack selector must be a channel id (C…/G…), not a #name");
+            }
+            if !selector.starts_with('C') && !selector.starts_with('G') {
+                return Err("slack selector must be a channel id starting with C or G");
+            }
+            if selector.len() < 2 {
+                return Err("slack selector is too short to be a channel id");
+            }
+            Ok(())
+        }
+        EgressSurface::Github => {
+            if selector.contains('#') {
+                return Err(
+                    "github selector is a repository `owner/name`, without an issue number",
+                );
+            }
+            let Some((owner, name)) = selector.split_once('/') else {
+                return Err("github selector must be `owner/name`");
+            };
+            if owner.is_empty() || name.is_empty() || name.contains('/') {
+                return Err("github selector must be `owner/name`");
+            }
+            Ok(())
+        }
     }
 }
 
@@ -235,7 +317,68 @@ mod tests {
     }
 
     #[test]
-    fn a_target_displays_as_its_allowlist_selector() {
+    fn a_github_target_is_authorized_by_its_repository_not_its_issue() {
+        let target = EgressTarget::Github {
+            repo: "beatgig/bgv3".into(),
+            issue_number: 3915,
+        };
+        assert_eq!(target.selector(), "beatgig/bgv3#3915");
+        assert_eq!(target.allowlist_selector(), "beatgig/bgv3");
+        // The projection is what an operator's one blessing has to cover, so it
+        // must also be a selector the allowlist would accept.
+        assert!(
+            validate_allowlist_selector(EgressSurface::Github, &target.allowlist_selector())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_slack_target_is_authorized_by_the_same_channel_id_it_delivers_to() {
+        let target = EgressTarget::Slack {
+            channel_id: "C0123ABCDEF".into(),
+        };
+        assert_eq!(target.selector(), target.allowlist_selector());
+        assert!(
+            validate_allowlist_selector(EgressSurface::Slack, &target.allowlist_selector()).is_ok()
+        );
+    }
+
+    #[test]
+    fn an_allowlist_selector_must_be_an_id_not_a_name() {
+        for (surface, selector) in [
+            (EgressSurface::Slack, "#general"),
+            (EgressSurface::Slack, "general"),
+            (EgressSurface::Slack, "C"),
+            (EgressSurface::Slack, ""),
+            (EgressSurface::Slack, " C0123ABCDEF"),
+            (EgressSurface::Slack, "C0123ABCDEF "),
+            // An issue number is not part of the authorization grain.
+            (EgressSurface::Github, "beatgig/bgv3#3915"),
+            (EgressSurface::Github, "bgv3"),
+            (EgressSurface::Github, "/bgv3"),
+            (EgressSurface::Github, "beatgig/"),
+            (EgressSurface::Github, "beatgig/bgv3/extra"),
+            (EgressSurface::Github, ""),
+        ] {
+            assert!(
+                validate_allowlist_selector(surface, selector).is_err(),
+                "expected {surface}:{selector:?} to be rejected"
+            );
+        }
+        for (surface, selector) in [
+            (EgressSurface::Slack, "C0123ABCDEF"),
+            (EgressSurface::Slack, "G0123ABCDEF"),
+            (EgressSurface::Github, "beatgig/bgv3"),
+        ] {
+            assert!(
+                validate_allowlist_selector(surface, selector).is_ok(),
+                "expected {surface}:{selector:?} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_target_displays_as_its_surface_qualified_delivery_selector() {
         assert_eq!(
             EgressTarget::Github {
                 repo: "beatgig/bgv3".into(),
