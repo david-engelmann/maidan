@@ -618,6 +618,11 @@ pub fn router(state: AppState) -> Router {
             "/operator/mail/dead/:id/requeue",
             post(routes::requeue_dead_mail),
         )
+        .route("/operator/egress/dead", get(routes::list_dead_egress))
+        .route(
+            "/operator/egress/dead/:id/requeue",
+            post(routes::requeue_dead_egress),
+        )
         .route(
             "/workspaces/:wid/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),

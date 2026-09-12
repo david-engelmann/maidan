@@ -152,6 +152,31 @@ async fn run_suite(store: &dyn Store) {
         .expect("claim6")
         .is_none());
     assert_eq!(store.count_dead_egress().await.expect("count2"), 1);
+
+    // DLQ ops (Cluster 377.4): the dead entry is listed with its destination and
+    // last error, then requeued -> pending + due, no longer dead + claimable.
+    let dead = store.list_dead_egress(10).await.expect("list dead");
+    assert_eq!(dead.len(), 1);
+    assert_eq!(dead[0].id, id);
+    assert_eq!(dead[0].surface, "slack");
+    assert_eq!(dead[0].selector, "C0123ABCDEF");
+    assert_eq!(dead[0].thread_id, thread.id);
+    assert_eq!(dead[0].last_error.as_deref(), Some("gave up"));
+    assert!(store.requeue_dead_egress(id).await.expect("requeue"));
+    assert_eq!(store.count_dead_egress().await.expect("count3"), 0);
+    let reclaimed = store
+        .claim_next_due_egress(Utc::now(), 300)
+        .await
+        .expect("claim7")
+        .expect("requeued is claimable");
+    assert_eq!(reclaimed.id, id);
+    assert_eq!(reclaimed.attempts, 1, "requeue reset attempts (claim -> 1)");
+    assert!(
+        !store.requeue_dead_egress(id).await.expect("requeue2"),
+        "requeue only affects a dead entry"
+    );
+    // Leave the queue empty for the dedup suite that follows.
+    store.mark_egress_delivered(id).await.expect("drain");
 }
 
 /// Every replica runs the router that enqueues, so the same event reaches each of

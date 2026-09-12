@@ -9,7 +9,9 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::StoreError;
-use maidan_types::{EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId};
+use maidan_types::{
+    DeadEgress, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
+};
 
 pub async fn enqueue(
     pool: &SqlitePool,
@@ -130,6 +132,48 @@ pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
         .fetch_one(pool)
         .await?;
     Ok(row.get::<i64, _>("c"))
+}
+
+pub async fn list_dead(pool: &SqlitePool, limit: i64) -> Result<Vec<DeadEgress>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, workspace_id, thread_id, surface, selector, attempts, last_error, updated_at
+         FROM maidan_egress_outbox
+         WHERE status = 'dead'
+         ORDER BY updated_at DESC
+         LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_dead).collect())
+}
+
+pub async fn requeue_dead(pool: &SqlitePool, id: EgressOutboxId) -> Result<bool, StoreError> {
+    let now = Utc::now().to_rfc3339();
+    let res = sqlx::query(
+        "UPDATE maidan_egress_outbox
+         SET status = 'pending', attempts = 0, next_attempt_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'dead'",
+    )
+    .bind(&now)
+    .bind(&now)
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+fn row_to_dead(row: &sqlx::sqlite::SqliteRow) -> DeadEgress {
+    DeadEgress {
+        id: EgressOutboxId(row.get("id")),
+        workspace_id: WorkspaceId(row.get("workspace_id")),
+        thread_id: ThreadId(row.get("thread_id")),
+        surface: row.get("surface"),
+        selector: row.get("selector"),
+        attempts: row.get("attempts"),
+        last_error: row.get("last_error"),
+        updated_at: row.get("updated_at"),
+    }
 }
 
 fn row_to_egress(row: &sqlx::sqlite::SqliteRow) -> EgressOutbox {

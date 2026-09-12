@@ -1015,6 +1015,18 @@
   },
   {
     "method": "GET",
+    "path": "/operator/egress/dead",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/egress/dead/{id}/requeue",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/operator/mail/dead",
     "capability": "token:admin",
     "surface": "http"
