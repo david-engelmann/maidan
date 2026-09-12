@@ -20,8 +20,8 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressTarget, GithubIssueLink, MemberId, NewEgressOutbox, NewGithubIssueLink, ThreadId,
-    WorkspaceId,
+    EgressTarget, ExternalRef, GithubIssueLink, MemberId, NewEgressOutbox, NewGithubIssueLink,
+    ThreadId, WorkspaceId,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -258,13 +258,31 @@ impl GithubError {
     }
 }
 
-/// Outbound GitHub sender — posts an issue/PR comment in production, a mock in tests.
+/// Outbound GitHub sender — posts and edits an issue/PR comment in production, a
+/// mock in tests.
 #[async_trait::async_trait]
 pub trait GithubSender: Send + Sync {
+    /// Comment on an issue or PR, returning a handle on the comment so a later
+    /// delivery can edit it in place (Cluster 378.2).
+    ///
+    /// **`Ok(None)` means "posted, but we cannot address it."** GitHub accepted
+    /// the comment and answered without a readable `id`. The comment exists, so
+    /// this is not a failure — reporting one would make the worker retry and
+    /// leave two comments on the PR. The recovery path for a lost ref is the
+    /// hidden marker in the comment body (Cluster 379.4), not a re-post.
     async fn post_comment(
         &self,
         repo: &str,
         issue_number: i64,
+        text: &str,
+    ) -> Result<Option<ExternalRef>, GithubError>;
+
+    /// Edit a comment posted earlier. Addressed by repository + comment id — the
+    /// issue number is not part of GitHub's comment-update route.
+    async fn update_comment(
+        &self,
+        repo: &str,
+        comment_id: i64,
         text: &str,
     ) -> Result<(), GithubError>;
 }
@@ -302,7 +320,7 @@ impl GithubSender for GithubApiClient {
         repo: &str,
         issue_number: i64,
         text: &str,
-    ) -> Result<(), GithubError> {
+    ) -> Result<Option<ExternalRef>, GithubError> {
         let url = format!(
             "{}/repos/{repo}/issues/{issue_number}/comments",
             self.base_url
@@ -313,6 +331,46 @@ impl GithubSender for GithubApiClient {
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "maidan-projector") // GitHub requires a User-Agent
+            .json(&serde_json::json!({ "body": text }))
+            .send()
+            .await
+            .map_err(|e| GithubError::Http(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(GithubError::Api {
+                status: resp.status().as_u16(),
+                rate_limited: is_rate_limited(resp.headers()),
+            });
+        }
+        // The comment exists from here on, so no decoding problem below may be
+        // reported as a failure: a retry would post a second comment.
+        let comment_id = resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v.get("id").and_then(|i| i.as_i64()))
+            .filter(|id| *id > 0);
+        Ok(comment_id.map(|comment_id| ExternalRef::Github {
+            repo: repo.to_string(),
+            comment_id,
+        }))
+    }
+
+    async fn update_comment(
+        &self,
+        repo: &str,
+        comment_id: i64,
+        text: &str,
+    ) -> Result<(), GithubError> {
+        let url = format!(
+            "{}/repos/{repo}/issues/comments/{comment_id}",
+            self.base_url
+        );
+        let resp = self
+            .http
+            .patch(&url)
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "maidan-projector")
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await

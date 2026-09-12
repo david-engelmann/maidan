@@ -32,7 +32,7 @@
 
 use std::time::Duration;
 
-use maidan_types::{EgressOutbox, EgressTarget};
+use maidan_types::{EgressOutbox, EgressTarget, ExternalRef};
 
 use crate::state::AppState;
 
@@ -100,11 +100,16 @@ struct DeliveryFailure {
 }
 
 /// Post one claimed delivery through the sender for its surface.
+///
+/// The `Ok` payload is the [`ExternalRef`] the surface handed back (Cluster
+/// 378.2) — `None` when the object was created but is not addressable. Nothing
+/// persists it yet; the result-delivery table that turns it into an
+/// update-in-place is Cluster 379.
 async fn deliver(
     state: &AppState,
     target: &EgressTarget,
     body: &str,
-) -> Result<(), DeliveryFailure> {
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
     match target {
         EgressTarget::Slack { channel_id } => {
             let Some(sender) = state.slack_sender.as_ref() else {
@@ -113,10 +118,14 @@ async fn deliver(
                     misconfiguration: false,
                 });
             };
-            match sender.post_message(channel_id, body).await {
-                Ok(()) => {
+            // Top-level: the projector egress relays a Maidan message into the
+            // linked channel, and threading those under a parent would change
+            // Cluster 309's behaviour. A result delivery replying in-thread is
+            // Cluster 379.4's call to make, with a ref to reply under.
+            match sender.post_message(channel_id, body, None).await {
+                Ok(reference) => {
                     crate::metrics::record_slack_egress("sent");
-                    Ok(())
+                    Ok(reference)
                 }
                 Err(err) => {
                     crate::metrics::record_slack_egress("failed");
@@ -135,9 +144,9 @@ async fn deliver(
                 });
             };
             match sender.post_comment(repo, *issue_number, body).await {
-                Ok(()) => {
+                Ok(reference) => {
                     crate::metrics::record_github_egress("sent");
-                    Ok(())
+                    Ok(reference)
                 }
                 Err(err) => {
                     crate::metrics::record_github_egress("failed");
@@ -274,10 +283,19 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         };
         let surface = target.surface().as_str();
         match deliver(state, &target, &entry.body).await {
-            Ok(()) => {
+            Ok(reference) => {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }
+                // The handle on what we just created, so an operator can find the
+                // Slack message or GitHub comment a delivery produced. Cluster
+                // 379 is what persists it.
+                tracing::debug!(
+                    id = %entry.id,
+                    %surface,
+                    external_ref = reference.as_ref().map(|r| r.handle()),
+                    "egress worker: delivered"
+                );
                 crate::metrics::record_egress_delivery(surface, "sent");
                 stats.sent += 1;
             }

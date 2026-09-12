@@ -16,7 +16,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace,
+    ExternalRef, MemberKind, NewChannel, NewMember, NewMessage, NewSlackChannelLink, NewThread,
+    NewWorkspace,
 };
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -27,12 +28,31 @@ struct MockSender {
 
 #[async_trait::async_trait]
 impl SlackSender for MockSender {
-    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
-        self.sent
-            .lock()
-            .unwrap()
-            .push((channel.into(), text.into()));
-        Ok(())
+    async fn post_message(
+        &self,
+        channel: &str,
+        text: &str,
+        thread_ts: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
+        assert_eq!(
+            thread_ts, None,
+            "the projector egress posts top-level (Cluster 309 behaviour)"
+        );
+        let mut sent = self.sent.lock().unwrap();
+        sent.push((channel.into(), text.into()));
+        Ok(Some(ExternalRef::Slack {
+            channel_id: channel.into(),
+            ts: format!("17000000{:02}.000100", sent.len()),
+        }))
+    }
+
+    async fn update_message(
+        &self,
+        _channel: &str,
+        _ts: &str,
+        _text: &str,
+    ) -> Result<(), SlackError> {
+        unreachable!("the projector egress never updates; that is Cluster 379.4")
     }
 }
 

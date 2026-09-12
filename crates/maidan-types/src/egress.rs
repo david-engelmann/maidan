@@ -121,6 +121,64 @@ impl fmt::Display for EgressTarget {
     }
 }
 
+/// A handle on an object a sender created on an external surface (Cluster 378.2)
+/// — a Slack message's `ts`, a GitHub comment's id. It is what makes a re-delivery
+/// an **update in place** rather than a second comment.
+///
+/// Only [`Self::handle`] needs persisting: a delivery row already carries its
+/// [`EgressTarget`], and everything else here is derivable from it. So the stored
+/// shape is one text column, reconstructed with [`Self::for_target`] — the same
+/// "store the narrow thing, decode it back" move as `(surface, selector)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalRef {
+    /// `chat.update` addresses a message by channel **and** `ts`; the `ts` alone
+    /// is not enough.
+    Slack { channel_id: String, ts: String },
+    /// `PATCH /repos/{repo}/issues/comments/{id}` addresses a comment by
+    /// repository and comment id — **not** by issue. The issue number the comment
+    /// hangs under is deliberately absent: it is not needed to edit the comment,
+    /// and carrying it would invite keying an update on the wrong thing.
+    Github { repo: String, comment_id: i64 },
+}
+
+impl ExternalRef {
+    pub fn surface(&self) -> EgressSurface {
+        match self {
+            Self::Slack { .. } => EgressSurface::Slack,
+            Self::Github { .. } => EgressSurface::Github,
+        }
+    }
+
+    /// The part a delivery row has to remember: the Slack `ts`, or the GitHub
+    /// comment id as text.
+    pub fn handle(&self) -> String {
+        match self {
+            Self::Slack { ts, .. } => ts.clone(),
+            Self::Github { comment_id, .. } => comment_id.to_string(),
+        }
+    }
+
+    /// Rebuild a ref from the delivery's target and the stored handle. `None` when
+    /// the handle is malformed for its surface — the caller's cue to treat the ref
+    /// as lost and fall back to posting (with the hidden-marker recovery path on
+    /// GitHub) rather than issuing an update against a guess.
+    pub fn for_target(target: &EgressTarget, handle: &str) -> Option<Self> {
+        match target {
+            EgressTarget::Slack { channel_id } => (!handle.is_empty()).then(|| Self::Slack {
+                channel_id: channel_id.clone(),
+                ts: handle.to_string(),
+            }),
+            EgressTarget::Github { repo, .. } => {
+                let comment_id: i64 = handle.parse().ok()?;
+                (comment_id > 0).then(|| Self::Github {
+                    repo: repo.clone(),
+                    comment_id,
+                })
+            }
+        }
+    }
+}
+
 /// A destination a workspace's operator has blessed for egress (Cluster 378.1).
 ///
 /// `surface` is stored as text rather than an [`EgressSurface`], for the same
@@ -375,6 +433,63 @@ mod tests {
                 "expected {surface}:{selector:?} to be accepted"
             );
         }
+    }
+
+    #[test]
+    fn an_external_ref_round_trips_through_its_target_and_stored_handle() {
+        let slack_target = EgressTarget::Slack {
+            channel_id: "C0123ABCDEF".into(),
+        };
+        let slack_ref = ExternalRef::Slack {
+            channel_id: "C0123ABCDEF".into(),
+            ts: "1699999999.001200".into(),
+        };
+        assert_eq!(slack_ref.handle(), "1699999999.001200");
+        assert_eq!(
+            ExternalRef::for_target(&slack_target, &slack_ref.handle()).as_ref(),
+            Some(&slack_ref)
+        );
+
+        let gh_target = EgressTarget::Github {
+            repo: "beatgig/bgv3".into(),
+            issue_number: 3915,
+        };
+        let gh_ref = ExternalRef::Github {
+            repo: "beatgig/bgv3".into(),
+            comment_id: 998877,
+        };
+        assert_eq!(gh_ref.handle(), "998877");
+        assert_eq!(
+            ExternalRef::for_target(&gh_target, &gh_ref.handle()).as_ref(),
+            Some(&gh_ref),
+            "the repo comes from the target, the comment id from the handle"
+        );
+        assert_eq!(gh_ref.surface(), EgressSurface::Github);
+        assert_eq!(slack_ref.surface(), EgressSurface::Slack);
+    }
+
+    #[test]
+    fn a_malformed_handle_does_not_rebuild_a_ref() {
+        let gh_target = EgressTarget::Github {
+            repo: "beatgig/bgv3".into(),
+            issue_number: 1,
+        };
+        for handle in ["", "nan", "0", "-5", "12.5"] {
+            assert_eq!(
+                ExternalRef::for_target(&gh_target, handle),
+                None,
+                "expected github handle {handle:?} to be rejected"
+            );
+        }
+        assert_eq!(
+            ExternalRef::for_target(
+                &EgressTarget::Slack {
+                    channel_id: "C1".into()
+                },
+                ""
+            ),
+            None
+        );
     }
 
     #[test]

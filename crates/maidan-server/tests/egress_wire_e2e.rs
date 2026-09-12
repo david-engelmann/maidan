@@ -19,6 +19,7 @@ use axum::{
 };
 use maidan_server::github::{GithubApiClient, GithubError, GithubSender};
 use maidan_server::slack::{SlackError, SlackSender, SlackWebClient};
+use maidan_types::ExternalRef;
 use serde_json::{json, Value};
 
 #[derive(Clone)]
@@ -101,10 +102,26 @@ async fn spawn_with_headers(
 }
 
 #[tokio::test]
-async fn slack_client_posts_chat_postmessage_and_decodes_ok() {
-    let (base, rec) = spawn(StatusCode::OK, json!({ "ok": true })).await;
+async fn slack_client_posts_chat_postmessage_and_returns_the_message_ref() {
+    let (base, rec) = spawn(
+        StatusCode::OK,
+        json!({ "ok": true, "ts": "1699999999.001200" }),
+    )
+    .await;
     let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
-    client.post_message("C123", "hello slack").await.unwrap();
+    let reference = client
+        .post_message("C123", "hello slack", None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        reference,
+        Some(ExternalRef::Slack {
+            channel_id: "C123".into(),
+            ts: "1699999999.001200".into()
+        }),
+        "the ref is what makes a re-delivery an edit rather than a second message"
+    );
 
     let reqs = rec.lock().unwrap();
     assert_eq!(reqs.len(), 1);
@@ -114,6 +131,87 @@ async fn slack_client_posts_chat_postmessage_and_decodes_ok() {
     assert_eq!(r.auth, "Bearer xoxb-secret");
     assert_eq!(r.body["channel"], "C123");
     assert_eq!(r.body["text"], "hello slack");
+    assert!(
+        r.body.get("thread_ts").is_none(),
+        "a top-level post omits thread_ts entirely — Slack rejects an explicit null"
+    );
+}
+
+/// A post that Slack accepted but whose `ts` we cannot read is **not** a failed
+/// delivery: the message exists, and reporting a failure would make the worker
+/// retry and post a second copy. We simply have no ref to store.
+#[tokio::test]
+async fn slack_client_reports_a_ts_less_success_as_delivered_without_a_ref() {
+    let (base, _rec) = spawn(StatusCode::OK, json!({ "ok": true })).await;
+    let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
+    assert_eq!(
+        client.post_message("C123", "x", None).await.unwrap(),
+        None,
+        "posted, but not addressable"
+    );
+}
+
+/// Cluster 378.2: a re-delivery can reply *inside* the Slack thread it first
+/// posted in, rather than starting a new top-level message.
+#[tokio::test]
+async fn slack_client_threads_a_reply_under_a_parent_ts() {
+    let (base, rec) = spawn(
+        StatusCode::OK,
+        json!({ "ok": true, "ts": "1699999999.002000" }),
+    )
+    .await;
+    let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
+    client
+        .post_message("C123", "a follow-up", Some("1699999999.001200"))
+        .await
+        .unwrap();
+
+    let reqs = rec.lock().unwrap();
+    assert_eq!(reqs[0].body["thread_ts"], "1699999999.001200");
+    assert_eq!(reqs[0].body["channel"], "C123");
+}
+
+/// `chat.update` edits in place. Addressed by channel **and** `ts` — the `ts`
+/// alone does not identify a Slack message.
+#[tokio::test]
+async fn slack_client_updates_a_message_via_chat_update() {
+    let (base, rec) = spawn(
+        StatusCode::OK,
+        json!({ "ok": true, "ts": "1699999999.001200" }),
+    )
+    .await;
+    let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
+    client
+        .update_message("C123", "1699999999.001200", "the revised review")
+        .await
+        .unwrap();
+
+    let reqs = rec.lock().unwrap();
+    assert_eq!(reqs.len(), 1);
+    let r = &reqs[0];
+    assert_eq!(r.method, "POST");
+    assert_eq!(r.path, "/api/chat.update");
+    assert_eq!(r.auth, "Bearer xoxb-secret");
+    assert_eq!(r.body["channel"], "C123");
+    assert_eq!(r.body["ts"], "1699999999.001200");
+    assert_eq!(r.body["text"], "the revised review");
+}
+
+/// An update against a message that is gone is a config-class error, so it
+/// disables the link exactly as a failed post would (Cluster 377.3).
+#[tokio::test]
+async fn slack_client_maps_an_update_error_to_a_misconfiguration() {
+    let (base, _rec) = spawn(
+        StatusCode::OK,
+        json!({ "ok": false, "error": "channel_not_found" }),
+    )
+    .await;
+    let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
+    let err = client
+        .update_message("C404", "1699999999.001200", "x")
+        .await
+        .unwrap_err();
+    assert!(err.is_misconfiguration(), "got {err:?}");
 }
 
 #[tokio::test]
@@ -125,7 +223,7 @@ async fn slack_client_maps_ok_false_to_api_error() {
     )
     .await;
     let client = SlackWebClient::with_base_url("xoxb-secret".into(), base);
-    let err = client.post_message("C404", "x").await.unwrap_err();
+    let err = client.post_message("C404", "x", None).await.unwrap_err();
     match err {
         SlackError::Api(msg) => assert_eq!(msg, "channel_not_found"),
         other => panic!("expected Api error, got {other:?}"),
@@ -133,13 +231,21 @@ async fn slack_client_maps_ok_false_to_api_error() {
 }
 
 #[tokio::test]
-async fn github_client_posts_issue_comment_with_required_headers() {
-    let (base, rec) = spawn(StatusCode::CREATED, json!({ "id": 1 })).await;
+async fn github_client_posts_issue_comment_and_returns_the_comment_ref() {
+    let (base, rec) = spawn(StatusCode::CREATED, json!({ "id": 998877 })).await;
     let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
-    client
+    let reference = client
         .post_comment("acme/widgets", 42, "hello github")
         .await
         .unwrap();
+
+    assert_eq!(
+        reference,
+        Some(ExternalRef::Github {
+            repo: "acme/widgets".into(),
+            comment_id: 998877
+        })
+    );
 
     let reqs = rec.lock().unwrap();
     assert_eq!(reqs.len(), 1);
@@ -150,6 +256,78 @@ async fn github_client_posts_issue_comment_with_required_headers() {
     // GitHub rejects requests without a User-Agent — the client must set one.
     assert_eq!(r.user_agent, "maidan-projector");
     assert_eq!(r.body["body"], "hello github");
+}
+
+/// The comment was created, so an unreadable `id` must not be reported as a
+/// failure — a retry would leave two comments on the PR. The recovery path for a
+/// lost ref is the hidden marker in the body (Cluster 379.4), never a re-post.
+#[tokio::test]
+async fn github_client_reports_an_idless_success_as_delivered_without_a_ref() {
+    for response in [json!({}), json!({ "id": 0 }), json!({ "id": "998877" })] {
+        let (base, _rec) = spawn(StatusCode::CREATED, response.clone()).await;
+        let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+        assert_eq!(
+            client
+                .post_comment("acme/widgets", 42, "x")
+                .await
+                .expect("a created comment is never a failure"),
+            None,
+            "posted, but not addressable ({response})"
+        );
+    }
+}
+
+/// `PATCH /repos/{repo}/issues/comments/{id}` — addressed by repository and
+/// comment id, with **no issue number in the path**. That is why `ExternalRef`
+/// does not carry one.
+#[tokio::test]
+async fn github_client_updates_a_comment_by_id_without_the_issue_number() {
+    let (base, rec) = spawn(StatusCode::OK, json!({ "id": 998877 })).await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    client
+        .update_comment("acme/widgets", 998877, "the revised review")
+        .await
+        .unwrap();
+
+    let reqs = rec.lock().unwrap();
+    assert_eq!(reqs.len(), 1);
+    let r = &reqs[0];
+    assert_eq!(r.method, "PATCH");
+    assert_eq!(r.path, "/repos/acme/widgets/issues/comments/998877");
+    assert_eq!(r.auth, "Bearer ghp-secret");
+    assert_eq!(r.user_agent, "maidan-projector");
+    assert_eq!(r.body["body"], "the revised review");
+}
+
+/// A deleted comment answers 404, which is a misconfiguration — the same
+/// classification a failed post gets (Cluster 377.3), so an update cannot retry
+/// forever against something that no longer exists.
+#[tokio::test]
+async fn github_client_maps_an_update_404_to_a_misconfiguration() {
+    let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .update_comment("acme/widgets", 1, "x")
+        .await
+        .unwrap_err();
+    assert!(err.is_misconfiguration(), "got {err:?}");
+}
+
+/// A rate-limited update is a 403 too, and must **not** disable the link.
+#[tokio::test]
+async fn github_client_does_not_treat_a_rate_limited_update_as_a_misconfiguration() {
+    let (base, _rec) = spawn_with_headers(
+        StatusCode::FORBIDDEN,
+        json!({ "message": "API rate limit exceeded" }),
+        &[("retry-after", "60")],
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .update_comment("acme/widgets", 1, "x")
+        .await
+        .unwrap_err();
+    assert!(!err.is_misconfiguration(), "got {err:?}");
 }
 
 #[tokio::test]
