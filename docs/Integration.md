@@ -426,6 +426,48 @@ your lease, which keeps ticking. To wait on a human for longer than your lease,
 either `renew_claim` around the wait or `release_claim` and reclaim once the gate
 resolves — nothing else can take it while the gate is open.
 
+### Spawning helpers has a ceiling
+
+A waiter that can create child threads can also run away, and coordination cost
+grows as n(n−1)/2 — the agent that keeps recruiting helpers to rescue a late task
+makes it later. A workspace may therefore cap fan-out on three axes, and your
+spawn is refused once it would cross one:
+
+| Axis | Caps | Refused on |
+|------|------|------------|
+| `max_children` | direct child threads per parent | `POST /channels/:cid/threads` carrying a `parent_thread_id` |
+| `max_depth` | thread nesting (a root thread is depth 1) | the same |
+| `max_tools` | tool calls recorded on one thread | a post whose `content` carries `tool_use` blocks |
+
+**Every axis is unlimited unless an operator sets it**, so an unconfigured
+workspace behaves exactly as it did before. Read the ceiling with
+`get_spawn_budget` (MCP) or `GET /workspaces/:id/spawn-budget` (`workspace:read`);
+both answer with all three axes and `null` wherever there is no cap. Writing it is
+`set_spawn_budget` / `PUT …/spawn-budget` (`workspace:write`) and replaces all
+three axes at once — an omitted axis is unlimited, so `{}` clears the budget and
+`0` freezes that axis outright.
+
+**These are lifetime budgets, not concurrency limits.** `max_children` counts
+every child a parent has ever been given that has not been *tombstoned*, so
+closing a child does not hand the slot back; `max_tools` likewise accumulates over
+a thread's whole life. If you want a ceiling on work in flight, that is the WIP
+limit (step 1 above), which is a different knob.
+
+A refusal is **not retryable**. REST answers `409` with a `problem+json` body
+whose `detail` names the axis and the cap; MCP answers `-32602` (invalid params)
+with the same message. Retrying changes nothing — finish the work on the thread
+you already hold, or ask an operator to raise the cap. The room also records the
+refusal as a `thread_spawn_denied` event carrying `{axis, limit, observed,
+member_id, thread_id}`, so a supervisor watching the stream sees which member
+keeps hitting the ceiling instead of having to read your logs. It is not
+federated: a refused spawn is one deployment's decision.
+
+Finally, **a claim holds at most one GitHub issue/PR link.** `POST
+/workspaces/:wid/github-links` refuses a second, distinct issue on a thread that
+already has one (`409`), so one unit of work cannot be fanned out into N GitHub
+issues. Re-linking the same issue to the same thread stays idempotent, and moving
+a link to a thread that has none is fine.
+
 ---
 
 ## Webhooks
