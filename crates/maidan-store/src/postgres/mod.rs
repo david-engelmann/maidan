@@ -55,6 +55,7 @@ mod secrets;
 mod sessions;
 mod slack_links;
 mod slash_commands;
+mod spawn;
 mod task_schedules;
 mod thread_deps;
 mod thread_results;
@@ -1292,6 +1293,34 @@ impl SecretStore for PostgresStore {
         name: &str,
     ) -> Result<bool, StoreError> {
         secrets::delete(&self.pool, workspace_id, name).await
+    }
+}
+
+#[async_trait]
+impl SpawnBudgetStore for PostgresStore {
+    async fn set_spawn_budget(
+        &self,
+        workspace_id: WorkspaceId,
+        max_children: Option<i64>,
+        max_depth: Option<i64>,
+        max_tools: Option<i64>,
+    ) -> Result<Option<SpawnBudget>, StoreError> {
+        spawn::set_budget(&self.pool, workspace_id, max_children, max_depth, max_tools).await
+    }
+    async fn get_spawn_budget(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<SpawnBudget>, StoreError> {
+        spawn::get_budget(self.read_pool(), workspace_id).await
+    }
+    async fn count_active_children(&self, parent_thread_id: ThreadId) -> Result<i64, StoreError> {
+        spawn::count_active_children(self.read_pool(), parent_thread_id).await
+    }
+    async fn thread_depth(&self, thread_id: ThreadId) -> Result<i64, StoreError> {
+        spawn::thread_depth(self.read_pool(), thread_id).await
+    }
+    async fn count_thread_tool_uses(&self, thread_id: ThreadId) -> Result<i64, StoreError> {
+        spawn::count_tool_uses(self.read_pool(), thread_id).await
     }
 }
 

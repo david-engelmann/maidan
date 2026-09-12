@@ -1006,6 +1006,31 @@ pub trait ReviewStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait SpawnBudgetStore: Send + Sync {
+    /// Spawn budget (Cluster 376, Wave 2 #23). `set_spawn_budget` upserts the
+    /// workspace's caps (each `None` = unlimited on that axis; all-`None` clears
+    /// the row); `get_spawn_budget` is `None` when unset. `count_active_children`
+    /// is a parent's non-tombstoned direct children (the fan-out so far);
+    /// `thread_depth` is the nesting depth (a root thread is 1) via an ancestor
+    /// walk; `count_thread_tool_uses` counts the tool-use blocks recorded across a
+    /// thread's messages (Cluster 173 content). These back the spawn-time gate.
+    async fn set_spawn_budget(
+        &self,
+        workspace_id: WorkspaceId,
+        max_children: Option<i64>,
+        max_depth: Option<i64>,
+        max_tools: Option<i64>,
+    ) -> Result<Option<SpawnBudget>, StoreError>;
+    async fn get_spawn_budget(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<SpawnBudget>, StoreError>;
+    async fn count_active_children(&self, parent_thread_id: ThreadId) -> Result<i64, StoreError>;
+    async fn thread_depth(&self, thread_id: ThreadId) -> Result<i64, StoreError>;
+    async fn count_thread_tool_uses(&self, thread_id: ThreadId) -> Result<i64, StoreError>;
+}
+
+#[async_trait]
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
     /// the thread doesn't exist (Cluster 171).
@@ -1907,6 +1932,7 @@ pub trait Store:
     + MemberFreezeStore
     + MemoryBlockStore
     + ReviewStore
+    + SpawnBudgetStore
     + AssignmentStore
     + ThreadDepStore
     + MessageStore
@@ -1956,6 +1982,7 @@ impl<
             + MemberFreezeStore
             + MemoryBlockStore
             + ReviewStore
+            + SpawnBudgetStore
             + AssignmentStore
             + ThreadDepStore
             + MessageStore

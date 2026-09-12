@@ -16,6 +16,7 @@ pub mod purge;
 pub mod recipe;
 pub mod review;
 pub mod secret;
+pub mod spawn;
 pub mod usage;
 
 pub use erase::*;
@@ -30,4 +31,5 @@ pub use purge::*;
 pub use recipe::*;
 pub use review::*;
 pub use secret::*;
+pub use spawn::*;
 pub use usage::*;
