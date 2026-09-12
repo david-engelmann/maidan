@@ -518,6 +518,32 @@ pub fn list_dead_mail() {}
 pub fn requeue_dead_mail() {}
 
 #[utoipa::path(
+    get,
+    path = "/operator/egress/dead",
+    tag = "operator",
+    params(("limit" = Option<i64>, Query, description = "Max entries (default 100, clamped 1..=500)")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Dead-lettered projector deliveries, newest first", body = Vec<DeadEgress>),
+        (status = 403, description = "Missing token:admin capability"),
+    )
+)]
+pub fn list_dead_egress() {}
+
+#[utoipa::path(
+    post,
+    path = "/operator/egress/dead/{id}/requeue",
+    tag = "operator",
+    params(("id" = Uuid, Path, description = "Dead egress-outbox entry id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Requeued for another delivery attempt"),
+        (status = 404, description = "No dead entry with that id"),
+    )
+)]
+pub fn requeue_dead_egress() {}
+
+#[utoipa::path(
     post,
     path = "/workspaces/{wid}/slack-links",
     tag = "integrations",

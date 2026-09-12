@@ -6,7 +6,9 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 
 use crate::StoreError;
-use maidan_types::{EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId};
+use maidan_types::{
+    DeadEgress, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
+};
 
 /// Enqueue a delivery: `pending`, due now. Returns `None` when an identical
 /// `(source_log_id, surface, selector)` row already exists — every replica runs
@@ -123,6 +125,48 @@ pub async fn count_dead(pool: &PgPool) -> Result<i64, StoreError> {
         .fetch_one(pool)
         .await?;
     Ok(row.get::<i64, _>("c"))
+}
+
+/// List dead-lettered deliveries, newest-updated first (the operator DLQ view).
+pub async fn list_dead(pool: &PgPool, limit: i64) -> Result<Vec<DeadEgress>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, workspace_id, thread_id, surface, selector, attempts, last_error, updated_at
+         FROM maidan_egress_outbox
+         WHERE status = 'dead'
+         ORDER BY updated_at DESC
+         LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_dead).collect())
+}
+
+/// Requeue a dead delivery for a fresh attempt: `pending`, due now, `attempts`
+/// reset. Returns whether a dead row was actually requeued.
+pub async fn requeue_dead(pool: &PgPool, id: EgressOutboxId) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_egress_outbox
+         SET status = 'pending', attempts = 0, next_attempt_at = now(), updated_at = now()
+         WHERE id = $1 AND status = 'dead'",
+    )
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+fn row_to_dead(row: &sqlx::postgres::PgRow) -> DeadEgress {
+    DeadEgress {
+        id: EgressOutboxId(row.get("id")),
+        workspace_id: WorkspaceId(row.get("workspace_id")),
+        thread_id: ThreadId(row.get("thread_id")),
+        surface: row.get("surface"),
+        selector: row.get("selector"),
+        attempts: row.get("attempts"),
+        last_error: row.get("last_error"),
+        updated_at: row.get("updated_at"),
+    }
 }
 
 fn row_to_egress(row: &sqlx::postgres::PgRow) -> EgressOutbox {

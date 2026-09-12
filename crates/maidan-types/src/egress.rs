@@ -13,6 +13,7 @@
 
 use std::fmt;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{EgressOutboxId, ThreadId, WorkspaceId};
@@ -146,6 +147,22 @@ impl EgressOutbox {
     pub fn target(&self) -> Option<EgressTarget> {
         EgressTarget::parse(EgressSurface::parse(&self.surface)?, &self.selector)
     }
+}
+
+/// A dead-lettered delivery for the operator DLQ view (Cluster 377.4): a message
+/// that exhausted its retries, or whose link was disabled as misconfigured.
+/// `last_error` is why the final attempt failed — the surface's own words.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeadEgress {
+    pub id: EgressOutboxId,
+    pub workspace_id: WorkspaceId,
+    pub thread_id: ThreadId,
+    pub surface: String,
+    pub selector: String,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[cfg(test)]

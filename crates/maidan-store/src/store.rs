@@ -544,6 +544,12 @@ pub trait EgressStore: Send + Sync {
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError>;
     async fn count_dead_egress(&self) -> Result<i64, StoreError>;
+    /// Dead-lettered deliveries for the operator DLQ view (Cluster 377.4),
+    /// newest first.
+    async fn list_dead_egress(&self, limit: i64) -> Result<Vec<DeadEgress>, StoreError>;
+    /// Requeue a dead delivery (`pending`, due now, `attempts` reset); returns
+    /// whether a dead row was actually requeued.
+    async fn requeue_dead_egress(&self, id: EgressOutboxId) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
