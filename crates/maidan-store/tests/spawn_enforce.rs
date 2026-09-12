@@ -4,7 +4,9 @@
 //! workspaces are unrestricted. Both backends, via the FSM create path.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId};
+use maidan_types::{
+    ContentBlock, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, ThreadId,
+};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
@@ -25,7 +27,7 @@ async fn run_suite(store: &dyn Store) {
         .create_workspace(NewWorkspace { name: "w".into() })
         .await
         .expect("ws");
-    let _member = store
+    let member = store
         .create_member(NewMember {
             workspace_id: ws.id,
             handle: "a".into(),
@@ -99,6 +101,45 @@ async fn run_suite(store: &dyn Store) {
     mk(Some(c.id))
         .await
         .expect("grandchild allowed after clear");
+
+    // --- max_tools ---
+    store
+        .set_spawn_budget(ws.id, None, None, Some(2))
+        .await
+        .unwrap();
+    let tool_thread = mk(None).await.expect("tool thread");
+    let tool_use = |id: &str| ContentBlock::ToolUse {
+        id: id.into(),
+        name: "run".into(),
+        input: serde_json::json!({}),
+    };
+    let post = |content: Option<Vec<ContentBlock>>| {
+        let thread_id = tool_thread.id;
+        let author_id = member.id;
+        async move {
+            store
+                .post_message(NewMessage {
+                    thread_id,
+                    author_id,
+                    body: "b".into(),
+                    metadata: serde_json::json!({}),
+                    content,
+                })
+                .await
+        }
+    };
+    // Two tool calls in one post: 0 + 2 = 2 <= 2 → ok.
+    post(Some(vec![tool_use("a"), tool_use("b")]))
+        .await
+        .expect("2 tool uses ok");
+    // A plain post (no tool-use) never counts against the tool budget.
+    post(None).await.expect("plain post ok");
+    // One more tool call would be 3 > 2 → refused.
+    let over = post(Some(vec![tool_use("c")])).await;
+    assert!(
+        matches!(over, Err(StoreError::Conflict(ref m)) if m.contains("tool")),
+        "a 3rd tool call past max_tools=2 must be refused, got {over:?}"
+    );
 }
 
 #[tokio::test]
