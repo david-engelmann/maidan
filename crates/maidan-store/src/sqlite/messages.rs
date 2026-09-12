@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ContentBlock, DmConversationId, EditMessage, Event, MemberId, Message, MessageId, NewMessage,
-    StoredEvent, ThreadId,
+    ChannelId, ContentBlock, DmConversationId, EditMessage, Event, MemberId, Message, MessageId,
+    NewMessage, SpawnAxis, SpawnDenial, StoredEvent, ThreadId, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -20,7 +20,8 @@ fn new_tool_uses(content: &Option<Vec<ContentBlock>>) -> i64 {
 }
 
 /// Enforce the workspace's `max_tools` axis (Cluster 376.3) on a post — refuse
-/// once the thread's recorded tool calls + this post's would exceed the cap.
+/// once the thread's recorded tool calls + this post's would exceed the cap, as a
+/// typed `SpawnRejected` (Cluster 376.6). See the Postgres twin.
 async fn enforce_tool_budget(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -30,7 +31,7 @@ async fn enforce_tool_budget(
         return Ok(());
     }
     let Some(row) = sqlx::query(
-        "SELECT c.workspace_id FROM maidan_threads t
+        "SELECT t.channel_id, c.workspace_id FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id WHERE t.id = ?",
     )
     .bind(thread_id.0)
@@ -39,16 +40,22 @@ async fn enforce_tool_budget(
     else {
         return Ok(());
     };
-    let workspace_id = maidan_types::WorkspaceId(row.get::<Uuid, _>("workspace_id"));
+    let channel_id = ChannelId(row.get::<Uuid, _>("channel_id"));
+    let workspace_id = WorkspaceId(row.get::<Uuid, _>("workspace_id"));
     let Some(budget) = super::spawn::get_budget(pool, workspace_id).await? else {
         return Ok(());
     };
     if let Some(max_tools) = budget.max_tools {
         let existing = super::spawn::count_tool_uses(pool, thread_id).await?;
         if existing + adding > max_tools {
-            return Err(StoreError::Conflict(format!(
-                "spawn budget: max {max_tools} tool calls per thread reached ({existing} already recorded)"
-            )));
+            return Err(StoreError::spawn_rejected(SpawnDenial {
+                workspace_id,
+                channel_id,
+                thread_id,
+                axis: SpawnAxis::Tools,
+                limit: max_tools,
+                observed: existing,
+            }));
         }
     }
     Ok(())

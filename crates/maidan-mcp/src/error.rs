@@ -95,6 +95,9 @@ impl From<maidan_store::StoreError> for McpError {
             // A uniqueness/state conflict is a client error, not an internal one
             // (Cluster 374) — surface it as invalid params, not -32603 Internal.
             maidan_store::StoreError::Conflict(m) => Self::InvalidParams(m),
+            // Same for a refused spawn (Cluster 376.6) — the typed variant must
+            // not fall through to the `other => Internal` arm below.
+            maidan_store::StoreError::SpawnRejected(d) => Self::InvalidParams(d.to_string()),
             other => Self::Internal(other.to_string()),
         }
     }

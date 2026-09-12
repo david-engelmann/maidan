@@ -17,6 +17,26 @@ use maidan_auth::AuthContext;
 use super::content_json;
 use crate::error::McpError;
 
+/// Pass a post's result through, first recording a `ThreadSpawnDenied` event
+/// (Cluster 376.6) when the `max_tools` spawn-budget axis refused it — the MCP
+/// twin of the REST `routes::observe_spawn_denial`. `actor` is the post's author:
+/// the store's gate reports the thread and the numbers, not who pushed past the
+/// cap. Best-effort, like every other MCP-published event.
+async fn observe_spawn_denial<T>(
+    server: &crate::server::McpServer,
+    actor: Option<MemberId>,
+    result: Result<T, maidan_store::StoreError>,
+) -> Result<T, McpError> {
+    let err = match result {
+        Ok(value) => return Ok(value),
+        Err(err) => err,
+    };
+    if let maidan_store::StoreError::SpawnRejected(denial) = &err {
+        server.publish_event(denial.denied_event(actor)).await;
+    }
+    Err(err.into())
+}
+
 #[derive(Deserialize)]
 struct PostDmMessageArgs {
     dm_conversation_id: uuid::Uuid,
@@ -226,10 +246,14 @@ pub(super) async fn post_message(
         _ => None,
     };
 
+    // Cluster 376.6: a post the `max_tools` axis refuses is recorded as
+    // `ThreadSpawnDenied` on the way to the InvalidParams, on both branches.
+    let author = Some(MemberId(a.author_id));
     let msg = if let Some((parsed, dispatcher)) = slash {
         // Provisional insert → run the (possibly external) dispatch → finalizing
         // edit + `MessagePosted` of the edited message in one tx (Cluster 211 shape).
-        let m = store.post_message(new_message).await?;
+        let provisional = store.post_message(new_message).await;
+        let m = observe_spawn_denial(server, author, provisional).await?;
         let slash_meta = dispatcher
             .dispatch(
                 auth,
@@ -260,7 +284,8 @@ pub(super) async fn post_message(
         // Cluster 345: the no-slash path is now the atomic outbox post
         // (`post_message_with_event` + `publish_stored`), matching REST — the event
         // is durably appended in the same tx (was a separate, bus-gated append).
-        let (message, stored) = store.post_message_with_event(new_message, dm_id).await?;
+        let posted = store.post_message_with_event(new_message, dm_id).await;
+        let (message, stored) = observe_spawn_denial(server, author, posted).await?;
         server.publish_stored(&stored).await;
         message
     };

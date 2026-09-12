@@ -255,6 +255,30 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     Some(stored.id)
 }
 
+/// Pass a mutation's result through, first recording a `ThreadSpawnDenied` event
+/// (Cluster 376.6) when the store refused the spawn.
+///
+/// The refusal already reaches the caller as a 409 — this is the *operator's*
+/// view: which member keeps pushing a claim past its fan-out cap, on the same
+/// event stream as everything else in the room. The store owns the gate (Cluster
+/// 376.2/376.3) but has no author on the thread-create path, so the route
+/// supplies `actor`. Best-effort by construction: [`publish`] already swallows a
+/// bus hiccup, and a lost append cannot make the refusal any less refused.
+pub(crate) async fn observe_spawn_denial<T>(
+    state: &AppState,
+    actor: Option<MemberId>,
+    result: Result<T, maidan_store::StoreError>,
+) -> ApiResult<T> {
+    let err = match result {
+        Ok(value) => return Ok(value),
+        Err(err) => err,
+    };
+    if let maidan_store::StoreError::SpawnRejected(denial) = &err {
+        publish(state, denial.denied_event(actor)).await;
+    }
+    Err(err.into())
+}
+
 /// Notify the bus for an event that was **already appended durably** inside the
 /// mutation's transaction (Cluster 205 transactional outbox). Unlike [`publish`],
 /// there is no durable append here — the domain row and the event were committed

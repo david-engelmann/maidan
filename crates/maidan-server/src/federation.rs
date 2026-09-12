@@ -557,6 +557,28 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             occurred_at,
             artifact,
         },
+        // Non-federatable (a locally-derived spawn-budget refusal, Cluster 376.6)
+        // — never actually ingested/remapped, but the exhaustive match must
+        // classify it.
+        ThreadSpawnDenied {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            member_id,
+            axis,
+            limit,
+            observed,
+        } => ThreadSpawnDenied {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            axis,
+            limit,
+            observed,
+        },
         // Non-federatable (a locally-derived memory-block update, Cluster 373) —
         // never actually ingested/remapped, but the exhaustive match must
         // classify it.

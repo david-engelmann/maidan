@@ -1,11 +1,17 @@
-//! Spawn-budget enforcement (Cluster 376.2, Wave 2 #23): creating a child thread
-//! is refused once the parent holds `max_children`, or once nesting would exceed
-//! `max_depth` — a `Conflict` (SpawnRejected). Root threads + no-budget
-//! workspaces are unrestricted. Both backends, via the FSM create path.
+//! Spawn-budget enforcement (Cluster 376.2/376.3, Wave 2 #23): creating a child
+//! thread is refused once the parent holds `max_children` or nesting would exceed
+//! `max_depth`, and a post is refused once its tool-use blocks would pass
+//! `max_tools`. Root threads + no-budget workspaces are unrestricted. Both
+//! backends, via the FSM create path.
+//!
+//! The refusal is a typed `SpawnRejected` carrying the denial (Cluster 376.6), so
+//! these assertions check the axis, the cap, and what was already observed — the
+//! exact payload the route publishes as `ThreadSpawnDenied`.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ContentBlock, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, ThreadId,
+    ContentBlock, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
+    SpawnAxis, SpawnDenial, ThreadId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -73,9 +79,16 @@ async fn run_suite(store: &dyn Store) {
     mk(Some(root.id)).await.expect("child 1");
     mk(Some(root.id)).await.expect("child 2");
     let denied = mk(Some(root.id)).await;
+    let denial = expect_denial(denied);
+    assert_eq!(denial.axis, SpawnAxis::Children);
+    assert_eq!(denial.limit, 2);
+    assert_eq!(denial.observed, 2, "two children already held");
+    assert_eq!(denial.thread_id, root.id, "the capped parent");
+    assert_eq!(denial.workspace_id, ws.id);
+    assert_eq!(denial.channel_id, channel.id);
     assert!(
-        matches!(denied, Err(StoreError::Conflict(ref m)) if m.contains("spawn budget") && m.contains("child")),
-        "the 3rd child must be refused, got {denied:?}"
+        denial.to_string().contains("spawn budget") && denial.to_string().contains("child"),
+        "the client-facing message must still name the axis, got {denial}"
     );
     // A root thread is never a child, so it's never blocked by max_children.
     mk(None).await.expect("another root is fine");
@@ -87,10 +100,17 @@ async fn run_suite(store: &dyn Store) {
         .unwrap();
     let r = mk(None).await.expect("depth root (1)");
     let c = mk(Some(r.id)).await.expect("depth child (2)");
-    let grand = mk(Some(c.id)).await;
+    let grand = expect_denial(mk(Some(c.id)).await);
+    assert_eq!(grand.axis, SpawnAxis::Depth);
+    assert_eq!(grand.limit, 2);
+    assert_eq!(
+        grand.observed, 2,
+        "the parent already sits at the max depth"
+    );
+    assert_eq!(grand.thread_id, c.id);
     assert!(
-        matches!(grand, Err(StoreError::Conflict(ref m)) if m.contains("depth")),
-        "a depth-3 grandchild must be refused (max_depth 2), got {grand:?}"
+        grand.to_string().contains("depth"),
+        "the client-facing message must still name the axis, got {grand}"
     );
 
     // Clearing the budget re-opens spawning.
@@ -135,11 +155,25 @@ async fn run_suite(store: &dyn Store) {
     // A plain post (no tool-use) never counts against the tool budget.
     post(None).await.expect("plain post ok");
     // One more tool call would be 3 > 2 → refused.
-    let over = post(Some(vec![tool_use("c")])).await;
+    let over = expect_denial(post(Some(vec![tool_use("c")])).await);
+    assert_eq!(over.axis, SpawnAxis::Tools);
+    assert_eq!(over.limit, 2);
+    assert_eq!(over.observed, 2, "two tool calls already recorded");
+    assert_eq!(over.thread_id, tool_thread.id, "the capped thread");
+    assert_eq!(over.channel_id, channel.id);
     assert!(
-        matches!(over, Err(StoreError::Conflict(ref m)) if m.contains("tool")),
-        "a 3rd tool call past max_tools=2 must be refused, got {over:?}"
+        over.to_string().contains("tool"),
+        "the client-facing message must still name the axis, got {over}"
     );
+}
+
+/// Unwrap a refusal as the typed denial (Cluster 376.6) — a `Conflict` or an `Ok`
+/// here would mean the gate stopped carrying the `ThreadSpawnDenied` payload.
+fn expect_denial<T: std::fmt::Debug>(result: Result<T, StoreError>) -> SpawnDenial {
+    match result {
+        Err(StoreError::SpawnRejected(denial)) => *denial,
+        other => panic!("expected a typed SpawnRejected, got {other:?}"),
+    }
 }
 
 #[tokio::test]

@@ -71,8 +71,12 @@ pub async fn post_message(
     // one transaction. No slash → insert + event atomically. Slash → provisional
     // insert, run the (possibly external) dispatch, then edit + event atomically
     // so the event carries the post-slash message.
+    // Cluster 376.6: a post the `max_tools` axis refuses is recorded as
+    // `ThreadSpawnDenied` on the way to the 409, on both branches.
+    let author = Some(MemberId(body.author_id));
     let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
-        let m = state.store.post_message(new_message).await?;
+        let provisional = state.store.post_message(new_message).await;
+        let m = super::observe_spawn_denial(&state, author, provisional).await?;
         let slash_result = crate::slash_commands::dispatch_slash_command(
             &state,
             &auth,
@@ -104,10 +108,11 @@ pub async fn post_message(
         super::publish_stored(&state, stored).await;
         message
     } else {
-        let (message, stored) = state
+        let posted = state
             .store
             .post_message_with_event(new_message, dm_conversation_id)
-            .await?;
+            .await;
+        let (message, stored) = super::observe_spawn_denial(&state, author, posted).await?;
         super::publish_stored(&state, stored).await;
         message
     };

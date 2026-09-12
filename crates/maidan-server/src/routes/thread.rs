@@ -14,7 +14,7 @@ use maidan_fsm::ThreadAction;
 use maidan_router::resolve_channel_context;
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish_stored, ApiResult};
+use super::{cap, ensure_workspace, observe_spawn_denial, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -31,14 +31,18 @@ pub async fn create_thread(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
     // Cluster 205: the thread row and its `ThreadCreated` event commit atomically
     // (transactional outbox); `publish_stored` then notifies the bus.
-    let (t, stored) = state
+    // Cluster 376.6: a spawn the budget refuses is recorded as
+    // `ThreadSpawnDenied` on the way to the 409.
+    let created = state
         .store
         .create_thread_with_event(NewThread {
             channel_id: ChannelId(channel_id),
             parent_thread_id: body.parent_thread_id.map(ThreadId),
             title: body.title,
         })
-        .await?;
+        .await;
+    let actor = (!auth.bypass).then_some(auth.member_id);
+    let (t, stored) = observe_spawn_denial(&state, actor, created).await?;
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }
