@@ -10,6 +10,7 @@
 - [Provider matrix](docs/Providers.md)
 - [Integration protocols](docs/Protocols.md)
 - [Framework integrations](docs/Framework-Integrations.md)
+- [Result delivery (external last mile)](docs/Result-Delivery.md)
 
 # Reference
 

@@ -308,12 +308,106 @@ than minting a new one.
 20. ~~**G17 + B25** — a **freeze-member kill-switch**~~ **✅ SHIPPED — Cluster 372 (`v372.0.0`), PRs #747/#748/#749/#750** ([[Retros/Cluster 372]]). Freezing a member (via `maidan_member_freezes`) drops their leases + records the freeze in one tx, and both `claim_next` variants refuse a frozen claimer (atomic `NOT EXISTS` clause). REST + MCP (`token:admin`, audited); a "Kill switches" operator catalog in Operations.md (the freeze API + the `MAIDAN_*` env flags). The freeze is the gate — lifted only by explicit unfreeze; not G4 PAUSE. **Deferred (follow-ups):** a `MemberFrozen` event (for the notification router / UI); a freeze *expiry* (auto-unfreeze); freezing on the `/ui`.
 21. ~~**H11** — **attachable labeled memory** as room objects~~ **✅ SHIPPED — Cluster 373 (`v373.0.0`), PRs #752/#753/#754/#755** ([[Retros/Cluster 373]]). A **memory block** — a Letta-shaped `{label, description, limit, read_only, value}` workspace object attachable to a thread. Concurrent-safe create on `(workspace, label)`; `set_value` is a full rewrite (last-writer-wins) refusing a read-only block / over-limit value; owned (`owner_id`). A parent watches a child's result block **without a nested runtime** via the reactive `MemoryBlockUpdated` event + the MCP `wait_for_memory_block` long-poll (a "go fetch" pointer; non-federatable). Not a transcript, not RAG. REST (`/workspaces/:wid/memory-blocks` + `/threads/:id/memory-blocks`, `workspace:read/write`) + MCP (label-addressed create/get/list/set/attach/detach/list-thread + `wait_for_memory_block`). **Deferred (follow-ups):** attach to channels/members (threads only); block templates / per-block ACLs beyond `read_only`; `/ui` surfacing; a `MemoryBlockUpdated` hook in the notification router.
 22. ~~**G5 + G-dev-5** — **required reviewers**~~ **✅ SHIPPED — Cluster 375 (`v375.0.0`), PRs #759/#761/#762/#763 (+ CI chore #760)** ([[Retros/Cluster 375]]). A thread declares a review requirement (`k` approvals) from a named reviewer set (`n`); a reviewer submits an approve / request-changes decision; the FSM refuses `closed` until `k` distinct **qualifying** approvals exist (decision=approve, reviewer ≠ owner/assignee — the Cluster-355 separation of duties — and, when a named set exists, in it) AND no unresolved `refutes` edge (`relation=refutes`, `dst=thread`) blocks it. **A gate, not a poll/closer** (325). **Design (maintainer's call):** a dedicated review store (`review_status` = one counting query the close-gate reads), over the review-child-threads / reuse-votes alternatives. Store (375.1) → FSM close-gate in `transition_in_tx` (375.2) → REST (375.3, `thread:transition`/`workspace:read`) → MCP (375.4). **Deferred (follow-ups):** a `refutes`-accepted/withdrawn state (vs presence-based); **review-child threads** (a review as its own assigned thread — the alternative design, layer on the store); a `ReviewSubmitted`/`ReviewSatisfied` event so a waiter reacts without polling; a `/ui` review panel.
-23. **G6 + G-dev-3 + W3** — a **spawn budget** (max tools + max children/depth; `ThreadSpawnDenied`/`SpawnRejected`; at most one GitHub link per parent claim; cap well below GitHub's 100/8). Brooks/Amdahl/Two-Pizza: coordination cost is n(n−1)/2; do not admit a further agent onto a late sequential claim.
-24. **G7 + G-dev-10** — the `claim_next` pack includes in-channel **accepted decisions**; facet `result_kind=decision|plan|merge_authorized` into the existing search. Closed decisions must be visible to the next claimer.
-25. **G-dev-6** — a **Soundcheck gate pointer** on the thread (`{kind:"soundcheck", status:pass|fail, artifact_sha?}`): the FSM will not `closed` without a pass from a soundcheck-skilled member ≠ the implementer, and a **green/amber/red** land-gate vocabulary so the FSM will not `closed` on **accepted nonsense** (amber = flags-then-still-engages is not a land). The room holds the pointer; Soundcheck owns `/test`; Pi may run the MIT BullshitBench dataset. Not a CI product / a judge panel in the room.
+23. **⏳ IN PROGRESS — Cluster 376.** 376.1 (the spawn-budget store foundation: `maidan_types::spawn`, `{postgres,sqlite}/spawn.rs`, migration pg `0080` / sqlite `0079`) merged as **#765**; 376.2 (enforcement in the shared thread path) is in flight. **G6 + G-dev-3 + W3** — a **spawn budget** (max tools + max children/depth; `ThreadSpawnDenied`/`SpawnRejected`; at most one GitHub link per parent claim; cap well below GitHub's 100/8). Brooks/Amdahl/Two-Pizza: coordination cost is n(n−1)/2; do not admit a further agent onto a late sequential claim.
+24. **G7 + G-dev-10** — the `claim_next` pack includes in-channel **accepted decisions**; facet `result_kind` into the existing search. Closed decisions must be visible to the next claimer. **⚠️ CORRECTION (2026-09-12, verified against a live pi result):** this row originally assumed a *closed enum* `decision|plan|merge_authorized`. The real wire vocabulary is a **namespaced schema string** — pi publishes `result_kind = "pi.review.result/1"` inside a `schema = "pi.waiter.result/1"` envelope. Facet on the namespaced string (indexed free text), **not** an enum, or the enum needs editing every time a waiter product ships a new result kind. Half of this row is folded into **Cluster 381** below; the `claim_next`-pack-includes-accepted-decisions half stays here.
+25. **G-dev-6** — a **Soundcheck gate pointer** on the thread (`{kind:"soundcheck", status:pass|fail, artifact_sha?}`): the FSM will not `closed` without a pass from a soundcheck-skilled member ≠ the implementer, and a **green/amber/red** land-gate vocabulary so the FSM will not `closed` on **accepted nonsense** (amber = flags-then-still-engages is not a land). The room holds the pointer; Soundcheck owns `/test`; Pi may run the MIT BullshitBench dataset. Not a CI product / a judge panel in the room. **Composition found 2026-09-12 (rank this right after Cluster 379):** a delivered `pi.review.result/1` whose `findings` contain a `critical` **is** a `request_changes` decision from a review-skilled agent member — feed it into the **Cluster-375 required-reviewers close-gate** and the FSM refuses `closed` until a human resolves. pi reviews → the room blocks the land → a human decides. That is the strongest end-to-end *agent-product* story available and it needs no new gate machinery, only a producer→reviewer adapter.
 26. **H7** — a **capability ticket** for cross-org artifact/share (a 48h incident room + files); keep LocalArtifactStore + S3; steal the ticket *shape*, not a mesh.
 27. **G14 + W2** — a **blocked-reason enum** (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips blocked; `BlockedResolved` unblocks. Distinct from DAG-children-must-be-terminal.
-28. **G16 / G18 / H3** (three bullets) — **follow a member's occupancy**; a **manager digest** (channel result/gate/stuck counts — compose notifications, not analytics); **run lineage** (`parentRunId`) on a thread (nested occupancy attributed; F7 mute stays orthogonal).
+28. **G16 / G18 / H3** (three bullets) — **follow a member's occupancy**; a **manager digest** (channel result/gate/stuck counts — compose notifications, not analytics); **run lineage** (`parentRunId`) on a thread (nested occupancy attributed; F7 mute stays orthogonal). **Note (2026-09-12):** pi's waiter envelope already carries a `run_id` (plus `view_in_pi`) that today has **no home in Maidan** — it is this row's first real producer. Design the lineage field to accept the producer's value rather than minting a parallel id.
+
+### Result delivery — the external last mile (Clusters 377–381; ranks after WIP 376, Wave-2 grade)
+
+**Added 2026-09-12** from the pi-side feature request (deliver a waiter result to Slack/GitHub),
+investigated against the tree at `e239fd7`. Pinned interface doc: [Result Delivery](Result%20Delivery.md)
+(published — it is the contract an external producer codes against). Authoritative fixture:
+`PI_WAITER_RESULT_FIXTURE.json` in the pi repo (9.6 KB; `rendered` is 4.1 KB of GFM).
+
+**Why it lives here and not in pi or soundcheck:** Maidan already holds the connectors, the
+channel/workspace links, identity, audit, the lease and the HITL gate. soundcheck is temporary, so a
+durable "deliver an agent's result to an external surface" primitive must not live in it — and once it
+exists, *any* waiter product gets delivery for free. The review **seat** is untrusted (it processes
+attacker-controlled PR content); the delivery step is trusted and holds the write credentials.
+
+**Five gaps verified in the tree (not taken on faith):**
+1. No `ThreadResultSet` arm in `notification_router::route_event` (arms today: `MentionRecorded`,
+   `MessagePosted`, `ClaimExpired`, `ThreadLanded`, `WaitTimedOut`). Nothing reacts to a result.
+2. Projector egress is best-effort log-and-drop (`slack.rs::route_message_to_slack`,
+   `github.rs::route_message_to_github`) — this is row #38, promoted (above).
+3. The senders cannot update: `post_message(channel, text)` / `post_comment(repo, n, text)` return
+   `()`, so there is no `ts` / `comment_id` and idempotent update-in-place is unimplementable.
+4. **Confused deputy.** `deliver_to` is agent-controlled (any `thread:transition` holder writes the
+   result) while the credentials are process-global env tokens — routing straight off it lets an agent
+   post as Maidan anywhere the token reaches.
+5. `rendered` is GFM and **Slack renders mrkdwn** — posting it verbatim ships visibly broken output.
+
+**The load-bearing decision: `deliver_to` *selects*, a per-workspace allowlist *authorizes*.** The
+producer keeps its "no hardcoded surface" model; a compromised agent still cannot reach an unblessed
+target. Default empty ⇒ deliver nowhere (the Cluster-371 `secret_broker` fail-safe). A non-allowlisted
+target is skipped-with-warning, exactly like an unknown surface — so **a correct `deliver_to` can
+still deliver nowhere, and that is a normal outcome, not a producer bug.**
+
+Second call: **one table does dedup + idempotency + external-ref.** `maidan_result_deliveries` keyed
+`(thread_id, target_fingerprint)` carrying `external_ref` / `delivered_revision` / status / `last_error`,
+enqueued `ON CONFLICT DO UPDATE ... WHERE produced_at > delivered_revision`. That is what makes the
+always-on every-replica router safe (the Cluster-238 lesson: without it a 3-replica deploy triples every
+delivery) **and** makes a re-review an update rather than a second comment.
+
+**Scope fence.** Maidan does not run seats, does not render reviews, does not interpret findings, does
+not become a CI product. It delivers trusted bytes to blessed surfaces, durably, once. Only `rendered` /
+`summary` / structured `findings` ever leave — never raw seat output.
+
+- **Cluster 377 — durable projector egress** *(absorbs row #38; the foundation)*. **377.1** a
+  `maidan_egress_outbox` store foundation (zero-blast-radius, the 226/234 pattern) modelled on
+  `maidan_mail_outbox` (migration `0050`): both backends, multi-replica claim (`FOR UPDATE SKIP LOCKED` /
+  sqlite serialized CAS), no worker/routes. **377.2** an `egress_worker.rs` mirroring `mail_worker.rs`
+  (lease 120 s, backoff 30 s→1 h, dead-letter at 8) + `route_message_to_{slack,github}` enqueue instead of
+  posting inline; opt-in tick env so an unconfigured deploy stays inert. **377.3** retry-then-disable — an
+  auth/config-class error (401/403/404) disables the link and emits `ProjectorMisconfigured` instead of
+  retrying forever; `GET /operator/egress/dead` + requeue (`token:admin`, the Cluster-306 shape);
+  `maidan_egress_deliveries_total{surface,outcome}`.
+- **Cluster 378 — the trust boundary + sender upgrade.** **378.1** `maidan_egress_targets`, a
+  per-workspace allowlist of `{surface, selector}` (`github:owner/name`, `slack:C…`) + store + a
+  `token:admin` REST surface (full new-route preflight). **378.2** sender trait upgrade — `post_*` returns
+  an `ExternalRef`; add `update_message(ref, text)` (GitHub `PATCH /repos/{repo}/issues/comments/{id}`,
+  Slack `chat.update`); extend `egress_wire_e2e` (347) over the new calls via `with_base_url`. Fold in
+  Slack `thread_ts` so a re-review replies in-thread rather than re-posting top-level. **378.3**
+  `egress_body.rs` — pure and unit-tested: mention neutralization (GitHub `@` outside code spans, Slack
+  `<!channel>`/`<!here>`), size truncation with a `view_in_pi` tail (GitHub's ceiling is 65536 chars), and
+  a **GFM → Slack mrkdwn** projection (Slack gets `summary` + a compact digest + the link, not `rendered`).
+- **Cluster 379 — the result-delivery primitive** *(the producer's actual ask)*. **379.1**
+  `maidan_result_deliveries` store foundation (the key above). **379.2** the **contract lock** —
+  `maidan_types::waiter::parse_waiter_result`, a pure tolerant reader of
+  `{schema, result_kind, status, deliver_to[], rendered, summary, view_in_pi, pr}` with a
+  `DeliverTarget::Unknown(String)` arm, unit-tested against the real fixture **committed** as
+  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` (a producer-side grammar change then breaks
+  this test — that is the point). **379.3** the trigger — a `ThreadResultSet` arm in
+  `notification_router::route_event` delegating to a new `result_delivery.rs` (the exact shape
+  `MessagePosted → route_message_to_slack` already has): fetch → parse → per target, allowlist-check then
+  enqueue. Empty `deliver_to` ⇒ zero rows (valid). Non-`reviewed` status ⇒ a short **Maidan-authored**
+  failure notice built from `status` alone — never silence, never a clean pass. **379.4** idempotent
+  update-in-place: stored `external_ref` → `update_message`, absent → post, with a hidden
+  `<!-- maidan:result:<thread_id> -->` marker at byte 0 of the GitHub body as the recovery path (match
+  soundcheck's renderer bytes). **379.5** `GET /threads/:id/deliveries` (`workspace:read` + thread access)
+  + `POST .../replay` (`workspace:write`) + MCP twins + an `audit::record` per attempt. Retro **plus the
+  note back to the pi side** confirming the frozen grammar.
+- **Cluster 380 — inline per-finding PR review comments. ⛔ PARKED, blocked on the producer.** Needs
+  `POST /repos/{repo}/pulls/{n}/reviews` with `comments[{path, line, side, body}]` — which anchors to a
+  commit. **The envelope carries no `head_sha`**, and resolving the PR head at delivery time can anchor to
+  a *newer* commit than was reviewed, misplacing every comment. Also needs the `line_range` frame of
+  reference (post-image file lines vs diff-relative) stated. Ship 379's single summary comment first;
+  unpark when the envelope carries a commit anchor.
+- **Cluster 381 — `result_kind` facet + the pinned spec** *(half of row #24)*. Facet on the **namespaced
+  string** (see the correction on #24). Keep [Result Delivery](Result%20Delivery.md) in step, and register
+  the envelope in the Wave 3 #30 schema pack.
+
+**Reconciliations this investigation surfaced (fold at the next retro; each is listed on its own row
+above too, so nothing here is a second backlog):** row #38 promoted into 377; row #24's `result_kind`
+enum corrected to a namespaced string; row #28's `parentRunId` gains its first real producer (pi's
+`run_id`); row #25 composes with the Cluster-375 close-gate. **Plus one that has no existing row:** pi's
+envelope carries a real `cost_usd` / `duration_secs` that **never reaches the Cluster-358 budget ledger**,
+so the token/USD/turn/wall envelope is blind to waiter spend. Preferred fix is the **producer calling
+`report_usage`** — Maidan folding an agent-declared cost out of a result payload into its own billing
+basis is a self-reported-spend trust hole. Logged as a request in the pinned doc.
 
 ### Wave 3 — integrity, sync, portability (#29–36; ATProto *steals*, not a PDS — the log is the product)
 
@@ -329,7 +423,7 @@ than minting a new one.
 ### Wave 4 — stranger-start + ops leftovers (#37–51)
 
 37. **B12 + B14** — a **GHCR two-image boot smoke** (server `/health` + CLI `maidan init` against a throwaway DB) + a **loopback OIDC** (not `MAIDAN_OIDC_MOCK`).
-38. **N1 thicken** — **webhook retry-then-disable** on projector egress + a loud `ProjectorMisconfigured`/DLQ, never silent drop (`NEW-webhook-health`).
+38. **N1 thicken** — **webhook retry-then-disable** on projector egress + a loud `ProjectorMisconfigured`/DLQ, never silent drop (`NEW-webhook-health`). **⬆️ PROMOTED (2026-09-12) out of Wave 4 and into Cluster 377** — it is the hard prerequisite for result delivery (a result cannot be "recorded and auditable per target" on a log-and-drop egress path). Strike this row when 377 lands; it is a **reorder, not new scope**.
 39. **B9 + B13 + B4 + B23** — a `/ui`-fetch-path-vs-OpenAPI contract test (`NEW-ui-fetch-contract`); an EventKind × REST/MCP matrix CI (`NEW-migration-parity-gate` sibling); deeper in-process `ui_*` hero e2e; golden export-frame fixtures.
 40. **Capabilities changelog** — an in-repo, search-tied-to-tags release stream (`NEW-changelog-as-product`); honest GHCR-pin-vs-HEAD.
 41. **T2 + T4** — a **PayerStamp** on the event (model, tokens-by-tier, `usd_minor`, `price_snapshot`, payer, `claim_lease_id`) + an audit lane (principal/action/outcome/resource; gen_ai content capture OFF). Canon: pairs `NEW-usage-metering-ledger` (deferred) + `NEW-denial-audit`.
@@ -809,7 +903,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest merged: Cluster 375 (Wave 2 #22 — required reviewers, G5+G-dev-5) on `main`; tags `v350.0.0`–`v375.0.0` pending the maintainer.** Four impl PRs (#759 store, #761 FSM close-gate, #762 REST, #763 MCP) + a CI chore (#760, minio→quay) + a retro — see [[Retros/Cluster 375]]. A thread's `closed` transition is now gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge; dedicated review store, REST + MCP (`thread:transition`/`workspace:read`). A gate, not a poll/closer. **Wave 1 (#1–14) + Wave 2 #15–22 + P1.1c are COMPLETE. Next: Wave 2 #23** (G6 + G-dev-3 + W3 — a spawn budget). *(v350–v375 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). Still open from the 2026-09-10 MCP-write-path audit: **P1.1d** — no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap; see P1). **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
+- **Latest merged: Cluster 375 (Wave 2 #22 — required reviewers, G5+G-dev-5) on `main`; tags `v350.0.0`–`v375.0.0` pending the maintainer.** Four impl PRs (#759 store, #761 FSM close-gate, #762 REST, #763 MCP) + a CI chore (#760, minio→quay) + a retro — see [[Retros/Cluster 375]]. A thread's `closed` transition is now gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge; dedicated review store, REST + MCP (`thread:transition`/`workspace:read`). A gate, not a poll/closer. **Wave 1 (#1–14) + Wave 2 #15–22 + P1.1c are COMPLETE. IN PROGRESS: Wave 2 #23 / Cluster 376** (G6 + G-dev-3 + W3 — a spawn budget; 376.1 merged as #765, 376.2 enforcement in flight). **Then: the result-delivery arc, Clusters 377–381** — see the "Result delivery — the external last mile" section above and the pinned contract in [Result Delivery](Result%20Delivery.md). *(v350–v375 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). Still open from the 2026-09-10 MCP-write-path audit: **P1.1d** — no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap; see P1). **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
 - **(prior) Cluster 367 (Wave 2 #15 — the human work console) on `main`** — stacked `/ui` PRs #722/#723/#724, [[Retros/Cluster 367]].
 - **(prior) Cluster 366 (Wave 1 #14) on `main`** — four independent PRs (#717/#718/#719/#720), [[Retros/Cluster 366]].
 - **(prior) Cluster 365 (fair dispatch) on `main`; tags `v350.0.0`–`v365.0.0` pending the maintainer.** The forward program's **Wave 1 #1 (held gate, 350), #2 (occupancy clocks, 351), #3 (HITL list, 352), #4 (identity chrome, 353), #5 (wait contract, 354), #6 (owner/steer, 355), #7 (threading, 356), #8 (scoped notification mute, 357), #9 (the budget envelope, 358), #10 (inbox & search depth, 359), #11 (the token-budgeted context pack, 360), #12 (the landed fact, 361), and #13 in full — G11 hard WIP (362), G3 Unclaimable (363), G2/G4 wait-edges + escalation (364), and G3 fair dispatch (Cluster 365, PRs #708/#712/#713/#715) — are all SHIPPED** ([[Retros/Cluster 350]]–[[Retros/Cluster 365]]). `claim_next` now orders by an aged dispatch priority (priority jumps the FIFO queue, long-waiting tasks age up and never starve); a thread can declare a durable wait timer with an `on_timeout` policy; a thread can be parked from dispatch; the WIP limit caps concurrent live claims — all over REST + MCP. **Wave 1 #13 is COMPLETE. Next up: Wave 1 #14** (N1 web-push / T6 legal-hold / H15 OTel gate / SCIM-as-OIDC-P3 — four bullets, not one cluster). *(v350–v365 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)*
