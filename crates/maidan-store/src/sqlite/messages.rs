@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    DmConversationId, EditMessage, Event, MemberId, Message, MessageId, NewMessage, StoredEvent,
-    ThreadId,
+    ContentBlock, DmConversationId, EditMessage, Event, MemberId, Message, MessageId, NewMessage,
+    StoredEvent, ThreadId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -9,7 +9,53 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::sqlite::events;
 
+/// Tool-use blocks in a new message's content (Cluster 376.3, SQLite twin).
+fn new_tool_uses(content: &Option<Vec<ContentBlock>>) -> i64 {
+    content.as_deref().map_or(0, |blocks| {
+        blocks
+            .iter()
+            .filter(|b| matches!(b, ContentBlock::ToolUse { .. }))
+            .count() as i64
+    })
+}
+
+/// Enforce the workspace's `max_tools` axis (Cluster 376.3) on a post — refuse
+/// once the thread's recorded tool calls + this post's would exceed the cap.
+async fn enforce_tool_budget(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    adding: i64,
+) -> Result<(), StoreError> {
+    if adding <= 0 {
+        return Ok(());
+    }
+    let Some(row) = sqlx::query(
+        "SELECT c.workspace_id FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id WHERE t.id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(());
+    };
+    let workspace_id = maidan_types::WorkspaceId(row.get::<Uuid, _>("workspace_id"));
+    let Some(budget) = super::spawn::get_budget(pool, workspace_id).await? else {
+        return Ok(());
+    };
+    if let Some(max_tools) = budget.max_tools {
+        let existing = super::spawn::count_tool_uses(pool, thread_id).await?;
+        if existing + adding > max_tools {
+            return Err(StoreError::Conflict(format!(
+                "spawn budget: max {max_tools} tool calls per thread reached ({existing} already recorded)"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, StoreError> {
+    enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
     let id = Uuid::new_v4();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
@@ -45,6 +91,7 @@ pub async fn create_with_event(
     new: NewMessage,
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
+    enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
     let id = Uuid::new_v4();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
