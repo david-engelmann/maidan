@@ -18,7 +18,10 @@ use axum::{
 };
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
-use maidan_types::{MemberId, NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId};
+use maidan_types::{
+    EgressTarget, MemberId, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink, ThreadId,
+    WorkspaceId,
+};
 use sha2::Sha256;
 
 use crate::dto::LinkSlackChannel;
@@ -252,19 +255,29 @@ impl SlackSender for SlackWebClient {
     }
 }
 
-/// Slack projector egress (Cluster 309): relay a Maidan message posted in a linked
-/// thread out to its Slack channel. No-op unless a [`SlackSender`] is configured;
-/// **skips messages that originated in Slack** (the `metadata.slack` tag from the
-/// ingress, Cluster 308) so a projected inbound message is never echoed back —
-/// loop prevention. Best-effort (a failed post is logged + metered, not retried).
+/// Slack projector egress (Cluster 309, made durable in 377.2): relay a Maidan
+/// message posted in a linked thread out to its Slack channel — by *enqueueing* it
+/// on the egress outbox, which [`egress_worker`](crate::egress_worker) drains with
+/// retry/backoff. Until 377.2 this posted inline and a transient failure dropped
+/// the message.
+///
+/// No-op unless a [`SlackSender`] is configured (the worker only runs then, so
+/// queueing without one would pile up rows nothing drains); **skips messages that
+/// originated in Slack** (the `metadata.slack` tag from the ingress, Cluster 308)
+/// so a projected inbound message is never echoed back — loop prevention.
+///
+/// `log_id` is the `maidan_events` row being routed. It is the dedup key together
+/// with the target: every replica runs the notification router, so all of them
+/// enqueue and exactly one row survives.
 pub async fn route_message_to_slack(
     state: &AppState,
+    log_id: i64,
     thread_id: maidan_types::ThreadId,
     message: &maidan_types::Message,
 ) {
-    let Some(sender) = state.slack_sender.as_ref() else {
+    if state.slack_sender.is_none() {
         return;
-    };
+    }
     if message.metadata.get("slack").is_some() {
         return; // originated in Slack — don't echo it back
     }
@@ -280,15 +293,20 @@ pub async fn route_message_to_slack(
             return;
         }
     };
-    match sender
-        .post_message(&link.slack_channel_id, &message.body)
-        .await
-    {
-        Ok(()) => crate::metrics::record_slack_egress("sent"),
-        Err(err) => {
-            tracing::warn!(error = %err, "slack egress: post failed");
-            crate::metrics::record_slack_egress("failed");
-        }
+    let queued = state
+        .store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id: link.workspace_id,
+            thread_id,
+            source_log_id: log_id,
+            target: EgressTarget::Slack {
+                channel_id: link.slack_channel_id,
+            },
+            body: message.body.clone(),
+        })
+        .await;
+    if let Err(err) = queued {
+        tracing::warn!(error = %err, "slack egress: enqueue failed");
     }
 }
 
