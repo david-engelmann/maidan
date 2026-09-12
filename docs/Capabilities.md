@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v376.0.0 — Wave 2 #23: a spawn budget (G6 + G-dev-3 + W3)
+
+Six impl PRs (376.1–376.6) + a retro. A workspace caps how far an agent family may fan out — `max_children` per parent claim, `max_depth` nesting, `max_tools` per thread — and a spawn past the cap is refused (409 `SpawnRejected`) instead of admitting one more agent onto a late claim; coordination cost grows as n(n−1)/2. Each axis is opt-in (`null` = unlimited). A claim's **external** fan-out is capped too: at most one GitHub issue/PR link. **A budget, not a scheduler.**
+
+| Change | Where |
+|--------|-------|
+| **Store (376.1):** `maidan_spawn_budgets` (pg 0080 / sqlite 0079; `workspace_id` PK, three nullable limits) + `SpawnBudget` + `SpawnBudgetStore` — set (whole-row upsert; all-`None` clears) / get, plus the gate's counts `count_active_children` / `thread_depth` (ancestor CTE, root = 1) / `count_thread_tool_uses` (Cluster-173 `tool_use` blocks), both backends. | `crates/maidan-types/src/spawn.rs`, `crates/maidan-store/src/{postgres,sqlite}/spawn.rs` |
+| **Children + depth gate (376.2):** `enforce_spawn_budget` after `validate_parent` in **both** thread-create paths, both backends — so REST, MCP, recipes and the scheduler inherit it. Root threads + no-budget workspaces unrestricted. | `crates/maidan-store/src/{postgres,sqlite}/threads.rs` |
+| **Max-tools gate (376.3):** `enforce_tool_budget` in both post paths — a cumulative per-thread cap, run only when the post carries tool-use blocks, so an ordinary message stays off the extra-query path. | `crates/maidan-store/src/{postgres,sqlite}/messages.rs` |
+| **Config (376.4):** REST `PUT`/`GET /workspaces/:id/spawn-budget` (`workspace:write`/`workspace:read`) + MCP `set_spawn_budget`/`get_spawn_budget`. `PUT` is a full replace (`{}` clears, `0` freezes an axis); `GET` is total (all axes `null` when unset, no 404). | `crates/maidan-server/src/routes/workspace.rs`, `crates/maidan-mcp/src/tools/spawn.rs` |
+| **GitHub-link cap (376.5):** the reverse index on `maidan_github_issue_links(thread_id)` becomes UNIQUE (pg 0081 / sqlite 0080) — with the existing `(repo, issue_number)` key that is a bijection: one thread per issue **and** one issue per thread. The store maps the violation to a `Conflict`; no route/tool change. | `migrations/{postgres/0081,sqlite/0080}_github_link_cap.sql`, `crates/maidan-store/src/{postgres,sqlite}/github_links.rs` |
+| **`ThreadSpawnDenied` (376.6):** a refusal is a room event (`{workspace, channel, thread, member, axis, limit, observed}`, non-federatable) from the REST thread-create route, both REST post branches, and the MCP post tool; the gate returns a typed `StoreError::SpawnRejected(SpawnDenial)` so the payload isn't parsed out of a message. | `crates/maidan-types/src/{events.rs,spawn.rs}`, `crates/maidan-server/src/routes/mod.rs`, `crates/maidan-mcp/src/tools/message.rs` |
+
 ## v375.0.0 — Wave 2 #22: required reviewers (G5 + G-dev-5)
 
 Four impl PRs (375.1–375.4) + a retro (+ a CI chore, #760). A thread's `closed` transition is gated on `k` distinct **qualifying** approvals (reviewer ≠ owner/assignee — separation of duties — and, when a named set exists, in it) AND no unresolved `refutes` edge. **A gate, not a poll/closer.** Maintainer's design call: a dedicated review store.
