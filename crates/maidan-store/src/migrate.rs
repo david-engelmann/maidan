@@ -109,6 +109,7 @@ const POSTGRES_UP_V76: &str = include_str!("../../../migrations/postgres/0076_se
 const POSTGRES_UP_V77: &str = include_str!("../../../migrations/postgres/0077_member_freezes.sql");
 const POSTGRES_UP_V78: &str = include_str!("../../../migrations/postgres/0078_memory_blocks.sql");
 const POSTGRES_UP_V79: &str = include_str!("../../../migrations/postgres/0079_thread_reviews.sql");
+const POSTGRES_UP_V80: &str = include_str!("../../../migrations/postgres/0080_spawn_budgets.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -198,6 +199,7 @@ const SQLITE_UP_V75: &str = include_str!("../../../migrations/sqlite/0075_secret
 const SQLITE_UP_V76: &str = include_str!("../../../migrations/sqlite/0076_member_freezes.sql");
 const SQLITE_UP_V77: &str = include_str!("../../../migrations/sqlite/0077_memory_blocks.sql");
 const SQLITE_UP_V78: &str = include_str!("../../../migrations/sqlite/0078_thread_reviews.sql");
+const SQLITE_UP_V79: &str = include_str!("../../../migrations/sqlite/0079_spawn_budgets.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -329,6 +331,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 77, POSTGRES_UP_V77).await?;
     apply_postgres(pool, 78, POSTGRES_UP_V78).await?;
     apply_postgres(pool, 79, POSTGRES_UP_V79).await?;
+    apply_postgres(pool, 80, POSTGRES_UP_V80).await?;
     Ok(())
 }
 
@@ -421,6 +424,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 76, SQLITE_UP_V76).await?;
     apply_sqlite(pool, 77, SQLITE_UP_V77).await?;
     apply_sqlite(pool, 78, SQLITE_UP_V78).await?;
+    apply_sqlite(pool, 79, SQLITE_UP_V79).await?;
     Ok(())
 }
 
