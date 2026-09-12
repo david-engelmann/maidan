@@ -7,6 +7,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [376.0.0] — 2026-09-12
+
+Post-gate hardening (Phase XXIV). **Wave 2 #23 — a spawn budget** (G6 + G-dev-3
++ W3). Six impl PRs (376.1–376.6) + a retro. No new gate tag.
+
+A workspace declares how far an agent family may fan out — `max_children` per
+parent claim, `max_depth` nesting, `max_tools` per thread — and the room refuses
+the spawn past the cap (409 `SpawnRejected` / MCP `InvalidParams`) rather than
+watching a runaway recruit helpers; coordination cost grows as n(n−1)/2. Each
+axis is opt-in (`null` = unlimited), so existing deployments are unchanged until
+an operator sets a cap. A claim's external fan-out is capped too: at most one
+GitHub issue/PR link.
+
+- **376.1** store foundation — `maidan_spawn_budgets` (pg 0080 / sqlite 0079) +
+  `SpawnBudget` + `SpawnBudgetStore` (set/get + `count_active_children` /
+  `thread_depth` / `count_thread_tool_uses`), both backends.
+- **376.2** children + depth enforcement — `enforce_spawn_budget` after
+  `validate_parent` in both thread-create paths, both backends, so REST, MCP,
+  recipes and the scheduler all inherit it.
+- **376.3** max-tools enforcement — `enforce_tool_budget` in both post paths, a
+  cumulative per-thread cap, only on posts that carry tool-use blocks.
+- **376.4** the config surface — REST `PUT`/`GET /workspaces/:id/spawn-budget`
+  (`workspace:write`/`workspace:read`) + MCP `set_spawn_budget`/
+  `get_spawn_budget`. `PUT` is a full replace (`{}` clears, `0` freezes an axis);
+  `GET` is total (all axes `null` when unset).
+- **376.5** the GitHub-link cap — the reverse index on
+  `maidan_github_issue_links(thread_id)` becomes UNIQUE (pg 0081 / sqlite 0080),
+  completing the one-thread-per-issue *and* one-issue-per-thread bijection; the
+  store maps the violation to a `Conflict`.
+- **376.6** `ThreadSpawnDenied` — a refusal is a room event (`{workspace,
+  channel, thread, member, axis, limit, observed}`, non-federatable) published
+  from the REST thread-create route, both REST post branches, and the MCP post
+  tool; the gate's error becomes a typed `StoreError::SpawnRejected(SpawnDenial)`
+  to carry the payload.
+
 ## [375.0.0] — 2026-09-12
 
 Post-gate hardening (Phase XXIV). **Wave 2 #22 — required reviewers** (G5 +
