@@ -499,6 +499,30 @@ pub struct MemberWipView {
     pub limit: Option<i64>,
 }
 
+/// Body for `PUT /workspaces/:id/spawn-budget` (Cluster 376, G6/G-dev-3/W3) —
+/// the workspace's cap on agent fan-out. A full replace: an omitted or `null`
+/// axis is unlimited, so `{}` clears the budget. `0` freezes an axis.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetSpawnBudget {
+    /// Max direct child threads per parent.
+    #[serde(default)]
+    pub max_children: Option<i64>,
+    /// Max thread nesting depth (a root thread is depth 1).
+    #[serde(default)]
+    pub max_depth: Option<i64>,
+    /// Max tool calls recorded on one thread.
+    #[serde(default)]
+    pub max_tools: Option<i64>,
+}
+
+/// The workspace's spawn budget (Cluster 376); a `null` axis is unlimited.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SpawnBudgetView {
+    pub max_children: Option<i64>,
+    pub max_depth: Option<i64>,
+    pub max_tools: Option<i64>,
+}
+
 /// Query for a channel's agent-work DLQ (Cluster 358).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct DlqQuery {

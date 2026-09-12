@@ -37,6 +37,7 @@ mod seed;
 mod skill;
 mod snapshot;
 mod social;
+mod spawn;
 mod thread;
 mod whoami;
 
@@ -88,6 +89,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_channel_occupancy"
         | "list_assigned_threads"
         | "get_wip_limit"
+        | "get_spawn_budget"
         | "get_member_wip"
         | "list_unclaimable"
         | "get_wait"
@@ -157,6 +159,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_glossary_term"
         | "seed_from_message"
         | "set_wip_limit"
+        | "set_spawn_budget"
         | "add_member_skill"
         | "create_memory_block"
         | "set_memory_block_value"
@@ -381,6 +384,8 @@ pub async fn dispatch(
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
+        "set_spawn_budget" => spawn::set_spawn_budget(store, auth, args).await,
+        "get_spawn_budget" => spawn::get_spawn_budget(store, auth, args).await,
         "get_member_wip" => thread::get_member_wip(store, args).await,
         "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
         "mark_claimable" => thread::mark_claimable(store, args).await,

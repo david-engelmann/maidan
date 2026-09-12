@@ -399,6 +399,23 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
+            "name": "set_spawn_budget",
+            "description": "Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "max_children": {"type": ["integer", "null"], "minimum": 0, "description": "max direct child threads per parent; null = unlimited"},
+                    "max_depth": {"type": ["integer", "null"], "minimum": 0, "description": "max thread nesting depth (a root thread is depth 1); null = unlimited"},
+                    "max_tools": {"type": ["integer", "null"], "minimum": 0, "description": "max tool calls recorded on one thread; null = unlimited"}
+                }
+            }
+        }),
+        json!({
+            "name": "get_spawn_budget",
+            "description": "This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
             "name": "get_member_wip",
             "description": "A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.",
             "inputSchema": {

@@ -1090,6 +1090,21 @@ pub fn list_reviews() {}
     responses((status = 200, body = ReviewStatus)))]
 pub fn get_review_status() {}
 
+// --- spawn budget (Cluster 376) ---
+
+#[utoipa::path(put, path = "/workspaces/{id}/spawn-budget", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetSpawnBudget,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SpawnBudgetView, description = "The spawn budget (set or cleared)")))]
+pub fn set_spawn_budget() {}
+
+#[utoipa::path(get, path = "/workspaces/{id}/spawn-budget", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SpawnBudgetView, description = "The spawn budget (a null axis is unlimited)")))]
+pub fn get_spawn_budget() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",

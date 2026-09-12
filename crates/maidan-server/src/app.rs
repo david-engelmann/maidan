@@ -111,6 +111,10 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/:id/wip-limit",
             axum::routing::put(routes::set_wip_limit).get(routes::get_wip_limit),
         )
+        .route(
+            "/workspaces/:id/spawn-budget",
+            axum::routing::put(routes::set_spawn_budget).get(routes::get_spawn_budget),
+        )
         .route("/me", get(routes::get_me))
         .route(
             "/workspaces/:wid/glossary",

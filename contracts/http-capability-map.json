@@ -1410,6 +1410,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/workspaces/{id}/spawn-budget",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/spawn-budget",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
     "capability": "workspace:write",
