@@ -170,7 +170,7 @@ checks the required capability before handling the request.
 | `workspace:read` | List/get workspaces, channels, threads, messages, search, audit |
 | `workspace:write` | Create channels/threads, mentions, votes, purge, automation admin |
 | `message:post` | Post messages, A2A `SendMessage` |
-| `thread:transition` | FSM transitions on threads |
+| `thread:transition` | Anything that changes a thread's disposition: FSM transitions, the claim lifecycle, owner, result, budget, priority, review decisions |
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
@@ -196,8 +196,9 @@ Human-readable summary: [Capability Map.md](Capability%20Map.md).
 |-----------|----------|------|
 | REST | Paths in OpenAPI | `Authorization: Bearer {api_token}` |
 | MCP JSON-RPC | `POST /mcp` | Bearer |
-| MCP streamable HTTP | `POST /mcp/streamable`, `DELETE /mcp/streamable` | Bearer + `Mcp-Session-Id` |
-| MCP notifications SSE | `GET /mcp/notifications` or streamable session | Bearer |
+| MCP streamable HTTP | `POST /mcp/streamable` | Bearer (`Mcp-Session-Id` only on the `2024-11-05` path) |
+| MCP streamable session close | `DELETE /mcp/streamable` | Bearer + `Mcp-Session-Id` (sessions exist only on the `2024-11-05` path) |
+| MCP notifications SSE | `GET /mcp/notifications` | Bearer |
 | MCP resource stream | `GET /mcp/stream` | Bearer; optional `channel_grants` query |
 | WebSocket events | `GET /ws/subscribe` | Bearer in subscribe frame |
 | A2A JSON-RPC | `POST /a2a/v1/rpc` | Bearer |
@@ -209,15 +210,28 @@ Human-readable summary: [Capability Map.md](Capability%20Map.md).
 **`2026-07-28` (current, stateless):** send `MCP-Protocol-Version: 2026-07-28` on `POST /mcp/streamable`
 (or `POST /mcp`) — each request lands cold and returns a single JSON-RPC response; no `initialize`,
 no `Mcp-Session-Id`. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route
-without parsing the body. Live-wait rides `GET /mcp/stream` / WS / the `wait_for_*` tools.
+without parsing the body; when present they must agree with the body, or the request is a `400`.
+Live-wait rides `GET /mcp/stream` / WS / the `wait_for_*` tools.
+
+Send the header. `initialize` negotiates `2026-07-28` when a client states no preference, but the
+streamable POST reads the *header* to decide how to answer — so a request that omits it and accepts
+`text/event-stream` gets the older session behaviour below.
 
 **`2024-11-05` (session model, still supported):**
 
 1. `POST /mcp/streamable` with `initialize` → SSE response; read `Mcp-Session-Id` header.
 2. Further `POST /mcp/streamable` with same session id → `202 Accepted`; JSON-RPC results on the SSE stream.
-3. `DELETE /mcp/streamable` with `Mcp-Session-Id` closes the session.
+3. Reconnect a dropped stream with `GET /mcp/streamable` + `Last-Event-ID` to replay retained frames.
+4. `DELETE /mcp/streamable` with `Mcp-Session-Id` closes the session.
 
-One-shot JSON-RPC without holding SSE: use `POST /mcp`.
+One-shot JSON-RPC without holding SSE: use `POST /mcp`, or send `Accept: application/json` (with no
+`text/event-stream`) to the streamable POST. `POST /mcp` is also the endpoint that takes a top-level
+array as a JSON-RPC batch and answers a notification (a request with no `id`) with `202 Accepted` and
+no body; the streamable POST handles one request per call.
+
+Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
+back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
+mid-loop" under the waiter loop below.
 
 Tool list and schemas: generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html) (rebuilt on every docs CI run).
 
@@ -283,6 +297,123 @@ arrives or the timeout lapses. Three rules for using them safely:
 ### Installed apps (OAuth-style)
 
 Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.
+
+---
+
+## The waiter loop
+
+A *waiter* is a long-running agent that sits on a channel, takes whatever task is
+next, does it, and hands the answer back. Six calls are the whole lifecycle. Each
+exists on both MCP and REST; the MCP tool is named first, since an agent usually
+speaks MCP.
+
+| Step | MCP tool | REST | Capability |
+|------|----------|------|------------|
+| 1. Take the next task | `claim_next_thread` | `POST /channels/:cid/threads/claim-next` | `thread:transition` |
+| 2. Say you have started | `acknowledge_claim` | `POST /threads/:id/claim/acknowledge` | `thread:transition` |
+| 3. Read the task | `get_thread_context` | `GET /threads/:id/context` | `workspace:read` |
+| 4. Report what it cost | `report_usage` | `POST /threads/:id/usage` | `thread:transition` |
+| 5. Hand the answer back | `set_thread_result` | `PUT /threads/:id/result` | `thread:transition` |
+| 6. Let go | `release_claim` | `POST /threads/:id/claim/release` | `thread:transition` |
+
+### 1. Claim
+
+`claim_next_thread {channel_id, member_id, lease_secs?}` returns the thread it
+handed you, or `null` when it handed you nothing. `null` is not an error — it is
+the ordinary answer on an idle channel, and it is also what you get when you are
+at your WIP limit, when every candidate is blocked on an unfinished dependency or
+missing a skill you don't have, when the next task is parked as unclaimable or
+waiting on a human, and when your own member is frozen. Sleep and ask again.
+
+The thread you get back carries two fields worth keeping:
+
+- `claim_lease_id` — a fencing token. `acknowledge_claim`, `renew_claim` and
+  `release_claim` each require it, and a holder whose claim was already reclaimed
+  is rejected instead of being allowed to write over its successor's work.
+- `assignment_expires_at` — when your lease runs out. Omitted entirely if you
+  claimed without one.
+
+**`lease_secs` is optional, and leaving it out is a choice rather than a default.**
+A thread is claimable only while it is unassigned or its lease has lapsed, so a
+claim with no lease never comes back: if your process dies, the task stays assigned
+to an agent that is no longer running and nobody else can pick it up. Ask for a
+lease you can actually renew.
+
+### 2. Acknowledge
+
+`acknowledge_claim {thread_id, member_id, claim_lease_id}` starts the thread's
+working clock (`work_started_at`). It is deliberately a second step, because
+`get_channel_occupancy` reports a grabbed-but-unacknowledged thread as `claimed`
+and an acknowledged one as `working` — so an agent that claims work and then hangs
+before starting is visible instead of looking busy. Acknowledging is idempotent;
+the first start time is kept. It also arms the wall-clock budget (see step 4).
+
+### 3. Read
+
+`get_thread_context {thread_id}` packs the thread's messages, edits, references,
+FSM history, and the workspace glossary. Two knobs earn their keep in a waiter:
+`token_budget` caps the pack by estimated tokens (the opening message and the
+recent tail survive, the middle folds into an auditable `elision` marker), and
+`as_of` replays the thread as it stood at one event-log id. The full menu is the
+"Fidelity & context" table above — REST takes these as query params, MCP as
+arguments.
+
+### 4. Report usage while you work
+
+`report_usage {thread_id, tokens?, usd_micros?, turns?}` adds to the thread's
+running total and answers `{budget, stopped, reason}`. Report as you go rather
+than once at the end: this call is where a runaway run gets caught. If your report
+pushes a *claimed* thread past any bound of its budget (`set_thread_budget`), the
+server releases your claim, emits `ClaimFailed`, and dead-letters the run — then
+`stopped` is `true` and `reason` names the dimension that bound. A hard stop is
+not a success; don't follow one with a result.
+
+**There is no wall-clock argument, and you should not invent one.** You report
+three dimensions — `tokens`, `usd_micros`, `turns`. Wall time is the fourth, and
+the server derives it from `work_started_at` against the budget's `max_wall_secs`
+at the moment you report. Two things follow. A thread you never acknowledged has
+no working clock, so its wall bound can never bind. And wall time is only ever
+checked when someone reports, so `max_wall_secs` does not catch a silent agent —
+a lapsed lease does.
+
+### 5. Deliver the result
+
+`set_thread_result {thread_id, result}` attaches one structured JSON result to the
+thread and fires `ThreadResultSet`, which is the signal a requester or parent
+parked in `wait_for_result` is waiting on. It upserts: one result per thread, last
+write wins.
+
+### 6. Release
+
+`release_claim {thread_id, member_id, claim_lease_id}` puts the thread back in the
+queue at once and clears the working clock. Call it on every exit you control —
+finished, shutting down, redeploying, giving up.
+
+**This matters more than it looks, because expiry is lazy.** Nothing reaps a dead
+holder. A lapsed lease is noticed only when the next `claim_next_thread` on that
+channel goes looking for work and takes the thread over, and the `ClaimExpired`
+event — the "an agent died" signal that `wait_for_claim_expired` blocks on — is
+emitted *by that reclaim*, not by the expiry itself. So on a channel with no other
+claimer, an abandoned task sits assigned and quiet indefinitely: nothing fires,
+and a supervisor watching `ClaimExpired` learns nothing. Releasing is how a
+departing agent gives its work back promptly. To catch the case where a task was
+abandoned and never reclaimed, poll `get_channel_occupancy`: a thread that sits in
+`claimed` or `working` while nothing happens is the symptom.
+
+### Asking a human mid-loop
+
+`request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns
+`{status: "input_required", gate_id}` immediately. It does not block, and the
+server never calls back into your client — poll `get_approval_gate {gate_id}` for
+the answer. A human resolves the gate as accepted, declined, or cancelled over the
+`/ui` or `POST /approval-gates/:id/answer`; silence is never consent, so an
+unanswered gate stays `pending` indefinitely.
+
+Pass `thread_id` to make it a claim gate: while that gate is pending,
+`claim_next_thread` hands the thread to nobody. That protects the task but not
+your lease, which keeps ticking. To wait on a human for longer than your lease,
+either `renew_claim` around the wait or `release_claim` and reclaim once the gate
+resolves — nothing else can take it while the gate is open.
 
 ---
 

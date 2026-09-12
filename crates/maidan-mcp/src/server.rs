@@ -264,14 +264,23 @@ impl McpServer {
                 "version": self.server_version
             },
             // Cluster 336: the spec `instructions` field — an agent's cold-start guide.
-            // Call `whoami` first for your member_id, then the six-tool hero loop.
+            // Call `whoami` first for your member_id, then the full claim lifecycle
+            // (the "waiter loop" in Integration.md), not just the read/write pair.
             "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
-                member_id, workspace_id, and capabilities. Hero loop for task work: \
-                `claim_next_thread` (take the next ready task in a channel) → `get_thread_context` \
-                (read it, grounded in the workspace glossary) → do the work → `set_thread_result` \
-                (record the outcome) → `wait_for_ready`/`wait_for_result` (coordinate with other \
-                agents). Tools are capability-filtered to your token, so `tools/list` shows only \
-                what you can call."
+                member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
+                the next ready task in a channel — null means there is nothing to take, so sleep and \
+                ask again; pass `lease_secs` so an abandoned task can be reclaimed) → \
+                `acknowledge_claim` (start the working clock, so occupancy shows you working rather \
+                than claimed-and-idle) → `get_thread_context` (read the task, grounded in the \
+                workspace glossary) → do the work, calling `report_usage` as you go (it accumulates \
+                against the thread's budget and stops the run if it goes over) → `set_thread_result` \
+                (record the outcome) → `release_claim` (hand the task back — nothing reaps a dead \
+                holder eagerly, so release on every exit you control). `acknowledge_claim`, \
+                `renew_claim` and `release_claim` each present the thread's `claim_lease_id` as a \
+                fencing token. Need a human? `request_approval` opens \
+                a durable gate and returns immediately; poll `get_approval_gate` for the answer. \
+                Coordinate with `wait_for_ready` / `wait_for_result` / `wait_for_mention`. Tools are \
+                capability-filtered to your token, so `tools/list` shows only what you can call."
         }))
     }
 
