@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [377.0.0] — 2026-09-12
+
+Post-gate hardening (Phase XXIV). **Durable projector egress** — Open Work row
+#38 (`NEW-webhook-health`), promoted out of Wave 4 because it is the hard
+prerequisite for the result-delivery arc (378–381). Four impl PRs (377.1–377.4)
++ a retro. No new gate tag.
+
+The Slack and GitHub projectors posted inline and best-effort: a transient 502
+dropped the message with a `tracing::warn!` and nothing else — no retry, no
+queue, no operator surface, no event. A projector-bound message is now enqueued
+and delivered by a retry/backoff worker; an auth/config-class failure disables
+the link and announces it instead of burning eight doomed attempts per message
+forever; and a delivery that exhausts its retries lands in a `token:admin` DLQ
+an operator can inspect and replay. Nothing is silently dropped.
+
+A queue, not a new connector — what the projectors say and where they say it is
+unchanged, and an unconfigured deployment neither queues nor drains.
+
+- **377.1** store foundation — `maidan_egress_outbox` (pg 0082 / sqlite 0081,
+  modelled on `maidan_mail_outbox`) + `EgressSurface` / `EgressTarget` /
+  `EgressOutbox` + `EgressStore` (enqueue / `claim_next_due` / `mark_delivered` /
+  `mark_failed` / `count_dead`), both backends. `UNIQUE (source_log_id, surface,
+  selector)` because every replica enqueues; `source_log_id` carries no FK so
+  event-log retention cannot cascade into a queued delivery.
+- **377.2** the worker — `egress_worker.rs` (lease 120 s, backoff 30 s→1 h,
+  dead-letter at 8, `MAIDAN_EGRESS_WORKER_TICK_SECS`); the projectors enqueue
+  instead of posting. Spawned only when a projector sender is configured.
+- **377.3** retry-then-disable — `disabled_at` on both link tables (pg 0083 /
+  sqlite 0082, `NULL` = enabled); a per-surface `is_misconfiguration` allowlist
+  disables the link and the enqueue then skips it, so the queue stops growing one
+  row per message. **A rate-limited GitHub 403 is explicitly not a
+  misconfiguration** (`x-ratelimit-remaining: 0` / `retry-after`). Ingress is
+  untouched; re-linking clears `disabled_at`. Adds
+  `Event::ProjectorMisconfigured` (non-federatable) and
+  `maidan_egress_deliveries_total{surface,outcome}`.
+- **377.4** the operator DLQ — `GET /operator/egress/dead` + `POST
+  /operator/egress/dead/{id}/requeue`, both `token:admin` (the Cluster-306
+  mail-DLQ shape); a row carries `surface`, `selector`, `thread_id`, `attempts`
+  and the surface's own `last_error`.
+
 ## [376.0.0] — 2026-09-12
 
 Post-gate hardening (Phase XXIV). **Wave 2 #23 — a spawn budget** (G6 + G-dev-3
