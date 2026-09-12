@@ -545,6 +545,50 @@ pub fn requeue_dead_egress() {}
 
 #[utoipa::path(
     post,
+    path = "/workspaces/{wid}/egress-targets",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = AllowEgressTarget,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, description = "Destination blessed (idempotent: a re-bless returns the existing entry)", body = AllowedEgressTarget),
+        (status = 400, description = "Selector is a name rather than an id (a Slack #name, or owner/name#123)"),
+        (status = 403, description = "Missing token:admin capability"),
+    )
+)]
+pub fn allow_egress_target() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/egress-targets",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Blessed destinations; empty (the default) means deliver nowhere", body = Vec<AllowedEgressTarget>),
+        (status = 403, description = "Missing token:admin capability"),
+    )
+)]
+pub fn list_egress_targets() {}
+
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/egress-targets/{tid}",
+    tag = "integrations",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("tid" = Uuid, Path, description = "Allowlist entry id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Blessing revoked"),
+        (status = 404, description = "This workspace has no such entry"),
+    )
+)]
+pub fn revoke_egress_target() {}
+
+#[utoipa::path(
+    post,
     path = "/workspaces/{wid}/slack-links",
     tag = "integrations",
     params(("wid" = Uuid, Path, description = "Workspace id")),

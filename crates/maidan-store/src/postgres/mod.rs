@@ -13,6 +13,7 @@ pub mod delivery_cursor;
 mod dlq;
 mod dm;
 mod egress_outbox;
+mod egress_targets;
 mod email_digest;
 mod erase_workspace;
 pub mod events;
@@ -892,6 +893,37 @@ impl EgressStore for PostgresStore {
     }
     async fn requeue_dead_egress(&self, id: EgressOutboxId) -> Result<bool, StoreError> {
         egress_outbox::requeue_dead(&self.pool, id).await
+    }
+    async fn allow_egress_target(
+        &self,
+        new: NewEgressTarget,
+    ) -> Result<AllowedEgressTarget, StoreError> {
+        egress_targets::allow(&self.pool, new).await
+    }
+    // The allowlist reads stay on the primary rather than `read_pool()`: this is
+    // control-plane config (the Cluster-265 carve-out), and `is_egress_target_allowed`
+    // is an authorization check — a lagging replica could deny a blessing an
+    // operator just granted.
+    async fn list_egress_targets(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<AllowedEgressTarget>, StoreError> {
+        egress_targets::list(&self.pool, workspace_id).await
+    }
+    async fn revoke_egress_target(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressTargetId,
+    ) -> Result<bool, StoreError> {
+        egress_targets::revoke(&self.pool, workspace_id, id).await
+    }
+    async fn is_egress_target_allowed(
+        &self,
+        workspace_id: WorkspaceId,
+        surface: EgressSurface,
+        selector: &str,
+    ) -> Result<bool, StoreError> {
+        egress_targets::is_allowed(&self.pool, workspace_id, surface, selector).await
     }
 }
 

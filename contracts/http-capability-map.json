@@ -1177,6 +1177,24 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/egress-targets",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/egress-targets",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/egress-targets/{tid}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/slack-links",
     "capability": "workspace:write",
     "surface": "http"

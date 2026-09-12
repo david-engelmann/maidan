@@ -52,6 +52,7 @@ id_newtype!(TaskScheduleId);
 id_newtype!(NotificationId);
 id_newtype!(MailOutboxId);
 id_newtype!(EgressOutboxId);
+id_newtype!(EgressTargetId);
 id_newtype!(ApprovalGateId);
 id_newtype!(ClaimLeaseId);
 id_newtype!(DlqEntryId);

@@ -19,8 +19,9 @@ Read it alongside [Integrating with Maidan](Integration.md).
 |---|---|
 | `set_thread_result` / `get_thread_result` / `ThreadResultSet` event | **Shipped** (Clusters 234–236). A result is durable and observable. |
 | Slack + GitHub connectors (post, link tables, link management) | **Shipped** (Clusters 307–312, 346, 349.4). |
-| Durable retrying delivery queue + DLQ + replay | **Shipped for mail and webhooks** (Clusters 50, 304–306). Projector egress does **not** use it yet. |
-| A `ThreadResultSet` handler that delivers to `deliver_to` | **Not built.** Planned as Clusters 377–381 — see [Open Work](Open%20Work.md). |
+| Durable retrying delivery queue + DLQ + replay | **Shipped** (Clusters 50, 304–306 for mail and webhooks; **377** for projector egress — a retrying queue, a link that disables itself on a credential failure, and a `token:admin` DLQ at `GET /operator/egress/dead`). |
+| The per-workspace egress allowlist (the trust boundary below) | **Shipped** (Cluster 378.1). `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. Nothing consults it yet — it is the authorization the delivery step will check. |
+| A `ThreadResultSet` handler that delivers to `deliver_to` | **Not built.** Planned as Clusters 379–381 — see [Open Work](Open%20Work.md). |
 
 **Interim contract:** a producer may set `deliver_to` today. Maidan stores it as
 part of the opaque result and **takes no action on it**. Nothing breaks; nothing
@@ -110,9 +111,15 @@ So delivery is authorized twice:
 - **`deliver_to` selects** which of the permitted targets this particular result
   goes to. The producer stays in control of routing and no surface is hardcoded.
 - **A per-workspace egress allowlist authorizes.** An operator blesses
-  `github:beatgig/bgv3` or `slack:C0123ABCDEF` once. A target absent from the
-  allowlist is **skipped with a recorded warning** — the same treatment as an
-  unknown surface.
+  `github:beatgig/bgv3` or `slack:C0123ABCDEF` once, over
+  `POST /workspaces/:wid/egress-targets` (`token:admin`; `GET` lists,
+  `DELETE …/:tid` revokes). A target absent from the allowlist is **skipped with
+  a recorded warning** — the same treatment as an unknown surface.
+  - A selector must be an **id**, never a name: a Slack channel id (`C…`/`G…`),
+    or a GitHub repository `owner/name`. A `#channel-name` is refused, because
+    the channel a name points at can change under the blessing.
+  - On GitHub the blessing is the **repository**, not the issue — one blessing
+    covers every PR in it, so an operator does not file a ticket per review.
 - **The allowlist defaults to empty**, following the same fail-safe as Maidan's
   secret-egress broker: with nothing configured, nothing is trusted and nothing
   is delivered.
