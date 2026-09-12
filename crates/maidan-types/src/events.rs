@@ -42,6 +42,7 @@ pub enum EventKind {
     ThreadLanded,
     WaitTimedOut,
     ScheduleSkipped,
+    ThreadSpawnDenied,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -72,6 +73,7 @@ impl EventKind {
             Self::ThreadLanded => "thread_landed",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
+            Self::ThreadSpawnDenied => "thread_spawn_denied",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -102,6 +104,7 @@ impl EventKind {
             "thread_landed" => Some(Self::ThreadLanded),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
+            "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -138,6 +141,7 @@ impl EventKind {
         Self::ThreadLanded,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
+        Self::ThreadSpawnDenied,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -203,6 +207,9 @@ impl EventKind {
             // A skipped firing is *this* deployment's scheduler decision (Cluster
             // 370); a peer must not inject one.
             Self::ScheduleSkipped => false,
+            // A refused spawn is *this* deployment's budget decision (Cluster 376);
+            // a peer must not inject one for our threads.
+            Self::ThreadSpawnDenied => false,
             // A memory-block update is a locally-derived signal over local shared
             // state (Cluster 373); a peer must not inject one.
             Self::MemoryBlockUpdated => false,
@@ -353,6 +360,31 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
+    /// A spawn was refused by the workspace's spawn budget (Cluster 376.6,
+    /// G6/G-dev-3/W3) — a child thread past `max_children`/`max_depth`, or a tool
+    /// call past `max_tools`. **Observability only**: the refusal itself is the
+    /// `SpawnRejected` error the caller already received (REST 409 / MCP
+    /// InvalidParams); this event is how an operator sees *which* members keep
+    /// pushing a claim past its fan-out cap, instead of having to read logs. A
+    /// locally-derived governance signal: not federatable.
+    ThreadSpawnDenied {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        /// The parent thread whose fan-out was capped (`children`/`depth`), or the
+        /// thread whose tool calls were capped (`tools`).
+        thread_id: ThreadId,
+        /// Who tried to spawn — `None` only for an unattributed caller (a
+        /// bypass-auth deployment), like the audit trail's `actor_id`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        member_id: Option<MemberId>,
+        /// Which axis refused it (`SpawnAxis::as_str`): `children` | `depth` | `tools`.
+        axis: String,
+        /// The configured cap on that axis.
+        limit: i64,
+        /// What the thread already holds on that axis.
+        observed: i64,
+    },
     /// A recipe-backed schedule was due but its previous run is still in flight,
     /// so the sweeper skipped this firing (Cluster 370.5) — no new run.
     ScheduleSkipped {
@@ -476,6 +508,7 @@ impl Event {
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
+            Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -506,6 +539,7 @@ impl Event {
             | Self::ThreadLanded { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
+            | Self::ThreadSpawnDenied { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -536,6 +570,7 @@ impl Event {
             | Self::ThreadLanded { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
+            | Self::ThreadSpawnDenied { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -563,6 +598,7 @@ impl Event {
             | Self::ThreadLanded { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
+            | Self::ThreadSpawnDenied { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -583,6 +619,7 @@ impl Event {
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
+            Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -619,6 +656,7 @@ impl Event {
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
+            Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
             | Self::ReactionAdded { member_id, .. }
@@ -891,6 +929,7 @@ mod kind_tests {
                 | EventKind::ThreadLanded
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
+                | EventKind::ThreadSpawnDenied
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -942,6 +981,7 @@ mod kind_tests {
             EventKind::ThreadLanded,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
+            EventKind::ThreadSpawnDenied,
             EventKind::MemoryBlockUpdated,
         ];
         for &kind in EventKind::ALL {

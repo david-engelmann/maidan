@@ -162,6 +162,10 @@ impl From<StoreError> for ApiError {
         match err {
             StoreError::NotFound => Self::NotFound,
             StoreError::Conflict(msg) => Self::Conflict(msg),
+            // A refused spawn is a state conflict like any other (Cluster 376.6):
+            // the typing exists so the route can publish `ThreadSpawnDenied`, not
+            // to change the wire status.
+            StoreError::SpawnRejected(denial) => Self::Conflict(denial.to_string()),
             StoreError::InvalidInput(msg) => Self::BadRequest(msg),
             StoreError::Database(e) => {
                 tracing::error!(error = %e, "database error");

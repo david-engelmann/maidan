@@ -26,6 +26,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ThreadLanded,
         EventKind::WaitTimedOut,
         EventKind::ScheduleSkipped,
+        EventKind::ThreadSpawnDenied,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, Event, MemberId, NewThread,
-    QueueDepth, StoredEvent, Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId,
+    QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult, ThreadId,
+    ThreadState, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -875,9 +876,10 @@ async fn validate_parent(
 /// Enforce the workspace's spawn budget (Cluster 376.2) when creating a CHILD
 /// thread: refuse once the parent already holds `max_children` children, or once
 /// its nesting would exceed `max_depth`. Root threads (no parent) and workspaces
-/// with no budget are unrestricted. A refusal is a `Conflict` → REST 409 / MCP
-/// InvalidParams (SpawnRejected). Coordination cost is n(n-1)/2 — do not admit a
-/// further agent onto a late claim.
+/// with no budget are unrestricted. A refusal is a typed `SpawnRejected` (Cluster
+/// 376.6) → REST 409 / MCP InvalidParams, and it carries the payload the route
+/// publishes as `ThreadSpawnDenied`. Coordination cost is n(n-1)/2 — do not admit
+/// a further agent onto a late claim.
 async fn enforce_spawn_budget(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -897,18 +899,26 @@ async fn enforce_spawn_budget(
     let Some(budget) = super::spawn::get_budget(pool, workspace_id).await? else {
         return Ok(());
     };
+    let refuse = |axis, limit, observed| {
+        Err(StoreError::spawn_rejected(SpawnDenial {
+            workspace_id,
+            channel_id,
+            thread_id: parent_id,
+            axis,
+            limit,
+            observed,
+        }))
+    };
     if let Some(max_children) = budget.max_children {
-        if super::spawn::count_active_children(pool, parent_id).await? >= max_children {
-            return Err(StoreError::Conflict(format!(
-                "spawn budget: the parent thread already has the maximum {max_children} child threads"
-            )));
+        let children = super::spawn::count_active_children(pool, parent_id).await?;
+        if children >= max_children {
+            return refuse(SpawnAxis::Children, max_children, children);
         }
     }
     if let Some(max_depth) = budget.max_depth {
-        if super::spawn::thread_depth(pool, parent_id).await? >= max_depth {
-            return Err(StoreError::Conflict(format!(
-                "spawn budget: max nesting depth {max_depth} reached"
-            )));
+        let depth = super::spawn::thread_depth(pool, parent_id).await?;
+        if depth >= max_depth {
+            return refuse(SpawnAxis::Depth, max_depth, depth);
         }
     }
     Ok(())

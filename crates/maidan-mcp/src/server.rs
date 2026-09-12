@@ -4430,6 +4430,131 @@ mod tests {
         assert_eq!(reviews.as_array().unwrap().len(), 1);
     }
 
+    /// Cluster 376.6: a post the `max_tools` axis refuses comes back as a client
+    /// error AND is recorded as `ThreadSpawnDenied` naming the author.
+    #[tokio::test]
+    async fn a_refused_tool_post_publishes_thread_spawn_denied() {
+        use std::time::Duration;
+
+        use futures::StreamExt;
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+        use maidan_bus::{BusItem, InMemoryBus};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sd".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "runaway".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        // No tool calls at all on this thread.
+        store
+            .set_spawn_budget(ws.id, None, None, Some(0))
+            .await
+            .unwrap();
+
+        let bus = Arc::new(InMemoryBus::new());
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(bus.clone());
+        let mut stream = bus
+            .subscribe(EventFilter::all().with_kinds([EventKind::ThreadSpawnDenied]))
+            .await
+            .unwrap();
+
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![MESSAGE_POST.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let post = |content: Value| {
+            let args = json!({
+                "thread_id": thread.id.0,
+                "author_id": member.id.0,
+                "body": "work",
+                "content": content,
+            });
+            let auth = auth.clone();
+            let server = &server;
+            async move { server.call_tool(&auth, "post_message", &args).await }
+        };
+
+        // A plain post is unaffected by a tool budget.
+        post(Value::Null).await.expect("a plain post still posts");
+
+        let denied = post(json!([{
+            "type": "tool_use", "id": "t1", "name": "run", "input": {}
+        }]))
+        .await;
+        assert!(
+            matches!(&denied, Err(McpError::InvalidParams(m)) if m.contains("tool")),
+            "a tool-use post past max_tools=0 must be a client error, got {denied:?}"
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .expect("timeout waiting for ThreadSpawnDenied")
+            .expect("stream ended without event");
+        let BusItem::Event(envelope) = event else {
+            panic!("expected an event, got lag or end");
+        };
+        match envelope.event {
+            Event::ThreadSpawnDenied {
+                thread_id,
+                member_id,
+                axis,
+                limit,
+                observed,
+                ..
+            } => {
+                assert_eq!(thread_id, thread.id);
+                assert_eq!(member_id, Some(member.id), "the author is the actor");
+                assert_eq!(axis, "tools");
+                assert_eq!(limit, 0);
+                assert_eq!(observed, 0);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn spawn_budget_tools_set_get_and_gate_the_spawn() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
@@ -4543,7 +4668,7 @@ mod tests {
             .expect("the first child is within max_children");
         let denied = child().await;
         assert!(
-            matches!(denied, Err(StoreError::Conflict(ref m)) if m.contains("spawn budget")),
+            matches!(&denied, Err(StoreError::SpawnRejected(d)) if d.axis == SpawnAxis::Children),
             "a 2nd child past max_children=1 must be refused, got {denied:?}"
         );
 

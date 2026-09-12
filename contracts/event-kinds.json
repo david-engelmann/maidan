@@ -20,6 +20,7 @@
   "thread_landed",
   "thread_ready",
   "thread_result_set",
+  "thread_spawn_denied",
   "thread_state_changed",
   "vote_cast",
   "wait_timed_out",
