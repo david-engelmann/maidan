@@ -11,6 +11,7 @@ use crate::postgres::events;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
+    enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::new_v4();
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
@@ -33,6 +34,7 @@ pub async fn create_with_event(
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
+    enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::new_v4();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
@@ -866,6 +868,48 @@ async fn validate_parent(
         return Err(StoreError::Conflict(
             "cannot create child under an archived parent".into(),
         ));
+    }
+    Ok(())
+}
+
+/// Enforce the workspace's spawn budget (Cluster 376.2) when creating a CHILD
+/// thread: refuse once the parent already holds `max_children` children, or once
+/// its nesting would exceed `max_depth`. Root threads (no parent) and workspaces
+/// with no budget are unrestricted. A refusal is a `Conflict` → REST 409 / MCP
+/// InvalidParams (SpawnRejected). Coordination cost is n(n-1)/2 — do not admit a
+/// further agent onto a late claim.
+async fn enforce_spawn_budget(
+    pool: &PgPool,
+    channel_id: ChannelId,
+    parent_thread_id: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    let Some(parent_id) = parent_thread_id else {
+        return Ok(());
+    };
+    let Some(ws_row) = sqlx::query("SELECT workspace_id FROM maidan_channels WHERE id = $1")
+        .bind(channel_id.0)
+        .fetch_optional(pool)
+        .await?
+    else {
+        return Ok(());
+    };
+    let workspace_id = maidan_types::WorkspaceId(ws_row.get::<Uuid, _>("workspace_id"));
+    let Some(budget) = super::spawn::get_budget(pool, workspace_id).await? else {
+        return Ok(());
+    };
+    if let Some(max_children) = budget.max_children {
+        if super::spawn::count_active_children(pool, parent_id).await? >= max_children {
+            return Err(StoreError::Conflict(format!(
+                "spawn budget: the parent thread already has the maximum {max_children} child threads"
+            )));
+        }
+    }
+    if let Some(max_depth) = budget.max_depth {
+        if super::spawn::thread_depth(pool, parent_id).await? >= max_depth {
+            return Err(StoreError::Conflict(format!(
+                "spawn budget: max nesting depth {max_depth} reached"
+            )));
+        }
     }
     Ok(())
 }
