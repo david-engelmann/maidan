@@ -16,7 +16,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewMessage, NewThread, NewWorkspace,
+    ExternalRef, MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewMessage, NewThread,
+    NewWorkspace,
 };
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -32,12 +33,22 @@ impl GithubSender for MockSender {
         repo: &str,
         issue_number: i64,
         text: &str,
+    ) -> Result<Option<ExternalRef>, GithubError> {
+        let mut sent = self.sent.lock().unwrap();
+        sent.push((repo.into(), issue_number, text.into()));
+        Ok(Some(ExternalRef::Github {
+            repo: repo.into(),
+            comment_id: sent.len() as i64,
+        }))
+    }
+
+    async fn update_comment(
+        &self,
+        _repo: &str,
+        _comment_id: i64,
+        _text: &str,
     ) -> Result<(), GithubError> {
-        self.sent
-            .lock()
-            .unwrap()
-            .push((repo.into(), issue_number, text.into()));
-        Ok(())
+        unreachable!("the projector egress never updates; that is Cluster 379.4")
     }
 }
 

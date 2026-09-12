@@ -18,8 +18,9 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressTarget, Event, EventFilter, EventKind, MemberKind, NewChannel, NewEgressOutbox,
-    NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    EgressTarget, Event, EventFilter, EventKind, ExternalRef, MemberKind, NewChannel,
+    NewEgressOutbox, NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace, ThreadId,
+    WorkspaceId,
 };
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
@@ -32,18 +33,34 @@ struct CountingSlack {
 
 #[async_trait::async_trait]
 impl SlackSender for CountingSlack {
-    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
+    async fn post_message(
+        &self,
+        channel: &str,
+        text: &str,
+        thread_ts: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(thread_ts, None, "the projector egress posts top-level");
         match &self.fail_with {
             Some(SlackError::Http(m)) => return Err(SlackError::Http(m.clone())),
             Some(SlackError::Api(m)) => return Err(SlackError::Api(m.clone())),
             None => {}
         }
-        self.sent
-            .lock()
-            .unwrap()
-            .push((channel.into(), text.into()));
-        Ok(())
+        let mut sent = self.sent.lock().unwrap();
+        sent.push((channel.into(), text.into()));
+        Ok(Some(ExternalRef::Slack {
+            channel_id: channel.into(),
+            ts: format!("17000000{:02}.000100", sent.len()),
+        }))
+    }
+
+    async fn update_message(
+        &self,
+        _channel: &str,
+        _ts: &str,
+        _text: &str,
+    ) -> Result<(), SlackError> {
+        unreachable!("the projector egress never updates; that is Cluster 379.4")
     }
 }
 

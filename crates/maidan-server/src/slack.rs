@@ -19,8 +19,8 @@ use axum::{
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressTarget, MemberId, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink, ThreadId,
-    WorkspaceId,
+    EgressTarget, ExternalRef, MemberId, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink,
+    ThreadId, WorkspaceId,
 };
 use sha2::Sha256;
 
@@ -228,10 +228,27 @@ impl SlackError {
     }
 }
 
-/// Outbound Slack sender — `chat.postMessage` in production, a mock in tests.
+/// Outbound Slack sender — `chat.postMessage` / `chat.update` in production, a
+/// mock in tests.
 #[async_trait::async_trait]
 pub trait SlackSender: Send + Sync {
-    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError>;
+    /// Post a message, returning a handle on it so a later delivery can edit it
+    /// in place (Cluster 378.2). `thread_ts` replies inside an existing Slack
+    /// thread instead of posting top-level.
+    ///
+    /// **`Ok(None)` means "posted, but we cannot address it."** Slack answered
+    /// `ok: true` without a usable `ts`. That is not a failure — the message
+    /// exists — and reporting it as one would make the worker retry and post a
+    /// second copy. The caller simply has no ref to store.
+    async fn post_message(
+        &self,
+        channel: &str,
+        text: &str,
+        thread_ts: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError>;
+
+    /// Edit a message posted earlier, addressed by channel + `ts`.
+    async fn update_message(&self, channel: &str, ts: &str, text: &str) -> Result<(), SlackError>;
 }
 
 /// The production [`SlackSender`]: posts via the Slack Web API `chat.postMessage`.
@@ -257,26 +274,29 @@ impl SlackWebClient {
             http: reqwest::Client::new(),
         }
     }
-}
 
-#[async_trait::async_trait]
-impl SlackSender for SlackWebClient {
-    async fn post_message(&self, channel: &str, text: &str) -> Result<(), SlackError> {
+    /// Call a Slack Web API method and decode its envelope. Slack answers logical
+    /// errors with HTTP 200 and `{"ok": false, "error": ...}`, so the status is not
+    /// the signal — the body is.
+    async fn call(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, SlackError> {
         let resp = self
             .http
-            .post(format!("{}/api/chat.postMessage", self.base_url))
+            .post(format!("{}/api/{method}", self.base_url))
             .bearer_auth(&self.bot_token)
-            .json(&serde_json::json!({ "channel": channel, "text": text }))
+            .json(&payload)
             .send()
             .await
             .map_err(|e| SlackError::Http(e.to_string()))?;
-        // Slack returns HTTP 200 with `{"ok": false, "error": ...}` on logical errors.
         let v: serde_json::Value = resp
             .json()
             .await
             .map_err(|e| SlackError::Http(e.to_string()))?;
         if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
-            Ok(())
+            Ok(v)
         } else {
             Err(SlackError::Api(
                 v.get("error")
@@ -285,6 +305,42 @@ impl SlackSender for SlackWebClient {
                     .to_string(),
             ))
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl SlackSender for SlackWebClient {
+    async fn post_message(
+        &self,
+        channel: &str,
+        text: &str,
+        thread_ts: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
+        let mut payload = serde_json::json!({ "channel": channel, "text": text });
+        // Omitted rather than sent as null: Slack treats an explicit null
+        // `thread_ts` as an error, not as "top-level".
+        if let Some(parent) = thread_ts {
+            payload["thread_ts"] = serde_json::Value::String(parent.to_string());
+        }
+        let v = self.call("chat.postMessage", payload).await?;
+        // The message is posted either way — a missing `ts` costs us the ability
+        // to edit it later, and must not be reported as a failed delivery.
+        Ok(v.get("ts")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.is_empty())
+            .map(|ts| ExternalRef::Slack {
+                channel_id: channel.to_string(),
+                ts: ts.to_string(),
+            }))
+    }
+
+    async fn update_message(&self, channel: &str, ts: &str, text: &str) -> Result<(), SlackError> {
+        self.call(
+            "chat.update",
+            serde_json::json!({ "channel": channel, "ts": ts, "text": text }),
+        )
+        .await
+        .map(|_| ())
     }
 }
 
