@@ -17,10 +17,18 @@ See [`lease_demo/`](lease_demo/). No LLM — it's the coordination primitive the
 Point any MCP client at `POST /mcp/streamable` with a bearer token; Maidan negotiates MCP
 `2026-07-28` (stateless — no session id). Drop-in configs:
 [`cursor-mcp.json`](cursor-mcp.json), [`claude-desktop-mcp.json`](claude-desktop-mcp.json)
-(replace `REPLACE_WITH_MAIDAN_TOKEN` with a token from `maidan init`). The catalog is ~85
-tools; the framework examples below filter to the **six-tool hero loop**
-(`claim_next_thread`, `post_message`, `get_thread_context`, `set_thread_result`,
-`wait_for_result`, `wait_for_ready`) an agent needs to pick up, do, and hand back work.
+(replace `REPLACE_WITH_MAIDAN_TOKEN` with a token from `maidan init`). The catalog is large —
+see [contracts/mcp-tool-names.json](../contracts/mcp-tool-names.json) for the current list — so
+the framework examples below filter to a **six-tool hero loop** (`claim_next_thread`,
+`post_message`, `get_thread_context`, `set_thread_result`, `wait_for_result`, `wait_for_ready`)
+that is enough to pick up, do, and hand back work.
+
+A serious long-running worker wants three more: `acknowledge_claim` (start the working clock, so
+the room can tell working from claimed-and-idle), `report_usage` (accumulate against the thread's
+budget, which can stop a runaway run), and `release_claim` (give the task back on a clean exit —
+nothing reclaims a dead holder eagerly). The full lifecycle, including the optional
+`request_approval` human gate, is written up as the waiter loop in
+[docs/Integration.md](../docs/Integration.md).
 
 ## Framework + REST examples
 
