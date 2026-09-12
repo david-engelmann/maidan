@@ -25,6 +25,7 @@ pub mod delivery_ops;
 pub mod digest;
 pub mod dm;
 pub mod dto;
+pub mod egress_body;
 pub mod egress_worker;
 pub mod error;
 pub mod event_stream;
