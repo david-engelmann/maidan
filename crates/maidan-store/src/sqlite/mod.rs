@@ -53,6 +53,7 @@ mod reactions;
 mod recipes;
 mod refs;
 mod reindex_jobs;
+mod result_deliveries;
 mod retention;
 mod reviews;
 mod scim_users;
@@ -707,6 +708,52 @@ impl EgressStore for SqliteStore {
         selector: &str,
     ) -> Result<bool, StoreError> {
         egress_targets::is_allowed(&self.pool, workspace_id, surface, selector).await
+    }
+    async fn arm_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        target: &EgressTarget,
+        revision: DateTime<Utc>,
+    ) -> Result<Option<ResultDelivery>, StoreError> {
+        result_deliveries::arm(&self.pool, thread_id, target, revision).await
+    }
+    async fn mark_result_delivered(
+        &self,
+        id: ResultDeliveryId,
+        external_ref: Option<&str>,
+        revision: DateTime<Utc>,
+    ) -> Result<(), StoreError> {
+        result_deliveries::mark_delivered(&self.pool, id, external_ref, revision).await
+    }
+    async fn mark_result_delivery_failed(
+        &self,
+        id: ResultDeliveryId,
+        error: &str,
+    ) -> Result<(), StoreError> {
+        result_deliveries::mark_failed(&self.pool, id, error).await
+    }
+    async fn mark_result_delivery_skipped(
+        &self,
+        id: ResultDeliveryId,
+        reason: &str,
+    ) -> Result<(), StoreError> {
+        result_deliveries::mark_skipped(&self.pool, id, reason).await
+    }
+    // Delivery state is read on the write path (arm -> deliver -> record), and the
+    // Cluster-265 carve-out keeps that on the primary: a lagging replica could
+    // report a delivery as un-attempted and hand a caller a stale `external_ref`.
+    async fn get_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        target: &EgressTarget,
+    ) -> Result<Option<ResultDelivery>, StoreError> {
+        result_deliveries::get(&self.pool, thread_id, target).await
+    }
+    async fn list_result_deliveries(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ResultDelivery>, StoreError> {
+        result_deliveries::list_for_thread(&self.pool, thread_id).await
     }
 }
 

@@ -584,6 +584,56 @@ pub trait EgressStore: Send + Sync {
         surface: EgressSurface,
         selector: &str,
     ) -> Result<bool, StoreError>;
+
+    /// Result-delivery state (Cluster 379.1) — one row per `(thread, target)`.
+    /// Distinct from the egress outbox, which is transport: this is *intent and
+    /// identity*, and it is what makes an always-on every-replica router safe.
+    ///
+    /// `arm_result_delivery` is the contended write: it returns the row only when
+    /// *this* caller won the right to deliver `revision`. `None` means another
+    /// replica already armed this exact revision, or the row has seen one at
+    /// least as new — which is the dedup (the Cluster-238 lesson). A won row
+    /// keeps its `external_ref`, so a re-review edits the object the first
+    /// delivery created instead of leaving a second comment.
+    ///
+    /// `mark_result_delivered` records the handle to edit next time and the
+    /// revision that actually landed; `mark_result_delivery_failed` leaves both
+    /// alone, because whatever was delivered before is still out there and still
+    /// editable. `mark_result_delivery_skipped` records a target we deliberately
+    /// did not deliver to — an unknown surface, or one the workspace has not
+    /// blessed — which is a **normal outcome**, not an error, and is recorded so
+    /// the producer can read it rather than being dropped.
+    async fn arm_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        target: &EgressTarget,
+        revision: DateTime<Utc>,
+    ) -> Result<Option<ResultDelivery>, StoreError>;
+    async fn mark_result_delivered(
+        &self,
+        id: ResultDeliveryId,
+        external_ref: Option<&str>,
+        revision: DateTime<Utc>,
+    ) -> Result<(), StoreError>;
+    async fn mark_result_delivery_failed(
+        &self,
+        id: ResultDeliveryId,
+        error: &str,
+    ) -> Result<(), StoreError>;
+    async fn mark_result_delivery_skipped(
+        &self,
+        id: ResultDeliveryId,
+        reason: &str,
+    ) -> Result<(), StoreError>;
+    async fn get_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        target: &EgressTarget,
+    ) -> Result<Option<ResultDelivery>, StoreError>;
+    async fn list_result_deliveries(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ResultDelivery>, StoreError>;
 }
 
 #[async_trait]
