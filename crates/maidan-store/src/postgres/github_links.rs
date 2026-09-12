@@ -10,7 +10,8 @@ use maidan_types::{
 
 const COLS: &str = "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at";
 
-/// Create or replace the link for a GitHub issue/PR (one per repo+number).
+/// Create or replace the link for a GitHub issue/PR (one per repo+number, and —
+/// since Cluster 376.5 — one per thread).
 pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueLink, StoreError> {
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_github_issue_links
@@ -28,8 +29,23 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
     .fetch_one(pool)
-    .await?;
+    .await
+    .map_err(map_link_err)?;
     Ok(row_to_link(&row))
+}
+
+/// The only uniqueness this insert can violate is the one-link-per-thread index
+/// (Cluster 376.5) — `(repo, issue_number)` is absorbed by the `ON CONFLICT`
+/// upsert. Report it as a `Conflict` (SpawnRejected), not an opaque 500.
+fn map_link_err(err: sqlx::Error) -> StoreError {
+    if let sqlx::Error::Database(ref db) = err {
+        if db.is_unique_violation() {
+            return StoreError::Conflict(
+                "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
+            );
+        }
+    }
+    StoreError::Database(err)
 }
 
 pub async fn get(

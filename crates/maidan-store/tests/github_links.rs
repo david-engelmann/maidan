@@ -1,5 +1,7 @@
 //! GitHub projector issue/PR links (Cluster 311): link (upsert) / get / by-thread /
 //! list / unlink a (repo, issue) → Maidan channel/thread/member mapping. Both backends.
+//! Also the Cluster-376.5 cap: at most one GitHub link per claim, so one thread
+//! cannot fan out to N GitHub issues.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -145,6 +147,79 @@ async fn run_suite(store: &dyn Store) {
             .len(),
         1
     );
+
+    // --- at most one GitHub link per claim (Cluster 376.5) ---
+    // thread2 holds o/r#43; thread's link was just unlinked.
+    let link_to = |repo: &str, issue: i64, target: maidan_types::ThreadId| {
+        let new = NewGithubIssueLink {
+            repo: repo.into(),
+            issue_number: issue,
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: target,
+            member_id: bot.id,
+        };
+        async move { store.link_github_issue(new).await }
+    };
+
+    // A second, distinct issue on a thread that already has one is refused.
+    let denied = link_to("o/r", 44, thread2.id).await;
+    assert!(
+        matches!(denied, Err(StoreError::Conflict(ref m)) if m.contains("GitHub link")),
+        "a 2nd GitHub link on one claim must be refused, got {denied:?}"
+    );
+
+    // Re-linking the *same* issue to the same thread stays idempotent (the
+    // (repo, issue_number) upsert must not trip the per-thread cap).
+    link_to("o/r", 43, thread2.id)
+        .await
+        .expect("re-linking the same issue is idempotent");
+    assert_eq!(
+        store
+            .list_github_issue_links(ws.id)
+            .await
+            .expect("list4")
+            .len(),
+        1
+    );
+
+    // An unlinked thread can take a link, and moving that link onto a thread
+    // that already holds one is refused too (the upsert path, not just INSERT).
+    link_to("o/r", 45, thread.id)
+        .await
+        .expect("a free thread takes a link");
+    let moved_onto_taken = link_to("o/r", 45, thread2.id).await;
+    assert!(
+        matches!(moved_onto_taken, Err(StoreError::Conflict(ref m)) if m.contains("GitHub link")),
+        "moving a link onto an already-linked claim must be refused, got {moved_onto_taken:?}"
+    );
+
+    // Moving it to a free thread works, and the old thread loses its link.
+    let thread3 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("issue-45".into()),
+        })
+        .await
+        .expect("thread3");
+    link_to("o/r", 45, thread3.id)
+        .await
+        .expect("moving a link to a free thread");
+    assert_eq!(
+        store
+            .get_github_issue_link("o/r", 45)
+            .await
+            .expect("get 45")
+            .expect("some")
+            .thread_id,
+        thread3.id
+    );
+    assert!(store
+        .get_github_issue_link_by_thread(thread.id)
+        .await
+        .expect("by thread after move")
+        .is_none());
 }
 
 #[tokio::test]

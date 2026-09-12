@@ -32,8 +32,22 @@ pub async fn link(
     .bind(new.member_id.0)
     .bind(&now)
     .fetch_one(pool)
-    .await?;
+    .await
+    .map_err(map_link_err)?;
     Ok(row_to_link(&row))
+}
+
+/// See the Postgres twin: the only uniqueness this upsert can violate is the
+/// one-link-per-thread index (Cluster 376.5).
+fn map_link_err(err: sqlx::Error) -> StoreError {
+    if let sqlx::Error::Database(ref db) = err {
+        if db.is_unique_violation() {
+            return StoreError::Conflict(
+                "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
+            );
+        }
+    }
+    StoreError::Database(err)
 }
 
 pub async fn get(
