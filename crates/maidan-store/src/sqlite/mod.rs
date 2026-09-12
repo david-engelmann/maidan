@@ -15,6 +15,7 @@ mod channels;
 pub mod delivery_cursor;
 mod dlq;
 mod dm;
+mod egress_outbox;
 mod email_digest;
 mod erase_workspace;
 pub mod events;
@@ -641,6 +642,37 @@ impl MailStore for SqliteStore {
     }
     async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError> {
         mail_outbox::requeue_dead(&self.pool, id).await
+    }
+}
+
+#[async_trait]
+impl EgressStore for SqliteStore {
+    async fn enqueue_egress(
+        &self,
+        new: NewEgressOutbox,
+    ) -> Result<Option<EgressOutboxId>, StoreError> {
+        egress_outbox::enqueue(&self.pool, new).await
+    }
+    async fn claim_next_due_egress(
+        &self,
+        now: DateTime<Utc>,
+        lease_secs: i64,
+    ) -> Result<Option<EgressOutbox>, StoreError> {
+        egress_outbox::claim_next_due(&self.pool, now, lease_secs).await
+    }
+    async fn mark_egress_delivered(&self, id: EgressOutboxId) -> Result<(), StoreError> {
+        egress_outbox::mark_delivered(&self.pool, id).await
+    }
+    async fn mark_egress_failed(
+        &self,
+        id: EgressOutboxId,
+        error: &str,
+        retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError> {
+        egress_outbox::mark_failed(&self.pool, id, error, retry_at).await
+    }
+    async fn count_dead_egress(&self) -> Result<i64, StoreError> {
+        egress_outbox::count_dead(&self.pool).await
     }
 }
 

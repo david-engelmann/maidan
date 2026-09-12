@@ -513,6 +513,40 @@ pub trait MailStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait EgressStore: Send + Sync {
+    /// Durable projector egress (Cluster 377): a message bound for an external
+    /// surface is enqueued and delivered by a retry/backoff worker, instead of the
+    /// projectors' best-effort inline post where a transient failure dropped it.
+    ///
+    /// `enqueue_egress` queues one and returns `None` when `(source_log_id,
+    /// target)` is already queued — the router that enqueues runs on every replica,
+    /// so the dedup is what makes N replicas send once (the Cluster-238 lesson).
+    /// `claim_next_due_egress` atomically leases the oldest due `pending` row
+    /// (bumps `attempts`, pushes `next_attempt_at` forward by `lease_secs` so a
+    /// crashed worker's row is retried); `mark_egress_delivered` finishes it;
+    /// `mark_egress_failed` reschedules (`retry_at = Some`) or dead-letters
+    /// (`None`); `count_dead_egress` is the DLQ depth. No worker/wiring yet — a
+    /// zero-blast-radius foundation.
+    async fn enqueue_egress(
+        &self,
+        new: NewEgressOutbox,
+    ) -> Result<Option<EgressOutboxId>, StoreError>;
+    async fn claim_next_due_egress(
+        &self,
+        now: DateTime<Utc>,
+        lease_secs: i64,
+    ) -> Result<Option<EgressOutbox>, StoreError>;
+    async fn mark_egress_delivered(&self, id: EgressOutboxId) -> Result<(), StoreError>;
+    async fn mark_egress_failed(
+        &self,
+        id: EgressOutboxId,
+        error: &str,
+        retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError>;
+    async fn count_dead_egress(&self) -> Result<i64, StoreError>;
+}
+
+#[async_trait]
 pub trait ProjectorLinkStore: Send + Sync {
     /// Slack projector channel links (Cluster 308): map a Slack channel to the
     /// Maidan channel/thread it projects into, and the member inbound messages post
@@ -1920,6 +1954,7 @@ pub trait Store:
     + NotificationStore
     + FollowStore
     + MailStore
+    + EgressStore
     + ProjectorLinkStore
     + PresenceDigestStore
     + SessionStore
@@ -1970,6 +2005,7 @@ impl<
             + NotificationStore
             + FollowStore
             + MailStore
+            + EgressStore
             + ProjectorLinkStore
             + PresenceDigestStore
             + SessionStore
