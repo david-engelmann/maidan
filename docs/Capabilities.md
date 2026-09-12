@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v375.0.0 — Wave 2 #22: required reviewers (G5 + G-dev-5)
+
+Four impl PRs (375.1–375.4) + a retro (+ a CI chore, #760). A thread's `closed` transition is gated on `k` distinct **qualifying** approvals (reviewer ≠ owner/assignee — separation of duties — and, when a named set exists, in it) AND no unresolved `refutes` edge. **A gate, not a poll/closer.** Maintainer's design call: a dedicated review store.
+
+| Change | Where |
+|--------|-------|
+| **Store (375.1):** `maidan_thread_review_reqs` (k) + `maidan_thread_reviewers` (named n) + `maidan_thread_reviews` (decisions) (pg 0079 / sqlite 0078) + `ReviewDecision`/`ThreadReview`/`ThreadReviewRequirement`/`ReviewStatus` + `ReviewStore` (`review_status` = distinct qualifying-approval count), both backends. | `crates/maidan-types/src/review.rs`, `crates/maidan-store/src/{postgres,sqlite}/reviews.rs` |
+| **Close-gate (375.2):** `review_gate_in_tx` in the FSM `transition_in_tx` (both backends), on `to_state == Closed`: refuses close unless approvals met + no `refutes` edge targets the thread → `Conflict`. Additive. | `crates/maidan-store/src/{postgres,sqlite}/thread_transitions.rs` |
+| **REST (375.3):** `review-requirement` PUT/GET/DELETE, `reviewers` POST/GET + DELETE `:member_id`, `reviews` POST/GET, `review-status` GET (`thread:transition` writes, `workspace:read` reads). | `crates/maidan-server/src/routes/review.rs` |
+| **MCP (375.4):** `set_review_requirement`/`add_reviewer`/`submit_review` + `get_review_status`/`list_reviews`. | `crates/maidan-mcp/src/tools/review.rs` |
+
 ## v374.0.0 — P1.1c: the MCP assignment dual-write (the P0)
 
 One impl PR (374.1) + a retro. Closes the last MCP write-path-parity gap the transactional-outbox migration (205–214) was meant to cover, surfaced by a 2026-09-10 audit. The MCP assignment tools now match REST's crash-consistency — and a reclaim finally emits `ClaimExpired` on the agent-primary surface. No new Wave number (folds under the outbox program).
