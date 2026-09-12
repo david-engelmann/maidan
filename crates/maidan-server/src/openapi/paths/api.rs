@@ -1030,6 +1030,66 @@ pub fn attach_memory_block() {}
     responses((status = 204)))]
 pub fn detach_memory_block() {}
 
+// --- required reviewers (Cluster 375) ---
+
+#[utoipa::path(put, path = "/threads/{id}/review-requirement", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetReviewRequirement,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadReviewRequirement)))]
+pub fn set_review_requirement() {}
+
+#[utoipa::path(get, path = "/threads/{id}/review-requirement", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadReviewRequirement)))]
+pub fn get_review_requirement() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/review-requirement", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn clear_review_requirement() {}
+
+#[utoipa::path(post, path = "/threads/{id}/reviewers", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = AddReviewer,
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn add_reviewer() {}
+
+#[utoipa::path(get, path = "/threads/{id}/reviewers", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemberId>)))]
+pub fn list_reviewers() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/reviewers/{member_id}", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id"),
+        ("member_id" = Uuid, Path, description = "Reviewer member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn remove_reviewer() {}
+
+#[utoipa::path(post, path = "/threads/{id}/reviews", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SubmitReview,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadReview)))]
+pub fn submit_review() {}
+
+#[utoipa::path(get, path = "/threads/{id}/reviews", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadReview>)))]
+pub fn list_reviews() {}
+
+#[utoipa::path(get, path = "/threads/{id}/review-status", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ReviewStatus)))]
+pub fn get_review_status() {}
+
 // --- skills (capability registry) ---
 
 #[utoipa::path(post, path = "/members/{id}/skills", tag = "skills",
