@@ -7,6 +7,45 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [378.0.0] — 2026-09-12
+
+Post-gate hardening (Phase XXIV). **The egress trust boundary + the sender
+upgrade** — the second cluster of the result-delivery arc. Three impl PRs
+(378.1–378.3) + a retro. No new gate tag.
+
+Cluster 377 made projector egress durable. This makes it safe to *aim* and safe
+to *repeat*, closing three of the five gaps the result-delivery investigation
+found: the confused deputy, the missing external reference, and Slack rendering
+mrkdwn rather than GFM.
+
+**Nothing delivers a result yet** — an allowlist nothing consults, senders
+nothing updates with, and body rules nothing calls. The primitive that composes
+them is Cluster 379.
+
+- **378.1** the egress allowlist — `maidan_egress_targets` (pg 0084 / sqlite
+  0083) + store (idempotent bless / list / workspace-scoped revoke / the
+  authorization check), both backends, over `POST`/`GET
+  /workspaces/:wid/egress-targets` + `DELETE …/:tid`, all `token:admin` and
+  audited. A result's `deliver_to` is written by an *agent* while Maidan's
+  connector credentials are operator-held, so **`deliver_to` selects and the
+  allowlist authorizes**; it defaults empty, so an unconfigured workspace
+  delivers nowhere. A selector must be an **id** — a Slack `C…`/`G…` or a GitHub
+  `owner/name`, never a mutable `#name` — and on GitHub the blessing is the
+  repository, so one blessing covers every PR in it.
+- **378.2** the sender upgrade — `ExternalRef` returned from both `post_*` plus
+  `update_message` (`chat.update`) / `update_comment` (`PATCH
+  /repos/{repo}/issues/comments/{id}`), and `thread_ts` on `post_message` so a
+  re-delivery replies in-thread. Without a returned reference, idempotent
+  update-in-place was unimplementable. A post that succeeded is never reported
+  as a failure: `Ok(None)` means posted-but-not-addressable, because an `Err`
+  would make the at-least-once worker retry and leave two comments.
+- **378.3** `egress_body` — pure mention neutralization (a GitHub mention
+  wrapped in a code span; Slack's `<!…>`/`<@…>` escaped to `&lt;`), truncation
+  to GitHub's 65536-character ceiling that says so and keeps the backlink, and a
+  deliberately narrow GFM→Slack-mrkdwn projection. A shared code segmenter keeps
+  all three rules out of fenced diffs — `rendered` quotes attacker-influenced
+  code, so this is a security boundary and not a formatting nicety.
+
 ## [377.0.0] — 2026-09-12
 
 Post-gate hardening (Phase XXIV). **Durable projector egress** — Open Work row
