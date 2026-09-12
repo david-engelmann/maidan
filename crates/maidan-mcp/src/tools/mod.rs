@@ -29,6 +29,7 @@ mod message;
 mod projector;
 mod recipe;
 mod reference;
+mod review;
 mod schedule;
 mod search;
 mod secret;
@@ -137,6 +138,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_memory_blocks"
         | "list_thread_memory_blocks"
         | "wait_for_memory_block"
+        | "get_review_status"
+        | "list_reviews"
         | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -199,6 +202,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_wait"
         | "cancel_wait"
         | "set_priority"
+        | "set_review_requirement"
+        | "add_reviewer"
+        | "submit_review"
         | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
@@ -291,6 +297,11 @@ async fn enforce_channel_access(
         | "attach_memory_block"
         | "detach_memory_block"
         | "list_thread_memory_blocks"
+        | "set_review_requirement"
+        | "add_reviewer"
+        | "submit_review"
+        | "get_review_status"
+        | "list_reviews"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -443,6 +454,11 @@ pub async fn dispatch(
             memory_block::list_thread_memory_blocks(store, auth, args).await
         }
         "wait_for_memory_block" => memory_block::wait_for_memory_block(server, auth, args).await,
+        "set_review_requirement" => review::set_review_requirement(store, auth, args).await,
+        "add_reviewer" => review::add_reviewer(store, auth, args).await,
+        "submit_review" => review::submit_review(store, auth, args).await,
+        "get_review_status" => review::get_review_status(store, args).await,
+        "list_reviews" => review::list_reviews(store, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
