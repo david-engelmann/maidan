@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [375.0.0] — 2026-09-12
+
+Post-gate hardening (Phase XXIV). **Wave 2 #22 — required reviewers** (G5 +
+G-dev-5). Four impl PRs (375.1–375.4) + a retro. No new gate tag.
+
+A thread declares a review requirement (`k` approvals) from a named reviewer set
+(`n`); a reviewer submits an approve / request-changes decision; the FSM refuses
+`closed` until `k` distinct **qualifying** approvals exist (decision=approve,
+reviewer is neither owner nor assignee — the Cluster-355 separation of duties —
+and, when a named set exists, in it) AND no unresolved `refutes` edge blocks it.
+A gate, not a poll/closer. The maintainer chose a **dedicated review store**.
+
+- **375.1** store foundation — `maidan_thread_review_reqs` / `maidan_thread_reviewers`
+  / `maidan_thread_reviews` (pg 0079 / sqlite 0078) + `ReviewStore` + `review_status`
+  (distinct qualifying-approval count), both backends.
+- **375.2** the FSM close-gate — `review_gate_in_tx` in `transition_in_tx` (both
+  backends), gated on `to_state == Closed`; refuses close unless approvals met and
+  no `refutes` reference targets the thread → `Conflict`.
+- **375.3** REST — `review-requirement` / `reviewers` / `reviews` / `review-status`
+  (`thread:transition` writes, `workspace:read` reads).
+- **375.4** MCP — `set_review_requirement`/`add_reviewer`/`submit_review` +
+  `get_review_status`/`list_reviews`.
+
+Also **chore(ci): pull minio from quay.io** (#760) — Docker Hub began denying
+`minio/minio` + `minio/mc` pulls mid-session; repointed the compose + k8s
+references to `quay.io/minio/*` to unblock the smoke jobs.
+
 ## [374.0.0] — 2026-09-11
 
 Post-gate hardening (Phase XXIV). **P1.1c — the MCP assignment dual-write (the
