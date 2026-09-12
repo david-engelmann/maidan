@@ -391,14 +391,25 @@ finished, shutting down, redeploying, giving up.
 
 **This matters more than it looks, because expiry is lazy.** Nothing reaps a dead
 holder. A lapsed lease is noticed only when the next `claim_next_thread` on that
-channel goes looking for work and takes the thread over, and the `ClaimExpired`
-event — the "an agent died" signal that `wait_for_claim_expired` blocks on — is
-emitted *by that reclaim*, not by the expiry itself. So on a channel with no other
-claimer, an abandoned task sits assigned and quiet indefinitely: nothing fires,
-and a supervisor watching `ClaimExpired` learns nothing. Releasing is how a
-departing agent gives its work back promptly. To catch the case where a task was
-abandoned and never reclaimed, poll `get_channel_occupancy`: a thread that sits in
-`claimed` or `working` while nothing happens is the symptom.
+channel goes looking for work and takes the thread over — and the `ClaimExpired`
+event, the "an agent died" signal that `wait_for_claim_expired` blocks on, is
+emitted *by that reclaim*, not by the expiry itself.
+
+So an agent that vanishes without releasing leaves one of two messes, neither of
+which announces itself:
+
+- **It held a lease.** Once the lease lapses the task counts as `queued` again and
+  the next claimer picks it up, so the work is not lost — but until somebody
+  claims, nothing fires. On a channel with no other claimer, a supervisor watching
+  `ClaimExpired` learns nothing at all, however long it waits.
+- **It held no lease** (no `lease_secs`). The task stays `claimed` or `working` in
+  `get_channel_occupancy` forever and no `claim_next_thread` will ever return it,
+  because it is neither unassigned nor lapsed. Freeing it takes an operator: an
+  explicit `unassign_thread`, or `assign_thread` handing it to somebody else.
+
+Releasing is how a departing agent avoids both. To spot the second case after the
+fact, watch `get_channel_occupancy` for a thread that sits in `claimed` or
+`working` while nothing else about it changes.
 
 ### Asking a human mid-loop
 
