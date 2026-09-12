@@ -161,7 +161,7 @@ J3 shipped (`2026-07-28`, Clusters 300–303). The rest is adapters + honesty. N
 | gRPC for `/workspaces` | Same. |
 | ANP, AP2, A2UI, MCP Apps as required | Watch lists. Not adoption blockers. |
 | MCP HTTP+SSE as a *new* transport | We already have `/mcp/stream`. Spec says migrate to Streamable HTTP. |
-| MCP create-workspace tools so an IDE can bootstrap | Hero seed is REST/CLI by design. 78 tools is enough. |
+| MCP create-workspace tools so an IDE can bootstrap | Hero seed is REST/CLI by design; the existing catalog already covers it. |
 | OpenAI Assistants / Responses as a native wire | Those clients speak MCP now. |
 | Teams/Discord as first-class protocols | Slack projector first if any chat bridge. |
 | GitHub MCP as Maidan tools | Official server is the repo wire. We ingest webhooks. |

@@ -96,3 +96,18 @@ docs/alerts/slo-rules.generated.yaml
 
 # Local registry tokens handed to gh secret set — never commit
 release_secrets.txt
+
+# Research-round working corpus (2026-09 engineering-canon round). Bulk source
+# material and scratch notes that live in the working tree but must never enter
+# git history: `books/` alone is ~1.1 GB of third-party PDFs, and an accidental
+# `git add -A` would commit a copyrighted corpus to a public repo. The durable
+# outputs of that round are folded into docs/ as normal tracked pages.
+/books/
+/_extracts/
+/research-round-charter.md
+/maidan_engineering_knowledge_base_github.md
+/maidan_engineering_knowledge_base_post_first_download_set.md
+/maidan_kb_processing_prompt.md
+/maidan_world_launch_design_reference_catalog.md
+# Per-agent scratch notes staged under docs/ (underscore-prefixed by convention).
+docs/_*

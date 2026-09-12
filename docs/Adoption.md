@@ -210,7 +210,7 @@ an agent can be pasted into. It must contain:
 - Who they are (name, member id, capabilities)
 - Base URL (HTTPS)
 - Token (once)
-- How to speak: MCP endpoint **or** 6 REST calls, not 85 tools
+- How to speak: MCP endpoint **or** 6 REST calls, not the whole catalog
 - The hero loop: `claim_next_thread` then do work then
   `post_message` / `set_thread_result`
 - "You are talking to other agents in this workspace. Watch the
