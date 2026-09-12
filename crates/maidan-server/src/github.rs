@@ -19,7 +19,10 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
-use maidan_types::{GithubIssueLink, MemberId, NewGithubIssueLink, ThreadId, WorkspaceId};
+use maidan_types::{
+    EgressTarget, GithubIssueLink, MemberId, NewEgressOutbox, NewGithubIssueLink, ThreadId,
+    WorkspaceId,
+};
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
 use crate::error::ApiJson;
@@ -295,19 +298,28 @@ impl GithubSender for GithubApiClient {
     }
 }
 
-/// GitHub projector egress (Cluster 312): relay a Maidan message posted in a linked
-/// thread out as a GitHub issue/PR comment. No-op unless a [`GithubSender`] is
-/// configured; **skips messages that originated in GitHub** (the `metadata.github`
-/// tag from 311's ingress) so a projected inbound comment is never echoed back —
-/// loop prevention. Best-effort (a failed post is logged + metered, not retried).
+/// GitHub projector egress (Cluster 312, made durable in 377.2): relay a Maidan
+/// message posted in a linked thread out as a GitHub issue/PR comment — by
+/// *enqueueing* it on the egress outbox, which [`egress_worker`](crate::egress_worker)
+/// drains with retry/backoff. Until 377.2 this posted inline and a transient
+/// failure dropped the comment.
+///
+/// No-op unless a [`GithubSender`] is configured (the worker only runs then, so
+/// queueing without one would pile up rows nothing drains); **skips messages that
+/// originated in GitHub** (the `metadata.github` tag from 311's ingress) so a
+/// projected inbound comment is never echoed back — loop prevention.
+///
+/// `log_id` is the `maidan_events` row being routed — the dedup key together with
+/// the target, so every replica enqueueing yields one comment.
 pub async fn route_message_to_github(
     state: &AppState,
+    log_id: i64,
     thread_id: maidan_types::ThreadId,
     message: &maidan_types::Message,
 ) {
-    let Some(sender) = state.github_sender.as_ref() else {
+    if state.github_sender.is_none() {
         return;
-    };
+    }
     if message.metadata.get("github").is_some() {
         return; // originated in GitHub — don't echo it back
     }
@@ -319,15 +331,21 @@ pub async fn route_message_to_github(
             return;
         }
     };
-    match sender
-        .post_comment(&link.repo, link.issue_number, &message.body)
-        .await
-    {
-        Ok(()) => crate::metrics::record_github_egress("sent"),
-        Err(err) => {
-            tracing::warn!(error = %err, "github egress: comment post failed");
-            crate::metrics::record_github_egress("failed");
-        }
+    let queued = state
+        .store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id: link.workspace_id,
+            thread_id,
+            source_log_id: log_id,
+            target: EgressTarget::Github {
+                repo: link.repo,
+                issue_number: link.issue_number,
+            },
+            body: message.body.clone(),
+        })
+        .await;
+    if let Err(err) = queued {
+        tracing::warn!(error = %err, "github egress: enqueue failed");
     }
 }
 

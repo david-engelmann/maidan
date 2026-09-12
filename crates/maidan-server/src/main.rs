@@ -502,6 +502,19 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("github projector ingress configured");
     }
 
+    // Background projector-egress worker (Cluster 377.2): drains the durable
+    // egress queue with retry/backoff + dead-lettering. Runs whenever a projector
+    // sender is configured — which is exactly when the projectors enqueue, so a
+    // deployment without one neither queues nor drains. Tick via
+    // `MAIDAN_EGRESS_WORKER_TICK_SECS` (default 5s).
+    if state.slack_sender.is_some() || state.github_sender.is_some() {
+        let egress_state = state.clone();
+        let egress_cfg = maidan_server::egress_worker::config_from_env();
+        tokio::spawn(async move {
+            maidan_server::egress_worker::run(egress_state, egress_cfg).await;
+        });
+    }
+
     // Cluster 345: give the MCP server the slash-command dispatcher so an MCP
     // `post_message` runs registered slash commands like a REST post. Attached
     // last (after every other `attach_*`) so the dispatcher's `AppState` clone is

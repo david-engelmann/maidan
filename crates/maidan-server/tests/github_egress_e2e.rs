@@ -1,12 +1,16 @@
 //! Cluster 312: GitHub projector egress. A Maidan message in a linked thread is
 //! relayed as a GitHub issue/PR comment; a GitHub-sourced message (metadata tag)
 //! is not echoed back (loop prevention); an unlinked thread is ignored.
+//!
+//! Since Cluster 377.2 the relay is durable: `route_message_to_github` enqueues
+//! and the egress worker posts, so each case sweeps the queue before asserting.
 
 use std::sync::{Arc, Mutex};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
+    egress_worker::sweep_once,
     github::{route_message_to_github, GithubError, GithubSender},
     AppState,
 };
@@ -134,12 +138,28 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         json!({}),
     )
     .await;
-    route_message_to_github(&state, thread.id, &m).await;
+    route_message_to_github(&state, 1, thread.id, &m).await;
+    assert_eq!(
+        sweep_once(&state).await,
+        maidan_server::egress_worker::EgressSweepStats {
+            sent: 1,
+            ..Default::default()
+        }
+    );
     {
         let sent = sender.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0], ("o/r".to_string(), 42, "shipping it".to_string()));
     }
+
+    // A second replica routing the same event enqueues nothing new — one comment.
+    route_message_to_github(&state, 1, thread.id, &m).await;
+    sweep_once(&state).await;
+    assert_eq!(
+        sender.sent.lock().unwrap().len(),
+        1,
+        "the same event routed twice delivers once"
+    );
 
     // A GitHub-sourced message (metadata tag) is NOT echoed back — no loop.
     let from_gh = post(
@@ -150,7 +170,8 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         json!({ "github": { "user": "octocat", "repo": "o/r", "issue": 42 } }),
     )
     .await;
-    route_message_to_github(&state, thread.id, &from_gh).await;
+    route_message_to_github(&state, 2, thread.id, &from_gh).await;
+    sweep_once(&state).await;
     assert_eq!(
         sender.sent.lock().unwrap().len(),
         1,
@@ -167,7 +188,8 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         .await
         .unwrap();
     let m2 = post(store.as_ref(), other.id, agent.id, "unlinked", json!({})).await;
-    route_message_to_github(&state, other.id, &m2).await;
+    route_message_to_github(&state, 3, other.id, &m2).await;
+    sweep_once(&state).await;
     assert_eq!(
         sender.sent.lock().unwrap().len(),
         1,
