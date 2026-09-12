@@ -705,6 +705,9 @@ impl ProjectorLinkStore for SqliteStore {
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError> {
         slack_links::unlink(&self.pool, slack_channel_id).await
     }
+    async fn disable_slack_channel_link(&self, slack_channel_id: &str) -> Result<bool, StoreError> {
+        slack_links::disable(&self.pool, slack_channel_id).await
+    }
 
     async fn link_github_issue(
         &self,
@@ -733,6 +736,13 @@ impl ProjectorLinkStore for SqliteStore {
     }
     async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
         github_links::unlink(&self.pool, repo, issue_number).await
+    }
+    async fn disable_github_issue_link(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<bool, StoreError> {
+        github_links::disable(&self.pool, repo, issue_number).await
     }
 }
 

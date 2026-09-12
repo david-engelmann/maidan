@@ -127,6 +127,63 @@ async fn run_suite(store: &dyn Store) {
         1
     );
 
+    // Retry-then-disable (Cluster 377.3): a broken link is turned off, and only
+    // the first failure gets to announce it. Re-linking is the re-enable path.
+    assert!(store
+        .get_slack_channel_link("C123")
+        .await
+        .expect("get3")
+        .expect("some3")
+        .disabled_at
+        .is_none());
+    assert!(store
+        .disable_slack_channel_link("C123")
+        .await
+        .expect("disable"));
+    let disabled = store
+        .get_slack_channel_link("C123")
+        .await
+        .expect("get4")
+        .expect("some4");
+    let disabled_at = disabled.disabled_at.expect("disabled");
+    assert!(
+        !store
+            .disable_slack_channel_link("C123")
+            .await
+            .expect("disable again"),
+        "a second failure does not re-announce"
+    );
+    assert_eq!(
+        store
+            .get_slack_channel_link("C123")
+            .await
+            .expect("get5")
+            .expect("some5")
+            .disabled_at,
+        Some(disabled_at),
+        "and does not reset when the link broke"
+    );
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C123".into(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread2.id,
+            member_id: bot.id,
+        })
+        .await
+        .expect("re-link");
+    assert!(
+        store
+            .get_slack_channel_link("C123")
+            .await
+            .expect("get6")
+            .expect("some6")
+            .disabled_at
+            .is_none(),
+        "re-linking re-enables egress"
+    );
+
     // Unlink.
     assert!(store.unlink_slack_channel("C123").await.expect("unlink"));
     assert!(

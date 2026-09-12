@@ -8,7 +8,8 @@ use maidan_types::{
     ChannelId, GithubIssueLink, MemberId, NewGithubIssueLink, ThreadId, WorkspaceId,
 };
 
-const COLS: &str = "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at";
+const COLS: &str =
+    "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at, disabled_at";
 
 /// Create or replace the link for a GitHub issue/PR (one per repo+number, and —
 /// since Cluster 376.5 — one per thread).
@@ -19,7 +20,8 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
          VALUES ($1, $2, $3, $4, $5, $6, now())
          ON CONFLICT (repo, issue_number) DO UPDATE
            SET workspace_id = EXCLUDED.workspace_id, channel_id = EXCLUDED.channel_id,
-               thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id
+               thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id,
+               disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.repo)
@@ -100,6 +102,21 @@ pub async fn unlink(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool
     Ok(res.rows_affected() > 0)
 }
 
+/// Turn egress to this issue/PR off (Cluster 377.3). Idempotent: an
+/// already-disabled link keeps its original timestamp. Returns whether this call
+/// did the disabling.
+pub async fn disable(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_github_issue_links SET disabled_at = now()
+         WHERE repo = $1 AND issue_number = $2 AND disabled_at IS NULL",
+    )
+    .bind(repo)
+    .bind(issue_number)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 fn row_to_link(row: &sqlx::postgres::PgRow) -> GithubIssueLink {
     GithubIssueLink {
         repo: row.get("repo"),
@@ -109,5 +126,6 @@ fn row_to_link(row: &sqlx::postgres::PgRow) -> GithubIssueLink {
         thread_id: ThreadId(row.get("thread_id")),
         member_id: MemberId(row.get("member_id")),
         created_at: row.get("created_at"),
+        disabled_at: row.get("disabled_at"),
     }
 }

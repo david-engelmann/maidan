@@ -8,7 +8,8 @@ use maidan_types::{
     ChannelId, MemberId, NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId,
 };
 
-const COLS: &str = "slack_channel_id, workspace_id, channel_id, thread_id, member_id, created_at";
+const COLS: &str =
+    "slack_channel_id, workspace_id, channel_id, thread_id, member_id, created_at, disabled_at";
 
 pub async fn link(
     pool: &SqlitePool,
@@ -21,7 +22,8 @@ pub async fn link(
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (slack_channel_id) DO UPDATE
            SET workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
-               thread_id = excluded.thread_id, member_id = excluded.member_id
+               thread_id = excluded.thread_id, member_id = excluded.member_id,
+               disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.slack_channel_id)
@@ -82,6 +84,18 @@ pub async fn unlink(pool: &SqlitePool, slack_channel_id: &str) -> Result<bool, S
     Ok(res.rows_affected() > 0)
 }
 
+pub async fn disable(pool: &SqlitePool, slack_channel_id: &str) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_slack_channel_links SET disabled_at = ?
+         WHERE slack_channel_id = ? AND disabled_at IS NULL",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(slack_channel_id)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> SlackChannelLink {
     SlackChannelLink {
         slack_channel_id: row.get("slack_channel_id"),
@@ -90,5 +104,6 @@ fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> SlackChannelLink {
         thread_id: ThreadId(row.get("thread_id")),
         member_id: MemberId(row.get("member_id")),
         created_at: row.get("created_at"),
+        disabled_at: row.get("disabled_at"),
     }
 }

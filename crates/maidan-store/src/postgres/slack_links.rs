@@ -8,7 +8,8 @@ use maidan_types::{
     ChannelId, MemberId, NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId,
 };
 
-const COLS: &str = "slack_channel_id, workspace_id, channel_id, thread_id, member_id, created_at";
+const COLS: &str =
+    "slack_channel_id, workspace_id, channel_id, thread_id, member_id, created_at, disabled_at";
 
 /// Create or replace the link for a Slack channel (one link per Slack channel).
 pub async fn link(pool: &PgPool, new: NewSlackChannelLink) -> Result<SlackChannelLink, StoreError> {
@@ -18,7 +19,8 @@ pub async fn link(pool: &PgPool, new: NewSlackChannelLink) -> Result<SlackChanne
          VALUES ($1, $2, $3, $4, $5, now())
          ON CONFLICT (slack_channel_id) DO UPDATE
            SET workspace_id = EXCLUDED.workspace_id, channel_id = EXCLUDED.channel_id,
-               thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id
+               thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id,
+               disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.slack_channel_id)
@@ -80,6 +82,20 @@ pub async fn unlink(pool: &PgPool, slack_channel_id: &str) -> Result<bool, Store
     Ok(res.rows_affected() > 0)
 }
 
+/// Turn egress to this Slack channel off (Cluster 377.3). Idempotent: an
+/// already-disabled link keeps its original timestamp, so a second failure does
+/// not reset when the link broke. Returns whether this call did the disabling.
+pub async fn disable(pool: &PgPool, slack_channel_id: &str) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "UPDATE maidan_slack_channel_links SET disabled_at = now()
+         WHERE slack_channel_id = $1 AND disabled_at IS NULL",
+    )
+    .bind(slack_channel_id)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
 fn row_to_link(row: &sqlx::postgres::PgRow) -> SlackChannelLink {
     SlackChannelLink {
         slack_channel_id: row.get("slack_channel_id"),
@@ -88,5 +104,6 @@ fn row_to_link(row: &sqlx::postgres::PgRow) -> SlackChannelLink {
         thread_id: ThreadId(row.get("thread_id")),
         member_id: MemberId(row.get("member_id")),
         created_at: row.get("created_at"),
+        disabled_at: row.get("disabled_at"),
     }
 }

@@ -11,6 +11,7 @@
   "message_posted",
   "message_tombstoned",
   "message_unpinned",
+  "projector_misconfigured",
   "reaction_added",
   "reaction_removed",
   "reference_added",
