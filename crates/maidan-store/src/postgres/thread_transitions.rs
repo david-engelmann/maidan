@@ -3,12 +3,61 @@ use maidan_fsm::ThreadAction;
 use maidan_types::{
     Event, MemberId, StoredEvent, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult,
 };
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::threads::row_to_thread;
 use crate::error::StoreError;
 use crate::postgres::events;
+
+/// Cluster 375 (Wave 2 #22): gate a `closed` transition. Refuses close until the
+/// review requirement is met — `k` distinct **qualifying** approvals (decision =
+/// approve, reviewer is neither owner nor assignee, and, when a named reviewer
+/// set exists, is in it) — and no unresolved `refutes` reference targets the
+/// thread. Runs on the transition's own tx so the check can't be raced.
+async fn review_gate_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query(
+        "SELECT
+           COALESCE((SELECT required_count FROM maidan_thread_review_reqs WHERE thread_id = $1), 0)
+             AS required_count,
+           (SELECT COUNT(*) FROM maidan_thread_reviews r
+              JOIN maidan_threads t ON t.id = r.thread_id
+              WHERE r.thread_id = $1 AND r.decision = 'approve'
+                AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
+                AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
+                AND (NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = $1)
+                     OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv
+                                WHERE rv.thread_id = $1 AND rv.member_id = r.reviewer_id))
+           ) AS approvals",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    let required: i64 = row.get("required_count");
+    let approvals: i64 = row.get("approvals");
+    if required > 0 && approvals < required {
+        return Err(StoreError::Conflict(format!(
+            "review requirement not met: {approvals} of {required} required approvals"
+        )));
+    }
+    let refuted = sqlx::query(
+        "SELECT 1 FROM maidan_references
+         WHERE relation = 'refutes' AND dst_kind = 'thread' AND dst_id = $1 LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some();
+    if refuted {
+        return Err(StoreError::Conflict(
+            "a `refutes` reference blocks close until it is resolved".into(),
+        ));
+    }
+    Ok(())
+}
 
 /// The FSM transition on a caller-supplied tx, without committing (Cluster 208).
 /// Shared by `transition` (commit only) and `transition_with_event` (append the
@@ -50,6 +99,12 @@ async fn transition_in_tx(
         return Err(StoreError::Conflict(
             "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
         ));
+    }
+
+    // Required reviewers (Cluster 375, Wave 2 #22): a `closed` transition is gated
+    // on k qualifying approvals + no unresolved `refutes` edge.
+    if to_state == ThreadState::Closed {
+        review_gate_in_tx(tx, thread_id).await?;
     }
 
     if let Some(parent_id) = thread.parent_thread_id {
