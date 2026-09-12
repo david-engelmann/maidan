@@ -45,7 +45,13 @@ next helper.
   non-federatable) published from the REST thread-create route, both REST
   message-post branches, and the MCP post tool. The gate's error became a typed
   `StoreError::SpawnRejected(SpawnDenial)` to carry the payload.
-- **376.7 — this retro + the doc-close.**
+- **376.7 — this retro + the doc-close.** A follow-up docs PR adds a "Spawning
+  helpers has a ceiling" section to [Integration.md](../Integration.md): the
+  three axes, how to read and set the budget, that a refusal is a non-retryable
+  `409` / `-32602`, that the caps are *lifetime* budgets rather than concurrency
+  limits, and the one-GitHub-link-per-claim rule. Integrators had nothing to read
+  about child threads or refusals before this cluster — the word `409` did not
+  appear in that guide at all.
 
 ## Decisions
 
@@ -57,6 +63,13 @@ next helper.
   is unlimited on that axis — the Cluster-362 WIP-limit shape. Existing
   deployments are unaffected until an operator sets a cap, and `0` is a
   meaningful value on every axis ("freeze it").
+- **The caps are lifetime budgets, not concurrency limits.** The counts exclude
+  only *tombstoned* rows (`count_active_children`, `count_thread_tool_uses`), so
+  closing a child does not hand its slot back and a thread's tool calls
+  accumulate over its whole life. That is the point — a *budget* bounds total
+  fan-out, and concurrency already has its own knob in the Cluster-362 WIP limit.
+  It is also the easiest thing for an integrator to guess wrong, so
+  [Integration.md](../Integration.md) says it in as many words.
 - **`PUT` is a full replace, not a per-axis merge.** The store's `set` was
   already a whole-row upsert, so `PUT` is the honest verb and `{}` genuinely
   means "no caps". A `PATCH`-style merge would have needed a second store method

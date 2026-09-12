@@ -41,6 +41,10 @@ GitHub issue/PR link.
   from the REST thread-create route, both REST post branches, and the MCP post
   tool; the gate's error becomes a typed `StoreError::SpawnRejected(SpawnDenial)`
   to carry the payload.
+- **376.7** the doc-close, including a "Spawning helpers has a ceiling" section
+  in `Integration.md` — the axes, read/set, the non-retryable `409` / `-32602`,
+  the *lifetime* (not concurrency) semantics of the counts, and the
+  one-GitHub-link-per-claim rule.
 
 ## [375.0.0] — 2026-09-12
 
