@@ -17,8 +17,9 @@ Clusters 377 and 378 made projector egress durable, aimable, and repeatable.
 A `pi.waiter.result/1` envelope written with `set_thread_result` now reaches
 a blessed GitHub PR comment or Slack message, durably, once; a re-review
 updates that object in place. **The grammar is frozen** at
-`pi.waiter.result/1`. Cluster 380 (inline per-finding comments) stays parked
-on `head_sha`.
+`pi.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as
+next** — `head_sha` is on the fixture; 380.1 still has to pin the `line_range`
+frame of reference and must not resolve the PR head at delivery time.
 
 - **379.1** result-delivery state — `maidan_result_deliveries` (pg 0085 /
   sqlite 0084), one row per `(thread_id, surface, selector)`. Intent and

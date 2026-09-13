@@ -32,8 +32,10 @@ the allowlist; confirm where it landed with the status API. A perfectly correct
 `deliver_to` can still deliver nowhere if the target is unblessed — that is a
 normal outcome, not a producer bug.
 
-Inline per-finding PR review comments (Cluster 380) stay **parked** until the
-envelope carries `head_sha` and a stated `line_range` frame of reference.
+Inline per-finding PR review comments (Cluster 380) are **next after this cluster**.
+The envelope now carries `head_sha`. 380.1 still has to pin the `line_range` frame
+of reference (file-absolute post-image vs diff-relative) and must use that
+`head_sha` as `commit_id`, never the live PR head.
 
 ---
 
@@ -230,15 +232,13 @@ durably, once.
 
 ## Open requests to result producers
 
-Three things Maidan needs that the current envelope does not carry:
+One of three is now carried; two remain:
 
-1. **`head_sha`** — the commit the review was computed against. GitHub anchors
-   inline review comments to a commit; resolving the PR head at delivery time can
-   anchor to a *newer* commit than the producer actually reviewed, misplacing
-   every comment. **Inline per-finding PR comments are parked until the envelope
-   carries this.** The single summary comment does not need it.
+1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried.** Present on
+   `pi.waiter.result/1` (fixture lock). Cluster 380 must pass it as GitHub's `commit_id`
+   rather than resolving the PR head at delivery time.
 2. **The frame of reference for `line_range`** — file-absolute post-image lines,
-   or diff-relative? Also needed for inline comments.
+   or diff-relative? Still needed before inline comments can be placed correctly.
 3. **Call `report_usage`** with the run's `cost_usd` and `duration_secs`. Maidan
    ships a per-task token/USD/turn/wall budget envelope that stops a run when it
    is exceeded; a producer that reports its spend only inside an opaque result
