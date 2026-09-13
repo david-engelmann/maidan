@@ -321,12 +321,13 @@ than minting a new one.
 27. **G14 + W2** — a **blocked-reason enum** (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips blocked; `BlockedResolved` unblocks. Distinct from DAG-children-must-be-terminal.
 28. **G16 / G18 / H3** (three bullets) — **follow a member's occupancy**; a **manager digest** (channel result/gate/stuck counts — compose notifications, not analytics); **run lineage** (`parentRunId`) on a thread (nested occupancy attributed; F7 mute stays orthogonal). **Note (2026-09-12):** pi's waiter envelope already carries a `run_id` (plus `view_in_pi`) that today has **no home in Maidan** — it is this row's first real producer. Design the lineage field to accept the producer's value rather than minting a parallel id.
 
-### Result delivery — the external last mile (Clusters 377–381; next up now that 376 has closed, Wave-2 grade)
+### Result delivery — the external last mile (Clusters 377–381; 377–379 shipped, 380 parked, 381 next)
 
 **Added 2026-09-12** from the pi-side feature request (deliver a waiter result to Slack/GitHub),
 investigated against the tree at `e239fd7`. Pinned interface doc: [Result Delivery](Result%20Delivery.md)
-(published — it is the contract an external producer codes against). Authoritative fixture:
-`PI_WAITER_RESULT_FIXTURE.json` in the pi repo (9.6 KB; `rendered` is 4.1 KB of GFM).
+(published — it is the contract an external producer codes against). Authoritative fixture on the
+Maidan side: `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` (Cluster 379.2 contract
+lock). The producer-side copy remains `PI_WAITER_RESULT_FIXTURE.json` in the pi repo.
 
 **Why it lives here and not in pi or soundcheck:** Maidan already holds the connectors, the
 channel/workspace links, identity, audit, the lease and the HITL gate. soundcheck is temporary, so a
@@ -334,17 +335,14 @@ durable "deliver an agent's result to an external surface" primitive must not li
 exists, *any* waiter product gets delivery for free. The review **seat** is untrusted (it processes
 attacker-controlled PR content); the delivery step is trusted and holds the write credentials.
 
-**Five gaps verified in the tree (not taken on faith):**
-1. No `ThreadResultSet` arm in `notification_router::route_event` (arms today: `MentionRecorded`,
-   `MessagePosted`, `ClaimExpired`, `ThreadLanded`, `WaitTimedOut`). Nothing reacts to a result.
-2. Projector egress is best-effort log-and-drop (`slack.rs::route_message_to_slack`,
-   `github.rs::route_message_to_github`) — this is row #38, promoted (above).
-3. The senders cannot update: `post_message(channel, text)` / `post_comment(repo, n, text)` return
-   `()`, so there is no `ts` / `comment_id` and idempotent update-in-place is unimplementable.
-4. **Confused deputy.** `deliver_to` is agent-controlled (any `thread:transition` holder writes the
-   result) while the credentials are process-global env tokens — routing straight off it lets an agent
-   post as Maidan anywhere the token reaches.
-5. `rendered` is GFM and **Slack renders mrkdwn** — posting it verbatim ships visibly broken output.
+**Five gaps verified in the tree (not taken on faith) — all closed by 377–379:**
+1. ~~No `ThreadResultSet` arm in `notification_router::route_event`. Nothing reacts to a result.~~
+   **✅ 379.3.**
+2. ~~Projector egress is best-effort log-and-drop.~~ **✅ 377** (row #38).
+3. ~~The senders cannot update (`post_*` returned `()`).~~ **✅ 378.2.**
+4. ~~**Confused deputy** — routing straight off agent-written `deliver_to`.~~ **✅ 378.1** (allowlist)
+   + **379.3** (the trigger consults it).
+5. ~~`rendered` is GFM and Slack renders mrkdwn.~~ **✅ 378.3** + **379.3** (Slack gets `summary`).
 
 **The load-bearing decision: `deliver_to` *selects*, a per-workspace allowlist *authorizes*.** The
 producer keeps its "no hardcoded surface" model; a compromised agent still cannot reach an unblessed
@@ -353,10 +351,14 @@ target is skipped-with-warning, exactly like an unknown surface — so **a corre
 still deliver nowhere, and that is a normal outcome, not a producer bug.**
 
 Second call: **one table does dedup + idempotency + external-ref.** `maidan_result_deliveries` keyed
-`(thread_id, target_fingerprint)` carrying `external_ref` / `delivered_revision` / status / `last_error`,
-enqueued `ON CONFLICT DO UPDATE ... WHERE produced_at > delivered_revision`. That is what makes the
-always-on every-replica router safe (the Cluster-238 lesson: without it a 3-replica deploy triples every
-delivery) **and** makes a re-review an update rather than a second comment.
+`(thread_id, surface, selector)` carrying `external_ref` / `armed_revision` / `delivered_revision` /
+status / `last_error`. **Deviation (approved, 379.1):** arming is a single monotonic test against
+`armed_revision` (`revision > armed_revision` wins; the winner keeps `external_ref`), not against
+`delivered_revision`. Comparing only against `delivered_revision` cannot tell a second replica of the
+*same* revision (both read `NULL`, one must lose) from a newer result arriving while a send is in
+flight (must win, or that result is dropped). `delivered_revision` stays a truthful record of what
+landed. That split is what makes the always-on every-replica router safe (the Cluster-238 lesson)
+**and** makes a re-review an update rather than a second comment.
 
 **Scope fence.** Maidan does not run seats, does not render reviews, does not interpret findings, does
 not become a CI product. It delivers trusted bytes to blessed surfaces, durably, once. Only `rendered` /
@@ -390,32 +392,31 @@ not become a CI product. It delivers trusted bytes to blessed surfaces, durably,
   documented rendering rule rather than an invisible character; Slack's `<!…>`/`<@…>` escaped to `&lt;`),
   truncation to GitHub's 65536-char ceiling that says so and keeps the backlink, and a **deliberately
   narrow** GFM → mrkdwn projection, all sharing a code segmenter so no rule reaches inside a fenced diff.
-  **Nothing delivers a result yet** — 379 composes these. **Deferred:** MCP twins of the allowlist routes
+  **379 composed these.** **Deferred:** MCP twins of the allowlist routes
   (an agent has no business editing the boundary that constrains it); a `/ui` allowlist panel; wildcard /
   org-level selectors (`acme/*`) — a much weaker boundary nobody has asked for; Slack Block Kit; a wider
   `gfm_to_mrkdwn`, which the "Slack gets `summary`" rule is meant to make unnecessary.
-- **Cluster 379 — the result-delivery primitive** *(the producer's actual ask)*. **379.1**
-  `maidan_result_deliveries` store foundation (the key above). **379.2** the **contract lock** —
-  `maidan_types::waiter::parse_waiter_result`, a pure tolerant reader of
-  `{schema, result_kind, status, deliver_to[], rendered, summary, view_in_pi, pr}` with a
-  `DeliverTarget::Unknown(String)` arm, unit-tested against the real fixture **committed** as
-  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` (a producer-side grammar change then breaks
-  this test — that is the point). **379.3** the trigger — a `ThreadResultSet` arm in
-  `notification_router::route_event` delegating to a new `result_delivery.rs` (the exact shape
-  `MessagePosted → route_message_to_slack` already has): fetch → parse → per target, allowlist-check then
-  enqueue. Empty `deliver_to` ⇒ zero rows (valid). Non-`reviewed` status ⇒ a short **Maidan-authored**
-  failure notice built from `status` alone — never silence, never a clean pass. **379.4** idempotent
-  update-in-place: stored `external_ref` → `update_message`, absent → post, with a hidden
-  `<!-- maidan:result:<thread_id> -->` marker at byte 0 of the GitHub body as the recovery path (match
-  soundcheck's renderer bytes). **379.5** `GET /threads/:id/deliveries` (`workspace:read` + thread access)
-  + `POST .../replay` (`workspace:write`) + MCP twins + an `audit::record` per attempt. Retro **plus the
-  note back to the pi side** confirming the frozen grammar.
+- ~~**Cluster 379 — the result-delivery primitive** *(the producer's actual ask)*.~~ **✅ SHIPPED
+  (`v379.0.0`), PRs #787/#788/#789/#791/#793** ([[Retros/Cluster 379]]). **379.1**
+  `maidan_result_deliveries` (pg 0085 / sqlite 0084) — intent/identity, one row per
+  `(thread_id, surface, selector)`, with the two-watermark arm (`armed_revision` vs
+  `delivered_revision`) documented above. **379.2** `parse_waiter_result` + the contract lock against
+  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`. **379.3** the `ThreadResultSet` arm:
+  fetch → parse → per-target allowlist check then enqueue. Empty `deliver_to` ⇒ zero rows (valid).
+  Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **379.4** update-in-place via
+  `external_ref`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0; `EgressKind` on
+  the outbox so a projector post to the same issue cannot PATCH the result comment; result 401/403/404
+  dead-letters without `disable_link`. **379.5** `GET /threads/:id/deliveries` + `POST …/replay` + MCP
+  twins + audit per attempt; replay does not bump `armed_revision` and re-checks the allowlist.
+  **Note back to the pi side: the grammar is frozen at `pi.waiter.result/1`.** Additive fields are
+  free; a meaning change needs a new `schema` value. **Deferred:** a `/ui` deliveries panel; recovering
+  a lost Slack `ts` without re-posting.
 - **Cluster 380 — inline per-finding PR review comments. ⛔ PARKED, blocked on the producer.** Needs
   `POST /repos/{repo}/pulls/{n}/reviews` with `comments[{path, line, side, body}]` — which anchors to a
   commit. **The envelope carries no `head_sha`**, and resolving the PR head at delivery time can anchor to
   a *newer* commit than was reviewed, misplacing every comment. Also needs the `line_range` frame of
-  reference (post-image file lines vs diff-relative) stated. Ship 379's single summary comment first;
-  unpark when the envelope carries a commit anchor.
+  reference (post-image file lines vs diff-relative) stated. Cluster 379's single summary comment
+  shipped; unpark when the envelope carries a commit anchor.
 - **Cluster 381 — `result_kind` facet + the pinned spec** *(half of row #24)*. Facet on the **namespaced
   string** (see the correction on #24). Keep [Result Delivery](Result%20Delivery.md) in step, and register
   the envelope in the Wave 3 #30 schema pack.
@@ -936,7 +937,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest merged: Cluster 378 (the egress trust boundary + the sender upgrade — result delivery, cluster 2 of the arc) on `main`; tags `v350.0.0`–`v378.0.0` pending the maintainer.** Three impl PRs (#782 the allowlist, #783 the sender upgrade, #784 the `egress_body` projection) + a retro — see [[Retros/Cluster 378]]. 377 made projector egress durable; 378 makes it safe to **aim** and safe to **repeat**. A destination must be blessed by an operator before Maidan will post to it — **`deliver_to` selects, `maidan_egress_targets` authorizes**, default empty ⇒ deliver nowhere — over a `token:admin` REST surface whose *reads* are admin too, because the allowlist is policy and enumerating it would hand an agent the list of destinations worth aiming at. A selector is an **id**, never a mutable name, and on GitHub the grain is the **repository**. The senders now return an `ExternalRef` and can `update_message`/`update_comment`, without which idempotent update-in-place was unimplementable; a post that succeeded is never reported as a failure. And `egress_body` defuses mentions (a code span on GitHub, `&lt;` on Slack), truncates to GitHub's 65536-char ceiling while keeping the backlink, and projects GFM onto mrkdwn — all outside fenced diffs, because `rendered` quotes attacker-influenced code. **Nothing delivers a result yet.** **Next: Cluster 379 — the result-delivery primitive** (`maidan_result_deliveries` keyed `(thread_id, target_fingerprint)`; the `parse_waiter_result` contract lock against the committed fixture; the `ThreadResultSet` arm in `notification_router::route_event`; idempotent update-in-place with the hidden `<!-- maidan:result:<thread_id> -->` recovery marker; `GET /threads/:id/deliveries` + replay + MCP twins + an `audit::record` per attempt). *(v350–v378 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 377 (durable projector egress — row #38, the result-delivery foundation)** — four impl PRs (#777 the outbox store, #778 the worker, #779 retry-then-disable + `ProjectorMisconfigured`, #780 the operator DLQ) + a retro, [[Retros/Cluster 377]]. Projector egress is no longer best-effort log-and-drop: a projector-bound message is **enqueued** on `maidan_egress_outbox` and delivered by a retry/backoff worker (dead-letter at 8), an auth/config-class failure **disables the link** and emits `ProjectorMisconfigured` instead of burning eight doomed attempts per message forever, and an exhausted delivery lands in a `token:admin` DLQ with replay. A rate-limited GitHub **403 is explicitly not** a misconfiguration; ingress is untouched by an outbound credential failure; re-linking is the re-enable path. **Row #38 is closed** (it was a reorder, not new scope). See the "Result delivery — the external last mile" section above and the pinned contract in [Result Delivery](Result%20Delivery.md). **(prior) Cluster 376 (Wave 2 #23 — a spawn budget, G6+G-dev-3+W3)** — six impl PRs (#765 store, #768 children+depth gate, #770 max-tools gate, #771 REST+MCP config, #772 GitHub-link cap, #774 `ThreadSpawnDenied`) + a retro, [[Retros/Cluster 376]]. A workspace now caps agent fan-out on three opt-in axes (`max_children`/`max_depth`/`max_tools`, `null` = unlimited), enforced in the store so every spawn path inherits it, settable over REST + MCP, and observable as a `ThreadSpawnDenied` event; a claim also holds at most one GitHub link. A budget, not a scheduler. **Wave 1 (#1–14) + Wave 2 #15–23 + P1.1c are COMPLETE, and the result-delivery arc (377–381) is now under way** — it is also where the open Wave-2 list resumes: the next unstruck row is **#24** (G7 + G-dev-10), and its `result_kind`-facet half is already folded into Cluster 381, so the arc and the row are the same work approached from two directions. **(prior) Cluster 375 (Wave 2 #22 — required reviewers)** — four impl PRs (#759/#761/#762/#763) + a CI chore (#760, minio→quay), [[Retros/Cluster 375]]; a thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge. **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). Still open from the 2026-09-10 MCP-write-path audit: **P1.1d** — no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap; see P1). **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
+- **Latest merged: Cluster 379 (the result-delivery primitive — result delivery, cluster 3 of the arc) on `main`; tags `v350.0.0`–`v379.0.0` pending the maintainer.** Five impl PRs (#787 the store, #788 the contract lock, #789 the trigger, #791 update-in-place, #793 status + replay) + a retro — see [[Retros/Cluster 379]]. A `pi.waiter.result/1` envelope written with `set_thread_result` is fetched, parsed, allowlist-checked per `deliver_to` target, and delivered: GitHub gets `rendered` (updated in place; recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0), Slack gets `summary`. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. Skip is a recorded normal outcome, not an error. **Two watermarks:** `armed_revision` (seen — the monotonic test every replica contends on) and `delivered_revision` (landed). Arming against only `delivered_revision` cannot tell a second replica of the *same* revision from a newer result arriving in-flight. Replay does not re-arm; it re-checks the allowlist. **The grammar is frozen at `pi.waiter.result/1`** (the note back to the pi side). **Next: Cluster 380 stays PARKED** (inline per-finding PR comments — blocked on `head_sha` + `line_range`); **Cluster 381** is the `result_kind` namespaced-string search facet (half of row #24). *(v350–v379 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 378 (the egress trust boundary + the sender upgrade — result delivery, cluster 2 of the arc)** — three impl PRs (#782 the allowlist, #783 the sender upgrade, #784 the `egress_body` projection) + a retro, [[Retros/Cluster 378]]. 377 made projector egress durable; 378 makes it safe to **aim** and safe to **repeat**. A destination must be blessed by an operator before Maidan will post to it — **`deliver_to` selects, `maidan_egress_targets` authorizes**, default empty ⇒ deliver nowhere — over a `token:admin` REST surface whose *reads* are admin too, because the allowlist is policy and enumerating it would hand an agent the list of destinations worth aiming at. A selector is an **id**, never a mutable name, and on GitHub the grain is the **repository**. The senders now return an `ExternalRef` and can `update_message`/`update_comment`; a post that succeeded is never reported as a failure. And `egress_body` defuses mentions (a code span on GitHub, `&lt;` on Slack), truncates to GitHub's 65536-char ceiling while keeping the backlink, and projects GFM onto mrkdwn — all outside fenced diffs. **(prior) Cluster 377 (durable projector egress — row #38, the result-delivery foundation)** — four impl PRs (#777 the outbox store, #778 the worker, #779 retry-then-disable + `ProjectorMisconfigured`, #780 the operator DLQ) + a retro, [[Retros/Cluster 377]]. Projector egress is no longer best-effort log-and-drop: a projector-bound message is **enqueued** on `maidan_egress_outbox` and delivered by a retry/backoff worker (dead-letter at 8), an auth/config-class failure **disables the link** and emits `ProjectorMisconfigured` instead of burning eight doomed attempts per message forever, and an exhausted delivery lands in a `token:admin` DLQ with replay. A rate-limited GitHub **403 is explicitly not** a misconfiguration; ingress is untouched by an outbound credential failure; re-linking is the re-enable path. **Row #38 is closed** (it was a reorder, not new scope). See the "Result delivery — the external last mile" section above and the pinned contract in [Result Delivery](Result%20Delivery.md). **(prior) Cluster 376 (Wave 2 #23 — a spawn budget, G6+G-dev-3+W3)** — six impl PRs (#765 store, #768 children+depth gate, #770 max-tools gate, #771 REST+MCP config, #772 GitHub-link cap, #774 `ThreadSpawnDenied`) + a retro, [[Retros/Cluster 376]]. A workspace now caps agent fan-out on three opt-in axes (`max_children`/`max_depth`/`max_tools`, `null` = unlimited), enforced in the store so every spawn path inherits it, settable over REST + MCP, and observable as a `ThreadSpawnDenied` event; a claim also holds at most one GitHub link. A budget, not a scheduler. **Wave 1 (#1–14) + Wave 2 #15–23 + P1.1c are COMPLETE, and the result-delivery arc (377–381) has 377–379 shipped (380 parked; 381 next)** — it is also where the open Wave-2 list resumes: the next unstruck row is **#24** (G7 + G-dev-10), and its `result_kind`-facet half is already folded into Cluster 381, so the arc and the row are the same work approached from two directions. **(prior) Cluster 375 (Wave 2 #22 — required reviewers)** — four impl PRs (#759/#761/#762/#763) + a CI chore (#760, minio→quay), [[Retros/Cluster 375]]; a thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge. **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). Still open from the 2026-09-10 MCP-write-path audit: **P1.1d** — no MCP `transition_thread` twin of the REST FSM transition (confirm land-gate vs gap; see P1). **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
 - **(prior) Cluster 367 (Wave 2 #15 — the human work console) on `main`** — stacked `/ui` PRs #722/#723/#724, [[Retros/Cluster 367]].
 - **(prior) Cluster 366 (Wave 1 #14) on `main`** — four independent PRs (#717/#718/#719/#720), [[Retros/Cluster 366]].
 - **(prior) Cluster 365 (fair dispatch) on `main`; tags `v350.0.0`–`v365.0.0` pending the maintainer.** The forward program's **Wave 1 #1 (held gate, 350), #2 (occupancy clocks, 351), #3 (HITL list, 352), #4 (identity chrome, 353), #5 (wait contract, 354), #6 (owner/steer, 355), #7 (threading, 356), #8 (scoped notification mute, 357), #9 (the budget envelope, 358), #10 (inbox & search depth, 359), #11 (the token-budgeted context pack, 360), #12 (the landed fact, 361), and #13 in full — G11 hard WIP (362), G3 Unclaimable (363), G2/G4 wait-edges + escalation (364), and G3 fair dispatch (Cluster 365, PRs #708/#712/#713/#715) — are all SHIPPED** ([[Retros/Cluster 350]]–[[Retros/Cluster 365]]). `claim_next` now orders by an aged dispatch priority (priority jumps the FIFO queue, long-waiting tasks age up and never starve); a thread can declare a durable wait timer with an `on_timeout` policy; a thread can be parked from dispatch; the WIP limit caps concurrent live claims — all over REST + MCP. **Wave 1 #13 is COMPLETE. Next up: Wave 1 #14** (N1 web-push / T6 legal-hold / H15 OTel gate / SCIM-as-OIDC-P3 — four bullets, not one cluster). *(v350–v365 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)*

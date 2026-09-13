@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [379.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **The result-delivery primitive** — the
+third cluster of the result-delivery arc, and the producer's actual ask.
+Five impl PRs (379.1–379.5) + a retro. No new gate tag.
+
+Clusters 377 and 378 made projector egress durable, aimable, and repeatable.
+A `pi.waiter.result/1` envelope written with `set_thread_result` now reaches
+a blessed GitHub PR comment or Slack message, durably, once; a re-review
+updates that object in place. **The grammar is frozen** at
+`pi.waiter.result/1`. Cluster 380 (inline per-finding comments) stays parked
+on `head_sha`.
+
+- **379.1** result-delivery state — `maidan_result_deliveries` (pg 0085 /
+  sqlite 0084), one row per `(thread_id, surface, selector)`. Intent and
+  identity, not transport: who delivers (every replica sees the event,
+  exactly one enqueues), is this new, update what. **Two watermarks**
+  (`armed_revision` / `delivered_revision`) — arming is a single monotonic
+  test against `armed_revision`, because comparing only against
+  `delivered_revision` cannot tell a second replica of the *same* revision
+  from a newer result arriving while a send is in flight.
+- **379.2** the contract lock — `parse_waiter_result` against
+  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`. A
+  producer-side grammar change breaks a test. Unrecognized `schema` is
+  inert.
+- **379.3** the trigger — `ThreadResultSet` → fetch → parse → per-target
+  allowlist check then enqueue. Empty `deliver_to` ⇒ zero rows (valid).
+  Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone.
+  Skip is a recorded normal outcome.
+- **379.4** update-in-place via `external_ref`, with a GitHub recovery
+  marker `<!-- maidan:result:<thread_id> -->` at byte 0. `EgressKind` on
+  the outbox so projector traffic cannot PATCH a result comment. Result
+  401/403/404 dead-letters without disabling a projector link.
+- **379.5** `GET /threads/:id/deliveries` + `POST …/replay` + MCP twins +
+  audit per attempt. Replay does not bump `armed_revision`; an unblessed
+  target stays skipped.
+
 ## [378.0.0] — 2026-09-12
 
 Post-gate hardening (Phase XXIV). **The egress trust boundary + the sender
