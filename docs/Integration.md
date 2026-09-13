@@ -170,7 +170,7 @@ checks the required capability before handling the request.
 | `workspace:read` | List/get workspaces, channels, threads, messages, search, audit |
 | `workspace:write` | Create channels/threads, mentions, votes, purge, automation admin |
 | `message:post` | Post messages, A2A `SendMessage` |
-| `thread:transition` | Anything that changes a thread's disposition: FSM transitions, the claim lifecycle, owner, result, budget, priority, review decisions |
+| `thread:transition` | Anything that changes a thread's disposition: FSM transitions, the claim lifecycle, owner, result, budget, priority, review decisions, Soundcheck pointer |
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
@@ -405,6 +405,16 @@ human who is neither owner nor assignee approves. A warning-only review
 does not arm the gate. A clean re-review does not auto-approve. The
 external GitHub review `event` is still `COMMENT` (Cluster 380); the room
 gate is the land decision.
+
+A thread can also carry a **Soundcheck pointer**
+(`PUT /threads/:id/soundcheck`, MCP `set_soundcheck`) —
+`{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`.
+`PUT …/soundcheck/requirement` (MCP `require_soundcheck`) arms the
+close-gate. No row is vacuous green. `closed` then refuses unless a
+**green pass** from a member who declared the `soundcheck` skill and is
+neither owner nor assignee. Amber (flags-then-still-engages) is not a
+land. Fail is always red, even if `land=green` is requested. The room
+holds the pointer; Soundcheck owns test execution. Not a CI product.
 
 ### 6. Release
 

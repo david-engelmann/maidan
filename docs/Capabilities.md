@@ -3,9 +3,20 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v385.0.0 — Wave 2 #25 remainder: Soundcheck gate pointer + green/amber/red
+
+Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `soundcheck`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; Soundcheck owns test execution. Not a CI product / a judge panel. Cluster 384 is P1.1d. **Row #25 is closed** (383 composition + 385 pointer).
+
+| Change | Where |
+|--------|-------|
+| **Types + store (385.1):** `SoundcheckPointer` / `LandColor` / standing; table pg 0088 / sqlite 0087; require / set / get / clear. Unskilled writes `InvalidInput`. | `crates/maidan-types/src/soundcheck.rs`, `crates/maidan-store/src/{postgres,sqlite}/soundcheck.rs` |
+| **FSM (385.2):** `transition_in_tx` refuses `closed` unless a qualifying green pass (or no row). | `crates/maidan-store/src/{postgres,sqlite}/thread_transitions.rs` |
+| **REST + MCP (385.3):** `PUT`/`GET`/`DELETE /threads/:id/soundcheck` + `PUT …/requirement`; tools `set/get/require/clear_soundcheck`. | `crates/maidan-server/src/routes/soundcheck.rs`, `crates/maidan-mcp/src/tools/soundcheck.rs` |
+| **e2e (385.4):** HTTP close-gate + MCP standing; fail stays red. | `crates/maidan-server/tests/soundcheck_e2e.rs` |
+
 ## v383.0.0 — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
 
-Three impl PRs (383.1–383.3) + a retro. A reviewed `pi.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The Soundcheck pointer + green/amber/red vocabulary remain on that row.
+Three impl PRs (383.1–383.3) + a retro. A reviewed `pi.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The Soundcheck pointer + green/amber/red vocabulary shipped as Cluster 385.
 
 | Change | Where |
 |--------|-------|
