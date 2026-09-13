@@ -100,6 +100,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_recipes"
         | "list_member_skills"
         | "list_thread_required_skills"
+        | "list_thread_results"
         | "get_thread_result"
         | "list_result_deliveries"
         | "get_thread_steer"
@@ -438,6 +439,7 @@ pub async fn dispatch(
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
+        "list_thread_results" => thread::list_thread_results(store, auth, args).await,
         "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
         "replay_result_delivery" => delivery::replay_result_delivery_tool(store, auth, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
