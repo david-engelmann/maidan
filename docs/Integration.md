@@ -260,6 +260,7 @@ The context pack is more than a message dump — these knobs and surfaces are wh
 | **Lean edits** | `include_edits=false` (default) | Edit records come back as metadata only (`id`, `editor`, `edited_at`) — the largest token lever on a pack. Set `true` for full `body_before`/`body_after`. |
 | **Seed / re-ask** | `POST /messages/:id/seed` (`workspace:write`) `{title, inclusion?: "pointer"\|"quote", channel_id?}` → a new `Thread` | Spins a fresh work thread from any message, linked back to the source with a `seeded_from` reference edge — the "re-ask this, with a clean slate but the lineage" primitive. |
 | **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
+| **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = pi.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
 
 MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, and `as_of`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
 
@@ -351,7 +352,12 @@ the first start time is kept. It also arms the wall-clock budget (see step 4).
 ### 3. Read
 
 `get_thread_context {thread_id}` packs the thread's messages, edits, references,
-FSM history, and the workspace glossary. Two knobs earn their keep in a waiter:
+FSM history, and the workspace glossary. It also lists in-channel
+**accepted/closed decisions** (`accepted_decisions`) so you see what this channel
+already decided before you start — waiter envelopes (`pi.waiter.result/1`) only
+when `status` is `reviewed`, with `result_kind` as a namespaced string (e.g.
+`pi.review.result/1`), not a closed enum. Opt out with
+`include_accepted_decisions=false`. Two other knobs earn their keep in a waiter:
 `token_budget` caps the pack by estimated tokens (the opening message and the
 recent tail survive, the middle folds into an auditable `elision` marker), and
 `as_of` replays the thread as it stood at one event-log id. The full menu is the

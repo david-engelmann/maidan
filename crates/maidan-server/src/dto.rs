@@ -435,6 +435,13 @@ pub struct ThreadContextQuery {
     /// `false` for the leanest possible pack.
     #[serde(default = "default_true")]
     pub include_parent_grounding: bool,
+    /// Attach in-channel accepted/closed decisions so a fresh claimer sees what
+    /// the channel already decided (Cluster 382). Default `true`; omitted when
+    /// empty. Waiter envelopes (`pi.waiter.result/1`) appear only when `status`
+    /// is `reviewed`. `result_kind` is a namespaced string, not a closed enum.
+    /// Set `false` for the leanest pack. Withheld on DM channels.
+    #[serde(default = "default_true")]
+    pub include_accepted_decisions: bool,
 }
 
 /// Query for `GET /threads/:id/tool-transcript` (Cluster 197).
