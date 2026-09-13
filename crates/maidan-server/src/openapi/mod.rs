@@ -470,6 +470,7 @@ impl Modify for SecurityAddon {
         maidan_types::NotificationThreadGroup,
         maidan_types::BuriedDecision,
         DecisionsQuery,
+        ListThreadResultsQuery,
         NotificationPref,
         SetNotificationPref,
         ChannelFollow,
