@@ -71,11 +71,17 @@ were retargeted to `main` before any parent squash-delete.
 - **`set_by` / `resolved_by` are NOT-NULL FKs.** Bypass (nil member)
   FK-fails. e2e and the MCP test mint a real token / session, same as
   363.
+<<<<<<< HEAD
 - **Soundcheck took the next migration slot while 386.1 was open.**
   385.1 landed pg 0088 / sqlite 0087. Blocks stayed **pg 0089 /
   sqlite 0088** — rebase must bump the version, not overwrite
   Soundcheck. #817 then squash-merged onto that main; remaining
   slices rebase onto `83e95bc` and drop the store commits.
+=======
+- **Migration numbers moved on rebase.** #819 (385.1 Soundcheck) took
+  pg 0088 / sqlite 0087. Blocks landed as pg 0089 / sqlite 0088. Do
+  not reuse a version Soundcheck already applied.
+>>>>>>> f79fe07 (docs: note Soundcheck migration collision in Cluster 386 retro)
 
 ## Test evidence
 
