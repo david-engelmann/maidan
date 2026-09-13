@@ -397,6 +397,15 @@ re-review updates the same comment or message. Empty `deliver_to` is valid
 `GET /threads/:id/deliveries`. The grammar is frozen — see
 [Result Delivery](Result%20Delivery.md).
 
+If that envelope is a reviewed `pi.review.result/1` and any finding has
+`severity` exactly `critical`, and the producer has declared the `review`
+skill, Maidan writes a Cluster-375 `request_changes` on the thread and —
+when no requirement exists — arms `k=1`. `closed` then refuses until a
+human who is neither owner nor assignee approves. A warning-only review
+does not arm the gate. A clean re-review does not auto-approve. The
+external GitHub review `event` is still `COMMENT` (Cluster 380); the room
+gate is the land decision.
+
 ### 6. Release
 
 `release_claim {thread_id, member_id, claim_lease_id}` puts the thread back in the

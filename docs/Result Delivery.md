@@ -64,15 +64,16 @@ field never breaks delivery.
 | `view_in_pi` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
 | `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
-| `findings` | no | Parsed for Cluster 380 inline comments. Each usable finding needs `file`, `body`, and `line_range`. Unusable entries are skipped, not an error. Other finding fields stay in the stored JSON unread. |
+| `findings` | no | Two readers. Cluster 380 inline comments: each usable finding needs `file`, `body`, and `line_range`. Cluster 383 close-gate: any finding with `severity` exactly `critical` on a reviewed `pi.review.result/1` from a review-skilled producer writes Cluster-375 `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
 
 Everything else in the envelope — `corroboration`, `per_seat`, `seats`, `run_id`,
 `cost_usd`, `duration_secs`, `sandbox`, `finding_count`, `diff_available` — is
 carried through untouched. Maidan does not interpret it.
 
 **The canonical `Finding` wire shape is the producer's and does not change.**
-Maidan stores the envelope byte-for-byte; the parser only *projects* `file` /
-`line_range` / `body` for the review POST.
+Maidan stores the envelope byte-for-byte. Cluster 380 *projects* `file` /
+`line_range` / `body` for the GitHub review POST. Cluster 383 reads
+`severity` for the close-gate adapter only.
 
 ---
 
@@ -272,6 +273,29 @@ caller cannot access are omitted. This is not `GET /workspaces/{id}/search`
 and not the ADR JSON convention `"kind": "decision"` in
 [Integration.md](Integration.md#decision-records).
 
+## Close-gate (Cluster 383)
+
+A reviewed `pi.review.result/1` whose `findings` contain any
+`severity == "critical"` is a Cluster-375 `request_changes` from a
+review-skilled producer (`REVIEW_SKILL = "review"`). If the thread has no
+requirement, Maidan arms `k = 1` so the existing close-gate refuses
+`closed` until a human who is neither owner nor assignee approves.
+
+This is an adapter, not a new gate:
+
+- Warning-only / wrong `result_kind` / not `reviewed` / unskilled producer
+  → no-op.
+- An existing `k` is left alone.
+- A clean re-review does **not** auto-approve.
+- Empty `deliver_to` still arms — the room blocks the land even when
+  nothing is posted externally.
+- The GitHub review posted by Cluster 380 stays `event: COMMENT`. The
+  room gate is the land decision; the PR is not REQUEST_CHANGES.
+
+`PUT /threads/:id/result` and MCP `set_thread_result` arm on the write
+path. The `ThreadResultSet` bus consumer arms again (every-replica /
+replay). Both are idempotent.
+
 ## Delivery status
 
 Per-thread delivery state (one row per target: disposition, external reference,
@@ -288,9 +312,12 @@ the external surface.
 - Anything at all when `status` is not `reviewed` (beyond the failure notice).
 - Anything to a target the workspace has not blessed.
 
-Maidan does not run seats, does not render reviews, does not judge findings, and
-does not become a CI product. It delivers trusted bytes to blessed surfaces,
-durably, once.
+Maidan does not run seats, does not render reviews, and does not become a
+CI product. Cluster 383 reads `findings[].severity` for the close-gate
+adapter only (`critical` → Cluster-375 `request_changes`); it does not
+judge finding bodies or invent a land vocabulary. GitHub review `event`
+stays `COMMENT` (Cluster 380). It delivers trusted bytes to blessed
+surfaces, durably, once.
 
 ---
 

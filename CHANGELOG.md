@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [383.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Wave 2 #25 composition — critical
+waiter findings feed the Cluster-375 close-gate.** Three impl PRs
+(383.1–383.3) + a retro. No new gate tag.
+
+A reviewed `pi.review.result/1` with any `critical` finding from a
+review-skilled producer writes `request_changes` and, if the thread has
+no requirement, arms `k=1`. `closed` refuses until a third-party human
+approves. Owner/assignee approvals still do not count (SoD). Never
+auto-approve. GitHub review `event` stays `COMMENT` (Cluster 380).
+**The #25 composition is closed.** The Soundcheck pointer +
+green/amber/red vocabulary remain on that row.
+
+- **383.1** types + store — `review_decision_from_waiter` +
+  `apply_critical_review_decision` (skill-gated). Severity on the raw
+  findings array. Did not set `k`.
+- **383.2** arm `k=1` when unset + `ThreadResultSet` →
+  `arm_critical_review`. Empty `deliver_to` still arms. Replaces closed
+  #810 (`base_ref_deleted`).
+- **383.3** REST/MCP write-path arm + e2e (critical blocks close;
+  warning-only does not; human approve unblocks).
+
 ## [381.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #24 facet half — `result_kind`
