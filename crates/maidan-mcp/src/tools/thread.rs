@@ -300,6 +300,73 @@ pub(super) async fn unassign_thread(
 }
 
 #[derive(Deserialize)]
+struct TransitionThreadArgs {
+    thread_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    action: String,
+}
+
+/// Advance a thread's FSM state (Cluster 384, P1.1d — the MCP twin of REST
+/// `POST /threads/:id`). Same store path: `transition_thread_with_event`
+/// (SoD, close-gate, required reviewers, and the Cluster-383 critical
+/// composition all live in `transition_in_tx`). Unknown actions and gate
+/// refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
+pub(super) async fn transition_thread(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: TransitionThreadArgs = serde_json::from_value(args.clone())?;
+    let action = maidan_fsm::ThreadAction::parse(&a.action).ok_or_else(|| {
+        McpError::InvalidParams(format!(
+            "unknown action {:?}; expected start_review, close, or archive",
+            a.action
+        ))
+    })?;
+    let thread_id = ThreadId(a.thread_id);
+    let (result, stored) = server
+        .store
+        .transition_thread_with_event(thread_id, MemberId(a.actor_id), action)
+        .await?;
+    server.publish_stored(&stored).await;
+    // Cluster 222: entering a terminal state can unblock dependents. Same
+    // derived `ThreadReady` emit as REST — best-effort, never undoes the
+    // committed transition.
+    if !result.from_state.is_terminal() && result.to_state.is_terminal() {
+        match server.store.newly_ready_dependents(thread_id).await {
+            Ok(ready) => {
+                if !ready.is_empty() {
+                    match server.store.get_channel(result.thread.channel_id).await {
+                        Ok(channel) => {
+                            for dep in ready {
+                                server
+                                    .publish_event(Event::ThreadReady {
+                                        occurred_at: Utc::now(),
+                                        workspace_id: channel.workspace_id,
+                                        channel_id: dep.channel_id,
+                                        thread_id: dep.id,
+                                        thread: dep,
+                                    })
+                                    .await;
+                            }
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                "thread_ready: get_channel failed"
+                            );
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "thread_ready: newly_ready_dependents failed");
+            }
+        }
+    }
+    Ok(content_json(&result.thread))
+}
+
+#[derive(Deserialize)]
 struct SetWaitArgs {
     thread_id: uuid::Uuid,
     wait_until: chrono::DateTime<chrono::Utc>,

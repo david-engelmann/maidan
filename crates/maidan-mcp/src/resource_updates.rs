@@ -51,7 +51,7 @@ pub async fn uris_for_tool_mutation(
                 }
             }
         }
-        "pin_message" | "unpin_message" => {
+        "pin_message" | "unpin_message" | "transition_thread" => {
             if let Some(tid) = uuid_arg(args, "thread_id") {
                 push_thread_chain(store, ThreadId(tid), &mut uris).await;
             }

@@ -4580,10 +4580,190 @@ mod tests {
         assert_eq!(reviews.as_array().unwrap().len(), 1);
     }
 
+    /// Cluster 384 (P1.1d): MCP `transition_thread` is the twin of REST
+    /// `POST /threads/:id`. Same store path → same SoD + close-gate; the
+    /// transition publishes `ThreadStateChanged` via `publish_stored`.
+    #[tokio::test]
+    async fn transition_thread_tool_advances_fsm_and_honors_gates() {
+        use std::collections::HashSet;
+        use std::time::Duration;
+
+        use futures::StreamExt;
+        use maidan_auth::capability::THREAD_TRANSITION;
+        use maidan_bus::{BusItem, EventBus, InMemoryBus};
+        use maidan_types::{Event, EventFilter, EventKind, NewThread, ReviewDecision};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "fsm".into() })
+            .await
+            .unwrap();
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let claimer = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "claimer".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let reviewer = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "reviewer".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("task".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_owner(thread.id, Some(owner.id))
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, claimer.id).await.unwrap();
+
+        let bus = Arc::new(InMemoryBus::new());
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(bus.clone());
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let caps = vec![THREAD_TRANSITION.to_string()];
+        let owner_auth = AuthContext::from_session(owner.id, ws.id, caps.clone());
+        let claimer_auth = AuthContext::from_session(claimer.id, ws.id, caps);
+        let tid = json!(thread.id.0);
+        let args = |action: &str, actor: uuid::Uuid| {
+            json!({
+                "thread_id": tid,
+                "actor_id": actor,
+                "action": action,
+            })
+        };
+
+        let unknown = server
+            .call_tool(&owner_auth, "transition_thread", &args("merge", owner.id.0))
+            .await;
+        assert!(
+            matches!(unknown, Err(McpError::InvalidParams(ref m)) if m.contains("unknown action")),
+            "unknown action must be InvalidParams, got {unknown:?}"
+        );
+
+        let filter = EventFilter {
+            workspace_id: Some(ws.id),
+            kinds: Some(HashSet::from([EventKind::ThreadStateChanged])),
+            ..EventFilter::default()
+        };
+        let mut stream = bus.subscribe(filter).await.unwrap();
+
+        let started = content(
+            server
+                .call_tool(
+                    &owner_auth,
+                    "transition_thread",
+                    &args("start_review", owner.id.0),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(started["state"], "in_review");
+
+        let event = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .expect("timeout waiting for ThreadStateChanged")
+            .expect("subscriber ended without event");
+        let BusItem::Event(envelope) = event else {
+            panic!("expected event, got lag or end");
+        };
+        match envelope.event {
+            Event::ThreadStateChanged {
+                from_state,
+                to_state,
+                ..
+            } => {
+                assert_eq!(from_state, ThreadState::Open);
+                assert_eq!(to_state, ThreadState::InReview);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+
+        let sod = server
+            .call_tool(
+                &claimer_auth,
+                "transition_thread",
+                &args("close", claimer.id.0),
+            )
+            .await;
+        assert!(
+            matches!(sod, Err(McpError::InvalidParams(ref m)) if m.contains("separation of duties")),
+            "claimer landing its own owned thread must be SoD-denied, got {sod:?}"
+        );
+
+        store.set_review_requirement(thread.id, 1).await.unwrap();
+        let gated = server
+            .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+            .await;
+        assert!(
+            matches!(gated, Err(McpError::InvalidParams(ref m)) if m.contains("review requirement")),
+            "close without the required approval must be refused, got {gated:?}"
+        );
+
+        store
+            .submit_review(thread.id, reviewer.id, ReviewDecision::Approve, None)
+            .await
+            .unwrap();
+        let closed = content(
+            server
+                .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(closed["state"], "closed");
+    }
+
     #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        use maidan_fsm::ThreadAction;
         use maidan_types::{NewThread, PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA};
 
         let pool = SqlitePoolOptions::new()
@@ -4671,6 +4851,7 @@ mod tests {
             Arc::new(HashV1Provider),
         );
         let caps = vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()];
+        let owner_auth = AuthContext::from_session(owner.id, ws.id, caps.clone());
         let rev = AuthContext::from_session(reviewer.id, ws.id, caps.clone());
         let human_auth = AuthContext::from_session(human.id, ws.id, caps);
         let content = |v: Value| -> Value {
@@ -4703,15 +4884,31 @@ mod tests {
         assert_eq!(status["required_count"], 1);
         assert_eq!(status["approvals_met"], json!(false));
 
-        store
-            .transition_thread(thread.id, owner.id, ThreadAction::StartReview)
+        server
+            .call_tool(
+                &owner_auth,
+                "transition_thread",
+                &json!({
+                    "thread_id": tid,
+                    "actor_id": owner.id.0,
+                    "action": "start_review",
+                }),
+            )
             .await
             .unwrap();
-        let blocked = store
-            .transition_thread(thread.id, owner.id, ThreadAction::Close)
+        let blocked = server
+            .call_tool(
+                &owner_auth,
+                "transition_thread",
+                &json!({
+                    "thread_id": tid,
+                    "actor_id": owner.id.0,
+                    "action": "close",
+                }),
+            )
             .await;
         assert!(
-            matches!(blocked, Err(maidan_store::StoreError::Conflict(ref m)) if m.contains("review requirement")),
+            matches!(blocked, Err(McpError::InvalidParams(ref m)) if m.contains("review requirement")),
             "MCP-set critical result must block close, got {blocked:?}"
         );
 
@@ -4723,11 +4920,21 @@ mod tests {
             )
             .await
             .unwrap();
-        let closed = store
-            .transition_thread(thread.id, owner.id, ThreadAction::Close)
-            .await
-            .expect("human approve unblocks");
-        assert_eq!(closed.to_state.as_str(), "closed");
+        let closed = content(
+            server
+                .call_tool(
+                    &owner_auth,
+                    "transition_thread",
+                    &json!({
+                        "thread_id": tid,
+                        "actor_id": owner.id.0,
+                        "action": "close",
+                    }),
+                )
+                .await
+                .expect("human approve unblocks"),
+        );
+        assert_eq!(closed["state"], "closed");
     }
 
     /// Cluster 376.6: a post the `max_tools` axis refuses comes back as a client

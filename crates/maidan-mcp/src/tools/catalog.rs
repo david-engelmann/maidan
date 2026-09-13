@@ -280,6 +280,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "transition_thread",
+            "description": "Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. Returns the updated thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the transition"},
+                    "action": {"type": "string", "description": "start_review, close, or archive"}
+                },
+                "required": ["thread_id", "actor_id", "action"]
+            }
+        }),
+        json!({
             "name": "list_assigned_threads",
             "description": "List the threads currently assigned to a member (their work queue), oldest first.",
             "inputSchema": {

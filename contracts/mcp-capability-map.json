@@ -130,6 +130,7 @@
   "snapshot_thread_context": "artifact:upload",
   "snooze_notification": "workspace:read",
   "submit_review": "thread:transition",
+  "transition_thread": "thread:transition",
   "unassign_thread": "thread:transition",
   "unfollow_channel": "workspace:read",
   "unfollow_thread": "workspace:read",

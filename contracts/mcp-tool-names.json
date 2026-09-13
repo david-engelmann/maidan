@@ -130,6 +130,7 @@
   "snapshot_thread_context",
   "snooze_notification",
   "submit_review",
+  "transition_thread",
   "unassign_thread",
   "unfollow_channel",
   "unfollow_thread",

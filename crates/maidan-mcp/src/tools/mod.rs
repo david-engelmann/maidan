@@ -212,7 +212,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_review_requirement"
         | "add_reviewer"
         | "submit_review"
-        | "set_thread_steer" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "set_thread_steer"
+        | "transition_thread" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -311,6 +312,7 @@ async fn enforce_channel_access(
         | "submit_review"
         | "get_review_status"
         | "list_reviews"
+        | "transition_thread"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -387,6 +389,7 @@ pub async fn dispatch(
         "assign_thread" => thread::assign_thread(server, args).await,
         "claim_thread" => thread::claim_thread(server, args).await,
         "unassign_thread" => thread::unassign_thread(server, args).await,
+        "transition_thread" => thread::transition_thread(server, args).await,
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
