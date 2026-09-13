@@ -32,10 +32,13 @@ the allowlist; confirm where it landed with the status API. A perfectly correct
 `deliver_to` can still deliver nowhere if the target is unblessed — that is a
 normal outcome, not a producer bug.
 
-Inline per-finding PR review comments (Cluster 380) are **next after this cluster**.
-The envelope now carries `head_sha`. 380.1 still has to pin the `line_range` frame
-of reference (file-absolute post-image vs diff-relative) and must use that
-`head_sha` as `commit_id`, never the live PR head.
+Inline per-finding PR review comments (Cluster 380) are **in progress**.
+**380.1 pins the `line_range` frame** (this cluster): file-absolute **post-image**
+lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
+GitHub that is the **RIGHT** side of the pull-request diff. 380.2 posts
+`POST /repos/{repo}/pulls/{n}/reviews` with those coordinates and
+`commit_id = head_sha` — never the live PR head. The Cluster 379 summary comment
+path is unchanged.
 
 ---
 
@@ -55,14 +58,40 @@ field never breaks delivery.
 | `summary` | on `reviewed` | One line. The Slack body and the notification title. |
 | `view_in_pi` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
-| `findings` | no | Stored and forwarded verbatim. Read only by Cluster 380's inline-comment path (unparked as next; not implemented yet). |
+| `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
+| `findings` | no | Parsed for Cluster 380 inline comments. Each usable finding needs `file`, `body`, and `line_range`. Unusable entries are skipped, not an error. Other finding fields stay in the stored JSON unread. |
 
 Everything else in the envelope — `corroboration`, `per_seat`, `seats`, `run_id`,
 `cost_usd`, `duration_secs`, `sandbox`, `finding_count`, `diff_available` — is
 carried through untouched. Maidan does not interpret it.
 
 **The canonical `Finding` wire shape is the producer's and does not change.**
-Maidan stores and forwards it byte-for-byte.
+Maidan stores the envelope byte-for-byte; the parser only *projects* `file` /
+`line_range` / `body` for the review POST.
+
+---
+
+## Inline findings (Cluster 380)
+
+**Frame of reference (pinned 380.1).** `findings[].line_range` is a 1-indexed
+**inclusive** span (`start`..=`end`) on the **post-image** file at `head_sha` —
+the file as that commit left it, not a diff-hunk relative offset. On GitHub's
+split view this is **RIGHT**. `LEFT` is deletions that no longer exist in the
+after-state; a finding that quotes a line in the resulting file is never LEFT.
+
+GitHub mapping for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`:
+
+| Envelope | GitHub |
+|---|---|
+| `file` | `path` |
+| `line_range.end` | `line` (last line of the range) |
+| `line_range.start` when `start != end` | `start_line` (omitted for a single-line finding) |
+| (always) | `side: "RIGHT"` |
+| `body` | `body` (producer text as written) |
+| `head_sha` | `commit_id` |
+
+`event` is `COMMENT`. Maidan delivers findings; it does not approve or
+request-changes on the producer's behalf. Posting the review is Cluster 380.2.
 
 ---
 
@@ -232,13 +261,14 @@ durably, once.
 
 ## Open requests to result producers
 
-One of three is now carried; two remain:
+Two of three are now carried; one remains:
 
 1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried.** Present on
-   `pi.waiter.result/1` (fixture lock). Cluster 380 must pass it as GitHub's `commit_id`
+   `pi.waiter.result/1` (fixture lock). Cluster 380 passes it as GitHub's `commit_id`
    rather than resolving the PR head at delivery time.
-2. **The frame of reference for `line_range`** — file-absolute post-image lines,
-   or diff-relative? Still needed before inline comments can be placed correctly.
+2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
+   **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
+   [Inline findings](#inline-findings-cluster-380).
 3. **Call `report_usage`** with the run's `cost_usd` and `duration_secs`. Maidan
    ships a per-task token/USD/turn/wall budget envelope that stops a run when it
    is exceeded; a producer that reports its spend only inside an opaque result
