@@ -11,7 +11,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Post-gate hardening (Phase XXIV). **Wave 2 #25 remainder — Soundcheck
 gate pointer + green/amber/red land vocabulary.** Four impl PRs
-(385.1–385.4) + a retro. No new gate tag. Cluster 384 is P1.1d.
+(385.1–385.4) + a retro. No new gate tag. Cluster 384 is P1.1d (closed
+by this retro).
 
 A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?,
 land}`. Presence of a row arms the close-gate (no row = vacuous green).
@@ -28,6 +29,22 @@ execution. **Row #25 is closed** (383 composition + 385 pointer).
 - **385.3** REST + MCP — `/threads/:id/soundcheck` + requirement;
   `set/get/require/clear_soundcheck`.
 - **385.4** e2e — HTTP close-gate + MCP standing; fail stays red.
+
+## [384.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **P1.1d — MCP `transition_thread`
+twin of the REST FSM transition.** One impl PR (384.1) + a retro. No
+new Wave number. No new gate tag.
+
+An MCP-only agent can now advance a thread's FSM (`start_review` /
+`close` / `archive`) under the same SoD, required-reviewers close-gate,
+unresolved-`refutes`, and Cluster-383 critical composition as REST.
+Calls `transition_thread_with_event` + `publish_stored`. Terminal
+transitions emit `ThreadReady` for newly-ready dependents. No bypass.
+
+- **384.1** MCP tool + catalog + contracts + happy-path / SoD /
+  close-gate tests (#816).
+- **384.2** this retro + Open Work strike.
 
 ## [383.0.0] — 2026-09-13
 

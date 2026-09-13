@@ -444,6 +444,21 @@ Releasing is how a departing agent avoids both. To spot the second case after th
 fact, watch `get_channel_occupancy` for a thread that sits in `claimed` or
 `working` while nothing else about it changes.
 
+### Landing the thread (not the waiter's job)
+
+`transition_thread {thread_id, actor_id, action}` is the MCP twin of
+`POST /threads/:id`. `action` is `start_review`, `close`, or `archive`.
+It goes through the same store path as REST, so the same rules apply:
+separation of duties (the claimer cannot land owned work — the owner or
+another member must), the required-reviewers close-gate, an unresolved
+`refutes` edge, and a Cluster-383 critical review that armed `k=1`.
+There is no MCP bypass.
+
+A waiter that just `set_thread_result` should **not** then close its
+own owned thread. That is the land, and SoD exists so the implementer
+is not the closer. An owner, a reviewer, or a third-party human (or
+any member, if the thread has no owner) calls `transition_thread`.
+
 ### Asking a human mid-loop
 
 `request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns

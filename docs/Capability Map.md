@@ -18,7 +18,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
-| `thread:transition` | POST thread FSM transitions |
+| `thread:transition` | POST thread FSM transitions; MCP `transition_thread` |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
@@ -33,6 +33,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |
 | `search:query` | `search_messages` |
+| `thread:transition` | `transition_thread` |
 
 MCP protocol methods (not tools):
 

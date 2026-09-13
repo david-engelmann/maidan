@@ -5,7 +5,7 @@ PR prepends a new section so the latest is always at the top.
 
 ## v385.0.0 — Wave 2 #25 remainder: Soundcheck gate pointer + green/amber/red
 
-Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `soundcheck`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; Soundcheck owns test execution. Not a CI product / a judge panel. Cluster 384 is P1.1d. **Row #25 is closed** (383 composition + 385 pointer).
+Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `soundcheck`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; Soundcheck owns test execution. Not a CI product / a judge panel. Cluster 384 is P1.1d (closed by this retro). **Row #25 is closed** (383 composition + 385 pointer).
 
 | Change | Where |
 |--------|-------|
@@ -13,6 +13,15 @@ Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", sta
 | **FSM (385.2):** `transition_in_tx` refuses `closed` unless a qualifying green pass (or no row). | `crates/maidan-store/src/{postgres,sqlite}/thread_transitions.rs` |
 | **REST + MCP (385.3):** `PUT`/`GET`/`DELETE /threads/:id/soundcheck` + `PUT …/requirement`; tools `set/get/require/clear_soundcheck`. | `crates/maidan-server/src/routes/soundcheck.rs`, `crates/maidan-mcp/src/tools/soundcheck.rs` |
 | **e2e (385.4):** HTTP close-gate + MCP standing; fail stays red. | `crates/maidan-server/tests/soundcheck_e2e.rs` |
+
+## v384.0.0 — P1.1d: MCP `transition_thread` twin of the REST FSM
+
+One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (`start_review` / `close` / `archive`) through `transition_thread_with_event` + `publish_stored`. SoD, the required-reviewers close-gate, unresolved `refutes`, and the Cluster-383 critical composition apply identically — no MCP bypass. Terminal transitions emit `ThreadReady` for newly-ready dependents. **P1.1d is closed.** Cluster 385 (Soundcheck) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not this work.
+
+| Change | Where |
+|--------|-------|
+| **MCP `transition_thread` (384.1):** `{thread_id, actor_id, action}` → `transition_thread_with_event` + `publish_stored`; `ThreadReady` on terminal; resource URIs; 5-place wiring + both sorted contracts. `maidan-fsm` is a runtime dep. | `crates/maidan-mcp/src/tools/{thread,mod,catalog}.rs`, `resource_updates.rs`, `contracts/mcp-*.json` |
+| **Tests:** happy path + SoD denial + close-gate refusal; Cluster 383 critical-result e2e now closes via the tool. | `crates/maidan-mcp/src/server.rs` |
 
 ## v383.0.0 — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
 
