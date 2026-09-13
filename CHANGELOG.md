@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [385.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Wave 2 #25 remainder — Soundcheck
+gate pointer + green/amber/red land vocabulary.** Four impl PRs
+(385.1–385.4) + a retro. No new gate tag. Cluster 384 is P1.1d.
+
+A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?,
+land}`. Presence of a row arms the close-gate (no row = vacuous green).
+`closed` refuses unless a green pass from a soundcheck-skilled member
+≠ the owner/assignee. Amber (flags-then-still-engages) is not a land.
+Fail is always red. Room holds the pointer; Soundcheck owns test
+execution. **Row #25 is closed** (383 composition + 385 pointer).
+
+- **385.1** types + store — pointer, land colors, standing; table pg
+  0088 / sqlite 0087; require / set / get / clear. Unskilled write is
+  `InvalidInput`.
+- **385.2** FSM — `transition_in_tx` refuses `closed` unless a
+  qualifying green pass (or no row).
+- **385.3** REST + MCP — `/threads/:id/soundcheck` + requirement;
+  `set/get/require/clear_soundcheck`.
+- **385.4** e2e — HTTP close-gate + MCP standing; fail stays red.
+
 ## [383.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #25 composition — critical
