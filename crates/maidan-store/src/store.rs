@@ -1474,13 +1474,20 @@ pub trait AssignmentStore: Send + Sync {
         reason: BlockedReason,
         set_by: MemberId,
     ) -> Result<ThreadBlock, StoreError>;
-    /// Clear a thread's explicit block (Cluster 386). Returns the cleared row
-    /// so a later cluster can emit `BlockedResolved` with the resolved reason;
-    /// `None` if it was not blocked (idempotent).
+    /// Clear a thread's explicit block (Cluster 386). Returns the cleared row;
+    /// `None` if it was not blocked (idempotent). Prefer
+    /// [`clear_thread_block_with_event`] to emit `BlockedResolved`.
     async fn clear_thread_block(
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadBlock>, StoreError>;
+    /// Clear a thread's explicit block and append `BlockedResolved` atomically
+    /// (Cluster 386.3). `None` event when the thread was not blocked.
+    async fn clear_thread_block_with_event(
+        &self,
+        thread_id: ThreadId,
+        resolved_by: MemberId,
+    ) -> Result<(Option<ThreadBlock>, Option<StoredEvent>), StoreError>;
     /// The thread's explicit block, or `None` if unblocked (Cluster 386).
     async fn get_thread_block(
         &self,

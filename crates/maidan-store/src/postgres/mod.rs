@@ -1870,6 +1870,13 @@ impl AssignmentStore for PostgresStore {
     ) -> Result<Option<ThreadBlock>, StoreError> {
         blocks::clear(&self.pool, thread_id).await
     }
+    async fn clear_thread_block_with_event(
+        &self,
+        thread_id: ThreadId,
+        resolved_by: MemberId,
+    ) -> Result<(Option<ThreadBlock>, Option<StoredEvent>), StoreError> {
+        blocks::clear_with_event(&self.pool, thread_id, resolved_by).await
+    }
     async fn get_thread_block(
         &self,
         thread_id: ThreadId,
