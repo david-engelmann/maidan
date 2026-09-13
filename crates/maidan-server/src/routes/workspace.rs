@@ -143,6 +143,36 @@ pub async fn get_workspace_usage(
     Ok(Json(state.store.workspace_usage(workspace_id).await?))
 }
 
+/// Workspace-scoped thread-result list (Cluster 381.2). Optional exact-match
+/// `result_kind` facet on the namespaced string (e.g. `pi.review.result/1`).
+/// `workspace:read`; private-channel rows the caller cannot access are dropped.
+pub async fn list_workspace_results(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ListThreadResultsQuery>,
+) -> ApiResult<Json<Vec<ThreadResult>>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let results = state
+        .store
+        .list_thread_results(workspace_id, q.result_kind.as_deref(), limit)
+        .await?;
+    if auth.bypass {
+        return Ok(Json(results));
+    }
+    let mut visible = Vec::with_capacity(results.len());
+    for result in results {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, result.thread_id).await? {
+            visible.push(result);
+        }
+    }
+    Ok(Json(visible))
+}
+
 /// `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11) — set or clear the
 /// workspace's WIP limit (max concurrent live claims per member). `{limit: n}`
 /// caps (0 freezes); `{limit: null}` removes the cap. `workspace:write`.

@@ -49,6 +49,19 @@ pub fn import_workspace() {}
 )]
 pub fn get_workspace_usage() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/results",
+    tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        ListThreadResultsQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [ThreadResult], description = "Workspace thread results, newest first; optional exact result_kind facet"))
+)]
+pub fn list_workspace_results() {}
+
 #[utoipa::path(put, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     request_body = PlaceLegalHold,

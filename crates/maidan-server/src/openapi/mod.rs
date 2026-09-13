@@ -62,6 +62,7 @@ impl Modify for SecurityAddon {
         paths::export_workspace,
         paths::import_workspace,
         paths::get_workspace_usage,
+        paths::list_workspace_results,
         paths::place_legal_hold,
         paths::lift_legal_hold,
         paths::get_legal_hold,
