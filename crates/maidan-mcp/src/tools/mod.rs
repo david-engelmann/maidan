@@ -94,6 +94,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_spawn_budget"
         | "get_member_wip"
         | "list_unclaimable"
+        | "list_blocked_threads"
+        | "get_thread_block"
         | "get_wait"
         | "get_priority"
         | "list_thread_dependencies"
@@ -208,6 +210,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "report_usage"
         | "mark_unclaimable"
         | "mark_claimable"
+        | "set_thread_block"
+        | "clear_thread_block"
         | "set_wait"
         | "cancel_wait"
         | "set_priority"
@@ -259,6 +263,7 @@ async fn enforce_channel_access(
         | "create_task_schedule"
         | "create_recipe"
         | "list_unclaimable"
+        | "list_blocked_threads"
         | "follow_channel" => {
             // These tools' channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
@@ -304,6 +309,9 @@ async fn enforce_channel_access(
         | "request_approval"
         | "mark_unclaimable"
         | "mark_claimable"
+        | "set_thread_block"
+        | "get_thread_block"
+        | "clear_thread_block"
         | "set_wait"
         | "cancel_wait"
         | "get_wait"
@@ -408,6 +416,10 @@ pub async fn dispatch(
         "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
         "mark_claimable" => thread::mark_claimable(store, args).await,
         "list_unclaimable" => thread::list_unclaimable(store, args).await,
+        "set_thread_block" => thread::set_thread_block(store, auth, args).await,
+        "get_thread_block" => thread::get_thread_block(store, args).await,
+        "clear_thread_block" => thread::clear_thread_block(server, auth, args).await,
+        "list_blocked_threads" => thread::list_blocked_threads(store, args).await,
         "set_wait" => thread::set_wait(store, auth, args).await,
         "cancel_wait" => thread::cancel_wait(store, args).await,
         "get_wait" => thread::get_wait(store, args).await,

@@ -734,6 +734,14 @@ pub async fn claim_thread(
             u.reason
         )));
     }
+    // Explicit block (Cluster 386, Wave 2 #27): same 409 as the 363 park —
+    // `claim_next` already skips the row; an explicit claim must not sneak past.
+    if let Some(b) = state.store.get_thread_block(thread_id).await? {
+        return Err(ApiError::Conflict(format!(
+            "thread is blocked ({})",
+            b.reason.as_str()
+        )));
+    }
     // WIP limit (Cluster 362, G11): refuse an explicit claim that would push the
     // member past their workspace cap — 409, distinct from `claim_next`'s silent
     // null. Skipped when the member already holds this thread (a re-claim is not a
@@ -781,6 +789,67 @@ pub async fn mark_thread_unclaimable(
             .mark_thread_unclaimable(thread_id, reason, auth.member_id)
             .await?,
     ))
+}
+
+/// `PUT /threads/:id/block` (Cluster 386, Wave 2 #27) — set (upsert) an explicit
+/// dispatch block. `claim_next` skips the thread and an explicit `claim` is
+/// 409 until cleared. `thread:transition` + thread access.
+pub async fn set_thread_block(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadBlock>,
+) -> ApiResult<Json<ThreadBlock>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(
+        state
+            .store
+            .set_thread_block(thread_id, body.reason, auth.member_id)
+            .await?,
+    ))
+}
+
+/// `GET /threads/:id/block` (Cluster 386) — the thread's explicit block, or
+/// `404` when unblocked. `workspace:read` + thread access.
+pub async fn get_thread_block(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadBlock>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_block(thread_id).await? {
+        Some(block) => Ok(Json(block)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
+/// `DELETE /threads/:id/block` (Cluster 386) — clear the explicit block and
+/// emit `BlockedResolved` (bus-notify via `publish_stored`). `204` when it was
+/// blocked, `404` when it was not. `thread:transition` + thread access.
+pub async fn clear_thread_block(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let (cleared, stored) = state
+        .store
+        .clear_thread_block_with_event(thread_id, auth.member_id)
+        .await?;
+    if let Some(stored) = stored {
+        super::publish_stored(&state, stored).await;
+    }
+    if cleared.is_some() {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 /// `DELETE /threads/:id/unclaimable` (Cluster 363) — un-park a thread (it becomes

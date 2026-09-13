@@ -498,6 +498,12 @@ pub fn get_channel_queue_depth() {}
     responses((status = 200, body = Vec<ThreadUnclaimable>, description = "Parked threads, newest first")))]
 pub fn list_channel_unclaimable() {}
 
+#[utoipa::path(get, path = "/channels/{cid}/blocked", tag = "channels",
+    params(("cid" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ThreadBlock>, description = "Explicitly blocked threads, newest first")))]
+pub fn list_channel_blocked() {}
+
 #[utoipa::path(get, path = "/channels/{cid}/occupancy", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),
     security(("bearerAuth" = [])),
@@ -678,6 +684,25 @@ pub fn mark_thread_unclaimable() {}
     security(("bearerAuth" = [])),
     responses((status = 204, description = "Un-parked"), (status = 404, description = "Was not parked")))]
 pub fn mark_thread_claimable() {}
+
+#[utoipa::path(put, path = "/threads/{id}/block", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetThreadBlock,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadBlock, description = "The explicit dispatch block")))]
+pub fn set_thread_block() {}
+
+#[utoipa::path(get, path = "/threads/{id}/block", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadBlock), (status = 404, description = "Not blocked")))]
+pub fn get_thread_block() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/block", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Cleared; BlockedResolved emitted"), (status = 404, description = "Was not blocked")))]
+pub fn clear_thread_block() {}
 
 #[utoipa::path(put, path = "/threads/{id}/wait", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -119,6 +119,21 @@ pub async fn list_channel_unclaimable(
     ))
 }
 
+/// `GET /channels/:cid/blocked` (Cluster 386, Wave 2 #27) — explicitly blocked
+/// threads in a channel, newest first. Distinct from queue-depth's `blocked`
+/// bucket (DAG deps not terminal). `workspace:read` + channel access.
+pub async fn list_channel_blocked(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ThreadBlock>>> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    Ok(Json(state.store.list_blocked_threads(channel.id).await?))
+}
+
 /// Channel occupancy (Cluster 351): the two-clocks view — queued / claimed /
 /// working / blocked counts of the channel's open task threads, so an
 /// orchestrator sees how much held work is actually underway. `workspace:read` +
