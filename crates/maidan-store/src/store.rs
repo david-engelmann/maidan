@@ -165,6 +165,17 @@ pub trait ThreadResultStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
+    /// Workspace-scoped list of thread results (Cluster 381). When
+    /// `result_kind` is `Some`, exact-match on the namespaced string extracted
+    /// from the payload (e.g. `pi.review.result/1`) — not a closed enum.
+    /// `None` (or empty / whitespace) returns every non-tombstoned result in
+    /// the workspace. Newest first. `limit` is clamped `1..=500`.
+    async fn list_thread_results(
+        &self,
+        workspace_id: WorkspaceId,
+        result_kind: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<ThreadResult>, StoreError>;
     /// Closed/archived, non-tombstoned thread results in `channel_id`, newest
     /// first (Cluster 382, Wave 2 #24). `exclude_thread_id` drops the claimer's
     /// own thread so the pack lists *other* in-channel decisions. `limit` is

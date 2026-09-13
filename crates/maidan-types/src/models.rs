@@ -254,6 +254,21 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// The search-facet value of a result payload (Cluster 381).
+///
+/// `result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a
+/// closed enum — a waiter product ships a new kind without a Maidan release.
+/// Missing, empty, whitespace-only, or non-string values are `None` (the row is
+/// stored but not facetable under a kind). Does **not** require
+/// `schema = "pi.waiter.result/1"`: the facet is the string, not the envelope.
+pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
+    value
+        .get("result_kind")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
 /// A terminal thread's recorded result, as listed for a channel's claimer pack
 /// (Cluster 382, Wave 2 #24). Store-level row: closed/archived, non-tombstoned,
 /// newest first. The pack assembler (REST/MCP) projects this into a token-lean
@@ -2671,5 +2686,43 @@ mod notification_group_tests {
     #[test]
     fn empty_input_yields_no_groups() {
         assert!(group_notifications_by_thread(&[]).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod result_kind_from_payload_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_the_namespaced_string() {
+        assert_eq!(
+            result_kind_from_payload(&json!({"result_kind": "pi.review.result/1"})),
+            Some("pi.review.result/1")
+        );
+    }
+
+    #[test]
+    fn ignores_missing_empty_and_non_string() {
+        assert_eq!(result_kind_from_payload(&json!({})), None);
+        assert_eq!(result_kind_from_payload(&json!({"result_kind": ""})), None);
+        assert_eq!(
+            result_kind_from_payload(&json!({"result_kind": "  "})),
+            None
+        );
+        assert_eq!(result_kind_from_payload(&json!({"result_kind": 1})), None);
+        assert_eq!(
+            result_kind_from_payload(&json!({"kind": "decision"})),
+            None,
+            "the old ADR `kind` field is not the search facet"
+        );
+    }
+
+    #[test]
+    fn does_not_require_the_waiter_schema() {
+        assert_eq!(
+            result_kind_from_payload(&json!({"result_kind": "acme.plan.result/2"})),
+            Some("acme.plan.result/2")
+        );
     }
 }
