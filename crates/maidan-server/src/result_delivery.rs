@@ -1,0 +1,364 @@
+//! Result delivery trigger (Cluster 379.3).
+//!
+//! A `ThreadResultSet` is a "go fetch" pointer (Cluster 235): the envelope lives
+//! on the thread, not on the event. This module is the arm of
+//! [`crate::notification_router::route_event`] that fetches, parses, and — per
+//! `deliver_to` target — allowlist-checks then enqueues. It is the exact shape
+//! `MessagePosted → route_message_to_slack` already has, pointed at a result
+//! instead of a projector-linked channel.
+//!
+//! **`deliver_to` selects; the workspace allowlist authorizes.** An empty
+//! `deliver_to` is valid and normal (thread-only, zero rows). A target the
+//! workspace has not blessed, or a surface this build does not know, is a
+//! *skip with a recorded warning* — never silence, never an error that sinks
+//! the other targets. Partial delivery is the model.
+//!
+//! The every-replica router is safe because `arm_result_delivery` is
+//! the contended write: exactly one replica wins the right to enqueue. The
+//! egress outbox is *transport* (retry/backoff); this module only arms intent
+//! and, for a blessed target, puts a row on that queue. Update-in-place via
+//! the stored `external_ref` is Cluster 379.4.
+
+use chrono::{DateTime, Utc};
+use maidan_types::{
+    parse_waiter_result, status, DeliverTarget, EgressTarget, NewEgressOutbox, ResultDelivery,
+    ThreadId, WaiterResult, WorkspaceId,
+};
+use tracing::{debug, warn};
+
+use crate::egress_body::{github_comment_body, slack_message_body};
+use crate::state::AppState;
+
+/// The short Maidan-authored notice a non-`reviewed` result delivers. Built
+/// from `status` alone — never the producer's `rendered` or `summary`, so a
+/// failed review can never look like a clean pass, and is never silent.
+pub fn failure_notice(status: &str) -> String {
+    format!(
+        "Maidan could not deliver this result: the producer reported status `{status}`, not `reviewed`."
+    )
+}
+
+/// The body that will actually leave Maidan for this target.
+///
+/// GitHub gets `rendered` (GFM, mentions defused, truncated to the comment
+/// ceiling). Slack gets `summary` plus a compact digest — **never** `rendered`,
+/// which is GFM and would arrive visibly broken. A non-`reviewed` status
+/// replaces both with [`failure_notice`].
+pub fn delivery_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
+    if !waiter.is_reviewed() {
+        return failure_notice(&waiter.status);
+    }
+    let backlink = waiter.view_in_pi.as_deref();
+    match target {
+        EgressTarget::Github { .. } => {
+            let mut rendered = waiter.rendered.clone().unwrap_or_default();
+            if let Some(pr) = &waiter.pr {
+                if !rendered.is_empty() {
+                    rendered.push_str("\n\n");
+                }
+                rendered.push_str("PR: ");
+                rendered.push_str(pr);
+            }
+            github_comment_body(&rendered, backlink)
+        }
+        EgressTarget::Slack { .. } => {
+            let summary = waiter
+                .summary
+                .as_deref()
+                .unwrap_or(waiter.result_kind.as_str());
+            let digest = waiter
+                .pr
+                .as_deref()
+                .map(|pr| vec![format!("PR: {pr}")])
+                .unwrap_or_default();
+            slack_message_body(summary, &digest, backlink)
+        }
+    }
+}
+
+/// Fetch the thread's result, parse the waiter envelope, and per target either
+/// skip (recorded) or enqueue onto the egress outbox.
+///
+/// `None` from the parser is inert — an unrecognized `schema` means no
+/// delivery is attempted, because routing on an envelope we do not understand
+/// is how you deliver the wrong bytes to the wrong place. An empty
+/// `deliver_to` returns without writing a row: that is a supported outcome,
+/// not a misconfiguration.
+pub async fn route_thread_result(
+    state: &AppState,
+    log_id: i64,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+) -> Result<(), String> {
+    let stored = match state.store.get_thread_result(thread_id).await {
+        Ok(Some(stored)) => stored,
+        Ok(None) => {
+            debug!(%thread_id, "result delivery: no result on the thread");
+            return Ok(());
+        }
+        Err(err) => return Err(err.to_string()),
+    };
+    let Some(waiter) = parse_waiter_result(&stored.result) else {
+        debug!(
+            %thread_id,
+            "result delivery: unrecognized envelope, not delivering"
+        );
+        return Ok(());
+    };
+    if waiter.deliver_to.is_empty() {
+        return Ok(());
+    }
+    for target in &waiter.deliver_to {
+        if let Err(err) = route_one(
+            state,
+            log_id,
+            workspace_id,
+            thread_id,
+            stored.produced_at,
+            &waiter,
+            target,
+        )
+        .await
+        {
+            // Partial delivery: one target failing must not sink the others.
+            warn!(
+                error = %err,
+                %thread_id,
+                surface = target.surface(),
+                "result delivery: target failed; continuing"
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn route_one(
+    state: &AppState,
+    log_id: i64,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    revision: DateTime<Utc>,
+    waiter: &WaiterResult,
+    target: &DeliverTarget,
+) -> Result<(), String> {
+    match target.to_egress_target() {
+        None => {
+            let (surface, selector) = target.skip_fingerprint();
+            let reason = if matches!(target, DeliverTarget::Unknown(_)) {
+                format!("unknown surface '{surface}'")
+            } else {
+                format!("unusable {surface} target")
+            };
+            skip_unroutable(state, thread_id, &surface, &selector, revision, &reason).await
+        }
+        Some(egress) => {
+            let allowed = state
+                .store
+                .is_egress_target_allowed(
+                    workspace_id,
+                    egress.surface(),
+                    &egress.allowlist_selector(),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            if allowed {
+                enqueue_routable(
+                    state,
+                    log_id,
+                    workspace_id,
+                    thread_id,
+                    revision,
+                    waiter,
+                    &egress,
+                )
+                .await
+            } else {
+                skip_routable(
+                    state,
+                    thread_id,
+                    &egress,
+                    revision,
+                    "target not in the workspace egress allowlist",
+                )
+                .await
+            }
+        }
+    }
+}
+
+async fn skip_routable(
+    state: &AppState,
+    thread_id: ThreadId,
+    target: &EgressTarget,
+    revision: DateTime<Utc>,
+    reason: &str,
+) -> Result<(), String> {
+    let Some(row) = state
+        .store
+        .arm_result_delivery(thread_id, target, revision)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    record_skip(state, row, reason).await
+}
+
+async fn skip_unroutable(
+    state: &AppState,
+    thread_id: ThreadId,
+    surface: &str,
+    selector: &str,
+    revision: DateTime<Utc>,
+    reason: &str,
+) -> Result<(), String> {
+    let Some(row) = state
+        .store
+        .arm_unroutable_result_delivery(thread_id, surface, selector, revision)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    record_skip(state, row, reason).await
+}
+
+async fn record_skip(state: &AppState, row: ResultDelivery, reason: &str) -> Result<(), String> {
+    state
+        .store
+        .mark_result_delivery_skipped(row.id, reason)
+        .await
+        .map_err(|e| e.to_string())?;
+    crate::metrics::record_result_delivery(status::SKIPPED);
+    warn!(
+        thread_id = %row.thread_id,
+        surface = %row.surface,
+        selector = %row.selector,
+        reason,
+        "result delivery: skipped"
+    );
+    Ok(())
+}
+
+async fn enqueue_routable(
+    state: &AppState,
+    log_id: i64,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    revision: DateTime<Utc>,
+    waiter: &WaiterResult,
+    target: &EgressTarget,
+) -> Result<(), String> {
+    let Some(_row) = state
+        .store
+        .arm_result_delivery(thread_id, target, revision)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    let body = delivery_body(target, waiter);
+    state
+        .store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id,
+            thread_id,
+            source_log_id: log_id,
+            target: target.clone(),
+            body,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    crate::metrics::record_result_delivery("enqueued");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maidan_types::{STATUS_REVIEWED, WAITER_RESULT_SCHEMA};
+
+    fn waiter(status: &str, rendered: Option<&str>, summary: Option<&str>) -> WaiterResult {
+        WaiterResult {
+            result_kind: "pi.review.result/1".into(),
+            status: status.into(),
+            deliver_to: vec![],
+            rendered: rendered.map(str::to_string),
+            summary: summary.map(str::to_string),
+            view_in_pi: Some("https://pi.test/r/1".into()),
+            pr: Some("acme/widgets#7".into()),
+        }
+    }
+
+    fn github() -> EgressTarget {
+        EgressTarget::Github {
+            repo: "acme/widgets".into(),
+            issue_number: 7,
+        }
+    }
+
+    fn slack() -> EgressTarget {
+        EgressTarget::Slack {
+            channel_id: "C0123ABCDEF".into(),
+        }
+    }
+
+    #[test]
+    fn a_non_reviewed_body_is_maidan_authored_from_status_alone() {
+        let waiter = waiter(
+            "failed",
+            Some("looks like a clean pass @octocat"),
+            Some("<!channel> ship it"),
+        );
+        for target in [github(), slack()] {
+            let body = delivery_body(&target, &waiter);
+            assert_eq!(body, failure_notice("failed"));
+            assert!(
+                !body.contains("clean pass") && !body.contains("@octocat"),
+                "the producer's rendered must never ride a non-reviewed delivery: {body}"
+            );
+            assert!(
+                !body.contains("ship it") && !body.contains("<!channel>"),
+                "the producer's summary must never ride a non-reviewed delivery: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn github_gets_rendered_and_slack_gets_summary() {
+        let waiter = waiter(
+            STATUS_REVIEWED,
+            Some("## Findings\n\nping @octocat"),
+            Some("3 findings"),
+        );
+        let gh = delivery_body(&github(), &waiter);
+        assert!(gh.contains("Findings"), "github delivers rendered GFM");
+        assert!(
+            gh.contains("`@octocat`"),
+            "mentions are defused at the egress boundary: {gh}"
+        );
+        assert!(
+            !gh.contains("3 findings"),
+            "github does not substitute the slack summary"
+        );
+        assert!(gh.contains("PR: acme/widgets#7"));
+        assert!(gh.contains("https://pi.test/r/1"));
+
+        let sl = delivery_body(&slack(), &waiter);
+        assert!(sl.contains("3 findings"), "slack delivers the summary");
+        assert!(
+            !sl.contains("Findings") && !sl.contains("@octocat"),
+            "slack must never receive rendered GFM: {sl}"
+        );
+        assert!(sl.contains("PR: acme/widgets#7"));
+        assert!(sl.contains("https://pi.test/r/1"));
+    }
+
+    #[test]
+    fn the_schema_constant_is_what_the_parser_routes_on() {
+        // Guard against a silent rename: this module's contract is the 379.2
+        // envelope, and a drift here would enqueue nothing for a real result.
+        assert_eq!(WAITER_RESULT_SCHEMA, "pi.waiter.result/1");
+        assert_eq!(STATUS_REVIEWED, "reviewed");
+    }
+}

@@ -12,7 +12,9 @@
 //! double-notify. A `MentionRecorded` and a `MessagePosted` are distinct events
 //! (distinct `log_id`s), so a member mentioned in a channel they *also* follow
 //! gets both a mention notification and a message-posted one — per-kind mute
-//! (`message_posted`) is the control for follow-noise.
+//! (`message_posted`) is the control for follow-noise. A `ThreadResultSet` is
+//! not a per-recipient notification: it delegates to [`crate::result_delivery`]
+//! (Cluster 379.3), which arms one delivery row per `deliver_to` target.
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -117,7 +119,8 @@ async fn consume_bus(
 /// 238); `MessagePosted` → the followers of its channel/thread minus the author
 /// (Cluster 245). Each write is mute-checked (Cluster 242) and deduped on
 /// `(member_id, source_log_id)`, so event replays and multiple replicas don't
-/// double-notify.
+/// double-notify. A `ThreadResultSet` is the result-delivery trigger (Cluster
+/// 379.3), not an inbox row.
 pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result<(), String> {
     match event {
         Event::MentionRecorded {
@@ -264,6 +267,17 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 )
                 .await?;
             }
+        }
+        Event::ThreadResultSet {
+            workspace_id,
+            thread_id,
+            ..
+        } => {
+            // Cluster 379.3: a structured result may be aimed at an external
+            // surface. Fetch → parse → per target, allowlist-check then enqueue
+            // (or record a skip). Empty `deliver_to` is valid and writes nothing.
+            crate::result_delivery::route_thread_result(state, log_id, *workspace_id, *thread_id)
+                .await?;
         }
         Event::WaitTimedOut {
             workspace_id,

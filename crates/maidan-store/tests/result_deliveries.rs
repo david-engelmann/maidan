@@ -371,6 +371,41 @@ async fn run_per_target_suite(store: &dyn Store) {
     );
 }
 
+/// An unroutable destination still gets a row. The skip is the recorded
+/// warning the producer reads; vanishing would look like "we lost it".
+async fn run_unroutable_suite(store: &dyn Store) {
+    let tid = thread(store, "unroutable").await;
+    let rev = revision();
+    let row = store
+        .arm_unroutable_result_delivery(tid, "discord", "", rev)
+        .await
+        .expect("arm")
+        .expect("armed");
+    assert_eq!(row.surface, "discord");
+    assert_eq!(row.selector, "");
+    assert_eq!(row.status, status::PENDING);
+    store
+        .mark_result_delivery_skipped(row.id, "unknown surface 'discord'")
+        .await
+        .expect("skipped");
+    let listed = store.list_result_deliveries(tid).await.expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].status, status::SKIPPED);
+    assert_eq!(
+        listed[0].last_error.as_deref(),
+        Some("unknown surface 'discord'")
+    );
+    // Same revision from a second replica is still the dedup.
+    assert!(
+        store
+            .arm_unroutable_result_delivery(tid, "discord", "", rev)
+            .await
+            .expect("arm again")
+            .is_none(),
+        "unroutable skips are deduped the same way as routable ones"
+    );
+}
+
 /// A delivery that landed without an addressable handle (Cluster 378.2's
 /// `Ok(None)`) is still a delivery — it just posts again next time rather than
 /// editing, because the alternative is PATCHing a guess.
@@ -408,6 +443,7 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     run_disposition_suite(&store).await;
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
+    run_unroutable_suite(&store).await;
 }
 
 #[tokio::test]
@@ -445,4 +481,5 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_postgres() {
     run_disposition_suite(&store).await;
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
+    run_unroutable_suite(&store).await;
 }

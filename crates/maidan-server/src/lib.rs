@@ -55,6 +55,7 @@ pub mod quota;
 pub mod rate_limit;
 pub mod reindex_ops;
 pub mod request_id;
+pub mod result_delivery;
 pub mod retention;
 pub mod routes;
 pub mod scheduler;
