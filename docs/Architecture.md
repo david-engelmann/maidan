@@ -28,7 +28,7 @@ flowchart TB
     Store[(Postgres / SQLite)]
     Artifacts[(LocalFs / S3)]
     Bus[Event bus + transactional outbox relay]
-    Workers[Background workers\nnotifications · scheduler · digests · retention · federation]
+    Workers[Background workers\nnotifications · egress · scheduler · digests · retention · federation]
     Ext[Integrator URL]
 
     Agent -->|MCP / A2A / HTTP / WS| Server
@@ -120,7 +120,7 @@ flowchart LR
 | Surface | Path / scheme | Purpose |
 |---------|---------------|---------|
 | HTTP CRUD | workspaces, members, channels, threads, messages, DMs + group DMs, pins, reactions, votes | Authoritative entity API; RFC 7807 errors |
-| Thread FSM + tasks | `POST /threads/:id`, assignee/claim/renew, dependencies, required-skills, result, tool-transcript | Lifecycle + the agentic task layer |
+| Thread FSM + tasks | `POST /threads/:id`, assignee/claim/renew, dependencies, required-skills, result, deliveries, tool-transcript | Lifecycle + the agentic task layer |
 | Recipes | `/workspaces/:wid/recipes` (CRUD + `/instantiate`), `task_schedules.recipe_id` | Reusable thread-type blueprints; instantiate = parent + DAG children + skills, copy-on-fire snapshot; a schedule seeds a run (`ScheduleSkipped` if the prior run is in flight) |
 | Secrets | `/workspaces/:wid/secrets` (CRUD + `/:name/resolve`), MCP `resolve_secret` | Named secrets; the log holds a `secret://<name>` reference, the store the AEAD-encrypted value; resolve at exec (`secret:read`) or the egress broker substitutes on webhook delivery to `MAIDAN_SECRET_EGRESS_ALLOWLIST` hosts |
 | Freeze kill-switch | `/members/:id/freeze` (POST/DELETE/GET), `/workspaces/:wid/frozen-members`, MCP `freeze_member` | Freeze a member (`token:admin`, audited): drops their leases + `claim_next` refuses them until unfreeze; not a thread/workspace pause |
@@ -129,6 +129,7 @@ flowchart LR
 | Spawn budget | `PUT`/`GET /workspaces/:id/spawn-budget`, MCP `set_spawn_budget`/`get_spawn_budget` | Per-workspace cap on agent fan-out — `max_children` per parent, `max_depth` nesting, `max_tools` per thread (each `null` = unlimited). Refused at thread create / message post as a 409 (`SpawnRejected`) + a `ThreadSpawnDenied` event naming the axis and the caller; a claim also holds at most one GitHub link |
 | Projector egress DLQ | `GET /operator/egress/dead`, `POST /operator/egress/dead/{id}/requeue` | Dead-lettered Slack/GitHub projector deliveries (`token:admin`, cross-workspace — the mail-DLQ shape): what failed, where it was going, the surface's own last error, and a replay. Egress itself is a durable queue with retry/backoff; an auth/config-class failure disables the link and emits `ProjectorMisconfigured` instead of retrying forever |
 | Egress allowlist | `POST`/`GET /workspaces/:wid/egress-targets`, `DELETE …/:tid` | The per-workspace trust boundary for external delivery (`token:admin` including reads — it is policy, not status). A result's `deliver_to` **selects**; this allowlist **authorizes**, so an agent-supplied target cannot reach a surface an operator has not blessed. Default empty ⇒ deliver nowhere. A selector is an **id** (Slack `C…`/`G…`, GitHub `owner/name` — the repository, so one blessing covers every PR in it), never a mutable name |
+| Result delivery | `GET /threads/:id/deliveries`, `POST …/deliveries/:did/replay`, MCP `list_result_deliveries` / `replay_result_delivery` | A `ThreadResultSet` fetches the `pi.waiter.result/1` envelope, allowlist-checks each `deliver_to` target, and enqueues onto the projector egress queue (`EgressKind::Result`). GitHub gets `rendered` (updated in place; recovery marker at byte 0); Slack gets `summary`. Empty `deliver_to` ⇒ nowhere (valid). Per-target status is readable; replay re-checks the allowlist and does not re-arm. |
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
 | Events | `GET /workspaces/:wid/events`, outbox admin routes | Replay + quarantined-outbox list/replay |
@@ -176,6 +177,11 @@ flowchart LR
   is written by an always-on router that resolves mentions and channel/thread **follows**,
   honoring per-kind **mute** prefs. Optional SMTP delivery routes immediate or **digest**
   email, presence-aware (skip the recently-active).
+- **Result delivery.** The same router reacts to `ThreadResultSet`: fetch the waiter
+  envelope, allowlist-check each `deliver_to` target, enqueue onto the durable egress
+  queue. A re-review updates the existing GitHub comment or Slack message in place.
+  Intent lives in `maidan_result_deliveries` (`armed_revision` vs `delivered_revision`);
+  transport stays the Cluster-377 outbox. Status is readable per thread over REST + MCP.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
   to peers (allowlist-by-kind). The A2A endpoint is A2A v1.0-conformant over JSON-RPC
   (`/a2a/v1/rpc`) and HTTP+JSON/REST (`/a2a/v1/*`), sharing one set of operation handlers;

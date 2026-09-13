@@ -12,22 +12,28 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
-**Not built yet.** This page pins the grammar so producers and Maidan agree
-*before* the code lands; it is a specification, not a description of `main`.
+**Shipped (Cluster 379).** This page is the interface contract between a result producer
+and Maidan. The grammar is **frozen** at `pi.waiter.result/1`. Additive fields are
+free; a change to the meaning of an existing field, or to the `deliver_to` shape,
+requires a new `schema` value.
 
 | Piece | State on `main` today |
 |---|---|
 | `set_thread_result` / `get_thread_result` / `ThreadResultSet` event | **Shipped** (Clusters 234–236). A result is durable and observable. |
 | Slack + GitHub connectors (post, link tables, link management) | **Shipped** (Clusters 307–312, 346, 349.4). |
 | Durable retrying delivery queue + DLQ + replay | **Shipped** (Clusters 50, 304–306 for mail and webhooks; **377** for projector egress — a retrying queue, a link that disables itself on a credential failure, and a `token:admin` DLQ at `GET /operator/egress/dead`). |
-| The per-workspace egress allowlist (the trust boundary below) | **Shipped** (Cluster 378.1). `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. Nothing consults it yet — it is the authorization the delivery step will check. |
-| A `ThreadResultSet` handler that delivers to `deliver_to` | **Not built.** Planned as Clusters 379–381 — see [Open Work](Open%20Work.md). |
+| The per-workspace egress allowlist (the trust boundary below) | **Shipped** (Cluster 378.1). `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. Cluster 379.3 consults it on every target. |
+| A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped** (Cluster 379.3). Fetch → parse → per-target allowlist check then enqueue. |
+| Idempotent update-in-place | **Shipped** (Cluster 379.4). Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
+| Per-thread delivery status + replay | **Shipped** (Cluster 379.5). `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
 
-**Interim contract:** a producer may set `deliver_to` today. Maidan stores it as
-part of the opaque result and **takes no action on it**. Nothing breaks; nothing
-is delivered. External delivery stays the producer's own problem (for pi, the
-soundcheck renderers) until the clusters below land. Write `deliver_to` now so the
-data is already correct when delivery turns on.
+**Producer loop:** write `deliver_to` on the envelope; bless the destination once over
+the allowlist; confirm where it landed with the status API. A perfectly correct
+`deliver_to` can still deliver nowhere if the target is unblessed — that is a
+normal outcome, not a producer bug.
+
+Inline per-finding PR review comments (Cluster 380) stay **parked** until the
+envelope carries `head_sha` and a stated `line_range` frame of reference.
 
 ---
 
@@ -40,7 +46,7 @@ field never breaks delivery.
 | Field | Required | How Maidan uses it |
 |---|---|---|
 | `schema` | yes | Envelope discriminator. Must be `pi.waiter.result/1`. An unrecognized value means no delivery is attempted. |
-| `result_kind` | yes | Which producer shape this is, e.g. `pi.review.result/1`. Recorded; also the search facet (see "Discoverability"). |
+| `result_kind` | yes | Which producer shape this is, e.g. `pi.review.result/1`. Recorded; the search facet is Cluster 381 (see "Discoverability"). |
 | `status` | yes | Delivery happens only on `reviewed`. Any other value delivers a short **Maidan-authored** failure notice instead — never silence, never a clean pass. |
 | `deliver_to` | no | The routing list. Absent or empty is **valid and normal**: thread-only, delivered nowhere. |
 | `rendered` | on `reviewed` | The delivery body. Producer-authored trusted markdown. |
@@ -185,17 +191,20 @@ different unit of work.
   prevents the others.
 - **Nothing is silently dropped.** A failed delivery retries with backoff and
   dead-letters after a bounded number of attempts, where an operator can inspect
-  and replay it. A misconfiguration class error (401/403/404) disables the target
-  loudly rather than retrying forever.
+  and replay it. A misconfiguration-class error (401/403/404) on **projector**
+  traffic disables the link rather than retrying forever. The same status on a
+  **result** delivery dead-letters that target without disabling the projector
+  link — a result must not take down room-to-issue relay.
 - **A non-`reviewed` status is surfaced as a failure**, using `status` alone. It
   is never rendered as a passing review and never quietly skipped.
 - Every delivery attempt is audited.
 
 ## Discoverability
 
-`result_kind` is a **namespaced string**, not a closed enumeration, and is
-indexed as a search facet — so `pi.review.result/1` results are findable without
-Maidan needing to learn a new vocabulary word per producer.
+`result_kind` is a **namespaced string**, not a closed enumeration. Cluster 381
+will index it as a search facet — so `pi.review.result/1` results are findable
+without Maidan needing to learn a new vocabulary word per producer. Until then
+the field is recorded and ignored for search.
 
 ## Delivery status
 
@@ -239,7 +248,9 @@ Three things Maidan needs that the current envelope does not carry:
 
 ## Versioning
 
-The grammar above is **frozen at `pi.waiter.result/1`**. Additive fields are free.
-A change to the meaning of an existing field, or to the `deliver_to` shape,
-requires a new `schema` value — Maidan will route on the discriminator and an
-unrecognized one is inert rather than mis-delivered.
+The grammar above is **frozen at `pi.waiter.result/1`** (confirmed Cluster 379).
+Additive fields are free. A change to the meaning of an existing field, or to the
+`deliver_to` shape, requires a new `schema` value — Maidan will route on the
+discriminator and an unrecognized one is inert rather than mis-delivered. The
+Maidan-side lock is `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`:
+a producer-side grammar change breaks that test.
