@@ -302,6 +302,20 @@ pub async fn set_thread_result(
         .store
         .set_thread_result(thread_id, auth.member_id, &body.result)
         .await?;
+    // Cluster 383.3: arm the close-gate on the write path so a PUT is
+    // immediately visible on review-status (the bus consumer in 383.2 is
+    // every-replica / replay; tests and a single replica must not race).
+    if let Err(err) = state
+        .store
+        .apply_critical_review_decision(thread_id, auth.member_id, &body.result)
+        .await
+    {
+        tracing::warn!(
+            error = %err,
+            %thread_id,
+            "critical review adapter failed; result is stored"
+        );
+    }
     super::publish(
         &state,
         Event::ThreadResultSet {
