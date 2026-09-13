@@ -490,6 +490,9 @@ pub async fn claim_next(
                    SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
                )
                AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id
+               )
+               AND NOT EXISTS (
                    SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = ?
                )
              ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
@@ -511,8 +514,10 @@ pub async fn claim_next(
 }
 
 /// Task-queue depth for a channel (Cluster 224). `not_live` (unassigned or lease
-/// expired) and the deps `NOT EXISTS` mirror the `claim_next` claimability
-/// predicate exactly, so `ready` here is precisely what `claim_next` would take.
+/// expired) and the deps / explicit-block `NOT EXISTS` clauses mirror the
+/// `claim_next` claimability predicate, so `ready` here is precisely what
+/// `claim_next` would take. Cluster 386 folds an explicit [`BlockedReason`]
+/// into `blocked` alongside unfinished DAG deps — they stay distinct *causes*.
 pub async fn channel_queue_depth(
     pool: &SqlitePool,
     channel_id: ChannelId,
@@ -526,6 +531,7 @@ pub async fn channel_queue_depth(
                      THEN 1 ELSE 0 END), 0) AS assigned_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
                        AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
+                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
                        AND NOT EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
@@ -533,10 +539,13 @@ pub async fn channel_queue_depth(
                      THEN 1 ELSE 0 END), 0) AS ready_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
                        AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                       AND EXISTS (
+                       AND (
+                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
+                           OR EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                       )
                      THEN 1 ELSE 0 END), 0) AS blocked_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
                        AND EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
@@ -582,16 +591,20 @@ pub async fn channel_occupancy(
                        AND t.work_started_at IS NOT NULL
                      THEN 1 ELSE 0 END), 0) AS working_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
+                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
                        AND NOT EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
                      THEN 1 ELSE 0 END), 0) AS queued_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND EXISTS (
+                       AND (
+                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
+                           OR EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                       )
                      THEN 1 ELSE 0 END), 0) AS blocked_count
          FROM maidan_threads t
          WHERE t.channel_id = ?
@@ -657,6 +670,9 @@ pub async fn claim_next_with_event(
            )
            AND NOT EXISTS (
                SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id
            )
            AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = ?
