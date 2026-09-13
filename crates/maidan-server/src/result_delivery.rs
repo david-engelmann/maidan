@@ -301,6 +301,44 @@ async fn enqueue_routable(
     Ok(())
 }
 
+/// Rebuild the body the worker should send for this target from the thread's
+/// current result. `None` when there is no waiter envelope to render, so the
+/// caller falls back to the outbox snapshot (a replay of a deleted result
+/// still delivers what was queued).
+pub async fn current_delivery_body(
+    state: &AppState,
+    thread_id: ThreadId,
+    target: &maidan_types::EgressTarget,
+) -> Option<String> {
+    let stored = state.store.get_thread_result(thread_id).await.ok()??;
+    let waiter = parse_waiter_result(&stored.result)?;
+    Some(delivery_body(thread_id, target, &waiter))
+}
+
+/// Best-effort audit of an operator replay. Never fails the replay itself.
+pub async fn audit_replay(
+    state: &AppState,
+    actor_id: Option<maidan_types::MemberId>,
+    row: &ResultDelivery,
+) {
+    crate::audit::record(
+        state,
+        maidan_types::NewAuditEvent {
+            actor_id,
+            action: "result_delivery.replay".into(),
+            target_kind: Some("result_delivery".into()),
+            target_id: Some(row.id.0),
+            metadata: serde_json::json!({
+                "thread_id": row.thread_id.0,
+                "surface": row.surface,
+                "selector": row.selector,
+                "status": row.status,
+            }),
+        },
+    )
+    .await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

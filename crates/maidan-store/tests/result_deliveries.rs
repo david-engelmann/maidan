@@ -15,9 +15,12 @@
 //!   dropping it would silently lose a review.
 
 use chrono::{DateTime, Duration, SubsecRound, Utc};
-use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_store::{
+    prelude::*, replay_result_delivery, run_sqlite_migrations, ResultDeliveryReplay,
+};
 use maidan_types::{
-    status, EgressTarget, NewChannel, NewThread, NewWorkspace, ResultDelivery, ThreadId,
+    status, EgressKind, EgressSurface, EgressTarget, NewChannel, NewEgressTarget, NewThread,
+    NewWorkspace, ResultDelivery, ResultDeliveryId, ThreadId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -436,6 +439,170 @@ async fn run_unaddressable_suite(store: &dyn Store) {
     );
 }
 
+/// Cluster 379.5: operator replay reopens a row without bumping
+/// `armed_revision`, re-checks the allowlist, and enqueues a new outbox
+/// row (a fresh synthetic `source_log_id`) so the unique key cannot
+/// collide with the original event.
+async fn run_replay_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "replay".into(),
+        })
+        .await
+        .expect("ws");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let tid = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("replay".into()),
+        })
+        .await
+        .expect("thread")
+        .id;
+    let rev = revision();
+
+    assert!(
+        store
+            .get_result_delivery_by_id(tid, ResultDeliveryId::new())
+            .await
+            .expect("get")
+            .is_none(),
+        "a guessed id on this thread is a miss, not another thread's row"
+    );
+
+    let armed = store
+        .arm_result_delivery(tid, &github(), rev)
+        .await
+        .expect("arm")
+        .expect("won");
+    store
+        .mark_result_delivered(armed.id, Some("998877"), rev)
+        .await
+        .expect("delivered");
+    let delivered = store
+        .get_result_delivery_by_id(tid, armed.id)
+        .await
+        .expect("get")
+        .expect("exists");
+    assert_eq!(delivered.status, status::DELIVERED);
+    assert_eq!(delivered.external_ref.as_deref(), Some("998877"));
+
+    // Same thread, wrong id → None. Same id, different thread → None.
+    let other = thread(store, "other-thread").await;
+    assert!(store
+        .get_result_delivery_by_id(other, armed.id)
+        .await
+        .expect("cross-thread")
+        .is_none());
+
+    let prepared = store
+        .prepare_result_delivery_replay(tid, armed.id)
+        .await
+        .expect("prepare")
+        .expect("row");
+    assert_eq!(prepared.status, status::PENDING);
+    assert!(prepared.last_error.is_none());
+    assert_eq!(prepared.armed_revision, rev, "replay must not re-arm");
+    assert_eq!(
+        prepared.external_ref.as_deref(),
+        Some("998877"),
+        "the handle to edit is still the one we created"
+    );
+    assert_eq!(prepared.delivered_revision, Some(rev));
+
+    // Unblessed replay stays skipped — delivery status is not allowlist policy.
+    let skipped_arm = store
+        .arm_result_delivery(tid, &slack(), rev)
+        .await
+        .expect("arm slack")
+        .expect("won slack");
+    store
+        .mark_result_delivery_skipped(
+            skipped_arm.id,
+            "target not in the workspace egress allowlist",
+        )
+        .await
+        .expect("skip");
+    let replayed = replay_result_delivery(store, ws.id, tid, skipped_arm.id, "body".into())
+        .await
+        .expect("replay")
+        .expect("found");
+    match replayed {
+        ResultDeliveryReplay::Skipped(row) => {
+            assert_eq!(row.status, status::SKIPPED);
+            assert_eq!(
+                row.last_error.as_deref(),
+                Some("target not in the workspace egress allowlist")
+            );
+            assert_eq!(row.armed_revision, rev);
+        }
+        other => panic!("expected skipped, got {other:?}"),
+    }
+    assert!(
+        store
+            .claim_next_due_egress(Utc::now(), 120)
+            .await
+            .expect("claim")
+            .is_none(),
+        "an unblessed replay must not enqueue past the allowlist"
+    );
+
+    store
+        .allow_egress_target(NewEgressTarget {
+            workspace_id: ws.id,
+            surface: EgressSurface::Github,
+            selector: "beatgig/bgv3".into(),
+        })
+        .await
+        .expect("bless");
+    let replayed = replay_result_delivery(store, ws.id, tid, armed.id, "reviewed body".into())
+        .await
+        .expect("replay github")
+        .expect("found");
+    let ResultDeliveryReplay::Enqueued(row) = replayed else {
+        panic!("expected enqueued");
+    };
+    assert_eq!(row.status, status::PENDING);
+    assert_eq!(row.armed_revision, rev);
+    assert_eq!(row.external_ref.as_deref(), Some("998877"));
+    let outbox = store
+        .claim_next_due_egress(Utc::now(), 120)
+        .await
+        .expect("claim")
+        .expect("enqueued");
+    assert_eq!(outbox.kind, EgressKind::Result);
+    assert_eq!(outbox.body, "reviewed body");
+
+    let unknown = store
+        .arm_unroutable_result_delivery(tid, "discord", "guild", rev)
+        .await
+        .expect("arm unknown")
+        .expect("won unknown");
+    store
+        .mark_result_delivery_skipped(unknown.id, "unknown surface 'discord'")
+        .await
+        .expect("skip unknown");
+    match replay_result_delivery(store, ws.id, tid, unknown.id, String::new())
+        .await
+        .expect("replay unknown")
+        .expect("found")
+    {
+        ResultDeliveryReplay::Unroutable(row) => {
+            assert_eq!(row.surface, "discord");
+        }
+        other => panic!("expected unroutable, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     let store = sqlite().await;
@@ -444,6 +611,7 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;
+    run_replay_suite(&store).await;
 }
 
 #[tokio::test]
@@ -482,4 +650,5 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_postgres() {
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;
+    run_replay_suite(&store).await;
 }

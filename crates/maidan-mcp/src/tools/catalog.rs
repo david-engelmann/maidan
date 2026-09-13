@@ -548,6 +548,29 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_result_deliveries",
+            "description": "List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "replay_result_delivery",
+            "description": "Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "delivery_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "delivery_id"]
+            }
+        }),
+        json!({
             "name": "set_thread_owner",
             "description": "Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).",
             "inputSchema": {

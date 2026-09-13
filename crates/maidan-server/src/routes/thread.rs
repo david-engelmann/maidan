@@ -333,6 +333,67 @@ pub async fn get_thread_result(
     }
 }
 
+/// Per-target delivery status for this thread's result (Cluster 379.5).
+/// `workspace:read` + thread access. Empty is 200 `[]` — delivered nowhere
+/// is a valid, supported outcome.
+pub async fn list_thread_deliveries(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ResultDelivery>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_result_deliveries(thread_id).await?))
+}
+
+/// Re-enqueue a delivery onto the outbox (Cluster 379.5). `workspace:write` +
+/// thread access. Re-checks the allowlist: an unblessed target stays skipped
+/// (status is not policy). An unroutable row is 400 — nothing to send to.
+pub async fn replay_thread_delivery(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, did)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<Json<ResultDelivery>> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    let thread_id = ThreadId(id);
+    let delivery_id = ResultDeliveryId(did);
+    let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let row = state
+        .store
+        .get_result_delivery_by_id(thread_id, delivery_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let body = match row.target() {
+        Some(ref target) => {
+            crate::result_delivery::current_delivery_body(&state, thread_id, target)
+                .await
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    };
+    match maidan_store::replay_result_delivery(
+        state.store.as_ref(),
+        ctx.workspace_id,
+        thread_id,
+        delivery_id,
+        body,
+    )
+    .await?
+    {
+        None => Err(ApiError::NotFound),
+        Some(maidan_store::ResultDeliveryReplay::Unroutable(_)) => Err(ApiError::BadRequest(
+            "this target cannot be delivered — the surface is unknown or unusable".into(),
+        )),
+        Some(maidan_store::ResultDeliveryReplay::Skipped(row))
+        | Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
+            let actor_id = (!auth.bypass).then_some(auth.member_id);
+            crate::result_delivery::audit_replay(&state, actor_id, &row).await;
+            Ok(Json(row))
+        }
+    }
+}
+
 /// Set (upsert) a thread's persisted steer (Cluster 355, W1) — durable steering
 /// guidance from the owner/supervisor that survives claims and handoffs.
 /// Governance, so `thread:transition` + thread access. `steered_by` is the

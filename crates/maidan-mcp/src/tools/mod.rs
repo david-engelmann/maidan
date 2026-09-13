@@ -21,6 +21,7 @@ mod automation;
 mod budget;
 mod catalog;
 mod channel;
+mod delivery;
 mod freeze;
 mod glossary;
 mod member;
@@ -100,6 +101,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_member_skills"
         | "list_thread_required_skills"
         | "get_thread_result"
+        | "list_result_deliveries"
         | "get_thread_steer"
         | "wait_for_result"
         | "get_dependency_results"
@@ -164,7 +166,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "create_memory_block"
         | "set_memory_block_value"
         | "attach_memory_block"
-        | "detach_memory_block" => Ok(WORKSPACE_WRITE),
+        | "detach_memory_block"
+        | "replay_result_delivery" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -277,6 +280,8 @@ async fn enforce_channel_access(
         | "list_thread_required_skills"
         | "set_thread_result"
         | "get_thread_result"
+        | "list_result_deliveries"
+        | "replay_result_delivery"
         | "set_thread_owner"
         | "rename_thread"
         | "set_thread_steer"
@@ -433,6 +438,8 @@ pub async fn dispatch(
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
+        "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
+        "replay_result_delivery" => delivery::replay_result_delivery_tool(store, auth, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,

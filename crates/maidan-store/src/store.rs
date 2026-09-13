@@ -657,6 +657,22 @@ pub trait EgressStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ResultDelivery>, StoreError>;
+    /// The delivery-status API's point read: this id on this thread, or `None`.
+    /// Thread-scoped so a guessed UUID cannot read another thread's row.
+    async fn get_result_delivery_by_id(
+        &self,
+        thread_id: ThreadId,
+        id: ResultDeliveryId,
+    ) -> Result<Option<ResultDelivery>, StoreError>;
+    /// Operator replay (Cluster 379.5): reopen as `pending` and clear
+    /// `last_error` without touching `armed_revision` or `external_ref`.
+    /// Arming is "is this a new result?"; replay is "try this result again".
+    /// `None` if `(thread_id, id)` does not exist.
+    async fn prepare_result_delivery_replay(
+        &self,
+        thread_id: ThreadId,
+        id: ResultDeliveryId,
+    ) -> Result<Option<ResultDelivery>, StoreError>;
 }
 
 #[async_trait]

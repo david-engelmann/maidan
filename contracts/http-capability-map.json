@@ -647,10 +647,22 @@
     "capability": "thread:transition",
     "surface": "http"
   },
-  {
+    {
     "method": "GET",
     "path": "/threads/{id}/result",
     "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/deliveries",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/deliveries/{did}/replay",
+    "capability": "workspace:write",
     "surface": "http"
   },
   {

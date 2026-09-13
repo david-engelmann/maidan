@@ -177,6 +177,44 @@ pub async fn list_for_thread(
     Ok(rows.iter().map(row_to_delivery).collect())
 }
 
+pub async fn get_by_id(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    id: ResultDeliveryId,
+) -> Result<Option<ResultDelivery>, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {COLS} FROM maidan_result_deliveries
+         WHERE id = $1 AND thread_id = $2"
+    ))
+    .bind(id.0)
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_delivery))
+}
+
+/// Reopen as pending for operator replay. Leaves `armed_revision` and
+/// `external_ref` alone — this is not a new result, and the handle to edit
+/// is still the one we created.
+pub async fn prepare_replay(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    id: ResultDeliveryId,
+) -> Result<Option<ResultDelivery>, StoreError> {
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_result_deliveries
+         SET status = '{pending}', last_error = NULL, updated_at = now()
+         WHERE id = $1 AND thread_id = $2
+         RETURNING {COLS}",
+        pending = status::PENDING
+    ))
+    .bind(id.0)
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_delivery))
+}
+
 fn row_to_delivery(row: &sqlx::postgres::PgRow) -> ResultDelivery {
     ResultDelivery {
         id: ResultDeliveryId(row.get("id")),
