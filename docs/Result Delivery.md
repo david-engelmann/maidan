@@ -12,10 +12,10 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
-**Shipped (Clusters 379–380).** This page is the interface contract between a result producer
+**Shipped (Clusters 379–381).** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `pi.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
-requires a new `schema` value. The `result_kind` list facet is Cluster 381.
+requires a new `schema` value. The `result_kind` list facet shipped in Cluster 381.
 
 | Piece | State on `main` today |
 |---|---|
@@ -56,7 +56,7 @@ field never breaks delivery.
 | Field | Required | How Maidan uses it |
 |---|---|---|
 | `schema` | yes | Envelope discriminator. Must be `pi.waiter.result/1`. An unrecognized value means no delivery is attempted. |
-| `result_kind` | yes | Which producer shape this is, e.g. `pi.review.result/1`. Recorded; the search facet is Cluster 381 (see "Discoverability"). |
+| `result_kind` | yes | Which producer shape this is, e.g. `pi.review.result/1`. Recorded; the list facet shipped in Cluster 381 (see "Discoverability"). |
 | `status` | yes | Delivery happens only on `reviewed`. Any other value delivers a short **Maidan-authored** failure notice instead — never silence, never a clean pass. |
 | `deliver_to` | no | The routing list. Absent or empty is **valid and normal**: thread-only, delivered nowhere. |
 | `rendered` | on `reviewed` | The delivery body. Producer-authored trusted markdown. |
