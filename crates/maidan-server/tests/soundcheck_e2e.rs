@@ -381,4 +381,23 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         .await
         .unwrap();
     assert_eq!(got["landable"], false);
+
+    let mcp: Value = client
+        .post(format!("{base}/mcp"))
+        .header("Authorization", &owner_h)
+        .json(&json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "get_soundcheck", "arguments": { "thread_id": tid } }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = mcp["result"]["content"][0]["text"].as_str().unwrap();
+    let parsed: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed["land"], "red");
+    assert_eq!(parsed["landable"], false);
+    assert_eq!(parsed["pointer"]["status"], "fail");
 }
