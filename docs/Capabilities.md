@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v381.0.0 — Wave 2 #24 facet half: `result_kind` is a namespaced-string list
+
+Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not the retro. Thread results are listed by the **namespaced string** a producer publishes (`pi.review.result/1`), not a closed `decision|plan|merge_authorized` enum and not the ADR convention `"kind": "decision"`. The surface is a workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. Omit `result_kind` to list every accessible non-tombstoned result; private-channel rows the caller cannot read are dropped. Cluster 382's `list_channel_closed_results` is untouched. **Row #24 is closed** (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.** Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
+
+| Change | Where |
+|--------|-------|
+| **Store (381.1):** `result_kind_from_payload` (string alone; missing/empty/non-string → `None`; no waiter-schema requirement) + indexed column on `maidan_thread_results` (pg 0087 / sqlite 0086) + `list_thread_results(workspace, kind, limit)` both backends. Re-set updates or clears the facet. | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/thread_results.rs` |
+| **REST (381.2):** `GET /workspaces/:id/results?result_kind=&limit=` (`workspace:read`). Full new-route preflight. `can_access_thread` post-filter. | `crates/maidan-server/src/routes/workspace.rs` |
+| **MCP (381.3):** `list_thread_results` twin; workspace from the token; 5-place wiring + both sorted contracts. | `crates/maidan-mcp/src/tools/{thread,mod,catalog}.rs` |
+| **Docs (381.4):** Discoverability is the namespaced string; `"kind": "decision"` is not `?result_kind=decision`. | `docs/Result Delivery.md`, `docs/Integration.md` |
+
 ## v380.0.0 — inline per-finding PR review comments
 
 Three impl PRs (380.1–380.3) + a retro. After a successful Cluster 379 GitHub summary comment, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` with `commit_id = head_sha` (never the live PR head), `event: COMMENT`, GitHub **RIGHT**, `line` = `line_range.end`. Missing sha / empty findings / non-`reviewed` / Slack skip the review without sinking the summary. 404/422 meter `skipped`; 5xx/auth meter `failed` (replay retries the review). Review errors never `disable_link`. Cluster 379's summary path is unchanged. **Cluster 381 is not unparked** (already open: the `result_kind` facet).

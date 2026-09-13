@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [381.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Wave 2 #24 facet half — `result_kind`
+is a namespaced-string list.** Four impl PRs (381.1–381.4) + a retro.
+381.4 documented the facet; it is not the retro. No new gate tag.
+
+Thread results are listed by the namespaced string a producer publishes
+(`pi.review.result/1`), never a closed enum. The surface is a
+workspace-scoped list, exact-match, not message-FTS. **Row #24 is closed**
+(382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.**
+Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
+
+- **381.1** store — `result_kind_from_payload` + indexed column (pg 0087 /
+  sqlite 0086) + `list_thread_results` both backends. Re-set updates or
+  clears. Cluster 382's in-channel closed list is untouched.
+- **381.2** REST — `GET /workspaces/:id/results?result_kind=`
+  (`workspace:read`); private-channel rows dropped; OpenAPI + capability-map.
+- **381.3** MCP — `list_thread_results` twin; workspace from the token;
+  same filter.
+- **381.4** Integration + Result Delivery — discoverability is the
+  namespaced string; `"kind": "decision"` is not a filter value.
+
 ## [380.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Inline per-finding PR review comments** —
