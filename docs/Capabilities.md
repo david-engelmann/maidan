@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v386.0.0 — Wave 2 #27: a closed blocked-reason enum
+
+Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dispatch with a **closed** `BlockedReason` (`dag|gate|human|child|quota|unclaimable`) — unlike `result_kind`, a namespaced string. `claim_next` skips a `maidan_thread_blocks` row. Clearing emits `BlockedResolved` (non-federatable). Distinct from Cluster 218 DAG-children-must-be-terminal and Cluster 363's unclaimable park table (`unclaimable` here is vocabulary, not a replacement). **Row #27 is closed.**
+
+| Change | Where |
+|--------|-------|
+| **Store (386.1):** `BlockedReason` + `ThreadBlock`; `maidan_thread_blocks` (pg 0089 / sqlite 0088); set/clear/get/list. Zero blast on `claim_next`. | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/blocks.rs` |
+| **Skip (386.2):** all four `claim_next` SQL sites + queue-depth `ready`/`blocked` + occupancy. 218 DAG clause stays. | `crates/maidan-store/src/{postgres,sqlite}/threads.rs` |
+| **Event (386.3):** `BlockedResolved` + `clear_thread_block_with_event` (one tx). | `crates/maidan-types/src/events.rs`, `contracts/event-kinds.json` |
+| **REST/MCP/e2e (386.4):** `PUT`/`GET`/`DELETE /threads/:id/block` + `GET /channels/:cid/blocked`; MCP twins; explicit claim 409; bus observe. | `crates/maidan-server/src/routes/{thread,channel}.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
+
 ## v385.0.0 — Wave 2 #25 remainder: Soundcheck gate pointer + green/amber/red
 
 Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `soundcheck`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; Soundcheck owns test execution. Not a CI product / a judge panel. Cluster 384 is P1.1d (closed by this retro). **Row #25 is closed** (383 composition + 385 pointer).

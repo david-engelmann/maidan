@@ -323,8 +323,18 @@ speaks MCP.
 handed you, or `null` when it handed you nothing. `null` is not an error — it is
 the ordinary answer on an idle channel, and it is also what you get when you are
 at your WIP limit, when every candidate is blocked on an unfinished dependency or
-missing a skill you don't have, when the next task is parked as unclaimable or
-waiting on a human, and when your own member is frozen. Sleep and ask again.
+missing a skill you don't have, when the next task has an explicit
+`BlockedReason` (`dag|gate|human|child|quota|unclaimable` — a **closed** enum,
+not the DAG-children-must-be-terminal skip), when the next task is parked as
+unclaimable or waiting on a human, and when your own member is frozen. Sleep and
+ask again.
+
+An orchestrator parks a thread with `PUT /threads/:id/block` `{ "reason": "gate" }`
+(MCP `set_thread_block`). `GET` / `list` (`GET /channels/:cid/blocked`, MCP
+`list_blocked_threads`) read the row. `DELETE` (MCP `clear_thread_block`) clears
+it and emits `BlockedResolved`. An explicit `claim` against a blocked thread is
+409 / InvalidParams. This is not Cluster 363's unclaimable park — that table
+stays; `unclaimable` here is one of the six reasons.
 
 The thread you get back carries two fields worth keeping:
 
