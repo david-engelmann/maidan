@@ -751,6 +751,19 @@ pub(super) async fn set_thread_result(
         .store
         .set_thread_result(thread_id, auth.member_id, &a.result)
         .await?;
+    // Cluster 383.3: same write-path arm as REST. The bus consumer (383.2)
+    // is every-replica / replay; the tool itself must not race a close.
+    if let Err(err) = server
+        .store
+        .apply_critical_review_decision(thread_id, auth.member_id, &a.result)
+        .await
+    {
+        tracing::warn!(
+            error = %err,
+            %thread_id,
+            "critical review adapter failed; result is stored"
+        );
+    }
     if server.event_bus.is_some() {
         let ctx = resolve_thread_context(server.store.as_ref(), thread_id)
             .await
