@@ -17,7 +17,7 @@ use axum::{
     routing::any,
     Json, Router,
 };
-use maidan_server::github::{GithubApiClient, GithubError, GithubSender};
+use maidan_server::github::{GithubApiClient, GithubError, GithubIssueComment, GithubSender};
 use maidan_server::slack::{SlackError, SlackSender, SlackWebClient};
 use maidan_types::ExternalRef;
 use serde_json::{json, Value};
@@ -380,4 +380,33 @@ async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
         }
         other => panic!("expected Api error, got {other:?}"),
     }
+}
+
+/// `GET /repos/{repo}/issues/{n}/comments` — the Cluster 379.4 recovery scan.
+#[tokio::test]
+async fn github_client_lists_issue_comments() {
+    let (base, rec) = spawn(
+        StatusCode::OK,
+        json!([{ "id": 11, "body": "<!-- maidan:result:x -->\nreview" }]),
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let comments = client
+        .list_issue_comments("acme/widgets", 42)
+        .await
+        .unwrap();
+    assert_eq!(
+        comments,
+        vec![GithubIssueComment {
+            id: 11,
+            body: "<!-- maidan:result:x -->\nreview".into(),
+        }]
+    );
+    let reqs = rec.lock().unwrap();
+    assert_eq!(reqs.len(), 1);
+    let r = &reqs[0];
+    assert_eq!(r.method, "GET");
+    assert_eq!(r.path, "/repos/acme/widgets/issues/42/comments");
+    assert_eq!(r.auth, "Bearer ghp-secret");
+    assert_eq!(r.user_agent, "maidan-projector");
 }

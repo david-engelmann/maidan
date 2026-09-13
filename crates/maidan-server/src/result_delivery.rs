@@ -16,17 +16,19 @@
 //! The every-replica router is safe because `arm_result_delivery` is
 //! the contended write: exactly one replica wins the right to enqueue. The
 //! egress outbox is *transport* (retry/backoff); this module only arms intent
-//! and, for a blessed target, puts a row on that queue. Update-in-place via
-//! the stored `external_ref` is Cluster 379.4.
+//! and, for a blessed target, puts an [`EgressKind::Result`] row on that queue.
+//! The worker (Cluster 379.4) updates in place via the stored `external_ref`,
+//! recovering a GitHub comment through the hidden body marker if the handle
+//! is lost.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    parse_waiter_result, status, DeliverTarget, EgressTarget, NewEgressOutbox, ResultDelivery,
-    ThreadId, WaiterResult, WorkspaceId,
+    parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget, NewEgressOutbox,
+    ResultDelivery, ThreadId, WaiterResult, WorkspaceId,
 };
 use tracing::{debug, warn};
 
-use crate::egress_body::{github_comment_body, slack_message_body};
+use crate::egress_body::{github_result_comment_body, slack_message_body};
 use crate::state::AppState;
 
 /// The short Maidan-authored notice a non-`reviewed` result delivers. Built
@@ -41,13 +43,35 @@ pub fn failure_notice(status: &str) -> String {
 /// The body that will actually leave Maidan for this target.
 ///
 /// GitHub gets `rendered` (GFM, mentions defused, truncated to the comment
-/// ceiling). Slack gets `summary` plus a compact digest — **never** `rendered`,
-/// which is GFM and would arrive visibly broken. A non-`reviewed` status
-/// replaces both with [`failure_notice`].
-pub fn delivery_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
-    if !waiter.is_reviewed() {
-        return failure_notice(&waiter.status);
+/// ceiling) with a hidden `<!-- maidan:result:<thread_id> -->` marker at byte
+/// 0 — the Cluster 379.4 recovery path if the stored `external_ref` is lost.
+/// Slack gets `summary` plus a compact digest — **never** `rendered`, which
+/// is GFM and would arrive visibly broken. A non-`reviewed` status replaces
+/// both with [`failure_notice`].
+pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &WaiterResult) -> String {
+    let inner = if waiter.is_reviewed() {
+        reviewed_body(target, waiter)
+    } else {
+        // Still marked on GitHub so a later reviewed result updates this
+        // comment rather than stacking a second one.
+        failure_notice(&waiter.status)
+    };
+    match target {
+        EgressTarget::Github { .. } => {
+            let backlink = waiter
+                .is_reviewed()
+                .then_some(waiter.view_in_pi.as_deref())
+                .flatten();
+            // Failure notices are already the complete inner body; reviewed
+            // inner is the (PR-annotated) rendered. The helper defuses and
+            // truncates either way, reserving the marker in the budget.
+            github_result_comment_body(thread_id, &inner, backlink)
+        }
+        EgressTarget::Slack { .. } => inner,
     }
+}
+
+fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
     let backlink = waiter.view_in_pi.as_deref();
     match target {
         EgressTarget::Github { .. } => {
@@ -59,7 +83,10 @@ pub fn delivery_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
                 rendered.push_str("PR: ");
                 rendered.push_str(pr);
             }
-            github_comment_body(&rendered, backlink)
+            // Mentions / truncation happen in `github_result_comment_body`
+            // so the marker is reserved in the ceiling. Pass the raw
+            // rendered here; defanging twice would wrap `@x` as `` `@x` ``.
+            rendered
         }
         EgressTarget::Slack { .. } => {
             let summary = waiter
@@ -257,7 +284,7 @@ async fn enqueue_routable(
     else {
         return Ok(());
     };
-    let body = delivery_body(target, waiter);
+    let body = delivery_body(thread_id, target, waiter);
     state
         .store
         .enqueue_egress(NewEgressOutbox {
@@ -266,6 +293,7 @@ async fn enqueue_routable(
             source_log_id: log_id,
             target: target.clone(),
             body,
+            kind: EgressKind::Result,
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -310,9 +338,13 @@ mod tests {
             Some("looks like a clean pass @octocat"),
             Some("<!channel> ship it"),
         );
+        let tid = ThreadId::new();
         for target in [github(), slack()] {
-            let body = delivery_body(&target, &waiter);
-            assert_eq!(body, failure_notice("failed"));
+            let body = delivery_body(tid, &target, &waiter);
+            assert!(
+                body.contains(&failure_notice("failed")),
+                "the notice must still be the body: {body}"
+            );
             assert!(
                 !body.contains("clean pass") && !body.contains("@octocat"),
                 "the producer's rendered must never ride a non-reviewed delivery: {body}"
@@ -322,6 +354,13 @@ mod tests {
                 "the producer's summary must never ride a non-reviewed delivery: {body}"
             );
         }
+        let gh = delivery_body(tid, &github(), &waiter);
+        assert!(
+            crate::egress_body::comment_carries_result_marker(&gh, tid),
+            "a failure notice on GitHub is still marked so a later review updates it: {gh}"
+        );
+        let sl = delivery_body(tid, &slack(), &waiter);
+        assert_eq!(sl, failure_notice("failed"));
     }
 
     #[test]
@@ -331,7 +370,12 @@ mod tests {
             Some("## Findings\n\nping @octocat"),
             Some("3 findings"),
         );
-        let gh = delivery_body(&github(), &waiter);
+        let tid = ThreadId::new();
+        let gh = delivery_body(tid, &github(), &waiter);
+        assert!(
+            crate::egress_body::comment_carries_result_marker(&gh, tid),
+            "the recovery marker is at byte 0: {gh:.80}"
+        );
         assert!(gh.contains("Findings"), "github delivers rendered GFM");
         assert!(
             gh.contains("`@octocat`"),
@@ -344,7 +388,7 @@ mod tests {
         assert!(gh.contains("PR: acme/widgets#7"));
         assert!(gh.contains("https://pi.test/r/1"));
 
-        let sl = delivery_body(&slack(), &waiter);
+        let sl = delivery_body(tid, &slack(), &waiter);
         assert!(sl.contains("3 findings"), "slack delivers the summary");
         assert!(
             !sl.contains("Findings") && !sl.contains("@octocat"),
@@ -352,6 +396,10 @@ mod tests {
         );
         assert!(sl.contains("PR: acme/widgets#7"));
         assert!(sl.contains("https://pi.test/r/1"));
+        assert!(
+            !sl.contains("<!-- maidan:result:"),
+            "slack has no HTML-comment recovery marker"
+        );
     }
 
     #[test]

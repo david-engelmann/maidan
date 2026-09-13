@@ -242,6 +242,10 @@ async fn a_blessed_github_target_is_armed_and_enqueued() {
     assert_eq!(rows[0].selector, "acme/widgets#7");
     let body = claim_body(&h).await.expect("enqueued");
     assert!(
+        maidan_server::egress_body::comment_carries_result_marker(&body, h.thread_id),
+        "github body carries the recovery marker at byte 0: {body:.80}"
+    );
+    assert!(
         body.contains("`@octocat`"),
         "github body is the defused rendered: {body}"
     );
@@ -349,9 +353,13 @@ async fn a_non_reviewed_status_enqueues_a_failure_notice_not_the_producers_bytes
     );
     assert_eq!(rows[0].status, status::PENDING);
     let body = claim_body(&h).await.expect("enqueued");
-    assert_eq!(
-        body,
-        maidan_server::result_delivery::failure_notice("failed")
+    assert!(
+        maidan_server::egress_body::comment_carries_result_marker(&body, h.thread_id),
+        "a failure notice is still marked so a later review updates it"
+    );
+    assert!(
+        body.contains(&maidan_server::result_delivery::failure_notice("failed")),
+        "{body}"
     );
     assert!(!body.contains("clean pass") && !body.contains("@octocat"));
 }

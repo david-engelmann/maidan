@@ -130,6 +130,7 @@ fn queued(ws: WorkspaceId, thread: ThreadId, log_id: i64) -> NewEgressOutbox {
             channel_id: "C1".into(),
         },
         body: "hi from maidan".into(),
+        kind: maidan_types::EgressKind::Projector,
     }
 }
 
