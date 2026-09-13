@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [382.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Wave 2 #24 pack half — the claimer pack
+includes in-channel accepted decisions.** Three impl PRs (382.1–382.3) + a
+retro. No new gate tag.
+
+Closed decisions are visible to the next `claim_next` claimer as teasers on
+the live thread pack. `claim_next` still returns `Option<Thread>`. Waiter
+envelopes appear only when `reviewed`; `result_kind` is a namespaced string,
+not a closed enum. **The search-facet half of row #24 remains Cluster 381.**
+
+- **382.1** store — `list_channel_closed_results` (both backends): closed /
+  archived, non-tombstoned, newest first, optional exclude, limit clamped
+  `1..=50`. No JSON interpretation.
+- **382.2** REST pack — `AcceptedDecision` on live `ThreadContext` (default
+  on, cap 10, opt-out). Waiter envelopes only when `reviewed`; opaque JSON
+  on a terminal thread is accepted. Withheld on DM / as-of / workspace-nested.
+  Integration.md documents the knob.
+- **382.3** MCP twin — the same field on `get_thread_context` /
+  `snapshot_thread_context` (MCP has its own assembler, not
+  `build_thread_context`).
+
 ## [379.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **The result-delivery primitive** — the
