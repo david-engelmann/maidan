@@ -11,7 +11,7 @@ land}`; Soundcheck owns test execution; Maidan will not treat amber
 Cluster **384** is already claimed by P1.1d (MCP `transition_thread`,
 #816/#823). This work is **385**. Do not confuse the two.
 
-Four impl PRs (385.1–385.4) + this retro. Every PR targets `main`
+Four impl PRs (385.1–385.4) + this retro (#831). Every PR targets `main`
 (cumulative) so a parent squash cannot `base_ref_deleted` a child.
 
 ## What shipped
@@ -39,7 +39,7 @@ Four impl PRs (385.1–385.4) + this retro. Every PR targets `main`
   owner pass 409; skilled third-party green pass lands. Fail stays red
   even when `land=green` is requested. MCP `get_soundcheck` matches.
   Close via REST + `store.transition_thread` (P1.1d owns the MCP twin).
-- **385.5 — this retro + the doc-close.** Strike Open Work #25 fully.
+- **385.5 (#831) — this retro + the doc-close.** Strike Open Work #25 fully.
   Cluster 384 / #26–28 / P1.1d are other agents' work.
 
 ## Decisions
@@ -103,6 +103,6 @@ outside this repo.
 ## Acknowledgements
 
 Four impl PRs (#819 store+types → #821 FSM → #826 REST+MCP → #827 e2e)
-+ this retro. Coordination: keep #819/#821 on `main`; do not fight
++ this retro (#831). Coordination: keep #819/#821 on `main`; do not fight
 other agents on Open Work #26–28 or the P1.1d / blocked-reason /
 run-lineage PRs.
