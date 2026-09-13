@@ -13,8 +13,8 @@
 //! deleted.
 
 use maidan_types::{
-    parse_waiter_result, DeliverTarget, EgressTarget, WaiterResult, STATUS_REVIEWED,
-    WAITER_RESULT_SCHEMA,
+    parse_waiter_result, result_kind_from_payload, DeliverTarget, EgressTarget, WaiterResult,
+    STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 
 const FIXTURE: &str = include_str!("fixtures/pi_waiter_result_v1.json");
@@ -35,6 +35,11 @@ fn the_authoritative_fixture_still_declares_the_schema_we_route_on() {
     assert_eq!(
         value["result_kind"], "pi.review.result/1",
         "result_kind is a namespaced string and the search facet — not an enum"
+    );
+    assert_eq!(
+        result_kind_from_payload(&value),
+        Some("pi.review.result/1"),
+        "the search-facet extractor reads the same namespaced string the lock pins"
     );
 }
 

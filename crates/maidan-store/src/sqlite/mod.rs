@@ -282,6 +282,14 @@ impl ThreadResultStore for SqliteStore {
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(&self.pool, thread_id).await
     }
+    async fn list_thread_results(
+        &self,
+        workspace_id: WorkspaceId,
+        result_kind: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<ThreadResult>, StoreError> {
+        thread_results::list(&self.pool, workspace_id, result_kind, limit).await
+    }
     async fn list_channel_closed_results(
         &self,
         channel_id: ChannelId,
