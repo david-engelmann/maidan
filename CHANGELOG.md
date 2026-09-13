@@ -44,7 +44,7 @@ transitions emit `ThreadReady` for newly-ready dependents. No bypass.
 
 - **384.1** MCP tool + catalog + contracts + happy-path / SoD /
   close-gate tests (#816).
-- **384.2** this retro + Open Work strike.
+- **384.2** this retro + Open Work strike (#823).
 
 ## [383.0.0] — 2026-09-13
 
