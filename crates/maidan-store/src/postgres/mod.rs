@@ -58,6 +58,7 @@ mod secrets;
 mod sessions;
 mod slack_links;
 mod slash_commands;
+mod soundcheck;
 mod spawn;
 mod task_schedules;
 mod thread_deps;
@@ -1553,6 +1554,43 @@ impl ReviewStore for PostgresStore {
         result: &serde_json::Value,
     ) -> Result<Option<ThreadReview>, StoreError> {
         reviews::apply_critical_review_decision(&self.pool, thread_id, reviewer_id, result).await
+    }
+}
+
+#[async_trait]
+impl SoundcheckStore for PostgresStore {
+    async fn require_soundcheck(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<SoundcheckStanding, StoreError> {
+        soundcheck::require(&self.pool, thread_id).await
+    }
+    async fn set_soundcheck_pointer(
+        &self,
+        thread_id: ThreadId,
+        recorded_by: MemberId,
+        status: SoundcheckStatus,
+        artifact_sha: Option<&str>,
+        land: Option<LandColor>,
+    ) -> Result<SoundcheckStanding, StoreError> {
+        soundcheck::set_pointer(
+            &self.pool,
+            thread_id,
+            recorded_by,
+            status,
+            artifact_sha,
+            land,
+        )
+        .await
+    }
+    async fn get_soundcheck_standing(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<SoundcheckStanding, StoreError> {
+        soundcheck::standing(self.read_pool(), thread_id).await
+    }
+    async fn clear_soundcheck(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        soundcheck::clear(&self.pool, thread_id).await
     }
 }
 
