@@ -18,14 +18,39 @@
 //! inline review comments can be placed. The summary-comment path (379) is
 //! unchanged: an envelope without those fields still delivers. Cluster 380.2
 //! posts the GitHub review from those fields.
+//!
+//! Cluster 383.1 also reads `findings[].severity` (a **namespaced/free
+//! string**, not a closed enum) so a reviewed [`PI_REVIEW_RESULT_KIND`]
+//! envelope with any `critical` finding maps onto
+//! [`ReviewDecision::RequestChanges`] — the decision Cluster 375's close-gate
+//! already understands. Severity is walked on the raw `findings` array: a
+//! critical finding that is unusable as an inline comment still arms the
+//! adapter.
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::egress::EgressTarget;
+use crate::review::ReviewDecision;
 
 /// The frozen envelope discriminator. A different value is inert, not an error.
 pub const WAITER_RESULT_SCHEMA: &str = "pi.waiter.result/1";
+
+/// The namespaced producer shape for a code-review waiter result.
+///
+/// A **string, not an enum** — the same rule as the Cluster 381 facet. Compare
+/// this constant; do not close the `result_kind` set.
+pub const PI_REVIEW_RESULT_KIND: &str = "pi.review.result/1";
+
+/// The finding severity that Cluster 383 maps to
+/// [`ReviewDecision::RequestChanges`]. A free string on the wire; only this
+/// exact value arms the adapter (`warning` / `info` / future words do not).
+pub const FINDING_SEVERITY_CRITICAL: &str = "critical";
+
+/// Note stored on the Cluster-375 review row when the adapter writes
+/// `request_changes`. Human-readable so `list_reviews` shows *why* the
+/// land is blocked; the close-gate itself only reads `decision`.
+pub const CRITICAL_REVIEW_NOTE: &str = "critical finding in pi.review.result/1";
 
 /// The only `status` that delivers the producer's own bytes. Any other value
 /// gets a short Maidan-authored failure notice built from `status` alone —
@@ -166,13 +191,18 @@ impl GithubDiffSide {
 }
 
 /// One producer finding Maidan can turn into an inline review comment.
-/// Other finding fields (`severity`, `quoted_line`, …) stay in the stored
-/// JSON; the comment body is the producer's `body` as written.
+/// `severity` is the Cluster 383 land-gate projection (a free string, not
+/// an enum). Other finding fields (`quoted_line`, `category`, …) stay in
+/// the stored JSON; the comment body is the producer's `body` as written.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterFinding {
     pub file: String,
     pub line_range: FindingLineRange,
     pub body: String,
+    /// Producer severity (`critical`, `warning`, …). Absent when the
+    /// finding omitted it or sent `""`. Not a closed enum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
 }
 
 impl WaiterFinding {
@@ -260,6 +290,42 @@ impl WaiterResult {
     }
 }
 
+/// Map a waiter envelope onto the Cluster-375 decision the close-gate
+/// already understands.
+///
+/// `Some(RequestChanges)` when:
+/// - the envelope parses (`schema = pi.waiter.result/1`),
+/// - `result_kind` is exactly [`PI_REVIEW_RESULT_KIND`] (string compare,
+///   not an enum),
+/// - `status` is `reviewed`,
+/// - any raw `findings[]` entry has `severity = "critical"` — including
+///   entries that are unusable as inline comments (no file / body /
+///   `line_range`).
+///
+/// `None` otherwise. This function never returns [`ReviewDecision::Approve`]:
+/// a clean re-review does not auto-land. A human resolves by submitting
+/// an approve through the existing review surface.
+pub fn review_decision_from_waiter(value: &Value) -> Option<ReviewDecision> {
+    let parsed = parse_waiter_result(value)?;
+    if parsed.result_kind != PI_REVIEW_RESULT_KIND || !parsed.is_reviewed() {
+        return None;
+    }
+    findings_contain_critical(value).then_some(ReviewDecision::RequestChanges)
+}
+
+/// Walk the raw `findings` array. Usability-for-inline is Cluster 380's
+/// filter; a critical finding still counts here without `file`/`body`.
+fn findings_contain_critical(value: &Value) -> bool {
+    value
+        .get("findings")
+        .and_then(Value::as_array)
+        .is_some_and(|entries| {
+            entries.iter().any(|entry| {
+                entry.get("severity").and_then(Value::as_str) == Some(FINDING_SEVERITY_CRITICAL)
+            })
+        })
+}
+
 /// Read the routable fields out of a producer's result.
 ///
 /// `None` when this is not an envelope we recognize — a missing or unexpected
@@ -329,10 +395,16 @@ fn parse_finding(entry: &Value) -> Option<WaiterFinding> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())?;
     let line_range = obj.get("line_range").and_then(parse_line_range)?;
+    let severity = obj
+        .get("severity")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     Some(WaiterFinding {
         file: file.to_string(),
         line_range,
         body: body.to_string(),
+        severity,
     })
 }
 
@@ -692,6 +764,12 @@ mod tests {
         }))
         .expect("parses");
         assert_eq!(parsed.findings.len(), 2);
+        assert_eq!(
+            parsed.findings[0].severity.as_deref(),
+            Some(FINDING_SEVERITY_CRITICAL),
+            "severity is a free string projected off the finding, not an enum"
+        );
+        assert_eq!(parsed.findings[1].severity, None);
 
         let comments = parsed.github_review_comments();
         assert_eq!(comments[0].path, "auth.py");
@@ -707,5 +785,97 @@ mod tests {
             "a single-line finding omits start_line"
         );
         assert_eq!(GITHUB_REVIEW_EVENT_COMMENT, "COMMENT");
+    }
+
+    #[test]
+    fn a_reviewed_pi_review_with_any_critical_finding_is_request_changes() {
+        // The load-bearing Cluster 383 map. result_kind is compared as a
+        // namespaced string — a closed enum would need editing every time a
+        // waiter product ships a new kind.
+        let critical = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_REVIEW_RESULT_KIND,
+            "status": "reviewed",
+            "findings": [
+                { "severity": "warning" },
+                { "severity": FINDING_SEVERITY_CRITICAL }
+            ]
+        });
+        assert_eq!(
+            review_decision_from_waiter(&critical),
+            Some(ReviewDecision::RequestChanges)
+        );
+
+        // A critical finding that 380 would skip (no file/body/line_range)
+        // still arms the close-gate adapter.
+        let unusable = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_REVIEW_RESULT_KIND,
+            "status": "reviewed",
+            "findings": [{ "severity": "critical" }]
+        });
+        assert_eq!(
+            review_decision_from_waiter(&unusable),
+            Some(ReviewDecision::RequestChanges)
+        );
+        assert!(
+            parse_waiter_result(&unusable)
+                .expect("parses")
+                .findings
+                .is_empty(),
+            "380 still skips the unusable finding; 383 still reads its severity"
+        );
+    }
+
+    #[test]
+    fn a_review_without_critical_or_the_wrong_kind_does_not_request_changes() {
+        let warning_only = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_REVIEW_RESULT_KIND,
+            "status": "reviewed",
+            "findings": [{ "severity": "warning" }]
+        });
+        assert_eq!(review_decision_from_waiter(&warning_only), None);
+
+        let no_findings = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_REVIEW_RESULT_KIND,
+            "status": "reviewed"
+        });
+        assert_eq!(review_decision_from_waiter(&no_findings), None);
+
+        // A different namespaced kind with a critical finding is not this
+        // adapter — we do not close an enum of result kinds.
+        let other_kind = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "pi.plan.result/1",
+            "status": "reviewed",
+            "findings": [{ "severity": "critical" }]
+        });
+        assert_eq!(review_decision_from_waiter(&other_kind), None);
+
+        let not_reviewed = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_REVIEW_RESULT_KIND,
+            "status": "failed",
+            "findings": [{ "severity": "critical" }]
+        });
+        assert_eq!(review_decision_from_waiter(&not_reviewed), None);
+
+        assert_eq!(
+            review_decision_from_waiter(&json!({ "schema": "nope" })),
+            None,
+            "an unrecognized envelope is inert, same as delivery"
+        );
+        assert_ne!(
+            review_decision_from_waiter(&json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": PI_REVIEW_RESULT_KIND,
+                "status": "reviewed",
+                "findings": [{ "severity": "critical" }]
+            })),
+            Some(ReviewDecision::Approve),
+            "the adapter never auto-approves; a human resolves"
+        );
     }
 }

@@ -8,11 +8,22 @@
 //! thread's `owner` nor its `assignee` (separation of duties, Cluster 355) and,
 //! when a named set exists, is in it — **and** no unresolved `refutes` edge
 //! blocks the thread. This is a **gate**, not a poll/closer.
+//!
+//! Cluster 383 feeds a delivered `pi.review.result/1` with any `critical`
+//! finding in as [`ReviewDecision::RequestChanges`] from a member who has
+//! declared [`REVIEW_SKILL`]. That is a producer→reviewer adapter, not a
+//! new gate: the close-gate still reads this table.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{MemberId, ThreadId};
+
+/// The member-skill tag a review agent declares (Cluster 230 free-form skills).
+/// Cluster 383's adapter only writes [`ReviewDecision::RequestChanges`] when
+/// the reviewer has this skill — so a result from an implementer who is not
+/// review-skilled never arms the close-gate.
+pub const REVIEW_SKILL: &str = "review";
 
 /// A reviewer's decision on a thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

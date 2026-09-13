@@ -5,7 +5,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    MemberId, ReviewDecision, ReviewStatus, ThreadId, ThreadReview, ThreadReviewRequirement,
+    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, ThreadId, ThreadReview,
+    ThreadReviewRequirement, CRITICAL_REVIEW_NOTE, REVIEW_SKILL,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -209,4 +210,31 @@ pub async fn review_status(
         approvals,
         approvals_met,
     })
+}
+
+/// Cluster 383.1: persist the waiter→review map. A review-skilled member
+/// + a reviewed `pi.review.result/1` with any `critical` finding writes
+/// `request_changes`. The close-gate is not armed here (no `k` write).
+pub async fn apply_critical_review_decision(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    result: &serde_json::Value,
+) -> Result<Option<ThreadReview>, StoreError> {
+    let Some(decision) = review_decision_from_waiter(result) else {
+        return Ok(None);
+    };
+    let skills = super::member_skills::list(pool, reviewer_id).await?;
+    if !skills.iter().any(|s| s.skill == REVIEW_SKILL) {
+        return Ok(None);
+    }
+    let review = submit_review(
+        pool,
+        thread_id,
+        reviewer_id,
+        decision,
+        Some(CRITICAL_REVIEW_NOTE),
+    )
+    .await?;
+    Ok(Some(review))
 }

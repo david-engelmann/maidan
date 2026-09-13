@@ -523,6 +523,7 @@ mod tests {
             file: file.into(),
             line_range: FindingLineRange::new(start, end).expect("valid range"),
             body: body.into(),
+            severity: None,
         }
     }
 
