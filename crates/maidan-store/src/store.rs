@@ -1190,6 +1190,18 @@ pub trait ReviewStore: Send + Sync {
     ) -> Result<ThreadReview, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
+    /// Cluster 383.1: if `result` is a reviewed `pi.review.result/1` with any
+    /// `critical` finding **and** `reviewer_id` has declared the `review`
+    /// skill, upsert a `request_changes` decision. `None` = nothing to apply
+    /// (wrong shape, no critical, or reviewer not review-skilled). Does not
+    /// set a requirement — arming `k` so the close-gate actually refuses
+    /// `closed` is Cluster 383.2.
+    async fn apply_critical_review_decision(
+        &self,
+        thread_id: ThreadId,
+        reviewer_id: MemberId,
+        result: &serde_json::Value,
+    ) -> Result<Option<ThreadReview>, StoreError>;
 }
 
 #[async_trait]

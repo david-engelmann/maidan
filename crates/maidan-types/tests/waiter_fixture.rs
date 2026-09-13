@@ -13,8 +13,9 @@
 //! cannot affect delivery, and a tripwire that cries wolf gets deleted.
 
 use maidan_types::{
-    parse_waiter_result, result_kind_from_payload, DeliverTarget, EgressTarget, FindingLineRange,
-    GithubDiffSide, WaiterResult, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
+    parse_waiter_result, result_kind_from_payload, review_decision_from_waiter, DeliverTarget,
+    EgressTarget, FindingLineRange, GithubDiffSide, ReviewDecision, WaiterResult,
+    FINDING_SEVERITY_CRITICAL, PI_REVIEW_RESULT_KIND, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 
 const FIXTURE: &str = include_str!("fixtures/pi_waiter_result_v1.json");
@@ -33,7 +34,7 @@ fn the_authoritative_fixture_still_declares_the_schema_we_route_on() {
         "the producer changed the envelope discriminator; delivery would go inert"
     );
     assert_eq!(
-        value["result_kind"], "pi.review.result/1",
+        value["result_kind"], PI_REVIEW_RESULT_KIND,
         "result_kind is a namespaced string and the search facet — not an enum"
     );
     assert_eq!(
@@ -221,6 +222,32 @@ fn the_authoritative_fixture_pins_head_sha_and_post_image_findings() {
     assert_eq!(comments[0].side.as_str(), "RIGHT");
     assert_eq!(comments[1].line, 4);
     assert_eq!(comments[1].start_line, Some(1));
+}
+
+/// Cluster 383.1: the fixture's first finding is `critical`, so the
+/// producer→reviewer adapter maps it to Cluster 375 `request_changes`.
+/// Severity stays a free string (the second finding is `warning`); we do
+/// not close an enum of severities any more than we close `result_kind`.
+#[test]
+fn the_authoritative_fixture_is_a_critical_request_changes() {
+    let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
+    assert_eq!(
+        value["findings"][0]["severity"], FINDING_SEVERITY_CRITICAL,
+        "the fixture is supposed to carry a critical finding for the close-gate adapter"
+    );
+    assert_eq!(value["findings"][1]["severity"], "warning");
+
+    let r = parsed();
+    assert_eq!(
+        r.findings[0].severity.as_deref(),
+        Some(FINDING_SEVERITY_CRITICAL)
+    );
+    assert_eq!(r.findings[1].severity.as_deref(), Some("warning"));
+    assert_eq!(
+        review_decision_from_waiter(&value),
+        Some(ReviewDecision::RequestChanges),
+        "a delivered pi.review.result/1 with any critical finding is request_changes"
+    );
 }
 
 /// Maidan carries the rest of the envelope through untouched and does not

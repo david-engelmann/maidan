@@ -1546,6 +1546,14 @@ impl ReviewStore for PostgresStore {
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError> {
         reviews::review_status(self.read_pool(), thread_id).await
     }
+    async fn apply_critical_review_decision(
+        &self,
+        thread_id: ThreadId,
+        reviewer_id: MemberId,
+        result: &serde_json::Value,
+    ) -> Result<Option<ThreadReview>, StoreError> {
+        reviews::apply_critical_review_decision(&self.pool, thread_id, reviewer_id, result).await
+    }
 }
 
 #[async_trait]
