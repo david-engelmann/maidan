@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v383.0.0 — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
+
+Three impl PRs (383.1–383.3) + a retro. A reviewed `pi.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The Soundcheck pointer + green/amber/red vocabulary remain on that row.
+
+| Change | Where |
+|--------|-------|
+| **Types + store (383.1):** `review_decision_from_waiter` + `apply_critical_review_decision` (skill-gated upsert). Severity walked on the raw findings array. | `crates/maidan-types/src/{waiter,review}.rs`, `crates/maidan-store/src/{postgres,sqlite}/reviews.rs` |
+| **Arm k + bus (383.2):** `set_requirement(1)` when unset; `ThreadResultSet` → `arm_critical_review`. Empty `deliver_to` still arms. | `crates/maidan-server/src/{result_delivery,notification_router}.rs` |
+| **Write-path + e2e (383.3):** REST `PUT /threads/:id/result` + MCP `set_thread_result` arm immediately; HTTP/MCP e2e prove close 409 until a human approve. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-server/tests/critical_review_e2e.rs` |
+
 ## v381.0.0 — Wave 2 #24 facet half: `result_kind` is a namespaced-string list
 
 Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not the retro. Thread results are listed by the **namespaced string** a producer publishes (`pi.review.result/1`), not a closed `decision|plan|merge_authorized` enum and not the ADR convention `"kind": "decision"`. The surface is a workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. Omit `result_kind` to list every accessible non-tombstoned result; private-channel rows the caller cannot read are dropped. Cluster 382's `list_channel_closed_results` is untouched. **Row #24 is closed** (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.** Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
