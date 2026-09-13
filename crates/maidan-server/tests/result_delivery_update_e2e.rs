@@ -121,6 +121,17 @@ impl GithubSender for RecordingGithub {
             })
             .collect())
     }
+
+    async fn create_review(
+        &self,
+        _repo: &str,
+        _pull_number: i64,
+        _commit_id: &str,
+        _comments: &[maidan_types::GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        // 379.4 envelopes have no findings; Cluster 380.2 e2e covers reviews.
+        Ok(())
+    }
 }
 
 struct RecordingSlack {

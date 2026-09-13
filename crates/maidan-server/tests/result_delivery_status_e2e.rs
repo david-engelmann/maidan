@@ -78,6 +78,16 @@ impl GithubSender for RecordingGithub {
     {
         Ok(vec![])
     }
+
+    async fn create_review(
+        &self,
+        _repo: &str,
+        _pull_number: i64,
+        _commit_id: &str,
+        _comments: &[maidan_types::GithubReviewComment],
+    ) -> Result<(), maidan_server::github::GithubError> {
+        Ok(())
+    }
 }
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {

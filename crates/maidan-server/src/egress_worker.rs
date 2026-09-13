@@ -38,6 +38,15 @@
 //! must not PATCH a result comment that happens to share the issue. A result
 //! 401/403/404 dead-letters the delivery without disabling a projector
 //! issue-link.
+//!
+//! **Inline reviews (Cluster 380.2):** after a successful GitHub *summary*
+//! comment, the worker POSTs `POST /repos/{repo}/pulls/{n}/reviews` with
+//! `commit_id = envelope head_sha` (never the live PR head), `event: COMMENT`,
+//! and one inline comment per usable finding (RIGHT, post-image `line_range`).
+//! A missing sha, empty findings, a non-`reviewed` status, Slack, or a GitHub
+//! 404/422 skips the review; that skip never fails the summary. A 5xx on the
+//! review is also a skip — failing the outbox after the summary has already
+//! posted would retry into a second issue comment. Replay re-POSTs a review.
 
 use std::time::Duration;
 
@@ -231,6 +240,24 @@ async fn github_result(
             misconfiguration: false,
         });
     };
+    let reference =
+        deliver_github_result_comment(sender.as_ref(), entry, row, repo, issue_number, body)
+            .await?;
+    // Additive: a review skip/failure never undoes a landed summary comment.
+    post_result_inline_review(state, sender.as_ref(), repo, issue_number, entry.thread_id).await;
+    Ok(reference)
+}
+
+/// The Cluster 379 summary comment: update in place, recover via the marker,
+/// or post. Returns the handle to persist; does not post inline findings.
+async fn deliver_github_result_comment(
+    sender: &dyn crate::github::GithubSender,
+    entry: &EgressOutbox,
+    row: Option<&ResultDelivery>,
+    repo: &str,
+    issue_number: i64,
+    body: &str,
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
     if let Some(ExternalRef::Github { comment_id, .. }) = row.and_then(|r| r.reference()) {
         match sender.update_comment(repo, comment_id, body).await {
             Ok(()) => {
@@ -257,7 +284,7 @@ async fn github_result(
     // A first delivery just posts — listing every issue comment on every
     // first review would be an unbounded walk for no gain.
     if row.is_some_and(|r| r.delivered_revision.is_some()) {
-        match recover_github_comment(sender.as_ref(), repo, issue_number, entry.thread_id).await {
+        match recover_github_comment(sender, repo, issue_number, entry.thread_id).await {
             Ok(Some(comment_id)) => match sender.update_comment(repo, comment_id, body).await {
                 Ok(()) => {
                     crate::metrics::record_github_egress("sent");
@@ -290,6 +317,64 @@ async fn github_result(
                 message: err.to_string(),
                 misconfiguration: err.is_misconfiguration(),
             })
+        }
+    }
+}
+
+/// Cluster 380.2: post a COMMENT review for the current waiter envelope.
+///
+/// Never returns an error. The summary comment has already landed; failing
+/// the outbox here would retry into a duplicate issue comment on a first
+/// delivery. 404 (issue is not a PR) and 422 (line not in the diff at
+/// `head_sha`) are skips. A 5xx is logged and left for operator replay,
+/// which PATCHes the summary and POSTs another COMMENT review.
+async fn post_result_inline_review(
+    state: &AppState,
+    sender: &dyn crate::github::GithubSender,
+    repo: &str,
+    issue_number: i64,
+    thread_id: maidan_types::ThreadId,
+) {
+    let Some(waiter) = crate::result_delivery::current_waiter(state, thread_id).await else {
+        crate::metrics::record_github_review("skipped");
+        return;
+    };
+    let Some(review) = crate::result_delivery::prepare_inline_review(&waiter) else {
+        crate::metrics::record_github_review("skipped");
+        return;
+    };
+    if review.truncated {
+        tracing::warn!(
+            %repo,
+            pull = issue_number,
+            kept = review.comments.len(),
+            "github inline review: capped findings at GitHub's 100-comment limit"
+        );
+    }
+    match sender
+        .create_review(repo, issue_number, &review.commit_id, &review.comments)
+        .await
+    {
+        Ok(()) => {
+            crate::metrics::record_github_review("sent");
+            tracing::debug!(
+                %repo,
+                pull = issue_number,
+                commit_id = %review.commit_id,
+                comments = review.comments.len(),
+                "github inline review: posted"
+            );
+        }
+        Err(err) => {
+            // 404/422/401/403/5xx: the summary stays. Replay retries the review.
+            crate::metrics::record_github_review("failed");
+            tracing::warn!(
+                error = %err,
+                %repo,
+                pull = issue_number,
+                commit_id = %review.commit_id,
+                "github inline review: not posted; summary comment still delivered"
+            );
         }
     }
 }

@@ -282,6 +282,14 @@ pub fn record_github_egress(outcome: &str) {
     counter!("maidan_github_egress_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// Inline pull-request review posts (Cluster 380.2): `sent` (GitHub accepted
+/// the review), `skipped` (no `head_sha`, no usable findings, or not
+/// `reviewed`), `failed` (GitHub rejected; the 379 summary comment still
+/// landed).
+pub fn record_github_review(outcome: &str) {
+    counter!("maidan_github_review_total", "outcome" => outcome.to_string()).increment(1);
+}
+
 /// A projector-egress delivery leaving the durable queue (Cluster 377), by
 /// `surface` (`slack` | `github`) and `outcome`:
 /// - `sent` — posted to the external surface.

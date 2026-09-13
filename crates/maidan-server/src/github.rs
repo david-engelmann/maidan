@@ -20,8 +20,8 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, MemberId, NewEgressOutbox,
-    NewGithubIssueLink, ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, GithubReviewComment, MemberId,
+    NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -264,7 +264,25 @@ impl GithubError {
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::Api { status: 404, .. })
     }
+
+    /// A 422 — GitHub understood the request but refused it (a line that is
+    /// not part of the pull's diff at `commit_id`, a review on an issue that
+    /// is not a PR in a way that still 422s, too many comments). Cluster
+    /// 380.2 treats this as a skip of the inline review, not a failure of
+    /// the 379 summary comment.
+    pub fn is_unprocessable(&self) -> bool {
+        matches!(self, Self::Api { status: 422, .. })
+    }
 }
+
+/// GitHub accepts at most this many entries in `comments[]` on one
+/// `POST /repos/{repo}/pulls/{n}/reviews`. Extra findings are dropped, not
+/// split across reviews — a second review would look like a second verdict.
+pub const GITHUB_REVIEW_COMMENTS_MAX: usize = 100;
+
+/// `body` GitHub requires when `event` is [`GITHUB_REVIEW_EVENT_COMMENT`].
+/// The Cluster 379 summary lives on the issue comment, not on this review.
+pub const GITHUB_INLINE_REVIEW_BODY: &str = "Maidan posted inline findings for this result.";
 
 /// Outbound GitHub sender — posts and edits an issue/PR comment in production, a
 /// mock in tests.
@@ -302,6 +320,21 @@ pub trait GithubSender: Send + Sync {
         repo: &str,
         issue_number: i64,
     ) -> Result<Vec<GithubIssueComment>, GithubError>;
+
+    /// Post a pull-request review with inline comments (Cluster 380.2).
+    ///
+    /// `commit_id` is the envelope `head_sha` the caller already resolved —
+    /// **never** a live PR head fetched here. `comments` are already mapped
+    /// onto GitHub's RIGHT / `line` / `start_line` frame (Cluster 380.1).
+    /// `event` is always `COMMENT`; Maidan does not approve or
+    /// request-changes. Projector egress never calls this.
+    async fn create_review(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        commit_id: &str,
+        comments: &[GithubReviewComment],
+    ) -> Result<(), GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -460,6 +493,56 @@ impl GithubSender for GithubApiClient {
         }
         Ok(out)
     }
+
+    async fn create_review(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        commit_id: &str,
+        comments: &[GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        let url = format!("{}/repos/{repo}/pulls/{pull_number}/reviews", self.base_url);
+        let comments_json: Vec<serde_json::Value> =
+            comments.iter().map(review_comment_payload).collect();
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "maidan-projector")
+            .json(&serde_json::json!({
+                "commit_id": commit_id,
+                "event": GITHUB_REVIEW_EVENT_COMMENT,
+                "body": GITHUB_INLINE_REVIEW_BODY,
+                "comments": comments_json,
+            }))
+            .send()
+            .await
+            .map_err(|e| GithubError::Http(e.to_string()))?;
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        Err(GithubError::Api {
+            status: resp.status().as_u16(),
+            rate_limited: is_rate_limited(resp.headers()),
+        })
+    }
+}
+
+/// One `comments[]` item. `start_side` is required by GitHub whenever
+/// `start_line` is set; it always matches `side` (RIGHT).
+fn review_comment_payload(comment: &GithubReviewComment) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "path": comment.path,
+        "line": comment.line,
+        "side": comment.side.as_str(),
+        "body": comment.body,
+    });
+    if let Some(start_line) = comment.start_line {
+        payload["start_line"] = serde_json::json!(start_line);
+        payload["start_side"] = serde_json::json!(comment.side.as_str());
+    }
+    payload
 }
 
 /// Whether a non-success GitHub response is a rate limit. GitHub signals a

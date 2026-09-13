@@ -20,15 +20,24 @@
 //! The worker (Cluster 379.4) updates in place via the stored `external_ref`,
 //! recovering a GitHub comment through the hidden body marker if the handle
 //! is lost.
+//!
+//! Cluster 380.2: after a successful GitHub summary comment, the worker POSTs
+//! a `COMMENT` review whose `commit_id` is envelope `head_sha` and whose
+//! inline comments are the usable findings (RIGHT, post-image `line_range`).
+//! A missing sha, empty findings, a non-`reviewed` status, or a GitHub 404/422
+//! skips the review; the summary path is unchanged.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget, NewEgressOutbox,
-    ResultDelivery, ThreadId, WaiterResult, WorkspaceId,
+    parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget, GithubReviewComment,
+    NewEgressOutbox, ResultDelivery, ThreadId, WaiterResult, WorkspaceId,
 };
 use tracing::{debug, warn};
 
-use crate::egress_body::{github_result_comment_body, slack_message_body};
+use crate::egress_body::{
+    github_result_comment_body, github_review_comment_body, slack_message_body,
+};
+use crate::github::GITHUB_REVIEW_COMMENTS_MAX;
 use crate::state::AppState;
 
 /// The short Maidan-authored notice a non-`reviewed` result delivers. Built
@@ -310,9 +319,61 @@ pub async fn current_delivery_body(
     thread_id: ThreadId,
     target: &maidan_types::EgressTarget,
 ) -> Option<String> {
-    let stored = state.store.get_thread_result(thread_id).await.ok()??;
-    let waiter = parse_waiter_result(&stored.result)?;
+    let waiter = current_waiter(state, thread_id).await?;
     Some(delivery_body(thread_id, target, &waiter))
+}
+
+/// The live waiter envelope, if the thread still has one Maidan recognizes.
+pub async fn current_waiter(state: &AppState, thread_id: ThreadId) -> Option<WaiterResult> {
+    let stored = state.store.get_thread_result(thread_id).await.ok()??;
+    parse_waiter_result(&stored.result)
+}
+
+/// Coordinates for one `POST /repos/{repo}/pulls/{n}/reviews` (Cluster 380.2).
+/// `None` means skip the inline review: the 379 summary comment still posts.
+pub struct PreparedInlineReview {
+    pub commit_id: String,
+    pub comments: Vec<GithubReviewComment>,
+    pub truncated: bool,
+}
+
+/// Map a waiter envelope onto a GitHub review payload.
+///
+/// `None` when the result is not `reviewed`, has no envelope `head_sha`, or
+/// has no usable findings. Mentions in finding bodies are defused here; the
+/// 379 recovery marker is **not** applied. Findings past GitHub's 100-comment
+/// cap are dropped (`truncated`).
+///
+/// `commit_id` is **only** [`WaiterResult::review_commit_id`] — there is no
+/// live-PR-head lookup, and there must not be.
+pub fn prepare_inline_review(waiter: &WaiterResult) -> Option<PreparedInlineReview> {
+    if !waiter.is_reviewed() {
+        return None;
+    }
+    let commit_id = waiter.review_commit_id()?.to_string();
+    let mut comments: Vec<GithubReviewComment> = waiter
+        .github_review_comments()
+        .into_iter()
+        .filter_map(|comment| {
+            let body = github_review_comment_body(&comment.body);
+            if body.is_empty() {
+                return None;
+            }
+            Some(GithubReviewComment { body, ..comment })
+        })
+        .collect();
+    if comments.is_empty() {
+        return None;
+    }
+    let truncated = comments.len() > GITHUB_REVIEW_COMMENTS_MAX;
+    if truncated {
+        comments.truncate(GITHUB_REVIEW_COMMENTS_MAX);
+    }
+    Some(PreparedInlineReview {
+        commit_id,
+        comments,
+        truncated,
+    })
 }
 
 /// Best-effort audit of an operator replay. Never fails the replay itself.
@@ -342,7 +403,9 @@ pub async fn audit_replay(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use maidan_types::{STATUS_REVIEWED, WAITER_RESULT_SCHEMA};
+    use maidan_types::{
+        FindingLineRange, GithubDiffSide, WaiterFinding, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
+    };
 
     fn waiter(status: &str, rendered: Option<&str>, summary: Option<&str>) -> WaiterResult {
         WaiterResult {
@@ -448,5 +511,106 @@ mod tests {
         // envelope, and a drift here would enqueue nothing for a real result.
         assert_eq!(WAITER_RESULT_SCHEMA, "pi.waiter.result/1");
         assert_eq!(STATUS_REVIEWED, "reviewed");
+    }
+
+    fn sha40() -> String {
+        "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911".into()
+    }
+
+    fn finding(file: &str, start: u32, end: u32, body: &str) -> WaiterFinding {
+        WaiterFinding {
+            file: file.into(),
+            line_range: FindingLineRange::new(start, end).expect("valid range"),
+            body: body.into(),
+        }
+    }
+
+    fn reviewed_with(head_sha: Option<String>, findings: Vec<WaiterFinding>) -> WaiterResult {
+        WaiterResult {
+            result_kind: "pi.review.result/1".into(),
+            status: STATUS_REVIEWED.into(),
+            deliver_to: vec![],
+            rendered: Some("## Findings".into()),
+            summary: Some("1 finding".into()),
+            view_in_pi: None,
+            pr: None,
+            head_sha,
+            findings,
+        }
+    }
+
+    #[test]
+    fn prepare_inline_review_maps_post_image_findings_onto_right_side() {
+        let waiter = reviewed_with(
+            Some(sha40()),
+            vec![
+                finding("auth.py", 2, 4, "bypass @octocat"),
+                finding("auth.py", 7, 7, "one line"),
+            ],
+        );
+        let review = prepare_inline_review(&waiter).expect("reviewed + sha + findings");
+        assert_eq!(review.commit_id, sha40());
+        assert!(!review.truncated);
+        assert_eq!(review.comments.len(), 2);
+
+        assert_eq!(review.comments[0].path, "auth.py");
+        assert_eq!(review.comments[0].line, 4);
+        assert_eq!(review.comments[0].start_line, Some(2));
+        assert_eq!(review.comments[0].side, GithubDiffSide::Right);
+        assert_eq!(review.comments[0].side.as_str(), "RIGHT");
+        assert_eq!(review.comments[0].body, "bypass `@octocat`");
+        assert!(
+            !review.comments[0].body.contains("<!-- maidan:result:"),
+            "inline comments must not carry the 379 marker"
+        );
+
+        assert_eq!(review.comments[1].line, 7);
+        assert_eq!(
+            review.comments[1].start_line, None,
+            "a single-line finding omits start_line"
+        );
+    }
+
+    #[test]
+    fn prepare_inline_review_skips_without_head_sha_or_findings_or_reviewed() {
+        let findings = vec![finding("auth.py", 1, 1, "x")];
+        assert!(
+            prepare_inline_review(&reviewed_with(None, findings.clone())).is_none(),
+            "no commit_id ⇒ no review; the summary path still posts"
+        );
+        assert!(prepare_inline_review(&reviewed_with(Some(sha40()), vec![])).is_none());
+
+        let mut failed = reviewed_with(Some(sha40()), findings);
+        failed.status = "failed".into();
+        assert!(
+            prepare_inline_review(&failed).is_none(),
+            "a non-reviewed result delivers a failure notice, never findings"
+        );
+    }
+
+    #[test]
+    fn prepare_inline_review_caps_at_githubs_comment_limit() {
+        let findings = (1..=GITHUB_REVIEW_COMMENTS_MAX as u32 + 3)
+            .map(|n| finding("a.rs", n, n, "body"))
+            .collect();
+        let review = prepare_inline_review(&reviewed_with(Some(sha40()), findings))
+            .expect("over-cap still posts the first 100");
+        assert!(review.truncated);
+        assert_eq!(review.comments.len(), GITHUB_REVIEW_COMMENTS_MAX);
+        assert_eq!(review.comments[0].line, 1);
+        assert_eq!(
+            review.comments[GITHUB_REVIEW_COMMENTS_MAX - 1].line,
+            GITHUB_REVIEW_COMMENTS_MAX as u32
+        );
+    }
+
+    #[test]
+    fn prepare_inline_review_commit_id_is_only_the_envelope_sha() {
+        // There is no helper that resolves a PR head. If one appears, this
+        // test is the wrong place to use it — delete the helper.
+        let waiter = reviewed_with(Some(sha40()), vec![finding("a.rs", 1, 1, "x")]);
+        let review = prepare_inline_review(&waiter).unwrap();
+        assert_eq!(review.commit_id, waiter.review_commit_id().unwrap());
+        assert_eq!(review.commit_id, waiter.head_sha.as_deref().unwrap());
     }
 }
