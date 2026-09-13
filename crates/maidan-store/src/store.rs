@@ -1426,6 +1426,33 @@ pub trait AssignmentStore: Send + Sync {
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadUnclaimable>, StoreError>;
 
+    /// Set (upsert) an explicit dispatch block (Cluster 384, Wave 2 #27).
+    /// Presence of the row parks the thread from `claim_next` (enforced in
+    /// 384.2). One block per thread; re-setting replaces the reason/actor.
+    async fn set_thread_block(
+        &self,
+        thread_id: ThreadId,
+        reason: BlockedReason,
+        set_by: MemberId,
+    ) -> Result<ThreadBlock, StoreError>;
+    /// Clear a thread's explicit block (Cluster 384). Returns the cleared row
+    /// so a later cluster can emit `BlockedResolved` with the resolved reason;
+    /// `None` if it was not blocked (idempotent).
+    async fn clear_thread_block(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBlock>, StoreError>;
+    /// The thread's explicit block, or `None` if unblocked (Cluster 384).
+    async fn get_thread_block(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBlock>, StoreError>;
+    /// Explicitly blocked threads in a channel (Cluster 384), newest first.
+    async fn list_blocked_threads(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ThreadBlock>, StoreError>;
+
     /// Set (upsert) a thread's wait timer (Cluster 364, G2): the thread is waiting
     /// until `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets
     /// `fired_at` (a fresh timer). One wait per thread.

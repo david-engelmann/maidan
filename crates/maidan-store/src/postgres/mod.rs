@@ -6,6 +6,7 @@ mod apps;
 mod artifacts;
 mod audit;
 mod automation_deliveries;
+mod blocks;
 mod budget;
 mod channel_members;
 mod channels;
@@ -1819,6 +1820,34 @@ impl AssignmentStore for PostgresStore {
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadUnclaimable>, StoreError> {
         unclaimable::list_for_channel(self.read_pool(), channel_id).await
+    }
+    async fn set_thread_block(
+        &self,
+        thread_id: ThreadId,
+        reason: BlockedReason,
+        set_by: MemberId,
+    ) -> Result<ThreadBlock, StoreError> {
+        blocks::set(&self.pool, thread_id, reason, set_by).await
+    }
+    async fn clear_thread_block(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBlock>, StoreError> {
+        blocks::clear(&self.pool, thread_id).await
+    }
+    async fn get_thread_block(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadBlock>, StoreError> {
+        // Primary read: an explicit-claim gate acts on this; a lagged read could
+        // dispatch a just-blocked thread.
+        blocks::get(&self.pool, thread_id).await
+    }
+    async fn list_blocked_threads(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ThreadBlock>, StoreError> {
+        blocks::list_for_channel(self.read_pool(), channel_id).await
     }
     async fn set_thread_wait(
         &self,
