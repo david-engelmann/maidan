@@ -55,7 +55,7 @@ field never breaks delivery.
 | `summary` | on `reviewed` | One line. The Slack body and the notification title. |
 | `view_in_pi` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
-| `findings` | no | Stored and forwarded verbatim. Read only by the (parked) inline-comment path. |
+| `findings` | no | Stored and forwarded verbatim. Read only by Cluster 380's inline-comment path (unparked as next; not implemented yet). |
 
 Everything else in the envelope — `corroboration`, `per_seat`, `seats`, `run_id`,
 `cost_usd`, `duration_secs`, `sandbox`, `finding_count`, `diff_available` — is
