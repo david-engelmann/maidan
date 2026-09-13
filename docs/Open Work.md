@@ -411,14 +411,13 @@ not become a CI product. It delivers trusted bytes to blessed surfaces, durably,
   **Note back to the pi side: the grammar is frozen at `pi.waiter.result/1`.** Additive fields are
   free; a meaning change needs a new `schema` value. **Deferred:** a `/ui` deliveries panel; recovering
   a lost Slack `ts` without re-posting.
-- **Cluster 380 — inline per-finding PR review comments. Unparked as next after 379.** Needs
-  `POST /repos/{repo}/pulls/{n}/reviews` with `comments[{path, line, side, body}]`, anchored to a
-  commit. **The envelope now carries `head_sha`** (on the 379.2 fixture lock; additive on the frozen
-  schema — `parse_waiter_result` ignores it today, 380 reads it). Resolving the PR head at delivery
-  time can still anchor to a *newer* commit than was reviewed, so 380 **must** pass the envelope's
-  `head_sha` as `commit_id`. Remaining care: the `line_range` frame of reference (post-image file
-  lines vs diff-relative) is still unstated — pin it in 380.1 before posting comments. Cluster 379's
-  single summary comment shipped.
+- **Cluster 380 — inline per-finding PR review comments. Unparked; 380.1 in flight.**
+  `POST /repos/{repo}/pulls/{n}/reviews` with `comments[{path, line, side, body}]`,
+  anchored to envelope `head_sha` as `commit_id` — **never** the live PR head.
+  **`line_range` frame (pinned 380.1):** file-absolute **post-image** lines at
+  `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. `parse_waiter_result` now
+  reads `head_sha` + usable `findings`. **380.2** posts the review; **380.3**
+  tests/e2e; **380.4** docs/retro. Cluster 379's summary comment path is unchanged.
 - **Cluster 381 — `result_kind` facet + the pinned spec** *(half of row #24)*. Facet on the **namespaced
   string** (see the correction on #24). Keep [Result Delivery](Result%20Delivery.md) in step, and register
   the envelope in the Wave 3 #30 schema pack.

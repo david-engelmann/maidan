@@ -1,4 +1,4 @@
-//! The contract lock (Cluster 379.2).
+//! The contract lock (Cluster 379.2, extended 380.1).
 //!
 //! These assertions run against the **authoritative** producer fixture, committed
 //! at `tests/fixtures/pi_waiter_result_v1.json` and embedded here at compile time.
@@ -7,14 +7,14 @@
 //! wrong place in production. It is not a test of the parser so much as a
 //! tripwire on somebody else's wire format.
 //!
-//! It deliberately asserts **only the fields Maidan routes on**. Pinning
-//! `findings`, `cost_usd`, `per_seat` or `run_id` would make the lock fire on
-//! changes that cannot affect delivery, and a tripwire that cries wolf gets
-//! deleted.
+//! It asserts the fields Maidan routes on **and** the Cluster 380.1 inline
+//! comment pin (`head_sha`, `findings[].line_range`). Pinning `corroboration`,
+//! `cost_usd`, `per_seat` or `run_id` would make the lock fire on changes that
+//! cannot affect delivery, and a tripwire that cries wolf gets deleted.
 
 use maidan_types::{
-    parse_waiter_result, result_kind_from_payload, DeliverTarget, EgressTarget, WaiterResult,
-    STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
+    parse_waiter_result, result_kind_from_payload, DeliverTarget, EgressTarget, FindingLineRange,
+    GithubDiffSide, WaiterResult, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 
 const FIXTURE: &str = include_str!("fixtures/pi_waiter_result_v1.json");
@@ -172,33 +172,86 @@ fn the_fixtures_slack_channel_is_an_id_not_a_name() {
     assert!(!channel.starts_with('#'), "a #name is not addressable");
 }
 
+/// Cluster 380.1: `head_sha` is GitHub `commit_id`, and `line_range` is
+/// file-absolute post-image / RIGHT, 1-indexed inclusive. A producer-side
+/// change to either breaks this lock before 380.2 posts a comment on the
+/// wrong line of the wrong commit.
+#[test]
+fn the_authoritative_fixture_pins_head_sha_and_post_image_findings() {
+    let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
+    assert_eq!(
+        value["head_sha"], "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911",
+        "the producer dropped or renamed head_sha; inline comments would have no commit_id"
+    );
+    assert!(
+        value["findings"].as_array().is_some_and(|f| !f.is_empty()),
+        "the fixture is supposed to carry findings for the inline-comment path"
+    );
+
+    let r = parsed();
+    assert_eq!(
+        r.review_commit_id(),
+        Some("b5e54f94fd04d6ef7d6e1197ddd59ace70edb911"),
+        "commit_id is the envelope sha — never a live PR head"
+    );
+    assert_eq!(
+        r.findings.len(),
+        2,
+        "both fixture findings have file + body + a valid line_range"
+    );
+    assert_eq!(r.findings[0].file, "auth.py");
+    assert_eq!(
+        r.findings[0].line_range,
+        FindingLineRange { start: 2, end: 4 }
+    );
+    assert!(
+        !r.findings[0].body.is_empty(),
+        "the comment body is the producer's finding body"
+    );
+
+    let comments = r.github_review_comments();
+    assert_eq!(comments.len(), 2);
+    assert_eq!(comments[0].path, "auth.py");
+    assert_eq!(
+        comments[0].line, 4,
+        "GitHub line is the last line of the range"
+    );
+    assert_eq!(comments[0].start_line, Some(2));
+    assert_eq!(comments[0].side, GithubDiffSide::Right);
+    assert_eq!(comments[0].side.as_str(), "RIGHT");
+    assert_eq!(comments[1].line, 4);
+    assert_eq!(comments[1].start_line, Some(1));
+}
+
 /// Maidan carries the rest of the envelope through untouched and does not
 /// interpret it. This asserts the *parser's* indifference, not the fields'
-/// values, so the producer stays free to evolve them.
+/// values, so the producer stays free to evolve them. `head_sha` and
+/// `findings` are Cluster 380.1 routing fields — removing them still parses
+/// the 379 summary path, but those fields go empty.
 #[test]
 fn fields_maidan_does_not_route_on_are_ignored_rather_than_required() {
     let mut value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
     let before = parsed();
 
-    let obj = value.as_object_mut().expect("an object");
-    for uninterpreted in [
-        "findings",
-        "corroboration",
-        "per_seat",
-        "seats",
-        "seats_reviewed",
-        "run_id",
-        "cost_usd",
-        "duration_secs",
-        "sandbox",
-        "finding_count",
-        "diff_available",
-        "head_sha",
-    ] {
-        assert!(
-            obj.remove(uninterpreted).is_some(),
-            "{uninterpreted} is expected in the fixture; update this list if the producer drops it"
-        );
+    {
+        let obj = value.as_object_mut().expect("an object");
+        for uninterpreted in [
+            "corroboration",
+            "per_seat",
+            "seats",
+            "seats_reviewed",
+            "run_id",
+            "cost_usd",
+            "duration_secs",
+            "sandbox",
+            "finding_count",
+            "diff_available",
+        ] {
+            assert!(
+                obj.remove(uninterpreted).is_some(),
+                "{uninterpreted} is expected in the fixture; update this list if the producer drops it"
+            );
+        }
     }
 
     let after = parse_waiter_result(&value).expect("still a recognized envelope");
@@ -206,4 +259,16 @@ fn fields_maidan_does_not_route_on_are_ignored_rather_than_required() {
         after, before,
         "removing everything Maidan does not route on changes nothing it routes on"
     );
+
+    {
+        let obj = value.as_object_mut().expect("an object");
+        obj.remove("head_sha");
+        obj.remove("findings");
+    }
+
+    let summary_only = parse_waiter_result(&value).expect("379 summary path still parses");
+    assert_eq!(summary_only.review_commit_id(), None);
+    assert!(summary_only.findings.is_empty());
+    assert_eq!(summary_only.deliver_to, before.deliver_to);
+    assert_eq!(summary_only.rendered, before.rendered);
 }

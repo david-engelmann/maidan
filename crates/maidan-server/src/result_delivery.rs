@@ -353,6 +353,8 @@ mod tests {
             summary: summary.map(str::to_string),
             view_in_pi: Some("https://pi.test/r/1".into()),
             pr: Some("acme/widgets#7".into()),
+            head_sha: None,
+            findings: vec![],
         }
     }
 

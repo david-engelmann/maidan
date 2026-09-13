@@ -1,5 +1,6 @@
-//! The waiter-result contract (Cluster 379.2) — a **tolerant reader** for the
-//! envelope an external result producer writes with `set_thread_result`.
+//! The waiter-result contract (Cluster 379.2, extended 380.1) — a **tolerant
+//! reader** for the envelope an external result producer writes with
+//! `set_thread_result`.
 //!
 //! The result is opaque JSON owned by the producer. Maidan parses only the fields
 //! it *routes on* and ignores everything else, so a producer adding a field never
@@ -12,6 +13,11 @@
 //! means no delivery is attempted at all, because routing on an envelope we do
 //! not understand is how you deliver the wrong bytes to the wrong place. Past
 //! that, missing optional fields degrade rather than fail.
+//!
+//! Cluster 380.1 reads `head_sha` and `findings[].{file,line_range,body}` so
+//! inline review comments can be placed. The summary-comment path (379) is
+//! unchanged: an envelope without those fields still delivers. Posting the
+//! GitHub review is Cluster 380.2.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -25,6 +31,12 @@ pub const WAITER_RESULT_SCHEMA: &str = "pi.waiter.result/1";
 /// gets a short Maidan-authored failure notice built from `status` alone —
 /// never silence, and never rendered as a clean pass.
 pub const STATUS_REVIEWED: &str = "reviewed";
+
+/// GitHub `event` for a Maidan-authored pull-request review (Cluster 380).
+/// Maidan delivers findings; it does not approve or request-changes on the
+/// producer's behalf. The Cluster 379 summary is a separate issue comment,
+/// not this review's body.
+pub const GITHUB_REVIEW_EVENT_COMMENT: &str = "COMMENT";
 
 /// One entry of the producer's `deliver_to` routing list.
 ///
@@ -104,10 +116,96 @@ impl DeliverTarget {
     }
 }
 
+/// Inclusive 1-indexed range on the **post-image** file at envelope
+/// `head_sha` — the file as that commit left it, not a diff-hunk offset.
+///
+/// On GitHub this is the **RIGHT** side of the pull-request split view
+/// ([`GithubDiffSide::Right`]). `LEFT` is deletions that no longer exist in
+/// the after-state; a finding that quotes a line in the resulting file is
+/// never LEFT. Resolving the live PR head instead of `head_sha` can place
+/// every comment on a newer commit than was reviewed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FindingLineRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl FindingLineRange {
+    /// `None` when the range is not a 1-indexed inclusive span (`start < 1`
+    /// or `end < start`).
+    pub fn new(start: u32, end: u32) -> Option<Self> {
+        (start >= 1 && end >= start).then_some(Self { start, end })
+    }
+
+    /// GitHub `line` — the last line of the inclusive range.
+    pub fn github_line(self) -> u32 {
+        self.end
+    }
+
+    /// GitHub `start_line` when the range spans more than one line. `None`
+    /// for a single-line finding so the review POST omits it.
+    pub fn github_start_line(self) -> Option<u32> {
+        (self.start != self.end).then_some(self.start)
+    }
+}
+
+/// GitHub pull-review `side`. Findings are always [`Self::Right`]: they
+/// describe the file after `head_sha`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum GithubDiffSide {
+    #[serde(rename = "RIGHT")]
+    Right,
+}
+
+impl GithubDiffSide {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Right => "RIGHT",
+        }
+    }
+}
+
+/// One producer finding Maidan can turn into an inline review comment.
+/// Other finding fields (`severity`, `quoted_line`, …) stay in the stored
+/// JSON; the comment body is the producer's `body` as written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WaiterFinding {
+    pub file: String,
+    pub line_range: FindingLineRange,
+    pub body: String,
+}
+
+impl WaiterFinding {
+    /// Project onto GitHub's `comments[]` item (`path`, `line`, `side`,
+    /// `body`, plus `start_line` when the range is multi-line).
+    pub fn to_github_review_comment(&self) -> GithubReviewComment {
+        GithubReviewComment {
+            path: self.file.clone(),
+            line: self.line_range.github_line(),
+            start_line: self.line_range.github_start_line(),
+            side: GithubDiffSide::Right,
+            body: self.body.clone(),
+        }
+    }
+}
+
+/// Coordinates for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`.
+/// Cluster 380.2 posts this; Cluster 380.1 only pins the mapping.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GithubReviewComment {
+    pub path: String,
+    pub line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_line: Option<u32>,
+    pub side: GithubDiffSide,
+    pub body: String,
+}
+
 /// The routable projection of a producer's result envelope. Everything the
-/// producer carries that Maidan does not route on — `findings`, `corroboration`,
-/// `per_seat`, `run_id`, `cost_usd`, `head_sha`, … — stays in the stored result
-/// and is deliberately absent here.
+/// producer carries that Maidan does not route on — `corroboration`,
+/// `per_seat`, `run_id`, `cost_usd`, … — stays in the stored result and is
+/// deliberately absent here. Cluster 380.1 added `head_sha` and `findings`
+/// because inline comments have to be placed, not just forwarded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterResult {
     /// Which producer shape this is, e.g. `pi.review.result/1`. A **namespaced
@@ -127,6 +225,15 @@ pub struct WaiterResult {
     /// (`owner/name#123`) — not to be confused with `deliver_to[].pr`, which is
     /// an integer. Two different fields with the same name and different types.
     pub pr: Option<String>,
+    /// The commit the review was computed against. This is GitHub's
+    /// `commit_id` for inline comments. **There is no helper that resolves a
+    /// PR's current head** — that function must not exist; a newer head than
+    /// was reviewed would misplace every comment. Absent ⇒ Cluster 380.2
+    /// skips inline comments; the 379 summary comment still posts.
+    pub head_sha: Option<String>,
+    /// Findings that have a file, a body, and a valid post-image
+    /// [`FindingLineRange`]. Malformed entries are skipped, not an error.
+    pub findings: Vec<WaiterFinding>,
 }
 
 impl WaiterResult {
@@ -136,6 +243,21 @@ impl WaiterResult {
     pub fn is_reviewed(&self) -> bool {
         self.status == STATUS_REVIEWED
     }
+
+    /// GitHub `commit_id` for an inline review. **Only** the envelope's
+    /// `head_sha` — never the live PR head.
+    pub fn review_commit_id(&self) -> Option<&str> {
+        self.head_sha.as_deref()
+    }
+
+    /// Inline comments Cluster 380.2 will POST. Empty when every finding was
+    /// unusable; that is a skip, not a failure of the summary path.
+    pub fn github_review_comments(&self) -> Vec<GithubReviewComment> {
+        self.findings
+            .iter()
+            .map(WaiterFinding::to_github_review_comment)
+            .collect()
+    }
 }
 
 /// Read the routable fields out of a producer's result.
@@ -144,7 +266,8 @@ impl WaiterResult {
 /// `schema`, or a non-object — which means no delivery is attempted rather than
 /// a delivery attempted on a guess. Anything past the discriminator degrades
 /// instead of failing: an absent `deliver_to` is an empty list, and the optional
-/// bodies are `None`.
+/// bodies are `None`. Unusable `findings` / `head_sha` are skipped the same way
+/// so a 379 summary delivery still happens.
 pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
     let obj = value.as_object()?;
     if obj.get("schema").and_then(Value::as_str)? != WAITER_RESULT_SCHEMA {
@@ -168,6 +291,12 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
             .map(str::to_string)
     };
 
+    let findings = obj
+        .get("findings")
+        .and_then(Value::as_array)
+        .map(|entries| entries.iter().filter_map(parse_finding).collect())
+        .unwrap_or_default();
+
     Some(WaiterResult {
         result_kind,
         status,
@@ -176,7 +305,47 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         summary: string_field("summary"),
         view_in_pi: string_field("view_in_pi"),
         pr: string_field("pr"),
+        head_sha: obj.get("head_sha").and_then(parse_head_sha),
+        findings,
     })
+}
+
+/// Git SHA-1 (40 hex) or SHA-256 (64 hex). Anything else — empty, a short
+/// prefix, a live-PR URL — is absent, so 380.2 will not guess a commit.
+fn parse_head_sha(value: &Value) -> Option<String> {
+    let s = value.as_str()?.trim();
+    let ok_len = s.len() == 40 || s.len() == 64;
+    (ok_len && s.bytes().all(|b| b.is_ascii_hexdigit())).then(|| s.to_string())
+}
+
+fn parse_finding(entry: &Value) -> Option<WaiterFinding> {
+    let obj = entry.as_object()?;
+    let file = obj
+        .get("file")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())?;
+    let body = obj
+        .get("body")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())?;
+    let line_range = obj.get("line_range").and_then(parse_line_range)?;
+    Some(WaiterFinding {
+        file: file.to_string(),
+        line_range,
+        body: body.to_string(),
+    })
+}
+
+fn parse_line_range(value: &Value) -> Option<FindingLineRange> {
+    let obj = value.as_object()?;
+    let start = parse_line_number(obj.get("start")?)?;
+    let end = parse_line_number(obj.get("end")?)?;
+    FindingLineRange::new(start, end)
+}
+
+fn parse_line_number(value: &Value) -> Option<u32> {
+    let n = value.as_u64()?;
+    u32::try_from(n).ok().filter(|n| *n >= 1)
 }
 
 /// One `deliver_to` entry. `None` only when the entry has no `surface` string at
@@ -257,6 +426,10 @@ mod tests {
         assert!(parsed.is_reviewed());
         assert_eq!(parsed.rendered, None);
         assert_eq!(parsed.summary, None);
+        assert_eq!(parsed.head_sha, None);
+        assert!(parsed.findings.is_empty());
+        assert_eq!(parsed.review_commit_id(), None);
+        assert!(parsed.github_review_comments().is_empty());
 
         let explicit = json!({
             "schema": WAITER_RESULT_SCHEMA,
@@ -426,6 +599,7 @@ mod tests {
         assert_eq!(parsed.summary, None);
         assert_eq!(parsed.view_in_pi, None);
         assert_eq!(parsed.pr, None);
+        assert_eq!(parsed.head_sha, None);
     }
 
     #[test]
@@ -441,5 +615,97 @@ mod tests {
         });
         let parsed = parse_waiter_result(&value).expect("parses");
         assert_eq!(parsed.summary.as_deref(), Some("ok"));
+        assert!(
+            parsed.findings.is_empty(),
+            "a finding without file/body/line_range is skipped, not an error"
+        );
+    }
+
+    #[test]
+    fn head_sha_is_the_only_commit_id_and_garbage_is_absent() {
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        let parsed = parse_waiter_result(&json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "pi.review.result/1",
+            "status": "reviewed",
+            "head_sha": sha,
+            // A live-PR URL is not a commit. Must not become commit_id.
+            "html_url": "https://github.com/acme/widgets/pull/7",
+        }))
+        .expect("parses");
+        assert_eq!(parsed.review_commit_id(), Some(sha));
+
+        for bad in [
+            json!(""),
+            json!("HEAD"),
+            json!("deadbeef"),
+            json!("not-a-sha-at-all-even-though-long-enough-xxxx"),
+            json!(1),
+        ] {
+            let parsed = parse_waiter_result(&json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "pi.review.result/1",
+                "status": "reviewed",
+                "head_sha": bad,
+            }))
+            .expect("parses");
+            assert_eq!(
+                parsed.review_commit_id(),
+                None,
+                "expected {bad} not to become commit_id"
+            );
+        }
+    }
+
+    #[test]
+    fn findings_project_onto_github_right_side_post_image_comments() {
+        let parsed = parse_waiter_result(&json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "pi.review.result/1",
+            "status": "reviewed",
+            "findings": [
+                {
+                    "file": "auth.py",
+                    "body": "bypass",
+                    "line_range": { "start": 2, "end": 4 },
+                    "severity": "critical"
+                },
+                {
+                    "file": "auth.py",
+                    "body": "one line",
+                    "line_range": { "start": 7, "end": 7 }
+                },
+                { "severity": "critical" },
+                {
+                    "file": "auth.py",
+                    "body": "zero is not a line",
+                    "line_range": { "start": 0, "end": 1 }
+                },
+                {
+                    "file": "auth.py",
+                    "body": "inverted",
+                    "line_range": { "start": 9, "end": 3 }
+                },
+                { "file": "", "body": "x", "line_range": { "start": 1, "end": 1 } },
+                { "file": "x.rs", "body": "", "line_range": { "start": 1, "end": 1 } }
+            ]
+        }))
+        .expect("parses");
+        assert_eq!(parsed.findings.len(), 2);
+
+        let comments = parsed.github_review_comments();
+        assert_eq!(comments[0].path, "auth.py");
+        assert_eq!(comments[0].line, 4);
+        assert_eq!(comments[0].start_line, Some(2));
+        assert_eq!(comments[0].side, GithubDiffSide::Right);
+        assert_eq!(comments[0].side.as_str(), "RIGHT");
+        assert_eq!(comments[0].body, "bypass");
+
+        assert_eq!(comments[1].line, 7);
+        assert_eq!(
+            comments[1].start_line, None,
+            "a single-line finding omits start_line"
+        );
+        assert_eq!(GITHUB_REVIEW_EVENT_COMMENT, "COMMENT");
     }
 }
