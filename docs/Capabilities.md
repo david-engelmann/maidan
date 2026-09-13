@@ -5,7 +5,7 @@ PR prepends a new section so the latest is always at the top.
 
 ## v379.0.0 — the result-delivery primitive
 
-Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egress durable, aimable, and repeatable; this is the producer's actual ask. A `pi.waiter.result/1` envelope written with `set_thread_result` is now fetched, parsed, allowlist-checked per `deliver_to` target, and delivered — GitHub gets `rendered`, Slack gets `summary`, a re-review updates the same object, and the producer reads per-target disposition over REST + MCP. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **The grammar is frozen** at `pi.waiter.result/1`. Cluster 380 (inline per-finding comments) stays parked on `head_sha`.
+Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egress durable, aimable, and repeatable; this is the producer's actual ask. A `pi.waiter.result/1` envelope written with `set_thread_result` is now fetched, parsed, allowlist-checked per `deliver_to` target, and delivered — GitHub gets `rendered`, Slack gets `summary`, a re-review updates the same object, and the producer reads per-target disposition over REST + MCP. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **The grammar is frozen** at `pi.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as next**: `head_sha` is on the fixture; 380.1 still pins the `line_range` frame of reference.
 
 | Change | Where |
 |--------|-------|

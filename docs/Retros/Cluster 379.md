@@ -11,9 +11,12 @@ existing field, or to the `deliver_to` shape, needs a new `schema` value —
 Maidan routes on the discriminator, and an unrecognized one is inert rather
 than mis-delivered. That confirmation is the note back to the pi side.
 
-**Cluster 380 stays parked.** Inline per-finding PR review comments still need
-`head_sha` on the envelope and a stated `line_range` frame of reference.
-Do not unpark until the producer carries a commit anchor.
+**Cluster 380 is unparked as next.** The 379.2 fixture lock already carries
+`head_sha` (additive on the frozen `pi.waiter.result/1` schema;
+`parse_waiter_result` ignores it today — 380 reads it). Remaining care, not a
+park: the `line_range` frame of reference (file-absolute post-image lines vs
+diff-relative) is still unstated. 380.1 must pin that frame **and** pass the
+envelope's `head_sha` as `commit_id`, never the live PR head.
 
 ## What shipped
 
@@ -212,8 +215,9 @@ routes (still declined — an agent has no business editing the boundary that
 constrains it); wildcard / org-level selectors; Slack Block Kit; recovering
 a lost Slack `ts` without re-posting.
 
-**Next: Cluster 380 stays PARKED** (inline per-finding PR review comments —
-blocked on `head_sha` + `line_range` frame of reference). **Cluster 381 —
+**Next: Cluster 380 — inline per-finding PR review comments** (unparked: the
+fixture carries `head_sha`; 380.1 still has to pin the `line_range` frame of
+reference and must not resolve the PR head at delivery time). **Cluster 381 —
 `result_kind` facet + the pinned spec** (half of Open Work row #24): facet
 on the **namespaced string**, keep [Result Delivery](../Result%20Delivery.md)
 in step, register the envelope in the Wave 3 #30 schema pack. See the
@@ -222,6 +226,7 @@ in step, register the envelope in the Wave 3 #30 schema pack. See the
 ## Acknowledgements
 
 Five impl PRs (#787 the store → #788 the contract lock → #789 the trigger →
-#791 update-in-place → #793 status + replay) + this retro. 379.4's first PR
+#791 update-in-place → #793 status + replay) + this retro. **379.1 and 379.2
+were already on `main`** (#787/#788) before 379.3 opened. 379.4's first PR
 (#790) was closed by GitHub when 379.3's branch was deleted under it;
 #791 is the replacement, rebased onto `main`.
