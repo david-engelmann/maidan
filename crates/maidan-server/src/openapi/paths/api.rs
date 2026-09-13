@@ -1166,6 +1166,21 @@ pub fn set_thread_result() {}
     responses((status = 200, body = ThreadResult)))]
 pub fn get_thread_result() {}
 
+#[utoipa::path(get, path = "/threads/{id}/deliveries", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [ResultDelivery])))]
+pub fn list_thread_deliveries() {}
+
+#[utoipa::path(post, path = "/threads/{id}/deliveries/{did}/replay", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ("did" = Uuid, Path, description = "Result-delivery id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ResultDelivery)))]
+pub fn replay_thread_delivery() {}
+
 #[utoipa::path(put, path = "/threads/{id}/steer", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = SetThreadSteer,

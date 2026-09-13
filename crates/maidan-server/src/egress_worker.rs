@@ -202,12 +202,17 @@ async fn deliver_result(
             });
         }
     };
+    // Prefer a live rebuild so a replay after a newer result ships current
+    // bytes; fall back to the outbox snapshot if the envelope is gone.
+    let body = crate::result_delivery::current_delivery_body(state, entry.thread_id, target)
+        .await
+        .unwrap_or_else(|| entry.body.clone());
     match target {
         EgressTarget::Github { repo, issue_number } => {
-            github_result(state, entry, row.as_ref(), repo, *issue_number).await
+            github_result(state, entry, row.as_ref(), repo, *issue_number, &body).await
         }
         EgressTarget::Slack { channel_id } => {
-            slack_result(state, entry, row.as_ref(), channel_id).await
+            slack_result(state, row.as_ref(), channel_id, &body).await
         }
     }
 }
@@ -218,6 +223,7 @@ async fn github_result(
     row: Option<&ResultDelivery>,
     repo: &str,
     issue_number: i64,
+    body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
     let Some(sender) = state.github_sender.as_ref() else {
         return Err(DeliveryFailure {
@@ -226,7 +232,7 @@ async fn github_result(
         });
     };
     if let Some(ExternalRef::Github { comment_id, .. }) = row.and_then(|r| r.reference()) {
-        match sender.update_comment(repo, comment_id, &entry.body).await {
+        match sender.update_comment(repo, comment_id, body).await {
             Ok(()) => {
                 crate::metrics::record_github_egress("sent");
                 return Ok(Some(ExternalRef::Github {
@@ -252,30 +258,28 @@ async fn github_result(
     // first review would be an unbounded walk for no gain.
     if row.is_some_and(|r| r.delivered_revision.is_some()) {
         match recover_github_comment(sender.as_ref(), repo, issue_number, entry.thread_id).await {
-            Ok(Some(comment_id)) => {
-                match sender.update_comment(repo, comment_id, &entry.body).await {
-                    Ok(()) => {
-                        crate::metrics::record_github_egress("sent");
-                        return Ok(Some(ExternalRef::Github {
-                            repo: repo.to_string(),
-                            comment_id,
-                        }));
-                    }
-                    Err(err) if err.is_not_found() => {}
-                    Err(err) => {
-                        crate::metrics::record_github_egress("failed");
-                        return Err(DeliveryFailure {
-                            message: err.to_string(),
-                            misconfiguration: err.is_misconfiguration(),
-                        });
-                    }
+            Ok(Some(comment_id)) => match sender.update_comment(repo, comment_id, body).await {
+                Ok(()) => {
+                    crate::metrics::record_github_egress("sent");
+                    return Ok(Some(ExternalRef::Github {
+                        repo: repo.to_string(),
+                        comment_id,
+                    }));
                 }
-            }
+                Err(err) if err.is_not_found() => {}
+                Err(err) => {
+                    crate::metrics::record_github_egress("failed");
+                    return Err(DeliveryFailure {
+                        message: err.to_string(),
+                        misconfiguration: err.is_misconfiguration(),
+                    });
+                }
+            },
             Ok(None) => {}
             Err(failure) => return Err(failure),
         }
     }
-    match sender.post_comment(repo, issue_number, &entry.body).await {
+    match sender.post_comment(repo, issue_number, body).await {
         Ok(reference) => {
             crate::metrics::record_github_egress("sent");
             Ok(reference)
@@ -312,9 +316,9 @@ async fn recover_github_comment(
 
 async fn slack_result(
     state: &AppState,
-    entry: &EgressOutbox,
     row: Option<&ResultDelivery>,
     channel_id: &str,
+    body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
     let Some(sender) = state.slack_sender.as_ref() else {
         return Err(DeliveryFailure {
@@ -323,7 +327,7 @@ async fn slack_result(
         });
     };
     if let Some(ExternalRef::Slack { ts, .. }) = row.and_then(|r| r.reference()) {
-        match sender.update_message(channel_id, &ts, &entry.body).await {
+        match sender.update_message(channel_id, &ts, body).await {
             Ok(()) => {
                 crate::metrics::record_slack_egress("sent");
                 return Ok(Some(ExternalRef::Slack {
@@ -344,7 +348,7 @@ async fn slack_result(
             }
         }
     }
-    match sender.post_message(channel_id, &entry.body, None).await {
+    match sender.post_message(channel_id, body, None).await {
         Ok(reference) => {
             crate::metrics::record_slack_egress("sent");
             Ok(reference)
@@ -505,6 +509,46 @@ async fn record_result_gave_up(
     crate::metrics::record_result_delivery("failed");
 }
 
+/// Best-effort audit of a result-delivery send attempt (Cluster 379.5).
+/// Never fails the delivery itself.
+async fn audit_result_attempt(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: Option<&EgressTarget>,
+    outcome: &str,
+    error: Option<&str>,
+) {
+    let target_id = match target {
+        Some(t) => state
+            .store
+            .get_result_delivery(entry.thread_id, t)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.id.0),
+        None => None,
+    };
+    crate::audit::record(
+        state,
+        maidan_types::NewAuditEvent {
+            actor_id: None,
+            action: "result_delivery.attempt".into(),
+            target_kind: Some("result_delivery".into()),
+            target_id,
+            metadata: serde_json::json!({
+                "thread_id": entry.thread_id.0,
+                "workspace_id": entry.workspace_id.0,
+                "surface": entry.surface,
+                "selector": entry.selector,
+                "outcome": outcome,
+                "error": error,
+                "egress_id": entry.id.0,
+            }),
+        },
+    )
+    .await;
+}
+
 /// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when no projector sender is
 /// configured — without one, every claim would fail and burn the queue's attempts
 /// against a deployment that simply has the projector turned off.
@@ -534,6 +578,9 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             dead_letter(state, &entry, &error).await;
             tracing::warn!(id = %entry.id, %error, "egress worker: dead-lettered");
             crate::metrics::record_egress_delivery(&entry.surface, "unroutable");
+            if entry.kind == EgressKind::Result {
+                audit_result_attempt(state, &entry, None, "dead", Some(&error)).await;
+            }
             stats.dead += 1;
             continue;
         };
@@ -545,6 +592,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 }
                 if entry.kind == EgressKind::Result {
                     record_result_landed(state, &entry, &target, reference.as_ref()).await;
+                    audit_result_attempt(state, &entry, Some(&target), "sent", None).await;
                 }
                 tracing::debug!(
                     id = %entry.id,
@@ -561,6 +609,8 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 // here must not disable someone else's linked thread.
                 dead_letter(state, &entry, &failure.message).await;
                 record_result_gave_up(state, &entry, &target, &failure.message).await;
+                audit_result_attempt(state, &entry, Some(&target), "dead", Some(&failure.message))
+                    .await;
                 crate::metrics::record_egress_delivery(surface, "dead");
                 stats.dead += 1;
             }
@@ -574,10 +624,28 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 if record_failure(state, &entry, &failure.message).await {
                     if entry.kind == EgressKind::Result {
                         record_result_gave_up(state, &entry, &target, &failure.message).await;
+                        audit_result_attempt(
+                            state,
+                            &entry,
+                            Some(&target),
+                            "dead",
+                            Some(&failure.message),
+                        )
+                        .await;
                     }
                     crate::metrics::record_egress_delivery(surface, "dead");
                     stats.dead += 1;
                 } else {
+                    if entry.kind == EgressKind::Result {
+                        audit_result_attempt(
+                            state,
+                            &entry,
+                            Some(&target),
+                            "retry",
+                            Some(&failure.message),
+                        )
+                        .await;
+                    }
                     crate::metrics::record_egress_delivery(surface, "retry");
                     stats.retried += 1;
                 }

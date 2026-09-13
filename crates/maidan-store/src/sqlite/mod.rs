@@ -773,6 +773,20 @@ impl EgressStore for SqliteStore {
     ) -> Result<Vec<ResultDelivery>, StoreError> {
         result_deliveries::list_for_thread(&self.pool, thread_id).await
     }
+    async fn get_result_delivery_by_id(
+        &self,
+        thread_id: ThreadId,
+        id: ResultDeliveryId,
+    ) -> Result<Option<ResultDelivery>, StoreError> {
+        result_deliveries::get_by_id(&self.pool, thread_id, id).await
+    }
+    async fn prepare_result_delivery_replay(
+        &self,
+        thread_id: ThreadId,
+        id: ResultDeliveryId,
+    ) -> Result<Option<ResultDelivery>, StoreError> {
+        result_deliveries::prepare_replay(&self.pool, thread_id, id).await
+    }
 }
 
 #[async_trait]

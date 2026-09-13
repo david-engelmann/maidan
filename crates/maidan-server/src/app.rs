@@ -271,6 +271,14 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(routes::set_thread_result).get(routes::get_thread_result),
         )
         .route(
+            "/threads/:id/deliveries",
+            get(routes::list_thread_deliveries),
+        )
+        .route(
+            "/threads/:id/deliveries/:did/replay",
+            post(routes::replay_thread_delivery),
+        )
+        .route(
             "/threads/:id/steer",
             axum::routing::put(routes::set_thread_steer).get(routes::get_thread_steer),
         )

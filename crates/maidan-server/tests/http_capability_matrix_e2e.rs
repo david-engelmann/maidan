@@ -231,6 +231,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{block_id}", &f.thread)
             .replace("{member_id}", &f.member)
             .replace("{skill}", "testskill")
+            .replace("{did}", &f.workspace)
             .replace("{id}", &f.thread);
     }
     if template.starts_with("/messages/") {

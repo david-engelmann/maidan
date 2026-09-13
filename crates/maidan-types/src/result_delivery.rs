@@ -26,7 +26,7 @@
 //! stays a truthful record of what actually reached the surface.
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::egress::{EgressSurface, EgressTarget, ExternalRef};
 use crate::ids::{ResultDeliveryId, ThreadId};
@@ -53,7 +53,7 @@ pub mod status {
 }
 
 /// One `(thread, target)` delivery's durable state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResultDelivery {
     pub id: ResultDeliveryId,
