@@ -434,6 +434,15 @@ pub fn github_result_comment_body(
     )
 }
 
+/// An inline pull-review comment body: mentions defused, truncated to GitHub's
+/// ceiling. **No** result-delivery marker — that marker is the Cluster 379
+/// summary comment's recovery handle, and putting it on a diff comment would
+/// make marker recovery match the wrong object.
+pub fn github_review_comment_body(finding_body: &str) -> String {
+    let safe = neutralize_github_mentions(finding_body);
+    truncate_with_tail(&safe, GITHUB_BODY_MAX_CHARS, None)
+}
+
 /// The body for a Slack message: the one-line `summary`, a compact digest, and
 /// the link — **never** `rendered`, which is GFM and would arrive visibly broken.
 /// Mentions are defused and the prose is projected onto mrkdwn.
@@ -648,6 +657,23 @@ mod tests {
             &out,
             maidan_types::ThreadId::new()
         ));
+    }
+
+    #[test]
+    fn an_inline_review_comment_defuses_mentions_and_carries_no_marker() {
+        let out = github_review_comment_body("bypass in @octocat's check()");
+        assert_eq!(out, "bypass in `@octocat`'s check()");
+        assert!(
+            !out.contains("<!-- maidan:result:"),
+            "the 379 marker is the summary comment's handle, not a diff comment's: {out}"
+        );
+    }
+
+    #[test]
+    fn an_inline_review_comment_fits_githubs_ceiling() {
+        let out = github_review_comment_body(&"x".repeat(GITHUB_BODY_MAX_CHARS * 2));
+        assert!(out.chars().count() <= GITHUB_BODY_MAX_CHARS);
+        assert!(out.contains("truncated by Maidan"));
     }
 
     #[test]

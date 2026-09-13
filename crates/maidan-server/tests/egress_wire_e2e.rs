@@ -17,9 +17,11 @@ use axum::{
     routing::any,
     Json, Router,
 };
-use maidan_server::github::{GithubApiClient, GithubError, GithubIssueComment, GithubSender};
+use maidan_server::github::{
+    GithubApiClient, GithubError, GithubIssueComment, GithubSender, GITHUB_INLINE_REVIEW_BODY,
+};
 use maidan_server::slack::{SlackError, SlackSender, SlackWebClient};
-use maidan_types::ExternalRef;
+use maidan_types::{ExternalRef, GithubDiffSide, GithubReviewComment, GITHUB_REVIEW_EVENT_COMMENT};
 use serde_json::{json, Value};
 
 #[derive(Clone)]
@@ -409,4 +411,92 @@ async fn github_client_lists_issue_comments() {
     assert_eq!(r.path, "/repos/acme/widgets/issues/42/comments");
     assert_eq!(r.auth, "Bearer ghp-secret");
     assert_eq!(r.user_agent, "maidan-projector");
+}
+
+/// Cluster 380.2: `POST /repos/{repo}/pulls/{n}/reviews` with envelope
+/// `commit_id`, `event: COMMENT`, RIGHT-side post-image `line`/`start_line`.
+/// The client does not fetch the live PR head — `commit_id` is caller-supplied.
+#[tokio::test]
+async fn github_client_creates_a_pull_review_with_right_side_and_envelope_commit_id() {
+    let (base, rec) = spawn(StatusCode::OK, json!({ "id": 77, "state": "COMMENTED" })).await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+    client
+        .create_review(
+            "beatgig/bgv3",
+            3915,
+            sha,
+            &[
+                GithubReviewComment {
+                    path: "auth.py".into(),
+                    line: 4,
+                    start_line: Some(2),
+                    side: GithubDiffSide::Right,
+                    body: "bypass".into(),
+                },
+                GithubReviewComment {
+                    path: "auth.py".into(),
+                    line: 7,
+                    start_line: None,
+                    side: GithubDiffSide::Right,
+                    body: "one line".into(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+    let reqs = rec.lock().unwrap();
+    assert_eq!(reqs.len(), 1, "exactly one POST; no GET of the PR head");
+    let r = &reqs[0];
+    assert_eq!(r.method, "POST");
+    assert_eq!(r.path, "/repos/beatgig/bgv3/pulls/3915/reviews");
+    assert_eq!(r.auth, "Bearer ghp-secret");
+    assert_eq!(r.user_agent, "maidan-projector");
+    assert_eq!(r.body["commit_id"], sha);
+    assert_eq!(r.body["event"], GITHUB_REVIEW_EVENT_COMMENT);
+    assert_eq!(r.body["body"], GITHUB_INLINE_REVIEW_BODY);
+    let comments = r.body["comments"].as_array().expect("comments[]");
+    assert_eq!(comments.len(), 2);
+    assert_eq!(comments[0]["path"], "auth.py");
+    assert_eq!(comments[0]["line"], 4);
+    assert_eq!(comments[0]["start_line"], 2);
+    assert_eq!(comments[0]["start_side"], "RIGHT");
+    assert_eq!(comments[0]["side"], "RIGHT");
+    assert_eq!(comments[0]["body"], "bypass");
+    assert_eq!(comments[1]["line"], 7);
+    assert!(
+        comments[1].get("start_line").is_none(),
+        "a single-line finding omits start_line (GitHub 422s on start_line == line): {:?}",
+        comments[1]
+    );
+    assert!(comments[1].get("start_side").is_none());
+    assert_eq!(comments[1]["side"], "RIGHT");
+}
+
+#[tokio::test]
+async fn github_client_maps_a_create_review_422_to_unprocessable() {
+    let (base, _rec) = spawn(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        json!({ "message": "Line could not be processed" }),
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
+        .await
+        .unwrap_err();
+    assert!(err.is_unprocessable(), "got {err:?}");
+    assert!(!err.is_misconfiguration(), "a 422 must not disable a link");
+}
+
+#[tokio::test]
+async fn github_client_maps_a_create_review_404_to_not_found() {
+    let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
+        .await
+        .unwrap_err();
+    assert!(err.is_not_found(), "got {err:?}");
 }

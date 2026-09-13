@@ -34,12 +34,12 @@ the allowlist; confirm where it landed with the status API. A perfectly correct
 normal outcome, not a producer bug.
 
 Inline per-finding PR review comments (Cluster 380) are **in progress**.
-**380.1 pins the `line_range` frame** (this cluster): file-absolute **post-image**
+**380.1** (on `main`) pinned the `line_range` frame: file-absolute **post-image**
 lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
-GitHub that is the **RIGHT** side of the pull-request diff. 380.2 posts
-`POST /repos/{repo}/pulls/{n}/reviews` with those coordinates and
-`commit_id = head_sha` — never the live PR head. The Cluster 379 summary comment
-path is unchanged.
+GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
+`POST /repos/{repo}/pulls/{n}/reviews` after a successful summary comment, with
+those coordinates and `commit_id = head_sha` — never the live PR head. The
+Cluster 379 summary comment path is unchanged.
 
 ---
 
@@ -92,7 +92,12 @@ GitHub mapping for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`:
 | `head_sha` | `commit_id` |
 
 `event` is `COMMENT`. Maidan delivers findings; it does not approve or
-request-changes on the producer's behalf. Posting the review is Cluster 380.2.
+request-changes on the producer's behalf. The worker posts the review after a
+successful GitHub summary comment (Cluster 380.2). A missing `head_sha`, no
+usable findings, a non-`reviewed` status, Slack, or a GitHub 404/422 skips
+the review and still delivers the summary. Each result POSTs a new COMMENT
+review (a re-review on a new `head_sha` lands on that commit); the 379
+summary comment is the object that updates in place.
 
 ---
 

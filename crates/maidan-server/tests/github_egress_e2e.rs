@@ -58,6 +58,16 @@ impl GithubSender for MockSender {
     ) -> Result<Vec<maidan_server::github::GithubIssueComment>, GithubError> {
         unreachable!("the projector egress never lists comments; that is Cluster 379.4")
     }
+
+    async fn create_review(
+        &self,
+        _repo: &str,
+        _pull_number: i64,
+        _commit_id: &str,
+        _comments: &[maidan_types::GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        unreachable!("the projector egress never creates a review; that is Cluster 380.2")
+    }
 }
 
 async fn setup() -> (AppState, Arc<MockSender>, Arc<dyn Store>) {

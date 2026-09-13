@@ -16,8 +16,8 @@
 //!
 //! Cluster 380.1 reads `head_sha` and `findings[].{file,line_range,body}` so
 //! inline review comments can be placed. The summary-comment path (379) is
-//! unchanged: an envelope without those fields still delivers. Posting the
-//! GitHub review is Cluster 380.2.
+//! unchanged: an envelope without those fields still delivers. Cluster 380.2
+//! posts the GitHub review from those fields.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -190,7 +190,7 @@ impl WaiterFinding {
 }
 
 /// Coordinates for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`.
-/// Cluster 380.2 posts this; Cluster 380.1 only pins the mapping.
+/// Cluster 380.2 posts this; Cluster 380.1 pinned the mapping.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GithubReviewComment {
     pub path: String,
@@ -250,7 +250,7 @@ impl WaiterResult {
         self.head_sha.as_deref()
     }
 
-    /// Inline comments Cluster 380.2 will POST. Empty when every finding was
+    /// Inline comments the worker POSTs. Empty when every finding was
     /// unusable; that is a skip, not a failure of the summary path.
     pub fn github_review_comments(&self) -> Vec<GithubReviewComment> {
         self.findings
