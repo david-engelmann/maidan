@@ -124,6 +124,7 @@ const POSTGRES_UP_V87: &str =
 const POSTGRES_UP_V88: &str =
     include_str!("../../../migrations/postgres/0088_thread_soundcheck.sql");
 const POSTGRES_UP_V89: &str = include_str!("../../../migrations/postgres/0089_thread_blocks.sql");
+const POSTGRES_UP_V90: &str = include_str!("../../../migrations/postgres/0090_thread_lineage.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -224,6 +225,7 @@ const SQLITE_UP_V85: &str = include_str!("../../../migrations/sqlite/0085_egress
 const SQLITE_UP_V86: &str = include_str!("../../../migrations/sqlite/0086_thread_result_kind.sql");
 const SQLITE_UP_V87: &str = include_str!("../../../migrations/sqlite/0087_thread_soundcheck.sql");
 const SQLITE_UP_V88: &str = include_str!("../../../migrations/sqlite/0088_thread_blocks.sql");
+const SQLITE_UP_V89: &str = include_str!("../../../migrations/sqlite/0089_thread_lineage.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -365,6 +367,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 87, POSTGRES_UP_V87).await?;
     apply_postgres(pool, 88, POSTGRES_UP_V88).await?;
     apply_postgres(pool, 89, POSTGRES_UP_V89).await?;
+    apply_postgres(pool, 90, POSTGRES_UP_V90).await?;
     Ok(())
 }
 
@@ -467,6 +470,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 86, SQLITE_UP_V86).await?;
     apply_sqlite(pool, 87, SQLITE_UP_V87).await?;
     apply_sqlite(pool, 88, SQLITE_UP_V88).await?;
+    apply_sqlite(pool, 89, SQLITE_UP_V89).await?;
     Ok(())
 }
 

@@ -66,6 +66,7 @@ mod soundcheck;
 mod spawn;
 mod task_schedules;
 mod thread_deps;
+mod thread_lineage;
 mod thread_results;
 mod thread_skills;
 mod thread_steer;
@@ -318,6 +319,40 @@ impl ThreadSteerStore for SqliteStore {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadSteer>, StoreError> {
         thread_steer::get(&self.pool, thread_id).await
+    }
+}
+
+#[async_trait]
+impl ThreadLineageStore for SqliteStore {
+    async fn set_thread_lineage(
+        &self,
+        thread_id: ThreadId,
+        parent_run_id: &str,
+    ) -> Result<ThreadLineage, StoreError> {
+        thread_lineage::set(&self.pool, thread_id, parent_run_id).await
+    }
+    async fn get_thread_lineage(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadLineage>, StoreError> {
+        thread_lineage::get(&self.pool, thread_id).await
+    }
+    async fn clear_thread_lineage(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        thread_lineage::clear(&self.pool, thread_id).await
+    }
+    async fn list_threads_for_run(
+        &self,
+        workspace_id: WorkspaceId,
+        parent_run_id: &str,
+    ) -> Result<Vec<Thread>, StoreError> {
+        thread_lineage::list_threads(&self.pool, workspace_id, parent_run_id).await
+    }
+    async fn run_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        parent_run_id: &str,
+    ) -> Result<RunOccupancy, StoreError> {
+        thread_lineage::occupancy(&self.pool, workspace_id, parent_run_id).await
     }
 }
 
