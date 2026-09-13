@@ -85,6 +85,13 @@ pub struct ThreadContext {
     /// workspace pack). Absent for root threads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_grounding: Option<ParentGrounding>,
+    /// In-channel accepted/closed decisions (Cluster 382, Wave 2 #24): token-lean
+    /// teasers so a fresh `claim_next` claimer sees what the channel already
+    /// decided. Default on for a live single-thread pack; omitted when empty,
+    /// opted out, as-of, workspace-nested, or DM (`__dm__`). Does not inline
+    /// full result JSON.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub accepted_decisions: Vec<AcceptedDecision>,
     /// Present when more messages exist (`message_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_message_cursor: Option<String>,
@@ -132,6 +139,11 @@ pub struct ThreadContextLimits {
     /// threads and withheld for a cross-channel or DM parent (see
     /// [`maidan_types::ParentGrounding::assemble`]).
     pub include_parent_grounding: bool,
+    /// Attach in-channel accepted/closed decisions (Cluster 382). Default
+    /// `true` on a live single-thread pack; a workspace-context build sets this
+    /// `false` on nested threads (orientation for the focused claimer, not the
+    /// firehose). Withheld for DM channels.
+    pub include_accepted_decisions: bool,
 }
 
 impl Default for ThreadContextLimits {
@@ -145,6 +157,7 @@ impl Default for ThreadContextLimits {
             as_of: None,
             token_budget: None,
             include_parent_grounding: true,
+            include_accepted_decisions: true,
         }
     }
 }
@@ -252,6 +265,12 @@ pub async fn build_thread_context(
         None
     };
 
+    let accepted_decisions = if limits.include_accepted_decisions {
+        build_accepted_decisions(store, &thread, &channel).await?
+    } else {
+        Vec::new()
+    };
+
     Ok(ThreadContext {
         workspace_id,
         channel_id: thread.channel_id,
@@ -267,6 +286,7 @@ pub async fn build_thread_context(
         glossary,
         elision,
         parent_grounding,
+        accepted_decisions,
         next_message_cursor,
     })
 }
@@ -323,6 +343,24 @@ async fn build_parent_grounding(
         opening_message,
         latest_result,
     )
+}
+
+/// In-channel accepted decisions for a live claimer pack (Cluster 382). Skipped
+/// on DM channels: `__dm__` is shared across unrelated conversations, so
+/// same-channel is not same-audience. The claimer's own thread is excluded even
+/// if it already has a result. Store errors fail the pack (same as glossary).
+async fn build_accepted_decisions(
+    store: &dyn Store,
+    thread: &Thread,
+    channel: &Channel,
+) -> Result<Vec<AcceptedDecision>, ApiError> {
+    if channel.name == DM_CHANNEL_NAME {
+        return Ok(Vec::new());
+    }
+    let rows = store
+        .list_channel_closed_results(channel.id, Some(thread.id), ACCEPTED_DECISIONS_LIMIT)
+        .await?;
+    Ok(assemble_accepted_decisions(rows))
 }
 
 /// Reconstruct a thread's context as it stood at event-log id `as_of` (Cluster
@@ -457,6 +495,9 @@ async fn build_thread_context_as_of(
         // Grounding reflects the parent's *current* state, not a historical replay,
         // so it is omitted from an as-of pack.
         parent_grounding: None,
+        // Same for accepted decisions: they are the live channel scoreboard, not
+        // a reconstruction of what was closed at `as_of`.
+        accepted_decisions: Vec::new(),
         next_message_cursor,
     })
 }
@@ -482,6 +523,7 @@ pub async fn build_workspace_context(
         // Grounding is the focused single-thread claimer view, not the workspace
         // firehose — suppress it per nested thread (and avoid the extra reads).
         include_parent_grounding: false,
+        include_accepted_decisions: false,
         ..limits
     };
     let page_limit = thread_limit.clamp(1, 50);

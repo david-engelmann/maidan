@@ -137,6 +137,7 @@ pub async fn get_thread_context(
             as_of: q.as_of,
             token_budget: q.token_budget,
             include_parent_grounding: q.include_parent_grounding,
+            include_accepted_decisions: q.include_accepted_decisions,
         },
     )
     .await?;
@@ -179,6 +180,7 @@ pub async fn snapshot_thread_context(
             as_of: q.as_of,
             token_budget: q.token_budget,
             include_parent_grounding: q.include_parent_grounding,
+            include_accepted_decisions: q.include_accepted_decisions,
         },
     )
     .await?;

@@ -358,6 +358,7 @@ impl Modify for SecurityAddon {
         ThreadFsmContext,
         maidan_types::PackElision,
         maidan_types::ParentGrounding,
+        maidan_types::AcceptedDecision,
         WorkspaceContext,
         ThreadContextQuery,
         ToolTranscriptQuery,
