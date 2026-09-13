@@ -494,6 +494,20 @@ impl ThreadResultStore for PostgresStore {
     ) -> Result<Option<ThreadResult>, StoreError> {
         thread_results::get(self.read_pool(), thread_id).await
     }
+    async fn list_channel_closed_results(
+        &self,
+        channel_id: ChannelId,
+        exclude_thread_id: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<ChannelClosedResult>, StoreError> {
+        thread_results::list_closed_in_channel(
+            self.read_pool(),
+            channel_id,
+            exclude_thread_id,
+            limit,
+        )
+        .await
+    }
 }
 
 #[async_trait]

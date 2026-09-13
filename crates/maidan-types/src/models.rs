@@ -254,6 +254,22 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
+/// A terminal thread's recorded result, as listed for a channel's claimer pack
+/// (Cluster 382, Wave 2 #24). Store-level row: closed/archived, non-tombstoned,
+/// newest first. The pack assembler (REST/MCP) projects this into a token-lean
+/// view and drops waiter envelopes that are not `reviewed`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChannelClosedResult {
+    pub thread_id: ThreadId,
+    pub title: Option<String>,
+    pub state: ThreadState,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub result: serde_json::Value,
+    pub produced_by: MemberId,
+    pub produced_at: DateTime<Utc>,
+}
+
 /// A thread parked from dispatch (Cluster 363, G3): while this exists, `claim_next`
 /// skips the thread and an explicit `claim` is refused, until it is cleared. An
 /// explicit human/owner park (needs triage, waiting on external, broken) — distinct
