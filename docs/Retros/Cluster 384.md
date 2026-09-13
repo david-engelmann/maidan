@@ -31,9 +31,11 @@ One impl PR + this retro. Both target `main` (Cluster 383's
   actions and gate refusals are `InvalidParams`. `maidan-fsm` moved
   from a mcp *dev*-dependency to a runtime dependency so the non-test
   crate can parse `ThreadAction`.
-- **384.2 (#823)** — this retro + the doc-close (mark P1.1d ✅ FIXED, banner
-  Latest=384, Integration landing note, Protocols tool count,
-  Architecture FSM row, Capability Map `thread:transition`).
+- **384.2 (#823)** — this retro + the doc-close (mark P1.1d ✅ FIXED,
+  Integration landing note, Protocols tool count, Architecture FSM row,
+  Capability Map `thread:transition`). After rebase onto Cluster 385,
+  the published count is **155** (384's twin + 385's four Soundcheck
+  tools).
 
 ## Decisions
 
