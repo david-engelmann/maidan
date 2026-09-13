@@ -1,8 +1,10 @@
-//! Cluster 383.1: a reviewed `pi.review.result/1` with any `critical`
+//! Cluster 383: a reviewed `pi.review.result/1` with any `critical`
 //! finding, submitted by a review-skilled member, upserts Cluster 375
-//! `request_changes`. Wrong shape / no critical / no skill → no-op.
-//! Does not set a requirement (383.2 arms `k`). Both backends.
+//! `request_changes` and arms `k = 1` when no requirement exists. Wrong
+//! shape / no critical / no skill → no-op. A human approve unblocks close.
+//! Both backends.
 
+use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision,
@@ -52,7 +54,10 @@ async fn run_suite(store: &dyn Store) {
                 .expect(handle)
         }
     };
+    let owner = mk("owner").await;
+    let assignee = mk("assignee").await;
     let reviewer = mk("reviewer").await;
+    let human = mk("human").await;
     let unskilled = mk("unskilled").await;
     let channel = store
         .create_channel(NewChannel {
@@ -71,6 +76,14 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("thread");
+    store
+        .set_thread_owner(thread.id, Some(owner.id))
+        .await
+        .expect("owner");
+    store
+        .assign_thread(thread.id, assignee.id)
+        .await
+        .expect("assign");
 
     store
         .add_member_skill(reviewer.id, REVIEW_SKILL)
@@ -127,12 +140,67 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(again.decision, ReviewDecision::RequestChanges);
     assert_eq!(store.list_reviews(thread.id).await.unwrap().len(), 1);
 
-    // No requirement was armed — 383.2's job. approvals_met stays vacuously true.
+    // 383.2: writing the decision arms k=1 so the existing close-gate refuses.
     let status = store.review_status(thread.id).await.unwrap();
-    assert_eq!(status.required_count, 0);
+    assert_eq!(status.required_count, 1);
     assert!(
-        status.approvals_met,
-        "383.1 writes the decision the gate understands; it does not set k"
+        !status.approvals_met,
+        "request_changes from the review agent is not a qualifying approve"
+    );
+
+    store
+        .transition_thread(thread.id, owner.id, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let blocked = store
+        .transition_thread(thread.id, owner.id, ThreadAction::Close)
+        .await;
+    assert!(
+        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("review requirement")),
+        "critical finding must block close, got {blocked:?}"
+    );
+
+    // A human who is neither owner nor assignee resolves; the agent does not
+    // auto-approve. Owner/assignee approvals still do not count (SoD).
+    store
+        .submit_review(thread.id, owner.id, ReviewDecision::Approve, None)
+        .await
+        .unwrap();
+    assert!(
+        !store.review_status(thread.id).await.unwrap().approvals_met,
+        "owner self-approve must not unblock"
+    );
+    store
+        .submit_review(thread.id, human.id, ReviewDecision::Approve, None)
+        .await
+        .unwrap();
+    assert!(store.review_status(thread.id).await.unwrap().approvals_met);
+    let closed = store
+        .transition_thread(thread.id, owner.id, ThreadAction::Close)
+        .await
+        .expect("human approve unblocks close");
+    assert_eq!(closed.to_state.as_str(), "closed");
+
+    // An existing k is left alone — a second thread already requiring 2
+    // does not get silently collapsed to 1.
+    let t2 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t2".into()),
+        })
+        .await
+        .expect("t2");
+    store.set_review_requirement(t2.id, 2).await.unwrap();
+    store
+        .apply_critical_review_decision(t2.id, reviewer.id, &critical)
+        .await
+        .expect("apply t2")
+        .expect("writes");
+    assert_eq!(
+        store.review_status(t2.id).await.unwrap().required_count,
+        2,
+        "an existing requirement is not overwritten"
     );
 }
 

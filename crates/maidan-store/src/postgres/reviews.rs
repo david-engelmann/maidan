@@ -201,9 +201,11 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
     })
 }
 
-/// Cluster 383.1: persist the waiter→review map. A review-skilled member
-/// plus a reviewed `pi.review.result/1` with any `critical` finding writes
-/// `request_changes`. The close-gate is not armed here (no `k` write).
+/// Cluster 383: persist the waiter→review map and arm the Cluster-375
+/// close-gate. A review-skilled member plus a reviewed `pi.review.result/1`
+/// with any `critical` finding writes `request_changes`. If the thread has
+/// no requirement yet, this sets `k = 1` so `closed` refuses until a
+/// qualifying human approve. An existing `k` is left alone.
 pub async fn apply_critical_review_decision(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -225,5 +227,8 @@ pub async fn apply_critical_review_decision(
         Some(CRITICAL_REVIEW_NOTE),
     )
     .await?;
+    if get_requirement(pool, thread_id).await?.is_none() {
+        set_requirement(pool, thread_id, 1).await?;
+    }
     Ok(Some(review))
 }
