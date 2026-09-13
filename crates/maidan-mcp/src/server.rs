@@ -1615,6 +1615,195 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_lineage_tools_home_fixture_and_attribute_nested() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+
+        const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
+        const FIXTURE: &str =
+            include_str!("../../maidan-types/tests/fixtures/pi_waiter_result_v1.json");
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "lineage".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "tasks".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let parent = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("parent".into()),
+            })
+            .await
+            .unwrap();
+        let child = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: Some(parent.id),
+                title: Some("nested".into()),
+            })
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let miss = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_lineage",
+                    &json!({ "thread_id": parent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(miss.is_null());
+
+        let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
+        assert_eq!(fixture["run_id"], json!(PI_RUN_ID));
+        server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &json!({ "thread_id": parent.id.0, "result": fixture }),
+            )
+            .await
+            .unwrap();
+
+        let lined = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_lineage",
+                    &json!({ "thread_id": parent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(lined["parent_run_id"], json!(PI_RUN_ID));
+        assert_eq!(lined["thread_id"], json!(parent.id.0));
+
+        let nest = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_lineage",
+                    &json!({ "thread_id": child.id.0, "parent_run_id": PI_RUN_ID }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(nest["parent_run_id"], json!(PI_RUN_ID));
+
+        let listed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_run_threads",
+                    &json!({ "parent_run_id": PI_RUN_ID }),
+                )
+                .await
+                .unwrap(),
+        );
+        let ids: Vec<String> = listed
+            .as_array()
+            .expect("array")
+            .iter()
+            .map(|t| t["id"].as_str().expect("id").to_string())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![parent.id.0.to_string(), child.id.0.to_string()],
+            "nested child is attributed to the producer run"
+        );
+
+        let occ = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_run_occupancy",
+                    &json!({ "parent_run_id": PI_RUN_ID }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(occ["parent_run_id"], json!(PI_RUN_ID));
+        assert_eq!(occ["open"], json!(2));
+        assert_eq!(occ["queued"], json!(2));
+
+        store.mute_thread(agent.id, child.id).await.unwrap();
+        let occ_muted = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_run_occupancy",
+                    &json!({ "parent_run_id": PI_RUN_ID }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            occ_muted["open"],
+            json!(2),
+            "F7 mute is orthogonal — muted nested work still counts"
+        );
+
+        let blank = server
+            .call_tool(
+                &auth,
+                "set_thread_lineage",
+                &json!({ "thread_id": child.id.0, "parent_run_id": "   " }),
+            )
+            .await;
+        assert!(
+            matches!(&blank, Err(McpError::InvalidParams(m)) if m.contains("parent_run_id")),
+            "blank producer id is rejected, not minted: {blank:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn list_thread_results_filters_by_namespaced_kind() {
         use maidan_auth::capability::WORKSPACE_READ;
 

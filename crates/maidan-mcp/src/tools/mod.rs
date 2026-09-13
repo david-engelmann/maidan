@@ -89,6 +89,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_landed"
         | "get_queue_depth"
         | "get_channel_occupancy"
+        | "get_run_occupancy"
+        | "get_thread_lineage"
+        | "list_run_threads"
         | "list_assigned_threads"
         | "get_wip_limit"
         | "get_spawn_budget"
@@ -202,6 +205,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "add_thread_dependency"
         | "add_thread_required_skill"
         | "set_thread_result"
+        | "set_thread_lineage"
         | "set_thread_owner"
         | "rename_thread"
         | "set_thread_budget"
@@ -286,7 +290,9 @@ async fn enforce_channel_access(
         | "add_thread_required_skill"
         | "list_thread_required_skills"
         | "set_thread_result"
+        | "set_thread_lineage"
         | "get_thread_result"
+        | "get_thread_lineage"
         | "list_result_deliveries"
         | "replay_result_delivery"
         | "set_thread_owner"
@@ -449,6 +455,10 @@ pub async fn dispatch(
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
+        "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
+        "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
+        "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
+        "list_run_threads" => thread::list_run_threads(store, auth, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
         "list_thread_results" => thread::list_thread_results(store, auth, args).await,
