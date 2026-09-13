@@ -28,6 +28,7 @@ requires a new `schema` value. The `result_kind` list facet shipped in Cluster 3
 | Per-thread delivery status + replay | **Shipped** (Cluster 379.5). `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
 | Inline per-finding PR review comments | **Shipped** (Cluster 380). After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
 | `result_kind` list facet | **Shipped** (Cluster 381). Exact-match on the namespaced string — see [Discoverability](#discoverability). |
+| Run lineage (`parent_run_id`) | **Shipped** (Cluster 387). The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage-cluster-387). |
 
 **Producer loop:** write `deliver_to` on the envelope; bless the destination once over
 the allowlist; confirm where it landed with the status API. A perfectly correct
@@ -66,14 +67,51 @@ field never breaks delivery.
 | `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
 | `findings` | no | Two readers. Cluster 380 inline comments: each usable finding needs `file`, `body`, and `line_range`. Cluster 383 close-gate: any finding with `severity` exactly `critical` on a reviewed `pi.review.result/1` from a review-skilled producer writes Cluster-375 `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
 
-Everything else in the envelope — `corroboration`, `per_seat`, `seats`, `run_id`,
-`cost_usd`, `duration_secs`, `sandbox`, `finding_count`, `diff_available` — is
-carried through untouched. Maidan does not interpret it.
+`run_id` is **not** a delivery-routing field. Delivery parse still ignores it.
+Cluster 387 homes the producer's string as `parent_run_id` on the thread — see
+[Run lineage](#run-lineage-cluster-387). Everything else in the envelope —
+`corroboration`, `per_seat`, `seats`, `cost_usd`, `duration_secs`, `sandbox`,
+`finding_count`, `diff_available` — is carried through untouched. Maidan does
+not interpret those for delivery.
 
 **The canonical `Finding` wire shape is the producer's and does not change.**
 Maidan stores the envelope byte-for-byte. Cluster 380 *projects* `file` /
 `line_range` / `body` for the GitHub review POST. Cluster 383 reads
-`severity` for the close-gate adapter only.
+`severity` for the close-gate adapter only. Cluster 387 reads `run_id` for
+lineage only.
+
+---
+
+## Run lineage (Cluster 387)
+
+Wave 2 #28's lineage half. pi's waiter envelope already carries `run_id` (and
+`view_in_pi`). Until this cluster that string had **no home in Maidan**. The
+field **accepts the producer's value** — Maidan does not mint a parallel id.
+The authoritative fixture value is `aa4dc966-0e09-44c3-b7a5-2d048b48b301` in
+`crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`.
+
+`run_id_from_payload` extracts a string (trim; empty / whitespace / longer
+than 256 bytes → ignored). It does **not** require `schema = pi.waiter.result/1`.
+`parse_waiter_result` still ignores `run_id`, so delivery routing is unchanged.
+
+`set_thread_result` (REST `PUT /threads/:id/result` and the MCP tool) homes
+the value as `parent_run_id` when present — best-effort, so a lineage hiccup
+never undoes a stored result. A caller can also set it directly.
+
+| Surface | Capability |
+|---|---|
+| `PUT` / `GET` / `DELETE /threads/:id/lineage` | write/delete = `thread:transition`; get = `workspace:read` |
+| `GET /workspaces/:id/run-threads?parent_run_id=` | `workspace:read` (private-channel rows the caller cannot access are dropped) |
+| `GET /workspaces/:id/run-occupancy?parent_run_id=` | `workspace:read` (empty / unknown run → zeros, not 404) |
+| MCP `set_thread_lineage` / `get_thread_lineage` / `list_run_threads` / `get_run_occupancy` | the twins of those routes |
+
+Nested occupancy is the two-clocks partition (`queued` / `claimed` / `working` /
+`blocked`) of every **open** workspace thread that shares `parent_run_id`.
+F7 mute (`maidan_thread_mutes`) is a different table and is **not** consulted —
+a muted nested thread still counts.
+
+**Still open on Wave 2 #28:** follow a member's occupancy; a manager digest.
+Those are later slices, not this cluster.
 
 ---
 
