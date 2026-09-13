@@ -71,6 +71,11 @@ were retargeted to `main` before any parent squash-delete.
 - **`set_by` / `resolved_by` are NOT-NULL FKs.** Bypass (nil member)
   FK-fails. e2e and the MCP test mint a real token / session, same as
   363.
+- **Soundcheck took the next migration slot while 386.1 was open.**
+  385.1 landed pg 0088 / sqlite 0087. Blocks stayed **pg 0089 /
+  sqlite 0088** — rebase must bump the version, not overwrite
+  Soundcheck. #817 then squash-merged onto that main; remaining
+  slices rebase onto `83e95bc` and drop the store commits.
 
 ## Test evidence
 
@@ -95,9 +100,10 @@ were retargeted to `main` before any parent squash-delete.
 
 **Cluster 386 is complete. Row #27 is closed.**
 
-Do not start Wave 3/4 from this retro. #25 Soundcheck (385), #26
-capability ticket, and #28 (follow / digest / run-lineage 387) stay
-their owners'.
+Do not start Wave 3/4 from this retro. **#25 is already shipped**
+(Cluster 383 composition + Cluster 385 pointer). #26 capability
+ticket and #28 (follow / digest / run-lineage 387) stay their
+owners'. This retro strikes **#27 only**.
 
 Deferred: `wait_for_blocked_resolved`; a `/ui` block toggle; folding
 363's park into this table (declined — two mechanisms, one vocabulary
