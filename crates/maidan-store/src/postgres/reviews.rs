@@ -202,7 +202,7 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
 }
 
 /// Cluster 383.1: persist the waiter→review map. A review-skilled member
-/// + a reviewed `pi.review.result/1` with any `critical` finding writes
+/// plus a reviewed `pi.review.result/1` with any `critical` finding writes
 /// `request_changes`. The close-gate is not armed here (no `k` write).
 pub async fn apply_critical_review_decision(
     pool: &PgPool,
