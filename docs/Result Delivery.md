@@ -15,7 +15,7 @@ Read it alongside [Integrating with Maidan](Integration.md).
 **Shipped (Cluster 379).** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `pi.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
-requires a new `schema` value.
+requires a new `schema` value. The `result_kind` list facet is Cluster 381.
 
 | Piece | State on `main` today |
 |---|---|
@@ -26,6 +26,7 @@ requires a new `schema` value.
 | A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped** (Cluster 379.3). Fetch → parse → per-target allowlist check then enqueue. |
 | Idempotent update-in-place | **Shipped** (Cluster 379.4). Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
 | Per-thread delivery status + replay | **Shipped** (Cluster 379.5). `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
+| `result_kind` list facet | **Shipped** (Cluster 381). Exact-match on the namespaced string — see [Discoverability](#discoverability). |
 
 **Producer loop:** write `deliver_to` on the envelope; bless the destination once over
 the allowlist; confirm where it landed with the status API. A perfectly correct
@@ -203,10 +204,25 @@ different unit of work.
 
 ## Discoverability
 
-`result_kind` is a **namespaced string**, not a closed enumeration. Cluster 381
-will index it as a search facet — so `pi.review.result/1` results are findable
-without Maidan needing to learn a new vocabulary word per producer. Until then
-the field is recorded and ignored for search.
+`result_kind` is a **namespaced string**, not a closed enumeration. Pi publishes
+`result_kind = "pi.review.result/1"` inside `schema = "pi.waiter.result/1"`; a
+future producer ships a new string and the facet works without a server change.
+The old guess of a closed enum (`decision|plan|merge_authorized`) is not the
+wire vocabulary and is not a filter value.
+
+List (not message-FTS) surfaces, `workspace:read`:
+
+- REST: `GET /workspaces/{id}/results?result_kind=pi.review.result/1` (`limit`
+  optional, default 50, clamp 1–500). Omit `result_kind` to list every
+  non-tombstoned result the caller can access.
+- MCP: `list_thread_results` with the same optional `result_kind` / `limit`.
+  Workspace comes from the token; there is no `workspace_id` argument.
+
+Match is exact on the indexed string. `pi.review.result` and
+`pi.review.result/10` do not hit `pi.review.result/1`. Private-channel rows the
+caller cannot access are omitted. This is not `GET /workspaces/{id}/search`
+and not the ADR JSON convention `"kind": "decision"` in
+[Integration.md](Integration.md#decision-records).
 
 ## Delivery status
 
