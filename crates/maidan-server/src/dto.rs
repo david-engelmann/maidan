@@ -224,6 +224,18 @@ pub struct SubmitReview {
     pub note: Option<String>,
 }
 
+/// Record a Soundcheck pointer (Cluster 385.3). `land` is optional — a fail
+/// is always red; a pass defaults to green; amber is flags-then-still-engages
+/// and is not a land.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetSoundcheck {
+    pub status: maidan_types::SoundcheckStatus,
+    #[serde(default)]
+    pub artifact_sha: Option<String>,
+    #[serde(default)]
+    pub land: Option<maidan_types::LandColor>,
+}
+
 /// A resolved secret value (Cluster 371.2) — the `resolve` response body. This is
 /// the only place a secret value crosses the wire out of Maidan.
 #[derive(Debug, Serialize, ToSchema)]

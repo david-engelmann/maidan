@@ -492,6 +492,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/reviews" && method == "POST" {
         return b.json(&json!({ "decision": "approve" }));
     }
+    if path == "/threads/{id}/soundcheck" && method == "PUT" {
+        return b.json(&json!({ "status": "pass" }));
+    }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
     }
