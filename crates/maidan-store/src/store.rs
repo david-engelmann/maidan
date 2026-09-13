@@ -154,8 +154,7 @@ pub trait SkillStore: Send + Sync {
 #[async_trait]
 pub trait ThreadResultStore: Send + Sync {
     /// A task's structured result (Cluster 234): `set` upserts (a re-set
-    /// overwrites), `get` returns `None` until one is produced. No worker/routes
-    /// yet — a zero-blast-radius foundation.
+    /// overwrites), `get` returns `None` until one is produced.
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
@@ -166,6 +165,17 @@ pub trait ThreadResultStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
+    /// Closed/archived, non-tombstoned thread results in `channel_id`, newest
+    /// first (Cluster 382, Wave 2 #24). `exclude_thread_id` drops the claimer's
+    /// own thread so the pack lists *other* in-channel decisions. `limit` is
+    /// clamped `1..=50`. The store does **not** interpret `result_kind` — that
+    /// is a namespaced string the pack assembler reads, not a closed enum.
+    async fn list_channel_closed_results(
+        &self,
+        channel_id: ChannelId,
+        exclude_thread_id: Option<ThreadId>,
+        limit: i64,
+    ) -> Result<Vec<ChannelClosedResult>, StoreError>;
 }
 
 #[async_trait]
