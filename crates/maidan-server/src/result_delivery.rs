@@ -169,6 +169,26 @@ pub async fn route_thread_result(
     Ok(())
 }
 
+/// Cluster 383.2: feed a delivered (or thread-only) `pi.review.result/1`
+/// with any `critical` finding into the Cluster-375 close-gate. Uses the
+/// result's `produced_by` as the reviewer — they must have declared the
+/// `review` skill. Empty `deliver_to` still arms: the room blocks the land
+/// even when nothing is posted externally. Idempotent (upsert + `k` only
+/// when unset) so every replica of the router can call it.
+pub async fn arm_critical_review(state: &AppState, thread_id: ThreadId) -> Result<(), String> {
+    let stored = match state.store.get_thread_result(thread_id).await {
+        Ok(Some(stored)) => stored,
+        Ok(None) => return Ok(()),
+        Err(err) => return Err(err.to_string()),
+    };
+    state
+        .store
+        .apply_critical_review_decision(thread_id, stored.produced_by, &stored.result)
+        .await
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
 async fn route_one(
     state: &AppState,
     log_id: i64,

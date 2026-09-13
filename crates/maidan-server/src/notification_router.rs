@@ -14,7 +14,8 @@
 //! gets both a mention notification and a message-posted one — per-kind mute
 //! (`message_posted`) is the control for follow-noise. A `ThreadResultSet` is
 //! not a per-recipient notification: it delegates to [`crate::result_delivery`]
-//! (Cluster 379.3), which arms one delivery row per `deliver_to` target.
+//! (Cluster 379.3), which arms one delivery row per `deliver_to` target, and
+//! to the Cluster 383 critical→`request_changes` adapter (the close-gate).
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -278,6 +279,16 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             // (or record a skip). Empty `deliver_to` is valid and writes nothing.
             crate::result_delivery::route_thread_result(state, log_id, *workspace_id, *thread_id)
                 .await?;
+            // Cluster 383.2: a critical finding is a request_changes from the
+            // result producer. Independent of deliver_to — thread-only results
+            // still block close. A store hiccup must not undo delivery.
+            if let Err(err) = crate::result_delivery::arm_critical_review(state, *thread_id).await {
+                warn!(
+                    error = %err,
+                    %thread_id,
+                    "critical review adapter failed; land-gate not armed"
+                );
+            }
         }
         Event::WaitTimedOut {
             workspace_id,
