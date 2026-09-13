@@ -11,9 +11,9 @@ until a human resolves.
 This cluster is **only that adapter**. The Soundcheck `{kind:"soundcheck",…}`
 pointer and the green/amber/red vocabulary stay on row #25.
 
-Three impl PRs (383.1–383.3) + this retro. #810 was the first 383.2 and died
-`base_ref_deleted` when #809 squash-merged; #811 is the rebuild from
-`origin/main`.
+Three impl PRs (383.1–383.3) + this retro. #810 and #812 died
+`base_ref_deleted` when their parents squash-merged; #811 and #814 are
+the rebuilds from `origin/main`. This retro targets `main` only.
 
 ## What shipped
 
