@@ -20,6 +20,24 @@ pub async fn arm(
     target: &EgressTarget,
     revision: DateTime<Utc>,
 ) -> Result<Option<ResultDelivery>, StoreError> {
+    arm_at(
+        pool,
+        thread_id,
+        target.surface().as_str(),
+        &target.selector(),
+        revision,
+    )
+    .await
+}
+
+/// Arm by the raw `(surface, selector)` pair. See the Postgres twin.
+pub async fn arm_at(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    surface: &str,
+    selector: &str,
+    revision: DateTime<Utc>,
+) -> Result<Option<ResultDelivery>, StoreError> {
     let id = ResultDeliveryId::new();
     let now = Utc::now().to_rfc3339();
     let rev = revision.to_rfc3339();
@@ -40,8 +58,8 @@ pub async fn arm(
     let row = sqlx::query(&sql)
         .bind(id.0)
         .bind(thread_id.0)
-        .bind(target.surface().as_str())
-        .bind(target.selector())
+        .bind(surface)
+        .bind(selector)
         .bind(&rev)
         .bind(&now)
         .bind(&now)

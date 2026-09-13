@@ -934,6 +934,15 @@ impl EgressStore for PostgresStore {
     ) -> Result<Option<ResultDelivery>, StoreError> {
         result_deliveries::arm(&self.pool, thread_id, target, revision).await
     }
+    async fn arm_unroutable_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        surface: &str,
+        selector: &str,
+        revision: DateTime<Utc>,
+    ) -> Result<Option<ResultDelivery>, StoreError> {
+        result_deliveries::arm_at(&self.pool, thread_id, surface, selector, revision).await
+    }
     async fn mark_result_delivered(
         &self,
         id: ResultDeliveryId,

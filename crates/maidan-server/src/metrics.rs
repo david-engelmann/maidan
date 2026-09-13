@@ -203,6 +203,10 @@ pub fn init() {
             "maidan_web_push_delivered_total",
             "Web Push notifications by outcome (sent/failed/pruned/skipped_present)"
         );
+        describe_counter!(
+            "maidan_result_deliveries_total",
+            "Thread-result delivery dispositions by outcome (enqueued / skipped)"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
@@ -295,6 +299,18 @@ pub fn record_egress_delivery(surface: &str, outcome: &str) {
         "maidan_egress_deliveries_total",
         "surface" => surface.to_string(),
         "outcome" => outcome.to_string(),
+    )
+    .increment(1);
+}
+
+/// Result-delivery trigger outcomes (Cluster 379.3): `enqueued` (blessed,
+/// armed, sitting on the egress outbox) or `skipped` (unknown surface, unusable
+/// target, or not on the workspace allowlist). A skip is a recorded normal
+/// outcome, not an error.
+pub fn record_result_delivery(outcome: &str) {
+    counter!(
+        "maidan_result_deliveries_total",
+        "outcome" => outcome.to_string()
     )
     .increment(1);
 }

@@ -27,6 +27,27 @@ pub async fn arm(
     target: &EgressTarget,
     revision: DateTime<Utc>,
 ) -> Result<Option<ResultDelivery>, StoreError> {
+    arm_at(
+        pool,
+        thread_id,
+        target.surface().as_str(),
+        &target.selector(),
+        revision,
+    )
+    .await
+}
+
+/// Arm by the raw `(surface, selector)` pair. Used for a skip whose destination
+/// this build cannot form an [`EgressTarget`] for — an unknown surface, or a
+/// known one with unusable detail — so the skip is still a row the producer
+/// can read.
+pub async fn arm_at(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    surface: &str,
+    selector: &str,
+    revision: DateTime<Utc>,
+) -> Result<Option<ResultDelivery>, StoreError> {
     let id = ResultDeliveryId::new();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_result_deliveries
@@ -44,8 +65,8 @@ pub async fn arm(
     ))
     .bind(id.0)
     .bind(thread_id.0)
-    .bind(target.surface().as_str())
-    .bind(target.selector())
+    .bind(surface)
+    .bind(selector)
     .bind(revision)
     .fetch_optional(pool)
     .await?;

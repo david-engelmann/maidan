@@ -609,6 +609,19 @@ pub trait EgressStore: Send + Sync {
         target: &EgressTarget,
         revision: DateTime<Utc>,
     ) -> Result<Option<ResultDelivery>, StoreError>;
+    /// Arm a skip whose destination this build cannot form an [`EgressTarget`]
+    /// for — an unknown `surface`, or a known one with unusable detail (a Slack
+    /// `#name`, a repo with no owner). The skip still has to be a row, because
+    /// "we skipped your target" and "we lost it" are different answers; the
+    /// producer reads it back from `list_result_deliveries`. Same contended
+    /// write as [`Self::arm_result_delivery`]: `None` is the dedup.
+    async fn arm_unroutable_result_delivery(
+        &self,
+        thread_id: ThreadId,
+        surface: &str,
+        selector: &str,
+        revision: DateTime<Utc>,
+    ) -> Result<Option<ResultDelivery>, StoreError>;
     async fn mark_result_delivered(
         &self,
         id: ResultDeliveryId,

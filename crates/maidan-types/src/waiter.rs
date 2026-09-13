@@ -86,6 +86,22 @@ impl DeliverTarget {
             Self::Unknown(_) => None,
         }
     }
+
+    /// The `(surface, selector)` pair a skip is recorded under when this target
+    /// cannot be projected onto an [`EgressTarget`].
+    ///
+    /// Known surfaces keep the producer-supplied detail so the skip is
+    /// addressable (`github` / `owner/name#123`, `slack` / `#general`). An
+    /// unknown surface records under its name with an empty selector — there
+    /// is no delivery grain to store, but the row still has to exist, because
+    /// "we skipped your target" and "we lost it" are different answers.
+    pub fn skip_fingerprint(&self) -> (String, String) {
+        match self {
+            Self::Github { repo, pr } => ("github".into(), format!("{repo}#{pr}")),
+            Self::Slack { channel } => ("slack".into(), channel.clone()),
+            Self::Unknown(surface) => (surface.clone(), String::new()),
+        }
+    }
 }
 
 /// The routable projection of a producer's result envelope. Everything the
@@ -313,6 +329,19 @@ mod tests {
         assert_eq!(
             DeliverTarget::Unknown("discord".into()).to_egress_target(),
             None
+        );
+        assert_eq!(
+            DeliverTarget::Unknown("discord".into()).skip_fingerprint(),
+            ("discord".into(), String::new()),
+            "an unknown surface still has a row to record the skip on"
+        );
+        assert_eq!(
+            DeliverTarget::Slack {
+                channel: "#general".into()
+            }
+            .skip_fingerprint(),
+            ("slack".into(), "#general".into()),
+            "a #name is unusable as a destination but the skip keeps the bytes the producer wrote"
         );
     }
 
