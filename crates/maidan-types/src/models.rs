@@ -298,7 +298,7 @@ pub struct ThreadUnclaimable {
     pub marked_at: DateTime<Utc>,
 }
 
-/// Why a thread is explicitly blocked from dispatch (Cluster 384, Wave 2 #27,
+/// Why a thread is explicitly blocked from dispatch (Cluster 386, Wave 2 #27,
 /// G14 + W2). A **closed** enum — unlike `result_kind`, which is a namespaced
 /// string a producer publishes. Presence of a [`ThreadBlock`] row is the block;
 /// absence is unblocked. Distinct from Cluster 217/218 DAG readiness (children
@@ -357,7 +357,7 @@ impl BlockedReason {
     ];
 }
 
-/// An explicit dispatch block on a thread (Cluster 384, Wave 2 #27): while this
+/// An explicit dispatch block on a thread (Cluster 386, Wave 2 #27): while this
 /// exists, `claim_next` skips the thread. One block per thread (upsert). Clearing
 /// the row is the unblock — later clusters emit `BlockedResolved`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,6 +1,6 @@
-//! Explicit dispatch-block store (Cluster 384, Wave 2 #27): set/clear/get +
+//! Explicit dispatch-block store (Cluster 386, Wave 2 #27): set/clear/get +
 //! channel list over the closed `BlockedReason` enum. Both backends. Zero
-//! blast: `claim_next` is not yet gated (384.2).
+//! blast: `claim_next` is not yet gated (386.2).
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{BlockedReason, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
