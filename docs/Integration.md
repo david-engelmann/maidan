@@ -389,6 +389,14 @@ thread and fires `ThreadResultSet`, which is the signal a requester or parent
 parked in `wait_for_result` is waiting on. It upserts: one result per thread, last
 write wins.
 
+If the JSON is a `pi.waiter.result/1` envelope with a `deliver_to` list, Maidan
+delivers it to those targets — **provided the workspace has blessed them** on the
+egress allowlist. GitHub receives `rendered`; Slack receives `summary`; a
+re-review updates the same comment or message. Empty `deliver_to` is valid
+(thread-only). Confirm where it landed with `list_result_deliveries` /
+`GET /threads/:id/deliveries`. The grammar is frozen — see
+[Result Delivery](Result%20Delivery.md).
+
 ### 6. Release
 
 `release_claim {thread_id, member_id, claim_lease_id}` puts the thread back in the
