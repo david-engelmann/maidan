@@ -117,6 +117,6 @@ still `COMMENT`.
 ## Acknowledgements
 
 Three impl PRs (#809 store+types → #811 arm `k` + `ThreadResultSet` →
-#812 write-path + e2e) + this retro. #810 is closed (`base_ref_deleted`
-after the 383.1 squash). #808 (Cluster 381 retro) merged onto `main`
-before 383.2 rebuilt.
+#812 write-path + e2e) + this retro (#813). #810 is closed
+(`base_ref_deleted` after the 383.1 squash). #808 (Cluster 381 retro)
+merged onto `main` before 383.2 rebuilt.
