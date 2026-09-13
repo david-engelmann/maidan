@@ -298,6 +298,77 @@ pub struct ThreadUnclaimable {
     pub marked_at: DateTime<Utc>,
 }
 
+/// Why a thread is explicitly blocked from dispatch (Cluster 386, Wave 2 #27,
+/// G14 + W2). A **closed** enum — unlike `result_kind`, which is a namespaced
+/// string a producer publishes. Presence of a [`ThreadBlock`] row is the block;
+/// absence is unblocked. Distinct from Cluster 217/218 DAG readiness (children
+/// / deps must be terminal before `claim_next` will pick a thread): that
+/// skip is derived from the dependency graph. This reason is an orchestrator-
+/// set taxonomy of *why* a thread is parked from the queue.
+///
+/// `child` is "waiting on a child the orchestrator named", not "every DAG
+/// child must be terminal". `unclaimable` here is the same vocabulary as
+/// Cluster 363's park, as one of six reasons — the 363 side table is unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum BlockedReason {
+    Dag,
+    Gate,
+    Human,
+    Child,
+    Quota,
+    Unclaimable,
+}
+
+impl BlockedReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dag => "dag",
+            Self::Gate => "gate",
+            Self::Human => "human",
+            Self::Child => "child",
+            Self::Quota => "quota",
+            Self::Unclaimable => "unclaimable",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "dag" => Some(Self::Dag),
+            "gate" => Some(Self::Gate),
+            "human" => Some(Self::Human),
+            "child" => Some(Self::Child),
+            "quota" => Some(Self::Quota),
+            "unclaimable" => Some(Self::Unclaimable),
+            _ => None,
+        }
+    }
+
+    /// Every variant. Kept in sync by the exhaustive-match tripwire in
+    /// `blocked_reason_tests::all_variants_round_trip`.
+    pub const ALL: &'static [Self] = &[
+        Self::Dag,
+        Self::Gate,
+        Self::Human,
+        Self::Child,
+        Self::Quota,
+        Self::Unclaimable,
+    ];
+}
+
+/// An explicit dispatch block on a thread (Cluster 386, Wave 2 #27): while this
+/// exists, `claim_next` skips the thread. One block per thread (upsert). Clearing
+/// the row is the unblock — later clusters emit `BlockedResolved`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadBlock {
+    pub thread_id: ThreadId,
+    pub reason: BlockedReason,
+    pub set_by: MemberId,
+    pub set_at: DateTime<Utc>,
+}
+
 /// A per-thread budget envelope (Cluster 358, T1/T5). An orchestrator sets any of
 /// the optional maxima; an agent reports incremental usage as it works, and when
 /// a dimension is exceeded the run is stopped (the claim fails → DLQ). USD is
@@ -2724,5 +2795,43 @@ mod result_kind_from_payload_tests {
             result_kind_from_payload(&json!({"result_kind": "acme.plan.result/2"})),
             Some("acme.plan.result/2")
         );
+    }
+}
+
+#[cfg(test)]
+mod blocked_reason_tests {
+    use super::*;
+
+    #[test]
+    fn all_variants_round_trip() {
+        for &reason in BlockedReason::ALL {
+            match reason {
+                BlockedReason::Dag
+                | BlockedReason::Gate
+                | BlockedReason::Human
+                | BlockedReason::Child
+                | BlockedReason::Quota
+                | BlockedReason::Unclaimable => {}
+            }
+            assert_eq!(
+                BlockedReason::parse(reason.as_str()),
+                Some(reason),
+                "as_str/parse round-trip broken for {reason:?}"
+            );
+            let json = serde_json::to_string(&reason).unwrap();
+            assert_eq!(json, format!("\"{}\"", reason.as_str()));
+            assert_eq!(
+                serde_json::from_str::<BlockedReason>(&json).unwrap(),
+                reason
+            );
+        }
+        assert_eq!(BlockedReason::ALL.len(), 6);
+    }
+
+    #[test]
+    fn unknown_reason_does_not_parse() {
+        assert_eq!(BlockedReason::parse("stuck"), None);
+        assert_eq!(BlockedReason::parse("decision"), None);
+        assert!(serde_json::from_str::<BlockedReason>("\"stuck\"").is_err());
     }
 }
