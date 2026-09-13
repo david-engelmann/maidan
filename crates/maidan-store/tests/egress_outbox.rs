@@ -5,7 +5,8 @@
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressTarget, NewChannel, NewEgressOutbox, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, NewChannel, NewEgressOutbox, NewThread, NewWorkspace, ThreadId,
+    WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -31,6 +32,7 @@ fn slack(ws: WorkspaceId, thread: ThreadId, log_id: i64, body: &str) -> NewEgres
             channel_id: "C0123ABCDEF".into(),
         },
         body: body.into(),
+        kind: EgressKind::Projector,
     }
 }
 
@@ -128,6 +130,7 @@ async fn run_suite(store: &dyn Store) {
                 issue_number: 3915,
             },
             body: "review posted".into(),
+            kind: EgressKind::Projector,
         })
         .await
         .expect("enqueue gh")
@@ -249,6 +252,7 @@ async fn run_dedup_suite(store: &dyn Store) {
                 issue_number: 1,
             },
             body: "once".into(),
+            kind: EgressKind::Projector,
         })
         .await
         .expect("enqueue other surface")
@@ -258,6 +262,31 @@ async fn run_dedup_suite(store: &dyn Store) {
         .await
         .expect("claim3")
         .is_some());
+
+    // Kind round-trips through claim so the worker can tell a result row from
+    // a projector row (Cluster 379.4).
+    store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id: ws.id,
+            thread_id: thread.id,
+            source_log_id: 100,
+            target: EgressTarget::Github {
+                repo: "beatgig/bgv3".into(),
+                issue_number: 2,
+            },
+            body: "the result".into(),
+            kind: EgressKind::Result,
+        })
+        .await
+        .expect("enqueue result kind")
+        .expect("inserted result kind");
+    let claimed = store
+        .claim_next_due_egress(Utc::now(), 300)
+        .await
+        .expect("claim result kind")
+        .expect("claimed result kind");
+    assert_eq!(claimed.kind, EgressKind::Result);
+    assert_eq!(claimed.body, "the result");
 }
 
 #[tokio::test]

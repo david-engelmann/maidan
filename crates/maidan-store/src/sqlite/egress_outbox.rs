@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::StoreError;
 use maidan_types::{
-    DeadEgress, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
+    DeadEgress, EgressKind, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
 };
 
 pub async fn enqueue(
@@ -21,9 +21,9 @@ pub async fn enqueue(
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
         "INSERT INTO maidan_egress_outbox
-           (id, workspace_id, thread_id, source_log_id, surface, selector, body,
+           (id, workspace_id, thread_id, source_log_id, surface, selector, body, kind,
             status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
          ON CONFLICT (source_log_id, surface, selector) DO NOTHING
          RETURNING id",
     )
@@ -34,6 +34,7 @@ pub async fn enqueue(
     .bind(new.target.surface().as_str())
     .bind(new.target.selector())
     .bind(&new.body)
+    .bind(new.kind.as_str())
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -67,7 +68,7 @@ pub async fn claim_next_due(
         "UPDATE maidan_egress_outbox
          SET attempts = attempts + 1, next_attempt_at = ?, updated_at = ?
          WHERE id = ?
-         RETURNING id, workspace_id, thread_id, surface, selector, body, attempts",
+         RETURNING id, workspace_id, thread_id, surface, selector, body, attempts, kind",
     )
     .bind(&lease)
     .bind(&now_s)
@@ -185,5 +186,6 @@ fn row_to_egress(row: &sqlx::sqlite::SqliteRow) -> EgressOutbox {
         selector: row.get("selector"),
         body: row.get("body"),
         attempts: row.get("attempts"),
+        kind: EgressKind::parse(&row.get::<String, _>("kind")),
     }
 }

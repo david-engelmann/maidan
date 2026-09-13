@@ -50,6 +50,14 @@ impl GithubSender for MockSender {
     ) -> Result<(), GithubError> {
         unreachable!("the projector egress never updates; that is Cluster 379.4")
     }
+
+    async fn list_issue_comments(
+        &self,
+        _repo: &str,
+        _issue_number: i64,
+    ) -> Result<Vec<maidan_server::github::GithubIssueComment>, GithubError> {
+        unreachable!("the projector egress never lists comments; that is Cluster 379.4")
+    }
 }
 
 async fn setup() -> (AppState, Arc<MockSender>, Arc<dyn Store>) {

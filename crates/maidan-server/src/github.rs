@@ -20,8 +20,8 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressTarget, ExternalRef, GithubIssueLink, MemberId, NewEgressOutbox, NewGithubIssueLink,
-    ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, MemberId, NewEgressOutbox,
+    NewGithubIssueLink, ThreadId, WorkspaceId,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -223,7 +223,7 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
 }
 
 /// A failed GitHub API call.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum GithubError {
     #[error("github http error: {0}")]
     Http(String),
@@ -256,6 +256,14 @@ impl GithubError {
             Self::Api { status, .. } => matches!(status, 401 | 403 | 404),
         }
     }
+
+    /// A 404 — the issue, repo, or comment is gone. Distinct from
+    /// [`Self::is_misconfiguration`] so a result-delivery update against a
+    /// deleted comment can fall through to the hidden-marker recovery path
+    /// instead of disabling a projector link.
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::Api { status: 404, .. })
+    }
 }
 
 /// Outbound GitHub sender — posts and edits an issue/PR comment in production, a
@@ -285,6 +293,23 @@ pub trait GithubSender: Send + Sync {
         comment_id: i64,
         text: &str,
     ) -> Result<(), GithubError>;
+
+    /// List comments on an issue/PR, oldest first. Used by result delivery
+    /// (Cluster 379.4) to recover a lost `external_ref` via the hidden body
+    /// marker. Projector egress never lists.
+    async fn list_issue_comments(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<Vec<GithubIssueComment>, GithubError>;
+}
+
+/// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
+/// for the marker-recovery scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubIssueComment {
+    pub id: i64,
+    pub body: String,
 }
 
 /// The production [`GithubSender`]: posts via the GitHub REST API
@@ -383,6 +408,58 @@ impl GithubSender for GithubApiClient {
             rate_limited: is_rate_limited(resp.headers()),
         })
     }
+
+    async fn list_issue_comments(
+        &self,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<Vec<GithubIssueComment>, GithubError> {
+        // Cap the scan so a busy issue cannot turn one recovery into an
+        // unbounded walk. 10 pages × 100 = 1000 comments; past that we post
+        // rather than guess.
+        let mut out = Vec::new();
+        for page in 1..=10 {
+            let url = format!(
+                "{}/repos/{repo}/issues/{issue_number}/comments?per_page=100&page={page}",
+                self.base_url
+            );
+            let resp = self
+                .http
+                .get(&url)
+                .bearer_auth(&self.token)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "maidan-projector")
+                .send()
+                .await
+                .map_err(|e| GithubError::Http(e.to_string()))?;
+            if !resp.status().is_success() {
+                return Err(GithubError::Api {
+                    status: resp.status().as_u16(),
+                    rate_limited: is_rate_limited(resp.headers()),
+                });
+            }
+            let batch: Vec<serde_json::Value> = resp
+                .json()
+                .await
+                .map_err(|e| GithubError::Http(e.to_string()))?;
+            let n = batch.len();
+            for c in batch {
+                let Some(id) = c.get("id").and_then(|i| i.as_i64()).filter(|id| *id > 0) else {
+                    continue;
+                };
+                let body = c
+                    .get("body")
+                    .and_then(|b| b.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                out.push(GithubIssueComment { id, body });
+            }
+            if n < 100 {
+                break;
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Whether a non-success GitHub response is a rate limit. GitHub signals a
@@ -445,6 +522,7 @@ pub async fn route_message_to_github(
                 issue_number: link.issue_number,
             },
             body: message.body.clone(),
+            kind: EgressKind::Projector,
         })
         .await;
     if let Err(err) = queued {

@@ -29,11 +29,22 @@
 //! run the worker safely (`FOR UPDATE SKIP LOCKED` on Postgres hands each a
 //! distinct row), and the queue's dedup index means they enqueue one row between
 //! them in the first place.
+//!
+//! **Result delivery (Cluster 379.4):** an outbox row with [`EgressKind::Result`]
+//! updates in place when the matching `maidan_result_deliveries` row has an
+//! `external_ref`, recovers a GitHub comment via the hidden
+//! `<!-- maidan:result:<thread_id> -->` marker if that handle is lost, and
+//! otherwise posts. Projector rows (`EgressKind::Projector`) always post — they
+//! must not PATCH a result comment that happens to share the issue. A result
+//! 401/403/404 dead-letters the delivery without disabling a projector
+//! issue-link.
 
 use std::time::Duration;
 
-use maidan_types::{EgressOutbox, EgressTarget, ExternalRef};
+use maidan_types::{EgressKind, EgressOutbox, EgressTarget, ExternalRef, ResultDelivery};
 
+use crate::egress_body::comment_carries_result_marker;
+use crate::github::GithubIssueComment;
 use crate::state::AppState;
 
 /// How far forward a claim leases a row. A projector post should finish well
@@ -101,11 +112,25 @@ struct DeliveryFailure {
 
 /// Post one claimed delivery through the sender for its surface.
 ///
-/// The `Ok` payload is the [`ExternalRef`] the surface handed back (Cluster
-/// 378.2) — `None` when the object was created but is not addressable. Nothing
-/// persists it yet; the result-delivery table that turns it into an
-/// update-in-place is Cluster 379.
+/// Projector rows always post. Result rows (Cluster 379.4) update in place
+/// when a stored [`ExternalRef`] is usable, recover a GitHub comment via the
+/// hidden body marker if the ref is lost, and otherwise post. The `Ok`
+/// payload is the handle to persist on the result-delivery row.
 async fn deliver(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
+    if entry.kind == EgressKind::Result {
+        return deliver_result(state, entry, target).await;
+    }
+    deliver_projector(state, target, &entry.body).await
+}
+
+/// Linked-thread projector egress: always a fresh post. Update-in-place is a
+/// result-delivery behaviour; applying it here would PATCH a result comment
+/// that happens to share the issue.
+async fn deliver_projector(
     state: &AppState,
     target: &EgressTarget,
     body: &str,
@@ -120,8 +145,7 @@ async fn deliver(
             };
             // Top-level: the projector egress relays a Maidan message into the
             // linked channel, and threading those under a parent would change
-            // Cluster 309's behaviour. A result delivery replying in-thread is
-            // Cluster 379.4's call to make, with a ref to reply under.
+            // Cluster 309's behaviour.
             match sender.post_message(channel_id, body, None).await {
                 Ok(reference) => {
                     crate::metrics::record_slack_egress("sent");
@@ -156,6 +180,181 @@ async fn deliver(
                     })
                 }
             }
+        }
+    }
+}
+
+async fn deliver_result(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
+    let row = match state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    {
+        Ok(row) => row,
+        Err(err) => {
+            return Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: false,
+            });
+        }
+    };
+    match target {
+        EgressTarget::Github { repo, issue_number } => {
+            github_result(state, entry, row.as_ref(), repo, *issue_number).await
+        }
+        EgressTarget::Slack { channel_id } => {
+            slack_result(state, entry, row.as_ref(), channel_id).await
+        }
+    }
+}
+
+async fn github_result(
+    state: &AppState,
+    entry: &EgressOutbox,
+    row: Option<&ResultDelivery>,
+    repo: &str,
+    issue_number: i64,
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
+    let Some(sender) = state.github_sender.as_ref() else {
+        return Err(DeliveryFailure {
+            message: "no github sender configured".into(),
+            misconfiguration: false,
+        });
+    };
+    if let Some(ExternalRef::Github { comment_id, .. }) = row.and_then(|r| r.reference()) {
+        match sender.update_comment(repo, comment_id, &entry.body).await {
+            Ok(()) => {
+                crate::metrics::record_github_egress("sent");
+                return Ok(Some(ExternalRef::Github {
+                    repo: repo.to_string(),
+                    comment_id,
+                }));
+            }
+            Err(err) if err.is_not_found() => {
+                // Comment deleted — fall through to marker recovery, then post.
+            }
+            Err(err) => {
+                crate::metrics::record_github_egress("failed");
+                return Err(DeliveryFailure {
+                    message: err.to_string(),
+                    misconfiguration: err.is_misconfiguration(),
+                });
+            }
+        }
+    }
+    // Recover via the hidden marker only when we have previously landed
+    // something (a lost ref, or a post that GitHub accepted without an id).
+    // A first delivery just posts — listing every issue comment on every
+    // first review would be an unbounded walk for no gain.
+    if row.is_some_and(|r| r.delivered_revision.is_some()) {
+        match recover_github_comment(sender.as_ref(), repo, issue_number, entry.thread_id).await {
+            Ok(Some(comment_id)) => {
+                match sender.update_comment(repo, comment_id, &entry.body).await {
+                    Ok(()) => {
+                        crate::metrics::record_github_egress("sent");
+                        return Ok(Some(ExternalRef::Github {
+                            repo: repo.to_string(),
+                            comment_id,
+                        }));
+                    }
+                    Err(err) if err.is_not_found() => {}
+                    Err(err) => {
+                        crate::metrics::record_github_egress("failed");
+                        return Err(DeliveryFailure {
+                            message: err.to_string(),
+                            misconfiguration: err.is_misconfiguration(),
+                        });
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(failure) => return Err(failure),
+        }
+    }
+    match sender.post_comment(repo, issue_number, &entry.body).await {
+        Ok(reference) => {
+            crate::metrics::record_github_egress("sent");
+            Ok(reference)
+        }
+        Err(err) => {
+            crate::metrics::record_github_egress("failed");
+            Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: err.is_misconfiguration(),
+            })
+        }
+    }
+}
+
+async fn recover_github_comment(
+    sender: &dyn crate::github::GithubSender,
+    repo: &str,
+    issue_number: i64,
+    thread_id: maidan_types::ThreadId,
+) -> Result<Option<i64>, DeliveryFailure> {
+    match sender.list_issue_comments(repo, issue_number).await {
+        Ok(comments) => Ok(comments.into_iter().find_map(|c: GithubIssueComment| {
+            comment_carries_result_marker(&c.body, thread_id).then_some(c.id)
+        })),
+        Err(err) => {
+            crate::metrics::record_github_egress("failed");
+            Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: err.is_misconfiguration(),
+            })
+        }
+    }
+}
+
+async fn slack_result(
+    state: &AppState,
+    entry: &EgressOutbox,
+    row: Option<&ResultDelivery>,
+    channel_id: &str,
+) -> Result<Option<ExternalRef>, DeliveryFailure> {
+    let Some(sender) = state.slack_sender.as_ref() else {
+        return Err(DeliveryFailure {
+            message: "no slack sender configured".into(),
+            misconfiguration: false,
+        });
+    };
+    if let Some(ExternalRef::Slack { ts, .. }) = row.and_then(|r| r.reference()) {
+        match sender.update_message(channel_id, &ts, &entry.body).await {
+            Ok(()) => {
+                crate::metrics::record_slack_egress("sent");
+                return Ok(Some(ExternalRef::Slack {
+                    channel_id: channel_id.to_string(),
+                    ts,
+                }));
+            }
+            Err(err) if err.is_message_gone() => {
+                // No Slack marker. A lost message is a new post, which may
+                // duplicate — the documented trade against silence.
+            }
+            Err(err) => {
+                crate::metrics::record_slack_egress("failed");
+                return Err(DeliveryFailure {
+                    message: err.to_string(),
+                    misconfiguration: err.is_misconfiguration(),
+                });
+            }
+        }
+    }
+    match sender.post_message(channel_id, &entry.body, None).await {
+        Ok(reference) => {
+            crate::metrics::record_slack_egress("sent");
+            Ok(reference)
+        }
+        Err(err) => {
+            crate::metrics::record_slack_egress("failed");
+            Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: err.is_misconfiguration(),
+            })
         }
     }
 }
@@ -249,6 +448,63 @@ async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTar
     .await;
 }
 
+/// Persist the handle a result delivery just created/updated, using the row's
+/// `armed_revision` as the revision that landed (the two-watermark design).
+async fn record_result_landed(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    reference: Option<&ExternalRef>,
+) {
+    let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    else {
+        return;
+    };
+    let handle = reference.map(|r| r.handle());
+    if let Err(err) = state
+        .store
+        .mark_result_delivered(row.id, handle.as_deref(), row.armed_revision)
+        .await
+    {
+        tracing::warn!(
+            error = %err,
+            id = %row.id,
+            "egress worker: mark-result-delivered failed"
+        );
+        return;
+    }
+    crate::metrics::record_result_delivery("delivered");
+}
+
+/// The transport gave up. Leave `external_ref` / `delivered_revision` alone —
+/// whatever landed before is still out there and still editable.
+async fn record_result_gave_up(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    error: &str,
+) {
+    let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    else {
+        return;
+    };
+    if let Err(err) = state.store.mark_result_delivery_failed(row.id, error).await {
+        tracing::warn!(
+            error = %err,
+            id = %row.id,
+            "egress worker: mark-result-failed failed"
+        );
+        return;
+    }
+    crate::metrics::record_result_delivery("failed");
+}
+
 /// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when no projector sender is
 /// configured — without one, every claim would fail and burn the queue's attempts
 /// against a deployment that simply has the projector turned off.
@@ -282,22 +538,31 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             continue;
         };
         let surface = target.surface().as_str();
-        match deliver(state, &target, &entry.body).await {
+        match deliver(state, &entry, &target).await {
             Ok(reference) => {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }
-                // The handle on what we just created, so an operator can find the
-                // Slack message or GitHub comment a delivery produced. Cluster
-                // 379 is what persists it.
+                if entry.kind == EgressKind::Result {
+                    record_result_landed(state, &entry, &target, reference.as_ref()).await;
+                }
                 tracing::debug!(
                     id = %entry.id,
                     %surface,
+                    kind = %entry.kind,
                     external_ref = reference.as_ref().map(|r| r.handle()),
                     "egress worker: delivered"
                 );
                 crate::metrics::record_egress_delivery(surface, "sent");
                 stats.sent += 1;
+            }
+            Err(failure) if failure.misconfiguration && entry.kind == EgressKind::Result => {
+                // A result delivery does not ride a projector issue-link. A 401
+                // here must not disable someone else's linked thread.
+                dead_letter(state, &entry, &failure.message).await;
+                record_result_gave_up(state, &entry, &target, &failure.message).await;
+                crate::metrics::record_egress_delivery(surface, "dead");
+                stats.dead += 1;
             }
             Err(failure) if failure.misconfiguration => {
                 disable_link(state, &entry, &target, &failure.message).await;
@@ -307,6 +572,9 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             }
             Err(failure) => {
                 if record_failure(state, &entry, &failure.message).await {
+                    if entry.kind == EgressKind::Result {
+                        record_result_gave_up(state, &entry, &target, &failure.message).await;
+                    }
                     crate::metrics::record_egress_delivery(surface, "dead");
                     stats.dead += 1;
                 } else {

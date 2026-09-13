@@ -86,6 +86,7 @@ async fn dead_delivery(store: &dyn Store, ws: WorkspaceId, thread: ThreadId, err
                 issue_number: 42,
             },
             body: "the review".into(),
+            kind: maidan_types::EgressKind::Projector,
         })
         .await
         .unwrap()

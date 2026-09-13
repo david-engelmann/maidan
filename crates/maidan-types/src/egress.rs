@@ -53,6 +53,43 @@ impl fmt::Display for EgressSurface {
     }
 }
 
+/// Why a row is on the egress outbox (Cluster 379.4).
+///
+/// Projector posts and result deliveries can aim at the same GitHub issue (a
+/// linked thread *and* a `deliver_to` target). Update-in-place is a result
+/// behaviour — without this discriminator a projector `MessagePosted` would
+/// PATCH the result comment. Unknown values decode as [`Self::Projector`]:
+/// posting a second comment is the conservative direction; editing the wrong
+/// object is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EgressKind {
+    #[default]
+    Projector,
+    Result,
+}
+
+impl EgressKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Projector => "projector",
+            Self::Result => "result",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "result" => Self::Result,
+            _ => Self::Projector,
+        }
+    }
+}
+
+impl fmt::Display for EgressKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Where one queued delivery goes, with the per-surface detail the sender needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EgressTarget {
@@ -261,6 +298,10 @@ pub struct NewEgressOutbox {
     pub source_log_id: i64,
     pub target: EgressTarget,
     pub body: String,
+    /// [`EgressKind::Projector`] for linked-thread relays; [`EgressKind::Result`]
+    /// for Cluster 379 result delivery. The worker uses this to decide whether
+    /// a stored [`ExternalRef`] is an object it may edit.
+    pub kind: EgressKind,
 }
 
 /// A claimed delivery the egress worker will attempt (Cluster 377.1). `attempts`
@@ -280,6 +321,7 @@ pub struct EgressOutbox {
     pub selector: String,
     pub body: String,
     pub attempts: i64,
+    pub kind: EgressKind,
 }
 
 impl EgressOutbox {
@@ -370,8 +412,21 @@ mod tests {
             selector: "whatever".into(),
             body: "hi".into(),
             attempts: 1,
+            kind: EgressKind::Projector,
         };
         assert_eq!(row.target(), None);
+    }
+
+    #[test]
+    fn an_unknown_outbox_kind_decodes_as_projector() {
+        assert_eq!(EgressKind::parse("result"), EgressKind::Result);
+        assert_eq!(EgressKind::parse("projector"), EgressKind::Projector);
+        assert_eq!(
+            EgressKind::parse("inline-comment"),
+            EgressKind::Projector,
+            "unknown must not take the update-in-place path"
+        );
+        assert_eq!(EgressKind::default(), EgressKind::Projector);
     }
 
     #[test]

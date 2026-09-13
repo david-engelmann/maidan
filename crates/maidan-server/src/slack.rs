@@ -19,8 +19,8 @@ use axum::{
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressTarget, ExternalRef, MemberId, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink,
-    ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, ExternalRef, MemberId, NewEgressOutbox, NewSlackChannelLink,
+    SlackChannelLink, ThreadId, WorkspaceId,
 };
 use sha2::Sha256;
 
@@ -226,6 +226,12 @@ impl SlackError {
             Self::Api(code) => SLACK_MISCONFIGURATION_ERRORS.contains(&code.as_str()),
         }
     }
+
+    /// The message we wanted to edit is gone. Result delivery falls back to a
+    /// new post (there is no Slack equivalent of the GitHub body marker).
+    pub fn is_message_gone(&self) -> bool {
+        matches!(self, Self::Api(code) if code == "message_not_found")
+    }
 }
 
 /// Outbound Slack sender — `chat.postMessage` / `chat.update` in production, a
@@ -396,6 +402,7 @@ pub async fn route_message_to_slack(
                 channel_id: link.slack_channel_id,
             },
             body: message.body.clone(),
+            kind: EgressKind::Projector,
         })
         .await;
     if let Err(err) = queued {
