@@ -17,6 +17,7 @@ maidan-store = { path = "../maidan-store" }
 maidan-search = { path = "../maidan-search", default-features = false }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
+maidan-fsm = { path = "../maidan-fsm" }
 async-trait.workspace = true
 base64 = "0.22"
 futures = "0.3"
@@ -33,7 +34,6 @@ tokio.workspace = true
 sqlx.workspace = true
 tempfile = "3"
 proptest = "1"
-maidan-fsm = { path = "../maidan-fsm" }
 
 [[bin]]
 name = "gen-mcp-reference"

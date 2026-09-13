@@ -4673,26 +4673,17 @@ mod tests {
         let owner_auth = AuthContext::from_session(owner.id, ws.id, caps.clone());
         let claimer_auth = AuthContext::from_session(claimer.id, ws.id, caps);
         let tid = json!(thread.id.0);
-        let call = |auth: &AuthContext, action: &str, actor: uuid::Uuid| {
-            let server = &server;
-            let tid = tid.clone();
-            let action = action.to_string();
-            async move {
-                server
-                    .call_tool(
-                        auth,
-                        "transition_thread",
-                        &json!({
-                            "thread_id": tid,
-                            "actor_id": actor,
-                            "action": action,
-                        }),
-                    )
-                    .await
-            }
+        let args = |action: &str, actor: uuid::Uuid| {
+            json!({
+                "thread_id": tid,
+                "actor_id": actor,
+                "action": action,
+            })
         };
 
-        let unknown = call(&owner_auth, "merge", owner.id.0).await;
+        let unknown = server
+            .call_tool(&owner_auth, "transition_thread", &args("merge", owner.id.0))
+            .await;
         assert!(
             matches!(unknown, Err(McpError::InvalidParams(ref m)) if m.contains("unknown action")),
             "unknown action must be InvalidParams, got {unknown:?}"
@@ -4705,7 +4696,16 @@ mod tests {
         };
         let mut stream = bus.subscribe(filter).await.unwrap();
 
-        let started = content(call(&owner_auth, "start_review", owner.id.0).await.unwrap());
+        let started = content(
+            server
+                .call_tool(
+                    &owner_auth,
+                    "transition_thread",
+                    &args("start_review", owner.id.0),
+                )
+                .await
+                .unwrap(),
+        );
         assert_eq!(started["state"], "in_review");
 
         let event = tokio::time::timeout(Duration::from_secs(2), stream.next())
@@ -4727,14 +4727,22 @@ mod tests {
             other => panic!("unexpected event: {other:?}"),
         }
 
-        let sod = call(&claimer_auth, "close", claimer.id.0).await;
+        let sod = server
+            .call_tool(
+                &claimer_auth,
+                "transition_thread",
+                &args("close", claimer.id.0),
+            )
+            .await;
         assert!(
             matches!(sod, Err(McpError::InvalidParams(ref m)) if m.contains("separation of duties")),
             "claimer landing its own owned thread must be SoD-denied, got {sod:?}"
         );
 
         store.set_review_requirement(thread.id, 1).await.unwrap();
-        let gated = call(&owner_auth, "close", owner.id.0).await;
+        let gated = server
+            .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+            .await;
         assert!(
             matches!(gated, Err(McpError::InvalidParams(ref m)) if m.contains("review requirement")),
             "close without the required approval must be refused, got {gated:?}"
@@ -4744,7 +4752,12 @@ mod tests {
             .submit_review(thread.id, reviewer.id, ReviewDecision::Approve, None)
             .await
             .unwrap();
-        let closed = content(call(&owner_auth, "close", owner.id.0).await.unwrap());
+        let closed = content(
+            server
+                .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+                .await
+                .unwrap(),
+        );
         assert_eq!(closed["state"], "closed");
     }
 
