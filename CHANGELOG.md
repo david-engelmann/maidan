@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [380.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Inline per-finding PR review comments** —
+the fourth cluster of the result-delivery arc. Three impl PRs (380.1–380.3)
++ a retro. No new gate tag.
+
+A `reviewed` GitHub delivery now posts the Cluster 379 summary comment and,
+when envelope `head_sha` and usable findings are present, a `COMMENT` review
+of those findings on the **RIGHT** (post-image) side of that commit.
+`commit_id` is **never** the live PR head. 404/422 skip the review; 5xx/auth
+leave it for operator replay. Review errors never disable a projector
+issue-link. Cluster 379's summary path is unchanged. **Cluster 381 is not
+unparked** (already open: the `result_kind` facet).
+
+- **380.1** the frame — `line_range` is 1-indexed inclusive post-image lines
+  at `head_sha`; GitHub RIGHT; `github_line()` = `end`; `start_line` only
+  when `start != end`. Fixture lock.
+- **380.2** the review POST — `POST /repos/{repo}/pulls/{n}/reviews` after
+  the 379 summary; `event: COMMENT`; cap 100; mention-defused finding
+  bodies; metric `maidan_github_review_total`.
+- **380.3** skip vs fail — 404/422 `{skipped}`; 5xx/auth `{failed}` + replay;
+  dual-surface; vanished envelope; projector kind-split; never
+  `disable_link`.
+
 ## [382.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #24 pack half — the claimer pack

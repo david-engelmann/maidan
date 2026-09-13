@@ -12,7 +12,7 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
-**Shipped (Cluster 379).** This page is the interface contract between a result producer
+**Shipped (Clusters 379–380).** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `pi.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
 requires a new `schema` value. The `result_kind` list facet is Cluster 381.
@@ -26,6 +26,7 @@ requires a new `schema` value. The `result_kind` list facet is Cluster 381.
 | A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped** (Cluster 379.3). Fetch → parse → per-target allowlist check then enqueue. |
 | Idempotent update-in-place | **Shipped** (Cluster 379.4). Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
 | Per-thread delivery status + replay | **Shipped** (Cluster 379.5). `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
+| Inline per-finding PR review comments | **Shipped** (Cluster 380). After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
 | `result_kind` list facet | **Shipped** (Cluster 381). Exact-match on the namespaced string — see [Discoverability](#discoverability). |
 
 **Producer loop:** write `deliver_to` on the envelope; bless the destination once over
@@ -33,8 +34,8 @@ the allowlist; confirm where it landed with the status API. A perfectly correct
 `deliver_to` can still deliver nowhere if the target is unblessed — that is a
 normal outcome, not a producer bug.
 
-Inline per-finding PR review comments (Cluster 380) are **in progress**.
-**380.1** (on `main`) pinned the `line_range` frame: file-absolute **post-image**
+Inline per-finding PR review comments (Cluster 380) are **shipped**.
+**380.1** pinned the `line_range` frame: file-absolute **post-image**
 lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
 GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
 `POST /repos/{repo}/pulls/{n}/reviews` after a successful summary comment, with
@@ -297,8 +298,8 @@ durably, once.
 
 Two of three are now carried; one remains:
 
-1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried.** Present on
-   `pi.waiter.result/1` (fixture lock). Cluster 380 passes it as GitHub's `commit_id`
+1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used (Cluster 380).** Present on
+   `pi.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
    rather than resolving the PR head at delivery time.
 2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
    **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
