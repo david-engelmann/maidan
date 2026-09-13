@@ -86,6 +86,7 @@
   "list_thread_follows": "workspace:read",
   "list_thread_memory_blocks": "workspace:read",
   "list_thread_required_skills": "workspace:read",
+  "list_thread_results": "workspace:read",
   "list_threads": "workspace:read",
   "list_unclaimable": "workspace:read",
   "mark_claimable": "thread:transition",

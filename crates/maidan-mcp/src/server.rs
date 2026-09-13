@@ -1615,6 +1615,156 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_thread_results_filters_by_namespaced_kind() {
+        use maidan_auth::capability::WORKSPACE_READ;
+
+        const REVIEW: &str = "pi.review.result/1";
+        const PLAN: &str = "pi.plan.result/1";
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rk".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let public = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "pub".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let private = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "priv".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        let review = store
+            .create_thread(NewThread {
+                channel_id: public.id,
+                parent_thread_id: None,
+                title: Some("review".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(review.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .await
+            .unwrap();
+        let plan = store
+            .create_thread(NewThread {
+                channel_id: public.id,
+                parent_thread_id: None,
+                title: Some("plan".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(plan.id, agent.id, &json!({ "result_kind": PLAN }))
+            .await
+            .unwrap();
+        let hidden = store
+            .create_thread(NewThread {
+                channel_id: private.id,
+                parent_thread_id: None,
+                title: Some("secret".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(hidden.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        // Session auth so can_access_thread hides the private-channel row.
+        // produced_by is a real member (store-seeded; the tool itself is a read).
+        let auth = AuthContext::from_session(agent.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let all = unwrap_content(
+            server
+                .call_tool(&auth, "list_thread_results", &json!({}))
+                .await
+                .unwrap(),
+        );
+        let ids: Vec<String> = all
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["thread_id"].as_str().unwrap().to_string())
+            .collect();
+        assert!(ids.contains(&review.id.0.to_string()));
+        assert!(ids.contains(&plan.id.0.to_string()));
+        assert!(
+            !ids.contains(&hidden.id.0.to_string()),
+            "a private-channel result the caller cannot access must not leak"
+        );
+        assert_eq!(ids.len(), 2);
+
+        let reviews = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_thread_results",
+                    &json!({ "result_kind": REVIEW }),
+                )
+                .await
+                .unwrap(),
+        );
+        let reviews = reviews.as_array().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0]["thread_id"], json!(review.id.0));
+        assert_eq!(reviews[0]["result"]["result_kind"], REVIEW);
+
+        let none = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_thread_results",
+                    &json!({ "result_kind": "decision" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(
+            none.as_array().unwrap().is_empty(),
+            "the old closed-enum word is not a namespaced kind"
+        );
+    }
+
+    #[tokio::test]
     async fn owner_and_steer_tools_set_get_and_clear() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_bus::InMemoryBus;

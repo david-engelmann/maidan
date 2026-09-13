@@ -86,6 +86,7 @@
   "list_thread_follows",
   "list_thread_memory_blocks",
   "list_thread_required_skills",
+  "list_thread_results",
   "list_threads",
   "list_unclaimable",
   "mark_claimable",

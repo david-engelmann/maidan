@@ -786,6 +786,42 @@ pub(super) async fn get_thread_result(
 }
 
 #[derive(Deserialize)]
+struct ListThreadResultsArgs {
+    /// Exact-match facet on the namespaced `result_kind` string (e.g.
+    /// `pi.review.result/1`). Absent / empty = every non-tombstoned result.
+    #[serde(default)]
+    result_kind: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+}
+
+/// Workspace-scoped thread-result list (Cluster 381.3). Optional exact-match
+/// `result_kind` facet on the namespaced string — not a closed enum. Workspace
+/// comes from `auth.workspace_id`. Private-channel rows the caller cannot
+/// access are dropped (the pre-dispatch gate cannot cover an aggregate read).
+pub(super) async fn list_thread_results(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListThreadResultsArgs = serde_json::from_value(args.clone())?;
+    let limit = a.limit.unwrap_or(50).clamp(1, 500);
+    let results = store
+        .list_thread_results(auth.workspace_id, a.result_kind.as_deref(), limit)
+        .await?;
+    if auth.bypass {
+        return Ok(content_json(&results));
+    }
+    let mut visible = Vec::with_capacity(results.len());
+    for result in results {
+        if maidan_auth::can_access_thread(store.as_ref(), auth, result.thread_id).await? {
+            visible.push(result);
+        }
+    }
+    Ok(content_json(&visible))
+}
+
+#[derive(Deserialize)]
 struct SetThreadOwnerArgs {
     thread_id: uuid::Uuid,
     /// The owner to set; omit (or null) to clear the owner (Cluster 355, W1).

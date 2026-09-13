@@ -548,6 +548,17 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_thread_results",
+            "description": "List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. pi.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "result_kind": {"type": "string", "description": "exact namespaced result_kind (e.g. pi.review.result/1); omit to list every accessible result"},
+                    "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500}
+                }
+            }
+        }),
+        json!({
             "name": "list_result_deliveries",
             "description": "List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.",
             "inputSchema": {
