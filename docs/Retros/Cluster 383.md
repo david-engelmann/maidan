@@ -33,7 +33,7 @@ Three impl PRs (383.1–383.3) + this retro. #810 was the first 383.2 and died
   `ThreadResultSet` arm calls `arm_critical_review` after the 379 delivery
   arm. Empty `deliver_to` still arms — the room blocks the land even when
   nothing is posted externally.
-- **383.3 (#812) — write-path + e2e.** `PUT /threads/:id/result` and MCP
+- **383.3 (#814, replaces closed #812) — write-path + e2e.** `PUT /threads/:id/result` and MCP
   `set_thread_result` call `apply_critical_review_decision` after the upsert
   so a PUT is immediately visible (the 383.2 bus consumer is every-replica /
   replay). HTTP e2e: critical blocks `close` (409) until a third-party human
@@ -69,9 +69,10 @@ Three impl PRs (383.1–383.3) + this retro. #810 was the first 383.2 and died
   `required_count == 0`. 383.1 wrote the decision and close still
   succeeded. Arming `k` is the load-bearing half of the product.
 - **A stacked PR targeting a deleted base is closed, not retargeted.**
-  #810 died the moment #809 squash-merged (`base_ref_deleted` /
-  CONFLICTING). #811 is the cherry-pick onto `origin/main`. Same lesson as
-  379.4 / #790, 382.2 / #795, 380.2, 381.3.
+#810 died the moment #809 squash-merged (`base_ref_deleted` /
+CONFLICTING). #812 died the same way after #811. #811 and #814 are the
+rebuilds onto `origin/main`. Same lesson as 379.4 / #790, 382.2 / #795,
+380.2, 381.3.
 - **The bus consumer races a same-process PUT→close.** 383.2 is correct
   for multi-replica replay; 383.3's write-path arm is the product contract
   (immediately visible), not just a test convenience.
@@ -117,6 +118,6 @@ still `COMMENT`.
 ## Acknowledgements
 
 Three impl PRs (#809 store+types → #811 arm `k` + `ThreadResultSet` →
-#812 write-path + e2e) + this retro. #810 is closed (`base_ref_deleted`
-after the 383.1 squash). #808 (Cluster 381 retro) merged onto `main`
-before 383.2 rebuilt.
+#814 write-path + e2e) + this retro. #810 and #812 closed
+(`base_ref_deleted` after the parent squash). #808 (Cluster 381 retro)
+merged onto `main` before 383.2 rebuilt.

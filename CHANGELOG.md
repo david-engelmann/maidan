@@ -28,7 +28,8 @@ green/amber/red vocabulary remain on that row.
   `arm_critical_review`. Empty `deliver_to` still arms. Replaces closed
   #810 (`base_ref_deleted`).
 - **383.3** REST/MCP write-path arm + e2e (critical blocks close;
-  warning-only does not; human approve unblocks).
+  warning-only does not; human approve unblocks). Replaces closed #812
+  (`base_ref_deleted`).
 
 ## [381.0.0] — 2026-09-13
 
