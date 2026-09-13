@@ -1207,14 +1207,14 @@ pub trait ReviewStore: Send + Sync {
 
 #[async_trait]
 pub trait SoundcheckStore: Send + Sync {
-    /// Soundcheck gate pointer (Cluster 384, Wave 2 #25 remainder). Presence
+    /// Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder). Presence
     /// of a row arms the close-gate. `require_soundcheck` inserts a pending
     /// row (no pointer yet) so `closed` refuses until a qualifying green
     /// pass arrives; an existing pointer is left alone. `set_soundcheck_pointer`
     /// upserts `{kind:"soundcheck", status, artifact_sha?, land}` from a
     /// soundcheck-skilled recorder. `get_soundcheck_standing` is total (no
     /// row → not required, vacuous green). `clear_soundcheck` deletes the
-    /// row. The FSM close-gate (384.2) reads this standing in-tx.
+    /// row. The FSM close-gate (385.2) reads this standing in-tx.
     async fn require_soundcheck(
         &self,
         thread_id: ThreadId,

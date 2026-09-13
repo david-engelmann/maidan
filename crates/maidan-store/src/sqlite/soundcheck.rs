@@ -1,4 +1,4 @@
-//! Soundcheck gate pointer (Cluster 384, Wave 2 #25 remainder). SQLite twin
+//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder). SQLite twin
 //! of pg 0088.
 
 use chrono::{DateTime, Utc};

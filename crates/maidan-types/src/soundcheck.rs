@@ -1,11 +1,11 @@
-//! Soundcheck gate pointer (Cluster 384, Wave 2 #25 remainder, G-dev-6).
+//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder, G-dev-6).
 //!
 //! A thread may hold a **Soundcheck pointer** — `{kind: "soundcheck",
 //! status: pass|fail, artifact_sha?}` plus the green/amber/red land
 //! vocabulary. The room stores the pointer; Soundcheck owns `/test`. This
 //! is not a CI product and not a judge panel in the room.
 //!
-//! The FSM close-gate (Cluster 384.2) refuses `closed` unless a **qualifying
+//! The FSM close-gate (Cluster 385.2) refuses `closed` unless a **qualifying
 //! pass** exists: `status = pass`, `land = green`, recorded by a member who
 //! has declared [`SOUNDCHECK_SKILL`], and that member is neither the
 //! thread's owner nor its assignee (the implementer). **Amber** is

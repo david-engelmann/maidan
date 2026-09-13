@@ -1,4 +1,4 @@
-//! Soundcheck gate pointer (Cluster 384, Wave 2 #25 remainder): require
+//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder): require
 //! arms the gate; a pass from a soundcheck-skilled member ≠ the
 //! implementer is green/landable; amber (flags-then-still-engages) and
 //! fail are not a land. Both backends.

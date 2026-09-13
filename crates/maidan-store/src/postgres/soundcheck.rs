@@ -1,4 +1,4 @@
-//! Soundcheck gate pointer (Cluster 384, Wave 2 #25 remainder). One row
+//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder). One row
 //! per thread: presence arms the close-gate; pointer columns stay NULL
 //! until a soundcheck-skilled member records pass/fail + land.
 //! See the SQLite twin.

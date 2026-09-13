@@ -1,4 +1,4 @@
--- Cluster 384 (Wave 2 #25 remainder, G-dev-6): Soundcheck gate pointer.
+-- Cluster 385 (Wave 2 #25 remainder, G-dev-6): Soundcheck gate pointer.
 -- Presence of a row arms the close-gate. Pointer columns are NULL until
 -- Soundcheck records a {kind:"soundcheck", status:pass|fail, artifact_sha?}
 -- plus the green/amber/red land color. The room holds the pointer;

@@ -1,4 +1,4 @@
--- Cluster 384 (Wave 2 #25 remainder, G-dev-6): Soundcheck gate pointer
+-- Cluster 385 (Wave 2 #25 remainder, G-dev-6): Soundcheck gate pointer
 -- (SQLite twin of pg 0088). Presence of a row arms the close-gate.
 CREATE TABLE IF NOT EXISTS maidan_thread_soundcheck (
     thread_id    TEXT PRIMARY KEY REFERENCES maidan_threads(id) ON DELETE CASCADE,
