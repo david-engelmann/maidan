@@ -1,11 +1,13 @@
-//! Cluster 380.2: the egress worker posts inline GitHub review comments.
+//! Cluster 380.2 / 380.3: the egress worker posts inline GitHub review comments.
 //!
 //! After a successful Cluster 379 summary comment, a `reviewed` envelope with
 //! `head_sha` and usable findings becomes `POST /repos/{repo}/pulls/{n}/reviews`
 //! with `commit_id = head_sha` (never the live PR head), `event: COMMENT`,
 //! `side: RIGHT`, and `line`/`start_line` from the 380.1 post-image mapping.
-//! Missing sha, unusable findings, a non-`reviewed` status, Slack, and GitHub
-//! 404/422 skip the review without sinking the summary.
+//! Missing sha, unusable findings, a non-`reviewed` status, Slack, a vanished
+//! envelope, and GitHub 404/422 skip the review without sinking the summary.
+//! A 5xx is left for operator replay (which PATCHes the summary and POSTs
+//! another COMMENT review). Review errors never `disable_link`.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -20,11 +22,13 @@ use maidan_server::{
     slack::{SlackError, SlackSender},
     AppState,
 };
-use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_store::{
+    prelude::*, replay_result_delivery, run_sqlite_migrations, ResultDeliveryReplay,
+};
 use maidan_types::{
     status, EgressSurface, Event, ExternalRef, GithubDiffSide, GithubReviewComment, MemberKind,
-    NewChannel, NewEgressTarget, NewMember, NewThread, NewWorkspace, ThreadId,
-    WAITER_RESULT_SCHEMA,
+    NewChannel, NewEgressOutbox, NewEgressTarget, NewGithubIssueLink, NewMember, NewThread,
+    NewWorkspace, ThreadId, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -337,6 +341,40 @@ fn slack_target() -> Value {
     json!([{ "surface": "slack", "channel": "C0123ABCDEF" }])
 }
 
+fn github_and_slack_targets() -> Value {
+    json!([
+        { "surface": "github", "repo": "beatgig/bgv3", "pr": 3915 },
+        { "surface": "slack", "channel": "C0123ABCDEF" }
+    ])
+}
+
+async fn link_github(h: &Harness) {
+    h.store
+        .link_github_issue(NewGithubIssueLink {
+            repo: "beatgig/bgv3".into(),
+            issue_number: 3915,
+            workspace_id: h.workspace_id,
+            channel_id: h.channel_id,
+            thread_id: h.thread_id,
+            member_id: h.member_id,
+        })
+        .await
+        .unwrap();
+}
+
+async fn github_link_is_enabled(h: &Harness) {
+    let link = h
+        .store
+        .get_github_issue_link("beatgig/bgv3", 3915)
+        .await
+        .unwrap()
+        .expect("projector issue-link");
+    assert!(
+        link.disabled_at.is_none(),
+        "an inline-review error must not disable a projector issue-link"
+    );
+}
+
 fn usable_findings() -> Value {
     json!([
         {
@@ -638,4 +676,240 @@ async fn a_rereview_updates_the_summary_and_posts_a_new_comment_review() {
     assert_eq!(reviews[1].comments[0].line, 9);
     assert_eq!(reviews[1].comments[0].start_line, None);
     assert_eq!(reviews[1].comments[0].side.as_str(), "RIGHT");
+}
+
+#[tokio::test]
+async fn github_and_slack_together_posts_both_and_reviews_only_github() {
+    let h = harness("dual-surface").await;
+    bless_github(&h).await;
+    bless_slack(&h).await;
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_and_slack_targets(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.slack.posts.lock().unwrap().len(), 1, "Slack gets summary");
+    assert_eq!(
+        h.github.posts.lock().unwrap().len(),
+        1,
+        "GitHub gets the 379 summary comment"
+    );
+    {
+        let reviews = h.github.reviews.lock().unwrap();
+        assert_eq!(reviews.len(), 1, "only GitHub creates a review");
+        assert_eq!(reviews[0].commit_id, HEAD_SHA);
+        assert_eq!(reviews[0].comments.len(), 2);
+    }
+    assert!(h.slack.posts.lock().unwrap()[0].1.contains("1 finding"));
+}
+
+#[tokio::test]
+async fn a_review_5xx_leaves_the_summary_delivered_and_replay_posts_the_review() {
+    let h = harness("review-500-replay").await;
+    bless_github(&h).await;
+    link_github(&h).await;
+    *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
+        status: 500,
+        rate_limited: false,
+    });
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert_eq!(
+        h.github.reviews.lock().unwrap().len(),
+        1,
+        "the worker attempted the review (the mock records before failing)"
+    );
+    let first = delivered_row(&h).await;
+    assert_eq!(first.status, status::DELIVERED);
+    assert_eq!(first.external_ref.as_deref(), Some("1"));
+    github_link_is_enabled(&h).await;
+
+    *h.github.fail_review.lock().unwrap() = None;
+    match replay_result_delivery(
+        h.store.as_ref(),
+        h.workspace_id,
+        h.thread_id,
+        first.id,
+        "snapshot".into(),
+    )
+    .await
+    .unwrap()
+    {
+        Some(ResultDeliveryReplay::Enqueued(_)) => {}
+        other => panic!("expected enqueue, got {other:?}"),
+    }
+    sweep(&h).await;
+
+    assert_eq!(
+        h.github.posts.lock().unwrap().len(),
+        1,
+        "replay PATCHes the 379 summary, it does not POST a second issue comment"
+    );
+    assert_eq!(h.github.updates.lock().unwrap().len(), 1);
+    {
+        let reviews = h.github.reviews.lock().unwrap();
+        assert_eq!(
+            reviews.len(),
+            2,
+            "replay POSTs a second COMMENT review on the same head_sha"
+        );
+        assert_eq!(reviews[0].commit_id, HEAD_SHA);
+        assert_eq!(reviews[1].commit_id, HEAD_SHA);
+        assert_eq!(reviews[1].comments[0].side.as_str(), "RIGHT");
+        assert_eq!(reviews[1].comments[0].line, 4);
+    }
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+    github_link_is_enabled(&h).await;
+}
+
+#[tokio::test]
+async fn a_review_403_does_not_disable_a_projector_issue_link() {
+    let h = harness("review-403").await;
+    bless_github(&h).await;
+    link_github(&h).await;
+    *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
+        status: 403,
+        rate_limited: false,
+    });
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+    github_link_is_enabled(&h).await;
+}
+
+#[tokio::test]
+async fn a_rate_limited_review_403_does_not_disable_a_projector_issue_link() {
+    let h = harness("review-rate-limit").await;
+    bless_github(&h).await;
+    link_github(&h).await;
+    *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
+        status: 403,
+        rate_limited: true,
+    });
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert_eq!(h.github.reviews.lock().unwrap().len(), 1);
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+    github_link_is_enabled(&h).await;
+}
+
+#[tokio::test]
+async fn a_vanished_envelope_still_posts_the_summary_and_skips_the_review() {
+    let h = harness("envelope-gone").await;
+    bless_github(&h).await;
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    // Unrecognized schema: the worker rebuilds the summary from the outbox
+    // snapshot, and current_waiter is None so the review is skipped.
+    set_result(&h, &json!({ "schema": "not-a-waiter" })).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert!(
+        h.github.reviews.lock().unwrap().is_empty(),
+        "no live waiter ⇒ no review, even though the outbox snapshot had findings"
+    );
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+}
+
+#[tokio::test]
+async fn a_projector_row_after_findings_never_creates_a_review() {
+    let h = harness("projector-kind-split").await;
+    bless_github(&h).await;
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+    assert_eq!(h.github.reviews.lock().unwrap().len(), 1);
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+
+    h.store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id: h.workspace_id,
+            thread_id: h.thread_id,
+            source_log_id: 99,
+            target: maidan_types::EgressTarget::Github {
+                repo: "beatgig/bgv3".into(),
+                issue_number: 3915,
+            },
+            body: "a projector echo".into(),
+            kind: maidan_types::EgressKind::Projector,
+        })
+        .await
+        .unwrap();
+    sweep(&h).await;
+
+    assert_eq!(
+        h.github.posts.lock().unwrap().len(),
+        2,
+        "the projector posts its own issue comment"
+    );
+    assert_eq!(h.github.posts.lock().unwrap()[1].2, "a projector echo");
+    assert_eq!(
+        h.github.reviews.lock().unwrap().len(),
+        1,
+        "a projector row must not call create_review"
+    );
+    assert!(h.github.updates.lock().unwrap().is_empty());
 }

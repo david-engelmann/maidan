@@ -39,14 +39,18 @@
 //! 401/403/404 dead-letters the delivery without disabling a projector
 //! issue-link.
 //!
-//! **Inline reviews (Cluster 380.2):** after a successful GitHub *summary*
-//! comment, the worker POSTs `POST /repos/{repo}/pulls/{n}/reviews` with
-//! `commit_id = envelope head_sha` (never the live PR head), `event: COMMENT`,
-//! and one inline comment per usable finding (RIGHT, post-image `line_range`).
-//! A missing sha, empty findings, a non-`reviewed` status, Slack, or a GitHub
-//! 404/422 skips the review; that skip never fails the summary. A 5xx on the
-//! review is also a skip — failing the outbox after the summary has already
-//! posted would retry into a second issue comment. Replay re-POSTs a review.
+//! **Inline reviews (Cluster 380.2 / 380.3):** after a successful GitHub
+//! *summary* comment, the worker POSTs `POST /repos/{repo}/pulls/{n}/reviews`
+//! with `commit_id = envelope head_sha` (never the live PR head),
+//! `event: COMMENT`, and one inline comment per usable finding (RIGHT,
+//! post-image `line_range`). A missing sha, empty findings, a non-`reviewed`
+//! status, Slack, a vanished envelope, or a GitHub 404/422 skips the review
+//! (`maidan_github_review_total{skipped}`). A 5xx / rate-limited 403 / 401
+//! records `{failed}` so operator replay retries the review. **Neither class
+//! fails the outbox** — the summary has already posted, and retrying it would
+//! duplicate the issue comment on a first delivery. Review errors never
+//! `disable_link` a projector issue-link. Replay PATCHes the summary and
+//! POSTs another COMMENT review. Projector rows never call `create_review`.
 
 use std::time::Duration;
 
@@ -326,8 +330,9 @@ async fn deliver_github_result_comment(
 /// Never returns an error. The summary comment has already landed; failing
 /// the outbox here would retry into a duplicate issue comment on a first
 /// delivery. 404 (issue is not a PR) and 422 (line not in the diff at
-/// `head_sha`) are skips. A 5xx is logged and left for operator replay,
-/// which PATCHes the summary and POSTs another COMMENT review.
+/// `head_sha`) are metric-skips. A 5xx / rate-limited 403 / 401 is logged
+/// as `failed` and left for operator replay, which PATCHes the summary and
+/// POSTs another COMMENT review. Neither path calls `disable_link`.
 async fn post_result_inline_review(
     state: &AppState,
     sender: &dyn crate::github::GithubSender,
@@ -366,13 +371,20 @@ async fn post_result_inline_review(
             );
         }
         Err(err) => {
-            // 404/422/401/403/5xx: the summary stays. Replay retries the review.
-            crate::metrics::record_github_review("failed");
+            // The summary stays. 404/422 will not recover on replay; 5xx/auth
+            // will. Neither fails the outbox or disables a projector link.
+            let outcome = if err.is_inline_review_skip() {
+                "skipped"
+            } else {
+                "failed"
+            };
+            crate::metrics::record_github_review(outcome);
             tracing::warn!(
                 error = %err,
                 %repo,
                 pull = issue_number,
                 commit_id = %review.commit_id,
+                outcome,
                 "github inline review: not posted; summary comment still delivered"
             );
         }

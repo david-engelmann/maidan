@@ -38,8 +38,11 @@ Inline per-finding PR review comments (Cluster 380) are **in progress**.
 lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
 GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
 `POST /repos/{repo}/pulls/{n}/reviews` after a successful summary comment, with
-those coordinates and `commit_id = head_sha` — never the live PR head. The
-Cluster 379 summary comment path is unchanged.
+those coordinates and `commit_id = head_sha` — never the live PR head. **380.3**
+locks the remaining failure modes: replay after a 5xx review, dual-surface
+envelopes, review errors that must not `disable_link`, a vanished envelope at
+send time, and the projector kind-split. The Cluster 379 summary comment path
+is unchanged.
 
 ---
 
@@ -94,10 +97,20 @@ GitHub mapping for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`:
 `event` is `COMMENT`. Maidan delivers findings; it does not approve or
 request-changes on the producer's behalf. The worker posts the review after a
 successful GitHub summary comment (Cluster 380.2). A missing `head_sha`, no
-usable findings, a non-`reviewed` status, Slack, or a GitHub 404/422 skips
-the review and still delivers the summary. Each result POSTs a new COMMENT
-review (a re-review on a new `head_sha` lands on that commit); the 379
-summary comment is the object that updates in place.
+usable findings, a non-`reviewed` status, Slack-only `deliver_to`, a vanished
+envelope at send time, or a GitHub **404/422** skips the review and still
+delivers the summary (`maidan_github_review_total{skipped}`). A GitHub **5xx**,
+rate-limited **403**, or revoked-token **401/403** also leaves the summary
+delivered (`{failed}`) — failing the outbox after the comment has posted would
+duplicate it on retry. Operator **replay** PATCHes the summary and POSTs another
+COMMENT review on the current envelope `head_sha` (the recovery path for a
+transient review failure). Review errors **never** disable a projector
+issue-link. Dual-surface envelopes (GitHub + Slack) post both summaries; only
+GitHub creates a review. Projector rows aimed at the same issue never call
+`create_review`.
+
+Each result POSTs a new COMMENT review (a re-review on a new `head_sha` lands
+on that commit); the 379 summary comment is the object that updates in place.
 
 ---
 

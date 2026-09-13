@@ -500,3 +500,59 @@ async fn github_client_maps_a_create_review_404_to_not_found() {
         .unwrap_err();
     assert!(err.is_not_found(), "got {err:?}");
 }
+
+#[tokio::test]
+async fn github_client_maps_a_create_review_500_to_a_transient_api_error() {
+    let (base, _rec) = spawn(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        json!({ "message": "GitHub is down" }),
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
+        .await
+        .unwrap_err();
+    match &err {
+        GithubError::Api {
+            status,
+            rate_limited,
+        } => {
+            assert_eq!(*status, 500);
+            assert!(!*rate_limited);
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+    assert!(!err.is_misconfiguration(), "a 500 must not disable a link");
+    assert!(
+        !err.is_inline_review_skip(),
+        "a 500 is replay-recoverable, not a skip"
+    );
+}
+
+#[tokio::test]
+async fn github_client_does_not_treat_a_rate_limited_create_review_403_as_a_misconfiguration() {
+    let (base, _rec) = spawn_with_headers(
+        StatusCode::FORBIDDEN,
+        json!({ "message": "API rate limit exceeded" }),
+        &[("x-ratelimit-remaining", "0")],
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let err = client
+        .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
+        .await
+        .unwrap_err();
+    match &err {
+        GithubError::Api {
+            status,
+            rate_limited,
+        } => {
+            assert_eq!(*status, 403);
+            assert!(*rate_limited);
+        }
+        other => panic!("expected Api error, got {other:?}"),
+    }
+    assert!(!err.is_misconfiguration());
+    assert!(!err.is_inline_review_skip());
+}
