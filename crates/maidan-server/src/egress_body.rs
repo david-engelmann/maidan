@@ -30,6 +30,21 @@
 /// GitHub's hard ceiling on an issue/PR comment body, in characters.
 pub const GITHUB_BODY_MAX_CHARS: usize = 65536;
 
+/// Hidden HTML comment at byte 0 of a result-delivery GitHub body (Cluster 379.4).
+/// The recovery path if the stored `external_ref` is lost: list the issue's
+/// comments and PATCH the one whose body starts with this marker. Matches the
+/// soundcheck renderer bytes.
+pub fn result_delivery_marker(thread_id: maidan_types::ThreadId) -> String {
+    format!("<!-- maidan:result:{thread_id} -->")
+}
+
+/// Whether `body` is a Maidan result comment for `thread_id`. The marker lives
+/// at **byte 0** — a later copy of the same HTML comment in the prose is not
+/// this comment.
+pub fn comment_carries_result_marker(body: &str, thread_id: maidan_types::ThreadId) -> bool {
+    body.starts_with(&result_delivery_marker(thread_id))
+}
+
 /// What a truncated body says where the rest used to be.
 const TRUNCATION_NOTICE: &str = "\n\n_…truncated by Maidan._";
 
@@ -400,6 +415,25 @@ pub fn github_comment_body(rendered: &str, backlink: Option<&str>) -> String {
     truncate_with_tail(&safe, GITHUB_BODY_MAX_CHARS, tail.as_deref())
 }
 
+/// A result-delivery GitHub comment: the recovery marker at byte 0, then the
+/// same body [`github_comment_body`] would have produced, truncated so the
+/// *whole* comment (marker included) still fits GitHub's ceiling. Prepending
+/// the marker after truncating to 65536 would make GitHub reject the comment.
+pub fn github_result_comment_body(
+    thread_id: maidan_types::ThreadId,
+    rendered: &str,
+    backlink: Option<&str>,
+) -> String {
+    let prefix = format!("{}\n", result_delivery_marker(thread_id));
+    let budget = GITHUB_BODY_MAX_CHARS.saturating_sub(prefix.chars().count());
+    let safe = neutralize_github_mentions(rendered);
+    let tail = backlink.map(|url| format!("\n\n[View in the producer]({url})"));
+    format!(
+        "{prefix}{}",
+        truncate_with_tail(&safe, budget, tail.as_deref())
+    )
+}
+
 /// The body for a Slack message: the one-line `summary`, a compact digest, and
 /// the link — **never** `rendered`, which is GFM and would arrive visibly broken.
 /// Mentions are defused and the prose is projected onto mrkdwn.
@@ -587,6 +621,33 @@ mod tests {
         );
         assert!(out.chars().count() <= GITHUB_BODY_MAX_CHARS);
         assert!(out.contains("https://p.test"), "the link survives");
+    }
+
+    #[test]
+    fn a_result_github_body_has_the_marker_at_byte_zero_and_still_fits() {
+        let tid = maidan_types::ThreadId::new();
+        let marker = result_delivery_marker(tid);
+        let out = github_result_comment_body(
+            tid,
+            &"x".repeat(GITHUB_BODY_MAX_CHARS * 2),
+            Some("https://p.test"),
+        );
+        assert!(
+            out.as_bytes().starts_with(marker.as_bytes()),
+            "the recovery marker must be at byte 0, not after truncation: {out:.80}"
+        );
+        assert!(comment_carries_result_marker(&out, tid));
+        assert!(out.chars().count() <= GITHUB_BODY_MAX_CHARS);
+        assert!(
+            out.contains("https://p.test"),
+            "the backlink survives the reserved marker"
+        );
+        // A different thread's marker is not this comment — recovery must not
+        // PATCH someone else's result.
+        assert!(!comment_carries_result_marker(
+            &out,
+            maidan_types::ThreadId::new()
+        ));
     }
 
     #[test]

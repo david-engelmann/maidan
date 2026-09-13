@@ -7,7 +7,7 @@ use sqlx::{PgPool, Row};
 
 use crate::StoreError;
 use maidan_types::{
-    DeadEgress, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
+    DeadEgress, EgressKind, EgressOutbox, EgressOutboxId, NewEgressOutbox, ThreadId, WorkspaceId,
 };
 
 /// Enqueue a delivery: `pending`, due now. Returns `None` when an identical
@@ -21,9 +21,9 @@ pub async fn enqueue(
     let id = EgressOutboxId::new();
     let row = sqlx::query(
         "INSERT INTO maidan_egress_outbox
-           (id, workspace_id, thread_id, source_log_id, surface, selector, body,
+           (id, workspace_id, thread_id, source_log_id, surface, selector, body, kind,
             status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 0, now(), now(), now())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, now(), now(), now())
          ON CONFLICT (source_log_id, surface, selector) DO NOTHING
          RETURNING id",
     )
@@ -34,6 +34,7 @@ pub async fn enqueue(
     .bind(new.target.surface().as_str())
     .bind(new.target.selector())
     .bind(&new.body)
+    .bind(new.kind.as_str())
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| EgressOutboxId(r.get("id"))))
@@ -62,7 +63,7 @@ pub async fn claim_next_due(
              updated_at = now()
          FROM due
          WHERE e.id = due.id
-         RETURNING e.id, e.workspace_id, e.thread_id, e.surface, e.selector, e.body, e.attempts",
+         RETURNING e.id, e.workspace_id, e.thread_id, e.surface, e.selector, e.body, e.attempts, e.kind",
     )
     .bind(now)
     .bind(lease_secs as f64)
@@ -178,5 +179,6 @@ fn row_to_egress(row: &sqlx::postgres::PgRow) -> EgressOutbox {
         selector: row.get("selector"),
         body: row.get("body"),
         attempts: row.get("attempts"),
+        kind: EgressKind::parse(&row.get::<String, _>("kind")),
     }
 }
