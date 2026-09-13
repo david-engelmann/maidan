@@ -84,6 +84,10 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
         .route(
+            "/workspaces/:id/results",
+            get(routes::list_workspace_results),
+        )
+        .route(
             "/workspaces/:id/legal-hold",
             axum::routing::put(routes::place_legal_hold)
                 .delete(routes::lift_legal_hold)

@@ -870,6 +870,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/workspaces/{id}/results",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/workspaces/{id}/legal-hold",
     "capability": "token:admin",

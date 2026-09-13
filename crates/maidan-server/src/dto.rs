@@ -713,6 +713,17 @@ pub struct DecisionsQuery {
     pub limit: Option<i64>,
 }
 
+/// Query params for `GET /workspaces/:id/results` (Cluster 381.2).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListThreadResultsQuery {
+    /// Exact-match facet on the namespaced `result_kind` string (e.g.
+    /// `pi.review.result/1`). Absent = every non-tombstoned result in the
+    /// workspace. Not a closed enum.
+    pub result_kind: Option<String>,
+    /// Max results to return (default 50, clamp 1..=500).
+    pub limit: Option<i64>,
+}
+
 /// Query params for workspace import (Cluster 270).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ImportQuery {
