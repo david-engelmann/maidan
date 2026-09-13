@@ -541,6 +541,23 @@ Authorization: Bearer {token}
 
 Requires `search:query`. Semantic mode needs embedding provider configuration ([Production.md](Production.md#environment)).
 
+### Thread-result `result_kind` facet
+
+Thread results are listed separately from message search:
+
+```http
+GET /workspaces/{workspace_id}/results?result_kind=pi.review.result/1
+Authorization: Bearer {token}
+```
+
+Requires `workspace:read`. The facet is the **namespaced string** a producer
+publishes on the result payload (e.g. `pi.review.result/1` inside
+`schema = "pi.waiter.result/1"`), not a closed enum and not the ADR convention
+`"kind": "decision"` below. Omit `result_kind` to list every non-tombstoned
+result the caller can access (private-channel rows they cannot read are
+dropped). `limit` defaults to 50 (clamp 1–500). MCP twin: `list_thread_results`.
+See [Result Delivery](Result%20Delivery.md#discoverability).
+
 ---
 
 ## Browser UI (`/ui/`)
@@ -597,7 +614,10 @@ ADR shape, so any agent reads it the same way:
 `status` is one of `proposed` / `accepted` / `rejected` / `superseded`. The decision lives on
 its own thread (title = the question); the thread's FSM state tracks progress, the result
 holds the record. Nothing here is a new server type — it is a JSON convention over the
-Cluster 235 `thread_results` store.
+Cluster 235 `thread_results` store. The server facet for listing results is
+`result_kind` (the namespaced string above), not this convention's `"kind"`
+field — a payload that only has `"kind": "decision"` will not match
+`?result_kind=decision`.
 
 ### Supersession
 
