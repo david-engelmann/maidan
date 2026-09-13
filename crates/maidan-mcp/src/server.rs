@@ -4580,6 +4580,156 @@ mod tests {
         assert_eq!(reviews.as_array().unwrap().len(), 1);
     }
 
+    #[tokio::test]
+    async fn critical_result_tool_blocks_close_until_a_human_approves() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_fsm::ThreadAction;
+        use maidan_types::{NewThread, PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rv".into() })
+            .await
+            .unwrap();
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let assignee = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "assignee".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let reviewer = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "pi".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let human = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "human".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_owner(thread.id, Some(owner.id))
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, assignee.id).await.unwrap();
+        store
+            .add_member_skill(reviewer.id, REVIEW_SKILL)
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let caps = vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()];
+        let rev = AuthContext::from_session(reviewer.id, ws.id, caps.clone());
+        let human_auth = AuthContext::from_session(human.id, ws.id, caps);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let tid = json!(thread.id.0);
+
+        server
+            .call_tool(
+                &rev,
+                "set_thread_result",
+                &json!({
+                    "thread_id": tid,
+                    "result": {
+                        "schema": WAITER_RESULT_SCHEMA,
+                        "result_kind": PI_REVIEW_RESULT_KIND,
+                        "status": "reviewed",
+                        "findings": [{ "severity": "critical" }],
+                    }
+                }),
+            )
+            .await
+            .unwrap();
+        let status = content(
+            server
+                .call_tool(&rev, "get_review_status", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(status["required_count"], 1);
+        assert_eq!(status["approvals_met"], json!(false));
+
+        store
+            .transition_thread(thread.id, owner.id, ThreadAction::StartReview)
+            .await
+            .unwrap();
+        let blocked = store
+            .transition_thread(thread.id, owner.id, ThreadAction::Close)
+            .await;
+        assert!(
+            matches!(blocked, Err(maidan_store::StoreError::Conflict(ref m)) if m.contains("review requirement")),
+            "MCP-set critical result must block close, got {blocked:?}"
+        );
+
+        server
+            .call_tool(
+                &human_auth,
+                "submit_review",
+                &json!({ "thread_id": tid, "decision": "approve" }),
+            )
+            .await
+            .unwrap();
+        let closed = store
+            .transition_thread(thread.id, owner.id, ThreadAction::Close)
+            .await
+            .expect("human approve unblocks");
+        assert_eq!(closed.to_state.as_str(), "closed");
+    }
+
     /// Cluster 376.6: a post the `max_tools` axis refuses comes back as a client
     /// error AND is recorded as `ThreadSpawnDenied` naming the author.
     #[tokio::test]
