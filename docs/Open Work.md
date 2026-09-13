@@ -411,14 +411,15 @@ not become a CI product. It delivers trusted bytes to blessed surfaces, durably,
   **Note back to the pi side: the grammar is frozen at `pi.waiter.result/1`.** Additive fields are
   free; a meaning change needs a new `schema` value. **Deferred:** a `/ui` deliveries panel; recovering
   a lost Slack `ts` without re-posting.
-- **Cluster 380 — inline per-finding PR review comments. Unparked; 380.1 on `main` (#803); 380.2 in flight.**
+- **Cluster 380 — inline per-finding PR review comments. Unparked; 380.1 on `main` (#803); 380.2 in flight (#805); 380.3 remaining e2e/hardening stacked.**
   `POST /repos/{repo}/pulls/{n}/reviews` with `comments[{path, line, side, body}]`,
   anchored to envelope `head_sha` as `commit_id` — **never** the live PR head.
   **`line_range` frame (pinned 380.1):** file-absolute **post-image** lines at
   `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. `parse_waiter_result` reads
   `head_sha` + usable `findings`. **380.2** posts the review after the 379
-  summary comment; **380.3** tests/e2e; **380.4** docs/retro. Cluster 379's
-  summary comment path is unchanged.
+  summary comment; **380.3** locks skip vs fail (404/422 skip; 5xx/auth fail +
+  replay), dual-surface, `disable_link`, vanished-envelope, projector kind-split;
+  **380.4** docs/retro. Cluster 379's summary comment path is unchanged.
 - **Cluster 381 — `result_kind` facet + the pinned spec** *(remaining half of row #24; the pack half shipped as Cluster 382)*. Facet on the **namespaced
   string** (see the correction on #24). Keep [Result Delivery](Result%20Delivery.md) in step, and register
   the envelope in the Wave 3 #30 schema pack.

@@ -273,6 +273,16 @@ impl GithubError {
     pub fn is_unprocessable(&self) -> bool {
         matches!(self, Self::Api { status: 422, .. })
     }
+
+    /// Cluster 380.3: a 404 (the issue is not a pull) or 422 (the line is
+    /// not in the diff at `commit_id`) will not succeed on replay either, so
+    /// the worker records `maidan_github_review_total{skipped}` rather than
+    /// `failed`. A 5xx, rate-limited 403, or revoked-token 401/403 stays
+    /// `failed` so an operator replay retries the review after the surface
+    /// recovers. Neither class fails the 379 summary or calls `disable_link`.
+    pub fn is_inline_review_skip(&self) -> bool {
+        self.is_not_found() || self.is_unprocessable()
+    }
 }
 
 /// GitHub accepts at most this many entries in `comments[]` on one
@@ -748,5 +758,19 @@ mod tests {
         // operator's re-link to undo, so the headers, not the status, decide.
         assert!(!api(403, true).is_misconfiguration());
         assert!(api(403, false).is_misconfiguration());
+    }
+
+    #[test]
+    fn a_404_or_422_on_create_review_is_an_inline_skip() {
+        assert!(api(404, false).is_inline_review_skip());
+        assert!(api(422, false).is_inline_review_skip());
+        for status in [401, 403, 429, 500, 502, 503] {
+            assert!(
+                !api(status, false).is_inline_review_skip(),
+                "{status} is replay-recoverable, not a skip"
+            );
+        }
+        assert!(!api(403, true).is_inline_review_skip());
+        assert!(!GithubError::Http("connection reset".into()).is_inline_review_skip());
     }
 }

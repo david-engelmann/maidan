@@ -21,11 +21,12 @@
 //! recovering a GitHub comment through the hidden body marker if the handle
 //! is lost.
 //!
-//! Cluster 380.2: after a successful GitHub summary comment, the worker POSTs
-//! a `COMMENT` review whose `commit_id` is envelope `head_sha` and whose
-//! inline comments are the usable findings (RIGHT, post-image `line_range`).
-//! A missing sha, empty findings, a non-`reviewed` status, or a GitHub 404/422
-//! skips the review; the summary path is unchanged.
+//! Cluster 380.2 / 380.3: after a successful GitHub summary comment, the
+//! worker POSTs a `COMMENT` review whose `commit_id` is envelope `head_sha`
+//! and whose inline comments are the usable findings (RIGHT, post-image
+//! `line_range`). A missing sha, empty findings, a non-`reviewed` status, a
+//! vanished envelope, or a GitHub 404/422 skips the review; a 5xx is left
+//! for operator replay. The 379 summary path is unchanged.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
