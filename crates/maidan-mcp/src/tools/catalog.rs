@@ -1662,7 +1662,8 @@ pub fn catalog() -> Vec<Value> {
                     "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary (grounding); omitted when empty. Set false for a token-tight pack."},
                     "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."},
                     "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."},
-                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack."}
+                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack."},
+                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. pi.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack."}
                 },
                 "required": ["thread_id"]
             }
@@ -1680,7 +1681,8 @@ pub fn catalog() -> Vec<Value> {
                     "include_glossary": {"type": "boolean", "default": true},
                     "as_of": {"type": "integer", "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack."},
                     "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens before freezing (see get_thread_context)."},
-                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "Attach parent grounding before freezing (see get_thread_context)."}
+                    "include_parent_grounding": {"type": "boolean", "default": true, "description": "Attach parent grounding before freezing (see get_thread_context)."},
+                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted decisions before freezing (see get_thread_context)."}
                 },
                 "required": ["thread_id"]
             }

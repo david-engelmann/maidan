@@ -33,6 +33,7 @@ tokio.workspace = true
 sqlx.workspace = true
 tempfile = "3"
 proptest = "1"
+maidan-fsm = { path = "../maidan-fsm" }
 
 [[bin]]
 name = "gen-mcp-reference"

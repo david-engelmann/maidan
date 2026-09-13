@@ -125,6 +125,11 @@ struct ThreadContextArgs {
     /// absent for root threads and withheld for a cross-channel or DM parent.
     #[serde(default = "default_true")]
     include_parent_grounding: bool,
+    /// Attach in-channel accepted/closed decisions (Cluster 382). Default
+    /// `true` on a live single-thread pack; a workspace-context build sets this
+    /// `false` on nested threads. Withheld on DM channels.
+    #[serde(default = "default_true")]
+    include_accepted_decisions: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +197,23 @@ async fn build_parent_grounding(
         opening_message,
         latest_result,
     )
+}
+
+/// In-channel accepted decisions for a live MCP pack (Cluster 382) — twin of the
+/// REST assembler's `build_accepted_decisions`. Skipped on DM: `__dm__` is shared
+/// across unrelated conversations.
+async fn build_accepted_decisions(
+    store: &dyn Store,
+    thread: &Thread,
+    channel: &Channel,
+) -> Result<Vec<AcceptedDecision>, McpError> {
+    if channel.name == DM_CHANNEL_NAME {
+        return Ok(Vec::new());
+    }
+    let rows = store
+        .list_channel_closed_results(channel.id, Some(thread.id), ACCEPTED_DECISIONS_LIMIT)
+        .await?;
+    Ok(assemble_accepted_decisions(rows))
 }
 
 fn default_message_limit() -> i64 {
@@ -265,6 +287,12 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     if a.include_parent_grounding {
         if let Some(grounding) = build_parent_grounding(store, &thread, &channel).await {
             out["parent_grounding"] = serde_json::to_value(&grounding)?;
+        }
+    }
+    if a.include_accepted_decisions {
+        let decisions = build_accepted_decisions(store, &thread, &channel).await?;
+        if !decisions.is_empty() {
+            out["accepted_decisions"] = serde_json::to_value(&decisions)?;
         }
     }
     // The glossary grounds the pack in the workspace's shared vocabulary (Cluster
@@ -409,6 +437,7 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
                 "token_budget": a.token_budget,
                 // Grounding is the focused single-thread view, not the firehose.
                 "include_parent_grounding": false,
+                "include_accepted_decisions": false,
             }),
         )
         .await?;
@@ -973,5 +1002,204 @@ mod tests {
             .await
             .unwrap();
         assert!(root.get("parent_grounding").is_none());
+    }
+
+    #[tokio::test]
+    async fn thread_pack_lists_in_channel_accepted_decisions() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "d".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "a".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "tasks".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+
+        async fn close(store: &dyn Store, id: ThreadId, actor: MemberId) {
+            store
+                .transition_thread(id, actor, maidan_fsm::ThreadAction::StartReview)
+                .await
+                .unwrap();
+            store
+                .transition_thread(id, actor, maidan_fsm::ThreadAction::Close)
+                .await
+                .unwrap();
+        }
+
+        let opaque = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("opaque decision".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(opaque.id, member.id, &json!({"decision": "use postgres"}))
+            .await
+            .unwrap();
+        close(store.as_ref(), opaque.id, member.id).await;
+
+        let failed = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("failed waiter".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(
+                failed.id,
+                member.id,
+                &json!({
+                    "schema": WAITER_RESULT_SCHEMA,
+                    "result_kind": "pi.review.result/1",
+                    "status": "failed",
+                    "summary": "tests red",
+                }),
+            )
+            .await
+            .unwrap();
+        close(store.as_ref(), failed.id, member.id).await;
+
+        let reviewed = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("reviewed waiter".into()),
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_result(
+                reviewed.id,
+                member.id,
+                &json!({
+                    "schema": WAITER_RESULT_SCHEMA,
+                    "result_kind": "pi.review.result/1",
+                    "status": STATUS_REVIEWED,
+                    "summary": "lgtm",
+                    "rendered": "# must not inline",
+                }),
+            )
+            .await
+            .unwrap();
+        close(store.as_ref(), reviewed.id, member.id).await;
+
+        let claimer = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("claimer task".into()),
+            })
+            .await
+            .unwrap();
+
+        let ctx = get_thread_context(store.as_ref(), &json!({ "thread_id": claimer.id.0 }))
+            .await
+            .unwrap();
+        let decisions = ctx["accepted_decisions"]
+            .as_array()
+            .expect("accepted_decisions present by default");
+        let titles: Vec<&str> = decisions
+            .iter()
+            .filter_map(|d| d["title"].as_str())
+            .collect();
+        assert!(titles.contains(&"opaque decision"));
+        assert!(titles.contains(&"reviewed waiter"));
+        assert!(!titles.contains(&"failed waiter"));
+        let reviewed_row = decisions
+            .iter()
+            .find(|d| d["title"] == "reviewed waiter")
+            .unwrap();
+        assert_eq!(reviewed_row["result_kind"], "pi.review.result/1");
+        assert_eq!(reviewed_row["status"], STATUS_REVIEWED);
+        assert_eq!(reviewed_row["summary"], "lgtm");
+        assert!(reviewed_row.get("result").is_none());
+        assert!(reviewed_row.get("rendered").is_none());
+
+        let off = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": claimer.id.0, "include_accepted_decisions": false }),
+        )
+        .await
+        .unwrap();
+        assert!(off.get("accepted_decisions").is_none());
+
+        let wctx = get_workspace_context(store.as_ref(), &json!({ "workspace_id": ws.id.0 }))
+            .await
+            .unwrap();
+        for t in wctx["threads"].as_array().unwrap() {
+            assert!(t.get("accepted_decisions").is_none());
+        }
+
+        let bob = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "b".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let carol = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "c".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let dm_closed = store
+            .open_dm_conversation(ws.id, member.id, bob.id)
+            .await
+            .unwrap();
+        store
+            .set_thread_result(
+                dm_closed.thread_id,
+                member.id,
+                &json!({"decision": "secret"}),
+            )
+            .await
+            .unwrap();
+        close(store.as_ref(), dm_closed.thread_id, member.id).await;
+        let dm_other = store
+            .open_dm_conversation(ws.id, member.id, carol.id)
+            .await
+            .unwrap();
+        let dm_pack = get_thread_context(
+            store.as_ref(),
+            &json!({ "thread_id": dm_other.thread_id.0 }),
+        )
+        .await
+        .unwrap();
+        assert!(dm_pack.get("accepted_decisions").is_none());
     }
 }

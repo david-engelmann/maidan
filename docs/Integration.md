@@ -262,7 +262,7 @@ The context pack is more than a message dump — these knobs and surfaces are wh
 | **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
 | **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = pi.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
 
-MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, and `as_of`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
+MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, `as_of`, `include_parent_grounding`, and `include_accepted_decisions`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
 
 ### A2A tasks
 
