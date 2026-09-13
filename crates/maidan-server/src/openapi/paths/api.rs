@@ -1090,6 +1090,33 @@ pub fn list_reviews() {}
     responses((status = 200, body = ReviewStatus)))]
 pub fn get_review_status() {}
 
+// --- soundcheck gate pointer (Cluster 385) ---
+
+#[utoipa::path(put, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = SetSoundcheck,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SoundcheckStanding)))]
+pub fn set_soundcheck() {}
+
+#[utoipa::path(get, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SoundcheckStanding)))]
+pub fn get_soundcheck() {}
+
+#[utoipa::path(delete, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 204)))]
+pub fn clear_soundcheck() {}
+
+#[utoipa::path(put, path = "/threads/{id}/soundcheck/requirement", tag = "soundcheck",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = SoundcheckStanding)))]
+pub fn require_soundcheck() {}
+
 // --- spawn budget (Cluster 376) ---
 
 #[utoipa::path(put, path = "/workspaces/{id}/spawn-budget", tag = "workspaces",

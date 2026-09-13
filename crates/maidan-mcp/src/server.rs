@@ -4762,6 +4762,144 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn soundcheck_tools_require_set_get_and_clear() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::{NewThread, SOUNDCHECK_SKILL};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sc".into() })
+            .await
+            .unwrap();
+        let owner = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "owner".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let checker = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "soundcheck".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        store
+            .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_thread_owner(thread.id, Some(owner.id))
+            .await
+            .unwrap();
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let caps = vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()];
+        let op = AuthContext::from_session(owner.id, ws.id, caps.clone());
+        let sc = AuthContext::from_session(checker.id, ws.id, caps);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let tid = json!(thread.id.0);
+
+        let pending = content(
+            server
+                .call_tool(&op, "require_soundcheck", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(pending["required"], json!(true));
+        assert_eq!(pending["landable"], json!(false));
+        assert_eq!(pending["land"], "red");
+
+        let amber = content(
+            server
+                .call_tool(
+                    &sc,
+                    "set_soundcheck",
+                    &json!({
+                        "thread_id": tid,
+                        "status": "pass",
+                        "land": "amber",
+                        "artifact_sha": "abc"
+                    }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(amber["land"], "amber");
+        assert_eq!(amber["landable"], json!(false));
+        assert_eq!(amber["pointer"]["kind"], "soundcheck");
+        assert_eq!(amber["pointer"]["artifact_sha"], "abc");
+
+        let green = content(
+            server
+                .call_tool(
+                    &sc,
+                    "set_soundcheck",
+                    &json!({ "thread_id": tid, "status": "pass" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(green["land"], "green");
+        assert_eq!(green["landable"], json!(true));
+
+        let got = content(
+            server
+                .call_tool(&op, "get_soundcheck", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["landable"], json!(true));
+
+        let cleared = content(
+            server
+                .call_tool(&op, "clear_soundcheck", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(cleared["cleared"], json!(true));
+    }
+
+    #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{NewThread, PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA};

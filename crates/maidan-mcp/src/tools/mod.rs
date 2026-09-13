@@ -38,6 +38,7 @@ mod seed;
 mod skill;
 mod snapshot;
 mod social;
+mod soundcheck;
 mod spawn;
 mod thread;
 mod whoami;
@@ -145,6 +146,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_memory_block"
         | "get_review_status"
         | "list_reviews"
+        | "get_soundcheck"
         | "whoami" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
@@ -213,7 +215,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "add_reviewer"
         | "submit_review"
         | "set_thread_steer"
-        | "transition_thread" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "transition_thread"
+        | "set_soundcheck"
+        | "require_soundcheck"
+        | "clear_soundcheck" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -313,6 +318,10 @@ async fn enforce_channel_access(
         | "get_review_status"
         | "list_reviews"
         | "transition_thread"
+        | "set_soundcheck"
+        | "get_soundcheck"
+        | "require_soundcheck"
+        | "clear_soundcheck"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -476,6 +485,10 @@ pub async fn dispatch(
         "submit_review" => review::submit_review(store, auth, args).await,
         "get_review_status" => review::get_review_status(store, args).await,
         "list_reviews" => review::list_reviews(store, args).await,
+        "set_soundcheck" => soundcheck::set_soundcheck(store, auth, args).await,
+        "get_soundcheck" => soundcheck::get_soundcheck(store, args).await,
+        "require_soundcheck" => soundcheck::require_soundcheck(store, args).await,
+        "clear_soundcheck" => soundcheck::clear_soundcheck(store, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,

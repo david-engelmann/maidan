@@ -562,6 +562,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/review-status", get(routes::get_review_status))
         .route(
+            "/threads/:id/soundcheck",
+            put(routes::set_soundcheck)
+                .get(routes::get_soundcheck)
+                .delete(routes::clear_soundcheck),
+        )
+        .route(
+            "/threads/:id/soundcheck/requirement",
+            put(routes::require_soundcheck),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

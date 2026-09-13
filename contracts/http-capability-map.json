@@ -1459,6 +1459,30 @@
   },
   {
     "method": "PUT",
+    "path": "/threads/{id}/soundcheck",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/soundcheck",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/soundcheck",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/threads/{id}/soundcheck/requirement",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
     "path": "/workspaces/{id}/spawn-budget",
     "capability": "workspace:write",
     "surface": "http"

@@ -970,6 +970,53 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_soundcheck",
+            "description": "Record a Soundcheck gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; Soundcheck owns test execution. A qualifying green pass (soundcheck-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the soundcheck skill.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "status": {"type": "string", "enum": ["pass", "fail"]},
+                    "artifact_sha": {"type": "string"},
+                    "land": {"type": "string", "enum": ["green", "amber", "red"]}
+                },
+                "required": ["thread_id", "status"]
+            }
+        }),
+        json!({
+            "name": "get_soundcheck",
+            "description": "Read a thread's Soundcheck standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "require_soundcheck",
+            "description": "Arm the Soundcheck close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "clear_soundcheck",
+            "description": "Clear a thread's Soundcheck pointer and requirement. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
             "inputSchema": {
