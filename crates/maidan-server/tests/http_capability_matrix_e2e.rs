@@ -459,6 +459,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/steer" && method == "PUT" {
         return b.json(&json!({ "steer": "focus on the failing test first" }));
     }
+    if path == "/threads/{id}/lineage" && method == "PUT" {
+        return b.json(&json!({ "parent_run_id": "aa4dc966-0e09-44c3-b7a5-2d048b48b301" }));
+    }
     if path == "/approval-gates/{id}/answer" && method == "POST" {
         return b.json(&json!({ "request_state": "x", "action": "accept" }));
     }

@@ -173,6 +173,67 @@ pub async fn list_workspace_results(
     Ok(Json(visible))
 }
 
+/// Threads in this workspace that share a producer `parent_run_id`
+/// (Cluster 387.2). `workspace:read`; private-channel rows the caller cannot
+/// access are dropped. F7 mute is not consulted.
+pub async fn list_run_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<RunLineageQuery>,
+) -> ApiResult<Json<Vec<Thread>>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let parent_run_id = normalize_parent_run_id(&q.parent_run_id).ok_or_else(|| {
+        ApiError::BadRequest(
+            "parent_run_id must be a non-empty producer run id (max 256 bytes)".into(),
+        )
+    })?;
+    let threads = state
+        .store
+        .list_threads_for_run(workspace_id, parent_run_id)
+        .await?;
+    if auth.bypass {
+        return Ok(Json(threads));
+    }
+    let mut visible = Vec::with_capacity(threads.len());
+    for thread in threads {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
+            visible.push(thread);
+        }
+    }
+    Ok(Json(visible))
+}
+
+/// Nested occupancy for a producer run (Cluster 387.2): queued / claimed /
+/// working / blocked across every **open** thread that shares `parent_run_id`.
+/// `workspace:read`. F7 mute stays orthogonal (a muted nested thread still
+/// counts). Empty / unknown run → zeros, not 404.
+pub async fn get_run_occupancy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<RunLineageQuery>,
+) -> ApiResult<Json<RunOccupancy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let parent_run_id = normalize_parent_run_id(&q.parent_run_id).ok_or_else(|| {
+        ApiError::BadRequest(
+            "parent_run_id must be a non-empty producer run id (max 256 bytes)".into(),
+        )
+    })?;
+    Ok(Json(
+        state
+            .store
+            .run_occupancy(workspace_id, parent_run_id)
+            .await?,
+    ))
+}
+
 /// `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11) — set or clear the
 /// workspace's WIP limit (max concurrent live claims per member). `{limit: n}`
 /// caps (0 freezes); `{limit: null}` removes the cap. `workspace:write`.

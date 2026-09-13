@@ -316,6 +316,17 @@ pub async fn set_thread_result(
             "critical review adapter failed; result is stored"
         );
     }
+    // Cluster 387.2: home the producer's `run_id` as `parent_run_id` when
+    // present. Best-effort — a lineage hiccup must not undo a stored result.
+    if let Some(run_id) = run_id_from_payload(&body.result) {
+        if let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await {
+            tracing::warn!(
+                error = %err,
+                %thread_id,
+                "lineage home from result failed; result is stored"
+            );
+        }
+    }
     super::publish(
         &state,
         Event::ThreadResultSet {
@@ -444,6 +455,59 @@ pub async fn get_thread_steer(
     match state.store.get_thread_steer(thread_id).await? {
         Some(steer) => Ok(Json(steer)),
         None => Err(ApiError::NotFound),
+    }
+}
+
+/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387.2).
+/// `thread:transition` + thread access — lineage is task metadata. Empty /
+/// whitespace / over-long → 400. The value is the producer's string, not a
+/// minted id.
+pub async fn set_thread_lineage(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetThreadLineage>,
+) -> ApiResult<Json<ThreadLineage>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let lineage = state
+        .store
+        .set_thread_lineage(thread_id, &body.parent_run_id)
+        .await?;
+    Ok(Json(lineage))
+}
+
+/// A thread's run lineage, or `404` until one is set (Cluster 387.2).
+/// `workspace:read` + thread access.
+pub async fn get_thread_lineage(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<ThreadLineage>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_lineage(thread_id).await? {
+        Some(lineage) => Ok(Json(lineage)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
+/// Clear a thread's run lineage (Cluster 387.2). `thread:transition` + thread
+/// access. `204` when a row existed; `404` when none.
+pub async fn clear_thread_lineage(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state.store.clear_thread_lineage(thread_id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
     }
 }
 
