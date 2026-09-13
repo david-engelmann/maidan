@@ -151,7 +151,7 @@ pub async fn clear(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, Store
     Ok(done.rows_affected() > 0)
 }
 
-/// Cluster 384.2: refuse `closed` when a Soundcheck row exists and is not a
+/// Cluster 385.2: refuse `closed` when a Soundcheck row exists and is not a
 /// qualifying green pass. SQLite twin of the Postgres gate.
 pub async fn gate_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,

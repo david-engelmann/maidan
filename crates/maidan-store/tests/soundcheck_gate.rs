@@ -1,4 +1,4 @@
-//! Soundcheck close-gate (Cluster 384.2, Wave 2 #25): a `closed` transition
+//! Soundcheck close-gate (Cluster 385.2, Wave 2 #25): a `closed` transition
 //! is refused until a qualifying green pass exists when the gate is armed.
 //! Amber (flags-then-still-engages) is not a land. No row is additive.
 //! Both backends.

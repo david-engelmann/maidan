@@ -143,7 +143,7 @@ pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreErro
     Ok(done.rows_affected() > 0)
 }
 
-/// Cluster 384.2: refuse `closed` when a Soundcheck row exists and is not a
+/// Cluster 385.2: refuse `closed` when a Soundcheck row exists and is not a
 /// qualifying green pass. Runs on the transition's own tx so it cannot be
 /// raced. No row → additive (close as before).
 pub async fn gate_in_tx(
