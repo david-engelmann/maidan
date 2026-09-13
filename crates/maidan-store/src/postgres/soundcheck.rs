@@ -5,8 +5,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    resolve_land, soundcheck_standing, LandColor, MemberId, RecordedSoundcheck, SoundcheckPointer,
-    SoundcheckStanding, SoundcheckStatus, ThreadId, SOUNDCHECK_SKILL,
+    is_qualifying_pass, resolve_land, soundcheck_standing, standing_land, LandColor, MemberId,
+    RecordedSoundcheck, SoundcheckPointer, SoundcheckStanding, SoundcheckStatus, ThreadId,
+    SOUNDCHECK_SKILL,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -140,4 +141,70 @@ pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreErro
         .execute(pool)
         .await?;
     Ok(done.rows_affected() > 0)
+}
+
+/// Cluster 385.2: refuse `closed` when a Soundcheck row exists and is not a
+/// qualifying green pass. Runs on the transition's own tx so it cannot be
+/// raced. No row → additive (close as before).
+pub async fn gate_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query(
+        "SELECT s.status, s.land, s.recorded_by, t.owner_id, t.assignee_id
+         FROM maidan_thread_soundcheck s
+         JOIN maidan_threads t ON t.id = s.thread_id
+         WHERE s.thread_id = $1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(());
+    };
+    let owner_id = row.get::<Option<Uuid>, _>("owner_id").map(MemberId);
+    let assignee_id = row.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
+    let recorded_by = row.get::<Option<Uuid>, _>("recorded_by").map(MemberId);
+    let status_s: Option<String> = row.get("status");
+    let land_s: Option<String> = row.get("land");
+    let (status, land, recorded_by) = match (status_s, land_s, recorded_by) {
+        (Some(status_s), Some(land_s), Some(recorded_by)) => {
+            let status = SoundcheckStatus::parse(&status_s).ok_or_else(|| {
+                StoreError::InvalidInput(format!("unknown soundcheck status: {status_s}"))
+            })?;
+            let land = LandColor::parse(&land_s)
+                .ok_or_else(|| StoreError::InvalidInput(format!("unknown land color: {land_s}")))?;
+            (status, land, recorded_by)
+        }
+        _ => {
+            return Err(StoreError::Conflict(
+                "soundcheck required: no pass recorded".into(),
+            ));
+        }
+    };
+    let skilled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM maidan_member_skills
+            WHERE member_id = $1 AND skill = $2
+         )",
+    )
+    .bind(recorded_by.0)
+    .bind(SOUNDCHECK_SKILL)
+    .fetch_one(&mut **tx)
+    .await?;
+    if is_qualifying_pass(status, land, recorded_by, owner_id, assignee_id, skilled) {
+        return Ok(());
+    }
+    let verdict = standing_land(
+        Some(&SoundcheckPointer::new(status, None, land)),
+        Some(recorded_by),
+        owner_id,
+        assignee_id,
+        skilled,
+        true,
+    );
+    Err(StoreError::Conflict(format!(
+        "soundcheck land is {}: need a green pass from a soundcheck-skilled member who is not the implementer",
+        verdict.as_str()
+    )))
 }

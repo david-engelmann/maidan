@@ -107,8 +107,11 @@ async fn transition_in_tx(
 
     // Required reviewers (Cluster 375, Wave 2 #22): a `closed` transition is gated
     // on k qualifying approvals + no unresolved `refutes` edge.
+    // Soundcheck pointer (Cluster 385.2, Wave 2 #25): a `closed` transition is
+    // also gated on a qualifying green pass when a pointer/requirement exists.
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;
+        super::soundcheck::gate_in_tx(tx, thread_id).await?;
     }
 
     if let Some(parent_id) = thread.parent_thread_id {
