@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v380.0.0 — inline per-finding PR review comments
+
+Three impl PRs (380.1–380.3) + a retro. After a successful Cluster 379 GitHub summary comment, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` with `commit_id = head_sha` (never the live PR head), `event: COMMENT`, GitHub **RIGHT**, `line` = `line_range.end`. Missing sha / empty findings / non-`reviewed` / Slack skip the review without sinking the summary. 404/422 meter `skipped`; 5xx/auth meter `failed` (replay retries the review). Review errors never `disable_link`. Cluster 379's summary path is unchanged. **Cluster 381 is not unparked** (already open: the `result_kind` facet).
+
+| Change | Where |
+|--------|-------|
+| **Frame (380.1):** `line_range` is 1-indexed inclusive **post-image** lines at `head_sha`; GitHub RIGHT; `github_line()` = `end`; `github_start_line()` only when `start != end`. `review_commit_id()` is envelope `head_sha` only. | `crates/maidan-types/src/waiter.rs`, fixture `pi_waiter_result_v1.json` |
+| **Review POST (380.2):** `GithubSender::create_review` after the 379 summary; `event: COMMENT`; cap 100 comments; mention-defused finding bodies; no 379 marker on inline comments. Metric `maidan_github_review_total{outcome}`. | `crates/maidan-server/src/{github.rs,egress_worker.rs,result_delivery.rs}` |
+| **Skip vs fail (380.3):** 404/422 → `{skipped}`; 5xx / rate-limited 403 / 401/403 → `{failed}` + replay; never `disable_link`; dual-surface review only on GitHub; vanished envelope skips the review; projector rows never `create_review`. | `crates/maidan-server/tests/result_delivery_inline_e2e.rs`, `egress_wire_e2e.rs` |
+
 ## v382.0.0 — Wave 2 #24 pack half: claimer pack includes accepted decisions
 
 Three impl PRs (382.1–382.3) + a retro. The next `claim_next` claimer sees
