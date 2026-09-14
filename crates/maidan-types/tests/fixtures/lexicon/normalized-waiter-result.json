@@ -1,0 +1,103 @@
+{
+  "$type": "maidan.waiter.result/1",
+  "corroboration": [
+    {
+      "corroboration": 2,
+      "file": "auth.py",
+      "found_by": [
+        "claude",
+        "codex"
+      ],
+      "line_range": {
+        "end": 4,
+        "start": 2
+      }
+    },
+    {
+      "corroboration": 1,
+      "file": "auth.py",
+      "found_by": [
+        "claude"
+      ],
+      "line_range": {
+        "end": 4,
+        "start": 1
+      }
+    }
+  ],
+  "cost_usd": 0.657454,
+  "deliver_to": [
+    {
+      "pr": 3915,
+      "repo": "example/repo",
+      "surface": "github"
+    },
+    {
+      "channel": "C0123ABCDEF",
+      "surface": "slack"
+    }
+  ],
+  "diff_available": true,
+  "duration_secs": 57.306843666,
+  "finding_count": 2,
+  "findings": [
+    {
+      "body": "**Authentication is fully bypassed.** `check()` previously delegated to `verify(token)`; it now ignores its `token` argument entirely and unconditionally returns `True`.\n\n```python\ndef check(token):\n    # TODO: allow all for now\n    q = \"select * from users where token = \" + token\n    return True\n```\n\nEvery caller that gates access on `check(...)` will now admit any request — including ones with an expired, forged, or absent token. The `verify()` call is the only thing that ever validated the credential, and it is gone; nothing else in the tracked tree performs that check (the repo contains only `auth.py`).\n\nThe `# TODO: allow all for now` comment suggests this was a local debugging shortcut. It must not merge: restore `return verify(token)`. If a temporary bypass is genuinely needed for a dev environment, it should be behind an explicit, default-off configuration flag that cannot be enabled in production, not hard-coded into the auth path.",
+      "category": "security",
+      "evidence_strength": "strong",
+      "file": "auth.py",
+      "line_range": {
+        "end": 4,
+        "start": 2
+      },
+      "quoted_line": "    return True",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/287.html",
+        "https://cwe.mitre.org/data/definitions/89.html"
+      ],
+      "severity": "critical"
+    },
+    {
+      "body": "**No test covers the change to the authentication predicate.** The repository has no test files at all, so there is nothing that would have failed when `check()` stopped rejecting invalid tokens — a change of this blast radius passed CI silently.\n\nAt minimum, add a negative test alongside this change that asserts `check()` returns falsy for an invalid/expired/absent token, plus a positive test for a valid one. A single `assert not check(\"bogus-token\")` would have caught this regression, and will keep catching it if someone re-introduces a debugging bypass later.",
+      "category": "test",
+      "evidence_strength": "moderate",
+      "file": "auth.py",
+      "line_range": {
+        "end": 4,
+        "start": 1
+      },
+      "quoted_line": null,
+      "references": [],
+      "severity": "warning"
+    }
+  ],
+  "head_sha": "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911",
+  "per_seat": [
+    {
+      "accepted": 3,
+      "rejected": 0,
+      "seat": "claude",
+      "status": "reviewed"
+    },
+    {
+      "accepted": 1,
+      "rejected": 0,
+      "seat": "codex",
+      "status": "reviewed"
+    }
+  ],
+  "pr": "example/repo#42",
+  "rendered": "## 🔴 Code review — 2 findings (1 critical, 1 warning)\nSeats: claude, codex (2 reviewed)\nPR: `example/repo#42`\n\n### 🔴 Critical — must act before merge\n\n**`auth.py:2-4`** · security · evidence: strong · 🤝 corroborated by claude, codex\n> `return True`\n\n**Authentication is fully bypassed.** `check()` previously delegated to `verify(token)`; it now ignores its `token` argument entirely and unconditionally returns `True`.\n\n```python\ndef check(token):\n    # TODO: allow all for now\n    q = \"select * from users where token = \" + token\n    return True\n```\n\nEvery caller that gates access on `check(...)` will now admit any request — including ones with an expired, forged, or absent token. The `verify()` call is the only thing that ever validated the credential, and it is gone; nothing else in the tracked tree performs that check (the repo contains only `auth.py`).\n\nThe `# TODO: allow all for now` comment suggests this was a local debugging shortcut. It must not merge: restore `return verify(token)`. If a temporary bypass is genuinely needed for a dev environment, it should be behind an explicit, default-off configuration flag that cannot be enabled in production, not hard-coded into the auth path.\n\nRefs: https://cwe.mitre.org/data/definitions/287.html, https://cwe.mitre.org/data/definitions/89.html\n\n### 🟡 Warning — should act before merge\n\n**`auth.py:1-4`** · test · evidence: moderate · found by claude\n\n**No test covers the change to the authentication predicate.** The repository has no test files at all, so there is nothing that would have failed when `check()` stopped rejecting invalid tokens — a change of this blast radius passed CI silently.\n\nAt minimum, add a negative test alongside this change that asserts `check()` returns falsy for an invalid/expired/absent token, plus a positive test for a valid one. A single `assert not check(\"bogus-token\")` would have caught this regression, and will keep catching it if someone re-introduces a debugging bypass later.\n\n---\n_Reviewed by pi · sandbox: multi-seat-review · 57.3s · diff verified_\n\n_Run `aa4dc966-0e09-44c3-b7a5-2d048b48b301` · cost $0.6575 · [View in pi](https://producer.example.test/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301)_\n",
+  "result_kind": "example.review.result/1",
+  "run_id": "aa4dc966-0e09-44c3-b7a5-2d048b48b301",
+  "sandbox": "multi-seat-review",
+  "schema": "maidan.waiter.result/1",
+  "seats": [
+    "claude",
+    "codex"
+  ],
+  "seats_reviewed": 2,
+  "status": "reviewed",
+  "summary": "Code review: 2 finding(s) (1 corroborated) across 2/2 seat(s)",
+  "view_url": "https://producer.example.test/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301"
+}

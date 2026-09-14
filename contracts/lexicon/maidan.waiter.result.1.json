@@ -1,0 +1,49 @@
+{
+  "$id": "maidan.waiter.result/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Frozen waiter-result envelope. `schema` and `$type` are the same NSID; either identifies `/1`. Unknown fields ignored. Breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.waiter.result/1",
+      "type": "string"
+    },
+    "deliver_to": {
+      "type": "array"
+    },
+    "findings": {
+      "type": "array"
+    },
+    "head_sha": {
+      "type": "string"
+    },
+    "pr": {
+      "type": "string"
+    },
+    "rendered": {
+      "type": "string"
+    },
+    "result_kind": {
+      "type": "string"
+    },
+    "schema": {
+      "const": "maidan.waiter.result/1",
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "view_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "result_kind",
+    "status"
+  ],
+  "title": "maidan.waiter.result/1",
+  "type": "object"
+}

@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.artifact_upserted/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `artifact_upserted`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.artifact_upserted/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "artifact_upserted",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.artifact_upserted/1",
+  "type": "object"
+}

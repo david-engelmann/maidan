@@ -1,0 +1,28 @@
+{
+  "$id": "example.review.result/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Generic example review-result producer shape. A string facet, not a closed enum.",
+  "properties": {
+    "$type": {
+      "const": "example.review.result/1",
+      "type": "string"
+    },
+    "result_kind": {
+      "type": "string"
+    },
+    "schema": {
+      "const": "example.review.result/1",
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "result_kind",
+    "status"
+  ],
+  "title": "example.review.result/1",
+  "type": "object"
+}

@@ -9,10 +9,11 @@
 //! `tests/fixtures/waiter_result_v1.json`, so a producer-side grammar change
 //! breaks a test in this crate rather than a delivery in production.
 //!
-//! **Tolerance has a floor.** `schema` is the discriminator: an unrecognized one
-//! means no delivery is attempted at all, because routing on an envelope we do
-//! not understand is how you deliver the wrong bytes to the wrong place. Past
-//! that, missing optional fields degrade rather than fail.
+//! **Tolerance has a floor.** `schema` (or Cluster 390 `$type`, the same NSID)
+//! is the discriminator: an unrecognized one means no delivery is attempted at
+//! all, because routing on an envelope we do not understand is how you deliver
+//! the wrong bytes to the wrong place. Past that, missing optional fields
+//! degrade rather than fail.
 //!
 //! Cluster 380.1 reads `head_sha` and `findings[].{file,line_range,body}` so
 //! inline review comments can be placed. The summary-comment path (379) is
@@ -41,6 +42,10 @@ pub const WAITER_RESULT_SCHEMA: &str = "maidan.waiter.result/1";
 /// A **string, not an enum** — the same rule as the Cluster 381 facet. Compare
 /// this constant; do not close the `result_kind` set.
 pub const EXAMPLE_REVIEW_RESULT_KIND: &str = "example.review.result/1";
+
+/// Namespaced producer shape for a plan waiter result (generic example).
+/// Same rule as [`EXAMPLE_REVIEW_RESULT_KIND`]: a string, not an enum.
+pub const EXAMPLE_PLAN_RESULT_KIND: &str = "example.plan.result/1";
 
 /// The finding severity that Cluster 383 maps to
 /// [`ReviewDecision::RequestChanges`]. A free string on the wire; only this
@@ -328,17 +333,35 @@ fn findings_contain_critical(value: &Value) -> bool {
         })
 }
 
+/// Whether this object is a `maidan.waiter.result/1` envelope.
+///
+/// Cluster 390: `$type` is an alias of `schema` (same NSID). Either field
+/// matching [`WAITER_RESULT_SCHEMA`] is enough; if both are present they must
+/// agree. A `/2` (or any other value) is inert — breaking changes are a new
+/// type, not a silent accept. The committed producer fixture still uses
+/// `schema` only; this does not rewrite it.
+fn waiter_schema_matches(obj: &serde_json::Map<String, Value>) -> bool {
+    let schema = obj.get("schema").and_then(Value::as_str);
+    let type_id = obj.get("$type").and_then(Value::as_str);
+    match (schema, type_id) {
+        (Some(s), Some(t)) => s == WAITER_RESULT_SCHEMA && t == WAITER_RESULT_SCHEMA,
+        (Some(s), None) => s == WAITER_RESULT_SCHEMA,
+        (None, Some(t)) => t == WAITER_RESULT_SCHEMA,
+        (None, None) => false,
+    }
+}
+
 /// Read the routable fields out of a producer's result.
 ///
 /// `None` when this is not an envelope we recognize — a missing or unexpected
-/// `schema`, or a non-object — which means no delivery is attempted rather than
-/// a delivery attempted on a guess. Anything past the discriminator degrades
+/// `schema`/`$type`, or a non-object — which means no delivery is attempted rather
+/// than a delivery attempted on a guess. Anything past the discriminator degrades
 /// instead of failing: an absent `deliver_to` is an empty list, and the optional
 /// bodies are `None`. Unusable `findings` / `head_sha` are skipped the same way
 /// so a 379 summary delivery still happens.
 pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
     let obj = value.as_object()?;
-    if obj.get("schema").and_then(Value::as_str)? != WAITER_RESULT_SCHEMA {
+    if !waiter_schema_matches(obj) {
         return None;
     }
     // `result_kind` and `status` are the two fields every routing decision reads,
@@ -466,6 +489,13 @@ mod tests {
             json!({}),
             json!({ "status": "reviewed", "result_kind": "x/1" }),
             json!({ "schema": "maidan.waiter.result/2", "result_kind": "x/1", "status": "reviewed" }),
+            json!({ "$type": "maidan.waiter.result/2", "result_kind": "x/1", "status": "reviewed" }),
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "$type": "maidan.waiter.result/2",
+                "result_kind": "x/1",
+                "status": "reviewed"
+            }),
             json!({ "schema": 1, "result_kind": "x/1", "status": "reviewed" }),
             json!("a string, not an envelope"),
             json!([]),
@@ -515,6 +545,25 @@ mod tests {
             .expect("parses")
             .deliver_to
             .is_empty());
+    }
+
+    #[test]
+    fn type_is_an_alias_of_schema() {
+        let via_type = json!({
+            "$type": WAITER_RESULT_SCHEMA,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
+            "status": "reviewed"
+        });
+        let parsed = parse_waiter_result(&via_type).expect("parses from $type alone");
+        assert_eq!(parsed.result_kind, EXAMPLE_REVIEW_RESULT_KIND);
+
+        let both = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "$type": WAITER_RESULT_SCHEMA,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
+            "status": "reviewed"
+        });
+        assert!(parse_waiter_result(&both).is_some());
     }
 
     #[test]

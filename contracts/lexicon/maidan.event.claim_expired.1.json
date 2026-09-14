@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.claim_expired/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `claim_expired`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.claim_expired/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "claim_expired",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.claim_expired/1",
+  "type": "object"
+}

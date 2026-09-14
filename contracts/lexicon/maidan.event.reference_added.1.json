@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.reference_added/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `reference_added`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.reference_added/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "reference_added",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.reference_added/1",
+  "type": "object"
+}
