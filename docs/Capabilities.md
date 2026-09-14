@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v388.0.0 — Wave 3 #29: CursorTooOld, projector shapes, Lagged resume
+
+Five impl PRs (388.1–388.5) + a retro. A subscribe / backfill cursor that points into a pruned gap **fails loud** (409 `must_refetch`) instead of silently clamping onto the remaining log. Projector shapes `{workspace, channel?, thread?, types[]}` filter HTTP backfill. Internal `BusItem::Lagged` consumers resume from the durable log. The SDK `follow` helper pages REST then cuts over to WS. Cluster 389 shipped first and left this number unused; 388 fills it. **Row #29 is closed.**
+
+| Change | Where |
+|--------|-------|
+| **Foundation (388.1):** `CursorTooOld` / `ProjectorShape` / `ensure_cursor_fresh`. No new table. | `crates/maidan-types/src/cursor.rs`, `crates/maidan-store` |
+| **Subscribe (388.2):** fail-loud on WS, MCP SSE, AG-UI, `GET …/events`; shape query params. | `crates/maidan-server/src/{delivery,ws,mcp_stream}.rs` |
+| **Lagged (388.3):** `resume_from_log` + `maidan_bus_lag_resume_total` on webhook / notifications / FSM / indexer / AG-UI. | `crates/maidan-store/src/lag_resume.rs` |
+| **SDK (388.4):** `follow` + `is_cursor_too_old` (Rust / Python / TS / Go). | `sdk/` |
+| **E2e (388.5):** MCP SSE 409. | `crates/maidan-server/tests/cursor_too_old_subscribe_e2e.rs` |
+
 ## v389.0.0 — OSS hygiene: de-internalize / land-gate
 
 One impl PR + a retro. The Cluster 385 close-gate keeps its semantics (pointer + pass/fail + green/amber/red; `closed` refuses without a qualifying green pass from a `land_gate`-skilled member ≠ owner/assignee) and is renamed to a public vocabulary any outsider can use. **`land_gate` / `LandGate` / `kind: "land_gate"`** everywhere (types, store table `maidan_thread_land_gate`, REST `/threads/:id/land-gate`, MCP `set/get/require/clear_land_gate`). Waiter examples are `example.review.result/1`; the frozen envelope is `maidan.waiter.result/1`; the delivery backlink is `view_url`. Internal product names (and internal repo selectors) are gone from the public surface. Raspberry Pi (`docs/Pi.md`) is unchanged. **386–387 were already used; 388 left unused.**

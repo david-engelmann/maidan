@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [388.0.0] — 2026-09-14
+
+Post-gate hardening (Phase XXIV). **Wave 3 #29 — CursorTooOld, projector
+shapes, Lagged resume.** Five impl PRs (388.1–388.5) + a retro. No new
+gate tag. Cluster 389 shipped first and left 388 unused; this release
+fills that number. **Row #29 is closed.**
+
+A subscribe / backfill cursor in a pruned gap is **409 `must_refetch`**
+(REST, WS `cursor_too_old` + 1008, MCP SSE). Never a silent clamp.
+Durable `consumer_id` reuses `maidan_delivery_cursor`. Projector shapes
+filter HTTP backfill. Internal bus consumers resume from the event log
+after `BusItem::Lagged` (`maidan_bus_lag_resume_total`). SDK `follow`
+pages HTTP then cuts over to WS.
+
+Also: lockfile bump `rustls` 0.23.40 → 0.23.45 (RUSTSEC-2026-0285).
+AWS rustls 0.21.12 is unaffected. No deny ignore.
+
+- **388.1** types + store freshness (`ensure_cursor_fresh`).
+- **388.2** subscribe / backfill wiring + shape query.
+- **388.3** Lagged → `resume_from_log`.
+- **388.4** SDK `follow` + `is_cursor_too_old`.
+- **388.5** MCP SSE 409 e2e.
+
 ## [389.0.0] — 2026-09-14
 
 Post-gate hardening (Phase XXIV). **OSS hygiene — de-internalize the

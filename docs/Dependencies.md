@@ -50,6 +50,14 @@ had accumulated by Cluster 143; all fixed by lockfile-only bumps (no
 Distinct from the standing `RUSTSEC-2023-0071` (`rsa`) ignore below — those are
 clean upgrades, not exceptions.
 
+## RUSTSEC-2026-0285 — rustls 0.23.45 (Cluster 388)
+
+TLS 1.3 handshake messages accepted across encryption-level boundaries
+in rustls **0.23.13..=0.23.44**. Lockfile bump **0.23.40 → 0.23.45**
+(patched `>=0.23.45`). First-party hyper 1.x / reqwest / lettre /
+tokio-rustls ride 0.23. AWS `rustls` 0.21.12 is **unaffected**
+(`<0.23.13`). No `[advisories.ignore]`.
+
 ## openidconnect v5 — tracking item
 
 openidconnect **v5 is not yet published** (latest is `4.0.1`). The v4 subtree is
