@@ -167,7 +167,7 @@ pub trait ThreadResultStore: Send + Sync {
     ) -> Result<Option<ThreadResult>, StoreError>;
     /// Workspace-scoped list of thread results (Cluster 381). When
     /// `result_kind` is `Some`, exact-match on the namespaced string extracted
-    /// from the payload (e.g. `pi.review.result/1`) — not a closed enum.
+    /// from the payload (e.g. `example.review.result/1`) — not a closed enum.
     /// `None` (or empty / whitespace) returns every non-tombstoned result in
     /// the workspace. Newest first. `limit` is clamped `1..=500`.
     async fn list_thread_results(
@@ -1227,7 +1227,7 @@ pub trait ReviewStore: Send + Sync {
     ) -> Result<ThreadReview, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
-    /// Cluster 383: if `result` is a reviewed `pi.review.result/1` with any
+    /// Cluster 383: if `result` is a reviewed `example.review.result/1` with any
     /// `critical` finding **and** `reviewer_id` has declared the `review`
     /// skill, upsert a `request_changes` decision and, when the thread has
     /// no requirement yet, set `k = 1` so the Cluster-375 close-gate refuses
@@ -1243,32 +1243,32 @@ pub trait ReviewStore: Send + Sync {
 }
 
 #[async_trait]
-pub trait SoundcheckStore: Send + Sync {
-    /// Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder). Presence
-    /// of a row arms the close-gate. `require_soundcheck` inserts a pending
+pub trait LandGateStore: Send + Sync {
+    /// Land-gate pointer (Cluster 385, renamed Cluster 389). Presence
+    /// of a row arms the close-gate. `require_land_gate` inserts a pending
     /// row (no pointer yet) so `closed` refuses until a qualifying green
-    /// pass arrives; an existing pointer is left alone. `set_soundcheck_pointer`
-    /// upserts `{kind:"soundcheck", status, artifact_sha?, land}` from a
-    /// soundcheck-skilled recorder. `get_soundcheck_standing` is total (no
-    /// row → not required, vacuous green). `clear_soundcheck` deletes the
+    /// pass arrives; an existing pointer is left alone. `set_land_gate_pointer`
+    /// upserts `{kind:"land_gate", status, artifact_sha?, land}` from a
+    /// land-gate-skilled recorder. `get_land_gate_standing` is total (no
+    /// row → not required, vacuous green). `clear_land_gate` deletes the
     /// row. The FSM close-gate (385.2) reads this standing in-tx.
-    async fn require_soundcheck(
+    async fn require_land_gate(
         &self,
         thread_id: ThreadId,
-    ) -> Result<SoundcheckStanding, StoreError>;
-    async fn set_soundcheck_pointer(
+    ) -> Result<LandGateStanding, StoreError>;
+    async fn set_land_gate_pointer(
         &self,
         thread_id: ThreadId,
         recorded_by: MemberId,
-        status: SoundcheckStatus,
+        status: LandGateStatus,
         artifact_sha: Option<&str>,
         land: Option<LandColor>,
-    ) -> Result<SoundcheckStanding, StoreError>;
-    async fn get_soundcheck_standing(
+    ) -> Result<LandGateStanding, StoreError>;
+    async fn get_land_gate_standing(
         &self,
         thread_id: ThreadId,
-    ) -> Result<SoundcheckStanding, StoreError>;
-    async fn clear_soundcheck(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    ) -> Result<LandGateStanding, StoreError>;
+    async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
@@ -2236,7 +2236,7 @@ pub trait Store:
     + MemberFreezeStore
     + MemoryBlockStore
     + ReviewStore
-    + SoundcheckStore
+    + LandGateStore
     + SpawnBudgetStore
     + AssignmentStore
     + ThreadDepStore
@@ -2289,7 +2289,7 @@ impl<
             + MemberFreezeStore
             + MemoryBlockStore
             + ReviewStore
-            + SoundcheckStore
+            + LandGateStore
             + SpawnBudgetStore
             + AssignmentStore
             + ThreadDepStore

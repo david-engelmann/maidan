@@ -170,7 +170,7 @@ checks the required capability before handling the request.
 | `workspace:read` | List/get workspaces, channels, threads, messages, search, audit |
 | `workspace:write` | Create channels/threads, mentions, votes, purge, automation admin |
 | `message:post` | Post messages, A2A `SendMessage` |
-| `thread:transition` | Anything that changes a thread's disposition: FSM transitions, the claim lifecycle, owner, result, budget, priority, review decisions, Soundcheck pointer |
+| `thread:transition` | Anything that changes a thread's disposition: FSM transitions, the claim lifecycle, owner, result, budget, priority, review decisions, LandGate pointer |
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
@@ -260,7 +260,7 @@ The context pack is more than a message dump — these knobs and surfaces are wh
 | **Lean edits** | `include_edits=false` (default) | Edit records come back as metadata only (`id`, `editor`, `edited_at`) — the largest token lever on a pack. Set `true` for full `body_before`/`body_after`. |
 | **Seed / re-ask** | `POST /messages/:id/seed` (`workspace:write`) `{title, inclusion?: "pointer"\|"quote", channel_id?}` → a new `Thread` | Spins a fresh work thread from any message, linked back to the source with a `seeded_from` reference edge — the "re-ask this, with a clean slate but the lineage" primitive. |
 | **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
-| **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = pi.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
+| **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = maidan.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
 
 MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, `as_of`, `include_parent_grounding`, and `include_accepted_decisions`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
 
@@ -364,9 +364,9 @@ the first start time is kept. It also arms the wall-clock budget (see step 4).
 `get_thread_context {thread_id}` packs the thread's messages, edits, references,
 FSM history, and the workspace glossary. It also lists in-channel
 **accepted/closed decisions** (`accepted_decisions`) so you see what this channel
-already decided before you start — waiter envelopes (`pi.waiter.result/1`) only
+already decided before you start — waiter envelopes (`maidan.waiter.result/1`) only
 when `status` is `reviewed`, with `result_kind` as a namespaced string (e.g.
-`pi.review.result/1`), not a closed enum. Opt out with
+`example.review.result/1`), not a closed enum. Opt out with
 `include_accepted_decisions=false`. Two other knobs earn their keep in a waiter:
 `token_budget` caps the pack by estimated tokens (the opening message and the
 recent tail survive, the middle folds into an auditable `elision` marker), and
@@ -399,7 +399,7 @@ thread and fires `ThreadResultSet`, which is the signal a requester or parent
 parked in `wait_for_result` is waiting on. It upserts: one result per thread, last
 write wins.
 
-If the JSON is a `pi.waiter.result/1` envelope with a `deliver_to` list, Maidan
+If the JSON is a `maidan.waiter.result/1` envelope with a `deliver_to` list, Maidan
 delivers it to those targets — **provided the workspace has blessed them** on the
 egress allowlist. GitHub receives `rendered`; Slack receives `summary`; a
 re-review updates the same comment or message. Empty `deliver_to` is valid
@@ -407,7 +407,7 @@ re-review updates the same comment or message. Empty `deliver_to` is valid
 `GET /threads/:id/deliveries`. The grammar is frozen — see
 [Result Delivery](Result%20Delivery.md).
 
-If that envelope is a reviewed `pi.review.result/1` and any finding has
+If that envelope is a reviewed `example.review.result/1` and any finding has
 `severity` exactly `critical`, and the producer has declared the `review`
 skill, Maidan writes a Cluster-375 `request_changes` on the thread and —
 when no requirement exists — arms `k=1`. `closed` then refuses until a
@@ -416,17 +416,17 @@ does not arm the gate. A clean re-review does not auto-approve. The
 external GitHub review `event` is still `COMMENT` (Cluster 380); the room
 gate is the land decision.
 
-A thread can also carry a **Soundcheck pointer**
-(`PUT /threads/:id/soundcheck`, MCP `set_soundcheck`) —
-`{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`.
-`PUT …/soundcheck/requirement` (MCP `require_soundcheck`) arms the
+A thread can also carry a **land-gate pointer**
+(`PUT /threads/:id/land-gate`, MCP `set_land_gate`) —
+`{kind:"land_gate", status:pass|fail, artifact_sha?, land}`.
+`PUT …/land-gate/requirement` (MCP `require_land_gate`) arms the
 close-gate. No row is vacuous green. `closed` then refuses unless a
-**green pass** from a member who declared the `soundcheck` skill and is
+**green pass** from a member who declared the `land_gate` skill and is
 neither owner nor assignee. Amber (flags-then-still-engages) is not a
 land. Fail is always red, even if `land=green` is requested. The room
-holds the pointer; Soundcheck owns test execution. Not a CI product.
+holds the pointer; an external verifier records pass/fail. Not a CI product.
 
-If the payload carries a `run_id` (pi's waiter envelope does), Cluster 387
+If the payload carries a `run_id` (the waiter envelope does), Cluster 387
 homes that **producer string** as `parent_run_id` on the thread — it does
 not mint a parallel id. Nested work that shares the value is attributed
 together (`GET /workspaces/:id/run-threads`, `GET …/run-occupancy`, MCP
@@ -597,13 +597,13 @@ Requires `search:query`. Semantic mode needs embedding provider configuration ([
 Thread results are listed separately from message search:
 
 ```http
-GET /workspaces/{workspace_id}/results?result_kind=pi.review.result/1
+GET /workspaces/{workspace_id}/results?result_kind=example.review.result/1
 Authorization: Bearer {token}
 ```
 
 Requires `workspace:read`. The facet is the **namespaced string** a producer
-publishes on the result payload (e.g. `pi.review.result/1` inside
-`schema = "pi.waiter.result/1"`), not a closed enum and not the ADR convention
+publishes on the result payload (e.g. `example.review.result/1` inside
+`schema = "maidan.waiter.result/1"`), not a closed enum and not the ADR convention
 `"kind": "decision"` below. Omit `result_kind` to list every non-tombstoned
 result the caller can access (private-channel rows they cannot read are
 dropped). `limit` defaults to 50 (clamp 1–500). MCP twin: `list_thread_results`.

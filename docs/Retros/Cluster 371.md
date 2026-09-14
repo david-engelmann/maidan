@@ -15,7 +15,7 @@ exec, or the egress broker substitutes it on the way out to an allowlisted host.
   report them**, `is_valid_secret_name`); and the `SecretStore` CRUD (create
   upserts = rotation), both backends. Zero-blast-radius.
 - **371.2 (#742) — REST.** `secret:read` / `secret:admin` capabilities; create
-  (encrypts) / list (metadata) / **resolve** (decrypts → the value; "Pi fetches at
+  (encrypts) / list (metadata) / **resolve** (decrypts → the value; "a consumer fetches at
   exec") / delete. The value crosses the wire only on create + resolve.
 - **371.3 — MCP.** `list_secrets` / `resolve_secret` (the agent-native resolve).
   `McpServer` gained an `encryption_key` OnceLock (set at startup, the
@@ -36,7 +36,7 @@ exec, or the egress broker substitutes it on the way out to an allowlisted host.
   the route/broker layer. The store never sees plaintext, and metadata reads
   never even SELECT the ciphertext column.
 - **Two capabilities, split read from admin.** `secret:read` (resolve/list) is the
-  "Pi fetches at exec" grant; `secret:admin` (create/rotate/delete) is a separate,
+  "a consumer fetches at exec" grant; `secret:admin` (create/rotate/delete) is a separate,
   higher bar — a resolver token can't mint or destroy secrets. Both are
   granted-on-purpose (not in `default_minted`).
 - **The broker fails safe.** Substitution happens only for an allowlisted host,

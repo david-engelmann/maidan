@@ -3,7 +3,7 @@
 //! A workspace stores a named secret; the value is AEAD-encrypted at rest and
 //! **never enters the event log**. Instead the log — a message, a webhook
 //! payload, a tool argument — carries a `secret://<name>` *reference*, and the
-//! value is resolved only at the moment it's needed: Pi fetches it at exec, or a
+//! value is resolved only at the moment it's needed: a consumer fetches it at exec, or a
 //! `SecretBroker` substitutes it on egress to an allowlisted host (Cluster 371.4).
 //!
 //! [`Secret`] is metadata only — it never carries the value. The ref-parsing

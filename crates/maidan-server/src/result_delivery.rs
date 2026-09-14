@@ -70,7 +70,7 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
         EgressTarget::Github { .. } => {
             let backlink = waiter
                 .is_reviewed()
-                .then_some(waiter.view_in_pi.as_deref())
+                .then_some(waiter.view_url.as_deref())
                 .flatten();
             // Failure notices are already the complete inner body; reviewed
             // inner is the (PR-annotated) rendered. The helper defuses and
@@ -82,7 +82,7 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
 }
 
 fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
-    let backlink = waiter.view_in_pi.as_deref();
+    let backlink = waiter.view_url.as_deref();
     match target {
         EgressTarget::Github { .. } => {
             let mut rendered = waiter.rendered.clone().unwrap_or_default();
@@ -169,7 +169,7 @@ pub async fn route_thread_result(
     Ok(())
 }
 
-/// Cluster 383.2: feed a delivered (or thread-only) `pi.review.result/1`
+/// Cluster 383.2: feed a delivered (or thread-only) `example.review.result/1`
 /// with any `critical` finding into the Cluster-375 close-gate. Uses the
 /// result's `produced_by` as the reviewer — they must have declared the
 /// `review` skill. Empty `deliver_to` still arms: the room blocks the land
@@ -430,12 +430,12 @@ mod tests {
 
     fn waiter(status: &str, rendered: Option<&str>, summary: Option<&str>) -> WaiterResult {
         WaiterResult {
-            result_kind: "pi.review.result/1".into(),
+            result_kind: "example.review.result/1".into(),
             status: status.into(),
             deliver_to: vec![],
             rendered: rendered.map(str::to_string),
             summary: summary.map(str::to_string),
-            view_in_pi: Some("https://pi.test/r/1".into()),
+            view_url: Some("https://producer.example.test/r/1".into()),
             pr: Some("acme/widgets#7".into()),
             head_sha: None,
             findings: vec![],
@@ -510,7 +510,7 @@ mod tests {
             "github does not substitute the slack summary"
         );
         assert!(gh.contains("PR: acme/widgets#7"));
-        assert!(gh.contains("https://pi.test/r/1"));
+        assert!(gh.contains("https://producer.example.test/r/1"));
 
         let sl = delivery_body(tid, &slack(), &waiter);
         assert!(sl.contains("3 findings"), "slack delivers the summary");
@@ -519,7 +519,7 @@ mod tests {
             "slack must never receive rendered GFM: {sl}"
         );
         assert!(sl.contains("PR: acme/widgets#7"));
-        assert!(sl.contains("https://pi.test/r/1"));
+        assert!(sl.contains("https://producer.example.test/r/1"));
         assert!(
             !sl.contains("<!-- maidan:result:"),
             "slack has no HTML-comment recovery marker"
@@ -530,7 +530,7 @@ mod tests {
     fn the_schema_constant_is_what_the_parser_routes_on() {
         // Guard against a silent rename: this module's contract is the 379.2
         // envelope, and a drift here would enqueue nothing for a real result.
-        assert_eq!(WAITER_RESULT_SCHEMA, "pi.waiter.result/1");
+        assert_eq!(WAITER_RESULT_SCHEMA, "maidan.waiter.result/1");
         assert_eq!(STATUS_REVIEWED, "reviewed");
     }
 
@@ -549,12 +549,12 @@ mod tests {
 
     fn reviewed_with(head_sha: Option<String>, findings: Vec<WaiterFinding>) -> WaiterResult {
         WaiterResult {
-            result_kind: "pi.review.result/1".into(),
+            result_kind: "example.review.result/1".into(),
             status: STATUS_REVIEWED.into(),
             deliver_to: vec![],
             rendered: Some("## Findings".into()),
             summary: Some("1 finding".into()),
-            view_in_pi: None,
+            view_url: None,
             pr: None,
             head_sha,
             findings,

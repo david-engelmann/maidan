@@ -22,7 +22,7 @@ row #24). Cluster 382 (the pack half of that row) is already closed.
   is `end`; `github_start_line()` is `Some(start)` iff `start != end` (omit
   on a single-line finding or GitHub 422s). `review_commit_id()` is **only**
   envelope `head_sha` — there is no live-PR-head helper. Fixture
-  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` carries
+  `crates/maidan-types/tests/fixtures/waiter_result_v1.json` carries
   `head_sha` `b5e54f94fd04d6ef7d6e1197ddd59ace70edb911` and two findings on
   `auth.py`.
 - **380.2 (#805) — the review POST.** After a successful 379 GitHub summary
@@ -115,7 +115,7 @@ panel (379 deferral); recovering a lost Slack `ts` without re-posting (379
 deferral).
 
 **Not unparked:** Cluster 381 (`result_kind` facet) is already open. Wave 2
-#25 (Soundcheck) stays the next unstruck *product* row; this retro does not
+#25 (LandGate) stays the next unstruck *product* row; this retro does not
 reorder it. Cluster 382 is already closed.
 
 ## Acknowledgements

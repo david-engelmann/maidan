@@ -1,12 +1,12 @@
-//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder): require
-//! arms the gate; a pass from a soundcheck-skilled member ≠ the
+//! LandGate gate pointer (Cluster 385, Wave 2 #25 remainder): require
+//! arms the gate; a pass from a land-gate-skilled member ≠ the
 //! implementer is green/landable; amber (flags-then-still-engages) and
 //! fail are not a land. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    LandColor, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, SoundcheckStatus,
-    SOUNDCHECK_KIND, SOUNDCHECK_SKILL,
+    LandColor, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, LandGateStatus,
+    LAND_GATE_KIND, LAND_GATE_SKILL,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -44,14 +44,14 @@ async fn run_suite(store: &dyn Store) {
     };
     let owner = mk("owner").await;
     let assignee = mk("assignee").await;
-    let checker = mk("soundcheck").await;
+    let checker = mk("land_gate").await;
     let unskilled = mk("unskilled").await;
     store
-        .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+        .add_member_skill(checker.id, LAND_GATE_SKILL)
         .await
         .expect("skill");
     store
-        .add_member_skill(owner.id, SOUNDCHECK_SKILL)
+        .add_member_skill(owner.id, LAND_GATE_SKILL)
         .await
         .expect("owner also skilled");
     let channel = store
@@ -81,50 +81,50 @@ async fn run_suite(store: &dyn Store) {
         .expect("assign");
 
     // Vacuous: no row → not required, green, landable.
-    let s = store.get_soundcheck_standing(thread.id).await.unwrap();
+    let s = store.get_land_gate_standing(thread.id).await.unwrap();
     assert!(!s.required);
     assert!(s.pointer.is_none());
     assert_eq!(s.land, LandColor::Green);
     assert!(s.landable);
 
     // Require arms a pending row.
-    let s = store.require_soundcheck(thread.id).await.unwrap();
+    let s = store.require_land_gate(thread.id).await.unwrap();
     assert!(s.required);
     assert!(s.pointer.is_none());
     assert_eq!(s.land, LandColor::Red);
     assert!(!s.landable);
     // Idempotent — does not wipe a later pointer (checked after set).
-    store.require_soundcheck(thread.id).await.unwrap();
+    store.require_land_gate(thread.id).await.unwrap();
 
     // Unskilled recorder is rejected; pending row stays.
     let denied = store
-        .set_soundcheck_pointer(thread.id, unskilled.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(thread.id, unskilled.id, LandGateStatus::Pass, None, None)
         .await;
     assert!(
-        matches!(denied, Err(StoreError::InvalidInput(ref m)) if m.contains("soundcheck skill")),
+        matches!(denied, Err(StoreError::InvalidInput(ref m)) if m.contains("land_gate skill")),
         "unskilled write must be InvalidInput, got {denied:?}"
     );
-    let s = store.get_soundcheck_standing(thread.id).await.unwrap();
+    let s = store.get_land_gate_standing(thread.id).await.unwrap();
     assert!(s.pointer.is_none());
     assert!(!s.landable);
 
     // Owner (implementer) pass is stored but not a land.
     let s = store
-        .set_soundcheck_pointer(thread.id, owner.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(thread.id, owner.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
-    assert_eq!(s.pointer.as_ref().unwrap().status, SoundcheckStatus::Pass);
+    assert_eq!(s.pointer.as_ref().unwrap().status, LandGateStatus::Pass);
     assert_eq!(s.pointer.as_ref().unwrap().land, LandColor::Green);
-    assert_eq!(s.pointer.as_ref().unwrap().kind, SOUNDCHECK_KIND);
+    assert_eq!(s.pointer.as_ref().unwrap().kind, LAND_GATE_KIND);
     assert_eq!(s.land, LandColor::Red);
     assert!(!s.landable, "implementer pass is not a land");
 
     // Amber from a skilled third party is flags-then-still-engages — not a land.
     let s = store
-        .set_soundcheck_pointer(
+        .set_land_gate_pointer(
             thread.id,
             checker.id,
-            SoundcheckStatus::Pass,
+            LandGateStatus::Pass,
             Some("deadbeef"),
             Some(LandColor::Amber),
         )
@@ -141,28 +141,28 @@ async fn run_suite(store: &dyn Store) {
 
     // Fail is red. Requested green on a fail is ignored.
     let s = store
-        .set_soundcheck_pointer(
+        .set_land_gate_pointer(
             thread.id,
             checker.id,
-            SoundcheckStatus::Fail,
+            LandGateStatus::Fail,
             None,
             Some(LandColor::Green),
         )
         .await
         .unwrap();
-    assert_eq!(s.pointer.as_ref().unwrap().status, SoundcheckStatus::Fail);
+    assert_eq!(s.pointer.as_ref().unwrap().status, LandGateStatus::Fail);
     assert_eq!(s.pointer.as_ref().unwrap().land, LandColor::Red);
     assert_eq!(s.land, LandColor::Red);
     assert!(!s.landable);
 
     // Require after a pointer leaves the pointer in place.
-    let s = store.require_soundcheck(thread.id).await.unwrap();
+    let s = store.require_land_gate(thread.id).await.unwrap();
     assert!(s.pointer.is_some());
     assert_eq!(s.land, LandColor::Red);
 
-    // Qualifying green pass from the soundcheck agent.
+    // Qualifying green pass from the land_gate agent.
     let s = store
-        .set_soundcheck_pointer(thread.id, checker.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(thread.id, checker.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
     assert_eq!(s.land, LandColor::Green);
@@ -171,32 +171,32 @@ async fn run_suite(store: &dyn Store) {
 
     // Assignee (implementer) pass is not a land even with the skill.
     store
-        .add_member_skill(assignee.id, SOUNDCHECK_SKILL)
+        .add_member_skill(assignee.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     let s = store
-        .set_soundcheck_pointer(thread.id, assignee.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(thread.id, assignee.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
     assert_eq!(s.land, LandColor::Red);
     assert!(!s.landable);
 
     // Clear disarms.
-    assert!(store.clear_soundcheck(thread.id).await.unwrap());
-    let s = store.get_soundcheck_standing(thread.id).await.unwrap();
+    assert!(store.clear_land_gate(thread.id).await.unwrap());
+    let s = store.get_land_gate_standing(thread.id).await.unwrap();
     assert!(!s.required);
     assert!(s.landable);
-    assert!(!store.clear_soundcheck(thread.id).await.unwrap());
+    assert!(!store.clear_land_gate(thread.id).await.unwrap());
 }
 
 #[tokio::test]
-async fn soundcheck_pointer_require_pass_amber_and_sod_sqlite() {
+async fn land_gate_pointer_require_pass_amber_and_sod_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
 }
 
 #[tokio::test]
-async fn soundcheck_pointer_require_pass_amber_and_sod_postgres() {
+async fn land_gate_pointer_require_pass_amber_and_sod_postgres() {
     use maidan_store::{run_postgres_migrations, PostgresStore};
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration as StdDuration;

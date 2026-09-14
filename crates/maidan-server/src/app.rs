@@ -580,14 +580,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/:id/review-status", get(routes::get_review_status))
         .route(
-            "/threads/:id/soundcheck",
-            put(routes::set_soundcheck)
-                .get(routes::get_soundcheck)
-                .delete(routes::clear_soundcheck),
+            "/threads/:id/land-gate",
+            put(routes::set_land_gate)
+                .get(routes::get_land_gate)
+                .delete(routes::clear_land_gate),
         )
         .route(
-            "/threads/:id/soundcheck/requirement",
-            put(routes::require_soundcheck),
+            "/threads/:id/land-gate/requirement",
+            put(routes::require_land_gate),
         )
         .route(
             "/workspaces/:wid/webhooks",

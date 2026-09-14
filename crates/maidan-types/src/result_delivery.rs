@@ -117,18 +117,18 @@ mod tests {
 
     #[test]
     fn a_stored_row_decodes_back_to_its_target_and_reference() {
-        let gh = row("github", "beatgig/bgv3#3915", Some("998877"));
+        let gh = row("github", "example/repo#42", Some("998877"));
         assert_eq!(
             gh.target(),
             Some(EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915
             })
         );
         assert_eq!(
             gh.reference(),
             Some(ExternalRef::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 comment_id: 998877
             }),
             "the repo comes from the target, the comment id from the stored handle"
@@ -147,10 +147,10 @@ mod tests {
     #[test]
     fn a_row_with_no_usable_handle_has_no_reference_so_the_caller_posts() {
         // Never delivered.
-        assert_eq!(row("github", "beatgig/bgv3#1", None).reference(), None);
+        assert_eq!(row("github", "example/repo#1", None).reference(), None);
         // Delivered, but the handle is junk — post rather than PATCH a guess.
         assert_eq!(
-            row("github", "beatgig/bgv3#1", Some("not-an-id")).reference(),
+            row("github", "example/repo#1", Some("not-an-id")).reference(),
             None
         );
         // A surface this build does not know: no target, so no reference, and

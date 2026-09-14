@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [389.0.0] — 2026-09-14
+
+Post-gate hardening (Phase XXIV). **OSS hygiene — de-internalize the
+public surface.** One impl PR + a retro. No new gate tag. Clusters
+386–387 were already used; 388 left unused.
+
+The Cluster 385 close-gate is now **`land_gate`**:
+`{kind:"land_gate", status:pass|fail, artifact_sha?, land}`. REST
+`/threads/:id/land-gate`. MCP `set/get/require/clear_land_gate`.
+Skill `"land_gate"`. Table `maidan_thread_land_gate`. Semantics
+unchanged. Waiter examples use `example.review.result/1`; the frozen
+envelope is `maidan.waiter.result/1`; the delivery backlink is
+`view_url`. The room holds the pointer; an external verifier records
+pass/fail.
+
+- **389.1** rename + scrub — types, store, REST, MCP, OpenAPI,
+  contracts, tests, published docs, historical retros.
+
 ## [386.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #27 — a closed blocked-reason
@@ -27,25 +45,24 @@ and the 363 unclaimable park table. **Row #27 is closed.**
 
 ## [385.0.0] — 2026-09-13
 
-Post-gate hardening (Phase XXIV). **Wave 2 #25 remainder — Soundcheck
+Post-gate hardening (Phase XXIV). **Wave 2 #25 remainder — LandGate
 gate pointer + green/amber/red land vocabulary.** Four impl PRs
 (385.1–385.4) + a retro. No new gate tag. Cluster 384 is P1.1d (closed
 by this retro).
 
-A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?,
+A thread holds `{kind:"land_gate", status:pass|fail, artifact_sha?,
 land}`. Presence of a row arms the close-gate (no row = vacuous green).
-`closed` refuses unless a green pass from a soundcheck-skilled member
+`closed` refuses unless a green pass from a land-gate-skilled member
 ≠ the owner/assignee. Amber (flags-then-still-engages) is not a land.
-Fail is always red. Room holds the pointer; Soundcheck owns test
-execution. **Row #25 is closed** (383 composition + 385 pointer).
+Fail is always red. Room holds the pointer; an external verifier records pass/fail. **Row #25 is closed** (383 composition + 385 pointer).
 
 - **385.1** types + store — pointer, land colors, standing; table pg
   0088 / sqlite 0087; require / set / get / clear. Unskilled write is
   `InvalidInput`.
 - **385.2** FSM — `transition_in_tx` refuses `closed` unless a
   qualifying green pass (or no row).
-- **385.3** REST + MCP — `/threads/:id/soundcheck` + requirement;
-  `set/get/require/clear_soundcheck`.
+- **385.3** REST + MCP — `/threads/:id/land-gate` + requirement;
+  `set/get/require/clear_land_gate`.
 - **385.4** e2e — HTTP close-gate + MCP standing; fail stays red.
 
 ## [384.0.0] — 2026-09-13
@@ -70,12 +87,12 @@ Post-gate hardening (Phase XXIV). **Wave 2 #25 composition — critical
 waiter findings feed the Cluster-375 close-gate.** Three impl PRs
 (383.1–383.3) + a retro. No new gate tag.
 
-A reviewed `pi.review.result/1` with any `critical` finding from a
+A reviewed `example.review.result/1` with any `critical` finding from a
 review-skilled producer writes `request_changes` and, if the thread has
 no requirement, arms `k=1`. `closed` refuses until a third-party human
 approves. Owner/assignee approvals still do not count (SoD). Never
 auto-approve. GitHub review `event` stays `COMMENT` (Cluster 380).
-**The #25 composition is closed.** The Soundcheck pointer +
+**The #25 composition is closed.** The LandGate pointer +
 green/amber/red vocabulary remain on that row.
 
 - **383.1** types + store — `review_decision_from_waiter` +
@@ -95,7 +112,7 @@ is a namespaced-string list.** Four impl PRs (381.1–381.4) + a retro.
 381.4 documented the facet; it is not the retro. No new gate tag.
 
 Thread results are listed by the namespaced string a producer publishes
-(`pi.review.result/1`), never a closed enum. The surface is a
+(`example.review.result/1`), never a closed enum. The surface is a
 workspace-scoped list, exact-match, not message-FTS. **Row #24 is closed**
 (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.**
 Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
@@ -163,10 +180,10 @@ third cluster of the result-delivery arc, and the producer's actual ask.
 Five impl PRs (379.1–379.5) + a retro. No new gate tag.
 
 Clusters 377 and 378 made projector egress durable, aimable, and repeatable.
-A `pi.waiter.result/1` envelope written with `set_thread_result` now reaches
+A `maidan.waiter.result/1` envelope written with `set_thread_result` now reaches
 a blessed GitHub PR comment or Slack message, durably, once; a re-review
 updates that object in place. **The grammar is frozen** at
-`pi.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as
+`maidan.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as
 next** — `head_sha` is on the fixture; 380.1 still has to pin the `line_range`
 frame of reference and must not resolve the PR head at delivery time.
 
@@ -179,7 +196,7 @@ frame of reference and must not resolve the PR head at delivery time.
   `delivered_revision` cannot tell a second replica of the *same* revision
   from a newer result arriving while a send is in flight.
 - **379.2** the contract lock — `parse_waiter_result` against
-  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`. A
+  `crates/maidan-types/tests/fixtures/waiter_result_v1.json`. A
   producer-side grammar change breaks a test. Unrecognized `schema` is
   inert.
 - **379.3** the trigger — `ThreadResultSet` → fetch → parse → per-target
@@ -423,7 +440,7 @@ impl PRs (371.1–371.4) + a retro. No new gate tag.
   the log carries a `secret://<name>` reference, this table holds the value.
 - **Secret REST + capabilities** (371.2): `secret:read` (resolve/list) +
   `secret:admin` (create/rotate/delete), granted-on-purpose. `POST/GET
-  /workspaces/:wid/secrets`, `POST …/:name/resolve` (→ the value; "Pi fetches at
+  /workspaces/:wid/secrets`, `POST …/:name/resolve` (→ the value; "a consumer fetches at
   exec"), `DELETE …/:name`. The value is AEAD-encrypted at rest (the Cluster-189
   keyring) and crosses the wire only on create + resolve.
 - **Secret MCP tools** (371.3): `list_secrets` / `resolve_secret` (`secret:read`);
@@ -1531,7 +1548,7 @@ Post-gate hardening (Phase XXIV). Bet 2 MCP snippet pack + the two-language leas
 - `langchain_maidan.py` + `autogen_maidan.py` now **filter the catalog to the six-tool hero
   loop** (`claim_next_thread`, `post_message`, `get_thread_context`, `set_thread_result`,
   `wait_for_result`, `wait_for_ready`) before handing tools to the agent, instead of loading
-  all ~78. Filter only — the catalog is unchanged server-side; the pi 8-method seam stays
+  all ~78. Filter only — the catalog is unchanged server-side; the 8-method seam stays
   callable.
 - `examples/README.md` reworked around the hero demo + MCP configs + the auth-on quickstart;
   `Framework Integrations.md` leads with the hero-6 filter; fixed the stale `rest_maidan.py`

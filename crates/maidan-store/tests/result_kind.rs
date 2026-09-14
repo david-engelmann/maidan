@@ -1,6 +1,6 @@
 //! `result_kind` search facet (Cluster 381): exact match on the namespaced
 //! string extracted from a thread result. Both backends. Not a closed enum —
-//! `pi.review.result/1` is just a string, and a different producer kind is
+//! `example.review.result/1` is just a string, and a different producer kind is
 //! equally first-class. Does not touch Cluster 382's in-channel closed list.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -10,8 +10,8 @@ use maidan_types::{
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 
-const REVIEW: &str = "pi.review.result/1";
-const PLAN: &str = "pi.plan.result/1";
+const REVIEW: &str = "example.review.result/1";
+const PLAN: &str = "example.plan.result/1";
 
 async fn sqlite() -> SqliteStore {
     let pool = SqlitePoolOptions::new()
@@ -86,7 +86,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("review thread");
     // The authoritative fixture shape — schema is *not* required for the facet.
     let review_payload = json!({
-        "schema": "pi.waiter.result/1",
+        "schema": "maidan.waiter.result/1",
         "result_kind": REVIEW,
         "status": "reviewed",
         "summary": "two findings",
@@ -163,12 +163,12 @@ async fn run_suite(store: &dyn Store) {
 
     // Prefix / sibling string is not a match — this is exact, not LIKE.
     assert!(store
-        .list_thread_results(ws.id, Some("pi.review.result"), 50)
+        .list_thread_results(ws.id, Some("example.review.result"), 50)
         .await
         .expect("prefix")
         .is_empty());
     assert!(store
-        .list_thread_results(ws.id, Some("pi.review.result/10"), 50)
+        .list_thread_results(ws.id, Some("example.review.result/10"), 50)
         .await
         .expect("sibling")
         .is_empty());

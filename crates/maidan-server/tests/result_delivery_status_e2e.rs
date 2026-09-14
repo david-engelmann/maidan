@@ -114,12 +114,12 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 fn envelope(status: &str, deliver_to: Value) -> Value {
     json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": "pi.review.result/1",
+        "result_kind": "example.review.result/1",
         "status": status,
         "deliver_to": deliver_to,
         "rendered": "## Findings",
         "summary": "3 findings",
-        "view_in_pi": "https://pi.test/r/1",
+        "view_url": "https://producer.example.test/r/1",
         "pr": "acme/widgets#7",
     })
 }

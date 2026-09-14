@@ -1,7 +1,7 @@
 //! The contract lock (Cluster 379.2, extended 380.1).
 //!
 //! These assertions run against the **authoritative** producer fixture, committed
-//! at `tests/fixtures/pi_waiter_result_v1.json` and embedded here at compile time.
+//! at `tests/fixtures/waiter_result_v1.json` and embedded here at compile time.
 //! That is the whole point: if the producer changes the grammar Maidan routes on,
 //! this test fails in this repo — loudly, in CI, before a delivery goes to the
 //! wrong place in production. It is not a test of the parser so much as a
@@ -20,11 +20,11 @@
 use maidan_types::{
     parse_waiter_result, result_kind_from_payload, review_decision_from_waiter,
     run_id_from_payload, DeliverTarget, EgressTarget, FindingLineRange, GithubDiffSide,
-    ReviewDecision, WaiterResult, FINDING_SEVERITY_CRITICAL, PI_REVIEW_RESULT_KIND,
+    ReviewDecision, WaiterResult, FINDING_SEVERITY_CRITICAL, EXAMPLE_REVIEW_RESULT_KIND,
     STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 
-const FIXTURE: &str = include_str!("fixtures/pi_waiter_result_v1.json");
+const FIXTURE: &str = include_str!("fixtures/waiter_result_v1.json");
 
 fn parsed() -> WaiterResult {
     let value: serde_json::Value =
@@ -40,12 +40,12 @@ fn the_authoritative_fixture_still_declares_the_schema_we_route_on() {
         "the producer changed the envelope discriminator; delivery would go inert"
     );
     assert_eq!(
-        value["result_kind"], PI_REVIEW_RESULT_KIND,
+        value["result_kind"], EXAMPLE_REVIEW_RESULT_KIND,
         "result_kind is a namespaced string and the search facet — not an enum"
     );
     assert_eq!(
         result_kind_from_payload(&value),
-        Some("pi.review.result/1"),
+        Some("example.review.result/1"),
         "the search-facet extractor reads the same namespaced string the lock pins"
     );
 }
@@ -81,8 +81,8 @@ fn the_authoritative_fixture_is_deliverable_and_carries_its_bodies() {
         "summary is the Slack body — Slack never receives rendered"
     );
     assert_eq!(
-        r.view_in_pi.as_deref(),
-        Some("https://pi.beatgig.dev/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301")
+        r.view_url.as_deref(),
+        Some("https://producer.example.test/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301")
     );
 }
 
@@ -104,7 +104,7 @@ fn the_two_pr_fields_keep_their_different_types() {
     );
 
     let r = parsed();
-    assert_eq!(r.pr.as_deref(), Some("beatgig/bgv3#3915"));
+    assert_eq!(r.pr.as_deref(), Some("example/repo#42"));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn the_authoritative_fixture_routes_to_both_surfaces() {
         r.deliver_to,
         vec![
             DeliverTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 pr: 3915,
             },
             DeliverTarget::Slack {
@@ -145,7 +145,7 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
         projected,
         vec![
             EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915,
             },
             EgressTarget::Slack {
@@ -155,10 +155,10 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
     );
 
     // The delivery grain is issue-qualified; the allowlist grain is the
-    // repository. An operator blesses `github:beatgig/bgv3` once and it covers
+    // repository. An operator blesses `github:example/repo` once and it covers
     // this PR and every other one — per-issue blessing would be a ticket per PR.
-    assert_eq!(projected[0].selector(), "beatgig/bgv3#3915");
-    assert_eq!(projected[0].allowlist_selector(), "beatgig/bgv3");
+    assert_eq!(projected[0].selector(), "example/repo#42");
+    assert_eq!(projected[0].allowlist_selector(), "example/repo");
     // Slack has no such split: a channel id is already what an operator blesses.
     assert_eq!(projected[1].selector(), projected[1].allowlist_selector());
 }
@@ -252,7 +252,7 @@ fn the_authoritative_fixture_is_a_critical_request_changes() {
     assert_eq!(
         review_decision_from_waiter(&value),
         Some(ReviewDecision::RequestChanges),
-        "a delivered pi.review.result/1 with any critical finding is request_changes"
+        "a delivered example.review.result/1 with any critical finding is request_changes"
     );
 }
 

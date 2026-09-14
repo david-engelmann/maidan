@@ -6,13 +6,13 @@ blessed GitHub PR comment or Slack message, durably, once, and a re-review
 edits that object instead of stacking a second one.
 
 Five impl PRs (379.1–379.5) + this retro. **The grammar is frozen** at
-`pi.waiter.result/1`. Additive fields are free. A change to the meaning of an
+`maidan.waiter.result/1`. Additive fields are free. A change to the meaning of an
 existing field, or to the `deliver_to` shape, needs a new `schema` value —
 Maidan routes on the discriminator, and an unrecognized one is inert rather
-than mis-delivered. That confirmation is the note back to the pi side.
+than mis-delivered. That confirmation is the note back to the producer.
 
 **Cluster 380 is unparked as next.** The 379.2 fixture lock already carries
-`head_sha` (additive on the frozen `pi.waiter.result/1` schema;
+`head_sha` (additive on the frozen `maidan.waiter.result/1` schema;
 `parse_waiter_result` ignores it today — 380 reads it). Remaining care, not a
 park: the `line_range` frame of reference (file-absolute post-image lines vs
 diff-relative) is still unstated. 380.1 must pin that frame **and** pass the
@@ -28,9 +28,9 @@ envelope's `head_sha` as `commit_id`, never the live PR head.
   event), and update what (`external_ref` = a Slack `ts` or GitHub comment id).
 - **379.2 (#788) — the contract lock.** `maidan_types::waiter::parse_waiter_result`,
   a pure tolerant reader of `{schema, result_kind, status, deliver_to[],
-  rendered, summary, view_in_pi, pr}` with a `DeliverTarget::Unknown(String)`
+  rendered, summary, view_url, pr}` with a `DeliverTarget::Unknown(String)`
   arm. Unit-tested against
-  `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` — a
+  `crates/maidan-types/tests/fixtures/waiter_result_v1.json` — a
   producer-side grammar change breaks a test in this crate rather than a
   delivery in production. Unrecognized `schema` ⇒ no delivery attempted.
 - **379.3 (#789) — the trigger.** A `ThreadResultSet` arm in
@@ -204,7 +204,7 @@ envelope's `head_sha` as `commit_id`, never the live PR head.
 
 ## Forward look
 
-**Cluster 379 is complete.** A producer writes `pi.waiter.result/1` onto a
+**Cluster 379 is complete.** A producer writes `maidan.waiter.result/1` onto a
 thread; Maidan delivers `rendered` to a blessed GitHub issue and `summary`
 to a blessed Slack channel; a re-review updates the same object; the
 producer reads per-target disposition over REST + MCP and an operator can

@@ -2,8 +2,8 @@
 
 **Audience:** authors of agents that write a structured result to a Maidan thread
 and want it to reach an external surface (a GitHub PR comment, a Slack message).
-The first such producer is **pi**, whose code-review waiter publishes a
-`pi.waiter.result/1` envelope via `set_thread_result`.
+An external code-review waiter publishes a
+`maidan.waiter.result/1` envelope via `set_thread_result`.
 
 **This page is the interface contract between a result producer and Maidan.**
 Read it alongside [Integrating with Maidan](Integration.md).
@@ -13,7 +13,7 @@ Read it alongside [Integrating with Maidan](Integration.md).
 ## Status — read this first
 
 **Shipped (Clusters 379–381).** This page is the interface contract between a result producer
-and Maidan. The grammar is **frozen** at `pi.waiter.result/1`. Additive fields are
+and Maidan. The grammar is **frozen** at `maidan.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
 requires a new `schema` value. The `result_kind` list facet shipped in Cluster 381.
 
@@ -56,16 +56,16 @@ field never breaks delivery.
 
 | Field | Required | How Maidan uses it |
 |---|---|---|
-| `schema` | yes | Envelope discriminator. Must be `pi.waiter.result/1`. An unrecognized value means no delivery is attempted. |
-| `result_kind` | yes | Which producer shape this is, e.g. `pi.review.result/1`. Recorded; the list facet shipped in Cluster 381 (see "Discoverability"). |
+| `schema` | yes | Envelope discriminator. Must be `maidan.waiter.result/1`. An unrecognized value means no delivery is attempted. |
+| `result_kind` | yes | Which producer shape this is, e.g. `example.review.result/1`. Recorded; the list facet shipped in Cluster 381 (see "Discoverability"). |
 | `status` | yes | Delivery happens only on `reviewed`. Any other value delivers a short **Maidan-authored** failure notice instead — never silence, never a clean pass. |
 | `deliver_to` | no | The routing list. Absent or empty is **valid and normal**: thread-only, delivered nowhere. |
 | `rendered` | on `reviewed` | The delivery body. Producer-authored trusted markdown. |
 | `summary` | on `reviewed` | One line. The Slack body and the notification title. |
-| `view_in_pi` | no | A backlink appended to every delivery. |
+| `view_url` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
 | `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
-| `findings` | no | Two readers. Cluster 380 inline comments: each usable finding needs `file`, `body`, and `line_range`. Cluster 383 close-gate: any finding with `severity` exactly `critical` on a reviewed `pi.review.result/1` from a review-skilled producer writes Cluster-375 `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
+| `findings` | no | Two readers. Cluster 380 inline comments: each usable finding needs `file`, `body`, and `line_range`. Cluster 383 close-gate: any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a review-skilled producer writes Cluster-375 `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
 
 `run_id` is **not** a delivery-routing field. Delivery parse still ignores it.
 Cluster 387 homes the producer's string as `parent_run_id` on the thread — see
@@ -84,14 +84,14 @@ lineage only.
 
 ## Run lineage (Cluster 387)
 
-Wave 2 #28's lineage half. pi's waiter envelope already carries `run_id` (and
-`view_in_pi`). Until this cluster that string had **no home in Maidan**. The
+Wave 2 #28's lineage half. The waiter envelope already carries `run_id` (and
+`view_url`). Until this cluster that string had **no home in Maidan**. The
 field **accepts the producer's value** — Maidan does not mint a parallel id.
 The authoritative fixture value is `aa4dc966-0e09-44c3-b7a5-2d048b48b301` in
-`crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`.
+`crates/maidan-types/tests/fixtures/waiter_result_v1.json`.
 
 `run_id_from_payload` extracts a string (trim; empty / whitespace / longer
-than 256 bytes → ignored). It does **not** require `schema = pi.waiter.result/1`.
+than 256 bytes → ignored). It does **not** require `schema = maidan.waiter.result/1`.
 `parse_waiter_result` still ignores `run_id`, so delivery routing is unchanged.
 
 `set_thread_result` (REST `PUT /threads/:id/result` and the MCP tool) homes
@@ -160,7 +160,7 @@ An array of target objects. Each names a `surface` plus per-surface detail:
 
 ```json
 [
-  { "surface": "github", "repo": "beatgig/bgv3", "pr": 3915 },
+  { "surface": "github", "repo": "example/repo", "pr": 3915 },
   { "surface": "slack",  "channel": "C0123ABCDEF" }
 ]
 ```
@@ -184,7 +184,7 @@ An array of target objects. Each names a `surface` plus per-surface detail:
 ### Where the producer gets it
 
 The task author sets the routing intent in the seeding message's metadata under
-`pi.deliver_to`; the producer carries it through opaquely and echoes it into the
+`deliver_to`; the producer carries it through opaquely and echoes it into the
 result envelope. Maidan reads it from the **result envelope**, not from message
 metadata.
 
@@ -207,7 +207,7 @@ So delivery is authorized twice:
 - **`deliver_to` selects** which of the permitted targets this particular result
   goes to. The producer stays in control of routing and no surface is hardcoded.
 - **A per-workspace egress allowlist authorizes.** An operator blesses
-  `github:beatgig/bgv3` or `slack:C0123ABCDEF` once, over
+  `github:example/repo` or `slack:C0123ABCDEF` once, over
   `POST /workspaces/:wid/egress-targets` (`token:admin`; `GET` lists,
   `DELETE …/:tid` revokes). A target absent from the allowlist is **skipped with
   a recorded warning** — the same treatment as an unknown surface.
@@ -235,7 +235,7 @@ API below, and an operator — not the agent — fixes an unblessed target.
 
 - Body is `rendered` verbatim. GitHub renders GFM, so the producer's markdown
   arrives as written.
-- A `view_in_pi` backlink is appended.
+- A `view_url` backlink is appended.
 - Truncated with an explicit marker if it would exceed GitHub's comment ceiling
   (65536 characters). **Do not assume `rendered` arrives whole** — put the
   load-bearing content early and rely on the backlink for the rest.
@@ -246,7 +246,7 @@ API below, and an operator — not the agent — fixes an unblessed target.
   `<url|text>` not `[text](url)`, no headings, no tables. Posting `rendered`
   verbatim would ship visibly broken output.
 - So Slack receives `summary`, a compact Maidan-projected digest, and the
-  `view_in_pi` link — **not** `rendered` as-is. A producer that wants precise
+  `view_url` link — **not** `rendered` as-is. A producer that wants precise
   Slack formatting should make `summary` carry the weight.
 
 ### Both
@@ -291,29 +291,29 @@ different unit of work.
 
 ## Discoverability
 
-`result_kind` is a **namespaced string**, not a closed enumeration. Pi publishes
-`result_kind = "pi.review.result/1"` inside `schema = "pi.waiter.result/1"`; a
+`result_kind` is a **namespaced string**, not a closed enumeration. A producer publishes
+`result_kind = "example.review.result/1"` inside `schema = "maidan.waiter.result/1"`; a
 future producer ships a new string and the facet works without a server change.
 The old guess of a closed enum (`decision|plan|merge_authorized`) is not the
 wire vocabulary and is not a filter value.
 
 List (not message-FTS) surfaces, `workspace:read`:
 
-- REST: `GET /workspaces/{id}/results?result_kind=pi.review.result/1` (`limit`
+- REST: `GET /workspaces/{id}/results?result_kind=example.review.result/1` (`limit`
   optional, default 50, clamp 1–500). Omit `result_kind` to list every
   non-tombstoned result the caller can access.
 - MCP: `list_thread_results` with the same optional `result_kind` / `limit`.
   Workspace comes from the token; there is no `workspace_id` argument.
 
-Match is exact on the indexed string. `pi.review.result` and
-`pi.review.result/10` do not hit `pi.review.result/1`. Private-channel rows the
+Match is exact on the indexed string. `example.review.result` and
+`example.review.result/10` do not hit `example.review.result/1`. Private-channel rows the
 caller cannot access are omitted. This is not `GET /workspaces/{id}/search`
 and not the ADR JSON convention `"kind": "decision"` in
 [Integration.md](Integration.md#decision-records).
 
 ## Close-gate (Cluster 383)
 
-A reviewed `pi.review.result/1` whose `findings` contain any
+A reviewed `example.review.result/1` whose `findings` contain any
 `severity == "critical"` is a Cluster-375 `request_changes` from a
 review-skilled producer (`REVIEW_SKILL = "review"`). If the thread has no
 requirement, Maidan arms `k = 1` so the existing close-gate refuses
@@ -364,7 +364,7 @@ surfaces, durably, once.
 Two of three are now carried; one remains:
 
 1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used (Cluster 380).** Present on
-   `pi.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
+   `maidan.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
    rather than resolving the PR head at delivery time.
 2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
    **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
@@ -378,9 +378,9 @@ Two of three are now carried; one remains:
 
 ## Versioning
 
-The grammar above is **frozen at `pi.waiter.result/1`** (confirmed Cluster 379).
+The grammar above is **frozen at `maidan.waiter.result/1`** (confirmed Cluster 379).
 Additive fields are free. A change to the meaning of an existing field, or to the
 `deliver_to` shape, requires a new `schema` value — Maidan will route on the
 discriminator and an unrecognized one is inert rather than mis-delivered. The
-Maidan-side lock is `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json`:
+Maidan-side lock is `crates/maidan-types/tests/fixtures/waiter_result_v1.json`:
 a producer-side grammar change breaks that test.

@@ -6,14 +6,14 @@ facet. Cluster 382 shipped the pack half. This cluster is **only the facet
 half**.
 
 The facet is a **namespaced string**, never a closed enum. A live pi result
-publishes `result_kind = "pi.review.result/1"` inside `schema =
-"pi.waiter.result/1"`. The old Open Work guess (`decision|plan|merge_authorized`)
+publishes `result_kind = "example.review.result/1"` inside `schema =
+"maidan.waiter.result/1"`. The old Open Work guess (`decision|plan|merge_authorized`)
 is not the wire vocabulary and is not a filter value. The ADR convention
 `"kind": "decision"` is a different field.
 
 The surface is a workspace-scoped **list**, not `GET /workspaces/:id/search`.
-Match is exact. `pi.review.result` and `pi.review.result/10` do not hit
-`pi.review.result/1`.
+Match is exact. `example.review.result` and `example.review.result/10` do not hit
+`example.review.result/1`.
 
 Four impl PRs (381.1–381.4) + this retro. 381.4 documented the facet; it is
 **not** this retro. Clusters 380 and 382 are already closed. This retro does
@@ -23,7 +23,7 @@ not start Wave 2 #25 / Cluster 383.
 
 - **381.1 (#798) — store.** `result_kind_from_payload` reads the string alone
   (trim; missing / empty / whitespace / non-string → `None`). It does **not**
-  require `schema = "pi.waiter.result/1"` — a future producer kind is
+  require `schema = "maidan.waiter.result/1"` — a future producer kind is
   first-class without an envelope change. Indexed on `maidan_thread_results`
   (pg 0087 / sqlite 0086); `set_thread_result` writes or clears the column.
   `Store::list_thread_results(workspace, result_kind, limit)` on both
@@ -84,11 +84,11 @@ not start Wave 2 #25 / Cluster 383.
   bijection fails (Cluster 187). ThreadResult was already registered.
 - **Wave 3 #30 (the EventKind JSON-Schema pack) does not exist yet.** 381.4
   kept Result Delivery in step and did not invent that pack. Registering
-  `pi.waiter.result/1` there stays Wave 3 work.
+  `maidan.waiter.result/1` there stays Wave 3 work.
 
 ## Test evidence
 
-- Types: `result_kind_from_payload` — `pi.review.result/1` extracted; empty /
+- Types: `result_kind_from_payload` — `example.review.result/1` extracted; empty /
   whitespace / non-string / `"kind": "decision"` → `None`; a free-form
   `acme.plan.result/2` is equally first-class. Fixture lock still carries
   the waiter `result_kind`.
@@ -100,7 +100,7 @@ not start Wave 2 #25 / Cluster 383.
   `dialect_parity` + `backend_parity` + `concurrent_migrations` green.
 - Server: `result_kind_rest_e2e` (auth-enabled, minted `workspace:read`) —
   unauthenticated 401; unfiltered omits a private-channel row the caller
-  cannot access; `?result_kind=pi.review.result/1` is exact; `?result_kind=decision`
+  cannot access; `?result_kind=example.review.result/1` is exact; `?result_kind=decision`
   is empty. OpenAPI bijection + `http_capability_matrix_e2e`.
 - MCP: `list_thread_results_filters_by_namespaced_kind` — unfiltered lists
   accessible rows; namespaced filter hits; `decision` misses; private
@@ -124,10 +124,10 @@ Deferred (follow-ups): pushing the deny-set / private-channel filter into
 the list query (REST and MCP still post-filter via `can_access_thread`, so
 `limit` is applied before RBAC — a private-heavy page can under-fill);
 faceting 382's in-channel closed list by kind (declined — different product);
-Wave 3 #30 registering `pi.waiter.result/1` in the schema pack (not this
+Wave 3 #30 registering `maidan.waiter.result/1` in the schema pack (not this
 cluster).
 
-**Not this cluster:** Wave 2 #25 (Soundcheck) stays the next unstruck
+**Not this cluster:** Wave 2 #25 (LandGate) stays the next unstruck
 *product* row. This retro does not start it and does not invent Cluster 383.
 P1.1d (`transition_thread` MCP) was not taken.
 

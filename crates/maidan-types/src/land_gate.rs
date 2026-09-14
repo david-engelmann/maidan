@@ -1,13 +1,13 @@
-//! Soundcheck gate pointer (Cluster 385, Wave 2 #25 remainder, G-dev-6).
+//! Land-gate pointer (Cluster 385, renamed Cluster 389).
 //!
-//! A thread may hold a **Soundcheck pointer** — `{kind: "soundcheck",
+//! A thread may hold a **land-gate pointer** — `{kind: "land_gate",
 //! status: pass|fail, artifact_sha?}` plus the green/amber/red land
-//! vocabulary. The room stores the pointer; Soundcheck owns `/test`. This
-//! is not a CI product and not a judge panel in the room.
+//! vocabulary. The room stores the pointer; an external verifier records
+//! pass/fail. This is not a CI product and not a judge panel in the room.
 //!
 //! The FSM close-gate (Cluster 385.2) refuses `closed` unless a **qualifying
 //! pass** exists: `status = pass`, `land = green`, recorded by a member who
-//! has declared [`SOUNDCHECK_SKILL`], and that member is neither the
+//! has declared [`LAND_GATE_SKILL`], and that member is neither the
 //! thread's owner nor its assignee (the implementer). **Amber** is
 //! flags-then-still-engages — not a land. **Red** is a fail or an
 //! unqualified pointer. No pointer and no requirement is additive (close
@@ -21,25 +21,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::MemberId;
 
-/// The member-skill tag a Soundcheck agent declares (Cluster 230 free-form
-/// skills). The close-gate only counts a pass from a member who has this
-/// skill — an implementer who is not soundcheck-skilled cannot land their
-/// own work by writing a pointer.
-pub const SOUNDCHECK_SKILL: &str = "soundcheck";
+/// The member-skill tag a gate-skilled verifier declares (Cluster 230
+/// free-form skills). The close-gate only counts a pass from a member who
+/// has this skill — an implementer who is not land-gate-skilled cannot
+/// land their own work by writing a pointer.
+pub const LAND_GATE_SKILL: &str = "land_gate";
 
-/// Wire `kind` on the pointer. Always `"soundcheck"`.
-pub const SOUNDCHECK_KIND: &str = "soundcheck";
+/// Wire `kind` on the pointer. Always `"land_gate"`.
+pub const LAND_GATE_KIND: &str = "land_gate";
 
-/// Soundcheck `/test` result stored on the thread.
+/// Pass/fail recorded on the thread by a gate-skilled verifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum SoundcheckStatus {
+pub enum LandGateStatus {
     Pass,
     Fail,
 }
 
-impl SoundcheckStatus {
+impl LandGateStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pass => "pass",
@@ -57,7 +57,7 @@ impl SoundcheckStatus {
 
 /// Land-gate vocabulary. Only [`LandColor::Green`] is a land.
 ///
-/// * **green** — a qualifying Soundcheck pass; the FSM may `closed`.
+/// * **green** — a qualifying LandGate pass; the FSM may `closed`.
 /// * **amber** — flags-then-still-engages (accepted nonsense). Not a land.
 /// * **red** — fail, pending requirement, or an unqualified pointer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,23 +87,23 @@ impl LandColor {
     }
 }
 
-/// The pointer Soundcheck writes onto a thread. Small on purpose: kind,
+/// The pointer LandGate writes onto a thread. Small on purpose: kind,
 /// pass/fail, optional artifact SHA, and the land color.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SoundcheckPointer {
-    /// Always [`SOUNDCHECK_KIND`].
+pub struct LandGatePointer {
+    /// Always [`LAND_GATE_KIND`].
     pub kind: String,
-    pub status: SoundcheckStatus,
+    pub status: LandGateStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_sha: Option<String>,
     pub land: LandColor,
 }
 
-impl SoundcheckPointer {
-    pub fn new(status: SoundcheckStatus, artifact_sha: Option<String>, land: LandColor) -> Self {
+impl LandGatePointer {
+    pub fn new(status: LandGateStatus, artifact_sha: Option<String>, land: LandColor) -> Self {
         Self {
-            kind: SOUNDCHECK_KIND.to_string(),
+            kind: LAND_GATE_KIND.to_string(),
             status,
             artifact_sha,
             land,
@@ -111,19 +111,19 @@ impl SoundcheckPointer {
     }
 }
 
-/// What the close-gate and `GET /threads/:id/soundcheck` read.
+/// What the close-gate and `GET /threads/:id/land-gate` read.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SoundcheckStanding {
+pub struct LandGateStanding {
     /// A row exists — the gate is armed (require and/or a recorded pointer).
     pub required: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pointer: Option<SoundcheckPointer>,
+    pub pointer: Option<LandGatePointer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recorded_by: Option<MemberId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recorded_at: Option<DateTime<Utc>>,
-    /// Computed land color (not merely what Soundcheck wrote). Green only
+    /// Computed land color (not merely what LandGate wrote). Green only
     /// when a qualifying pass exists, or when the gate is not armed.
     pub land: LandColor,
     /// `land == green`. The FSM close-gate requires this when `required`.
@@ -132,8 +132,8 @@ pub struct SoundcheckStanding {
 
 /// Stored pointer plus who wrote it. Internal to standing assembly.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RecordedSoundcheck {
-    pub pointer: SoundcheckPointer,
+pub struct RecordedLandGate {
+    pub pointer: LandGatePointer,
     pub recorded_by: MemberId,
     pub recorded_at: DateTime<Utc>,
 }
@@ -144,10 +144,10 @@ pub struct RecordedSoundcheck {
 /// A **fail** is always red. A **pass** defaults to green; the caller may
 /// request amber (flags-then-still-engages) or red (explicit refuse). A
 /// requested green on a fail is ignored.
-pub fn resolve_land(status: SoundcheckStatus, requested: Option<LandColor>) -> LandColor {
+pub fn resolve_land(status: LandGateStatus, requested: Option<LandColor>) -> LandColor {
     match status {
-        SoundcheckStatus::Fail => LandColor::Red,
-        SoundcheckStatus::Pass => match requested {
+        LandGateStatus::Fail => LandColor::Red,
+        LandGateStatus::Pass => match requested {
             Some(LandColor::Amber) => LandColor::Amber,
             Some(LandColor::Red) => LandColor::Red,
             Some(LandColor::Green) | None => LandColor::Green,
@@ -155,17 +155,17 @@ pub fn resolve_land(status: SoundcheckStatus, requested: Option<LandColor>) -> L
     }
 }
 
-/// A pass that may land: green, from a soundcheck-skilled member who is
+/// A pass that may land: green, from a land-gate-skilled member who is
 /// not the implementer (owner or assignee).
 pub fn is_qualifying_pass(
-    status: SoundcheckStatus,
+    status: LandGateStatus,
     land: LandColor,
     recorded_by: MemberId,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
     recorder_has_skill: bool,
 ) -> bool {
-    status == SoundcheckStatus::Pass
+    status == LandGateStatus::Pass
         && land == LandColor::Green
         && recorder_has_skill
         && owner_id != Some(recorded_by)
@@ -176,7 +176,7 @@ pub fn is_qualifying_pass(
 /// → red (pending). A skilled third-party amber pass stays amber. Anything
 /// else that is not a qualifying pass is red.
 pub fn standing_land(
-    pointer: Option<&SoundcheckPointer>,
+    pointer: Option<&LandGatePointer>,
     recorded_by: Option<MemberId>,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
@@ -202,7 +202,7 @@ pub fn standing_land(
     ) {
         return LandColor::Green;
     }
-    if pointer.status == SoundcheckStatus::Pass
+    if pointer.status == LandGateStatus::Pass
         && pointer.land == LandColor::Amber
         && recorder_has_skill
         && owner_id != Some(recorded_by)
@@ -215,13 +215,13 @@ pub fn standing_land(
 
 /// Assemble standing from a stored row (or its absence) plus thread SoD
 /// context.
-pub fn soundcheck_standing(
+pub fn land_gate_standing(
     required: bool,
-    recorded: Option<RecordedSoundcheck>,
+    recorded: Option<RecordedLandGate>,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
     recorder_has_skill: bool,
-) -> SoundcheckStanding {
+) -> LandGateStanding {
     let pointer = recorded.as_ref().map(|r| r.pointer.clone());
     let recorded_by = recorded.as_ref().map(|r| r.recorded_by);
     let recorded_at = recorded.as_ref().map(|r| r.recorded_at);
@@ -233,7 +233,7 @@ pub fn soundcheck_standing(
         recorder_has_skill,
         required,
     );
-    SoundcheckStanding {
+    LandGateStanding {
         required,
         pointer,
         recorded_by,
@@ -254,30 +254,30 @@ mod tests {
 
     #[test]
     fn resolve_land_fail_is_always_red() {
-        assert_eq!(resolve_land(SoundcheckStatus::Fail, None), LandColor::Red);
+        assert_eq!(resolve_land(LandGateStatus::Fail, None), LandColor::Red);
         assert_eq!(
-            resolve_land(SoundcheckStatus::Fail, Some(LandColor::Green)),
+            resolve_land(LandGateStatus::Fail, Some(LandColor::Green)),
             LandColor::Red
         );
         assert_eq!(
-            resolve_land(SoundcheckStatus::Fail, Some(LandColor::Amber)),
+            resolve_land(LandGateStatus::Fail, Some(LandColor::Amber)),
             LandColor::Red
         );
     }
 
     #[test]
     fn resolve_land_pass_defaults_green_and_honors_amber() {
-        assert_eq!(resolve_land(SoundcheckStatus::Pass, None), LandColor::Green);
+        assert_eq!(resolve_land(LandGateStatus::Pass, None), LandColor::Green);
         assert_eq!(
-            resolve_land(SoundcheckStatus::Pass, Some(LandColor::Green)),
+            resolve_land(LandGateStatus::Pass, Some(LandColor::Green)),
             LandColor::Green
         );
         assert_eq!(
-            resolve_land(SoundcheckStatus::Pass, Some(LandColor::Amber)),
+            resolve_land(LandGateStatus::Pass, Some(LandColor::Amber)),
             LandColor::Amber
         );
         assert_eq!(
-            resolve_land(SoundcheckStatus::Pass, Some(LandColor::Red)),
+            resolve_land(LandGateStatus::Pass, Some(LandColor::Red)),
             LandColor::Red
         );
     }
@@ -288,7 +288,7 @@ mod tests {
         let owner = mid(2);
         let assignee = mid(3);
         assert!(is_qualifying_pass(
-            SoundcheckStatus::Pass,
+            LandGateStatus::Pass,
             LandColor::Green,
             sc,
             Some(owner),
@@ -297,7 +297,7 @@ mod tests {
         ));
         assert!(
             !is_qualifying_pass(
-                SoundcheckStatus::Pass,
+                LandGateStatus::Pass,
                 LandColor::Green,
                 sc,
                 Some(owner),
@@ -308,7 +308,7 @@ mod tests {
         );
         assert!(
             !is_qualifying_pass(
-                SoundcheckStatus::Pass,
+                LandGateStatus::Pass,
                 LandColor::Green,
                 owner,
                 Some(owner),
@@ -319,7 +319,7 @@ mod tests {
         );
         assert!(
             !is_qualifying_pass(
-                SoundcheckStatus::Pass,
+                LandGateStatus::Pass,
                 LandColor::Green,
                 assignee,
                 Some(owner),
@@ -330,7 +330,7 @@ mod tests {
         );
         assert!(
             !is_qualifying_pass(
-                SoundcheckStatus::Pass,
+                LandGateStatus::Pass,
                 LandColor::Amber,
                 sc,
                 Some(owner),
@@ -340,7 +340,7 @@ mod tests {
             "amber is not a land"
         );
         assert!(!is_qualifying_pass(
-            SoundcheckStatus::Fail,
+            LandGateStatus::Fail,
             LandColor::Red,
             sc,
             Some(owner),
@@ -360,12 +360,12 @@ mod tests {
             LandColor::Red
         );
         let sc = mid(1);
-        let pointer = SoundcheckPointer::new(SoundcheckStatus::Pass, None, LandColor::Amber);
+        let pointer = LandGatePointer::new(LandGateStatus::Pass, None, LandColor::Amber);
         assert_eq!(
             standing_land(Some(&pointer), Some(sc), None, None, true, true),
             LandColor::Amber
         );
-        let green = SoundcheckPointer::new(SoundcheckStatus::Pass, None, LandColor::Green);
+        let green = LandGatePointer::new(LandGateStatus::Pass, None, LandColor::Green);
         assert_eq!(
             standing_land(Some(&green), Some(sc), None, None, true, true),
             LandColor::Green
@@ -375,13 +375,13 @@ mod tests {
     #[test]
     fn pointer_wire_shape_is_kind_status_optional_sha_and_land() {
         let p =
-            SoundcheckPointer::new(SoundcheckStatus::Pass, Some("abc".into()), LandColor::Green);
+            LandGatePointer::new(LandGateStatus::Pass, Some("abc".into()), LandColor::Green);
         let v = serde_json::to_value(&p).expect("json");
-        assert_eq!(v["kind"], SOUNDCHECK_KIND);
+        assert_eq!(v["kind"], LAND_GATE_KIND);
         assert_eq!(v["status"], "pass");
         assert_eq!(v["artifact_sha"], "abc");
         assert_eq!(v["land"], "green");
-        let no_sha = SoundcheckPointer::new(SoundcheckStatus::Fail, None, LandColor::Red);
+        let no_sha = LandGatePointer::new(LandGateStatus::Fail, None, LandColor::Red);
         let v = serde_json::to_value(&no_sha).expect("json");
         assert!(v.get("artifact_sha").is_none());
         assert_eq!(v["status"], "fail");

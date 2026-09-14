@@ -255,12 +255,12 @@ async fn harness(name: &str) -> Harness {
 fn envelope(status: &str, deliver_to: Value, rendered: &str, summary: &str) -> Value {
     json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": "pi.review.result/1",
+        "result_kind": "example.review.result/1",
         "status": status,
         "deliver_to": deliver_to,
         "rendered": rendered,
         "summary": summary,
-        "view_in_pi": "https://pi.test/r/1",
+        "view_url": "https://producer.example.test/r/1",
         "pr": "acme/widgets#7",
     })
 }

@@ -1,14 +1,14 @@
 # Cluster 383 retro — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
 
-Wave 2 #25 asked for a Soundcheck gate pointer and a green/amber/red land-gate
+Wave 2 #25 asked for a LandGate gate pointer and a green/amber/red land-gate
 vocabulary so the FSM will not `closed` on accepted nonsense. The 2026-09-12
 composition found a stronger slice that needs **no new gate machinery**: a
-delivered `pi.review.result/1` whose `findings` contain any `critical` **is**
+delivered `example.review.result/1` whose `findings` contain any `critical` **is**
 a `request_changes` from a review-skilled agent. Feed it into the
 **Cluster-375 required-reviewers close-gate** and the room refuses `closed`
 until a human resolves.
 
-This cluster is **only that adapter**. The Soundcheck `{kind:"soundcheck",…}`
+This cluster is **only that adapter**. The LandGate `{kind:"land_gate",…}`
 pointer and the green/amber/red vocabulary stay on row #25.
 
 Three impl PRs (383.1–383.3) + this retro. #810 and #812 died
@@ -18,7 +18,7 @@ the rebuilds from `origin/main`. This retro targets `main` only.
 ## What shipped
 
 - **383.1 (#809) — types + store.** `review_decision_from_waiter` maps a
-  reviewed `pi.review.result/1` with any exact `severity == "critical"` to
+  reviewed `example.review.result/1` with any exact `severity == "critical"` to
   `ReviewDecision::RequestChanges` (else `None`). `result_kind` and
   `severity` stay free strings, not enums. Severity is walked on the **raw**
   `findings` array — a critical finding without `file` / `body` /
@@ -41,7 +41,7 @@ the rebuilds from `origin/main`. This retro targets `main` only.
   via `store.transition_thread` (there is no MCP `transition_thread` tool —
   P1.1d, intentional).
 - **383.4 — this retro + the doc-close.** Strike the #25 composition.
-  Keep the Soundcheck pointer / green-amber-red as the remaining row.
+  Keep the LandGate pointer / green-amber-red as the remaining row.
 
 ## Decisions
 
@@ -50,7 +50,7 @@ the rebuilds from `origin/main`. This retro targets `main` only.
   approvals still do not count (SoD). A third-party human `approve` unblocks.
 - **Never auto-approve.** A clean re-review does not land. The adapter only
   writes `request_changes`.
-- **Exact strings, not enums.** `result_kind == "pi.review.result/1"`,
+- **Exact strings, not enums.** `result_kind == "example.review.result/1"`,
   `status == "reviewed"`, `severity == "critical"`. A warning, a plan
   result, or a failed review is inert.
 - **Skill-gated.** The producer must have declared `review`. An unskilled
@@ -83,7 +83,7 @@ rebuilds onto `origin/main`. Same lesson as 379.4 / #790, 382.2 / #795,
 ## Test evidence
 
 - Types: `review_decision_from_waiter` — critical + reviewed +
-  `pi.review.result/1` → `RequestChanges`; warning-only / wrong kind /
+  `example.review.result/1` → `RequestChanges`; warning-only / wrong kind /
   not-reviewed → `None`. Fixture lock
   `the_authoritative_fixture_is_a_critical_request_changes`.
 - Store, both backends (`review_from_result`): skilled + critical →
@@ -103,7 +103,7 @@ rebuilds onto `origin/main`. Same lesson as 379.4 / #790, 382.2 / #795,
 `request_changes` → Cluster-375 close-gate) is shipped. pi reviews → the
 room blocks the land → a human decides.
 
-**Remaining on row #25:** the Soundcheck `{kind:"soundcheck",
+**Remaining on row #25:** the LandGate `{kind:"land_gate",
 status:pass|fail, artifact_sha?}` pointer and the green/amber/red
 vocabulary. Not a CI product / a judge panel in the room.
 

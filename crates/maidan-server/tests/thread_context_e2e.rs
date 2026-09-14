@@ -713,7 +713,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             member.id,
             &serde_json::json!({
                 "schema": WAITER_RESULT_SCHEMA,
-                "result_kind": "pi.review.result/1",
+                "result_kind": "example.review.result/1",
                 "status": "failed",
                 "summary": "tests red",
             }),
@@ -736,7 +736,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             member.id,
             &serde_json::json!({
                 "schema": WAITER_RESULT_SCHEMA,
-                "result_kind": "pi.review.result/1",
+                "result_kind": "example.review.result/1",
                 "status": STATUS_REVIEWED,
                 "summary": "lgtm",
                 "rendered": "# must not inline",
@@ -797,7 +797,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
         .iter()
         .find(|d| d["title"] == "reviewed waiter")
         .unwrap();
-    assert_eq!(reviewed_row["result_kind"], "pi.review.result/1");
+    assert_eq!(reviewed_row["result_kind"], "example.review.result/1");
     assert_eq!(reviewed_row["status"], STATUS_REVIEWED);
     assert_eq!(reviewed_row["summary"], "lgtm");
     assert!(reviewed_row.get("result").is_none());

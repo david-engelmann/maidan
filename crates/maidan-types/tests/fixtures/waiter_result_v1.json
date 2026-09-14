@@ -28,7 +28,7 @@
   "deliver_to": [
     {
       "pr": 3915,
-      "repo": "beatgig/bgv3",
+      "repo": "example/repo",
       "surface": "github"
     },
     {
@@ -85,12 +85,12 @@
       "status": "reviewed"
     }
   ],
-  "pr": "beatgig/bgv3#3915",
-  "rendered": "## \ud83d\udd34 Code review \u2014 2 findings (1 critical, 1 warning)\nSeats: claude, codex (2 reviewed)\nPR: `beatgig/bgv3#3915`\n\n### \ud83d\udd34 Critical \u2014 must act before merge\n\n**`auth.py:2-4`** \u00b7 security \u00b7 evidence: strong \u00b7 \ud83e\udd1d corroborated by claude, codex\n> `return True`\n\n**Authentication is fully bypassed.** `check()` previously delegated to `verify(token)`; it now ignores its `token` argument entirely and unconditionally returns `True`.\n\n```python\ndef check(token):\n    # TODO: allow all for now\n    q = \"select * from users where token = \" + token\n    return True\n```\n\nEvery caller that gates access on `check(...)` will now admit any request \u2014 including ones with an expired, forged, or absent token. The `verify()` call is the only thing that ever validated the credential, and it is gone; nothing else in the tracked tree performs that check (the repo contains only `auth.py`).\n\nThe `# TODO: allow all for now` comment suggests this was a local debugging shortcut. It must not merge: restore `return verify(token)`. If a temporary bypass is genuinely needed for a dev environment, it should be behind an explicit, default-off configuration flag that cannot be enabled in production, not hard-coded into the auth path.\n\nRefs: https://cwe.mitre.org/data/definitions/287.html, https://cwe.mitre.org/data/definitions/89.html\n\n### \ud83d\udfe1 Warning \u2014 should act before merge\n\n**`auth.py:1-4`** \u00b7 test \u00b7 evidence: moderate \u00b7 found by claude\n\n**No test covers the change to the authentication predicate.** The repository has no test files at all, so there is nothing that would have failed when `check()` stopped rejecting invalid tokens \u2014 a change of this blast radius passed CI silently.\n\nAt minimum, add a negative test alongside this change that asserts `check()` returns falsy for an invalid/expired/absent token, plus a positive test for a valid one. A single `assert not check(\"bogus-token\")` would have caught this regression, and will keep catching it if someone re-introduces a debugging bypass later.\n\n---\n_Reviewed by pi \u00b7 sandbox: multi-seat-review \u00b7 57.3s \u00b7 diff verified_\n\n_Run `aa4dc966-0e09-44c3-b7a5-2d048b48b301` \u00b7 cost $0.6575 \u00b7 [View in pi](https://pi.beatgig.dev/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301)_\n",
-  "result_kind": "pi.review.result/1",
+  "pr": "example/repo#42",
+  "rendered": "## \ud83d\udd34 Code review \u2014 2 findings (1 critical, 1 warning)\nSeats: claude, codex (2 reviewed)\nPR: `example/repo#42`\n\n### \ud83d\udd34 Critical \u2014 must act before merge\n\n**`auth.py:2-4`** \u00b7 security \u00b7 evidence: strong \u00b7 \ud83e\udd1d corroborated by claude, codex\n> `return True`\n\n**Authentication is fully bypassed.** `check()` previously delegated to `verify(token)`; it now ignores its `token` argument entirely and unconditionally returns `True`.\n\n```python\ndef check(token):\n    # TODO: allow all for now\n    q = \"select * from users where token = \" + token\n    return True\n```\n\nEvery caller that gates access on `check(...)` will now admit any request \u2014 including ones with an expired, forged, or absent token. The `verify()` call is the only thing that ever validated the credential, and it is gone; nothing else in the tracked tree performs that check (the repo contains only `auth.py`).\n\nThe `# TODO: allow all for now` comment suggests this was a local debugging shortcut. It must not merge: restore `return verify(token)`. If a temporary bypass is genuinely needed for a dev environment, it should be behind an explicit, default-off configuration flag that cannot be enabled in production, not hard-coded into the auth path.\n\nRefs: https://cwe.mitre.org/data/definitions/287.html, https://cwe.mitre.org/data/definitions/89.html\n\n### \ud83d\udfe1 Warning \u2014 should act before merge\n\n**`auth.py:1-4`** \u00b7 test \u00b7 evidence: moderate \u00b7 found by claude\n\n**No test covers the change to the authentication predicate.** The repository has no test files at all, so there is nothing that would have failed when `check()` stopped rejecting invalid tokens \u2014 a change of this blast radius passed CI silently.\n\nAt minimum, add a negative test alongside this change that asserts `check()` returns falsy for an invalid/expired/absent token, plus a positive test for a valid one. A single `assert not check(\"bogus-token\")` would have caught this regression, and will keep catching it if someone re-introduces a debugging bypass later.\n\n---\n_Reviewed by pi \u00b7 sandbox: multi-seat-review \u00b7 57.3s \u00b7 diff verified_\n\n_Run `aa4dc966-0e09-44c3-b7a5-2d048b48b301` \u00b7 cost $0.6575 \u00b7 [View in pi](https://producer.example.test/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301)_\n",
+  "result_kind": "example.review.result/1",
   "run_id": "aa4dc966-0e09-44c3-b7a5-2d048b48b301",
   "sandbox": "multi-seat-review",
-  "schema": "pi.waiter.result/1",
+  "schema": "maidan.waiter.result/1",
   "seats": [
     "claude",
     "codex"
@@ -98,5 +98,5 @@
   "seats_reviewed": 2,
   "status": "reviewed",
   "summary": "Code review: 2 finding(s) (1 corroborated) across 2/2 seat(s)",
-  "view_in_pi": "https://pi.beatgig.dev/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301"
+  "view_url": "https://producer.example.test/runs/aa4dc966-0e09-44c3-b7a5-2d048b48b301"
 }

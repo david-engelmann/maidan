@@ -126,7 +126,7 @@ async fn run_suite(store: &dyn Store) {
             thread_id: thread.id,
             source_log_id: 2,
             target: EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915,
             },
             body: "review posted".into(),
@@ -144,7 +144,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(
         claimed_gh.target(),
         Some(EgressTarget::Github {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             issue_number: 3915
         })
     );
@@ -248,7 +248,7 @@ async fn run_dedup_suite(store: &dyn Store) {
             thread_id: thread.id,
             source_log_id: 77,
             target: EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 1,
             },
             body: "once".into(),
@@ -271,7 +271,7 @@ async fn run_dedup_suite(store: &dyn Store) {
             thread_id: thread.id,
             source_log_id: 100,
             target: EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 2,
             },
             body: "the result".into(),

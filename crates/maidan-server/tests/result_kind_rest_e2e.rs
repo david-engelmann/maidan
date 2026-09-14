@@ -18,8 +18,8 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
-const REVIEW: &str = "pi.review.result/1";
-const PLAN: &str = "pi.plan.result/1";
+const REVIEW: &str = "example.review.result/1";
+const PLAN: &str = "example.plan.result/1";
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();

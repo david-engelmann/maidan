@@ -18,7 +18,7 @@ pub const AUDIT_READ_GLOBAL: &str = "audit:read-global";
 /// 164). Deliberately not in [`default_minted`] — channel administration is a
 /// granted-on-purpose surface.
 pub const CHANNEL_ADMIN: &str = "channel:admin";
-/// Resolve a named secret's value — the "Pi fetches at exec" grant (Cluster 371).
+/// Resolve a named secret's value — the "a consumer fetches at exec" grant (Cluster 371).
 /// Granted-on-purpose (not in [`default_minted`]); a token that resolves secrets
 /// is a deliberate delegation.
 pub const SECRET_READ: &str = "secret:read";

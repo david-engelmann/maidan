@@ -18,7 +18,7 @@ sharing one lease board.
   and **filter to** `claim_next_thread` / `post_message` / `get_thread_context` /
   `set_thread_result` / `wait_for_result` / `wait_for_ready` before handing tools to the
   agent, instead of dumping all ~78. **Filter only — the catalog is unchanged server-side**
-  and the pi 8-method seam stays callable.
+  and the 8-method seam stays callable.
 - **MCP client configs** — `examples/cursor-mcp.json` + `examples/claude-desktop-mcp.json`
   (point at `/mcp/streamable`, bearer, `2026-07-28` stateless — no session id).
 - **Docs** — `examples/README.md` reworked around the hero demo + MCP configs + auth-on

@@ -11,7 +11,7 @@ The enum is **closed** — unlike `result_kind`, which is a namespaced
 string a producer publishes.
 
 Four impl PRs (386.1–386.4) + this retro. Cluster 384 was already
-claimed by P1.1d MCP `transition_thread` (#816/#823); Soundcheck took
+claimed by P1.1d MCP `transition_thread` (#816/#823); the land-gate took
 385; run-lineage took 387. This stack is 386. This retro targets
 `main` only (the 383 `base_ref_deleted` lesson). Children #820/#822/#825
 were retargeted to `main` before any parent squash-delete.
@@ -71,10 +71,10 @@ were retargeted to `main` before any parent squash-delete.
 - **`set_by` / `resolved_by` are NOT-NULL FKs.** Bypass (nil member)
   FK-fails. e2e and the MCP test mint a real token / session, same as
   363.
-- **Soundcheck took the next migration slot while 386.1 was open.**
+- **LandGate took the next migration slot while 386.1 was open.**
   385.1 landed pg 0088 / sqlite 0087. Blocks stayed **pg 0089 /
   sqlite 0088** — rebase must bump the version, not overwrite
-  Soundcheck. #817, #820, #822, and #825 then squash-merged onto
+  LandGate. #817, #820, #822, and #825 then squash-merged onto
   `main`. This retro rebased onto that tip after #829.
 
 ## Test evidence

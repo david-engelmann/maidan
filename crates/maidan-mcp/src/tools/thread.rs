@@ -1039,7 +1039,7 @@ pub(super) async fn get_thread_result(
 #[derive(Deserialize)]
 struct ListThreadResultsArgs {
     /// Exact-match facet on the namespaced `result_kind` string (e.g.
-    /// `pi.review.result/1`). Absent / empty = every non-tombstoned result.
+    /// `example.review.result/1`). Absent / empty = every non-tombstoned result.
     #[serde(default)]
     result_kind: Option<String>,
     #[serde(default)]

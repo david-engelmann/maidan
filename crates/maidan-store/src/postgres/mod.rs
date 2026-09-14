@@ -59,7 +59,7 @@ mod secrets;
 mod sessions;
 mod slack_links;
 mod slash_commands;
-mod soundcheck;
+mod land_gate;
 mod spawn;
 mod task_schedules;
 mod thread_deps;
@@ -1594,22 +1594,22 @@ impl ReviewStore for PostgresStore {
 }
 
 #[async_trait]
-impl SoundcheckStore for PostgresStore {
-    async fn require_soundcheck(
+impl LandGateStore for PostgresStore {
+    async fn require_land_gate(
         &self,
         thread_id: ThreadId,
-    ) -> Result<SoundcheckStanding, StoreError> {
-        soundcheck::require(&self.pool, thread_id).await
+    ) -> Result<LandGateStanding, StoreError> {
+        land_gate::require(&self.pool, thread_id).await
     }
-    async fn set_soundcheck_pointer(
+    async fn set_land_gate_pointer(
         &self,
         thread_id: ThreadId,
         recorded_by: MemberId,
-        status: SoundcheckStatus,
+        status: LandGateStatus,
         artifact_sha: Option<&str>,
         land: Option<LandColor>,
-    ) -> Result<SoundcheckStanding, StoreError> {
-        soundcheck::set_pointer(
+    ) -> Result<LandGateStanding, StoreError> {
+        land_gate::set_pointer(
             &self.pool,
             thread_id,
             recorded_by,
@@ -1619,14 +1619,14 @@ impl SoundcheckStore for PostgresStore {
         )
         .await
     }
-    async fn get_soundcheck_standing(
+    async fn get_land_gate_standing(
         &self,
         thread_id: ThreadId,
-    ) -> Result<SoundcheckStanding, StoreError> {
-        soundcheck::standing(self.read_pool(), thread_id).await
+    ) -> Result<LandGateStanding, StoreError> {
+        land_gate::standing(self.read_pool(), thread_id).await
     }
-    async fn clear_soundcheck(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
-        soundcheck::clear(&self.pool, thread_id).await
+    async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+        land_gate::clear(&self.pool, thread_id).await
     }
 }
 

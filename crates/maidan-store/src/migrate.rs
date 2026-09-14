@@ -122,7 +122,7 @@ const POSTGRES_UP_V86: &str =
 const POSTGRES_UP_V87: &str =
     include_str!("../../../migrations/postgres/0087_thread_result_kind.sql");
 const POSTGRES_UP_V88: &str =
-    include_str!("../../../migrations/postgres/0088_thread_soundcheck.sql");
+    include_str!("../../../migrations/postgres/0088_thread_land_gate.sql");
 const POSTGRES_UP_V89: &str = include_str!("../../../migrations/postgres/0089_thread_blocks.sql");
 const POSTGRES_UP_V90: &str = include_str!("../../../migrations/postgres/0090_thread_lineage.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
@@ -223,7 +223,7 @@ const SQLITE_UP_V83: &str = include_str!("../../../migrations/sqlite/0083_egress
 const SQLITE_UP_V84: &str = include_str!("../../../migrations/sqlite/0084_result_deliveries.sql");
 const SQLITE_UP_V85: &str = include_str!("../../../migrations/sqlite/0085_egress_outbox_kind.sql");
 const SQLITE_UP_V86: &str = include_str!("../../../migrations/sqlite/0086_thread_result_kind.sql");
-const SQLITE_UP_V87: &str = include_str!("../../../migrations/sqlite/0087_thread_soundcheck.sql");
+const SQLITE_UP_V87: &str = include_str!("../../../migrations/sqlite/0087_thread_land_gate.sql");
 const SQLITE_UP_V88: &str = include_str!("../../../migrations/sqlite/0088_thread_blocks.sql");
 const SQLITE_UP_V89: &str = include_str!("../../../migrations/sqlite/0089_thread_lineage.sql");
 

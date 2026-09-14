@@ -1,4 +1,4 @@
-//! Soundcheck close-gate (Cluster 385.2, Wave 2 #25): a `closed` transition
+//! LandGate close-gate (Cluster 385.2, Wave 2 #25): a `closed` transition
 //! is refused until a qualifying green pass exists when the gate is armed.
 //! Amber (flags-then-still-engages) is not a land. No row is additive.
 //! Both backends.
@@ -6,8 +6,8 @@
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    LandColor, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, SoundcheckStatus,
-    SOUNDCHECK_SKILL,
+    LandColor, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, LandGateStatus,
+    LAND_GATE_SKILL,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -45,13 +45,13 @@ async fn run_suite(store: &dyn Store) {
     };
     let owner = mk("owner").await;
     let assignee = mk("assignee").await;
-    let checker = mk("soundcheck").await;
+    let checker = mk("land_gate").await;
     store
-        .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+        .add_member_skill(checker.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     store
-        .add_member_skill(owner.id, SOUNDCHECK_SKILL)
+        .add_member_skill(owner.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     let channel = store
@@ -74,7 +74,7 @@ async fn run_suite(store: &dyn Store) {
             .expect("thread")
     };
 
-    // Additive: no Soundcheck row → close as before.
+    // Additive: no LandGate row → close as before.
     let t = mk_thread().await;
     store.set_thread_owner(t.id, Some(owner.id)).await.unwrap();
     store.assign_thread(t.id, assignee.id).await.unwrap();
@@ -92,7 +92,7 @@ async fn run_suite(store: &dyn Store) {
     let t = mk_thread().await;
     store.set_thread_owner(t.id, Some(owner.id)).await.unwrap();
     store.assign_thread(t.id, assignee.id).await.unwrap();
-    store.require_soundcheck(t.id).await.unwrap();
+    store.require_land_gate(t.id).await.unwrap();
     store
         .transition_thread(t.id, owner.id, ThreadAction::StartReview)
         .await
@@ -101,16 +101,16 @@ async fn run_suite(store: &dyn Store) {
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("soundcheck")),
+        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land_gate")),
         "pending require must block close, got {blocked:?}"
     );
 
     // Amber is not a land.
     store
-        .set_soundcheck_pointer(
+        .set_land_gate_pointer(
             t.id,
             checker.id,
-            SoundcheckStatus::Pass,
+            LandGateStatus::Pass,
             None,
             Some(LandColor::Amber),
         )
@@ -126,33 +126,33 @@ async fn run_suite(store: &dyn Store) {
 
     // Fail is red.
     store
-        .set_soundcheck_pointer(t.id, checker.id, SoundcheckStatus::Fail, None, None)
+        .set_land_gate_pointer(t.id, checker.id, LandGateStatus::Fail, None, None)
         .await
         .unwrap();
     let fail = store
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(fail, Err(StoreError::Conflict(ref m)) if m.contains("red") || m.contains("soundcheck")),
+        matches!(fail, Err(StoreError::Conflict(ref m)) if m.contains("red") || m.contains("land_gate")),
         "fail must not land, got {fail:?}"
     );
 
     // Implementer (owner) pass does not land.
     store
-        .set_soundcheck_pointer(t.id, owner.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(t.id, owner.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
     let self_pass = store
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(self_pass, Err(StoreError::Conflict(ref m)) if m.contains("soundcheck")),
+        matches!(self_pass, Err(StoreError::Conflict(ref m)) if m.contains("land_gate")),
         "implementer pass must not land, got {self_pass:?}"
     );
 
     // Qualifying green pass lands.
     store
-        .set_soundcheck_pointer(t.id, checker.id, SoundcheckStatus::Pass, None, None)
+        .set_land_gate_pointer(t.id, checker.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
     let closed = store
@@ -163,13 +163,13 @@ async fn run_suite(store: &dyn Store) {
 }
 
 #[tokio::test]
-async fn soundcheck_gate_blocks_close_until_green_pass_sqlite() {
+async fn land_gate_gate_blocks_close_until_green_pass_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
 }
 
 #[tokio::test]
-async fn soundcheck_gate_blocks_close_until_green_pass_postgres() {
+async fn land_gate_gate_blocks_close_until_green_pass_postgres() {
     use maidan_store::{run_postgres_migrations, PostgresStore};
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration as StdDuration;

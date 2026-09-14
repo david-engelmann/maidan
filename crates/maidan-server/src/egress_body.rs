@@ -33,7 +33,7 @@ pub const GITHUB_BODY_MAX_CHARS: usize = 65536;
 /// Hidden HTML comment at byte 0 of a result-delivery GitHub body (Cluster 379.4).
 /// The recovery path if the stored `external_ref` is lost: list the issue's
 /// comments and PATCH the one whose body starts with this marker. Matches the
-/// soundcheck renderer bytes.
+/// land_gate renderer bytes.
 pub fn result_delivery_marker(thread_id: maidan_types::ThreadId) -> String {
     format!("<!-- maidan:result:{thread_id} -->")
 }
@@ -586,8 +586,8 @@ mod tests {
     #[test]
     fn mrkdwn_rewrites_links_headings_and_bold() {
         assert_eq!(
-            gfm_to_mrkdwn("see [the run](https://pi.test/r/1) now"),
-            "see <https://pi.test/r/1|the run> now"
+            gfm_to_mrkdwn("see [the run](https://producer.example.test/r/1) now"),
+            "see <https://producer.example.test/r/1|the run> now"
         );
         assert_eq!(gfm_to_mrkdwn("## Findings"), "*Findings*");
         assert_eq!(gfm_to_mrkdwn("### A **bold** head"), "*A *bold* head*");
@@ -617,9 +617,9 @@ mod tests {
 
     #[test]
     fn the_github_body_defuses_mentions_and_appends_the_backlink() {
-        let out = github_comment_body("review by @octocat", Some("https://pi.test/r/1"));
+        let out = github_comment_body("review by @octocat", Some("https://producer.example.test/r/1"));
         assert!(out.starts_with("review by `@octocat`"));
-        assert!(out.contains("[View in the producer](https://pi.test/r/1)"));
+        assert!(out.contains("[View in the producer](https://producer.example.test/r/1)"));
     }
 
     #[test]
@@ -679,13 +679,13 @@ mod tests {
     #[test]
     fn the_slack_body_is_the_summary_and_digest_in_mrkdwn_never_rendered() {
         let out = slack_message_body(
-            "**3 findings** in [bgv3](https://x.test/pr/1)",
+            "**3 findings** in [widgets](https://x.test/pr/1)",
             &["- 1 critical".to_string(), "- 2 minor".to_string()],
-            Some("https://pi.test/r/1"),
+            Some("https://producer.example.test/r/1"),
         );
         assert_eq!(
             out,
-            "*3 findings* in <https://x.test/pr/1|bgv3>\n- 1 critical\n- 2 minor\n<https://pi.test/r/1|View in the producer>"
+            "*3 findings* in <https://x.test/pr/1|widgets>\n- 1 critical\n- 2 minor\n<https://producer.example.test/r/1|View in the producer>"
         );
     }
 

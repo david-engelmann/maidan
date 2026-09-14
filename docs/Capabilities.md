@@ -3,6 +3,15 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v389.0.0 — OSS hygiene: de-internalize / land-gate
+
+One impl PR + a retro. The Cluster 385 close-gate keeps its semantics (pointer + pass/fail + green/amber/red; `closed` refuses without a qualifying green pass from a `land_gate`-skilled member ≠ owner/assignee) and is renamed to a public vocabulary any outsider can use. **`land_gate` / `LandGate` / `kind: "land_gate"`** everywhere (types, store table `maidan_thread_land_gate`, REST `/threads/:id/land-gate`, MCP `set/get/require/clear_land_gate`). Waiter examples are `example.review.result/1`; the frozen envelope is `maidan.waiter.result/1`; the delivery backlink is `view_url`. Internal product names (and internal repo selectors) are gone from the public surface. Raspberry Pi (`docs/Pi.md`) is unchanged. **386–387 were already used; 388 left unused.**
+
+| Change | Where |
+|--------|-------|
+| **Rename (389.1):** close-gate public surface → land-gate across types, store, REST, MCP, OpenAPI, contracts, tests. Migrations rewritten in place (greenfield). | `crates/maidan-types/src/land_gate.rs`, `crates/maidan-store/src/{postgres,sqlite}/land_gate.rs`, `crates/maidan-server/src/routes/land_gate.rs`, `crates/maidan-mcp/src/tools/land_gate.rs` |
+| **Scrub:** `example.*` result kinds, `maidan.waiter.result/1`, `view_url`, `example/repo` fixtures; docs/retros rewritten. | `crates/maidan-types/src/waiter.rs`, `docs/{Integration,Result Delivery,Architecture,Open Work}.md` |
+
 ## v386.0.0 — Wave 2 #27: a closed blocked-reason enum
 
 Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dispatch with a **closed** `BlockedReason` (`dag|gate|human|child|quota|unclaimable`) — unlike `result_kind`, a namespaced string. `claim_next` skips a `maidan_thread_blocks` row. Clearing emits `BlockedResolved` (non-federatable). Distinct from Cluster 218 DAG-children-must-be-terminal and Cluster 363's unclaimable park table (`unclaimable` here is vocabulary, not a replacement). **Row #27 is closed.**
@@ -14,20 +23,20 @@ Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dis
 | **Event (386.3):** `BlockedResolved` + `clear_thread_block_with_event` (one tx). | `crates/maidan-types/src/events.rs`, `contracts/event-kinds.json` |
 | **REST/MCP/e2e (386.4):** `PUT`/`GET`/`DELETE /threads/:id/block` + `GET /channels/:cid/blocked`; MCP twins; explicit claim 409; bus observe. | `crates/maidan-server/src/routes/{thread,channel}.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
 
-## v385.0.0 — Wave 2 #25 remainder: Soundcheck gate pointer + green/amber/red
+## v385.0.0 — Wave 2 #25 remainder: LandGate gate pointer + green/amber/red
 
-Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"soundcheck", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `soundcheck`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; Soundcheck owns test execution. Not a CI product / a judge panel. Cluster 384 is P1.1d (closed by this retro). **Row #25 is closed** (383 composition + 385 pointer).
+Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"land_gate", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `land_gate`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; an external verifier records pass/fail. Not a CI product / a judge panel. Cluster 384 is P1.1d (closed by this retro). **Row #25 is closed** (383 composition + 385 pointer).
 
 | Change | Where |
 |--------|-------|
-| **Types + store (385.1):** `SoundcheckPointer` / `LandColor` / standing; table pg 0088 / sqlite 0087; require / set / get / clear. Unskilled writes `InvalidInput`. | `crates/maidan-types/src/soundcheck.rs`, `crates/maidan-store/src/{postgres,sqlite}/soundcheck.rs` |
+| **Types + store (385.1):** `LandGatePointer` / `LandColor` / standing; table pg 0088 / sqlite 0087; require / set / get / clear. Unskilled writes `InvalidInput`. | `crates/maidan-types/src/land_gate.rs`, `crates/maidan-store/src/{postgres,sqlite}/land_gate.rs` |
 | **FSM (385.2):** `transition_in_tx` refuses `closed` unless a qualifying green pass (or no row). | `crates/maidan-store/src/{postgres,sqlite}/thread_transitions.rs` |
-| **REST + MCP (385.3):** `PUT`/`GET`/`DELETE /threads/:id/soundcheck` + `PUT …/requirement`; tools `set/get/require/clear_soundcheck`. | `crates/maidan-server/src/routes/soundcheck.rs`, `crates/maidan-mcp/src/tools/soundcheck.rs` |
-| **e2e (385.4):** HTTP close-gate + MCP standing; fail stays red. | `crates/maidan-server/tests/soundcheck_e2e.rs` |
+| **REST + MCP (385.3):** `PUT`/`GET`/`DELETE /threads/:id/land-gate` + `PUT …/requirement`; tools `set/get/require/clear_land_gate`. | `crates/maidan-server/src/routes/land_gate.rs`, `crates/maidan-mcp/src/tools/land_gate.rs` |
+| **e2e (385.4):** HTTP close-gate + MCP standing; fail stays red. | `crates/maidan-server/tests/land_gate_e2e.rs` |
 
 ## v384.0.0 — P1.1d: MCP `transition_thread` twin of the REST FSM
 
-One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (`start_review` / `close` / `archive`) through `transition_thread_with_event` + `publish_stored`. SoD, the required-reviewers close-gate, unresolved `refutes`, and the Cluster-383 critical composition apply identically — no MCP bypass. Terminal transitions emit `ThreadReady` for newly-ready dependents. **P1.1d is closed.** Cluster 385 (Soundcheck) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not this work.
+One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (`start_review` / `close` / `archive`) through `transition_thread_with_event` + `publish_stored`. SoD, the required-reviewers close-gate, unresolved `refutes`, and the Cluster-383 critical composition apply identically — no MCP bypass. Terminal transitions emit `ThreadReady` for newly-ready dependents. **P1.1d is closed.** Cluster 385 (LandGate) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not this work.
 
 | Change | Where |
 |--------|-------|
@@ -36,7 +45,7 @@ One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (
 
 ## v383.0.0 — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
 
-Three impl PRs (383.1–383.3) + a retro. A reviewed `pi.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The Soundcheck pointer + green/amber/red vocabulary shipped as Cluster 385.
+Three impl PRs (383.1–383.3) + a retro. A reviewed `example.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The LandGate pointer + green/amber/red vocabulary shipped as Cluster 385.
 
 | Change | Where |
 |--------|-------|
@@ -46,7 +55,7 @@ Three impl PRs (383.1–383.3) + a retro. A reviewed `pi.review.result/1` whose 
 
 ## v381.0.0 — Wave 2 #24 facet half: `result_kind` is a namespaced-string list
 
-Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not the retro. Thread results are listed by the **namespaced string** a producer publishes (`pi.review.result/1`), not a closed `decision|plan|merge_authorized` enum and not the ADR convention `"kind": "decision"`. The surface is a workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. Omit `result_kind` to list every accessible non-tombstoned result; private-channel rows the caller cannot read are dropped. Cluster 382's `list_channel_closed_results` is untouched. **Row #24 is closed** (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.** Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
+Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not the retro. Thread results are listed by the **namespaced string** a producer publishes (`example.review.result/1`), not a closed `decision|plan|merge_authorized` enum and not the ADR convention `"kind": "decision"`. The surface is a workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. Omit `result_kind` to list every accessible non-tombstoned result; private-channel rows the caller cannot read are dropped. Cluster 382's `list_channel_closed_results` is untouched. **Row #24 is closed** (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.** Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
 
 | Change | Where |
 |--------|-------|
@@ -61,7 +70,7 @@ Three impl PRs (380.1–380.3) + a retro. After a successful Cluster 379 GitHub 
 
 | Change | Where |
 |--------|-------|
-| **Frame (380.1):** `line_range` is 1-indexed inclusive **post-image** lines at `head_sha`; GitHub RIGHT; `github_line()` = `end`; `github_start_line()` only when `start != end`. `review_commit_id()` is envelope `head_sha` only. | `crates/maidan-types/src/waiter.rs`, fixture `pi_waiter_result_v1.json` |
+| **Frame (380.1):** `line_range` is 1-indexed inclusive **post-image** lines at `head_sha`; GitHub RIGHT; `github_line()` = `end`; `github_start_line()` only when `start != end`. `review_commit_id()` is envelope `head_sha` only. | `crates/maidan-types/src/waiter.rs`, fixture `waiter_result_v1.json` |
 | **Review POST (380.2):** `GithubSender::create_review` after the 379 summary; `event: COMMENT`; cap 100 comments; mention-defused finding bodies; no 379 marker on inline comments. Metric `maidan_github_review_total{outcome}`. | `crates/maidan-server/src/{github.rs,egress_worker.rs,result_delivery.rs}` |
 | **Skip vs fail (380.3):** 404/422 → `{skipped}`; 5xx / rate-limited 403 / 401/403 → `{failed}` + replay; never `disable_link`; dual-surface review only on GitHub; vanished envelope skips the review; projector rows never `create_review`. | `crates/maidan-server/tests/result_delivery_inline_e2e.rs`, `egress_wire_e2e.rs` |
 
@@ -71,8 +80,8 @@ Three impl PRs (382.1–382.3) + a retro. The next `claim_next` claimer sees
 in-channel **accepted/closed decisions** as token-lean teasers on the live
 thread pack (`GET /threads/:id/context` + MCP `get_thread_context`).
 `claim_next` itself still returns `Option<Thread>`. Waiter envelopes
-(`schema = pi.waiter.result/1`) appear only when `status` is `reviewed`;
-`result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a
+(`schema = maidan.waiter.result/1`) appear only when `status` is `reviewed`;
+`result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a
 closed enum. Full payloads stay on `GET /threads/:id/result`. **The other
 half of row #24** (facet `result_kind` into search) remains **Cluster 381**.
 
@@ -84,12 +93,12 @@ half of row #24** (facet `result_kind` into search) remains **Cluster 381**.
 
 ## v379.0.0 — the result-delivery primitive
 
-Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egress durable, aimable, and repeatable; this is the producer's actual ask. A `pi.waiter.result/1` envelope written with `set_thread_result` is now fetched, parsed, allowlist-checked per `deliver_to` target, and delivered — GitHub gets `rendered`, Slack gets `summary`, a re-review updates the same object, and the producer reads per-target disposition over REST + MCP. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **The grammar is frozen** at `pi.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as next**: `head_sha` is on the fixture; 380.1 still pins the `line_range` frame of reference.
+Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egress durable, aimable, and repeatable; this is the producer's actual ask. A `maidan.waiter.result/1` envelope written with `set_thread_result` is now fetched, parsed, allowlist-checked per `deliver_to` target, and delivered — GitHub gets `rendered`, Slack gets `summary`, a re-review updates the same object, and the producer reads per-target disposition over REST + MCP. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **The grammar is frozen** at `maidan.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as next**: `head_sha` is on the fixture; 380.1 still pins the `line_range` frame of reference.
 
 | Change | Where |
 |--------|-------|
 | **Store (379.1):** `maidan_result_deliveries` (pg 0085 / sqlite 0084, `UNIQUE (thread_id, surface, selector)`) + `ResultDelivery` / `arm_result_delivery` (wins iff `revision > armed_revision`, keeps `external_ref`) / `mark_result_delivered` / `mark_result_delivery_failed` / skip. **Two watermarks:** `armed_revision` (seen — the monotonic dedup) and `delivered_revision` (landed). Arming against only `delivered_revision` cannot tell a second replica of the *same* revision (both read `NULL`, one must lose) from a newer result arriving in-flight (must win). Intent/identity, not transport — the outbox stays Cluster 377. | `crates/maidan-types/src/result_delivery.rs`, `crates/maidan-store/src/{postgres,sqlite}/result_deliveries.rs` |
-| **Contract lock (379.2):** `parse_waiter_result`, a pure tolerant reader with `DeliverTarget::Unknown(String)`. Fixture `crates/maidan-types/tests/fixtures/pi_waiter_result_v1.json` — a producer-side grammar change breaks this test. Unrecognized `schema` ⇒ no delivery. | `crates/maidan-types/src/waiter.rs` |
+| **Contract lock (379.2):** `parse_waiter_result`, a pure tolerant reader with `DeliverTarget::Unknown(String)`. Fixture `crates/maidan-types/tests/fixtures/waiter_result_v1.json` — a producer-side grammar change breaks this test. Unrecognized `schema` ⇒ no delivery. | `crates/maidan-types/src/waiter.rs` |
 | **Trigger (379.3):** `ThreadResultSet` arm in `notification_router::route_event` → `result_delivery.rs` (fetch → parse → per-target allowlist check then enqueue). Skip is recorded (`status=skipped`), not an error. `maidan_result_deliveries_total{outcome}`. | `crates/maidan-server/src/{result_delivery.rs,notification_router.rs}` |
 | **Update-in-place (379.4):** stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0 (reserved inside the 65536-char ceiling). `EgressKind {Projector, Result}` on the outbox (pg 0086 / sqlite 0085) so a projector post to the same issue cannot PATCH the result comment. Result 401/403/404 dead-letters **without** `disable_link`. | `crates/maidan-server/src/{egress_worker.rs,egress_body.rs}`, `crates/maidan-types/src/egress.rs` |
 | **Status + replay (379.5):** `GET /threads/:id/deliveries` (`workspace:read`) + `POST …/deliveries/:did/replay` (`workspace:write`) + MCP `list_result_deliveries` / `replay_result_delivery`. Replay reopens as `pending` without bumping `armed_revision`, enqueues with a synthetic negative `source_log_id`, re-checks the allowlist (unblessed stays skipped). Audit `result_delivery.attempt` / `result_delivery.replay`. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/delivery.rs`, `crates/maidan-store/src/result_delivery.rs` |
@@ -181,7 +190,7 @@ Four impl PRs (371.1–371.4). A named secret whose **value never enters the eve
 | Change | Where |
 |--------|-------|
 | **Store (371.1):** `maidan_secrets` (pg 0076 / sqlite 0075, ciphertext only) + `Secret`/`SecretId` + pure `secret://` ref helpers (`secret_refs_in`, `substitute_secret_refs`) + `SecretStore` CRUD (create = rotate), both backends. | `crates/maidan-types/src/secret.rs`, `crates/maidan-store/src/{postgres,sqlite}/secrets.rs` |
-| **REST + caps (371.2):** `secret:read`/`secret:admin`; create (encrypts) / list (metadata) / `resolve` (decrypts — "Pi fetches at exec") / delete; the value crosses the wire only on create + resolve. | `crates/maidan-server/src/routes/secret.rs` |
+| **REST + caps (371.2):** `secret:read`/`secret:admin`; create (encrypts) / list (metadata) / `resolve` (decrypts — "a consumer fetches at exec") / delete; the value crosses the wire only on create + resolve. | `crates/maidan-server/src/routes/secret.rs` |
 | **MCP (371.3):** `list_secrets` / `resolve_secret`; `McpServer` gains an at-rest key set at startup. | `crates/maidan-mcp/src/tools/secret.rs` |
 | **Egress broker (371.4):** substitutes `secret://` refs on a webhook delivery only for hosts on `MAIDAN_SECRET_EGRESS_ALLOWLIST`; a non-allowlisted host gets the literal ref; substitution at send time, never persisted. | `crates/maidan-server/src/secret_broker.rs`, `webhook_worker.rs` |
 
@@ -636,7 +645,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 
 | Change | Where |
 |--------|-------|
-| The falsifiable hello-world: a Python SDK worker + a TypeScript SDK worker both `claim_next_thread` on one channel → Maidan hands each task to exactly one (no cross-language double-claim; drained queue → `null`; no LLM); verified end-to-end via `scripts/lease-demo.sh`. MCP client configs for Cursor/Claude (`/mcp/streamable`, bearer, `2026-07-28`). LangChain/AutoGen examples now **filter to the six-tool hero loop** (client-side; catalog stays 78, pi 8-seam callable) instead of loading all ~78. CI guards the new scripts/configs | `examples/lease_demo/`, `scripts/lease-demo.sh`, `examples/{cursor-mcp,claude-desktop-mcp}.json`, `examples/{langchain,autogen,rest}_maidan.py`, `examples/README.md`, `docs/Framework Integrations.md`, `.github/workflows/ci.yml` |
+| The falsifiable hello-world: a Python SDK worker + a TypeScript SDK worker both `claim_next_thread` on one channel → Maidan hands each task to exactly one (no cross-language double-claim; drained queue → `null`; no LLM); verified end-to-end via `scripts/lease-demo.sh`. MCP client configs for Cursor/Claude (`/mcp/streamable`, bearer, `2026-07-28`). LangChain/AutoGen examples now **filter to the six-tool hero loop** (client-side; catalog stays 78, 8-seam callable) instead of loading all ~78. CI guards the new scripts/configs | `examples/lease_demo/`, `scripts/lease-demo.sh`, `examples/{cursor-mcp,claude-desktop-mcp}.json`, `examples/{langchain,autogen,rest}_maidan.py`, `examples/README.md`, `docs/Framework Integrations.md`, `.github/workflows/ci.yml` |
 
 ## v316.0.0 — docs honesty scrub + honest prebuilt-image path
 
