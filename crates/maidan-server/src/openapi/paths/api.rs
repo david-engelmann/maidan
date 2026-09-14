@@ -59,7 +59,12 @@ pub fn erase_workspace() {}
         ListEventsQuery,
     ),
     security(("bearerAuth" = [])),
-    responses((status = 200, body = Vec<StoredEvent>)))]
+    responses(
+        (status = 200, body = Vec<StoredEvent>),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+        (status = 409, description = "Cursor too old; must_refetch", body = ProblemDetails),
+    ))]
 pub fn list_events() {}
 
 #[utoipa::path(get, path = "/workspaces/{wid}/search", tag = "search",

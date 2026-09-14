@@ -699,10 +699,32 @@ pub async fn list_events(
         }
         _ => return Err(ApiError::Unauthorized),
     }
+    if q.after_id < 0 {
+        return Err(ApiError::BadRequest("after_id must be non-negative".into()));
+    }
+    let types = match q.types.as_deref() {
+        Some(s) => parse_projector_types(s).map_err(ApiError::BadRequest)?,
+        None => Vec::new(),
+    };
+    let shape = ProjectorShape {
+        workspace_id,
+        channel_id: q.channel_id.map(ChannelId),
+        thread_id: q.thread_id.map(ThreadId),
+        types,
+    };
+    let mut after_id = q.after_id;
+    if let Some(ref consumer_id) = q.consumer_id {
+        crate::delivery::validate_consumer_id(consumer_id).map_err(ApiError::BadRequest)?;
+        after_id = crate::delivery::effective_subscribe_after_id(
+            state.store.as_ref(),
+            Some(consumer_id.as_str()),
+            Some(workspace_id),
+            after_id,
+        )
+        .await?;
+    }
     Ok(Json(
-        state
-            .store
-            .list_events_after(workspace_id, q.after_id, q.limit)
+        crate::delivery::list_events_for_shape(state.store.as_ref(), &shape, after_id, q.limit)
             .await?,
     ))
 }

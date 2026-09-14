@@ -652,6 +652,20 @@ pub struct ListEventsQuery {
     pub after_id: i64,
     #[serde(default = "default_limit")]
     pub limit: i64,
+    /// Projector shape (Cluster 388): restrict to one channel.
+    #[serde(default)]
+    pub channel_id: Option<uuid::Uuid>,
+    /// Projector shape: restrict to one thread.
+    #[serde(default)]
+    pub thread_id: Option<uuid::Uuid>,
+    /// Comma-separated event kinds (`message_posted,thread_ready`). Empty/absent = all.
+    /// Unknown tokens fail loud (400), never silently dropped.
+    #[serde(default)]
+    pub types: Option<String>,
+    /// Durable delivery-cursor key. Floors `after_id` to the stored watermark
+    /// (Cluster 13/125); a too-old watermark is 409 `must_refetch`, not a clamp.
+    #[serde(default)]
+    pub consumer_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
