@@ -31,7 +31,8 @@ use maidan_auth::{
     capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
     resolve_bearer, AuthContext,
 };
-use maidan_types::{EventFilter, MemberId, ThreadId, WorkspaceId};
+use maidan_store::StoreError;
+use maidan_types::{CursorTooOld, EventFilter, MemberId, ThreadId, WorkspaceId};
 use serde::Deserialize;
 use tokio::{
     sync::mpsc,
@@ -91,6 +92,54 @@ struct SubscribeRequest {
     lean: bool,
 }
 
+/// Fail-loud subscribe rejection. A too-old cursor sends a JSON frame
+/// (`type: cursor_too_old`, `must_refetch: true`) then closes 1008 — never a
+/// silent clamp. Other rejects only close.
+struct SubscribeReject {
+    code: u16,
+    reason: String,
+    frame: Option<String>,
+}
+
+impl From<(u16, String)> for SubscribeReject {
+    fn from((code, reason): (u16, String)) -> Self {
+        Self {
+            code,
+            reason,
+            frame: None,
+        }
+    }
+}
+
+impl SubscribeReject {
+    fn cursor_too_old(after_id: i64, oldest_id: i64) -> Self {
+        let body = CursorTooOld::new(after_id, oldest_id);
+        Self {
+            code: 1008,
+            reason: "cursor_too_old".into(),
+            frame: Some(
+                serde_json::json!({
+                    "type": "cursor_too_old",
+                    "after_id": body.after_id,
+                    "oldest_id": body.oldest_id,
+                    "must_refetch": true,
+                })
+                .to_string(),
+            ),
+        }
+    }
+
+    fn from_store(err: StoreError) -> Self {
+        match err {
+            StoreError::CursorTooOld {
+                after_id,
+                oldest_id,
+            } => Self::cursor_too_old(after_id, oldest_id),
+            other => (1011u16, other.to_string()).into(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientWsFrame {
@@ -109,11 +158,14 @@ pub async fn subscribe(
 async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
     let request = match read_subscribe(&mut socket, &state, &headers).await {
         Ok(r) => r,
-        Err((code, reason)) => {
+        Err(reject) => {
+            if let Some(frame) = reject.frame {
+                let _ = socket.send(WsMessage::Text(frame)).await;
+            }
             let _ = socket
                 .send(WsMessage::Close(Some(CloseFrame {
-                    code,
-                    reason: Cow::Owned(reason),
+                    code: reject.code,
+                    reason: Cow::Owned(reject.reason),
                 })))
                 .await;
             return;
@@ -370,7 +422,7 @@ async fn read_subscribe(
     socket: &mut WebSocket,
     state: &AppState,
     headers: &HeaderMap,
-) -> Result<SubscribeRequest, (u16, String)> {
+) -> Result<SubscribeRequest, SubscribeReject> {
     let frame = timeout(FIRST_FRAME_TIMEOUT, socket.next())
         .await
         .map_err(|_| (1002u16, "subscribe frame timeout".to_string()))?;
@@ -379,8 +431,8 @@ async fn read_subscribe(
 
     let text = match frame {
         WsMessage::Text(t) => t,
-        WsMessage::Close(_) => return Err((1000u16, String::new())),
-        _ => return Err((1002u16, "expected text subscribe frame".to_string())),
+        WsMessage::Close(_) => return Err((1000u16, String::new()).into()),
+        _ => return Err((1002u16, "expected text subscribe frame".to_string()).into()),
     };
 
     let sub: SubscribeFrame =
@@ -410,7 +462,8 @@ async fn read_subscribe(
         return Err((
             1008u16,
             "missing token in subscribe frame or browser session".into(),
-        ));
+        )
+            .into());
     };
     crate::dm::expand_event_filter(state, &mut filter, &ctx)
         .await
@@ -435,15 +488,19 @@ async fn read_subscribe(
             after_id,
         )
         .await
-        .map_err(|e| (1011u16, e.to_string()))?;
+        .map_err(SubscribeReject::from_store)?;
     }
+    crate::delivery::ensure_subscribe_cursor(state.store.as_ref(), filter.workspace_id, after_id)
+        .await
+        .map_err(SubscribeReject::from_store)?;
 
     let member_id = sub.member_id.map(MemberId);
     if member_id.is_some() && filter.workspace_id.is_none() {
         return Err((
             1008u16,
             "member_id requires filter.workspace_id for presence".into(),
-        ));
+        )
+            .into());
     }
 
     // At-least-once requires both a workspace filter and a durable consumer id

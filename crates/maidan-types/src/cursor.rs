@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::events::{Event, EventFilter, EventKind};
+use crate::events::{Event, EventFilter, EventKind, StoredEvent};
 use crate::ids::{ChannelId, ThreadId, WorkspaceId};
 
 /// Wire body / problem extension when a subscribe or backfill cursor is
@@ -93,6 +93,27 @@ impl ProjectorShape {
     pub fn matches(&self, event: &Event) -> bool {
         self.to_filter().matches(event)
     }
+
+    /// Same shape check against a log row's denormalized columns (HTTP backfill).
+    pub fn matches_stored(&self, event: &StoredEvent) -> bool {
+        if event.workspace_id != Some(self.workspace_id) {
+            return false;
+        }
+        if let Some(ch) = self.channel_id {
+            if event.channel_id != Some(ch) {
+                return false;
+            }
+        }
+        if let Some(th) = self.thread_id {
+            if event.thread_id != Some(th) {
+                return false;
+            }
+        }
+        if !self.types.is_empty() && !self.types.contains(&event.kind) {
+            return false;
+        }
+        true
+    }
 }
 
 /// Parse a comma-separated `types` query (`message_posted,thread_ready`).
@@ -172,6 +193,22 @@ mod tests {
         assert_eq!(filter.channel_id, shape.channel_id);
         assert_eq!(filter.thread_id, shape.thread_id);
         assert_eq!(filter.kinds.as_ref().map(|s| s.len()), Some(2));
+
+        let stored = StoredEvent {
+            id: 1,
+            kind: EventKind::MessagePosted,
+            workspace_id: Some(ws()),
+            channel_id: shape.channel_id,
+            thread_id: shape.thread_id,
+            payload: serde_json::json!({}),
+            occurred_at: chrono::Utc::now(),
+        };
+        assert!(shape.matches_stored(&stored));
+        let other = StoredEvent {
+            kind: EventKind::MemberJoined,
+            ..stored.clone()
+        };
+        assert!(!shape.matches_stored(&other));
     }
 
     #[test]
