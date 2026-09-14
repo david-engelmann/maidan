@@ -71,11 +71,13 @@ async fn consume(
     state: &AppState,
     stop_rx: &mut mpsc::Receiver<()>,
 ) -> bool {
+    let mut watermark: i64 = 0;
     loop {
         tokio::select! {
             item = stream.next() => {
                 match item {
                     Some(BusItem::Event(envelope)) => {
+                        watermark = watermark.max(envelope.log_id);
                         if let Event::ThreadStateChanged {
                             workspace_id,
                             channel_id,
@@ -101,7 +103,52 @@ async fn consume(
                         }
                     }
                     Some(BusItem::Lagged { skipped }) => {
-                        warn!(skipped, "fsm hook bus subscriber lagged");
+                        warn!(skipped, watermark, "fsm hook bus subscriber lagged; resuming from log");
+                        crate::subscribe_metrics::record_lag_resume("fsm_hook", "lagged");
+                        match maidan_store::resume_from_log(state.store.as_ref(), watermark, |page| {
+                            let state = state.clone();
+                            async move {
+                                for row in page {
+                                    let Ok(env) = crate::event_stream::envelope_from_stored(&row) else {
+                                        continue;
+                                    };
+                                    if let Event::ThreadStateChanged {
+                                        workspace_id,
+                                        channel_id,
+                                        thread_id,
+                                        actor_id,
+                                        from_state,
+                                        to_state,
+                                        thread,
+                                        ..
+                                    } = env.event
+                                    {
+                                        dispatch_thread_state_changed(
+                                            &state,
+                                            workspace_id,
+                                            channel_id,
+                                            thread_id,
+                                            actor_id,
+                                            from_state,
+                                            to_state,
+                                            thread,
+                                        )
+                                        .await;
+                                    }
+                                }
+                            }
+                        })
+                        .await
+                        {
+                            Ok(hw) => {
+                                watermark = watermark.max(hw);
+                                crate::subscribe_metrics::record_lag_resume("fsm_hook", "resumed");
+                            }
+                            Err(err) => {
+                                warn!(error = %err, "fsm hook lag resume from log failed");
+                                crate::subscribe_metrics::record_lag_resume("fsm_hook", "failed");
+                            }
+                        }
                     }
                     None => return false,
                 }

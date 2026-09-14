@@ -49,6 +49,18 @@ pub fn record_bus_lag(transport: SubscribeTransport, skipped: u64) {
     .record(skipped as f64);
 }
 
+/// `RecvError::Lagged` / `BusItem::Lagged` on an internal consumer: resume
+/// from the durable log. `outcome` is `lagged` (saw the signal), `resumed`,
+/// or `failed`. Never a silent drop.
+pub fn record_lag_resume(consumer: &'static str, outcome: &'static str) {
+    counter!(
+        "maidan_bus_lag_resume_total",
+        "consumer" => consumer,
+        "outcome" => outcome
+    )
+    .increment(1);
+}
+
 pub fn record_subscribe_replay(transport: SubscribeTransport, outcome: SubscribeReplayOutcome) {
     counter!(
         "maidan_subscribe_replay_total",
@@ -80,6 +92,7 @@ mod tests {
             SubscribeTransport::McpSse,
             SubscribeReplayOutcome::ReplayHint,
         );
+        record_lag_resume("webhook", "resumed");
     }
 
     #[test]
