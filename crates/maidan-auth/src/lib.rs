@@ -5,6 +5,7 @@ pub mod access;
 pub mod capability;
 pub mod context;
 pub mod error;
+pub mod export_sign;
 pub mod peer_secret;
 pub mod resolve;
 pub mod token;
@@ -17,6 +18,10 @@ pub use access::{
 pub use capability::*;
 pub use context::AuthContext;
 pub use error::AuthError;
+pub use export_sign::{
+    export_signing_key_from_env, export_verify_keys_from_env, sign_export, verify_export,
+    ExportSignError, ExportSigningKey, ExportVerifyError,
+};
 pub use peer_secret::{
     decrypt_fallback_keys_from_env, decrypt_peer_secret, decrypt_peer_secret_multi,
     decrypt_peer_secret_rotating, encrypt_peer_secret, encryption_key_from_env,

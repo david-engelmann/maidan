@@ -14,6 +14,9 @@ maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 base64 = "0.22"
 chacha20poly1305 = "0.10"
+chrono.workspace = true
+ed25519-dalek = { version = "2.1", default-features = false, features = ["std", "zeroize"] }
+serde_json.workspace = true
 sha2.workspace = true
 subtle = "2"
 thiserror.workspace = true
