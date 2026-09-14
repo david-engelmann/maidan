@@ -36,6 +36,22 @@ function envDefault(key) {
   return typeof process !== "undefined" && process.env ? process.env[key] : undefined;
 }
 
+/** Parse `Maidan-Room-LSN`. Rejects WAL text so this is never a Consistency-Token. */
+export function parseRoomLsn(value) {
+  if (value == null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed.includes("/")) return undefined;
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const n = Number(trimmed);
+  if (!Number.isSafeInteger(n) || n < 0) return undefined;
+  return n;
+}
+
+/** Observable `$type` for an event kind (`message_posted` → `maidan.event.message_posted/1`). */
+export function eventType(kind) {
+  return `maidan.event.${kind}/1`;
+}
+
 export class Client {
   /**
    * @param {string} [baseUrl] defaults to MAIDAN_URL
@@ -53,6 +69,8 @@ export class Client {
 
     // MCP is a URL, not a dependency (docs/Client Contract.md §4).
     this.mcpUrl = `${this.baseUrl}/mcp/streamable`;
+    /** Last seen Maidan-Room-LSN (event-log high-water). Not a WAL token. */
+    this.lastRoomLsn = undefined;
 
     this.workspaces = {
       create: (name) => this._req("POST", "/workspaces", { name }),
@@ -103,6 +121,7 @@ export class Client {
       init.body = JSON.stringify(body);
     }
     const resp = await this._fetch(`${this.baseUrl}${path}`, init);
+    this._captureRoomLsn(resp);
     return this._handle(resp);
   }
 
@@ -111,11 +130,17 @@ export class Client {
     const init = { method, headers };
     if (body !== undefined) init.body = body;
     const resp = await this._fetch(`${this.baseUrl}${path}`, init);
+    this._captureRoomLsn(resp);
     if (method === "GET") {
       if (!resp.ok) await this._raise(resp);
       return new Uint8Array(await resp.arrayBuffer());
     }
     return this._handle(resp);
+  }
+
+  _captureRoomLsn(resp) {
+    const parsed = parseRoomLsn(resp.headers.get("maidan-room-lsn"));
+    if (parsed !== undefined) this.lastRoomLsn = parsed;
   }
 
   async _handle(resp) {

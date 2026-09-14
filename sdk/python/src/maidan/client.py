@@ -21,7 +21,37 @@ from typing import Any, Callable, Optional
 
 __version__ = "0.1.0"
 
-__all__ = ["Client", "MaidanError", "Subscription", "__version__"]
+__all__ = [
+    "Client",
+    "MaidanError",
+    "Subscription",
+    "__version__",
+    "event_type",
+    "parse_room_lsn",
+]
+
+
+def parse_room_lsn(value: Optional[str]) -> Optional[int]:
+    """Parse ``Maidan-Room-LSN``. Rejects WAL text so this is never a
+    ``Maidan-Consistency-Token``.
+    """
+    if not value:
+        return None
+    trimmed = value.strip()
+    if not trimmed or "/" in trimmed:
+        return None
+    try:
+        n = int(trimmed, 10)
+    except ValueError:
+        return None
+    if n < 0:
+        return None
+    return n
+
+
+def event_type(kind: str) -> str:
+    """Observable ``$type`` for an event kind (``message_posted`` → ``maidan.event.message_posted/1``)."""
+    return f"maidan.event.{kind}/1"
 
 
 class MaidanError(Exception):
@@ -162,6 +192,8 @@ class Client:
         self.timeout = timeout
         # MCP is a URL, not a dependency (docs/Client Contract.md §0).
         self.mcp_url = f"{self.base_url}/mcp/streamable"
+        # Last seen Maidan-Room-LSN (event-log high-water). Not a WAL token.
+        self.last_room_lsn: Optional[int] = None
 
         self.workspaces = _Workspaces(self)
         self.channels = _Channels(self)
@@ -178,6 +210,14 @@ class Client:
         """POST /threads/{id}/claim/renew — holder-only lease heartbeat."""
         return self._req("POST", f"/threads/{thread_id}/claim/renew", {})
 
+    def _capture_room_lsn(self, headers: Any) -> None:
+        raw = None
+        if headers is not None:
+            raw = headers.get("Maidan-Room-LSN") or headers.get("maidan-room-lsn")
+        parsed = parse_room_lsn(raw)
+        if parsed is not None:
+            self.last_room_lsn = parsed
+
     # --- HTTP core ---
     def _req(self, method: str, path: str, body: Any = None) -> Any:
         headers = {"authorization": f"Bearer {self.token}"}
@@ -188,6 +228,7 @@ class Client:
         req = urllib.request.Request(f"{self.base_url}{path}", data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                self._capture_room_lsn(resp.headers)
                 raw = resp.read()
                 if resp.status == 204 or not raw:
                     return None
@@ -200,6 +241,7 @@ class Client:
         req = urllib.request.Request(f"{self.base_url}{path}", data=body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                self._capture_room_lsn(resp.headers)
                 raw = resp.read()
                 if method == "GET":
                     return raw
@@ -210,6 +252,7 @@ class Client:
             self._raise(e)
 
     def _raise(self, e: urllib.error.HTTPError) -> None:
+        self._capture_room_lsn(e.headers)
         text = ""
         try:
             text = e.read().decode("utf-8")

@@ -15,8 +15,8 @@ use maidan_auth::{
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
-    Event, EventKind, NewWebhookSubscription, WebhookSubscription, WebhookSubscriptionId,
-    WorkspaceId,
+    inject_type, Event, EventKind, NewWebhookSubscription, WebhookSubscription,
+    WebhookSubscriptionId, WorkspaceId, ROOM_LSN_HEADER,
 };
 use reqwest::Client;
 use serde::Serialize;
@@ -262,7 +262,13 @@ pub fn build_payload(log_id: i64, event: &Event) -> Result<String, serde_json::E
         occurred_at: Utc::now(),
         event,
     };
-    serde_json::to_string(&payload)
+    let mut value = serde_json::to_value(&payload)?;
+    let type_id = event.kind().type_id();
+    inject_type(&mut value, &type_id);
+    if let Some(inner) = value.get_mut("event") {
+        inject_type(inner, &type_id);
+    }
+    serde_json::to_string(&value)
 }
 
 pub fn sign_payload(secret: &str, body: &str) -> String {
@@ -284,14 +290,19 @@ pub async fn deliver_http(
     kind: EventKind,
     secret: &str,
     body: &str,
+    room_lsn: Option<i64>,
 ) -> Result<(), String> {
     let signature = sign_payload(secret, body);
-    let response = client
+    let mut request = client
         .post(url)
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Event", kind.as_str())
-        .header("X-Maidan-Delivery-Id", delivery_id.to_string())
+        .header("X-Maidan-Delivery-Id", delivery_id.to_string());
+    if let Some(lsn) = room_lsn {
+        request = request.header(ROOM_LSN_HEADER, lsn.to_string());
+    }
+    let response = request
         .body(body.to_string())
         .send()
         .await
@@ -334,6 +345,38 @@ pub fn poll_interval_ms_from_env() -> u64 {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(50)
+}
+
+#[cfg(test)]
+mod payload_tests {
+    use super::*;
+    use maidan_types::{Workspace, WorkspaceId};
+    use uuid::Uuid;
+
+    fn sample_event() -> Event {
+        Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: Workspace {
+                id: WorkspaceId(Uuid::nil()),
+                name: "ws".into(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tombstoned_at: None,
+            },
+        }
+    }
+
+    #[test]
+    fn build_payload_stamps_type_on_envelope_and_event() {
+        let event = sample_event();
+        let raw = build_payload(7, &event).expect("serialize");
+        let value: serde_json::Value = serde_json::from_str(&raw).expect("json");
+        assert_eq!(value["log_id"], 7);
+        assert_eq!(value["kind"], "workspace_created");
+        assert_eq!(value["$type"], "maidan.event.workspace_created/1");
+        assert_eq!(value["event"]["$type"], "maidan.event.workspace_created/1");
+        assert_eq!(value["event"]["kind"], "workspace_created");
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]

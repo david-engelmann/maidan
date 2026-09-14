@@ -24,6 +24,8 @@
 //! ```
 
 use std::io::Read;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -33,6 +35,25 @@ pub use subscribe::{Follow, Subscription};
 
 /// The client version, tracked independently of the server.
 pub const VERSION: &str = "0.1.0";
+
+/// Wire name of the projector-lag header (HTTP is case-insensitive).
+/// Distinct from `Maidan-Consistency-Token` (Postgres WAL LSN).
+pub const ROOM_LSN_HEADER: &str = "maidan-room-lsn";
+
+/// Parse `Maidan-Room-LSN`. Rejects WAL text (`0/hex`) so this is never
+/// confused with `Maidan-Consistency-Token`.
+pub fn parse_room_lsn(s: &str) -> Option<i64> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() || trimmed.contains('/') {
+        return None;
+    }
+    trimmed.parse::<i64>().ok().filter(|&n| n >= 0)
+}
+
+/// Observable `$type` for an event `kind` (`message_posted` → `maidan.event.message_posted/1`).
+pub fn event_type(kind: &str) -> String {
+    format!("maidan.event.{kind}/1")
+}
 
 /// A convenient result alias.
 pub type Result<T> = std::result::Result<T, MaidanError>;
@@ -95,6 +116,8 @@ pub struct Client {
     /// `{base_url}/mcp/streamable` — a string only, no MCP dependency.
     pub mcp_url: String,
     agent: ureq::Agent,
+    /// Last seen `Maidan-Room-LSN` (event-log high-water). Not a WAL token.
+    last_room_lsn: Arc<AtomicI64>,
 }
 
 impl Client {
@@ -109,6 +132,20 @@ impl Client {
             agent: ureq::AgentBuilder::new()
                 .timeout(Duration::from_secs(30))
                 .build(),
+            last_room_lsn: Arc::new(AtomicI64::new(-1)),
+        }
+    }
+
+    /// Highest `maidan_events.id` from the last REST response, if the server
+    /// stamped `Maidan-Room-LSN`. `None` until a stamped response is seen.
+    pub fn last_room_lsn(&self) -> Option<i64> {
+        let value = self.last_room_lsn.load(Ordering::Relaxed);
+        (value >= 0).then_some(value)
+    }
+
+    fn capture_room_lsn_header(&self, raw: Option<&str>) {
+        if let Some(n) = raw.and_then(parse_room_lsn) {
+            self.last_room_lsn.store(n, Ordering::Relaxed);
         }
     }
 
@@ -179,6 +216,7 @@ impl Client {
         };
         match result {
             Ok(resp) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
                 let status = resp.status();
                 let text = resp
                     .into_string()
@@ -188,7 +226,10 @@ impl Client {
                 }
                 serde_json::from_str(&text).map_err(|e| MaidanError::transport(e.to_string()))
             }
-            Err(ureq::Error::Status(code, resp)) => Err(api_error(code, resp)),
+            Err(ureq::Error::Status(code, resp)) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
+                Err(api_error(code, resp))
+            }
             Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
         }
     }
@@ -202,6 +243,7 @@ impl Client {
             .send_bytes(data)
         {
             Ok(resp) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
                 let status = resp.status();
                 let text = resp
                     .into_string()
@@ -211,7 +253,10 @@ impl Client {
                 }
                 serde_json::from_str(&text).map_err(|e| MaidanError::transport(e.to_string()))
             }
-            Err(ureq::Error::Status(code, resp)) => Err(api_error(code, resp)),
+            Err(ureq::Error::Status(code, resp)) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
+                Err(api_error(code, resp))
+            }
             Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
         }
     }
@@ -225,13 +270,17 @@ impl Client {
             .call()
         {
             Ok(resp) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
                 let mut buf = Vec::new();
                 resp.into_reader()
                     .read_to_end(&mut buf)
                     .map_err(|e| MaidanError::transport(e.to_string()))?;
                 Ok(buf)
             }
-            Err(ureq::Error::Status(code, resp)) => Err(api_error(code, resp)),
+            Err(ureq::Error::Status(code, resp)) => {
+                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
+                Err(api_error(code, resp))
+            }
             Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
         }
     }
@@ -458,5 +507,18 @@ mod tests {
 
         let refetch_wrong_status = err(500, json!({ "must_refetch": true }));
         assert!(!refetch_wrong_status.is_cursor_too_old());
+    }
+
+    #[test]
+    fn parse_room_lsn_accepts_decimal_and_rejects_wal() {
+        assert_eq!(parse_room_lsn("42"), Some(42));
+        assert_eq!(parse_room_lsn(" 0 "), Some(0));
+        assert_eq!(parse_room_lsn("0/3000128"), None);
+        assert_eq!(parse_room_lsn("-1"), None);
+        assert_eq!(parse_room_lsn(""), None);
+        assert_eq!(
+            event_type("message_posted"),
+            "maidan.event.message_posted/1"
+        );
     }
 }

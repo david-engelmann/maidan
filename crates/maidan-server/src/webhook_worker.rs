@@ -262,6 +262,7 @@ async fn poll_deliveries(
             &delivery.payload,
         )
         .await;
+        let room_lsn = crate::room_lsn::current(state.store.as_ref()).await;
         match deliver_http(
             client,
             &sub.subscription.url,
@@ -269,6 +270,7 @@ async fn poll_deliveries(
             kind,
             &secret,
             &body,
+            room_lsn,
         )
         .await
         {
