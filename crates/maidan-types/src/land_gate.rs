@@ -374,8 +374,7 @@ mod tests {
 
     #[test]
     fn pointer_wire_shape_is_kind_status_optional_sha_and_land() {
-        let p =
-            LandGatePointer::new(LandGateStatus::Pass, Some("abc".into()), LandColor::Green);
+        let p = LandGatePointer::new(LandGateStatus::Pass, Some("abc".into()), LandColor::Green);
         let v = serde_json::to_value(&p).expect("json");
         assert_eq!(v["kind"], LAND_GATE_KIND);
         assert_eq!(v["status"], "pass");

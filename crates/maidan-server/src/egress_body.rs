@@ -617,7 +617,10 @@ mod tests {
 
     #[test]
     fn the_github_body_defuses_mentions_and_appends_the_backlink() {
-        let out = github_comment_body("review by @octocat", Some("https://producer.example.test/r/1"));
+        let out = github_comment_body(
+            "review by @octocat",
+            Some("https://producer.example.test/r/1"),
+        );
         assert!(out.starts_with("review by `@octocat`"));
         assert!(out.contains("[View in the producer](https://producer.example.test/r/1)"));
     }

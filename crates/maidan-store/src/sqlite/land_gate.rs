@@ -3,8 +3,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    is_qualifying_pass, resolve_land, land_gate_standing, standing_land, LandColor, MemberId,
-    RecordedLandGate, LandGatePointer, LandGateStanding, LandGateStatus, ThreadId,
+    is_qualifying_pass, land_gate_standing, resolve_land, standing_land, LandColor,
+    LandGatePointer, LandGateStanding, LandGateStatus, MemberId, RecordedLandGate, ThreadId,
     LAND_GATE_SKILL,
 };
 use sqlx::{Row, SqlitePool};

@@ -5,7 +5,7 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    LandColor, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, LandGateStatus,
+    LandColor, LandGateStatus, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     LAND_GATE_KIND, LAND_GATE_SKILL,
 };
 use sqlx::sqlite::SqlitePoolOptions;

@@ -90,7 +90,11 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("review skill");
 
-    let critical = envelope(EXAMPLE_REVIEW_RESULT_KIND, "reviewed", &["warning", "critical"]);
+    let critical = envelope(
+        EXAMPLE_REVIEW_RESULT_KIND,
+        "reviewed",
+        &["warning", "critical"],
+    );
     let written = store
         .apply_critical_review_decision(thread.id, reviewer.id, &critical)
         .await

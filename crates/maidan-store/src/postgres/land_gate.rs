@@ -5,8 +5,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    is_qualifying_pass, resolve_land, land_gate_standing, standing_land, LandColor, MemberId,
-    RecordedLandGate, LandGatePointer, LandGateStanding, LandGateStatus, ThreadId,
+    is_qualifying_pass, land_gate_standing, resolve_land, standing_land, LandColor,
+    LandGatePointer, LandGateStanding, LandGateStatus, MemberId, RecordedLandGate, ThreadId,
     LAND_GATE_SKILL,
 };
 use sqlx::{PgPool, Row};
@@ -29,10 +29,7 @@ async fn recorder_has_skill(pool: &PgPool, member_id: MemberId) -> Result<bool, 
     Ok(skills.iter().any(|s| s.skill == LAND_GATE_SKILL))
 }
 
-async fn standing_for(
-    pool: &PgPool,
-    thread_id: ThreadId,
-) -> Result<LandGateStanding, StoreError> {
+async fn standing_for(pool: &PgPool, thread_id: ThreadId) -> Result<LandGateStanding, StoreError> {
     let row = sqlx::query(
         "SELECT s.status, s.land, s.artifact_sha, s.recorded_by, s.recorded_at,
                 t.owner_id, t.assignee_id
@@ -128,10 +125,7 @@ pub async fn set_pointer(
     standing_for(pool, thread_id).await
 }
 
-pub async fn standing(
-    pool: &PgPool,
-    thread_id: ThreadId,
-) -> Result<LandGateStanding, StoreError> {
+pub async fn standing(pool: &PgPool, thread_id: ThreadId) -> Result<LandGateStanding, StoreError> {
     standing_for(pool, thread_id).await
 }
 

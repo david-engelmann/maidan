@@ -25,6 +25,7 @@ mod glossary;
 mod group_dm;
 mod import;
 mod inbox;
+mod land_gate;
 mod legal_hold;
 mod mail_outbox;
 mod member_emails;
@@ -59,7 +60,6 @@ mod secrets;
 mod sessions;
 mod slack_links;
 mod slash_commands;
-mod land_gate;
 mod spawn;
 mod task_schedules;
 mod thread_deps;
@@ -1595,10 +1595,7 @@ impl ReviewStore for PostgresStore {
 
 #[async_trait]
 impl LandGateStore for PostgresStore {
-    async fn require_land_gate(
-        &self,
-        thread_id: ThreadId,
-    ) -> Result<LandGateStanding, StoreError> {
+    async fn require_land_gate(&self, thread_id: ThreadId) -> Result<LandGateStanding, StoreError> {
         land_gate::require(&self.pool, thread_id).await
     }
     async fn set_land_gate_pointer(

@@ -48,10 +48,7 @@ struct ThreadArg {
 }
 
 /// Read a thread's LandGate standing (Cluster 385.3).
-pub(super) async fn get_land_gate(
-    store: &Arc<dyn Store>,
-    args: &Value,
-) -> Result<Value, McpError> {
+pub(super) async fn get_land_gate(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadArg = serde_json::from_value(args.clone())?;
     let standing = store.get_land_gate_standing(ThreadId(a.thread_id)).await?;
     Ok(content_json(&standing))

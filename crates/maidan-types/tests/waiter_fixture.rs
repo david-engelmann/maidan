@@ -20,7 +20,7 @@
 use maidan_types::{
     parse_waiter_result, result_kind_from_payload, review_decision_from_waiter,
     run_id_from_payload, DeliverTarget, EgressTarget, FindingLineRange, GithubDiffSide,
-    ReviewDecision, WaiterResult, FINDING_SEVERITY_CRITICAL, EXAMPLE_REVIEW_RESULT_KIND,
+    ReviewDecision, WaiterResult, EXAMPLE_REVIEW_RESULT_KIND, FINDING_SEVERITY_CRITICAL,
     STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 

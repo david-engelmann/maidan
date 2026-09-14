@@ -1252,10 +1252,7 @@ pub trait LandGateStore: Send + Sync {
     /// land-gate-skilled recorder. `get_land_gate_standing` is total (no
     /// row → not required, vacuous green). `clear_land_gate` deletes the
     /// row. The FSM close-gate (385.2) reads this standing in-tx.
-    async fn require_land_gate(
-        &self,
-        thread_id: ThreadId,
-    ) -> Result<LandGateStanding, StoreError>;
+    async fn require_land_gate(&self, thread_id: ThreadId) -> Result<LandGateStanding, StoreError>;
     async fn set_land_gate_pointer(
         &self,
         thread_id: ThreadId,

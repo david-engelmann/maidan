@@ -5273,7 +5273,9 @@ mod tests {
     #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        use maidan_types::{NewThread, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA};
+        use maidan_types::{
+            NewThread, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
+        };
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
