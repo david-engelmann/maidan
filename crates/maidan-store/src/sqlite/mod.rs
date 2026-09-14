@@ -2074,6 +2074,10 @@ impl EventStore for SqliteStore {
         events::min_event_id(&self.pool, workspace_id).await
     }
 
+    async fn max_event_id(&self) -> Result<i64, StoreError> {
+        events::max_event_id(&self.pool).await
+    }
+
     async fn list_events_after_global(
         &self,
         after_id: i64,
