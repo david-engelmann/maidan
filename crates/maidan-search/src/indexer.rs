@@ -20,6 +20,7 @@ use std::{
 
 use async_trait::async_trait;
 use maidan_bus::{EventBus, EventStream};
+use maidan_store::Store;
 use maidan_types::{Event, EventFilter, EventKind};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -85,11 +86,23 @@ const RECONNECT_MAX: Duration = Duration::from_secs(5);
 pub struct Indexer {
     bus: Arc<dyn EventBus>,
     handler: Arc<dyn EventHandler>,
+    /// Durable log for `BusItem::Lagged` resume (Cluster 388). Absent in
+    /// unit tests that only drive the live bus.
+    log: Option<Arc<dyn Store>>,
 }
 
 impl Indexer {
     pub fn new(bus: Arc<dyn EventBus>, handler: Arc<dyn EventHandler>) -> Self {
-        Self { bus, handler }
+        Self {
+            bus,
+            handler,
+            log: None,
+        }
+    }
+
+    pub fn with_log(mut self, log: Arc<dyn Store>) -> Self {
+        self.log = Some(log);
+        self
     }
 
     /// Spawn the indexer as a tokio task. The returned handle owns the
@@ -126,8 +139,14 @@ impl Indexer {
                 };
                 backoff = RECONNECT_INITIAL;
                 info!("indexer attached to bus");
-                let outcome =
-                    consume(stream, self.handler.as_ref(), &mut shutdown_rx, &heartbeat).await;
+                let outcome = consume(
+                    stream,
+                    self.handler.as_ref(),
+                    self.log.as_deref(),
+                    &mut shutdown_rx,
+                    &heartbeat,
+                )
+                .await;
                 match outcome {
                     ConsumeOutcome::ShutdownRequested => return,
                     ConsumeOutcome::StreamEnded => {
@@ -154,14 +173,17 @@ enum ConsumeOutcome {
 async fn consume(
     mut stream: EventStream,
     handler: &dyn EventHandler,
+    log: Option<&dyn Store>,
     shutdown_rx: &mut mpsc::Receiver<()>,
     last_event_unix_ms: &AtomicI64,
 ) -> ConsumeOutcome {
+    let mut watermark: i64 = 0;
     loop {
         tokio::select! {
             item = stream.next() => {
                 match item {
                     Some(maidan_bus::BusItem::Event(envelope)) => {
+                        watermark = watermark.max(envelope.log_id);
                         handler.handle(&envelope.event).await;
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
@@ -169,7 +191,38 @@ async fn consume(
                         );
                     }
                     Some(maidan_bus::BusItem::Lagged { skipped }) => {
-                        warn!(skipped, "indexer bus subscriber lagged; events may be missing from the index");
+                        let Some(store) = log else {
+                            warn!(skipped, "indexer bus subscriber lagged; events may be missing from the index");
+                            continue;
+                        };
+                        warn!(skipped, watermark, "indexer bus subscriber lagged; resuming from log");
+                        match maidan_store::resume_from_log(store, watermark, |page| async move {
+                            for row in page {
+                                if !matches!(
+                                    row.kind,
+                                    EventKind::MessagePosted
+                                        | EventKind::MessageEdited
+                                        | EventKind::MessageTombstoned
+                                ) {
+                                    continue;
+                                }
+                                let Ok(event) = serde_json::from_value::<Event>(row.payload) else {
+                                    continue;
+                                };
+                                handler.handle(&event).await;
+                            }
+                        })
+                        .await
+                        {
+                            Ok(hw) => watermark = watermark.max(hw),
+                            Err(err) => {
+                                warn!(error = %err, "indexer lag resume from log failed");
+                            }
+                        }
+                        last_event_unix_ms.store(
+                            chrono::Utc::now().timestamp_millis(),
+                            Ordering::Relaxed,
+                        );
                     }
                     None => return ConsumeOutcome::StreamEnded,
                 }
