@@ -263,3 +263,39 @@ async fn ws_subscribe_sends_cursor_too_old_frame_then_closes() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn mcp_stream_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
+    let (addr, client, server, _dir, store) = spawn().await;
+    let (ws, ids) = seed(store.as_ref()).await;
+    let cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
+    store.prune_events(cutoff, ids[1], 10).await.unwrap();
+
+    let resp = client
+        .get(format!(
+            "http://{addr}/mcp/stream?workspace_id={}&after_id={}",
+            ws.0, ids[0]
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["type"].as_str(),
+        Some("https://maidan.dev/problems/cursor-too-old")
+    );
+    assert_eq!(body["must_refetch"], json!(true));
+
+    let fresh = client
+        .get(format!(
+            "http://{addr}/mcp/stream?workspace_id={}&after_id=0",
+            ws.0
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(fresh.status(), StatusCode::OK);
+
+    server.abort();
+}
