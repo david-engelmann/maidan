@@ -11,7 +11,7 @@ use maidan_types::{
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 
-/// The authoritative pi waiter fixture's `run_id` — the first real producer.
+/// The authoritative waiter fixture's `run_id` — the first real producer.
 const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
 
 async fn sqlite() -> SqliteStore {
@@ -98,7 +98,7 @@ async fn run_suite(store: &dyn Store) {
         .is_none());
 
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../maidan-types/tests/fixtures/pi_waiter_result_v1.json"
+        "../../maidan-types/tests/fixtures/waiter_result_v1.json"
     ))
     .expect("fixture");
     let extracted = run_id_from_payload(&fixture).expect("fixture run_id");

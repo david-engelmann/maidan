@@ -362,7 +362,7 @@ mod tests {
                 channel_id: "C0123ABCDEF".into(),
             },
             EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915,
             },
         ] {
@@ -383,14 +383,14 @@ mod tests {
     #[test]
     fn a_malformed_selector_does_not_decode() {
         for selector in [
-            "beatgig/bgv3",     // no issue number
-            "beatgig/bgv3#",    // empty issue number
-            "beatgig/bgv3#nan", // non-numeric
-            "beatgig/bgv3#0",   // issue numbers start at 1
-            "beatgig/bgv3#-1",
-            "bgv3#12", // no owner
-            "/bgv3#12",
-            "beatgig/#12",
+            "example/repo",     // no issue number
+            "example/repo#",    // empty issue number
+            "example/repo#nan", // non-numeric
+            "example/repo#0",   // issue numbers start at 1
+            "example/repo#-1",
+            "widgets#12", // no owner
+            "/widgets#12",
+            "example/#12",
         ] {
             assert_eq!(
                 EgressTarget::parse(EgressSurface::Github, selector),
@@ -432,11 +432,11 @@ mod tests {
     #[test]
     fn a_github_target_is_authorized_by_its_repository_not_its_issue() {
         let target = EgressTarget::Github {
-            repo: "beatgig/bgv3".into(),
-            issue_number: 3915,
+            repo: "example/repo".into(),
+            issue_number: 42,
         };
-        assert_eq!(target.selector(), "beatgig/bgv3#3915");
-        assert_eq!(target.allowlist_selector(), "beatgig/bgv3");
+        assert_eq!(target.selector(), "example/repo#42");
+        assert_eq!(target.allowlist_selector(), "example/repo");
         // The projection is what an operator's one blessing has to cover, so it
         // must also be a selector the allowlist would accept.
         assert!(
@@ -466,11 +466,11 @@ mod tests {
             (EgressSurface::Slack, " C0123ABCDEF"),
             (EgressSurface::Slack, "C0123ABCDEF "),
             // An issue number is not part of the authorization grain.
-            (EgressSurface::Github, "beatgig/bgv3#3915"),
-            (EgressSurface::Github, "bgv3"),
-            (EgressSurface::Github, "/bgv3"),
-            (EgressSurface::Github, "beatgig/"),
-            (EgressSurface::Github, "beatgig/bgv3/extra"),
+            (EgressSurface::Github, "example/repo#42"),
+            (EgressSurface::Github, "widgets"),
+            (EgressSurface::Github, "/widgets"),
+            (EgressSurface::Github, "example/"),
+            (EgressSurface::Github, "example/repo/extra"),
             (EgressSurface::Github, ""),
         ] {
             assert!(
@@ -481,7 +481,7 @@ mod tests {
         for (surface, selector) in [
             (EgressSurface::Slack, "C0123ABCDEF"),
             (EgressSurface::Slack, "G0123ABCDEF"),
-            (EgressSurface::Github, "beatgig/bgv3"),
+            (EgressSurface::Github, "example/repo"),
         ] {
             assert!(
                 validate_allowlist_selector(surface, selector).is_ok(),
@@ -506,11 +506,11 @@ mod tests {
         );
 
         let gh_target = EgressTarget::Github {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             issue_number: 3915,
         };
         let gh_ref = ExternalRef::Github {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             comment_id: 998877,
         };
         assert_eq!(gh_ref.handle(), "998877");
@@ -526,7 +526,7 @@ mod tests {
     #[test]
     fn a_malformed_handle_does_not_rebuild_a_ref() {
         let gh_target = EgressTarget::Github {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             issue_number: 1,
         };
         for handle in ["", "nan", "0", "-5", "12.5"] {
@@ -551,11 +551,11 @@ mod tests {
     fn a_target_displays_as_its_surface_qualified_delivery_selector() {
         assert_eq!(
             EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
-                issue_number: 3915,
+                repo: "example/repo".into(),
+                issue_number: 42,
             }
             .to_string(),
-            "github:beatgig/bgv3#3915"
+            "github:example/repo#42"
         );
         assert_eq!(
             EgressTarget::Slack {

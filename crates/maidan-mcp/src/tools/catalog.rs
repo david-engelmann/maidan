@@ -589,7 +589,7 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "parent_run_id": {"type": "string", "description": "the producer's run identifier (e.g. pi waiter envelope run_id)"}
+                    "parent_run_id": {"type": "string", "description": "the producer's run identifier (e.g. waiter envelope run_id)"}
                 },
                 "required": ["thread_id", "parent_run_id"]
             }
@@ -652,11 +652,11 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "list_thread_results",
-            "description": "List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. pi.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.",
+            "description": "List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "result_kind": {"type": "string", "description": "exact namespaced result_kind (e.g. pi.review.result/1); omit to list every accessible result"},
+                    "result_kind": {"type": "string", "description": "exact namespaced result_kind (e.g. example.review.result/1); omit to list every accessible result"},
                     "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500}
                 }
             }
@@ -1060,8 +1060,8 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "set_soundcheck",
-            "description": "Record a Soundcheck gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; Soundcheck owns test execution. A qualifying green pass (soundcheck-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the soundcheck skill.",
+            "name": "set_land_gate",
+            "description": "Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1074,8 +1074,8 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "get_soundcheck",
-            "description": "Read a thread's Soundcheck standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.",
+            "name": "get_land_gate",
+            "description": "Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1085,8 +1085,8 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "require_soundcheck",
-            "description": "Arm the Soundcheck close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.",
+            "name": "require_land_gate",
+            "description": "Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1096,8 +1096,8 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "clear_soundcheck",
-            "description": "Clear a thread's Soundcheck pointer and requirement. Requires thread:transition.",
+            "name": "clear_land_gate",
+            "description": "Clear a thread's land-gate pointer and requirement. Requires thread:transition.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1847,7 +1847,7 @@ pub fn catalog() -> Vec<Value> {
                     "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."},
                     "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."},
                     "include_parent_grounding": {"type": "boolean", "default": true, "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack."},
-                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. pi.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack."}
+                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. example.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack."}
                 },
                 "required": ["thread_id"]
             }

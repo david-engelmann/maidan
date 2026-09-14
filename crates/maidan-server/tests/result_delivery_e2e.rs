@@ -91,12 +91,12 @@ async fn harness(name: &str) -> Harness {
 fn envelope(status: &str, deliver_to: Value, rendered: &str, summary: &str) -> Value {
     json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": "pi.review.result/1",
+        "result_kind": "example.review.result/1",
         "status": status,
         "deliver_to": deliver_to,
         "rendered": rendered,
         "summary": summary,
-        "view_in_pi": "https://pi.test/r/1",
+        "view_url": "https://producer.example.test/r/1",
         "pr": "acme/widgets#7",
     })
 }
@@ -177,8 +177,8 @@ async fn an_unrecognized_envelope_is_inert() {
     set_and_route(
         &h,
         &json!({
-            "schema": "pi.waiter.result/2",
-            "result_kind": "pi.review.result/1",
+            "schema": "maidan.waiter.result/2",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "deliver_to": [{ "surface": "github", "repo": "acme/widgets", "pr": 7 }],
             "rendered": "must not be delivered",

@@ -1,9 +1,10 @@
--- Cluster 385 (Wave 2 #25 remainder, G-dev-6): Soundcheck gate pointer.
--- Presence of a row arms the close-gate. Pointer columns are NULL until
--- Soundcheck records a {kind:"soundcheck", status:pass|fail, artifact_sha?}
--- plus the green/amber/red land color. The room holds the pointer;
--- Soundcheck owns /test. Not a CI product.
-CREATE TABLE IF NOT EXISTS maidan_thread_soundcheck (
+-- Cluster 385 (Wave 2 #25 remainder; Cluster 389 renamed the public
+-- surface to land_gate). Presence of a row arms the close-gate. Pointer
+-- columns are NULL until a gate-skilled member records
+-- {kind:"land_gate", status:pass|fail, artifact_sha?} plus the
+-- green/amber/red land color. The room holds the pointer; an external
+-- verifier records pass/fail. Not a CI product.
+CREATE TABLE IF NOT EXISTS maidan_thread_land_gate (
     thread_id    UUID PRIMARY KEY REFERENCES maidan_threads(id) ON DELETE CASCADE,
     status       TEXT CHECK (status IS NULL OR status IN ('pass', 'fail')),
     land         TEXT CHECK (land IS NULL OR land IN ('green', 'amber', 'red')),

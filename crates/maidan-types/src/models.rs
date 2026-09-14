@@ -256,11 +256,11 @@ pub struct ThreadResult {
 
 /// The search-facet value of a result payload (Cluster 381).
 ///
-/// `result_kind` is a **namespaced string** (e.g. `pi.review.result/1`), not a
+/// `result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a
 /// closed enum — a waiter product ships a new kind without a Maidan release.
 /// Missing, empty, whitespace-only, or non-string values are `None` (the row is
 /// stored but not facetable under a kind). Does **not** require
-/// `schema = "pi.waiter.result/1"`: the facet is the string, not the envelope.
+/// `schema = "maidan.waiter.result/1"`: the facet is the string, not the envelope.
 pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
     value
         .get("result_kind")
@@ -270,7 +270,7 @@ pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
 }
 
 /// Abuse cap on a producer `run_id` / Maidan `parent_run_id` (Cluster 387).
-/// pi's fixture is a UUID (36 bytes); this is not a format rule — lineage
+/// The fixture is a UUID (36 bytes); this is not a format rule — lineage
 /// accepts the producer's string as-is, up to this length.
 pub const PARENT_RUN_ID_MAX_BYTES: usize = 256;
 
@@ -278,7 +278,7 @@ pub const PARENT_RUN_ID_MAX_BYTES: usize = 256;
 ///
 /// Same extractor shape as [`result_kind_from_payload`]: a **string, not a
 /// minted id**. Missing, empty, whitespace-only, or non-string values are
-/// `None`. Does **not** require `schema = "pi.waiter.result/1"` — any
+/// `None`. Does **not** require `schema = "maidan.waiter.result/1"` — any
 /// producer that writes `run_id` is first-class. Maidan homes the returned
 /// value as [`ThreadLineage::parent_run_id`]; it never mints a parallel id.
 pub fn run_id_from_payload(value: &serde_json::Value) -> Option<&str> {
@@ -2856,8 +2856,8 @@ mod result_kind_from_payload_tests {
     #[test]
     fn extracts_the_namespaced_string() {
         assert_eq!(
-            result_kind_from_payload(&json!({"result_kind": "pi.review.result/1"})),
-            Some("pi.review.result/1")
+            result_kind_from_payload(&json!({"result_kind": "example.review.result/1"})),
+            Some("example.review.result/1")
         );
     }
 

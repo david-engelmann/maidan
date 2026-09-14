@@ -1,6 +1,6 @@
-//! Cluster 385.4: Soundcheck pointer over HTTP. Auth ENABLED (recorded_by
+//! Cluster 385.4: LandGate pointer over HTTP. Auth ENABLED (recorded_by
 //! is a real member FK). Require arms the gate; close 409s on amber / fail /
-//! implementer pass; a soundcheck-skilled third party green pass lands.
+//! implementer pass; a land-gate-skilled third party green pass lands.
 //! MCP close uses the store FSM (P1.1d owns the MCP transition_thread twin).
 
 use std::{
@@ -15,7 +15,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
-    SOUNDCHECK_SKILL,
+    LAND_GATE_SKILL,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -74,7 +74,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
 }
 
 #[tokio::test]
-async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
+async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let (addr, client, store) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -99,14 +99,14 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
     };
     let owner = member("owner").await;
     let assignee = member("assignee").await;
-    let checker = member("soundcheck").await;
+    let checker = member("land_gate").await;
     let unskilled = member("unskilled").await;
     store
-        .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+        .add_member_skill(checker.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     store
-        .add_member_skill(owner.id, SOUNDCHECK_SKILL)
+        .add_member_skill(owner.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     let channel = store
@@ -140,7 +140,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
         "Bearer {}",
         mint(store.as_ref(), ws.id, owner.id, caps.clone()).await
     );
-    let sc_h = format!(
+    let gate_h = format!(
         "Bearer {}",
         mint(store.as_ref(), ws.id, checker.id, caps.clone()).await
     );
@@ -152,7 +152,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Vacuous GET — no row, green, landable.
     let vacant: Value = client
-        .get(format!("{base}/threads/{tid}/soundcheck"))
+        .get(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .send()
         .await
@@ -166,7 +166,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Unskilled PUT is 400.
     let denied = client
-        .put(format!("{base}/threads/{tid}/soundcheck"))
+        .put(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &unskilled_h)
         .json(&json!({ "status": "pass" }))
         .send()
@@ -176,7 +176,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Require arms the gate.
     let req = client
-        .put(format!("{base}/threads/{tid}/soundcheck/requirement"))
+        .put(format!("{base}/threads/{tid}/land-gate/requirement"))
         .header("Authorization", &owner_h)
         .send()
         .await
@@ -212,8 +212,8 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Amber is flags-then-still-engages — not a land.
     let amber = client
-        .put(format!("{base}/threads/{tid}/soundcheck"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "pass", "land": "amber", "artifact_sha": "deadbeef" }))
         .send()
         .await
@@ -222,7 +222,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
     let standing: Value = amber.json().await.unwrap();
     assert_eq!(standing["land"], "amber");
     assert_eq!(standing["landable"], false);
-    assert_eq!(standing["pointer"]["kind"], "soundcheck");
+    assert_eq!(standing["pointer"]["kind"], "land_gate");
     assert_eq!(standing["pointer"]["artifact_sha"], "deadbeef");
     let amber_close = client
         .post(format!("{base}/threads/{tid}"))
@@ -235,7 +235,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Implementer (owner) pass is stored but not a land.
     let self_pass = client
-        .put(format!("{base}/threads/{tid}/soundcheck"))
+        .put(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .json(&json!({ "status": "pass" }))
         .send()
@@ -253,10 +253,10 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
         .unwrap();
     assert_eq!(self_close.status(), StatusCode::CONFLICT);
 
-    // Qualifying green pass from the soundcheck agent lands.
+    // Qualifying green pass from the land_gate agent lands.
     let green = client
-        .put(format!("{base}/threads/{tid}/soundcheck"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "pass" }))
         .send()
         .await
@@ -279,7 +279,7 @@ async fn soundcheck_http_blocks_close_until_a_qualifying_green_pass() {
 }
 
 #[tokio::test]
-async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
+async fn land_gate_fail_is_red_and_mcp_standing_matches_the_store_gate() {
     let (addr, client, store) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -290,7 +290,7 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
     let checker = store
         .create_member(NewMember {
             workspace_id: ws.id,
-            handle: "soundcheck".into(),
+            handle: "land_gate".into(),
             display_name: None,
             kind: MemberKind::Agent,
         })
@@ -306,7 +306,7 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         .await
         .unwrap();
     store
-        .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+        .add_member_skill(checker.id, LAND_GATE_SKILL)
         .await
         .unwrap();
     let channel = store
@@ -339,15 +339,15 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         "Bearer {}",
         mint(store.as_ref(), ws.id, owner.id, caps.clone()).await
     );
-    let sc_h = format!(
+    let gate_h = format!(
         "Bearer {}",
         mint(store.as_ref(), ws.id, checker.id, caps).await
     );
     let tid = thread.id.0;
 
     let fail = client
-        .put(format!("{base}/threads/{tid}/soundcheck"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "fail", "land": "green" }))
         .send()
         .await
@@ -367,12 +367,12 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         .transition_thread(thread.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("soundcheck")),
+        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land gate")),
         "fail must block the store FSM (MCP has no transition_thread here — P1.1d), got {blocked:?}"
     );
 
     let got: Value = client
-        .get(format!("{base}/threads/{tid}/soundcheck"))
+        .get(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .send()
         .await
@@ -387,7 +387,7 @@ async fn soundcheck_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         .header("Authorization", &owner_h)
         .json(&json!({
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": { "name": "get_soundcheck", "arguments": { "thread_id": tid } }
+            "params": { "name": "get_land_gate", "arguments": { "thread_id": tid } }
         }))
         .send()
         .await

@@ -1620,7 +1620,7 @@ mod tests {
 
         const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
         const FIXTURE: &str =
-            include_str!("../../maidan-types/tests/fixtures/pi_waiter_result_v1.json");
+            include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
@@ -1807,8 +1807,8 @@ mod tests {
     async fn list_thread_results_filters_by_namespaced_kind() {
         use maidan_auth::capability::WORKSPACE_READ;
 
-        const REVIEW: &str = "pi.review.result/1";
-        const PLAN: &str = "pi.plan.result/1";
+        const REVIEW: &str = "example.review.result/1";
+        const PLAN: &str = "example.plan.result/1";
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
@@ -5133,9 +5133,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn soundcheck_tools_require_set_get_and_clear() {
+    async fn land_gate_tools_require_set_get_and_clear() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        use maidan_types::{NewThread, SOUNDCHECK_SKILL};
+        use maidan_types::{NewThread, LAND_GATE_SKILL};
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
@@ -5164,14 +5164,14 @@ mod tests {
         let checker = store
             .create_member(NewMember {
                 workspace_id: ws.id,
-                handle: "soundcheck".into(),
+                handle: "land_gate".into(),
                 display_name: None,
                 kind: MemberKind::Agent,
             })
             .await
             .unwrap();
         store
-            .add_member_skill(checker.id, SOUNDCHECK_SKILL)
+            .add_member_skill(checker.id, LAND_GATE_SKILL)
             .await
             .unwrap();
         let channel = store
@@ -5212,7 +5212,7 @@ mod tests {
 
         let pending = content(
             server
-                .call_tool(&op, "require_soundcheck", &json!({ "thread_id": tid }))
+                .call_tool(&op, "require_land_gate", &json!({ "thread_id": tid }))
                 .await
                 .unwrap(),
         );
@@ -5224,7 +5224,7 @@ mod tests {
             server
                 .call_tool(
                     &sc,
-                    "set_soundcheck",
+                    "set_land_gate",
                     &json!({
                         "thread_id": tid,
                         "status": "pass",
@@ -5237,14 +5237,14 @@ mod tests {
         );
         assert_eq!(amber["land"], "amber");
         assert_eq!(amber["landable"], json!(false));
-        assert_eq!(amber["pointer"]["kind"], "soundcheck");
+        assert_eq!(amber["pointer"]["kind"], "land_gate");
         assert_eq!(amber["pointer"]["artifact_sha"], "abc");
 
         let green = content(
             server
                 .call_tool(
                     &sc,
-                    "set_soundcheck",
+                    "set_land_gate",
                     &json!({ "thread_id": tid, "status": "pass" }),
                 )
                 .await
@@ -5255,7 +5255,7 @@ mod tests {
 
         let got = content(
             server
-                .call_tool(&op, "get_soundcheck", &json!({ "thread_id": tid }))
+                .call_tool(&op, "get_land_gate", &json!({ "thread_id": tid }))
                 .await
                 .unwrap(),
         );
@@ -5263,7 +5263,7 @@ mod tests {
 
         let cleared = content(
             server
-                .call_tool(&op, "clear_soundcheck", &json!({ "thread_id": tid }))
+                .call_tool(&op, "clear_land_gate", &json!({ "thread_id": tid }))
                 .await
                 .unwrap(),
         );
@@ -5273,7 +5273,9 @@ mod tests {
     #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        use maidan_types::{NewThread, PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA};
+        use maidan_types::{
+            NewThread, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
+        };
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
@@ -5311,7 +5313,7 @@ mod tests {
         let reviewer = store
             .create_member(NewMember {
                 workspace_id: ws.id,
-                handle: "pi".into(),
+                handle: "verifier".into(),
                 display_name: None,
                 kind: MemberKind::Agent,
             })
@@ -5376,7 +5378,7 @@ mod tests {
                     "thread_id": tid,
                     "result": {
                         "schema": WAITER_RESULT_SCHEMA,
-                        "result_kind": PI_REVIEW_RESULT_KIND,
+                        "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
                         "status": "reviewed",
                         "findings": [{ "severity": "critical" }],
                     }

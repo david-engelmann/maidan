@@ -9,7 +9,7 @@
 //! when a named set exists, is in it — **and** no unresolved `refutes` edge
 //! blocks the thread. This is a **gate**, not a poll/closer.
 //!
-//! Cluster 383 feeds a delivered `pi.review.result/1` with any `critical`
+//! Cluster 383 feeds a delivered `example.review.result/1` with any `critical`
 //! finding in as [`ReviewDecision::RequestChanges`] from a member who has
 //! declared [`REVIEW_SKILL`]. That is a producer→reviewer adapter, not a
 //! new gate: the close-gate still reads this table.

@@ -106,7 +106,7 @@ Optional edge MCP without a separate server process:
 
 ---
 
-## Wiring your Pi “world” to Maidan
+## Connecting the host to Maidan
 
 1. **Health:** `GET /health` on port 8080.
 2. **Contract:** `GET /openapi.json` and [contracts/](../contracts/) maps.

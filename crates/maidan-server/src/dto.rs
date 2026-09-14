@@ -224,12 +224,12 @@ pub struct SubmitReview {
     pub note: Option<String>,
 }
 
-/// Record a Soundcheck pointer (Cluster 385.3). `land` is optional — a fail
+/// Record a LandGate pointer (Cluster 385.3). `land` is optional — a fail
 /// is always red; a pass defaults to green; amber is flags-then-still-engages
 /// and is not a land.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct SetSoundcheck {
-    pub status: maidan_types::SoundcheckStatus,
+pub struct SetLandGate {
+    pub status: maidan_types::LandGateStatus,
     #[serde(default)]
     pub artifact_sha: Option<String>,
     #[serde(default)]
@@ -304,7 +304,7 @@ pub struct SetThreadLineage {
 /// Query params for workspace run-lineage reads (Cluster 387.2).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct RunLineageQuery {
-    /// The producer `run_id` (e.g. pi's waiter envelope). Empty / missing /
+    /// The producer `run_id` (e.g. The waiter envelope). Empty / missing /
     /// whitespace is 400 after capability check. Not a minted Maidan id.
     #[serde(default)]
     pub parent_run_id: String,
@@ -465,7 +465,7 @@ pub struct ThreadContextQuery {
     pub include_parent_grounding: bool,
     /// Attach in-channel accepted/closed decisions so a fresh claimer sees what
     /// the channel already decided (Cluster 382). Default `true`; omitted when
-    /// empty. Waiter envelopes (`pi.waiter.result/1`) appear only when `status`
+    /// empty. Waiter envelopes (`maidan.waiter.result/1`) appear only when `status`
     /// is `reviewed`. `result_kind` is a namespaced string, not a closed enum.
     /// Set `false` for the leanest pack. Withheld on DM channels.
     #[serde(default = "default_true")]
@@ -753,7 +753,7 @@ pub struct DecisionsQuery {
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListThreadResultsQuery {
     /// Exact-match facet on the namespaced `result_kind` string (e.g.
-    /// `pi.review.result/1`). Absent = every non-tombstoned result in the
+    /// `example.review.result/1`). Absent = every non-tombstoned result in the
     /// workspace. Not a closed enum.
     pub result_kind: Option<String>,
     /// Max results to return (default 50, clamp 1..=500).

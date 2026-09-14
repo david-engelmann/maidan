@@ -1,4 +1,4 @@
-//! Cluster 383: a reviewed `pi.review.result/1` with any `critical`
+//! Cluster 383: a reviewed `example.review.result/1` with any `critical`
 //! finding, submitted by a review-skilled member, upserts Cluster 375
 //! `request_changes` and arms `k = 1` when no requirement exists. Wrong
 //! shape / no critical / no skill → no-op. A human approve unblocks close.
@@ -8,7 +8,7 @@ use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision,
-    CRITICAL_REVIEW_NOTE, PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
+    CRITICAL_REVIEW_NOTE, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
 };
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -90,7 +90,11 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("review skill");
 
-    let critical = envelope(PI_REVIEW_RESULT_KIND, "reviewed", &["warning", "critical"]);
+    let critical = envelope(
+        EXAMPLE_REVIEW_RESULT_KIND,
+        "reviewed",
+        &["warning", "critical"],
+    );
     let written = store
         .apply_critical_review_decision(thread.id, reviewer.id, &critical)
         .await
@@ -117,9 +121,9 @@ async fn run_suite(store: &dyn Store) {
 
     // Warning-only / wrong kind / not reviewed → no-op, do not flip the row.
     for payload in [
-        envelope(PI_REVIEW_RESULT_KIND, "reviewed", &["warning"]),
-        envelope("pi.plan.result/1", "reviewed", &["critical"]),
-        envelope(PI_REVIEW_RESULT_KIND, "failed", &["critical"]),
+        envelope(EXAMPLE_REVIEW_RESULT_KIND, "reviewed", &["warning"]),
+        envelope("example.plan.result/1", "reviewed", &["critical"]),
+        envelope(EXAMPLE_REVIEW_RESULT_KIND, "failed", &["critical"]),
     ] {
         let none = store
             .apply_critical_review_decision(thread.id, reviewer.id, &payload)

@@ -1,4 +1,4 @@
-//! Cluster 383.3: a delivered `pi.review.result/1` with any `critical`
+//! Cluster 383.3: a delivered `example.review.result/1` with any `critical`
 //! finding arms the Cluster-375 close-gate over HTTP. Auth ENABLED (real
 //! tokens): the review-skilled producer PUTs the result; close 409s until a
 //! human who is neither owner nor assignee approves.
@@ -14,7 +14,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
-    PI_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
+    EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -75,7 +75,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
 fn critical_envelope() -> Value {
     json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": PI_REVIEW_RESULT_KIND,
+        "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
         "status": "reviewed",
         "findings": [{ "severity": "critical" }],
     })
@@ -107,7 +107,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
     };
     let owner = member("owner", MemberKind::Human).await;
     let assignee = member("assignee", MemberKind::Agent).await;
-    let reviewer = member("pi", MemberKind::Agent).await;
+    let reviewer = member("verifier", MemberKind::Agent).await;
     let human = member("human", MemberKind::Human).await;
     let channel = store
         .create_channel(NewChannel {
@@ -243,7 +243,7 @@ async fn a_warning_only_review_does_not_arm_the_close_gate() {
     let reviewer = store
         .create_member(NewMember {
             workspace_id: ws.id,
-            handle: "pi".into(),
+            handle: "verifier".into(),
             display_name: None,
             kind: MemberKind::Agent,
         })
@@ -304,7 +304,7 @@ async fn a_warning_only_review_does_not_arm_the_close_gate() {
         .json(&json!({
             "result": {
                 "schema": WAITER_RESULT_SCHEMA,
-                "result_kind": PI_REVIEW_RESULT_KIND,
+                "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
                 "status": "reviewed",
                 "findings": [{ "severity": "warning" }],
             }

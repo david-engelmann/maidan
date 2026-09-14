@@ -2793,6 +2793,7 @@ dependencies = [
  "maidan-artifacts",
  "maidan-auth",
  "maidan-bus",
+ "maidan-fsm",
  "maidan-router",
  "maidan-search",
  "maidan-store",

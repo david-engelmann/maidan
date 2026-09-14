@@ -1,5 +1,5 @@
 //! Named-secret management (Cluster 371, Wave 2 #19, G19/T3): create/rotate,
-//! list (metadata only), **resolve** (the value — "Pi fetches at exec"), delete.
+//! list (metadata only), **resolve** (the value — "a consumer fetches at exec"), delete.
 //! The value is AEAD-encrypted at rest with the Cluster-189 keyring, which the
 //! route layer holds; it appears only in a create request and a resolve response,
 //! never in the event log. `secret:admin` writes; `secret:read` reads/resolves.

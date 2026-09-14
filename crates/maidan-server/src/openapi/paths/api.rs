@@ -1115,32 +1115,32 @@ pub fn list_reviews() {}
     responses((status = 200, body = ReviewStatus)))]
 pub fn get_review_status() {}
 
-// --- soundcheck gate pointer (Cluster 385) ---
+// --- land_gate gate pointer (Cluster 385) ---
 
-#[utoipa::path(put, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+#[utoipa::path(put, path = "/threads/{id}/land-gate", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
-    request_body = SetSoundcheck,
+    request_body = SetLandGate,
     security(("bearerAuth" = [])),
-    responses((status = 200, body = SoundcheckStanding)))]
-pub fn set_soundcheck() {}
+    responses((status = 200, body = LandGateStanding)))]
+pub fn set_land_gate() {}
 
-#[utoipa::path(get, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+#[utoipa::path(get, path = "/threads/{id}/land-gate", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
-    responses((status = 200, body = SoundcheckStanding)))]
-pub fn get_soundcheck() {}
+    responses((status = 200, body = LandGateStanding)))]
+pub fn get_land_gate() {}
 
-#[utoipa::path(delete, path = "/threads/{id}/soundcheck", tag = "soundcheck",
+#[utoipa::path(delete, path = "/threads/{id}/land-gate", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses((status = 204)))]
-pub fn clear_soundcheck() {}
+pub fn clear_land_gate() {}
 
-#[utoipa::path(put, path = "/threads/{id}/soundcheck/requirement", tag = "soundcheck",
+#[utoipa::path(put, path = "/threads/{id}/land-gate/requirement", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
-    responses((status = 200, body = SoundcheckStanding)))]
-pub fn require_soundcheck() {}
+    responses((status = 200, body = LandGateStanding)))]
+pub fn require_land_gate() {}
 
 // --- spawn budget (Cluster 376) ---
 

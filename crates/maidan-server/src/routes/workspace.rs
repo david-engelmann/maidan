@@ -144,7 +144,7 @@ pub async fn get_workspace_usage(
 }
 
 /// Workspace-scoped thread-result list (Cluster 381.2). Optional exact-match
-/// `result_kind` facet on the namespaced string (e.g. `pi.review.result/1`).
+/// `result_kind` facet on the namespaced string (e.g. `example.review.result/1`).
 /// `workspace:read`; private-channel rows the caller cannot access are dropped.
 pub async fn list_workspace_results(
     State(state): State<AppState>,

@@ -25,7 +25,7 @@ Three impl PRs (382.1–382.3) + this retro.
   (`ACCEPTED_DECISIONS_LIMIT`). Withheld on `__dm__`, as-of packs, and
   workspace-nested packs. OpenAPI `AcceptedDecision` + Integration.md. The
   assembler (`assemble_accepted_decisions`) is the smart layer: a
-  `pi.waiter.result/1` envelope is included **only** when `status == reviewed`;
+  `maidan.waiter.result/1` envelope is included **only** when `status == reviewed`;
   opaque JSON on a terminal thread is accepted (the Cluster-359 "closed + has a
   result" model); a free-form string `result_kind` is copied through without
   requiring the waiter schema. Full `rendered` / findings are not inlined
@@ -46,8 +46,8 @@ Three impl PRs (382.1–382.3) + this retro.
   is where orientation belongs.
 - **`result_kind` is a namespaced string, not a closed enum.** The original
   Open Work row assumed `decision|plan|merge_authorized`. A live pi result
-  publishes `result_kind = "pi.review.result/1"` inside `schema =
-  "pi.waiter.result/1"`. An enum would need editing every time a waiter
+  publishes `result_kind = "example.review.result/1"` inside `schema =
+  "maidan.waiter.result/1"`. An enum would need editing every time a waiter
   product ships a new kind. The store does not interpret the string; the pack
   copies it when present.
 - **Waiter envelopes are accepted only when `reviewed`.** In-flight /

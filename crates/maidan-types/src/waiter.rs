@@ -6,7 +6,7 @@
 //! it *routes on* and ignores everything else, so a producer adding a field never
 //! breaks delivery. The grammar is pinned in `docs/Result Delivery.md` and frozen
 //! at [`WAITER_RESULT_SCHEMA`]; the authoritative fixture is committed at
-//! `tests/fixtures/pi_waiter_result_v1.json`, so a producer-side grammar change
+//! `tests/fixtures/waiter_result_v1.json`, so a producer-side grammar change
 //! breaks a test in this crate rather than a delivery in production.
 //!
 //! **Tolerance has a floor.** `schema` is the discriminator: an unrecognized one
@@ -20,7 +20,7 @@
 //! posts the GitHub review from those fields.
 //!
 //! Cluster 383.1 also reads `findings[].severity` (a **namespaced/free
-//! string**, not a closed enum) so a reviewed [`PI_REVIEW_RESULT_KIND`]
+//! string**, not a closed enum) so a reviewed [`EXAMPLE_REVIEW_RESULT_KIND`]
 //! envelope with any `critical` finding maps onto
 //! [`ReviewDecision::RequestChanges`] — the decision Cluster 375's close-gate
 //! already understands. Severity is walked on the raw `findings` array: a
@@ -34,13 +34,13 @@ use crate::egress::EgressTarget;
 use crate::review::ReviewDecision;
 
 /// The frozen envelope discriminator. A different value is inert, not an error.
-pub const WAITER_RESULT_SCHEMA: &str = "pi.waiter.result/1";
+pub const WAITER_RESULT_SCHEMA: &str = "maidan.waiter.result/1";
 
 /// The namespaced producer shape for a code-review waiter result.
 ///
 /// A **string, not an enum** — the same rule as the Cluster 381 facet. Compare
 /// this constant; do not close the `result_kind` set.
-pub const PI_REVIEW_RESULT_KIND: &str = "pi.review.result/1";
+pub const EXAMPLE_REVIEW_RESULT_KIND: &str = "example.review.result/1";
 
 /// The finding severity that Cluster 383 maps to
 /// [`ReviewDecision::RequestChanges`]. A free string on the wire; only this
@@ -50,7 +50,7 @@ pub const FINDING_SEVERITY_CRITICAL: &str = "critical";
 /// Note stored on the Cluster-375 review row when the adapter writes
 /// `request_changes`. Human-readable so `list_reviews` shows *why* the
 /// land is blocked; the close-gate itself only reads `decision`.
-pub const CRITICAL_REVIEW_NOTE: &str = "critical finding in pi.review.result/1";
+pub const CRITICAL_REVIEW_NOTE: &str = "critical finding in example.review.result/1";
 
 /// The only `status` that delivers the producer's own bytes. Any other value
 /// gets a short Maidan-authored failure notice built from `status` alone —
@@ -240,7 +240,7 @@ pub struct GithubReviewComment {
 /// lineage via [`crate::run_id_from_payload`], not this struct.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterResult {
-    /// Which producer shape this is, e.g. `pi.review.result/1`. A **namespaced
+    /// Which producer shape this is, e.g. `example.review.result/1`. A **namespaced
     /// string, not an enum** — a closed enum would need editing every time a
     /// waiter product ships a new result kind.
     pub result_kind: String,
@@ -252,7 +252,7 @@ pub struct WaiterResult {
     /// One line. The Slack body and the notification title.
     pub summary: Option<String>,
     /// A backlink appended to every delivery.
-    pub view_in_pi: Option<String>,
+    pub view_url: Option<String>,
     /// A human back-reference echoed into the delivered body. **A string**
     /// (`owner/name#123`) — not to be confused with `deliver_to[].pr`, which is
     /// an integer. Two different fields with the same name and different types.
@@ -296,8 +296,8 @@ impl WaiterResult {
 /// already understands.
 ///
 /// `Some(RequestChanges)` when:
-/// - the envelope parses (`schema = pi.waiter.result/1`),
-/// - `result_kind` is exactly [`PI_REVIEW_RESULT_KIND`] (string compare,
+/// - the envelope parses (`schema = maidan.waiter.result/1`),
+/// - `result_kind` is exactly [`EXAMPLE_REVIEW_RESULT_KIND`] (string compare,
 ///   not an enum),
 /// - `status` is `reviewed`,
 /// - any raw `findings[]` entry has `severity = "critical"` — including
@@ -309,7 +309,7 @@ impl WaiterResult {
 /// an approve through the existing review surface.
 pub fn review_decision_from_waiter(value: &Value) -> Option<ReviewDecision> {
     let parsed = parse_waiter_result(value)?;
-    if parsed.result_kind != PI_REVIEW_RESULT_KIND || !parsed.is_reviewed() {
+    if parsed.result_kind != EXAMPLE_REVIEW_RESULT_KIND || !parsed.is_reviewed() {
         return None;
     }
     findings_contain_critical(value).then_some(ReviewDecision::RequestChanges)
@@ -371,7 +371,7 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         deliver_to,
         rendered: string_field("rendered"),
         summary: string_field("summary"),
-        view_in_pi: string_field("view_in_pi"),
+        view_url: string_field("view_url"),
         pr: string_field("pr"),
         head_sha: obj.get("head_sha").and_then(parse_head_sha),
         findings,
@@ -465,7 +465,7 @@ mod tests {
         for value in [
             json!({}),
             json!({ "status": "reviewed", "result_kind": "x/1" }),
-            json!({ "schema": "pi.waiter.result/2", "result_kind": "x/1", "status": "reviewed" }),
+            json!({ "schema": "maidan.waiter.result/2", "result_kind": "x/1", "status": "reviewed" }),
             json!({ "schema": 1, "result_kind": "x/1", "status": "reviewed" }),
             json!("a string, not an envelope"),
             json!([]),
@@ -479,7 +479,7 @@ mod tests {
         );
         assert_eq!(
             parse_waiter_result(
-                &json!({ "schema": WAITER_RESULT_SCHEMA, "result_kind": "pi.review.result/1" })
+                &json!({ "schema": WAITER_RESULT_SCHEMA, "result_kind": "example.review.result/1" })
             ),
             None,
             "no status to route on"
@@ -492,7 +492,7 @@ mod tests {
         // so this parses cleanly rather than erroring.
         let minimal = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed"
         });
         let parsed = parse_waiter_result(&minimal).expect("parses");
@@ -507,7 +507,7 @@ mod tests {
 
         let explicit = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "deliver_to": []
         });
@@ -521,7 +521,7 @@ mod tests {
     fn an_unknown_surface_is_recorded_not_dropped_and_not_an_error() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "deliver_to": [
                 { "surface": "discord", "webhook": "https://x.test/hook" },
@@ -555,12 +555,12 @@ mod tests {
     fn a_target_projects_onto_the_egress_target_the_queue_speaks() {
         assert_eq!(
             DeliverTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 pr: 3915
             }
             .to_egress_target(),
             Some(EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915
             })
         );
@@ -596,28 +596,28 @@ mod tests {
     fn a_malformed_target_does_not_project_so_it_is_skipped_not_delivered() {
         for target in [
             DeliverTarget::Github {
-                repo: "bgv3".into(),
+                repo: "widgets".into(),
                 pr: 1,
             },
             DeliverTarget::Github {
-                repo: "/bgv3".into(),
+                repo: "/widgets".into(),
                 pr: 1,
             },
             DeliverTarget::Github {
-                repo: "beatgig/".into(),
+                repo: "example/".into(),
                 pr: 1,
             },
             // An issue-qualified repo is a producer mistake, not a destination.
             DeliverTarget::Github {
-                repo: "beatgig/bgv3#3915".into(),
+                repo: "example/repo#42".into(),
                 pr: 3915,
             },
             DeliverTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 pr: 0,
             },
             DeliverTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 pr: -1,
             },
             // A mutable name is not an addressable channel.
@@ -640,7 +640,7 @@ mod tests {
     fn a_non_reviewed_status_parses_but_does_not_deliver_the_producers_bytes() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "failed",
             "deliver_to": [{ "surface": "slack", "channel": "C1" }],
             "rendered": "should not be delivered as a clean pass"
@@ -661,17 +661,17 @@ mod tests {
         // is the empty string; treating them differently would post a blank comment.
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "rendered": "",
             "summary": "",
-            "view_in_pi": "",
+            "view_url": "",
             "pr": ""
         });
         let parsed = parse_waiter_result(&value).expect("parses");
         assert_eq!(parsed.rendered, None);
         assert_eq!(parsed.summary, None);
-        assert_eq!(parsed.view_in_pi, None);
+        assert_eq!(parsed.view_url, None);
         assert_eq!(parsed.pr, None);
         assert_eq!(parsed.head_sha, None);
     }
@@ -680,7 +680,7 @@ mod tests {
     fn unknown_producer_fields_are_ignored_rather_than_rejected() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "summary": "ok",
             "a_field_from_a_future_producer": { "nested": [1, 2, 3] },
@@ -700,7 +700,7 @@ mod tests {
         let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
         let parsed = parse_waiter_result(&json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "head_sha": sha,
             // A live-PR URL is not a commit. Must not become commit_id.
@@ -718,7 +718,7 @@ mod tests {
         ] {
             let parsed = parse_waiter_result(&json!({
                 "schema": WAITER_RESULT_SCHEMA,
-                "result_kind": "pi.review.result/1",
+                "result_kind": "example.review.result/1",
                 "status": "reviewed",
                 "head_sha": bad,
             }))
@@ -735,7 +735,7 @@ mod tests {
     fn findings_project_onto_github_right_side_post_image_comments() {
         let parsed = parse_waiter_result(&json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "reviewed",
             "findings": [
                 {
@@ -796,7 +796,7 @@ mod tests {
         // waiter product ships a new kind.
         let critical = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_REVIEW_RESULT_KIND,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
             "status": "reviewed",
             "findings": [
                 { "severity": "warning" },
@@ -812,7 +812,7 @@ mod tests {
         // still arms the close-gate adapter.
         let unusable = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_REVIEW_RESULT_KIND,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
             "status": "reviewed",
             "findings": [{ "severity": "critical" }]
         });
@@ -833,7 +833,7 @@ mod tests {
     fn a_review_without_critical_or_the_wrong_kind_does_not_request_changes() {
         let warning_only = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_REVIEW_RESULT_KIND,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
             "status": "reviewed",
             "findings": [{ "severity": "warning" }]
         });
@@ -841,7 +841,7 @@ mod tests {
 
         let no_findings = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_REVIEW_RESULT_KIND,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
             "status": "reviewed"
         });
         assert_eq!(review_decision_from_waiter(&no_findings), None);
@@ -850,7 +850,7 @@ mod tests {
         // adapter — we do not close an enum of result kinds.
         let other_kind = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.plan.result/1",
+            "result_kind": "example.plan.result/1",
             "status": "reviewed",
             "findings": [{ "severity": "critical" }]
         });
@@ -858,7 +858,7 @@ mod tests {
 
         let not_reviewed = json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_REVIEW_RESULT_KIND,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
             "status": "failed",
             "findings": [{ "severity": "critical" }]
         });
@@ -872,7 +872,7 @@ mod tests {
         assert_ne!(
             review_decision_from_waiter(&json!({
                 "schema": WAITER_RESULT_SCHEMA,
-                "result_kind": PI_REVIEW_RESULT_KIND,
+                "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
                 "status": "reviewed",
                 "findings": [{ "severity": "critical" }]
             })),

@@ -66,7 +66,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(slack.surface, "slack");
     assert_eq!(slack.selector, "C0123ABCDEF");
     let github = store
-        .allow_egress_target(target(ws.id, EgressSurface::Github, "beatgig/bgv3"))
+        .allow_egress_target(target(ws.id, EgressSurface::Github, "example/repo"))
         .await
         .expect("bless github");
 
@@ -75,17 +75,17 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("slack allowed"));
     assert!(store
-        .is_egress_target_allowed(ws.id, EgressSurface::Github, "beatgig/bgv3")
+        .is_egress_target_allowed(ws.id, EgressSurface::Github, "example/repo")
         .await
         .expect("github allowed"));
 
     // The check is keyed on all three columns: a near miss is not a hit.
     for (surface, selector) in [
         (EgressSurface::Slack, "C0000000000"),
-        (EgressSurface::Github, "beatgig/other"),
+        (EgressSurface::Github, "example/other"),
         // Same selector text, wrong surface.
         (EgressSurface::Github, "C0123ABCDEF"),
-        (EgressSurface::Slack, "beatgig/bgv3"),
+        (EgressSurface::Slack, "example/repo"),
     ] {
         assert!(
             !store
@@ -110,7 +110,7 @@ async fn run_suite(store: &dyn Store) {
     // blessing is the repository — so the repo blessing authorizes any issue in
     // it, and the delivery selector itself is not what gets looked up.
     let delivery = EgressTarget::Github {
-        repo: "beatgig/bgv3".into(),
+        repo: "example/repo".into(),
         issue_number: 3915,
     };
     assert!(store
@@ -148,8 +148,8 @@ async fn run_suite(store: &dyn Store) {
     // every write path inherits the rule.
     for (surface, selector) in [
         (EgressSurface::Slack, "#general"),
-        (EgressSurface::Github, "beatgig/bgv3#3915"),
-        (EgressSurface::Github, "bgv3"),
+        (EgressSurface::Github, "example/repo#42"),
+        (EgressSurface::Github, "widgets"),
     ] {
         let err = store
             .allow_egress_target(target(ws.id, surface, selector))

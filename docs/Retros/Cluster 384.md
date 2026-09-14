@@ -34,7 +34,7 @@ One impl PR + this retro. Both target `main` (Cluster 383's
 - **384.2 (#823)** — this retro + the doc-close (mark P1.1d ✅ FIXED,
   Integration landing note, Protocols tool count, Architecture FSM row,
   Capability Map `thread:transition`). After rebase onto Cluster 385,
-  the published count is **155** (384's twin + 385's four Soundcheck
+  the published count is **155** (384's twin + 385's four LandGate
   tools).
 
 ## Decisions
@@ -47,7 +47,7 @@ One impl PR + this retro. Both target `main` (Cluster 383's
 - **Do not fold close into the waiter loop.** A waiter that claimed the
   work is the party SoD forbids from landing it once an owner is set.
   Landing is an owner/reviewer (or un-owned) action.
-- **No Soundcheck work.** Row #25 remainder (pointer + green/amber/red)
+- **No LandGate work.** Row #25 remainder (pointer + green/amber/red)
   and Wave 2 #26–28 / Wave 3/4 are untouched.
 
 ## Surprises
@@ -76,7 +76,7 @@ One impl PR + this retro. Both target `main` (Cluster 383's
 **P1.1d is closed.** The MCP write path now matches REST for message,
 social, assignment, **and** FSM transition.
 
-**Not this cluster:** Wave 2 #26–28, Wave 3/4. Cluster 385 (Soundcheck
+**Not this cluster:** Wave 2 #26–28, Wave 3/4. Cluster 385 (LandGate
 pointer + land vocabulary, #819/#821/#826/#827/#831) is independently
 on `main`; this retro does not re-close it.
 

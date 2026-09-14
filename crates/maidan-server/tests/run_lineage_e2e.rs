@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
 const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
-const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/pi_waiter_result_v1.json");
+const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();

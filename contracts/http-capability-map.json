@@ -1513,25 +1513,25 @@
   },
   {
     "method": "PUT",
-    "path": "/threads/{id}/soundcheck",
+    "path": "/threads/{id}/land-gate",
     "capability": "thread:transition",
     "surface": "http"
   },
   {
     "method": "GET",
-    "path": "/threads/{id}/soundcheck",
+    "path": "/threads/{id}/land-gate",
     "capability": "workspace:read",
     "surface": "http"
   },
   {
     "method": "DELETE",
-    "path": "/threads/{id}/soundcheck",
+    "path": "/threads/{id}/land-gate",
     "capability": "thread:transition",
     "surface": "http"
   },
   {
     "method": "PUT",
-    "path": "/threads/{id}/soundcheck/requirement",
+    "path": "/threads/{id}/land-gate/requirement",
     "capability": "thread:transition",
     "surface": "http"
   },

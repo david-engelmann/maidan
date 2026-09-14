@@ -56,7 +56,7 @@ async fn sqlite() -> SqliteStore {
 
 fn github() -> EgressTarget {
     EgressTarget::Github {
-        repo: "beatgig/bgv3".into(),
+        repo: "example/repo".into(),
         issue_number: 3915,
     }
 }
@@ -163,7 +163,7 @@ async fn run_arming_suite(store: &dyn Store) {
     assert_eq!(
         delivered.reference(),
         Some(maidan_types::ExternalRef::Github {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             comment_id: 998877
         }),
         "the stored handle rebuilds into the ref the sender will edit"
@@ -560,7 +560,7 @@ async fn run_replay_suite(store: &dyn Store) {
         .allow_egress_target(NewEgressTarget {
             workspace_id: ws.id,
             surface: EgressSurface::Github,
-            selector: "beatgig/bgv3".into(),
+            selector: "example/repo".into(),
         })
         .await
         .expect("bless");

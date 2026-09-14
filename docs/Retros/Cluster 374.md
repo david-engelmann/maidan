@@ -47,8 +47,8 @@ write-path — quietly running the pre-205 dual-write while REST was hardened.
   it had an unused `release_claim_with_event`. Migrating it too finishes the
   assignment surface in one pass.
 - **The audit's out-of-scope parts were declined.** The relayed review pointed at
-  pi-repo files (`/Users/david/bg/pi/*`), I-numbers, and a parallel roadmap; those
-  are not Maidan Open Work and Pi is not edited from here. Only the code-level
+  files in another repository, private issue numbers, and a parallel roadmap;
+  those are not Maidan Open Work and are not edited from here. Only the code-level
   claims — verified against `main` — were acted on.
 
 ## Surprises
@@ -77,7 +77,7 @@ write-path — quietly running the pre-205 dual-write while REST was hardened.
 **P1.1c is closed** — the MCP write path now matches REST's crash-consistency end
 to end (message, social, and assignment). **Still tracked (P1.1d):** no MCP
 `transition_thread` twin of the REST FSM transition — confirm whether the
-omission is a deliberate land-gate (Wave 2 #22 reviewers / #25 soundcheck own the
+omission is a deliberate land-gate (Wave 2 #22 reviewers / #25 land_gate own the
 close) or a genuine gap. **Next: Wave 2 #22** (G5 + G-dev-5 — required reviewers).
 
 ## Acknowledgements

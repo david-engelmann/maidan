@@ -133,7 +133,7 @@ pub const ACCEPTED_DECISION_SUMMARY_BYTES: usize = 240;
 /// `claim_next` claimer's context pack (Cluster 382). Deliberately **not** the
 /// full `ThreadResult` JSON — `rendered` / findings stay on
 /// `GET /threads/:id/result`. `result_kind` is a **namespaced schema string**
-/// (e.g. `pi.review.result/1`), never a closed enum.
+/// (e.g. `example.review.result/1`), never a closed enum.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AcceptedDecision {
@@ -143,7 +143,7 @@ pub struct AcceptedDecision {
     pub state: ThreadState,
     pub produced_by: MemberId,
     pub produced_at: DateTime<Utc>,
-    /// Namespaced producer schema (e.g. `pi.review.result/1`). Absent on opaque
+    /// Namespaced producer schema (e.g. `example.review.result/1`). Absent on opaque
     /// JSON that does not carry a string `result_kind`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_kind: Option<String>,
@@ -155,7 +155,7 @@ pub struct AcceptedDecision {
 
 impl AcceptedDecision {
     /// Project a store row into the pack view. Returns `None` when a recognized
-    /// waiter envelope (`pi.waiter.result/1`) is **not** `reviewed` — those are
+    /// waiter envelope (`maidan.waiter.result/1`) is **not** `reviewed` — those are
     /// in-flight / failed producer states, not accepted decisions. Opaque JSON
     /// on a terminal thread is treated as accepted (the Cluster 359 "closed +
     /// has a result" model); a free-form string `result_kind` is copied through
@@ -402,13 +402,13 @@ mod tests {
     fn reviewed_waiter_envelope_is_an_accepted_decision_with_namespaced_kind() {
         let row = closed_row(serde_json::json!({
             "schema": crate::WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": crate::STATUS_REVIEWED,
             "summary": "ship it",
             "rendered": "# huge body that must not ride the pack",
         }));
         let d = AcceptedDecision::from_closed_result(row).expect("reviewed waiter");
-        assert_eq!(d.result_kind.as_deref(), Some("pi.review.result/1"));
+        assert_eq!(d.result_kind.as_deref(), Some("example.review.result/1"));
         assert_eq!(d.status.as_deref(), Some(crate::STATUS_REVIEWED));
         assert_eq!(d.summary.as_deref(), Some("ship it"));
         let json = serde_json::to_value(&d).unwrap();
@@ -421,7 +421,7 @@ mod tests {
     fn non_reviewed_waiter_envelope_is_dropped() {
         let row = closed_row(serde_json::json!({
             "schema": crate::WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "failed",
             "summary": "tests red",
         }));
@@ -439,16 +439,16 @@ mod tests {
 
     #[test]
     fn free_form_result_kind_is_copied_without_the_waiter_schema() {
-        // Not an enum: a producer that never wraps `pi.waiter.result/1` can still
+        // Not an enum: a producer that never wraps `maidan.waiter.result/1` can still
         // name its kind as a namespaced string, and a new kind does not need a
         // Maidan code change.
         let row = closed_row(serde_json::json!({
-            "result_kind": "pi.novel.result/9",
+            "result_kind": "example.novel.result/9",
             "status": "accepted",
             "summary": "go east",
         }));
         let d = AcceptedDecision::from_closed_result(row).expect("free-form kind");
-        assert_eq!(d.result_kind.as_deref(), Some("pi.novel.result/9"));
+        assert_eq!(d.result_kind.as_deref(), Some("example.novel.result/9"));
         assert_eq!(d.status.as_deref(), Some("accepted"));
         assert_eq!(d.summary.as_deref(), Some("go east"));
     }
@@ -457,13 +457,13 @@ mod tests {
     fn assemble_drops_non_reviewed_waiters_and_keeps_order() {
         let reviewed = closed_row(serde_json::json!({
             "schema": crate::WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": crate::STATUS_REVIEWED,
             "summary": "ok",
         }));
         let failed = closed_row(serde_json::json!({
             "schema": crate::WAITER_RESULT_SCHEMA,
-            "result_kind": "pi.review.result/1",
+            "result_kind": "example.review.result/1",
             "status": "failed",
         }));
         let opaque = closed_row(serde_json::json!({"decision": "later"}));

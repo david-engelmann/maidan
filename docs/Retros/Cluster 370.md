@@ -35,7 +35,7 @@ execution engine.
 
 - **A recipe is a blueprint, not a VM.** `retry` and `definition_of_done` ride
   the frozen snapshot but are *not* enforced (enforcement is #22 reviewers / #25
-  soundcheck). Children are inline definitions, not references to other recipe
+  land_gate). Children are inline definitions, not references to other recipe
   rows — true sub-recipes (recursive instantiation) would be VM-shaped, so they're
   a follow-up. This keeps instantiation a bounded, single-transaction build.
 - **A task is a thread (again).** Instantiation reuses the thread FSM +
@@ -82,7 +82,7 @@ other recipes (recursive instantiation); param templating in child titles;
 schedule-level params; full JSON-Schema param validation (a validator dep);
 webhook/slash seeding (the schedule path demonstrates seeding); DoD/retry
 *enforcement*. **Next: Wave 2 #19** (G19 + T3 — secret-ref: the log holds an id,
-the store holds the value, Pi fetches at exec; a SecretBroker substitutes on
+the store holds the value, a consumer fetches at exec; a SecretBroker substitutes on
 egress with a host allowlist).
 
 ## Acknowledgements

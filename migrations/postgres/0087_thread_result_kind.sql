@@ -1,5 +1,5 @@
 -- Cluster 381: index `result_kind` as a namespaced string facet (e.g.
--- `pi.review.result/1`), not a closed enum. Extracted from the opaque result
+-- `example.review.result/1`), not a closed enum. Extracted from the opaque result
 -- JSON so a waiter product can ship a new kind without a Maidan release.
 -- NULL = the payload has no usable `result_kind` (missing / empty / non-string)
 -- and the row is stored but not facetable under a kind.

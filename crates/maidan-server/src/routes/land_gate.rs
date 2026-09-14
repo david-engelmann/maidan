@@ -1,8 +1,8 @@
-//! Soundcheck gate pointer (Cluster 385.3, Wave 2 #25 remainder). The room
-//! holds `{kind:"soundcheck", status:pass|fail, artifact_sha?}` plus the
-//! green/amber/red land vocabulary. Soundcheck owns `/test`. Writes are
-//! `thread:transition`; reads are `workspace:read`. The FSM close-gate
-//! (385.2) enforces a qualifying green pass.
+//! Land-gate pointer (Cluster 385.3, renamed Cluster 389). The room
+//! holds `{kind:"land_gate", status:pass|fail, artifact_sha?}` plus the
+//! green/amber/red land vocabulary. An external verifier records
+//! pass/fail. Writes are `thread:transition`; reads are `workspace:read`.
+//! The FSM close-gate (385.2) enforces a qualifying green pass.
 
 use axum::{
     extract::{Path, State},
@@ -16,16 +16,16 @@ use maidan_auth::{
 use maidan_types::*;
 
 use super::{cap, ApiResult};
-use crate::dto::SetSoundcheck;
+use crate::dto::SetLandGate;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
-pub async fn set_soundcheck(
+pub async fn set_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-    ApiJson(body): ApiJson<SetSoundcheck>,
-) -> ApiResult<Json<SoundcheckStanding>> {
+    ApiJson(body): ApiJson<SetLandGate>,
+) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
@@ -36,23 +36,23 @@ pub async fn set_soundcheck(
         .filter(|s| !s.is_empty());
     let standing = state
         .store
-        .set_soundcheck_pointer(thread_id, auth.member_id, body.status, sha, body.land)
+        .set_land_gate_pointer(thread_id, auth.member_id, body.status, sha, body.land)
         .await?;
     Ok(Json(standing))
 }
 
-pub async fn get_soundcheck(
+pub async fn get_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-) -> ApiResult<Json<SoundcheckStanding>> {
+) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    Ok(Json(state.store.get_soundcheck_standing(thread_id).await?))
+    Ok(Json(state.store.get_land_gate_standing(thread_id).await?))
 }
 
-pub async fn clear_soundcheck(
+pub async fn clear_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
@@ -60,20 +60,20 @@ pub async fn clear_soundcheck(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    if state.store.clear_soundcheck(thread_id).await? {
+    if state.store.clear_land_gate(thread_id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
 }
 
-pub async fn require_soundcheck(
+pub async fn require_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-) -> ApiResult<Json<SoundcheckStanding>> {
+) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    Ok(Json(state.store.require_soundcheck(thread_id).await?))
+    Ok(Json(state.store.require_land_gate(thread_id).await?))
 }

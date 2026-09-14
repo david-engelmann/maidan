@@ -423,7 +423,7 @@ async fn github_client_creates_a_pull_review_with_right_side_and_envelope_commit
     let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
     client
         .create_review(
-            "beatgig/bgv3",
+            "example/repo",
             3915,
             sha,
             &[
@@ -450,7 +450,7 @@ async fn github_client_creates_a_pull_review_with_right_side_and_envelope_commit
     assert_eq!(reqs.len(), 1, "exactly one POST; no GET of the PR head");
     let r = &reqs[0];
     assert_eq!(r.method, "POST");
-    assert_eq!(r.path, "/repos/beatgig/bgv3/pulls/3915/reviews");
+    assert_eq!(r.path, "/repos/example/repo/pulls/3915/reviews");
     assert_eq!(r.auth, "Bearer ghp-secret");
     assert_eq!(r.user_agent, "maidan-projector");
     assert_eq!(r.body["commit_id"], sha);

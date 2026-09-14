@@ -33,7 +33,7 @@ use maidan_types::{
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
-const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/pi_waiter_result_v1.json");
+const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 const HEAD_SHA: &str = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
 
 struct ReviewCall {
@@ -237,7 +237,7 @@ async fn harness(name: &str) -> Harness {
 
 fn fixture_github_only() -> Value {
     let mut result: Value = serde_json::from_str(FIXTURE).unwrap();
-    result["deliver_to"] = json!([{ "surface": "github", "repo": "beatgig/bgv3", "pr": 3915 }]);
+    result["deliver_to"] = json!([{ "surface": "github", "repo": "example/repo", "pr": 3915 }]);
     result
 }
 
@@ -246,7 +246,7 @@ async fn bless_github(h: &Harness) {
         .allow_egress_target(NewEgressTarget {
             workspace_id: h.workspace_id,
             surface: EgressSurface::Github,
-            selector: "beatgig/bgv3".into(),
+            selector: "example/repo".into(),
         })
         .await
         .unwrap();
@@ -319,12 +319,12 @@ async fn delivered_row(h: &Harness) -> maidan_types::ResultDelivery {
 fn envelope(status: &str, deliver_to: Value, head_sha: Option<&str>, findings: Value) -> Value {
     let mut v = json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": "pi.review.result/1",
+        "result_kind": "example.review.result/1",
         "status": status,
         "deliver_to": deliver_to,
         "rendered": "## Findings",
         "summary": "1 finding",
-        "view_in_pi": "https://pi.test/r/1",
+        "view_url": "https://producer.example.test/r/1",
         "findings": findings,
     });
     if let Some(sha) = head_sha {
@@ -334,7 +334,7 @@ fn envelope(status: &str, deliver_to: Value, head_sha: Option<&str>, findings: V
 }
 
 fn github_target() -> Value {
-    json!([{ "surface": "github", "repo": "beatgig/bgv3", "pr": 3915 }])
+    json!([{ "surface": "github", "repo": "example/repo", "pr": 3915 }])
 }
 
 fn slack_target() -> Value {
@@ -343,7 +343,7 @@ fn slack_target() -> Value {
 
 fn github_and_slack_targets() -> Value {
     json!([
-        { "surface": "github", "repo": "beatgig/bgv3", "pr": 3915 },
+        { "surface": "github", "repo": "example/repo", "pr": 3915 },
         { "surface": "slack", "channel": "C0123ABCDEF" }
     ])
 }
@@ -351,7 +351,7 @@ fn github_and_slack_targets() -> Value {
 async fn link_github(h: &Harness) {
     h.store
         .link_github_issue(NewGithubIssueLink {
-            repo: "beatgig/bgv3".into(),
+            repo: "example/repo".into(),
             issue_number: 3915,
             workspace_id: h.workspace_id,
             channel_id: h.channel_id,
@@ -365,7 +365,7 @@ async fn link_github(h: &Harness) {
 async fn github_link_is_enabled(h: &Harness) {
     let link = h
         .store
-        .get_github_issue_link("beatgig/bgv3", 3915)
+        .get_github_issue_link("example/repo", 3915)
         .await
         .unwrap()
         .expect("projector issue-link");
@@ -401,7 +401,7 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
     {
         let posts = h.github.posts.lock().unwrap();
         assert_eq!(posts.len(), 1);
-        assert_eq!(posts[0].0, "beatgig/bgv3");
+        assert_eq!(posts[0].0, "example/repo");
         assert_eq!(posts[0].1, 3915);
         assert!(
             egress_body::comment_carries_result_marker(&posts[0].2, h.thread_id),
@@ -412,7 +412,7 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
     {
         let reviews = h.github.reviews.lock().unwrap();
         assert_eq!(reviews.len(), 1);
-        assert_eq!(reviews[0].repo, "beatgig/bgv3");
+        assert_eq!(reviews[0].repo, "example/repo");
         assert_eq!(reviews[0].pull, 3915);
         assert_eq!(
             reviews[0].commit_id, HEAD_SHA,
@@ -890,7 +890,7 @@ async fn a_projector_row_after_findings_never_creates_a_review() {
             thread_id: h.thread_id,
             source_log_id: 99,
             target: maidan_types::EgressTarget::Github {
-                repo: "beatgig/bgv3".into(),
+                repo: "example/repo".into(),
                 issue_number: 3915,
             },
             body: "a projector echo".into(),
