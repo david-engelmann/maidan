@@ -47,8 +47,8 @@ write-path — quietly running the pre-205 dual-write while REST was hardened.
   it had an unused `release_claim_with_event`. Migrating it too finishes the
   assignment surface in one pass.
 - **The audit's out-of-scope parts were declined.** The relayed review pointed at
-  pi-repo files (`/Users/david/bg/pi/*`), I-numbers, and a parallel roadmap; those
-  are not Maidan Open Work and Pi is not edited from here. Only the code-level
+  files in another repository, private issue numbers, and a parallel roadmap;
+  those are not Maidan Open Work and are not edited from here. Only the code-level
   claims — verified against `main` — were acted on.
 
 ## Surprises

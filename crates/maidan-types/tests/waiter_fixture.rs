@@ -157,7 +157,7 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
     // The delivery grain is issue-qualified; the allowlist grain is the
     // repository. An operator blesses `github:example/repo` once and it covers
     // this PR and every other one — per-issue blessing would be a ticket per PR.
-    assert_eq!(projected[0].selector(), "example/repo#42");
+    assert_eq!(projected[0].selector(), "example/repo#3915");
     assert_eq!(projected[0].allowlist_selector(), "example/repo");
     // Slack has no such split: a channel id is already what an operator blesses.
     assert_eq!(projected[1].selector(), projected[1].allowlist_selector());

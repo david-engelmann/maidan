@@ -3,8 +3,9 @@
 Wave 2 #19 gives the room a **secret-ref**: a named secret whose *value never
 enters the event log*. The log — a message, a webhook payload, a tool argument —
 carries a `secret://<name>` **reference**; the store holds the (encrypted) value;
-and the value is materialized only at the moment it's needed — Pi resolves it at
-exec, or the egress broker substitutes it on the way out to an allowlisted host.
+and the value is materialized only at the moment it's needed — a consumer
+resolves it at exec, or the egress broker substitutes it on the way out to an
+allowlisted host.
 
 ## What shipped
 

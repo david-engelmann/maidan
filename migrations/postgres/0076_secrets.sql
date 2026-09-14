@@ -1,7 +1,7 @@
 -- Cluster 371 (Wave 2 #19, G19/T3): a secret store. A workspace names a secret;
 -- the value is AEAD-encrypted at rest (the Cluster-189 keyring) and NEVER leaves
 -- in the event log — the log holds a `secret://<name>` reference, this table holds
--- the value, and Pi resolves it at exec (or a broker substitutes it on egress to
+-- the value, and a consumer resolves it at exec (or a broker substitutes it on egress to
 -- an allowlisted host). Only the ciphertext is stored; encryption/decryption lives
 -- in the route layer, which holds the key.
 CREATE TABLE IF NOT EXISTS maidan_secrets (

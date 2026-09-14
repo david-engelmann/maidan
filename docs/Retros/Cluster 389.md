@@ -62,8 +62,10 @@ One impl PR + this retro. Every PR targets `main`.
 - **MCP tool-name sort moved.** The old get-* tool sat next to
   `get_spawn_budget`; `get_land_gate` sorts next to `get_inbox`. Both
   contract files were re-sorted.
-- **Line-broken "owns test execution"** survived the first pass.
-  Phrase cleanup has to match across newlines in CHANGELOG.
+- **Line-broken "owns test execution"** and leftover **Pi-as-product**
+  phrasing (secret-ref "resolves at exec", Cluster 385 "owns test
+  execution", Cluster 374 private-path cite) survived the first pass.
+  Phrase cleanup has to match across newlines and historical retros.
 
 ## Test evidence
 

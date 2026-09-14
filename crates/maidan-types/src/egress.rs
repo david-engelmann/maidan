@@ -433,7 +433,7 @@ mod tests {
     fn a_github_target_is_authorized_by_its_repository_not_its_issue() {
         let target = EgressTarget::Github {
             repo: "example/repo".into(),
-            issue_number: 3915,
+            issue_number: 42,
         };
         assert_eq!(target.selector(), "example/repo#42");
         assert_eq!(target.allowlist_selector(), "example/repo");
@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(
             EgressTarget::Github {
                 repo: "example/repo".into(),
-                issue_number: 3915,
+                issue_number: 42,
             }
             .to_string(),
             "github:example/repo#42"

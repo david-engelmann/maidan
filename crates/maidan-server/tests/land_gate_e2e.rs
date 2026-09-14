@@ -140,7 +140,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
         "Bearer {}",
         mint(store.as_ref(), ws.id, owner.id, caps.clone()).await
     );
-    let sc_h = format!(
+    let gate_h = format!(
         "Bearer {}",
         mint(store.as_ref(), ws.id, checker.id, caps.clone()).await
     );
@@ -152,7 +152,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Vacuous GET — no row, green, landable.
     let vacant: Value = client
-        .get(format!("{base}/threads/{tid}/land_gate"))
+        .get(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .send()
         .await
@@ -166,7 +166,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Unskilled PUT is 400.
     let denied = client
-        .put(format!("{base}/threads/{tid}/land_gate"))
+        .put(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &unskilled_h)
         .json(&json!({ "status": "pass" }))
         .send()
@@ -212,8 +212,8 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Amber is flags-then-still-engages — not a land.
     let amber = client
-        .put(format!("{base}/threads/{tid}/land_gate"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "pass", "land": "amber", "artifact_sha": "deadbeef" }))
         .send()
         .await
@@ -235,7 +235,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Implementer (owner) pass is stored but not a land.
     let self_pass = client
-        .put(format!("{base}/threads/{tid}/land_gate"))
+        .put(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .json(&json!({ "status": "pass" }))
         .send()
@@ -255,8 +255,8 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 
     // Qualifying green pass from the land_gate agent lands.
     let green = client
-        .put(format!("{base}/threads/{tid}/land_gate"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "pass" }))
         .send()
         .await
@@ -339,15 +339,15 @@ async fn land_gate_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         "Bearer {}",
         mint(store.as_ref(), ws.id, owner.id, caps.clone()).await
     );
-    let sc_h = format!(
+    let gate_h = format!(
         "Bearer {}",
         mint(store.as_ref(), ws.id, checker.id, caps).await
     );
     let tid = thread.id.0;
 
     let fail = client
-        .put(format!("{base}/threads/{tid}/land_gate"))
-        .header("Authorization", &sc_h)
+        .put(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &gate_h)
         .json(&json!({ "status": "fail", "land": "green" }))
         .send()
         .await
@@ -367,12 +367,12 @@ async fn land_gate_fail_is_red_and_mcp_standing_matches_the_store_gate() {
         .transition_thread(thread.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land_gate")),
+        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land gate")),
         "fail must block the store FSM (MCP has no transition_thread here — P1.1d), got {blocked:?}"
     );
 
     let got: Value = client
-        .get(format!("{base}/threads/{tid}/land_gate"))
+        .get(format!("{base}/threads/{tid}/land-gate"))
         .header("Authorization", &owner_h)
         .send()
         .await

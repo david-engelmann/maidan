@@ -101,7 +101,7 @@ async fn run_suite(store: &dyn Store) {
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land_gate")),
+        matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("land gate")),
         "pending require must block close, got {blocked:?}"
     );
 
@@ -133,7 +133,7 @@ async fn run_suite(store: &dyn Store) {
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(fail, Err(StoreError::Conflict(ref m)) if m.contains("red") || m.contains("land_gate")),
+        matches!(fail, Err(StoreError::Conflict(ref m)) if m.contains("red") || m.contains("land gate")),
         "fail must not land, got {fail:?}"
     );
 
@@ -146,7 +146,7 @@ async fn run_suite(store: &dyn Store) {
         .transition_thread(t.id, owner.id, ThreadAction::Close)
         .await;
     assert!(
-        matches!(self_pass, Err(StoreError::Conflict(ref m)) if m.contains("land_gate")),
+        matches!(self_pass, Err(StoreError::Conflict(ref m)) if m.contains("land gate")),
         "implementer pass must not land, got {self_pass:?}"
     );
 

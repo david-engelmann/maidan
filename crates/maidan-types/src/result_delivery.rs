@@ -122,7 +122,7 @@ mod tests {
             gh.target(),
             Some(EgressTarget::Github {
                 repo: "example/repo".into(),
-                issue_number: 3915
+                issue_number: 42
             })
         );
         assert_eq!(

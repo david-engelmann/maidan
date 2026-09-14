@@ -54,8 +54,9 @@ Four impl PRs (385.1–385.4) + this retro (#831). Every PR targets `main`
   when status is pass. Fail is always red (`resolve_land` wins over a
   requested green).
 - **Room holds the pointer; an external verifier records pass/fail.** Not a CI
-  product and not a judge panel in the room. Pi may still run
-  BullshitBench; that dataset is not this cluster.
+  product and not a judge panel in the room. An external verifier
+  may still run an independent evaluation dataset; that is not
+  this cluster.
 - **No MCP `transition_thread`.** That is P1.1d (Cluster 384). The
   store FSM is the shared gate; REST `POST /threads/:id` already calls
   it.
@@ -97,8 +98,8 @@ type (opt-in). P1.1d (`transition_thread` MCP) was not taken — Cluster
 384. Open Work #26–28 (blocked-reason, occupancy follow, run lineage)
 were not touched.
 
-**Not this cluster:** Wave 3. LandGate still owns test execution
-outside this repo.
+**Not this cluster:** Wave 3. An external verifier still owns test
+execution outside this repo.
 
 ## Acknowledgements
 

@@ -185,7 +185,7 @@ Four impl PRs (372.1–372.4) + operator docs. An operator (or an orchestrator a
 
 ## v371.0.0 — Wave 2 #19: secret-ref (G19 + T3)
 
-Four impl PRs (371.1–371.4). A named secret whose **value never enters the event log** — the log carries a `secret://<name>` reference, the store holds the AEAD-encrypted value, and it's materialized only transiently: Pi resolves it at exec, or the egress broker substitutes it on the way out to an allowlisted host.
+Four impl PRs (371.1–371.4). A named secret whose **value never enters the event log** — the log carries a `secret://<name>` reference, the store holds the AEAD-encrypted value, and it's materialized only transiently: a consumer resolves it at exec, or the egress broker substitutes it on the way out to an allowlisted host.
 
 | Change | Where |
 |--------|-------|
