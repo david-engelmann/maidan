@@ -31,4 +31,6 @@ A2A is a recipe, not a fourth library. Do not generate the full
 OpenAPI. Rust must not depend on `maidan-server`.
 
 0.1.0 is the first usable release (shipped, clusters 294–299).
-Next: typed response models (0.2).
+Clients capture `Maidan-Room-LSN` as `last_room_lsn` (Cluster 390).
+Next: typed response models (0.2) generated from `contracts/lexicon/`.
+Do not bump the package version for the header capture.

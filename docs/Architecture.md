@@ -100,7 +100,11 @@ flowchart LR
    SQLite; `PostgresBus` fans out across processes via `LISTEN`/`NOTIFY`, carrying a
    `log_id` pointer that the listener hydrates from the log (with a self-healing backfill
    for missed ranges). Subscribers filter by workspace, channel, thread, member, and kind
-   over WebSocket (`GET /ws/subscribe`) or MCP SSE (`GET /mcp/stream`). The optimistic
+   over WebSocket (`GET /ws/subscribe`) or MCP SSE (`GET /mcp/stream`). Live frames
+   carry `$type` (`maidan.event.{kind}/1`); the JSON-Schema pack lives under
+   `contracts/lexicon/`. Responses stamp `Maidan-Room-LSN` (event-log high-water)
+   so clients can measure projector / broadcast lag — distinct from the replica
+   WAL `Maidan-Consistency-Token`. The optimistic
    path is at-most-once; an opt-in `at_least_once` cursor path (per `consumer_id`) plus
    replay + signed resume tokens close gaps.
 
@@ -193,7 +197,8 @@ flowchart LR
 - **Scale & ops.** Runs `≥2` replicas behind a load balancer on one Postgres + object
   store. An optional read replica serves replica-eligible reads once caught up to a
   per-write **LSN causality token** (`Maidan-Consistency-Token`), falling back to the
-  primary otherwise (auth/control-plane reads always hit the primary). Retention pruning,
+  primary otherwise (auth/control-plane reads always hit the primary). Projector lag
+  uses a different header (`Maidan-Room-LSN`, the event-log id). Retention pruning,
   Prometheus metrics + alert rules, OTLP traces/metrics, a durable event log with replay,
   and a Helm chart round it out.
 

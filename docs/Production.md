@@ -585,6 +585,12 @@ once the replica has replayed past the token; until then it falls back to the
 primary. A read with no token may be served from the replica immediately (the caller
 has asserted no causality requirement).
 
+**Not `Maidan-Room-LSN`.** That header is the event-log high-water
+(`MAX(maidan_events.id)`, decimal, always on — including SQLite) so a
+subscriber or webhook consumer can see projector / broadcast lag. It is
+**not** a WAL LSN, is not gated on a replica, and must not be echoed as
+`Maidan-Consistency-Token`. See [Integration.md](Integration.md) (subscribe).
+
 **What routes, and what never does.**
 
 - **Routed** (only for `GET`/`HEAD`): content and collaboration reads — messages,
