@@ -34,11 +34,12 @@ const ready = await client.waitForReady(wid); // event or null on timeout
 - Constructor: `new Client(baseUrl?, token?, options?)` — defaults from `MAIDAN_URL` /
   `MAIDAN_TOKEN`; explicit args win. `client.mcpUrl` is `{baseUrl}/mcp/streamable`.
 - Errors throw `MaidanError` (`.status`, `.body`, `.retryAfter` on 429, `.isConflict` /
-  `.isForbidden` / `.isRateLimited`).
+  `.isCursorTooOld` / `.isForbidden` / `.isRateLimited`).
 - Surface (frozen v1): `workspaces.{create,get,import}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,setResult,getResult}`, `claimNextThread`,
-  `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`, and
-  the `waitFor*` helpers. See the repo's `docs/Client Contract.md`.
+  `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,
+  `workspaces.events`, `follow` (HTTP backfill then WS), and the `waitFor*` helpers. See
+  the repo's `docs/Client Contract.md`.
 
 **Node < 22** has no global WebSocket — pass one for `subscribe`:
 

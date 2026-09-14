@@ -15,6 +15,15 @@ export class MaidanError extends Error {
   get isConflict() {
     return this.status === 409;
   }
+  /** 409 + must_refetch / cursor-too-old — fail loud, never clamp. */
+  get isCursorTooOld() {
+    if (this.status !== 409) return false;
+    const body = this.body && typeof this.body === "object" ? this.body : {};
+    if (body.must_refetch === true) return true;
+    return (
+      body.type === "https://maidan.dev/problems/cursor-too-old" || body.type === "cursor_too_old"
+    );
+  }
   get isForbidden() {
     return this.status === 403;
   }
@@ -50,6 +59,7 @@ export class Client {
       get: (id) => this._req("GET", `/workspaces/${id}`),
       import: (bundle, mode) =>
         this._req("POST", `/workspaces/import${mode ? `?mode=${mode}` : ""}`, bundle),
+      events: (id, query) => this._req("GET", `/workspaces/${id}/events${qs(query)}`),
     };
     this.channels = {
       list: (wid) => this._req("GET", `/workspaces/${wid}/channels`),
@@ -139,7 +149,7 @@ export class Client {
    * `onEvent`. Unknown `kind`s are still delivered (forward-compat).
    * @returns {Promise<{ close: () => void }>}
    */
-  subscribe(filter, onEvent, onError) {
+  subscribe(filter, onEvent, onError, opts = {}) {
     if (!this._WebSocket) {
       return Promise.reject(
         new Error("No WebSocket available; pass options.WebSocket (e.g. the `ws` package on Node <22)"),
@@ -150,7 +160,10 @@ export class Client {
     return new Promise((resolve, reject) => {
       let settled = false;
       ws.onopen = () => {
-        ws.send(JSON.stringify({ filter: filter || {}, token: this.token }));
+        const frame = { filter: filter || {}, token: this.token };
+        if (opts.afterId) frame.after_id = opts.afterId;
+        if (opts.consumerId) frame.consumer_id = opts.consumerId;
+        ws.send(JSON.stringify(frame));
         settled = true;
         resolve({ close: () => ws.close() });
       };
@@ -165,9 +178,46 @@ export class Client {
         } catch {
           return;
         }
-        if (frame && frame.type) return; // control frame (subscribe_ack, replay_hint, …)
+        if (frame && frame.type === "cursor_too_old") {
+          onEvent(frame);
+          ws.close();
+          return;
+        }
+        if (frame && frame.type) return; // subscribe_ack, schema_version, replay_*
         if (frame && typeof frame.kind === "string") onEvent(frame);
       };
+    });
+  }
+
+  /**
+   * HTTP backfill GET /workspaces/{id}/events then WS cutover.
+   * A 409 must_refetch throws MaidanError.isCursorTooOld — never clamped.
+   */
+  async follow(spec, onEvent, onError) {
+    const limit = spec.pageLimit > 0 ? spec.pageLimit : 100;
+    let after = spec.afterId || 0;
+    for (;;) {
+      const query = { after_id: after, limit };
+      if (spec.channelId) query.channel_id = spec.channelId;
+      if (spec.threadId) query.thread_id = spec.threadId;
+      if (spec.types && spec.types.length) query.types = spec.types.join(",");
+      if (spec.consumerId) query.consumer_id = spec.consumerId;
+      const page = (await this.workspaces.events(spec.workspaceId, query)) || [];
+      if (!page.length) break;
+      for (const row of page) {
+        const id = row && (row.id ?? row.log_id);
+        if (typeof id === "number") after = Math.max(after, id);
+        onEvent(normalizeStored(row));
+      }
+      if (page.length < limit) break;
+    }
+    const filter = { workspace_id: spec.workspaceId };
+    if (spec.channelId) filter.channel_id = spec.channelId;
+    if (spec.threadId) filter.thread_id = spec.threadId;
+    if (spec.types && spec.types.length) filter.kinds = spec.types;
+    return this.subscribe(filter, onEvent, onError, {
+      afterId: after,
+      consumerId: spec.consumerId,
     });
   }
 
@@ -207,6 +257,17 @@ export class Client {
     if (channelId) f.channel_id = channelId;
     return this._waitForKind(f, "thread_ready", timeoutMs);
   }
+}
+
+function normalizeStored(row) {
+  if (!row || typeof row !== "object") return { raw: row };
+  const out = row.payload && typeof row.payload === "object" ? { ...row.payload } : { ...row };
+  const id = row.id ?? row.log_id;
+  if (id !== undefined) out.log_id = id;
+  for (const key of ["kind", "workspace_id", "channel_id", "thread_id"]) {
+    if (out[key] === undefined && row[key] !== undefined) out[key] = row[key];
+  }
+  return out;
 }
 
 function qs(query) {

@@ -41,6 +41,22 @@ func (e *APIError) Error() string {
 // IsConflict reports a 409.
 func (e *APIError) IsConflict() bool { return e.Status == 409 }
 
+// IsCursorTooOld reports a 409 must_refetch / cursor-too-old — fail loud, never clamp.
+func (e *APIError) IsCursorTooOld() bool {
+	if e.Status != 409 {
+		return false
+	}
+	m, ok := e.Body.(map[string]any)
+	if !ok {
+		return false
+	}
+	if v, ok := m["must_refetch"].(bool); ok && v {
+		return true
+	}
+	t, _ := m["type"].(string)
+	return t == "https://maidan.dev/problems/cursor-too-old" || t == "cursor_too_old"
+}
+
 // IsForbidden reports a 403 (missing capability / channel access — not retryable).
 func (e *APIError) IsForbidden() bool { return e.Status == 403 }
 
@@ -216,6 +232,15 @@ func (s *WorkspacesService) Create(name string) (M, error) {
 }
 func (s *WorkspacesService) Get(id string) (M, error) {
 	return s.c.getObj("/workspaces/" + id)
+}
+
+// ListEvents is GET /workspaces/{id}/events — projector-shaped HTTP backfill.
+func (s *WorkspacesService) ListEvents(id string, query url.Values) ([]M, error) {
+	raw, err := s.c.do(http.MethodGet, "/workspaces/"+id+"/events"+qs(query), nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeArr(raw)
 }
 
 // Import is admin-only (token:admin). mode "" uses the default (new).

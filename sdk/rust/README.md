@@ -41,13 +41,15 @@ fn main() -> Result<(), maidan::MaidanError> {
 - Constructor: `Client::new(base_url, token)` or `Client::from_env()` (`MAIDAN_URL` /
   `MAIDAN_TOKEN`). `client.mcp_url` is `{base_url}/mcp/streamable`.
 - Errors are `MaidanError` (`.status`, `.body`, `.retry_after` on 429, `.is_conflict()` /
-  `.is_forbidden()` / `.is_rate_limited()`; `.is_transport()` for non-HTTP errors).
+  `.is_cursor_too_old()` / `.is_forbidden()` / `.is_rate_limited()`; `.is_transport()` for
+  non-HTTP errors).
 - Responses come back as `serde_json::Value` so unknown fields are preserved and ignored
   (forward-compat). Typed models are a future refinement.
 - Surface (frozen v1): `workspaces().{create,get,import}`, `channels().{list,create}`,
   `threads().{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
-  `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`, and
-  the `wait_for_*` helpers. See the repo's `docs/Client Contract.md`.
+  `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`,
+  `list_events`, `follow` (HTTP backfill then WS), and the `wait_for_*` helpers. See the
+  repo's `docs/Client Contract.md`.
 
 Rust's standard library has no HTTP or TLS client, so this crate takes a small synchronous
 stack (`ureq` over rustls for REST, `tungstenite` for the WebSocket) — the one place the four
