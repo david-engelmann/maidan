@@ -192,6 +192,15 @@ pub async fn min_event_id(
     Ok(row.0)
 }
 
+/// Highest event-log id (`0` when empty). Cluster 390 `Maidan-Room-LSN` — the
+/// SQLite twin of [`crate::postgres::events::max_event_id`].
+pub async fn max_event_id(pool: &SqlitePool) -> Result<i64, StoreError> {
+    let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM maidan_events")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get::<i64, _>("max_id"))
+}
+
 /// A thread's events with `id <= through_id`, in `id` order (Cluster 326) — the
 /// immutable substrate for as-of context replay. See the Postgres twin.
 pub async fn list_through(

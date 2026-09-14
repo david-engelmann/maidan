@@ -1850,6 +1850,12 @@ pub trait EventStore: Send + Sync {
     /// has no rows). Cluster 388 CursorTooOld.
     async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 
+    /// Highest event-log `id` across all workspaces (`0` when empty).
+    /// Cluster 390 `Maidan-Room-LSN` — the room head a client compares to
+    /// last-seen `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]
+    /// (`Maidan-Consistency-Token`).
+    async fn max_event_id(&self) -> Result<i64, StoreError>;
+
     /// Cross-workspace `id > after_id` page, in `id` order. Internal bus
     /// consumers (indexer, webhook, notification router, FSM hooks) resume
     /// from this after `RecvError::Lagged` (Cluster 388) instead of dropping.

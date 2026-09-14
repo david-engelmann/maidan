@@ -210,7 +210,9 @@ pub async fn min_event_id(
 
 /// The highest event-log id (`0` when empty). The bus seeds its high-water mark
 /// from this at startup so it back-fills only events appended *after* it began
-/// listening, not the entire history (Cluster 258).
+/// listening, not the entire history (Cluster 258). Cluster 390 also exposes
+/// this as `Store::max_event_id` for the `Maidan-Room-LSN` header (event-log
+/// id, not a WAL LSN).
 pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
     let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM maidan_events")
         .fetch_one(pool)
