@@ -89,6 +89,7 @@ pub fn mint_auth_session_token() {}
     responses(
         (status = 200, body = Vec<StoredEvent>),
         (status = 401, body = ProblemDetails),
+        (status = 409, description = "Cursor too old; must_refetch", body = ProblemDetails),
     )
 )]
 pub fn ui_list_events() {}
