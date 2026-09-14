@@ -410,8 +410,12 @@ async fn send_subscribe_ack(
         state.subscribe_resume_ttl_secs,
     )
     .map_err(|e| format!("resume token: {e}"))?;
-    let payload = subscribe_ack_payload(&token, after_id)
-        .ok_or_else(|| "subscribe_ack serialization failed".to_string())?;
+    let payload = subscribe_ack_payload(
+        &token,
+        after_id,
+        crate::room_lsn::current(state.store.as_ref()).await,
+    )
+    .ok_or_else(|| "subscribe_ack serialization failed".to_string())?;
     text_tx
         .send(payload)
         .await

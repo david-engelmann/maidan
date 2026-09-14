@@ -8,7 +8,7 @@ use std::sync::{
 use futures::StreamExt;
 use maidan_bus::BusItem;
 use maidan_store::Store;
-use maidan_types::{BusEnvelope, Event, EventFilter, StoredEvent};
+use maidan_types::{inject_type, BusEnvelope, Event, EventFilter, StoredEvent};
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -122,6 +122,8 @@ pub async fn emit_replay_truncated_if_needed(
 /// full frame's, so `log_id`/`kind`/`thread_id`-based client logic is unchanged.
 #[derive(Serialize)]
 struct LeanFrame<'a> {
+    #[serde(rename = "$type")]
+    type_id: String,
     log_id: i64,
     kind: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,6 +142,7 @@ fn frame_payload(envelope: &BusEnvelope, lean: bool) -> Result<String, serde_jso
     if lean {
         let e = &envelope.event;
         serde_json::to_string(&LeanFrame {
+            type_id: e.kind().type_id(),
             log_id: envelope.log_id,
             kind: e.kind().as_str(),
             workspace_id: e.workspace_id().map(|w| w.0),
@@ -148,7 +151,9 @@ fn frame_payload(envelope: &BusEnvelope, lean: bool) -> Result<String, serde_jso
             member_id: e.member_id().map(|m| m.0),
         })
     } else {
-        serde_json::to_string(envelope)
+        let mut value = serde_json::to_value(envelope)?;
+        inject_type(&mut value, &envelope.event.kind().type_id());
+        serde_json::to_string(&value)
     }
 }
 
@@ -231,14 +236,23 @@ pub struct SubscribeAck {
     pub schema_version: u32,
     pub resume_token: String,
     pub after_id: i64,
+    /// Event-log high-water (`Maidan-Room-LSN`). Distinct from `after_id`
+    /// (this subscriber's cursor). Omitted if the store read failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_lsn: Option<i64>,
 }
 
-pub fn subscribe_ack_payload(resume_token: &str, after_id: i64) -> Option<String> {
+pub fn subscribe_ack_payload(
+    resume_token: &str,
+    after_id: i64,
+    room_lsn: Option<i64>,
+) -> Option<String> {
     let ack = SubscribeAck {
         frame_type: "subscribe_ack",
         schema_version: SUBSCRIBE_SCHEMA_VERSION,
         resume_token: resume_token.to_string(),
         after_id,
+        room_lsn,
     };
     serde_json::to_string(&ack).ok()
 }
@@ -509,5 +523,40 @@ mod tests {
         assert_eq!(v["type"], "replay_truncated");
         assert_eq!(v["after_id"], 99);
         assert_eq!(v["limit"], REPLAY_LIMIT);
+    }
+
+    #[test]
+    fn frame_payload_stamps_type_on_full_and_lean() {
+        let event = Event::ThreadResultSet {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: maidan_types::WorkspaceId(uuid::Uuid::from_u128(1)),
+            channel_id: maidan_types::ChannelId(uuid::Uuid::from_u128(2)),
+            thread_id: maidan_types::ThreadId(uuid::Uuid::from_u128(3)),
+            produced_by: maidan_types::MemberId(uuid::Uuid::from_u128(4)),
+        };
+        let envelope = BusEnvelope { log_id: 9, event };
+        let full: serde_json::Value =
+            serde_json::from_str(&frame_payload(&envelope, false).unwrap()).unwrap();
+        assert_eq!(full["$type"], "maidan.event.thread_result_set/1");
+        assert_eq!(full["kind"], "thread_result_set");
+        assert_eq!(full["log_id"], 9);
+        let lean: serde_json::Value =
+            serde_json::from_str(&frame_payload(&envelope, true).unwrap()).unwrap();
+        assert_eq!(lean["$type"], "maidan.event.thread_result_set/1");
+        assert_eq!(lean["kind"], "thread_result_set");
+        assert_eq!(lean["log_id"], 9);
+        assert!(lean.get("produced_by").is_none());
+    }
+
+    #[test]
+    fn subscribe_ack_carries_room_lsn_when_present() {
+        let payload = subscribe_ack_payload("tok", 3, Some(12)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(v["type"], "subscribe_ack");
+        assert_eq!(v["after_id"], 3);
+        assert_eq!(v["room_lsn"], 12);
+        let omitted = subscribe_ack_payload("tok", 3, None).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&omitted).unwrap();
+        assert!(v.get("room_lsn").is_none());
     }
 }
