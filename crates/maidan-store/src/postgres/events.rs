@@ -193,6 +193,21 @@ pub async fn list_through(
     rows.iter().map(row_to_stored).collect()
 }
 
+/// Lowest retained `id` in `workspace_id` (`None` when the workspace has no
+/// events). Cluster 388 uses this to fail loud on a subscribe cursor that
+/// points into a pruned gap.
+pub async fn min_event_id(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<i64>, StoreError> {
+    let row: (Option<i64>,) =
+        sqlx::query_as("SELECT MIN(id) FROM maidan_events WHERE workspace_id = $1")
+            .bind(workspace_id.0)
+            .fetch_one(pool)
+            .await?;
+    Ok(row.0)
+}
+
 /// The highest event-log id (`0` when empty). The bus seeds its high-water mark
 /// from this at startup so it back-fills only events appended *after* it began
 /// listening, not the entire history (Cluster 258).

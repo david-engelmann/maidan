@@ -2298,6 +2298,18 @@ impl EventStore for PostgresStore {
     ) -> Result<Vec<StoredEvent>, StoreError> {
         events::list_after_stable(&self.pool, workspace_id, after_id, stable_before, limit).await
     }
+
+    async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError> {
+        events::min_event_id(&self.pool, workspace_id).await
+    }
+
+    async fn list_events_after_global(
+        &self,
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        events::list_after_global(&self.pool, after_id, limit).await
+    }
 }
 
 #[async_trait]

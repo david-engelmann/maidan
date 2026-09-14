@@ -1845,6 +1845,39 @@ pub trait EventStore: Send + Sync {
         stable_before: chrono::DateTime<chrono::Utc>,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
+
+    /// Lowest retained event `id` in `workspace_id` (`None` if the workspace
+    /// has no rows). Cluster 388 CursorTooOld.
+    async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
+
+    /// Cross-workspace `id > after_id` page, in `id` order. Internal bus
+    /// consumers (indexer, webhook, notification router, FSM hooks) resume
+    /// from this after `RecvError::Lagged` (Cluster 388) instead of dropping.
+    async fn list_events_after_global(
+        &self,
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
+    /// Fail loud when `after_id` points into a pruned gap. `after_id <= 0`
+    /// (fresh subscriber) is never too old. Default impl; both backends
+    /// inherit it.
+    async fn ensure_cursor_fresh(
+        &self,
+        workspace_id: WorkspaceId,
+        after_id: i64,
+    ) -> Result<(), StoreError> {
+        if after_id <= 0 {
+            return Ok(());
+        }
+        let Some(oldest_id) = self.min_event_id(workspace_id).await? else {
+            return Ok(());
+        };
+        if maidan_types::cursor_is_too_old(after_id, Some(oldest_id)) {
+            return Err(StoreError::cursor_too_old(after_id, oldest_id));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]

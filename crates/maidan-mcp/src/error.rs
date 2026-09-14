@@ -98,6 +98,12 @@ impl From<maidan_store::StoreError> for McpError {
             // Same for a refused spawn (Cluster 376.6) — the typed variant must
             // not fall through to the `other => Internal` arm below.
             maidan_store::StoreError::SpawnRejected(d) => Self::InvalidParams(d.to_string()),
+            maidan_store::StoreError::CursorTooOld {
+                after_id,
+                oldest_id,
+            } => Self::InvalidParams(format!(
+                "cursor too old: after_id {after_id} is behind oldest retained event {oldest_id}; must refetch"
+            )),
             other => Self::Internal(other.to_string()),
         }
     }
@@ -204,6 +210,17 @@ mod tests {
             McpError::from(maidan_store::StoreError::Conflict("dup".into())),
             McpError::InvalidParams(_)
         ));
+        let too_old = McpError::from(maidan_store::StoreError::CursorTooOld {
+            after_id: 10,
+            oldest_id: 50,
+        });
+        match too_old {
+            McpError::InvalidParams(m) => {
+                assert!(m.contains("must refetch"), "{m}");
+                assert!(m.contains("10"), "{m}");
+            }
+            other => panic!("expected InvalidParams, got {other:?}"),
+        }
     }
 
     #[test]

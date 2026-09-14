@@ -40,6 +40,12 @@ pub async fn enforce_mcp_quota(
             ApiError::NotFound => "not found".into(),
             ApiError::Conflict(m) => m,
             ApiError::Internal(m) => m,
+            ApiError::CursorTooOld {
+                after_id,
+                oldest_id,
+            } => format!(
+                "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
+            ),
         };
         return Err(JsonRpcResponse::failure(
             id,

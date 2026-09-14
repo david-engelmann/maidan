@@ -156,6 +156,42 @@ pub async fn list_after_stable(
     rows.iter().map(row_to_stored).collect()
 }
 
+/// Cross-workspace events with `id > after_id`, in `id` order. SQLite twin of
+/// the Postgres helper the bus uses to back-fill a lagged listener (Cluster 258
+/// / 388 Lagged resume).
+pub async fn list_after_global(
+    pool: &SqlitePool,
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+         FROM maidan_events
+         WHERE id > ?
+         ORDER BY id ASC
+         LIMIT ?",
+    )
+    .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_stored).collect()
+}
+
+/// Lowest retained `id` in `workspace_id` (`None` when empty). Cluster 388
+/// CursorTooOld check.
+pub async fn min_event_id(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<i64>, StoreError> {
+    let row: (Option<i64>,) =
+        sqlx::query_as("SELECT MIN(id) FROM maidan_events WHERE workspace_id = ?")
+            .bind(workspace_id.0)
+            .fetch_one(pool)
+            .await?;
+    Ok(row.0)
+}
+
 /// A thread's events with `id <= through_id`, in `id` order (Cluster 326) — the
 /// immutable substrate for as-of context replay. See the Postgres twin.
 pub async fn list_through(
