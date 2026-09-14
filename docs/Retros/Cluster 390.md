@@ -95,4 +95,4 @@ streaming workspace export (already Open Work elsewhere).
 ## Acknowledgements
 
 #839 lexicon → #840 store head → #841 header + live frames → #842
-webhooks + four SDKs → this retro.
+webhooks + four SDKs → this retro (#843).
