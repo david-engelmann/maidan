@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.reaction_added/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `reaction_added`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.reaction_added/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "reaction_added",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.reaction_added/1",
+  "type": "object"
+}

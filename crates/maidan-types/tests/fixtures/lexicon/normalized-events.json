@@ -1,0 +1,385 @@
+{
+  "maidan.event.artifact_upserted/1": {
+    "$type": "maidan.event.artifact_upserted/1",
+    "artifact": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000007",
+      "kind": "attachment",
+      "mime_type": "text/plain",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size_bytes": 4,
+      "tombstoned_at": null,
+      "uploaded_by": "00000000-0000-0000-0000-000000000002"
+    },
+    "kind": "artifact_upserted",
+    "occurred_at": "2023-11-14T22:13:20Z"
+  },
+  "maidan.event.blocked_resolved/1": {
+    "$type": "maidan.event.blocked_resolved/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "blocked_resolved",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "human",
+    "resolved_by": "00000000-0000-0000-0000-000000000002",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.channel_created/1": {
+    "$type": "maidan.event.channel_created/1",
+    "channel": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000003",
+      "name": "general",
+      "private": false,
+      "tombstoned_at": null,
+      "topic": "talk",
+      "updated_at": "2023-11-14T22:13:20Z",
+      "workspace_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "kind": "channel_created",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.claim_expired/1": {
+    "$type": "maidan.event.claim_expired/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "claim_expired",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.claim_failed/1": {
+    "$type": "maidan.event.claim_failed/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "claim_failed",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "tokens",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.member_joined/1": {
+    "$type": "maidan.event.member_joined/1",
+    "kind": "member_joined",
+    "member": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "display_name": "Agent",
+      "handle": "agent",
+      "id": "00000000-0000-0000-0000-000000000002",
+      "kind": "agent",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z",
+      "workspace_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.memory_block_updated/1": {
+    "$type": "maidan.event.memory_block_updated/1",
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "kind": "memory_block_updated",
+    "label": "persona",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "updated_by": "00000000-0000-0000-0000-000000000002",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.mention_recorded/1": {
+    "$type": "maidan.event.mention_recorded/1",
+    "kind": "mention_recorded",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.message_edited/1": {
+    "$type": "maidan.event.message_edited/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "editor_id": "00000000-0000-0000-0000-000000000002",
+    "kind": "message_edited",
+    "message": {
+      "author_id": "00000000-0000-0000-0000-000000000002",
+      "body": "hello",
+      "edited_at": null,
+      "id": "00000000-0000-0000-0000-000000000005",
+      "posted_at": "2023-11-14T22:13:20Z",
+      "thread_id": "00000000-0000-0000-0000-000000000004",
+      "tombstoned_at": null
+    },
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.message_pinned/1": {
+    "$type": "maidan.event.message_pinned/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "message_pinned",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.message_posted/1": {
+    "$type": "maidan.event.message_posted/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "message_posted",
+    "message": {
+      "author_id": "00000000-0000-0000-0000-000000000002",
+      "body": "hello",
+      "edited_at": null,
+      "id": "00000000-0000-0000-0000-000000000005",
+      "posted_at": "2023-11-14T22:13:20Z",
+      "thread_id": "00000000-0000-0000-0000-000000000004",
+      "tombstoned_at": null
+    },
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.message_tombstoned/1": {
+    "$type": "maidan.event.message_tombstoned/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "message_tombstoned",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.message_unpinned/1": {
+    "$type": "maidan.event.message_unpinned/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "message_unpinned",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.projector_misconfigured/1": {
+    "$type": "maidan.event.projector_misconfigured/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "error": "401",
+    "kind": "projector_misconfigured",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "selector": "example/repo#1",
+    "surface": "github",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.reaction_added/1": {
+    "$type": "maidan.event.reaction_added/1",
+    "emoji": "👍",
+    "kind": "reaction_added",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.reaction_removed/1": {
+    "$type": "maidan.event.reaction_removed/1",
+    "emoji": "👍",
+    "kind": "reaction_removed",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.reference_added/1": {
+    "$type": "maidan.event.reference_added/1",
+    "kind": "reference_added",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reference": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "dst_id": "00000000-0000-0000-0000-000000000004",
+      "dst_kind": "thread",
+      "id": "00000000-0000-0000-0000-000000000006",
+      "relation": "supports",
+      "src_id": "00000000-0000-0000-0000-000000000005",
+      "src_kind": "message"
+    }
+  },
+  "maidan.event.schedule_skipped/1": {
+    "$type": "maidan.event.schedule_skipped/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "schedule_skipped",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "prior run still in flight",
+    "recipe_id": "00000000-0000-0000-0000-000000000009",
+    "schedule_id": "00000000-0000-0000-0000-000000000008",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_assignment_changed/1": {
+    "$type": "maidan.event.thread_assignment_changed/1",
+    "actor_id": "00000000-0000-0000-0000-000000000002",
+    "assignee_id": "00000000-0000-0000-0000-000000000002",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_assignment_changed",
+    "note": "handoff",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "previous_assignee_id": null,
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_created/1": {
+    "$type": "maidan.event.thread_created/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_created",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_landed/1": {
+    "$type": "maidan.event.thread_landed/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_landed",
+    "merge_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "merged_by": "octocat",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "pr_number": 1,
+    "repo": "example/repo",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "title": "land",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_ready/1": {
+    "$type": "maidan.event.thread_ready/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_ready",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_result_set/1": {
+    "$type": "maidan.event.thread_result_set/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_result_set",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "produced_by": "00000000-0000-0000-0000-000000000002",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_spawn_denied/1": {
+    "$type": "maidan.event.thread_spawn_denied/1",
+    "axis": "children",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_spawn_denied",
+    "limit": 3,
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "observed": 3,
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_state_changed/1": {
+    "$type": "maidan.event.thread_state_changed/1",
+    "actor_id": "00000000-0000-0000-0000-000000000002",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "from_state": "open",
+    "kind": "thread_state_changed",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "to_state": "closed",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.vote_cast/1": {
+    "$type": "maidan.event.vote_cast/1",
+    "kind": "vote_cast",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "vote_kind": "up",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.wait_timed_out/1": {
+    "$type": "maidan.event.wait_timed_out/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "wait_timed_out",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "policy": "notify",
+    "reason": "waiting",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.workspace_created/1": {
+    "$type": "maidan.event.workspace_created/1",
+    "kind": "workspace_created",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "workspace": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "ws",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    }
+  }
+}

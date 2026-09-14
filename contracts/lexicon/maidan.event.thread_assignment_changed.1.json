@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.thread_assignment_changed/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `thread_assignment_changed`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.thread_assignment_changed/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "thread_assignment_changed",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.thread_assignment_changed/1",
+  "type": "object"
+}

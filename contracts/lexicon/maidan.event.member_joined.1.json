@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.member_joined/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `member_joined`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.member_joined/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "member_joined",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.member_joined/1",
+  "type": "object"
+}

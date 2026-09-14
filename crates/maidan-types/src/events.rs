@@ -127,6 +127,25 @@ impl EventKind {
         }
     }
 
+    /// Observable `$type` for this kind (Cluster 390). Version `/1` is the
+    /// current generation. A breaking change is a **new type** (`/2`), not a
+    /// field rename — the string itself is the contract (Hyrum's Law home).
+    /// Stored `maidan_events.payload` still tags on `kind`; `$type` is injected
+    /// on wire envelopes.
+    pub fn type_id(self) -> String {
+        format!("maidan.event.{}/1", self.as_str())
+    }
+
+    /// Parse `maidan.event.{kind}/1`. A different version does not match `/1`.
+    pub fn parse_type_id(s: &str) -> Option<Self> {
+        let rest = s.strip_prefix("maidan.event.")?;
+        let (kind, version) = rest.rsplit_once('/')?;
+        if version != "1" {
+            return None;
+        }
+        Self::parse(kind)
+    }
+
     /// Every variant, for exhaustive iteration (round-trip guards, catalogs).
     /// Kept in sync with the enum by the compile-time tripwire in
     /// `all_variants_round_trip` — a new variant fails that test's exhaustive
@@ -1031,6 +1050,28 @@ mod kind_tests {
     #[test]
     fn unknown_kind_does_not_parse() {
         assert_eq!(EventKind::parse("not_a_real_kind"), None);
+    }
+
+    #[test]
+    fn type_id_round_trips_only_version_one() {
+        for &kind in EventKind::ALL {
+            let id = kind.type_id();
+            assert_eq!(EventKind::parse_type_id(&id), Some(kind));
+            assert!(
+                id.starts_with("maidan.event.") && id.ends_with("/1"),
+                "{id}"
+            );
+        }
+        assert_eq!(
+            EventKind::parse_type_id("maidan.event.message_posted/2"),
+            None,
+            "breaking = new type, not silently accepted as /1"
+        );
+        assert_eq!(
+            EventKind::parse_type_id("maidan.event.not_a_real_kind/1"),
+            None
+        );
+        assert_eq!(EventKind::parse_type_id("message_posted"), None);
     }
 
     /// Cluster 215: the federation ingest allowlist. Collaboration-content kinds

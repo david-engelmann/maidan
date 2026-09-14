@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.message_tombstoned/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `message_tombstoned`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.message_tombstoned/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "message_tombstoned",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.message_tombstoned/1",
+  "type": "object"
+}

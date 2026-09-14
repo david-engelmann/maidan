@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.workspace_created/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `workspace_created`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.workspace_created/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "workspace_created",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.workspace_created/1",
+  "type": "object"
+}
