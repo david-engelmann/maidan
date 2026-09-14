@@ -1,9 +1,11 @@
 //! Explicit dispatch-block store (Cluster 386, Wave 2 #27): set/clear/get +
-//! channel list over the closed `BlockedReason` enum, and `claim_next`
-//! skip (386.2). Both backends.
+//! channel list over the closed `BlockedReason` enum, `claim_next` skip
+//! (386.2), and `BlockedResolved` on clear (386.3). Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{BlockedReason, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{
+    BlockedReason, Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
+};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
@@ -240,11 +242,84 @@ async fn run_claim_skip_suite(store: &dyn Store) {
     assert_eq!(claimed2.id, t1.id, "unblocked t1 is now claimable");
 }
 
+/// Clearing a block appends `BlockedResolved` atomically; a second clear is a
+/// no-op (no event). The event carries the reason that resolved.
+async fn run_blocked_resolved_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "br".into() })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "resolver".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "brc".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("blocked".into()),
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_block(thread.id, BlockedReason::Quota, member.id)
+        .await
+        .expect("block");
+
+    let (cleared, stored) = store
+        .clear_thread_block_with_event(thread.id, member.id)
+        .await
+        .expect("clear_with_event");
+    let cleared = cleared.expect("had a block");
+    let stored = stored.expect("emitted BlockedResolved");
+    assert_eq!(cleared.reason, BlockedReason::Quota);
+    assert_eq!(stored.kind, EventKind::BlockedResolved);
+    assert_eq!(stored.thread_id, Some(thread.id));
+    assert_eq!(stored.workspace_id, Some(ws.id));
+    assert_eq!(stored.channel_id, Some(channel.id));
+    let event: Event = serde_json::from_value(stored.payload.clone()).expect("payload");
+    match event {
+        Event::BlockedResolved {
+            reason,
+            resolved_by,
+            thread_id,
+            ..
+        } => {
+            assert_eq!(reason, BlockedReason::Quota);
+            assert_eq!(resolved_by, member.id);
+            assert_eq!(thread_id, thread.id);
+        }
+        other => panic!("expected BlockedResolved, got {other:?}"),
+    }
+
+    let (again, ev) = store
+        .clear_thread_block_with_event(thread.id, member.id)
+        .await
+        .expect("clear again");
+    assert!(again.is_none());
+    assert!(ev.is_none(), "idempotent clear must not re-emit");
+}
+
 #[tokio::test]
 async fn thread_blocks_set_clear_get_list_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
     run_claim_skip_suite(&store).await;
+    run_blocked_resolved_suite(&store).await;
 }
 
 #[tokio::test]
@@ -280,4 +355,5 @@ async fn thread_blocks_set_clear_get_list_postgres() {
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
     run_claim_skip_suite(&store).await;
+    run_blocked_resolved_suite(&store).await;
 }

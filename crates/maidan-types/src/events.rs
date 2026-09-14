@@ -37,6 +37,7 @@ pub enum EventKind {
     ThreadAssignmentChanged,
     ThreadReady,
     ThreadResultSet,
+    BlockedResolved,
     ClaimExpired,
     ClaimFailed,
     ThreadLanded,
@@ -69,6 +70,7 @@ impl EventKind {
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
+            Self::BlockedResolved => "blocked_resolved",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimFailed => "claim_failed",
             Self::ThreadLanded => "thread_landed",
@@ -101,6 +103,7 @@ impl EventKind {
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
+            "blocked_resolved" => Some(Self::BlockedResolved),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_failed" => Some(Self::ClaimFailed),
             "thread_landed" => Some(Self::ThreadLanded),
@@ -139,6 +142,7 @@ impl EventKind {
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
         Self::ThreadResultSet,
+        Self::BlockedResolved,
         Self::ClaimExpired,
         Self::ClaimFailed,
         Self::ThreadLanded,
@@ -196,6 +200,9 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
+            // An unblock is *this* deployment's dispatch decision (Cluster 386);
+            // a peer must not inject one.
+            Self::BlockedResolved => false,
             // A lease expiry is detected locally (this deployment's clock + reclaim);
             // a peer must not inject a claim of one.
             Self::ClaimExpired => false,
@@ -294,6 +301,19 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         produced_by: MemberId,
+    },
+    /// An explicit dispatch block was cleared (Cluster 386, Wave 2 #27).
+    /// A waiter observing this can claim the thread (subject to DAG readiness
+    /// and the other `claim_next` clauses). Carries the reason that resolved,
+    /// not a payload — `get_thread_block` is now `None`. Locally derived: not
+    /// federatable.
+    BlockedResolved {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        reason: BlockedReason,
+        resolved_by: MemberId,
     },
     /// A claim's lease lapsed and the thread was reclaimed by the next agent
     /// (Cluster 351). Emitted lazily by `claim_next` when it takes over an
@@ -535,6 +555,7 @@ impl Event {
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
+            Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
@@ -567,6 +588,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
+            | Self::BlockedResolved { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
@@ -599,6 +621,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
+            | Self::BlockedResolved { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
@@ -628,6 +651,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }
             | Self::ThreadResultSet { channel_id, .. }
+            | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
@@ -652,6 +676,7 @@ impl Event {
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
+            Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
@@ -692,6 +717,7 @@ impl Event {
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
+            Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
@@ -962,6 +988,7 @@ mod kind_tests {
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
+                | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
                 | EventKind::ClaimFailed
                 | EventKind::ThreadLanded
@@ -1015,6 +1042,7 @@ mod kind_tests {
             EventKind::ArtifactUpserted,
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
+            EventKind::BlockedResolved,
             EventKind::ClaimExpired,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,

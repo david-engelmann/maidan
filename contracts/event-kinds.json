@@ -1,5 +1,6 @@
 [
   "artifact_upserted",
+  "blocked_resolved",
   "channel_created",
   "claim_expired",
   "claim_failed",
