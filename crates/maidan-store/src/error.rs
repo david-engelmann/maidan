@@ -18,6 +18,14 @@ pub enum StoreError {
     #[error("{0}")]
     SpawnRejected(Box<SpawnDenial>),
 
+    /// A subscribe / backfill cursor points into a gap the retention sweeper
+    /// already deleted (Cluster 388). Fail loud — never clamp to the oldest
+    /// remaining row. REST maps this to 409 + `must_refetch`.
+    #[error(
+        "cursor too old: after_id {after_id} is behind oldest retained event {oldest_id}; must refetch"
+    )]
+    CursorTooOld { after_id: i64, oldest_id: i64 },
+
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
@@ -38,5 +46,12 @@ impl StoreError {
     /// [`SpawnRejected`]: StoreError::SpawnRejected
     pub fn spawn_rejected(denial: SpawnDenial) -> Self {
         Self::SpawnRejected(Box::new(denial))
+    }
+
+    pub fn cursor_too_old(after_id: i64, oldest_id: i64) -> Self {
+        Self::CursorTooOld {
+            after_id,
+            oldest_id,
+        }
     }
 }
