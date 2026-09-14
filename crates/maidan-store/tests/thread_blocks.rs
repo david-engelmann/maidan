@@ -1,6 +1,6 @@
 //! Explicit dispatch-block store (Cluster 386, Wave 2 #27): set/clear/get +
-//! channel list over the closed `BlockedReason` enum. Both backends. Zero
-//! blast: `claim_next` is not yet gated (386.2).
+//! channel list over the closed `BlockedReason` enum, and `claim_next`
+//! skip (386.2). Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{BlockedReason, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
@@ -140,10 +140,111 @@ async fn run_suite(store: &dyn Store) {
     );
 }
 
+/// claim_next skips an older explicitly-blocked thread; queue-depth `blocked`
+/// counts it (alongside DAG-blocked); clearing restores claimability.
+/// Distinct from Cluster 218: a `child` reason is not "deps must be terminal".
+async fn run_claim_skip_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "bs".into() })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "cs".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    // t1 is older (claim_next would prefer it) but blocked; t2 is claimable.
+    let t1 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t1".into()),
+        })
+        .await
+        .expect("t1");
+    let t2 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t2".into()),
+        })
+        .await
+        .expect("t2");
+    // t3 depends on t2 (non-terminal) — DAG-blocked, no explicit reason.
+    let t3 = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t3".into()),
+        })
+        .await
+        .expect("t3");
+    store
+        .add_thread_dependency(t3.id, t2.id)
+        .await
+        .expect("dag edge");
+
+    store
+        .set_thread_block(t1.id, BlockedReason::Child, member.id)
+        .await
+        .expect("block");
+
+    let depth = store.channel_queue_depth(channel.id).await.expect("depth");
+    assert_eq!(depth.open, 3);
+    assert_eq!(depth.ready, 1, "only t2 is ready");
+    assert_eq!(
+        depth.blocked, 2,
+        "t1 explicit-block + t3 DAG-deps; distinct reasons, same bucket"
+    );
+    assert_eq!(depth.unclaimable, 0, "363 park is a different table");
+
+    let claimed = store
+        .claim_next_thread(channel.id, member.id, None)
+        .await
+        .expect("claim_next")
+        .expect("claimed something");
+    assert_eq!(claimed.id, t2.id, "explicitly blocked t1 is skipped");
+
+    // The with_event path shares the same skip.
+    let (again, events) = store
+        .claim_next_thread_with_event(channel.id, member.id, None)
+        .await
+        .expect("claim_next_with_event");
+    assert!(again.is_none(), "t1 still blocked, t3 still DAG-blocked");
+    assert!(events.is_empty());
+
+    // Unblock t1 → it becomes claimable (t3 still skipped by 218).
+    store
+        .clear_thread_block(t1.id)
+        .await
+        .expect("clear")
+        .expect("had a block");
+    let claimed2 = store
+        .claim_next_thread(channel.id, member.id, None)
+        .await
+        .expect("claim_next")
+        .expect("claimed something");
+    assert_eq!(claimed2.id, t1.id, "unblocked t1 is now claimable");
+}
+
 #[tokio::test]
 async fn thread_blocks_set_clear_get_list_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_claim_skip_suite(&store).await;
 }
 
 #[tokio::test]
@@ -178,4 +279,5 @@ async fn thread_blocks_set_clear_get_list_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
+    run_claim_skip_suite(&store).await;
 }

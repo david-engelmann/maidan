@@ -1371,9 +1371,11 @@ pub trait AssignmentStore: Send + Sync {
     /// `member_id` — the "pull the next task" primitive (Cluster 190). Claimable =
     /// unassigned **or** its lease has expired (Cluster 192 dead-agent recovery),
     /// **and** every task-dependency is terminal (Cluster 218 readiness — a task
-    /// blocked by an unfinished dependency is skipped). `lease_secs` sets a lease
-    /// deadline (`None` = durable, no lease). `None` return when there is no
-    /// claimable *ready* work. Concurrent claimers get distinct threads.
+    /// blocked by an unfinished dependency is skipped), **and** it has no
+    /// explicit [`BlockedReason`] row (Cluster 386 — distinct from the DAG
+    /// skip). `lease_secs` sets a lease deadline (`None` = durable, no lease).
+    /// `None` return when there is no claimable *ready* work. Concurrent
+    /// claimers get distinct threads.
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,
