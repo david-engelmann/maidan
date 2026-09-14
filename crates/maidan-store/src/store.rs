@@ -207,6 +207,43 @@ pub trait ThreadSteerStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait ThreadLineageStore: Send + Sync {
+    /// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387).
+    /// Upserts; a re-set overwrites. The value is the producer's string after
+    /// [`maidan_types::normalize_parent_run_id`] — Maidan does not mint an id.
+    /// Empty / whitespace / over-long → `InvalidInput`.
+    async fn set_thread_lineage(
+        &self,
+        thread_id: ThreadId,
+        parent_run_id: &str,
+    ) -> Result<ThreadLineage, StoreError>;
+    /// A thread's lineage, or `None` until one is set (Cluster 387).
+    async fn get_thread_lineage(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadLineage>, StoreError>;
+    /// Drop a thread's lineage. `true` when a row existed.
+    async fn clear_thread_lineage(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    /// Non-tombstoned threads in `workspace_id` that share `parent_run_id`,
+    /// oldest first (Cluster 387). Nested children that were given the same
+    /// producer value are included; F7 mute is not consulted.
+    async fn list_threads_for_run(
+        &self,
+        workspace_id: WorkspaceId,
+        parent_run_id: &str,
+    ) -> Result<Vec<Thread>, StoreError>;
+    /// Nested occupancy for a producer run (Cluster 387): the two-clocks
+    /// partition of every **open** thread in the workspace that shares
+    /// `parent_run_id`. Empty / unknown run → zeros, not an error. F7 mute
+    /// stays orthogonal (a muted nested thread still counts).
+    async fn run_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        parent_run_id: &str,
+    ) -> Result<RunOccupancy, StoreError>;
+}
+
+#[async_trait]
 pub trait BudgetStore: Send + Sync {
     /// Set (upsert) a thread's budget maxima (Cluster 358, T1/T5). Accumulated
     /// usage is preserved — only the `max_*` dimensions are touched.
@@ -2170,6 +2207,7 @@ pub trait Store:
     + SkillStore
     + ThreadResultStore
     + ThreadSteerStore
+    + ThreadLineageStore
     + BudgetStore
     + ApprovalGateStore
     + GlossaryStore
@@ -2222,6 +2260,7 @@ impl<
             + SkillStore
             + ThreadResultStore
             + ThreadSteerStore
+            + ThreadLineageStore
             + BudgetStore
             + ApprovalGateStore
             + GlossaryStore

@@ -233,9 +233,11 @@ pub struct GithubReviewComment {
 
 /// The routable projection of a producer's result envelope. Everything the
 /// producer carries that Maidan does not route on — `corroboration`,
-/// `per_seat`, `run_id`, `cost_usd`, … — stays in the stored result and is
+/// `per_seat`, `cost_usd`, … — stays in the stored result and is
 /// deliberately absent here. Cluster 380.1 added `head_sha` and `findings`
 /// because inline comments have to be placed, not just forwarded.
+/// `run_id` is not a delivery field either; Cluster 387 homes it as
+/// lineage via [`crate::run_id_from_payload`], not this struct.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterResult {
     /// Which producer shape this is, e.g. `pi.review.result/1`. A **namespaced

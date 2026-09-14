@@ -269,6 +269,68 @@ pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Abuse cap on a producer `run_id` / Maidan `parent_run_id` (Cluster 387).
+/// pi's fixture is a UUID (36 bytes); this is not a format rule — lineage
+/// accepts the producer's string as-is, up to this length.
+pub const PARENT_RUN_ID_MAX_BYTES: usize = 256;
+
+/// The producer's `run_id` from an opaque result payload (Cluster 387).
+///
+/// Same extractor shape as [`result_kind_from_payload`]: a **string, not a
+/// minted id**. Missing, empty, whitespace-only, or non-string values are
+/// `None`. Does **not** require `schema = "pi.waiter.result/1"` — any
+/// producer that writes `run_id` is first-class. Maidan homes the returned
+/// value as [`ThreadLineage::parent_run_id`]; it never mints a parallel id.
+pub fn run_id_from_payload(value: &serde_json::Value) -> Option<&str> {
+    value
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .and_then(normalize_parent_run_id)
+}
+
+/// Trim and accept a producer run identifier for lineage (Cluster 387).
+///
+/// Empty / whitespace / longer than [`PARENT_RUN_ID_MAX_BYTES`] → `None`.
+/// Not a UUID parse — the field accepts the producer's value.
+pub fn normalize_parent_run_id(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > PARENT_RUN_ID_MAX_BYTES {
+        return None;
+    }
+    Some(trimmed)
+}
+
+/// A thread's run lineage (Cluster 387, Wave 2 #28).
+///
+/// `parent_run_id` is the **producer's** run identifier — the same string
+/// pi puts on the waiter envelope as `run_id`. Nested threads that share
+/// this value are attributed together for occupancy. F7 thread mute is
+/// orthogonal: a mute never writes or clears this row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadLineage {
+    pub thread_id: ThreadId,
+    pub parent_run_id: String,
+    pub set_at: DateTime<Utc>,
+}
+
+/// Occupancy of every **open** thread that shares a `parent_run_id`
+/// (Cluster 387) — the nested-attribution view of [`ChannelOccupancy`].
+///
+/// Same four buckets (`queued` / `claimed` / `working` / `blocked` partition
+/// `open`). Scoped to a workspace so two tenants cannot collide on a
+/// producer id. F7 mute is not consulted: muted nested work still counts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RunOccupancy {
+    pub parent_run_id: String,
+    pub open: i64,
+    pub queued: i64,
+    pub claimed: i64,
+    pub working: i64,
+    pub blocked: i64,
+}
+
 /// A terminal thread's recorded result, as listed for a channel's claimer pack
 /// (Cluster 382, Wave 2 #24). Store-level row: closed/archived, non-tombstoned,
 /// newest first. The pack assembler (REST/MCP) projects this into a token-lean
@@ -2461,6 +2523,32 @@ mod relation_kind_tests {
             RelationKind::from("x".to_string()),
             RelationKind::Other("x".into())
         );
+    }
+}
+
+#[cfg(test)]
+mod run_lineage_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn run_id_from_payload_accepts_the_producer_string() {
+        assert_eq!(
+            run_id_from_payload(&json!({"run_id": "aa4dc966-0e09-44c3-b7a5-2d048b48b301"})),
+            Some("aa4dc966-0e09-44c3-b7a5-2d048b48b301")
+        );
+        assert_eq!(
+            run_id_from_payload(&json!({"run_id": "  producer-run  "})),
+            Some("producer-run")
+        );
+        assert_eq!(run_id_from_payload(&json!({"run_id": ""})), None);
+        assert_eq!(run_id_from_payload(&json!({"run_id": "   "})), None);
+        assert_eq!(run_id_from_payload(&json!({"run_id": 1})), None);
+        assert_eq!(run_id_from_payload(&json!({})), None);
+        let too_long = "x".repeat(PARENT_RUN_ID_MAX_BYTES + 1);
+        assert_eq!(run_id_from_payload(&json!({ "run_id": too_long })), None);
+        assert_eq!(normalize_parent_run_id("  ok  "), Some("ok"));
+        assert!(normalize_parent_run_id("").is_none());
     }
 }
 

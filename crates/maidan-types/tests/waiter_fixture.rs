@@ -9,13 +9,19 @@
 //!
 //! It asserts the fields Maidan routes on **and** the Cluster 380.1 inline
 //! comment pin (`head_sha`, `findings[].line_range`). Pinning `corroboration`,
-//! `cost_usd`, `per_seat` or `run_id` would make the lock fire on changes that
-//! cannot affect delivery, and a tripwire that cries wolf gets deleted.
+//! `cost_usd` or `per_seat` would make the lock fire on changes that cannot
+//! affect delivery, and a tripwire that cries wolf gets deleted.
+//!
+//! `run_id` is still **not** a delivery-routing field — `parse_waiter_result`
+//! ignores it. Cluster 387 homes it as lineage via [`run_id_from_payload`]
+//! (a separate extractor); see
+//! `the_authoritative_fixture_run_id_is_accepted_as_parent_run_id`.
 
 use maidan_types::{
-    parse_waiter_result, result_kind_from_payload, review_decision_from_waiter, DeliverTarget,
-    EgressTarget, FindingLineRange, GithubDiffSide, ReviewDecision, WaiterResult,
-    FINDING_SEVERITY_CRITICAL, PI_REVIEW_RESULT_KIND, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
+    parse_waiter_result, result_kind_from_payload, review_decision_from_waiter,
+    run_id_from_payload, DeliverTarget, EgressTarget, FindingLineRange, GithubDiffSide,
+    ReviewDecision, WaiterResult, FINDING_SEVERITY_CRITICAL, PI_REVIEW_RESULT_KIND,
+    STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 
 const FIXTURE: &str = include_str!("fixtures/pi_waiter_result_v1.json");
@@ -298,4 +304,21 @@ fn fields_maidan_does_not_route_on_are_ignored_rather_than_required() {
     assert!(summary_only.findings.is_empty());
     assert_eq!(summary_only.deliver_to, before.deliver_to);
     assert_eq!(summary_only.rendered, before.rendered);
+}
+
+/// Cluster 387: the fixture's `run_id` is the first real producer value.
+/// Lineage accepts that string as `parent_run_id` — it does not mint a
+/// parallel id. Delivery still ignores it (`parse_waiter_result`).
+#[test]
+fn the_authoritative_fixture_run_id_is_accepted_as_parent_run_id() {
+    let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
+    assert_eq!(
+        run_id_from_payload(&value),
+        Some("aa4dc966-0e09-44c3-b7a5-2d048b48b301"),
+        "the producer run_id is the lineage value"
+    );
+    assert!(
+        parse_waiter_result(&value).is_some(),
+        "homing lineage does not change the delivery parse"
+    );
 }
