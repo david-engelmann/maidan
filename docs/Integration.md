@@ -416,6 +416,13 @@ neither owner nor assignee. Amber (flags-then-still-engages) is not a
 land. Fail is always red, even if `land=green` is requested. The room
 holds the pointer; Soundcheck owns test execution. Not a CI product.
 
+If the payload carries a `run_id` (pi's waiter envelope does), Cluster 387
+homes that **producer string** as `parent_run_id` on the thread — it does
+not mint a parallel id. Nested work that shares the value is attributed
+together (`GET /workspaces/:id/run-threads`, `GET …/run-occupancy`, MCP
+`list_run_threads` / `get_run_occupancy`). F7 mute is orthogonal. Delivery
+parse still ignores `run_id`; see [Result Delivery — Run lineage](Result%20Delivery.md#run-lineage-cluster-387).
+
 ### 6. Release
 
 `release_claim {thread_id, member_id, claim_lease_id}` puts the thread back in the
