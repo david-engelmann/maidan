@@ -34,6 +34,7 @@ struct ReceiverState {
     received: Arc<AtomicBool>,
     last_body: Arc<Mutex<Option<String>>>,
     last_signature: Arc<Mutex<Option<String>>>,
+    last_room_lsn: Arc<Mutex<Option<String>>>,
 }
 
 async fn receiver_handler(
@@ -51,8 +52,13 @@ async fn receiver_handler(
     {
         return StatusCode::UNAUTHORIZED;
     }
+    let room_lsn = headers
+        .get("maidan-room-lsn")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     *state.last_body.lock().await = Some(body_str);
     *state.last_signature.lock().await = Some(signature);
+    *state.last_room_lsn.lock().await = room_lsn;
     state.received.store(true, Ordering::SeqCst);
     StatusCode::OK
 }
@@ -120,6 +126,7 @@ async fn spawn() -> Harness {
         received: Arc::new(AtomicBool::new(false)),
         last_body: Arc::new(Mutex::new(None)),
         last_signature: Arc::new(Mutex::new(None)),
+        last_room_lsn: Arc::new(Mutex::new(None)),
     };
     let recv_app = Router::new()
         .route("/hook", post(receiver_handler))
@@ -247,6 +254,21 @@ async fn webhook_delivers_signed_event_on_message_posted() {
     let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["kind"], "message_posted");
     assert_eq!(parsed["event"]["kind"], "message_posted");
+    assert_eq!(parsed["$type"], "maidan.event.message_posted/1");
+    assert_eq!(parsed["event"]["$type"], "maidan.event.message_posted/1");
+    let room_lsn = h
+        .receiver_state
+        .last_room_lsn
+        .lock()
+        .await
+        .clone()
+        .expect("Maidan-Room-LSN on webhook POST");
+    assert!(
+        !room_lsn.contains('/'),
+        "Room-LSN must be decimal event-log id, not a WAL token: {room_lsn}"
+    );
+    let parsed_lsn: i64 = room_lsn.parse().expect("decimal Room-LSN");
+    assert!(parsed_lsn > 0);
 
     h.shutdown().await;
 }

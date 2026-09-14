@@ -14,6 +14,12 @@ export interface ClientOptions {
   WebSocket?: any;
 }
 
+/** Parse `Maidan-Room-LSN`. Rejects WAL text so this is never a Consistency-Token. */
+export declare function parseRoomLsn(value: string | null | undefined): number | undefined;
+
+/** Observable `$type` for an event kind (`message_posted` → `maidan.event.message_posted/1`). */
+export declare function eventType(kind: string): string;
+
 /** A single error type carrying the HTTP status and the server's JSON body. */
 export declare class MaidanError extends Error {
   status: number;
@@ -59,6 +65,8 @@ export declare class Client {
   token: string;
   /** `{baseUrl}/mcp/streamable` — a string only, no MCP dependency. */
   mcpUrl: string;
+  /** Last seen `Maidan-Room-LSN` (event-log high-water). Not a WAL token. */
+  lastRoomLsn?: number;
 
   constructor(baseUrl?: string, token?: string, options?: ClientOptions);
 

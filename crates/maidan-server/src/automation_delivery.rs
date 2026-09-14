@@ -2,7 +2,7 @@
 
 use maidan_types::{
     AutomationDeliveryPending, AutomationSourceKind, FsmHookId, NewAutomationDelivery,
-    SlashCommandId, WorkspaceId,
+    SlashCommandId, WorkspaceId, ROOM_LSN_HEADER,
 };
 use reqwest::Client;
 
@@ -41,12 +41,17 @@ pub async fn deliver_pending(
 ) -> Result<(), String> {
     let secret = resolve_secret(state, delivery).await?;
     let signature = sign_payload(&secret, &delivery.payload);
-    let response = client
+    let room_lsn = crate::room_lsn::current(state.store.as_ref()).await;
+    let mut request = client
         .post(&delivery.target_url)
         .header("Content-Type", "application/json")
         .header(&delivery.header_name, &delivery.header_value)
         .header("X-Maidan-Signature", signature)
-        .header("X-Maidan-Delivery-Id", delivery.id.to_string())
+        .header("X-Maidan-Delivery-Id", delivery.id.to_string());
+    if let Some(lsn) = room_lsn {
+        request = request.header(ROOM_LSN_HEADER, lsn.to_string());
+    }
+    let response = request
         .body(delivery.payload.clone())
         .send()
         .await

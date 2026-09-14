@@ -13,6 +13,24 @@ import (
 	"time"
 )
 
+func TestParseRoomLSN(t *testing.T) {
+	if n, ok := ParseRoomLSN("42"); !ok || n != 42 {
+		t.Fatalf("decimal: got %d %v", n, ok)
+	}
+	if n, ok := ParseRoomLSN(" 0 "); !ok || n != 0 {
+		t.Fatalf("zero: got %d %v", n, ok)
+	}
+	if _, ok := ParseRoomLSN("0/3000128"); ok {
+		t.Fatal("WAL text must not parse as Room-LSN")
+	}
+	if _, ok := ParseRoomLSN("-1"); ok {
+		t.Fatal("negative must not parse")
+	}
+	if EventType("message_posted") != "maidan.event.message_posted/1" {
+		t.Fatal(EventType("message_posted"))
+	}
+}
+
 func TestIsCursorTooOld(t *testing.T) {
 	tooOld := &APIError{
 		Status: 409,

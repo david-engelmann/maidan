@@ -3,10 +3,18 @@
 // These scenarios also exercise the server's REST + WS surface.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Client, MaidanError } from "./index.js";
+import { Client, MaidanError, eventType, parseRoomLsn } from "./index.js";
 
 const BASE = process.env.MAIDAN_URL || "http://127.0.0.1:8080";
 const client = new Client(BASE, process.env.MAIDAN_TOKEN || "");
+
+test("parseRoomLsn accepts decimal and rejects WAL", () => {
+  assert.equal(parseRoomLsn("42"), 42);
+  assert.equal(parseRoomLsn(" 0 "), 0);
+  assert.equal(parseRoomLsn("0/3000128"), undefined);
+  assert.equal(parseRoomLsn("-1"), undefined);
+  assert.equal(eventType("message_posted"), "maidan.event.message_posted/1");
+});
 
 test("isCursorTooOld is 409 must_refetch, not a plain conflict", () => {
   const tooOld = new MaidanError(409, {

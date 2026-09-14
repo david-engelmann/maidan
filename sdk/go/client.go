@@ -20,6 +20,30 @@ import (
 // Version is the client version, tracked independently of the server.
 const Version = "0.1.0"
 
+// RoomLSNHeader is the projector-lag header (HTTP is case-insensitive).
+// Distinct from Maidan-Consistency-Token (Postgres WAL LSN).
+const RoomLSNHeader = "Maidan-Room-LSN"
+
+// ParseRoomLSN parses Maidan-Room-LSN. Rejects WAL text (0/hex) so this is
+// never confused with Maidan-Consistency-Token.
+func ParseRoomLSN(s string) (int64, bool) {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" || strings.Contains(trimmed, "/") {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// EventType is the observable $type for an event kind
+// (message_posted → maidan.event.message_posted/1).
+func EventType(kind string) string {
+	return "maidan.event." + kind + "/1"
+}
+
 // M is a decoded JSON object. Responses are returned as M (or []M) so unknown
 // fields are preserved and ignored (forward-compat), per the contract.
 type M = map[string]any
@@ -70,6 +94,9 @@ type Client struct {
 	// MCPURL is {BaseURL}/mcp/streamable — a string only, no MCP dependency.
 	MCPURL string
 	HTTP   *http.Client
+	// LastRoomLSN is the last seen Maidan-Room-LSN (event-log high-water).
+	// Nil until a stamped response is seen. Not a WAL token.
+	LastRoomLSN *int64
 
 	Workspaces *WorkspacesService
 	Channels   *ChannelsService
@@ -128,6 +155,7 @@ func (c *Client) do(method, path string, body any) (json.RawMessage, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	c.captureRoomLSN(resp.Header)
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return nil, apiError(resp, raw)
@@ -154,6 +182,7 @@ func (c *Client) doRaw(method, path string, body []byte) ([]byte, json.RawMessag
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
+	c.captureRoomLSN(resp.Header)
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return nil, nil, apiError(resp, raw)
@@ -165,6 +194,12 @@ func (c *Client) doRaw(method, path string, body []byte) ([]byte, json.RawMessag
 		return nil, nil, nil
 	}
 	return nil, raw, nil
+}
+
+func (c *Client) captureRoomLSN(h http.Header) {
+	if n, ok := ParseRoomLSN(h.Get(RoomLSNHeader)); ok {
+		c.LastRoomLSN = &n
+	}
 }
 
 func apiError(resp *http.Response, raw []byte) *APIError {
