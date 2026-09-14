@@ -198,9 +198,6 @@ async fn forward_agui(
             BusItem::Lagged { skipped } => {
                 crate::subscribe_metrics::record_lag_resume("agui", "lagged");
                 match maidan_store::resume_from_log(store, high_water, |page| {
-                    let store = store;
-                    let auth = auth;
-                    let tx = tx;
                     async move {
                         for row in page {
                             if row.id <= high_water {
