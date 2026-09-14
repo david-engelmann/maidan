@@ -797,6 +797,97 @@ pub(super) async fn get_channel_occupancy(
 }
 
 #[derive(Deserialize)]
+struct SetThreadLineageArgs {
+    thread_id: uuid::Uuid,
+    parent_run_id: String,
+}
+
+/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387.3,
+/// the MCP twin of `PUT /threads/:id/lineage`). The value is the producer's
+/// string — Maidan does not mint a parallel id. Thread access is enforced
+/// pre-dispatch. Empty / whitespace / over-long → `InvalidParams`.
+pub(super) async fn set_thread_lineage(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadLineageArgs = serde_json::from_value(args.clone())?;
+    let lineage = store
+        .set_thread_lineage(ThreadId(a.thread_id), &a.parent_run_id)
+        .await?;
+    Ok(content_json(&lineage))
+}
+
+#[derive(Deserialize)]
+struct GetThreadLineageArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// A thread's run lineage, or `null` until one is set (Cluster 387.3).
+/// Thread access is enforced pre-dispatch.
+pub(super) async fn get_thread_lineage(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetThreadLineageArgs = serde_json::from_value(args.clone())?;
+    let lineage = store.get_thread_lineage(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&lineage))
+}
+
+#[derive(Deserialize)]
+struct RunLineageArgs {
+    parent_run_id: String,
+}
+
+fn require_parent_run_id(raw: &str) -> Result<&str, McpError> {
+    normalize_parent_run_id(raw).ok_or_else(|| {
+        McpError::InvalidParams(
+            "parent_run_id must be a non-empty producer run id (max 256 bytes)".into(),
+        )
+    })
+}
+
+/// Threads in the caller's workspace that share a producer `parent_run_id`
+/// (Cluster 387.3). Private-channel rows the caller cannot access are
+/// dropped. F7 mute is not consulted.
+pub(super) async fn list_run_threads(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RunLineageArgs = serde_json::from_value(args.clone())?;
+    let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
+    let threads = store
+        .list_threads_for_run(auth.workspace_id, parent_run_id)
+        .await?;
+    if auth.bypass {
+        return Ok(content_json(&threads));
+    }
+    let mut visible = Vec::with_capacity(threads.len());
+    for t in threads {
+        if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
+            visible.push(t);
+        }
+    }
+    Ok(content_json(&visible))
+}
+
+/// Nested occupancy for a producer run (Cluster 387.3): queued / claimed /
+/// working / blocked across every **open** thread that shares `parent_run_id`.
+/// F7 mute stays orthogonal. Empty / unknown run → zeros, not an error.
+pub(super) async fn get_run_occupancy(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RunLineageArgs = serde_json::from_value(args.clone())?;
+    let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
+    let occupancy = store
+        .run_occupancy(auth.workspace_id, parent_run_id)
+        .await?;
+    Ok(content_json(&occupancy))
+}
+
+#[derive(Deserialize)]
 struct SetThreadResultArgs {
     thread_id: uuid::Uuid,
     result: Value,
@@ -830,6 +921,17 @@ pub(super) async fn set_thread_result(
             %thread_id,
             "critical review adapter failed; result is stored"
         );
+    }
+    // Cluster 387.3: same write-path arm as REST 387.2. Best-effort — a
+    // lineage hiccup must not undo a stored result.
+    if let Some(run_id) = run_id_from_payload(&a.result) {
+        if let Err(err) = server.store.set_thread_lineage(thread_id, run_id).await {
+            tracing::warn!(
+                error = %err,
+                %thread_id,
+                "lineage home from result failed; result is stored"
+            );
+        }
     }
     if server.event_bus.is_some() {
         let ctx = resolve_thread_context(server.store.as_ref(), thread_id)

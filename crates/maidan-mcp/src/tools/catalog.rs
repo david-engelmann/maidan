@@ -538,6 +538,51 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_thread_lineage",
+            "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "parent_run_id": {"type": "string", "description": "the producer's run identifier (e.g. pi waiter envelope run_id)"}
+                },
+                "required": ["thread_id", "parent_run_id"]
+            }
+        }),
+        json!({
+            "name": "get_thread_lineage",
+            "description": "Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_run_threads",
+            "description": "List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent_run_id": {"type": "string", "description": "the producer's run identifier"}
+                },
+                "required": ["parent_run_id"]
+            }
+        }),
+        json!({
+            "name": "get_run_occupancy",
+            "description": "Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent_run_id": {"type": "string", "description": "the producer's run identifier"}
+                },
+                "required": ["parent_run_id"]
+            }
+        }),
+        json!({
             "name": "set_thread_result",
             "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
             "inputSchema": {
