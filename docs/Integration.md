@@ -154,7 +154,23 @@ GET /ws/subscribe
 
 Send a JSON subscribe frame with `Authorization: Bearer {token}` (see
 [contracts/ws-subscribe-filter.schema.json](../contracts/ws-subscribe-filter.schema.json)).
-Server replies with `subscribe_ack`, `schema_version`, `resume_token`, and `after_id`.
+Server replies with `subscribe_ack`, `schema_version`, `resume_token`, `after_id`,
+and `room_lsn` (the event-log high-water at subscribe time — many WebSocket
+clients never see HTTP 101 response headers).
+
+Live frames (WS and MCP SSE) carry `$type` (`maidan.event.{kind}/1`) in
+addition to `kind`. New fields on a `/1` type are optional; unknown fields
+are ignored; a breaking change is a new type (`/2`). The JSON-Schema pack
+is [contracts/lexicon/catalog.json](../contracts/lexicon/catalog.json).
+
+**Two headers, two jobs — do not conflate them:**
+
+| Header | Value | When | Job |
+|--------|-------|------|-----|
+| `Maidan-Room-LSN` | Decimal `maidan_events.id` high-water (`0` if empty) | Always (SQLite too). Skipped on `/health*`, `/metrics`, `/openapi.json`, `/ui`, `/.well-known/` | Projector / broadcast lag: compare last-seen `log_id` to the room head |
+| `Maidan-Consistency-Token` | Postgres WAL LSN (`high/low` hex) | Successful mutations, **only when a read replica is configured** | Read-your-writes (Cluster 263). Echo on a later `GET`/`HEAD` |
+
+A Room-LSN parser must reject `/` so a WAL token cannot be treated as a room head.
 
 **Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire.
 
@@ -547,7 +563,11 @@ Content-Type: application/json
 {"url": "https://integrator.example/hook", "event_kinds": ["message_posted"], "label": "primary"}
 ```
 
-Deliveries are HMAC-signed (`X-Maidan-Signature`). Worker polls the outbox; see [Production.md](Production.md) for env tuning.
+Deliveries are HMAC-signed (`X-Maidan-Signature`). The JSON body also carries
+`$type` (`maidan.event.{kind}/1`) on the envelope and the nested `event`.
+Each POST stamps `Maidan-Room-LSN` with the current event-log high-water
+(decimal; not a WAL token). Slack/GitHub API egress is not stamped.
+Worker polls the outbox; see [Production.md](Production.md) for env tuning.
 
 ### Mention webhook (dedicated route)
 

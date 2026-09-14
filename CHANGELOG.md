@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [390.0.0] — 2026-09-14
+
+Post-gate hardening (Phase XXIV). **Wave 3 #30 — EventKind JSON-Schema
+pack, `$type` evolution, `Maidan-Room-LSN`.** Four impl PRs (390.1–390.4)
++ a retro. No new gate tag. **Row #30 is closed.**
+
+The lexicon pack under `contracts/lexicon/` is the ATProto-lexicon
+analogue (`maidan.event.{kind}/1`). Observable `$type` is the contract:
+new fields optional, no renames, unknown ignored, breaking = new type.
+`Maidan-Room-LSN` is the event-log high-water (decimal, always on,
+including SQLite) so clients see projector / broadcast lag. Do **not**
+conflate it with `Maidan-Consistency-Token` (Postgres WAL LSN,
+replica-gated, Cluster 263). Live WS/MCP frames and webhook bodies carry
+`$type`. Four SDKs capture `last_room_lsn` and stay at **0.1.0**.
+
+- **390.1** lexicon pack + `$type` helpers + snapshot tests.
+- **390.2** `RoomLsn` + `Store::max_event_id`.
+- **390.3** header + live-frame `$type` + subscribe_ack `room_lsn`.
+- **390.4** webhook / automation stamp + four-SDK capture.
+
 ## [388.0.0] — 2026-09-14
 
 Post-gate hardening (Phase XXIV). **Wave 3 #29 — CursorTooOld, projector

@@ -106,8 +106,17 @@ Subscribe frame: `contracts/ws-subscribe-filter.schema.json`
 `member_id`, `kinds[]`, `channel_grants[]`). `after_id` and
 `consumer_id` are siblings of `filter` on the subscribe frame, not
 inside it. Server replies `subscribe_ack`, `schema_version`,
-`resume_token`, `after_id`. `type: cursor_too_old` is **not** a
+`resume_token`, `after_id`, `room_lsn`. `type: cursor_too_old` is **not** a
 benign control frame — deliver it and stop.
+
+Live frames carry `$type` (`maidan.event.{kind}/1`) in addition to
+`kind`. Ignore unknown fields. The pack is `contracts/lexicon/`.
+
+REST responses stamp `Maidan-Room-LSN` (decimal event-log high-water).
+Clients expose `last_room_lsn` / `LastRoomLSN` / `lastRoomLsn` from
+that header and **must not** parse a `Maidan-Consistency-Token` WAL
+string (`0/hex`) as a room head. The two headers answer different
+questions (projector lag vs read-your-writes).
 
 `list_events` accepts projector-shape query params (`after_id`,
 `channel_id`, `thread_id`, `types`, `consumer_id`). `follow` pages
@@ -168,6 +177,8 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 |-------|------|
 | `MAIDAN_URL` / `MAIDAN_TOKEN` | Default constructor inputs; explicit args win |
 | `client.mcp_url` | `{base_url}/mcp/streamable`. String only. No MCP dependency |
+| `last_room_lsn` | Last seen `Maidan-Room-LSN` (decimal). Not a WAL token |
+| `event_type(kind)` | `maidan.event.{kind}/1` |
 | Typed IDs | Thread id is not a channel id at the type level |
 | Unknown fields | Ignore on REST JSON and WS envelopes |
 

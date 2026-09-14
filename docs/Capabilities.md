@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v390.0.0 — Wave 3 #30: EventKind lexicon, `$type`, Room-LSN
+
+Four impl PRs (390.1–390.4) + a retro. An EventKind JSON-Schema pack (lexicon analogue) plus `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type). `Maidan-Room-LSN` is the event-log high-water so clients see projector / broadcast lag — **not** `Maidan-Consistency-Token` (WAL, replica-gated, Cluster 263). Canon snapshot tests over normalized wire shapes. SDK stays 0.1.0. **Row #30 is closed.**
+
+| Change | Where |
+|--------|-------|
+| **Lexicon (390.1):** `EventKind::type_id` / pack under `contracts/lexicon/` + waiter / generic example kinds; `NEW-snapshot-tests`. | `crates/maidan-types/src/lexicon.rs`, `contracts/lexicon/` |
+| **Room head (390.2):** `RoomLsn` + `Store::max_event_id` (both backends). Parse rejects WAL text. | `crates/maidan-types/src/room_lsn.rs`, `crates/maidan-store` |
+| **Header (390.3):** always-on `Maidan-Room-LSN` on REST/WS/MCP/A2A; `$type` on live frames; `subscribe_ack.room_lsn`. | `crates/maidan-server/src/{room_lsn,event_stream,ws,mcp_stream}.rs` |
+| **Projectors + SDK (390.4):** webhook `$type` + Room-LSN; four clients `last_room_lsn` (0.1.0). | `crates/maidan-server/src/webhooks.rs`, `sdk/` |
+
 ## v388.0.0 — Wave 3 #29: CursorTooOld, projector shapes, Lagged resume
 
 Five impl PRs (388.1–388.5) + a retro. A subscribe / backfill cursor that points into a pruned gap **fails loud** (409 `must_refetch`) instead of silently clamping onto the remaining log. Projector shapes `{workspace, channel?, thread?, types[]}` filter HTTP backfill. Internal `BusItem::Lagged` consumers resume from the durable log. The SDK `follow` helper pages REST then cuts over to WS. Cluster 389 shipped first and left this number unused; 388 fills it. **Row #29 is closed.**
