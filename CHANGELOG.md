@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [386.0.0] — 2026-09-13
+
+Post-gate hardening (Phase XXIV). **Wave 2 #27 — a closed blocked-reason
+enum.** Four impl PRs (386.1–386.4) + a retro. No new gate tag.
+
+An orchestrator parks a thread from `claim_next` with
+`dag|gate|human|child|quota|unclaimable`. Clearing emits
+`BlockedResolved`. Distinct from DAG-children-must-be-terminal (218)
+and the 363 unclaimable park table. **Row #27 is closed.**
+
+- **386.1** types + store — `BlockedReason` + `maidan_thread_blocks`
+  (pg 0089 / sqlite 0088). `claim_next` unchanged.
+- **386.2** `claim_next` skip + queue-depth / occupancy. 218 stays.
+- **386.3** `BlockedResolved` (non-federatable) +
+  `clear_thread_block_with_event`.
+- **386.4** REST + MCP + e2e. Explicit claim 409. Bus observe on
+  DELETE.
+
 ## [385.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #25 remainder — Soundcheck
