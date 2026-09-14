@@ -74,8 +74,8 @@ were retargeted to `main` before any parent squash-delete.
 - **Soundcheck took the next migration slot while 386.1 was open.**
   385.1 landed pg 0088 / sqlite 0087. Blocks stayed **pg 0089 /
   sqlite 0088** — rebase must bump the version, not overwrite
-  Soundcheck. #817 then #820 squash-merged onto that main; remaining
-  slices rebase onto `d11f880` and drop the store + skip commits.
+  Soundcheck. #817, #820, #822, and #825 then squash-merged onto
+  `main`. This retro rebased onto that tip after #829.
 
 ## Test evidence
 
@@ -102,8 +102,9 @@ were retargeted to `main` before any parent squash-delete.
 
 Do not start Wave 3/4 from this retro. **#25 is already shipped**
 (Cluster 383 composition + Cluster 385 pointer). #26 capability
-ticket and #28 (follow / digest / run-lineage 387) stay their
-owners'. This retro strikes **#27 only**.
+ticket stays open. #28 follow-occupancy and the manager digest remain;
+the lineage half already shipped as Cluster 387 (#818/#824/#828/#829).
+This retro strikes **#27 only**.
 
 Deferred: `wait_for_blocked_resolved`; a `/ui` block toggle; folding
 363's park into this table (declined — two mechanisms, one vocabulary
