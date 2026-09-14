@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,12 @@ func (s *Subscription) Close() error {
 // frames (subscribe_ack, schema_version, replay_*) are skipped; each domain event
 // is passed to onEvent. Unknown kinds are still delivered (forward-compat).
 func (c *Client) Subscribe(filter M, onEvent func(Event), onError func(error)) (*Subscription, error) {
+	return c.SubscribeFrom(filter, 0, "", onEvent, onError)
+}
+
+// SubscribeFrom is Subscribe with an explicit after_id / durable consumer_id on
+// the subscribe frame (siblings of filter, not inside it).
+func (c *Client) SubscribeFrom(filter M, afterID int64, consumerID string, onEvent func(Event), onError func(error)) (*Subscription, error) {
 	conn, br, err := wsDial(c.BaseURL, "/ws/subscribe")
 	if err != nil {
 		return nil, err
@@ -47,7 +54,14 @@ func (c *Client) Subscribe(filter M, onEvent func(Event), onError func(error)) (
 	if filter == nil {
 		filter = M{}
 	}
-	payload, err := json.Marshal(M{"filter": filter, "token": c.Token})
+	frame := M{"filter": filter, "token": c.Token}
+	if afterID > 0 {
+		frame["after_id"] = afterID
+	}
+	if consumerID != "" {
+		frame["consumer_id"] = consumerID
+	}
+	payload, err := json.Marshal(frame)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -105,6 +119,110 @@ func (c *Client) WaitForReady(workspaceID, channelID string, timeout time.Durati
 	return c.waitForKind(f, "thread_ready", timeout)
 }
 
+// Follow is the projector shape for HTTP backfill then WS cutover.
+type Follow struct {
+	WorkspaceID string
+	ChannelID   string
+	ThreadID    string
+	Types       []string
+	ConsumerID  string
+	AfterID     int64
+	PageLimit   int64
+}
+
+// FollowLog pages GET /workspaces/{id}/events then cuts over to SubscribeFrom.
+// A 409 must_refetch is returned as-is (*APIError.IsCursorTooOld) — never clamped.
+func (c *Client) FollowLog(spec Follow, onEvent func(Event), onError func(error)) (*Subscription, error) {
+	limit := spec.PageLimit
+	if limit <= 0 {
+		limit = 100
+	}
+	after := spec.AfterID
+	for {
+		q := url.Values{}
+		q.Set("after_id", strconv.FormatInt(after, 10))
+		q.Set("limit", strconv.FormatInt(limit, 10))
+		if spec.ChannelID != "" {
+			q.Set("channel_id", spec.ChannelID)
+		}
+		if spec.ThreadID != "" {
+			q.Set("thread_id", spec.ThreadID)
+		}
+		if len(spec.Types) > 0 {
+			q.Set("types", strings.Join(spec.Types, ","))
+		}
+		if spec.ConsumerID != "" {
+			q.Set("consumer_id", spec.ConsumerID)
+		}
+		page, err := c.Workspaces.ListEvents(spec.WorkspaceID, q)
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, row := range page {
+			if id, ok := storedID(row); ok && id > after {
+				after = id
+			}
+			onEvent(normalizeStored(row))
+		}
+		if int64(len(page)) < limit {
+			break
+		}
+	}
+	f := M{"workspace_id": spec.WorkspaceID}
+	if spec.ChannelID != "" {
+		f["channel_id"] = spec.ChannelID
+	}
+	if spec.ThreadID != "" {
+		f["thread_id"] = spec.ThreadID
+	}
+	if len(spec.Types) > 0 {
+		f["kinds"] = spec.Types
+	}
+	return c.SubscribeFrom(f, after, spec.ConsumerID, onEvent, onError)
+}
+
+func storedID(row M) (int64, bool) {
+	for _, key := range []string{"id", "log_id"} {
+		switch v := row[key].(type) {
+		case float64:
+			return int64(v), true
+		case int64:
+			return v, true
+		case json.Number:
+			n, err := v.Int64()
+			return n, err == nil
+		}
+	}
+	return 0, false
+}
+
+func normalizeStored(row M) Event {
+	out := M{}
+	if payload, ok := row["payload"].(map[string]any); ok {
+		for k, v := range payload {
+			out[k] = v
+		}
+	} else {
+		for k, v := range row {
+			out[k] = v
+		}
+	}
+	if id, ok := storedID(row); ok {
+		out["log_id"] = id
+	}
+	for _, key := range []string{"kind", "workspace_id", "channel_id", "thread_id"} {
+		if _, exists := out[key]; !exists {
+			if v, ok := row[key]; ok {
+				out[key] = v
+			}
+		}
+	}
+	return out
+}
+
 func (s *Subscription) readLoop(br *bufio.Reader, onEvent func(Event), onError func(error)) {
 	var msg []byte
 	var msgOp byte
@@ -143,7 +261,10 @@ func (s *Subscription) readLoop(br *bufio.Reader, onEvent func(Event), onError f
 			if msgOp == 0x1 {
 				var frame map[string]any
 				if json.Unmarshal(msg, &frame) == nil {
-					if _, ctrl := frame["type"]; !ctrl {
+					if t, _ := frame["type"].(string); t == "cursor_too_old" {
+						onEvent(frame)
+						return
+					} else if t == "" {
 						if k, ok := frame["kind"].(string); ok && k != "" {
 							onEvent(frame)
 						}

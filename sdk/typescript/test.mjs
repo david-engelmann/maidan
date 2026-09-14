@@ -8,6 +8,18 @@ import { Client, MaidanError } from "./index.js";
 const BASE = process.env.MAIDAN_URL || "http://127.0.0.1:8080";
 const client = new Client(BASE, process.env.MAIDAN_TOKEN || "");
 
+test("isCursorTooOld is 409 must_refetch, not a plain conflict", () => {
+  const tooOld = new MaidanError(409, {
+    type: "https://maidan.dev/problems/cursor-too-old",
+    must_refetch: true,
+  });
+  assert.equal(tooOld.isConflict, true);
+  assert.equal(tooOld.isCursorTooOld, true);
+  const plain = new MaidanError(409, { type: "https://maidan.dev/problems/conflict" });
+  assert.equal(plain.isConflict, true);
+  assert.equal(plain.isCursorTooOld, false);
+});
+
 // Member creation isn't in the SDK surface (seeded via bootstrap/CLI); the test
 // seeds one over the raw bootstrap route.
 async function seed() {

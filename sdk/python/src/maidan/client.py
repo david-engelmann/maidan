@@ -39,6 +39,19 @@ class MaidanError(Exception):
         return self.status == 409
 
     @property
+    def is_cursor_too_old(self) -> bool:
+        """409 + must_refetch / cursor-too-old — fail loud, never clamp."""
+        if self.status != 409:
+            return False
+        body = self.body if isinstance(self.body, dict) else {}
+        if body.get("must_refetch") is True:
+            return True
+        return body.get("type") in (
+            "https://maidan.dev/problems/cursor-too-old",
+            "cursor_too_old",
+        )
+
+    @property
     def is_forbidden(self) -> bool:  # 403 (missing capability / channel access)
         return self.status == 403
 
@@ -217,16 +230,24 @@ class Client:
         raise err
 
     # --- WebSocket subscribe ---
+    def list_events(self, workspace_id: str, query: Optional[dict] = None) -> Any:
+        """GET /workspaces/{id}/events — projector-shaped HTTP backfill."""
+        return self._req("GET", f"/workspaces/{workspace_id}/events{_qs(query)}")
+
     def subscribe(
         self,
         filter: Optional[dict],
         on_event: Callable[[dict], None],
         on_error: Optional[Callable[[Exception], None]] = None,
+        *,
+        after_id: int = 0,
+        consumer_id: Optional[str] = None,
     ) -> Subscription:
         """Subscribe to the event stream over WebSocket. ``filter`` follows
         contracts/ws-subscribe-filter.schema.json (set ``workspace_id`` for replay).
-        Control frames (subscribe_ack, schema_version, replay_*) are skipped; each
-        domain event is passed to ``on_event``. Unknown kinds are still delivered.
+        Benign control frames (subscribe_ack, schema_version, replay_*) are skipped.
+        ``type: cursor_too_old`` is delivered (then the socket closes) — never a
+        silent skip. Unknown kinds are still delivered.
         """
         ws_url = self.base_url.replace("http", "ws", 1) + "/ws/subscribe"
 
@@ -235,16 +256,79 @@ class Client:
                 frame = json.loads(text)
             except ValueError:
                 return
-            if isinstance(frame, dict) and frame.get("type") is not None:
-                return  # control frame
-            if isinstance(frame, dict) and isinstance(frame.get("kind"), str):
+            if not isinstance(frame, dict):
+                return
+            if frame.get("type") == "cursor_too_old":
+                on_event(frame)
+                return
+            if frame.get("type") is not None:
+                return
+            if isinstance(frame.get("kind"), str):
                 on_event(frame)
 
         conn = _WebSocketConn(ws_url, _dispatch, on_error)
         conn.connect()
-        conn.send_text(json.dumps({"filter": filter or {}, "token": self.token}))
+        payload: dict = {"filter": filter or {}, "token": self.token}
+        if after_id:
+            payload["after_id"] = after_id
+        if consumer_id:
+            payload["consumer_id"] = consumer_id
+        conn.send_text(json.dumps(payload))
         conn.start()
         return Subscription(conn)
+
+    def follow(
+        self,
+        workspace_id: str,
+        on_event: Callable[[dict], None],
+        *,
+        after_id: int = 0,
+        channel_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
+        types: Optional[list] = None,
+        consumer_id: Optional[str] = None,
+        page_limit: int = 100,
+        on_error: Optional[Callable[[Exception], None]] = None,
+    ) -> Subscription:
+        """HTTP backfill then WS cutover. A 409 must_refetch raises
+        :attr:`MaidanError.is_cursor_too_old` — never clamped.
+        """
+        after = after_id
+        limit = page_limit if page_limit > 0 else 100
+        while True:
+            q: dict = {"after_id": after, "limit": limit}
+            if channel_id:
+                q["channel_id"] = channel_id
+            if thread_id:
+                q["thread_id"] = thread_id
+            if types:
+                q["types"] = ",".join(types)
+            if consumer_id:
+                q["consumer_id"] = consumer_id
+            page = self.list_events(workspace_id, q) or []
+            if not page:
+                break
+            for row in page:
+                rid = row.get("id") if isinstance(row, dict) else None
+                if isinstance(rid, int):
+                    after = max(after, rid)
+                on_event(_normalize_stored(row))
+            if len(page) < limit:
+                break
+        filt: dict = {"workspace_id": workspace_id}
+        if channel_id:
+            filt["channel_id"] = channel_id
+        if thread_id:
+            filt["thread_id"] = thread_id
+        if types:
+            filt["kinds"] = types
+        return self.subscribe(
+            filt,
+            on_event,
+            on_error,
+            after_id=after,
+            consumer_id=consumer_id,
+        )
 
     def _wait_for_kind(self, filter: dict, kind: str, timeout: float = 30.0) -> Optional[dict]:
         got: dict = {}
@@ -272,6 +356,21 @@ class Client:
         if channel_id:
             f["channel_id"] = channel_id
         return self._wait_for_kind(f, "thread_ready", timeout)
+
+
+def _normalize_stored(row: Any) -> dict:
+    """HTTP StoredEvent (`id` + nested payload) → live bus shape (`log_id` + flat)."""
+    if not isinstance(row, dict):
+        return {"raw": row}
+    payload = row.get("payload")
+    out = dict(payload) if isinstance(payload, dict) else dict(row)
+    rid = row.get("id", row.get("log_id"))
+    if rid is not None:
+        out["log_id"] = rid
+    for key in ("kind", "workspace_id", "channel_id", "thread_id"):
+        if key not in out and key in row:
+            out[key] = row[key]
+    return out
 
 
 def _qs(query: Optional[dict]) -> str:

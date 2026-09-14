@@ -13,6 +13,35 @@ import (
 	"time"
 )
 
+func TestIsCursorTooOld(t *testing.T) {
+	tooOld := &APIError{
+		Status: 409,
+		Body:   M{"type": "https://maidan.dev/problems/cursor-too-old", "must_refetch": true},
+	}
+	if !tooOld.IsConflict() || !tooOld.IsCursorTooOld() {
+		t.Fatal("expected 409 must_refetch to be cursor-too-old")
+	}
+	plain := &APIError{Status: 409, Body: M{"type": "https://maidan.dev/problems/conflict"}}
+	if !plain.IsConflict() || plain.IsCursorTooOld() {
+		t.Fatal("plain 409 must not be cursor-too-old")
+	}
+	if (&APIError{Status: 500, Body: M{"must_refetch": true}}).IsCursorTooOld() {
+		t.Fatal("must_refetch on a non-409 is not cursor-too-old")
+	}
+}
+
+func TestNormalizeStoredPromotesID(t *testing.T) {
+	live := normalizeStored(M{
+		"id":           float64(42),
+		"kind":         "message_posted",
+		"workspace_id": "ws",
+		"payload":      M{"kind": "message_posted", "body": "hi"},
+	})
+	if live["log_id"] != int64(42) || live["body"] != "hi" {
+		t.Fatalf("normalize = %#v", live)
+	}
+}
+
 func testClient(t *testing.T) *Client {
 	t.Helper()
 	base := os.Getenv("MAIDAN_URL")

@@ -21,8 +21,21 @@ export declare class MaidanError extends Error {
   /** Seconds from `Retry-After` on a 429 (server rate limit). */
   retryAfter?: number;
   get isConflict(): boolean; // 409
+  /** 409 + must_refetch / cursor-too-old — fail loud, never clamp. */
+  get isCursorTooOld(): boolean;
   get isForbidden(): boolean; // 403 (missing capability / channel access — not retryable)
   get isRateLimited(): boolean; // 429
+}
+
+/** Projector shape for {@link Client.follow}. */
+export interface FollowSpec {
+  workspaceId: string;
+  channelId?: string;
+  threadId?: string;
+  types?: string[];
+  consumerId?: string;
+  afterId?: number;
+  pageLimit?: number;
 }
 
 /** A subscription handle. */
@@ -54,6 +67,8 @@ export declare class Client {
     get(id: WorkspaceId): Promise<any>;
     /** Admin-only (`token:admin`). */
     import(bundle: unknown, mode?: "restore"): Promise<any>;
+    /** GET /workspaces/{id}/events — projector-shaped HTTP backfill. */
+    events(id: WorkspaceId, query?: Record<string, string | number>): Promise<any>;
   };
   channels: {
     list(wid: WorkspaceId): Promise<any>;
@@ -84,6 +99,14 @@ export declare class Client {
 
   subscribe(
     filter: Record<string, unknown>,
+    onEvent: (event: EventFrame) => void,
+    onError?: (err: unknown) => void,
+    opts?: { afterId?: number; consumerId?: string },
+  ): Promise<Subscription>;
+
+  /** HTTP backfill then WS cutover. 409 must_refetch is {@link MaidanError.isCursorTooOld}. */
+  follow(
+    spec: FollowSpec,
     onEvent: (event: EventFrame) => void,
     onError?: (err: unknown) => void,
   ): Promise<Subscription>;

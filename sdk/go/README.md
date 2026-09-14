@@ -46,13 +46,14 @@ func main() {
 - Constructor: `maidan.New(baseURL, token string)` — empty args fall back to `MAIDAN_URL` /
   `MAIDAN_TOKEN`. `c.MCPURL` is `{baseURL}/mcp/streamable`.
 - Errors are `*maidan.APIError` (`.Status`, `.Body`, `.RetryAfter` on 429, `.IsConflict()` /
-  `.IsForbidden()` / `.IsRateLimited()`); use `errors.As`.
+  `.IsCursorTooOld()` / `.IsForbidden()` / `.IsRateLimited()`); use `errors.As`.
 - Object responses come back as `maidan.M` (`map[string]any`) and lists as `[]maidan.M`, so
   unknown fields are preserved and ignored (forward-compat). Typed models are a future
   refinement.
 - Surface (frozen v1): `Workspaces.{Create,Get,Import}`, `Channels.{List,Create}`,
   `Threads.{Create,Get,Context,Transition,SetResult,GetResult}`, `ClaimNextThread`,
-  `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`, and the
-  `WaitFor*` helpers. See the repo's `docs/Client Contract.md`.
+  `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,
+  `Workspaces.ListEvents`, `FollowLog` (HTTP backfill then WS), and the `WaitFor*`
+  helpers. See the repo's `docs/Client Contract.md`.
 
 Versioned independently of the server. `0.1.0` is the first usable release.

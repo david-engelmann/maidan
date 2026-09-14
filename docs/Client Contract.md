@@ -98,11 +98,22 @@ Create body: `{ "name", "private": false }`.
 | SDK | HTTP | Capability |
 |-----|------|------------|
 | `subscribe` | `GET /ws/subscribe` | `event:subscribe` |
+| `list_events` | `GET /workspaces/{id}/events` | `workspace:read` |
+| `follow` | HTTP backfill then WS cutover | `workspace:read` + `event:subscribe` |
 
 Subscribe frame: `contracts/ws-subscribe-filter.schema.json`
 (`workspace_id` enables replay; optional `channel_id`, `thread_id`,
-`member_id`, `kinds[]`, `channel_grants[]`). Server replies
-`subscribe_ack`, `schema_version`, `resume_token`, `after_id`.
+`member_id`, `kinds[]`, `channel_grants[]`). `after_id` and
+`consumer_id` are siblings of `filter` on the subscribe frame, not
+inside it. Server replies `subscribe_ack`, `schema_version`,
+`resume_token`, `after_id`. `type: cursor_too_old` is **not** a
+benign control frame — deliver it and stop.
+
+`list_events` accepts projector-shape query params (`after_id`,
+`channel_id`, `thread_id`, `types`, `consumer_id`). `follow` pages
+that route, then cuts over to `subscribe` at the last seen id. A
+409 `must_refetch` is CursorTooOld — never clamp onto the remaining
+log.
 
 Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 
@@ -128,8 +139,11 @@ call them; it uses WS so a bot does not need an MCP host.
 Map non-2xx to a single error type that includes HTTP status and
 the JSON body the server already returns. Honor `Retry-After` on
 429 (Cluster 172). Treat 409 as conflict (`errors.Is` in Go later;
-Python/TS/Rust should still distinguish it). 403 is missing
-capability or channel access, not "retry."
+Python/TS/Rust should still distinguish it). A 409 with
+`must_refetch: true` / `type: cursor-too-old` is
+`is_cursor_too_old` — fail loud, never clamp the cursor onto
+the remaining log. 403 is missing capability or channel access,
+not "retry."
 
 ---
 

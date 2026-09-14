@@ -36,10 +36,11 @@ ready = client.wait_for_ready(wid)  # event dict or None on timeout
   `MAIDAN_URL` / `MAIDAN_TOKEN`; explicit args win. `client.mcp_url` is
   `{base_url}/mcp/streamable`.
 - Errors raise `MaidanError` (`.status`, `.body`, `.retry_after` on 429, `.is_conflict` /
-  `.is_forbidden` / `.is_rate_limited`).
+  `.is_cursor_too_old` / `.is_forbidden` / `.is_rate_limited`).
 - Surface (frozen v1): `workspaces.{create,get,import_}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
-  `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`, and the
-  `wait_for_*` helpers. See the repo's `docs/Client Contract.md`.
+  `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,
+  `list_events`, `follow` (HTTP backfill then WS), and the `wait_for_*` helpers. See the
+  repo's `docs/Client Contract.md`.
 
 Versioned independently of the server. `0.1.0` is the first usable release.

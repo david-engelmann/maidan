@@ -29,7 +29,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 mod subscribe;
-pub use subscribe::Subscription;
+pub use subscribe::{Follow, Subscription};
 
 /// The client version, tracked independently of the server.
 pub const VERSION: &str = "0.1.0";
@@ -60,6 +60,10 @@ impl MaidanError {
     /// A 409.
     pub fn is_conflict(&self) -> bool {
         self.status == 409
+    }
+    /// A 409 `must_refetch` / `cursor-too-old` — fail loud, never clamp the cursor.
+    pub fn is_cursor_too_old(&self) -> bool {
+        cursor_too_old_body(self.status, self.body.as_ref())
     }
     /// A 403 (missing capability / channel access — not retryable).
     pub fn is_forbidden(&self) -> bool {
@@ -118,6 +122,17 @@ impl Client {
     // --- service handles (mirror the contract's namespaced surface) ---
     pub fn workspaces(&self) -> Workspaces<'_> {
         Workspaces { c: self }
+    }
+
+    /// `GET /workspaces/{id}/events` — projector-shaped HTTP backfill.
+    /// Query keys: `after_id`, `limit`, `channel_id`, `thread_id`, `types`,
+    /// `consumer_id`. A pruned-gap cursor is 409 [`MaidanError::is_cursor_too_old`].
+    pub fn list_events(&self, workspace_id: &str, query: &[(&str, &str)]) -> Result<Value> {
+        self.send(
+            "GET",
+            &format!("/workspaces/{workspace_id}/events{}", qs(query)),
+            None,
+        )
     }
     pub fn channels(&self) -> Channels<'_> {
         Channels { c: self }
@@ -224,6 +239,22 @@ impl Client {
     pub(crate) fn bearer(&self) -> String {
         format!("Bearer {}", self.token)
     }
+}
+
+pub(crate) fn cursor_too_old_body(status: u16, body: Option<&Value>) -> bool {
+    if status != 409 {
+        return false;
+    }
+    let Some(body) = body else {
+        return false;
+    };
+    if body.get("must_refetch").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    matches!(
+        body.get("type").and_then(Value::as_str),
+        Some("https://maidan.dev/problems/cursor-too-old" | "cursor_too_old")
+    )
 }
 
 fn api_error(code: u16, resp: ureq::Response) -> MaidanError {
@@ -384,5 +415,48 @@ impl Artifacts<'_> {
     }
     pub fn meta(&self, sha: &str) -> Result<Value> {
         self.c.send("GET", &format!("/artifacts/{sha}/meta"), None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn err(status: u16, body: Value) -> MaidanError {
+        MaidanError {
+            status,
+            body: Some(body),
+            retry_after: None,
+            message: "test".into(),
+        }
+    }
+
+    #[test]
+    fn cursor_too_old_is_409_must_refetch_not_a_plain_conflict() {
+        let too_old = err(
+            409,
+            json!({
+                "type": "https://maidan.dev/problems/cursor-too-old",
+                "must_refetch": true
+            }),
+        );
+        assert!(too_old.is_conflict());
+        assert!(too_old.is_cursor_too_old());
+
+        let by_type_only = err(
+            409,
+            json!({ "type": "https://maidan.dev/problems/cursor-too-old" }),
+        );
+        assert!(by_type_only.is_cursor_too_old());
+
+        let plain = err(
+            409,
+            json!({ "type": "https://maidan.dev/problems/conflict" }),
+        );
+        assert!(plain.is_conflict());
+        assert!(!plain.is_cursor_too_old());
+
+        let refetch_wrong_status = err(500, json!({ "must_refetch": true }));
+        assert!(!refetch_wrong_status.is_cursor_too_old());
     }
 }
