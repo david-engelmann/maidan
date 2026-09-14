@@ -88,17 +88,48 @@ async fn consume_bus(
     state: &AppState,
     stop_rx: &mut mpsc::Receiver<()>,
 ) -> bool {
+    let mut watermark: i64 = 0;
     loop {
         tokio::select! {
             item = stream.next() => {
                 match item {
                     Some(BusItem::Event(envelope)) => {
+                        watermark = watermark.max(envelope.log_id);
                         if let Err(err) = enqueue_matches(state, envelope.log_id, &envelope.event).await {
                             warn!(error = %err, "webhook enqueue failed");
                         }
                     }
                     Some(BusItem::Lagged { skipped }) => {
-                        warn!(skipped, "webhook bus subscriber lagged");
+                        warn!(skipped, watermark, "webhook bus subscriber lagged; resuming from log");
+                        crate::subscribe_metrics::record_lag_resume("webhook", "lagged");
+                        match maidan_store::resume_from_log(state.store.as_ref(), watermark, |page| {
+                            let state = state.clone();
+                            async move {
+                                for row in page {
+                                    match crate::event_stream::envelope_from_stored(&row) {
+                                        Ok(env) => {
+                                            if let Err(err) = enqueue_matches(&state, env.log_id, &env.event).await {
+                                                warn!(error = %err, "webhook enqueue failed on lag resume");
+                                            }
+                                        }
+                                        Err(err) => {
+                                            warn!(error = %err, id = row.id, "skip stored event on webhook lag resume");
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .await
+                        {
+                            Ok(hw) => {
+                                watermark = watermark.max(hw);
+                                crate::subscribe_metrics::record_lag_resume("webhook", "resumed");
+                            }
+                            Err(err) => {
+                                warn!(error = %err, "webhook lag resume from log failed");
+                                crate::subscribe_metrics::record_lag_resume("webhook", "failed");
+                            }
+                        }
                     }
                     None => return false,
                 }

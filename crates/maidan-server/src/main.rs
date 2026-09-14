@@ -617,7 +617,9 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("outbox relay disabled; HTTP handlers publish directly to the bus");
     }
 
-    let indexer = Indexer::new(bus, indexer_handler).spawn_with_heartbeat(indexer_heartbeat);
+    let indexer = Indexer::new(bus, indexer_handler)
+        .with_log(state.store.clone())
+        .spawn_with_heartbeat(indexer_heartbeat);
     tracing::info!("background indexer running");
 
     if let Err(err) = maidan_server::webhooks::hydrate_webhook_secrets(&state).await {

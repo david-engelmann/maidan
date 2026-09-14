@@ -118,6 +118,10 @@ pub fn init() {
             "maidan_subscribe_replay_total",
             "Subscribe recovery actions after lag or failed auto-replay"
         );
+        describe_counter!(
+            "maidan_bus_lag_resume_total",
+            "Internal bus consumers that resumed from the event log after BusItem::Lagged"
+        );
         describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
             "Seconds since the background indexer last observed an event (0 if never)"
