@@ -74,8 +74,8 @@ were retargeted to `main` before any parent squash-delete.
 - **Soundcheck took the next migration slot while 386.1 was open.**
   385.1 landed pg 0088 / sqlite 0087. Blocks stayed **pg 0089 /
   sqlite 0088** — rebase must bump the version, not overwrite
-  Soundcheck. #817 then squash-merged onto that main; remaining
-  slices rebase onto `83e95bc` and drop the store commits.
+  Soundcheck. #817 then #820 squash-merged onto that main; remaining
+  slices rebase onto `d11f880` and drop the store + skip commits.
 
 ## Test evidence
 
