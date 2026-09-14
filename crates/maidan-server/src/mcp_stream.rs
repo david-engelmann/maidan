@@ -140,8 +140,12 @@ pub async fn stream(
         state.subscribe_resume_ttl_secs,
     )
     .map_err(|e| ApiError::Internal(format!("resume token: {e}")))?;
-    let ack = subscribe_ack_payload(&token, high_water)
-        .ok_or_else(|| ApiError::Internal("subscribe_ack serialization failed".into()))?;
+    let ack = subscribe_ack_payload(
+        &token,
+        high_water,
+        crate::room_lsn::current(state.store.as_ref()).await,
+    )
+    .ok_or_else(|| ApiError::Internal("subscribe_ack serialization failed".into()))?;
     if text_tx.send(ack).await.is_err() {
         return Err(ApiError::Internal(
             "stream closed before subscribe_ack".into(),

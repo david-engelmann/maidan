@@ -29,7 +29,7 @@ use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
     delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications,
     mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id,
-    routes, scim, session, slack, slash_commands, state::AppState, webhooks, ws,
+    room_lsn, routes, scim, session, slack, slash_commands, state::AppState, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -978,6 +978,10 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit::middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            room_lsn::middleware,
         ))
         .layer(middleware::from_fn(request_id::middleware))
         // Cap request bodies before extractors buffer them (Cluster 183).
