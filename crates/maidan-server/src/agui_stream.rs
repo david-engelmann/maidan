@@ -197,21 +197,19 @@ async fn forward_agui(
             }
             BusItem::Lagged { skipped } => {
                 crate::subscribe_metrics::record_lag_resume("agui", "lagged");
-                match maidan_store::resume_from_log(store, high_water, |page| {
-                    async move {
-                        for row in page {
-                            if row.id <= high_water {
-                                continue;
-                            }
-                            let Ok(envelope) = envelope_from_stored(&row) else {
-                                continue;
-                            };
-                            if !event_visible(store, auth, &envelope.event).await {
-                                continue;
-                            }
-                            if !send_agui(tx, envelope.log_id, &envelope.event).await {
-                                break;
-                            }
+                match maidan_store::resume_from_log(store, high_water, |page| async move {
+                    for row in page {
+                        if row.id <= high_water {
+                            continue;
+                        }
+                        let Ok(envelope) = envelope_from_stored(&row) else {
+                            continue;
+                        };
+                        if !event_visible(store, auth, &envelope.event).await {
+                            continue;
+                        }
+                        if !send_agui(tx, envelope.log_id, &envelope.event).await {
+                            break;
                         }
                     }
                 })
