@@ -2508,6 +2508,188 @@ mod tests {
         assert_eq!(claimed["claimed"], json!(true));
     }
 
+    /// Cluster 386 (Wave 2 #27, G14 + W2): the block tools — set/get/list +
+    /// explicit-claim refusal + claim_next skip + BlockedResolved on clear.
+    #[tokio::test]
+    async fn block_tools_park_a_thread_from_dispatch() {
+        use std::time::Duration;
+
+        use futures::StreamExt;
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_bus::{BusItem, EventBus, InMemoryBus};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "blk".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let mk = |title: &str| NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        };
+        let t1 = store.create_thread(mk("t1")).await.unwrap();
+        let t2 = store.create_thread(mk("t2")).await.unwrap();
+
+        let bus = Arc::new(InMemoryBus::new());
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(bus.clone());
+        let mut stream = bus
+            .subscribe(EventFilter::all().with_kinds([EventKind::BlockedResolved]))
+            .await
+            .unwrap();
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let marked = body(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_block",
+                    &json!({ "thread_id": t1.id.0, "reason": "human" }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(marked["reason"], "human");
+        assert_eq!(
+            body(
+                server
+                    .call_tool(&auth, "get_thread_block", &json!({ "thread_id": t1.id.0 }))
+                    .await
+                    .unwrap()
+            )["reason"],
+            "human"
+        );
+        let listed = body(
+            server
+                .call_tool(
+                    &auth,
+                    "list_blocked_threads",
+                    &json!({ "channel_id": channel.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+
+        assert!(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_block",
+                    &json!({ "thread_id": t2.id.0, "reason": "nope" }),
+                )
+                .await
+                .is_err(),
+            "closed enum rejects unknown reason"
+        );
+
+        assert!(server
+            .call_tool(
+                &auth,
+                "claim_thread",
+                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
+            )
+            .await
+            .is_err());
+        let next = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(next["id"], json!(t2.id.0));
+
+        assert_eq!(
+            body(
+                server
+                    .call_tool(
+                        &auth,
+                        "clear_thread_block",
+                        &json!({ "thread_id": t1.id.0 })
+                    )
+                    .await
+                    .unwrap()
+            )["cleared"],
+            json!(true)
+        );
+        let event = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .expect("timeout waiting for BlockedResolved")
+            .expect("subscriber ended");
+        let BusItem::Event(envelope) = event else {
+            panic!("expected event, got lag/end");
+        };
+        match envelope.event {
+            Event::BlockedResolved {
+                thread_id,
+                reason,
+                resolved_by,
+                ..
+            } => {
+                assert_eq!(thread_id, t1.id);
+                assert_eq!(reason, BlockedReason::Human);
+                assert_eq!(resolved_by, agent.id);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+        let claimed = body(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_thread",
+                    &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(claimed["claimed"], json!(true));
+    }
+
     /// Cluster 362 (G11): the WIP admin/visibility tools + enforcement on the MCP
     /// claim path (explicit claim errors at the cap; claim_next returns null).
     #[tokio::test]

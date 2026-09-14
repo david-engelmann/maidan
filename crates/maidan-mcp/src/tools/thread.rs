@@ -260,6 +260,13 @@ pub(super) async fn claim_thread(
             u.reason
         )));
     }
+    // Explicit block (Cluster 386, Wave 2 #27): refuse, matching REST 409.
+    if let Some(b) = server.store.get_thread_block(thread_id).await? {
+        return Err(McpError::InvalidParams(format!(
+            "thread is blocked ({})",
+            b.reason.as_str()
+        )));
+    }
     // WIP limit (Cluster 362, G11): refuse a NEW claim past the cap (the REST
     // 409 analogue); a re-claim of a thread the member already holds is exempt.
     let thread = server.store.get_thread(thread_id).await?;
@@ -496,6 +503,68 @@ pub(super) async fn list_unclaimable(
         .list_unclaimable_threads(ChannelId(a.channel_id))
         .await?;
     Ok(content_json(&parked))
+}
+
+#[derive(Deserialize)]
+struct SetThreadBlockArgs {
+    thread_id: uuid::Uuid,
+    reason: BlockedReason,
+}
+
+/// Set (upsert) an explicit dispatch block (Cluster 386, Wave 2 #27).
+/// `claim_next` skips the thread and an explicit `claim` is refused, until
+/// cleared. `reason` is the closed enum. `thread:transition`; thread access
+/// enforced pre-dispatch.
+pub(super) async fn set_thread_block(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadBlockArgs = serde_json::from_value(args.clone())?;
+    let block = store
+        .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id)
+        .await?;
+    Ok(content_json(&block))
+}
+
+/// The thread's explicit block, or null (Cluster 386). `workspace:read`;
+/// thread access enforced.
+pub(super) async fn get_thread_block(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let block = store.get_thread_block(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&block))
+}
+
+/// Clear an explicit dispatch block and emit `BlockedResolved` (Cluster 386.3).
+/// `{cleared}` is `false` when it was not blocked. `thread:transition`.
+pub(super) async fn clear_thread_block(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let (cleared, stored) = server
+        .store
+        .clear_thread_block_with_event(ThreadId(a.thread_id), auth.member_id)
+        .await?;
+    if let Some(stored) = stored {
+        server.publish_stored(&stored).await;
+    }
+    Ok(content_json(&json!({ "cleared": cleared.is_some() })))
+}
+
+/// Explicitly blocked threads in a channel (Cluster 386), newest first.
+/// `workspace:read`; channel access enforced pre-dispatch.
+pub(super) async fn list_blocked_threads(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ChannelIdArg = serde_json::from_value(args.clone())?;
+    let blocks = store.list_blocked_threads(ChannelId(a.channel_id)).await?;
+    Ok(content_json(&blocks))
 }
 
 #[derive(Deserialize)]

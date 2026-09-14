@@ -347,6 +347,9 @@ fn apply_route_defaults(
     if path.ends_with("/unclaimable") && method == "PUT" {
         return b.json(&json!({ "reason": "cap matrix" }));
     }
+    if path.ends_with("/block") && method == "PUT" {
+        return b.json(&json!({ "reason": "gate" }));
+    }
     if path.ends_with("/wait") && method == "PUT" {
         return b.json(&json!({ "wait_until": "2099-01-01T00:00:00Z" }));
     }

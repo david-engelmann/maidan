@@ -341,6 +341,7 @@ pub fn router(state: AppState) -> Router {
             "/channels/:cid/unclaimable",
             get(routes::list_channel_unclaimable),
         )
+        .route("/channels/:cid/blocked", get(routes::list_channel_blocked))
         .route(
             "/channels/:cid/occupancy",
             get(routes::get_channel_occupancy),
@@ -411,6 +412,12 @@ pub fn router(state: AppState) -> Router {
             "/threads/:id/unclaimable",
             axum::routing::put(routes::mark_thread_unclaimable)
                 .delete(routes::mark_thread_claimable),
+        )
+        .route(
+            "/threads/:id/block",
+            axum::routing::put(routes::set_thread_block)
+                .get(routes::get_thread_block)
+                .delete(routes::clear_thread_block),
         )
         .route(
             "/threads/:id/wait",

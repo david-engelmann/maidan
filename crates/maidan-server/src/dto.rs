@@ -6,9 +6,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, ChannelId, ContentBlock,
-    EgressSurface, EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide, RelationKind,
-    ThreadId, WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
+    ContentBlock, EgressSurface, EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide,
+    RelationKind, ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -492,6 +492,14 @@ pub struct SetWipLimit {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MarkUnclaimable {
     pub reason: String,
+}
+
+/// Body for `PUT /threads/:id/block` (Cluster 386, Wave 2 #27) — set an explicit
+/// dispatch block. `reason` is the closed `BlockedReason` enum
+/// (`dag|gate|human|child|quota|unclaimable`); unknown → 400 at the extractor.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadBlock {
+    pub reason: BlockedReason,
 }
 
 /// Body for `PUT /threads/:id/wait` (Cluster 364, G2) — set a wait timer. On

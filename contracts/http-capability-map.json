@@ -145,6 +145,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{cid}/blocked",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/channels/{cid}/occupancy",
     "capability": "workspace:read",
     "surface": "http"
@@ -566,6 +572,24 @@
   {
     "method": "DELETE",
     "path": "/threads/{id}/unclaimable",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/threads/{id}/block",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/block",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/block",
     "capability": "thread:transition",
     "surface": "http"
   },
