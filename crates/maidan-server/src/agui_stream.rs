@@ -88,6 +88,8 @@ pub async fn stream(
             "after_id requires a workspace_id to replay".into(),
         ));
     }
+    crate::delivery::ensure_subscribe_cursor(state.store.as_ref(), filter.workspace_id, after_id)
+        .await?;
 
     // Each frame carries `(log_id, agui_json)` so the SSE `id:` is the source
     // event-log id — the resume anchor a reconnect sends back as Last-Event-ID.

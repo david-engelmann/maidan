@@ -82,9 +82,10 @@ pub async fn stream(
             filter.workspace_id,
             after_id,
         )
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .await?;
     }
+    crate::delivery::ensure_subscribe_cursor(state.store.as_ref(), filter.workspace_id, after_id)
+        .await?;
     let delivery_consumer_id = q.consumer_id.clone();
     // At-least-once requires both a workspace filter and a durable consumer id
     // (the reconcile cursor is keyed by them); ignore the flag otherwise.
