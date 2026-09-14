@@ -62,6 +62,32 @@ pub fn get_workspace_usage() {}
 )]
 pub fn list_workspace_results() {}
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/run-threads",
+    tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        RunLineageQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [Thread], description = "Threads sharing a producer parent_run_id"))
+)]
+pub fn list_run_threads() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/run-occupancy",
+    tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        RunLineageQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = RunOccupancy, description = "Nested occupancy for a producer run"))
+)]
+pub fn get_run_occupancy() {}
+
 #[utoipa::path(put, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     request_body = PlaceLegalHold,

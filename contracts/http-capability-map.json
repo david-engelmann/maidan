@@ -667,6 +667,24 @@
   },
   {
     "method": "PUT",
+    "path": "/threads/{id}/lineage",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/lineage",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/lineage",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
     "path": "/threads/{id}/steer",
     "capability": "thread:transition",
     "surface": "http"
@@ -872,6 +890,18 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/results",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/run-threads",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/run-occupancy",
     "capability": "workspace:read",
     "surface": "http"
   },

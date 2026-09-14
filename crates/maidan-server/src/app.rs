@@ -87,6 +87,11 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/:id/results",
             get(routes::list_workspace_results),
         )
+        .route("/workspaces/:id/run-threads", get(routes::list_run_threads))
+        .route(
+            "/workspaces/:id/run-occupancy",
+            get(routes::get_run_occupancy),
+        )
         .route(
             "/workspaces/:id/legal-hold",
             axum::routing::put(routes::place_legal_hold)
@@ -285,6 +290,12 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/threads/:id/steer",
             axum::routing::put(routes::set_thread_steer).get(routes::get_thread_steer),
+        )
+        .route(
+            "/threads/:id/lineage",
+            axum::routing::put(routes::set_thread_lineage)
+                .get(routes::get_thread_lineage)
+                .delete(routes::clear_thread_lineage),
         )
         .route("/threads/:id/children", get(routes::list_child_threads))
         .route(

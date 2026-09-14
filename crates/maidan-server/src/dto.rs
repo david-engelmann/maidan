@@ -294,6 +294,22 @@ pub struct SetThreadSteer {
     pub steer: String,
 }
 
+/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387).
+/// The value is the producer's string — Maidan does not mint a parallel id.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetThreadLineage {
+    pub parent_run_id: String,
+}
+
+/// Query params for workspace run-lineage reads (Cluster 387.2).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct RunLineageQuery {
+    /// The producer `run_id` (e.g. pi's waiter envelope). Empty / missing /
+    /// whitespace is 400 after capability check. Not a minted Maidan id.
+    #[serde(default)]
+    pub parent_run_id: String,
+}
+
 /// Answer a human-approval gate (Cluster 350.3): accept / decline / cancel, with
 /// the HMAC `request_state` the server issued alongside the pending gate.
 #[derive(Debug, Deserialize, ToSchema)]
