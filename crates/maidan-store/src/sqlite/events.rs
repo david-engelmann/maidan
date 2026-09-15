@@ -281,6 +281,69 @@ async fn chain_head_in_tx(
     }))
 }
 
+fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> EventLink {
+    let id: i64 = row.get("id");
+    EventLink {
+        id,
+        lsn: id,
+        prev_hash: row.get("prev_hash"),
+        content_hash: row.get("content_hash"),
+    }
+}
+
+/// Oldest retained link in `workspace_id` (Cluster 393 snapshot floor).
+pub async fn floor_link(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, prev_hash, content_hash FROM maidan_events
+         WHERE workspace_id = ?
+         ORDER BY id ASC
+         LIMIT 1",
+    )
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_link))
+}
+
+/// Newest retained link in `workspace_id` (Cluster 393 snapshot head).
+pub async fn head_link(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, prev_hash, content_hash FROM maidan_events
+         WHERE workspace_id = ?
+         ORDER BY id DESC
+         LIMIT 1",
+    )
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_link))
+}
+
+/// Latest link in `workspace_id` with `id <= lsn` (catch-up predecessor).
+pub async fn link_at_or_before(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    lsn: i64,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, prev_hash, content_hash FROM maidan_events
+         WHERE workspace_id = ? AND id <= ?
+         ORDER BY id DESC
+         LIMIT 1",
+    )
+    .bind(workspace_id.0)
+    .bind(lsn)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_link))
+}
+
 /// Walk the workspace's retained suffix and report chain integrity.
 pub async fn verify_chain(
     pool: &SqlitePool,

@@ -1872,6 +1872,26 @@ pub trait EventStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<maidan_types::ChainVerifyReport, StoreError>;
 
+    /// Oldest retained event link in `workspace_id` (Cluster 393 snapshot floor).
+    async fn workspace_event_floor(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError>;
+
+    /// Newest retained event link in `workspace_id` (Cluster 393 snapshot head).
+    async fn workspace_event_head(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError>;
+
+    /// Latest event in `workspace_id` with `id <= lsn` — the catch-up
+    /// predecessor when `after_lsn` may sit in another tenant's id gap.
+    async fn workspace_event_at_or_before(
+        &self,
+        workspace_id: WorkspaceId,
+        lsn: i64,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError>;
+
     /// Fail loud when `after_id` points into a pruned gap. `after_id <= 0`
     /// (fresh subscriber) is never too old. Default impl; both backends
     /// inherit it.
