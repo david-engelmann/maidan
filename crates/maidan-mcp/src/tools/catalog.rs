@@ -941,6 +941,39 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_log_snapshot",
+            "description": "Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"},
+                    "include_graph": {"type": "boolean", "description": "include the domain graph; requires token:admin (default false)"}
+                }
+            }
+        }),
+        json!({
+            "name": "catch_up_events",
+            "description": "Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"},
+                    "after_lsn": {"type": "integer", "description": "exclusive cursor; 0 starts from the retained floor"},
+                    "limit": {"type": "integer", "description": "page size, 1 to 500, default 100"}
+                }
+            }
+        }),
+        json!({
+            "name": "verify_event_chain",
+            "description": "Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"}
+                }
+            }
+        }),
+        json!({
             "name": "create_memory_block",
             "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
             "inputSchema": {

@@ -43,9 +43,17 @@ pub async fn enforce_mcp_quota(
             ApiError::CursorTooOld {
                 after_id,
                 oldest_id,
-            } => format!(
-                "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
-            ),
+                snapshot,
+            } => {
+                let mut msg = format!(
+                    "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
+                );
+                if let Some(path) = snapshot {
+                    msg.push_str("; snapshot ");
+                    msg.push_str(&path);
+                }
+                msg
+            }
             ApiError::EventLogBroken { break_at, reason } => match break_at {
                 Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
                 None => format!("event log chain broken: {}", reason.as_str()),

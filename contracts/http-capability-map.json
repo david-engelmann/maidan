@@ -1177,6 +1177,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{wid}/events/catch-up",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/fsm-hooks",
     "capability": "workspace:read",
     "surface": "http"
@@ -1245,6 +1251,12 @@
     "method": "GET",
     "path": "/workspaces/{wid}/search",
     "capability": "search:query",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/snapshot",
+    "capability": "workspace:read",
     "surface": "http"
   },
   {

@@ -78,6 +78,34 @@ pub fn list_events() {}
     ))]
 pub fn verify_event_chain() {}
 
+#[utoipa::path(get, path = "/workspaces/{wid}/snapshot", tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        LogSnapshotQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LogSnapshot),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+        (status = 404, body = ProblemDetails),
+    ))]
+pub fn get_log_snapshot() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/events/catch-up", tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        CatchUpQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = CatchUpPage),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+        (status = 409, description = "Cursor too old or event log chain broken", body = ProblemDetails),
+    ))]
+pub fn catch_up_events() {}
+
 #[utoipa::path(get, path = "/workspaces/{wid}/search", tag = "search",
     params(
         ("wid" = Uuid, Path, description = "Workspace id"),

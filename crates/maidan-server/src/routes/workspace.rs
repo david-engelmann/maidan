@@ -717,6 +717,30 @@ pub async fn list_global_audit(
     Ok(Json(state.store.list_audit(limit).await?))
 }
 
+fn ensure_event_log_read(
+    auth: &Option<Extension<AuthContext>>,
+    peer: &Option<Extension<PeerContext>>,
+    workspace_id: WorkspaceId,
+) -> ApiResult<()> {
+    match (auth, peer) {
+        (Some(Extension(auth)), None) => {
+            cap(auth, WORKSPACE_READ)?;
+            ensure_workspace(auth, workspace_id)?;
+            Ok(())
+        }
+        (None, Some(Extension(PeerContext(peer)))) => {
+            if peer.remote_workspace_id != workspace_id {
+                Err(ApiError::Forbidden(
+                    "peer may only read its registered remote workspace".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err(ApiError::Unauthorized),
+    }
+}
+
 pub async fn list_events(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,
@@ -725,20 +749,7 @@ pub async fn list_events(
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<Vec<StoredEvent>>> {
     let workspace_id = WorkspaceId(workspace_id);
-    match (&auth, &peer) {
-        (Some(Extension(auth)), None) => {
-            cap(auth, WORKSPACE_READ)?;
-            ensure_workspace(auth, workspace_id)?;
-        }
-        (None, Some(Extension(PeerContext(peer)))) => {
-            if peer.remote_workspace_id != workspace_id {
-                return Err(ApiError::Forbidden(
-                    "peer may only read its registered remote workspace".into(),
-                ));
-            }
-        }
-        _ => return Err(ApiError::Unauthorized),
-    }
+    ensure_event_log_read(&auth, &peer, workspace_id)?;
     if q.after_id < 0 {
         return Err(ApiError::BadRequest("after_id must be non-negative".into()));
     }
@@ -761,11 +772,13 @@ pub async fn list_events(
             Some(workspace_id),
             after_id,
         )
-        .await?;
+        .await
+        .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
     }
     Ok(Json(
         crate::delivery::list_events_for_shape(state.store.as_ref(), &shape, after_id, q.limit)
-            .await?,
+            .await
+            .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?,
     ))
 }
 
@@ -780,20 +793,7 @@ pub async fn verify_event_chain(
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<ChainVerifyReport>> {
     let workspace_id = WorkspaceId(workspace_id);
-    match (&auth, &peer) {
-        (Some(Extension(auth)), None) => {
-            cap(auth, WORKSPACE_READ)?;
-            ensure_workspace(auth, workspace_id)?;
-        }
-        (None, Some(Extension(PeerContext(peer)))) => {
-            if peer.remote_workspace_id != workspace_id {
-                return Err(ApiError::Forbidden(
-                    "peer may only read its registered remote workspace".into(),
-                ));
-            }
-        }
-        _ => return Err(ApiError::Unauthorized),
-    }
+    ensure_event_log_read(&auth, &peer, workspace_id)?;
     let report = state.store.verify_event_chain(workspace_id).await?;
     if !report.ok {
         return Err(ApiError::EventLogBroken {
@@ -802,4 +802,64 @@ pub async fn verify_event_chain(
         });
     }
     Ok(Json(report))
+}
+
+/// Hashed domain-graph checkpoint (Cluster 393). Header + `graph_hash`
+/// is `workspace:read` / federation peer. `include_graph=true` is the
+/// full dump — `token:admin` or a registered peer (same bar as export).
+pub async fn get_log_snapshot(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Query(q): Query<LogSnapshotQuery>,
+    auth: Option<Extension<AuthContext>>,
+    peer: Option<Extension<PeerContext>>,
+) -> ApiResult<Json<LogSnapshot>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    if q.include_graph {
+        match (&auth, &peer) {
+            (Some(Extension(auth)), None) => {
+                cap(auth, TOKEN_ADMIN)?;
+                ensure_workspace(auth, workspace_id)?;
+            }
+            (None, Some(Extension(PeerContext(peer)))) => {
+                if peer.remote_workspace_id != workspace_id {
+                    return Err(ApiError::Forbidden(
+                        "peer may only read its registered remote workspace".into(),
+                    ));
+                }
+            }
+            _ => return Err(ApiError::Unauthorized),
+        }
+    } else {
+        ensure_event_log_read(&auth, &peer, workspace_id)?;
+    }
+    let snap =
+        maidan_store::build_log_snapshot(state.store.as_ref(), workspace_id, q.include_graph)
+            .await?;
+    Ok(Json(snap))
+}
+
+/// Since-LSN catch-up page (Cluster 393). Same auth as [`list_events`].
+/// A pruned-gap cursor is 409 `must_refetch` with a `snapshot` href; a
+/// broken chain is 409 `event-log-broken`.
+pub async fn catch_up_events(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Query(q): Query<CatchUpQuery>,
+    auth: Option<Extension<AuthContext>>,
+    peer: Option<Extension<PeerContext>>,
+) -> ApiResult<Json<CatchUpPage>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    ensure_event_log_read(&auth, &peer, workspace_id)?;
+    let page =
+        maidan_store::catch_up_since(state.store.as_ref(), workspace_id, q.after_lsn, q.limit)
+            .await
+            .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
+    if !page.ok() {
+        return Err(ApiError::EventLogBroken {
+            break_at: page.chain.break_at,
+            reason: page.chain.reason.unwrap_or(ChainBreakReason::MalformedHash),
+        });
+    }
+    Ok(Json(page))
 }
