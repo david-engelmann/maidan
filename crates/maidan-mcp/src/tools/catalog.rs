@@ -974,6 +974,43 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_tombstones",
+            "description": "Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"},
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional channel scope; gated when present"},
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional thread scope; gated when present"},
+                    "include_purged": {"type": "boolean", "description": "reconstruct hard-deleted rows from MessageTombstoned (default false)"},
+                    "limit": {"type": "integer", "description": "page size, 1 to 500, default 100"}
+                }
+            }
+        }),
+        json!({
+            "name": "list_message_backlinks",
+            "description": "Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "get_kind_census",
+            "description": "EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"},
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional channel scope; gated when present"},
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional thread scope; gated when present"}
+                }
+            }
+        }),
+        json!({
             "name": "create_memory_block",
             "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
             "inputSchema": {
