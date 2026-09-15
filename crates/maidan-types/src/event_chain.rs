@@ -20,7 +20,9 @@
 //! catch-up of a pruned prefix is Open Work #33 — out of scope.
 //!
 //! Strong-ref URIs are `maidan:{event|thread|message}/{id}` pins, **not**
-//! the Cluster-#35 `maidan://{room}/…` handle scheme.
+//! Cluster 395's hierarchical `maidan://{workspace_id}/channels/…`
+//! room scheme ([`crate::RoomUri`]). A handle is an alias, never the
+//! authority.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
