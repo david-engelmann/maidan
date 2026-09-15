@@ -1865,6 +1865,13 @@ pub trait EventStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Verify the retained hash chain for `workspace_id` (Cluster 392).
+    /// Empty workspace is ok. Fail-closed report: `ok == false` on a break.
+    async fn verify_event_chain(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::ChainVerifyReport, StoreError>;
+
     /// Fail loud when `after_id` points into a pruned gap. `after_id <= 0`
     /// (fresh subscriber) is never too old. Default impl; both backends
     /// inherit it.

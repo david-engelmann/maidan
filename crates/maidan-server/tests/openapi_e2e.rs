@@ -84,6 +84,12 @@ async fn openapi_json_serves_document() {
         properties.contains_key("kind"),
         "OpenAPI StoredEvent must keep kind (stored column)"
     );
+    assert!(
+        properties.contains_key("lsn")
+            && properties.contains_key("prev_hash")
+            && properties.contains_key("content_hash"),
+        "OpenAPI StoredEvent must list hash-chain fields"
+    );
     assert_eq!(
         stored_event["properties"]["$type"]["type"].as_str(),
         Some("string")

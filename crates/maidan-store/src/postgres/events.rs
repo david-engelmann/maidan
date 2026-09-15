@@ -1,4 +1,7 @@
-use maidan_types::{ChannelId, Event, MessageId, StoredEvent, ThreadId, WorkspaceId};
+use maidan_types::{
+    content_hash, next_prev_hash, ChainVerifyReport, ChannelId, Event, EventLink, MessageId,
+    StoredEvent, ThreadId, WorkspaceId,
+};
 use sqlx::{PgPool, Row};
 
 use crate::error::StoreError;
@@ -64,20 +67,34 @@ pub async fn append_in_tx(
     event: &Event,
 ) -> Result<StoredEvent, StoreError> {
     let payload = serde_json::to_value(event)?;
+    let ws = event.workspace_id().map(|w| w.0);
+    // Serialize chain head per workspace so two concurrent first-events cannot
+    // fork genesis. `hashtextextended` is stable across backends in the cluster.
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtextextended(COALESCE($1::text, 'maidan.event-log.unscoped'), 392))",
+    )
+    .bind(ws)
+    .execute(&mut **tx)
+    .await?;
+    let previous = chain_head_in_tx(tx, ws).await?;
+    let content = content_hash(&payload).map_err(|e| StoreError::InvalidInput(e.to_string()))?;
+    let prev = next_prev_hash(previous.as_ref());
     // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
     // distinct from the caller-supplied `occurred_at`.
     let row = sqlx::query(
-        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at",
+        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash",
     )
     .bind(event.kind().as_str())
-    .bind(event.workspace_id().map(|w| w.0))
+    .bind(ws)
     .bind(event.channel_id().map(|c| c.0))
     .bind(event.thread_id().map(|t| t.0))
-    .bind(payload)
+    .bind(&payload)
     .bind(event.occurred_at())
     .bind(chrono::Utc::now())
+    .bind(&prev)
+    .bind(&content)
     .fetch_one(&mut **tx)
     .await?;
     let stored = row_to_stored(&row)?;
@@ -87,7 +104,7 @@ pub async fn append_in_tx(
 
 pub async fn get_by_id(pool: &PgPool, log_id: i64) -> Result<StoredEvent, StoreError> {
     let row = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
          FROM maidan_events
          WHERE id = $1",
     )
@@ -107,7 +124,7 @@ pub async fn list_after(
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
          FROM maidan_events
          WHERE workspace_id = $1 AND id > $2
          ORDER BY id ASC
@@ -133,7 +150,7 @@ pub async fn list_after_stable(
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
          FROM maidan_events
          WHERE workspace_id = $1 AND id > $2 AND inserted_at <= $3
          ORDER BY id ASC
@@ -159,7 +176,7 @@ pub async fn list_after_global(
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
          FROM maidan_events
          WHERE id > $1
          ORDER BY id ASC
@@ -181,7 +198,7 @@ pub async fn list_through(
     through_id: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at
+        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
          FROM maidan_events
          WHERE thread_id = $1 AND id <= $2
          ORDER BY id ASC",
@@ -223,8 +240,10 @@ pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
 fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError> {
     let kind_str: String = row.get("kind");
     let kind = parse_kind(&kind_str)?;
+    let id: i64 = row.get("id");
     Ok(StoredEvent {
-        id: row.get("id"),
+        id,
+        lsn: id,
         kind,
         workspace_id: row
             .get::<Option<uuid::Uuid>, _>("workspace_id")
@@ -237,7 +256,98 @@ fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError>
             .map(maidan_types::ThreadId),
         payload: row.get("payload"),
         occurred_at: row.get("occurred_at"),
+        prev_hash: row.get("prev_hash"),
+        content_hash: row.get("content_hash"),
     })
+}
+
+async fn chain_head_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: Option<uuid::Uuid>,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, prev_hash, content_hash FROM maidan_events
+         WHERE workspace_id IS NOT DISTINCT FROM $1
+         ORDER BY id DESC
+         LIMIT 1",
+    )
+    .bind(workspace_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.map(|row| {
+        let id: i64 = row.get("id");
+        EventLink {
+            id,
+            lsn: id,
+            prev_hash: row.get("prev_hash"),
+            content_hash: row.get("content_hash"),
+        }
+    }))
+}
+
+/// Walk the workspace's retained suffix and report chain integrity.
+pub async fn verify_chain(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<ChainVerifyReport, StoreError> {
+    const PAGE: i64 = 256;
+    let mut after = 0i64;
+    let mut links = Vec::new();
+    let mut payloads = Vec::new();
+    loop {
+        let page = list_after(pool, workspace_id, after, PAGE).await?;
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().map(|e| e.id).unwrap_or(after);
+        for stored in page {
+            payloads.push(stored.payload.clone());
+            links.push(stored.link());
+        }
+    }
+    Ok(maidan_types::verify_chain(&links, &payloads))
+}
+
+/// Rewrite empty `prev_hash`/`content_hash` in id order per workspace.
+pub async fn backfill_chain(pool: &PgPool) -> Result<(), StoreError> {
+    let pending: (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::bigint FROM maidan_events WHERE content_hash = ''")
+            .fetch_one(pool)
+            .await?;
+    if pending.0 == 0 {
+        return Ok(());
+    }
+    let workspaces: Vec<(Option<uuid::Uuid>,)> =
+        sqlx::query_as("SELECT DISTINCT workspace_id FROM maidan_events")
+            .fetch_all(pool)
+            .await?;
+    for (ws,) in workspaces {
+        let mut tx = pool.begin().await?;
+        let rows = sqlx::query(
+            "SELECT id, payload FROM maidan_events
+             WHERE workspace_id IS NOT DISTINCT FROM $1
+             ORDER BY id ASC",
+        )
+        .bind(ws)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut previous: Option<EventLink> = None;
+        for row in rows {
+            let id: i64 = row.get("id");
+            let payload: serde_json::Value = row.get("payload");
+            let link = maidan_types::link_for(id, &payload, previous.as_ref())
+                .map_err(|e| StoreError::InvalidInput(e.to_string()))?;
+            sqlx::query("UPDATE maidan_events SET prev_hash = $1, content_hash = $2 WHERE id = $3")
+                .bind(&link.prev_hash)
+                .bind(&link.content_hash)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            previous = Some(link);
+        }
+        tx.commit().await?;
+    }
+    Ok(())
 }
 
 /// Parse the persisted `kind` column back into an [`EventKind`]. Delegates to

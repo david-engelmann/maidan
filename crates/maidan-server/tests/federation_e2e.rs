@@ -201,14 +201,18 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
         member: member.clone(),
     };
     let payload = serde_json::to_value(&event).unwrap();
+    let link = maidan_types::link_for(1, &payload, None).unwrap();
     let stored = StoredEvent {
         id: 1,
+        lsn: 1,
         kind: EventKind::MemberJoined,
         workspace_id: Some(ws.id),
         channel_id: None,
         thread_id: None,
         payload,
         occurred_at: chrono::Utc::now(),
+        prev_hash: link.prev_hash,
+        content_hash: link.content_hash,
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {
@@ -314,12 +318,15 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
     };
     let stored = StoredEvent {
         id: 1,
+        lsn: 1,
         kind: EventKind::ArtifactUpserted,
         workspace_id: None,
         channel_id: None,
         thread_id: None,
         payload: serde_json::to_value(&event).unwrap(),
         occurred_at: now,
+        prev_hash: maidan_types::genesis_hash(),
+        content_hash: maidan_types::content_hash(&serde_json::to_value(&event).unwrap()).unwrap(),
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {
@@ -384,14 +391,18 @@ async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
         member: member.clone(),
     };
     let payload = serde_json::to_value(&event).unwrap();
+    let link = maidan_types::link_for(1, &payload, None).unwrap();
     let stored = StoredEvent {
         id: 1,
+        lsn: 1,
         kind: EventKind::MemberJoined,
         workspace_id: Some(ws.id),
         channel_id: None,
         thread_id: None,
         payload,
         occurred_at: chrono::Utc::now(),
+        prev_hash: link.prev_hash,
+        content_hash: link.content_hash,
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {

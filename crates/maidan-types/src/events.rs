@@ -21,12 +21,35 @@ use crate::models::*;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct StoredEvent {
     pub id: i64,
+    /// Event-log position of this row. Equal to [`StoredEvent::id`] (the
+    /// Cluster 390 room head of this event). **Not** a Postgres WAL
+    /// [`crate::Lsn`] / `Maidan-Consistency-Token`.
+    #[serde(default)]
+    pub lsn: i64,
     pub kind: EventKind,
     pub workspace_id: Option<WorkspaceId>,
     pub channel_id: Option<ChannelId>,
     pub thread_id: Option<ThreadId>,
     pub payload: serde_json::Value,
     pub occurred_at: DateTime<Utc>,
+    /// SHA-256 commitment of the previous event in this workspace, or genesis.
+    #[serde(default)]
+    pub prev_hash: String,
+    /// SHA-256 of canonical JSON of [`StoredEvent::payload`].
+    #[serde(default)]
+    pub content_hash: String,
+}
+
+impl StoredEvent {
+    /// Chain fields a peer verifies without trusting the host.
+    pub fn link(&self) -> crate::event_chain::EventLink {
+        crate::event_chain::EventLink {
+            id: self.id,
+            lsn: self.lsn,
+            prev_hash: self.prev_hash.clone(),
+            content_hash: self.content_hash.clone(),
+        }
+    }
 }
 
 /// OpenAPI / utoipa shape of [`StoredEvent`]: the durable columns plus the
@@ -39,12 +62,15 @@ struct StoredEventOpenApi {
     #[schema(rename = "$type", example = "maidan.event.message_posted/1")]
     r#type: String,
     id: i64,
+    lsn: i64,
     kind: EventKind,
     workspace_id: Option<WorkspaceId>,
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     payload: serde_json::Value,
     occurred_at: DateTime<Utc>,
+    prev_hash: String,
+    content_hash: String,
 }
 
 #[cfg(feature = "openapi")]

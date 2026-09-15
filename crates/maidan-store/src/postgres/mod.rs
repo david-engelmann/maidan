@@ -2314,6 +2314,13 @@ impl EventStore for PostgresStore {
     ) -> Result<Vec<StoredEvent>, StoreError> {
         events::list_after_global(&self.pool, after_id, limit).await
     }
+
+    async fn verify_event_chain(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::ChainVerifyReport, StoreError> {
+        events::verify_chain(&self.pool, workspace_id).await
+    }
 }
 
 #[async_trait]
