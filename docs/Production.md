@@ -683,6 +683,24 @@ public key (`GET /operator/export-public-key` on the origin). A blank
 instance with neither key still verifies integrity (tamper-evident).
 See [Integration.md](Integration.md#workspace-portability-signed-export).
 
+## Event-log hash chain
+
+Every stored event is accompanied by `{id, lsn, prev_hash, content_hash}`
+(SHA-256, `sha256:<hex>`). `lsn` is the event-log `id`, not a WAL
+`Maidan-Consistency-Token`. The chain is hashed, not signed: a peer
+that has seen a prefix detects a splice or payload rewrite without
+trusting the host. Authorship of a wholly fabricated but consistent
+chain is the signed-export envelope above.
+
+`GET /workspaces/:wid/events/verify` (`workspace:read`) walks the
+retained suffix and **409s** (`event-log-broken`) on a break. Federation
+ingest checks origin hashes the same way before remap. After retention
+prune, verify the remaining suffix — snapshot catch-up of a dropped
+prefix is Open Work #33.
+
+No extra env vars. See [Integration.md](Integration.md#event-log-hash-chain)
+and [Threat-Model.md](Threat-Model.md).
+
 ## API stability
 
 From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases

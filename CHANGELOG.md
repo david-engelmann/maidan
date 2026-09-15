@@ -7,11 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-- REST `GET /workspaces/:id/events` `StoredEvent` now carries `$type`
-  (`maidan.event.{kind}/1`), matching live WS/MCP frames and webhook
-  bodies (Cluster 390 leftover). OpenAPI lists the field. The stored
-  `maidan_events.kind` column is unchanged; unknown JSON fields stay
-  ignored.
+## [392.0.0] — 2026-09-15
+
+Post-gate hardening (Phase XXIV). **Wave 3 #32 — hash-chained log +
+strong refs.** Four impl PRs (392.1–392.4) + a retro. No new gate tag.
+**Row #32 is closed.** Do not start #33–36 from this close.
+
+Every stored event carries `{id, lsn, prev_hash, content_hash}`
+(`sha256:<hex>`). `content_hash` is SHA-256 of Cluster 391 canonical
+JSON of the Event payload; `prev_hash` chains the previous row in the
+same workspace (genesis `SHA-256(b"maidan.event-log.genesis/1")` for
+the first). `lsn` is the event-log `id`, not WAL
+`Maidan-Consistency-Token`. `GET /workspaces/:wid/events/verify`
+walks the retained suffix (200 intact / 409 `event-log-broken`).
+Federation ingest verifies origin hashes before parse/remap. `claim_next`
+pins the assignment event; A2A `citations` are `{uri, content_hash}`.
+Hashed, not signed. Not MST/CAR.
+
+REST `GET /workspaces/:id/events` `StoredEvent` also carries `$type`
+(`maidan.event.{kind}/1`) from #848; hash-chain fields serialize
+through the same `stored_event_wire`. The stored `maidan_events.kind`
+column is unchanged; unknown JSON fields stay ignored.
+
+- **392.1** types (`EventLink` / `StrongRef` / `verify_chain`).
+- **392.2** store columns + append + `verify_event_chain`.
+- **392.3** REST verify + federation origin-hash check.
+- **392.4** `claim_next` pin + A2A citations.
 
 ## [391.0.0] — 2026-09-14
 

@@ -174,6 +174,39 @@ is [contracts/lexicon/catalog.json](../contracts/lexicon/catalog.json).
 
 A Room-LSN parser must reject `/` so a WAL token cannot be treated as a room head.
 
+### Event-log hash chain
+
+Every stored event carries
+`{id, lsn, prev_hash, content_hash}`. `lsn` **is** that row's event-log
+`id` (the Room-LSN of this event), not a WAL token. Hashes are SHA-256
+encoded `sha256:<hex>`. `content_hash` is the canonical JSON of the
+Event payload (the same canonicalizer as signed export). `prev_hash`
+links the previous event **in the same workspace** (or genesis
+`SHA-256(b"maidan.event-log.genesis/1")` for the first). The chain is
+**hashed, not signed** — a wholly fabricated but consistent log still
+verifies; rewrite-detection is for a peer that already has a prefix.
+
+`GET /workspaces/:wid/events/verify` (`workspace:read`) walks the
+retained suffix. Intact → 200 `ChainVerifyReport`. Break → **409**
+`https://maidan.dev/problems/event-log-broken`. After retention prune,
+the oldest remaining row is the floor (it need not chain from genesis).
+Snapshot catch-up of a pruned prefix is Open Work #33.
+
+Federation ingest (`POST /a2a/v1/events`) verifies the **origin**
+envelope's hashes before parse/remap. A rewrite is the same 409. Local
+append after remap mints new ids and hashes; origin hashes are stored
+on `maidan_federated_ingest`.
+
+`claim_next` (REST + MCP) returns a `ClaimedThread`: the thread fields
+plus a flatten `pin: {uri, content_hash}` pointing at the
+`ThreadAssignmentChanged` event (`maidan:event/{id}`). A2A messages
+accept `citations: [{uri, content_hash}]` (omitted when empty); they
+persist on `metadata.citations` and echo on the agent reply. Malformed
+`sha256:<hex>` or an empty uri is 400.
+
+This chain is not MST/CAR, not Room-LSN-as-a-header, and not signed
+workspace export.
+
 **Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire.
 
 ---
@@ -324,6 +357,11 @@ A2A JSON-RPC method strings are the canonical A2A v1.0 operation names (the spec
 - `SubscribeToTask` — SSE task updates for non-terminal tasks.
 - `CancelTask` — cancel non-terminal task.
 
+A2A `message.citations` is an optional list of `{uri, content_hash}`
+strong refs (`sha256:<hex>`). Empty is omitted. Citations persist on
+the stored message's `metadata.citations` and are echoed on the agent
+reply. Malformed hashes fail closed (400).
+
 ### Long-poll waits (`wait_for_*`)
 
 The MCP `wait_for_mention` / `wait_for_notification` / `wait_for_result` /
@@ -371,7 +409,8 @@ speaks MCP.
 ### 1. Claim
 
 `claim_next_thread {channel_id, member_id, lease_secs?}` returns the thread it
-handed you, or `null` when it handed you nothing. `null` is not an error — it is
+handed you (plus a flatten `pin: {uri, content_hash}` on the assignment
+event — a strong ref, Cluster 392), or `null` when it handed you nothing. `null` is not an error — it is
 the ordinary answer on an idle channel, and it is also what you get when you are
 at your WIP limit, when every candidate is blocked on an unfinished dependency or
 missing a skill you don't have, when the next task has an explicit
