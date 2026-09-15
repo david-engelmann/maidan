@@ -32,6 +32,7 @@ pub mod spawn;
 pub mod tap;
 pub mod usage;
 pub mod waiter;
+pub mod wasi;
 pub mod workspace_import;
 
 pub use cursor::*;
@@ -62,4 +63,5 @@ pub use spawn::*;
 pub use tap::*;
 pub use usage::*;
 pub use waiter::*;
+pub use wasi::*;
 pub use workspace_import::*;

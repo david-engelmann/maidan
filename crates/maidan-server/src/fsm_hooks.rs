@@ -118,11 +118,17 @@ pub async fn create_fsm_hook(
     ensure_workspace(&auth, workspace_id)?;
     let from_state = parse_opt_state(body.from_state.as_deref())?;
     let to_state = parse_opt_state(body.to_state.as_deref())?;
-    let handler_kind = SlashHandlerKind::parse(&body.handler_kind)
-        .ok_or_else(|| ApiError::BadRequest("handler_kind must be http or mcp_tool".into()))?;
+    let handler_kind = SlashHandlerKind::parse(&body.handler_kind).ok_or_else(|| {
+        ApiError::BadRequest("handler_kind must be http, mcp_tool, or wasi".into())
+    })?;
     match handler_kind {
         SlashHandlerKind::Http => validate_http_target(&body.handler_target)?,
         SlashHandlerKind::McpTool => validate_mcp_target(&body.handler_target)?,
+        SlashHandlerKind::Wasi => {
+            return Err(ApiError::BadRequest(
+                "wasi handlers are not supported for fsm hooks".into(),
+            ));
+        }
     }
 
     let mut secret_plain: Option<String> = None;
@@ -264,6 +270,9 @@ pub async fn dispatch_thread_state_changed(
                 }
                 SlashHandlerKind::McpTool => {
                     dispatch_mcp_tool(state, &auth, &registration.hook, &ctx).await
+                }
+                SlashHandlerKind::Wasi => {
+                    json!({ "ok": false, "error": "wasi_not_supported_for_fsm_hooks" })
                 }
             }
         };

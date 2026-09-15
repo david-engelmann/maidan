@@ -2299,13 +2299,20 @@ pub struct WebhookSubscriptionWithSecret {
 pub enum SlashHandlerKind {
     Http,
     McpTool,
+    /// No-network WASI guest. `handler_target` is an artifact sha256.
+    /// Slash-only — FSM hooks reject this kind (the guest is a tool, not
+    /// background automation).
+    Wasi,
 }
 
 impl SlashHandlerKind {
+    pub const ALL: &'static [Self] = &[Self::Http, Self::McpTool, Self::Wasi];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Http => "http",
             Self::McpTool => "mcp_tool",
+            Self::Wasi => "wasi",
         }
     }
 
@@ -2313,8 +2320,15 @@ impl SlashHandlerKind {
         match s {
             "http" => Some(Self::Http),
             "mcp_tool" => Some(Self::McpTool),
+            "wasi" => Some(Self::Wasi),
             _ => None,
         }
+    }
+
+    /// HTTP and MCP tool handlers may fire on thread FSM edges. WASI
+    /// guests are slash tools only.
+    pub fn allowed_for_fsm_hooks(self) -> bool {
+        matches!(self, Self::Http | Self::McpTool)
     }
 }
 
