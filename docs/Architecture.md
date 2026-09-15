@@ -139,7 +139,7 @@ flowchart LR
 | Thread-result list | `GET /workspaces/:id/results?result_kind=`, MCP `list_thread_results` | Exact-match facet on the namespaced `result_kind` string (e.g. `example.review.result/1`), not a closed enum and not message-FTS. Omit the query to list every accessible non-tombstoned result. Private-channel rows the caller cannot read are dropped. |
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
-| Events | `GET /workspaces/:wid/events`, outbox admin routes | Replay + quarantined-outbox list/replay |
+| Events | `GET /workspaces/:wid/events`, `GET …/events/verify`, outbox admin routes | Replay + hash-chain integrity + quarantined-outbox list/replay |
 | Subscribe | `GET /ws/subscribe`, `GET /mcp/stream`, `GET /agui/stream` | Live bus + resume tokens + `at_least_once` + lean frames; `/agui/stream` maps events to AG-UI run frames (a thread is a run) |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
@@ -177,9 +177,12 @@ flowchart LR
   themselves; bearer callers are the act-as-any orchestrator.
 - **Realtime & delivery.** The transactional outbox guarantees the event commits with its
   domain write; a relay publishes after commit; the Postgres NOTIFY floor self-heals gaps
-  by back-filling from the log. Delivery cursors give opt-in at-least-once per consumer;
-  lean frames offer a "go fetch" pointer. Resource-update notifications and presence/roster
-  fan out **across replicas** over dedicated NOTIFY channels.
+  by back-filling from the log. Every stored event is **hash-chained** per workspace
+  (`{id, lsn, prev_hash, content_hash}`, SHA-256 of canonical JSON — hashed, not signed).
+  `GET /workspaces/:wid/events/verify` walks the retained suffix and 409s on a break.
+  Delivery cursors give opt-in at-least-once per consumer; lean frames offer a "go fetch"
+  pointer. Resource-update notifications and presence/roster fan out **across replicas**
+  over dedicated NOTIFY channels.
 - **Notifications & reach.** A per-recipient ledger (one row per recipient × source event)
   is written by an always-on router that resolves mentions and channel/thread **follows**,
   honoring per-kind **mute** prefs. Optional SMTP delivery routes immediate or **digest**
@@ -190,7 +193,11 @@ flowchart LR
   Intent lives in `maidan_result_deliveries` (`armed_revision` vs `delivered_revision`);
   transport stays the Cluster-377 outbox. Status is readable per thread over REST + MCP.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
-  to peers (allowlist-by-kind). The A2A endpoint is A2A v1.0-conformant over JSON-RPC
+  to peers (allowlist-by-kind). Ingest verifies the **origin** envelope's hash chain
+  (`verify_peer_link`) before parse/remap — a rewrite is 409 `event-log-broken`, not a
+  400 from serde. Local append after remap mints new ids/hashes; origin hashes live on
+  `maidan_federated_ingest`. A2A messages may pin `citations: [{uri, content_hash}]`.
+  The A2A endpoint is A2A v1.0-conformant over JSON-RPC
   (`/a2a/v1/rpc`) and HTTP+JSON/REST (`/a2a/v1/*`), sharing one set of operation handlers;
   a gRPC `A2AService` exposes the task read/cancel/list subset (`get_task`/`cancel_task`/
   `list_tasks`) — sending a message, push configs, and streaming are JSON-RPC/REST only.

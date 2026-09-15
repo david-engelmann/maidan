@@ -38,6 +38,7 @@ integrator document, not a formal audit.
 | T7 | GDPR right-to-erasure | Tombstone then `DELETE /messages/:id/purge` (`workspace:write`) | DB backups may retain bytes until backup rotation |
 | T8 | Resource exhaustion / denial-of-service by tenant | Per-client rate limit (`MAIDAN_RATE_LIMIT_MAX`) + per-workspace fairness limit (`MAIDAN_WORKSPACE_RATE_LIMIT_MAX`, `v110.0.0`); per-connection statement timeout (`v107.0.0`) | No hard CPU/IO isolation between tenants on one instance (infra-level) |
 | T9 | Tampered or replayed workspace export; credential leak via export | Signed `maidan.workspace.export/1` (Ed25519); verify fail-closed on hash/sig/pin/secret fields; **tokens die on export** (no token/secret continuity) (`v391.0.0`) | Integrity without `MAIDAN_EXPORT_VERIFY_KEYS` is not a trust anchor (anyone who can sign with *a* key can produce a valid file); operator key compromise forges exports |
+| T10 | Host rewrites the event log (splice, delete, payload edit) | Per-workspace SHA-256 hash chain on every stored event (`prev_hash` + `content_hash`); `GET /workspaces/:wid/events/verify` 409 fail-closed; federation ingest verifies origin hashes before remap (`v392.0.0`) | A wholly fabricated but internally consistent chain still verifies (hashed, not signed — authorship is T9); after retention prune the dropped prefix is unverifiable until snapshot catch-up (#33) |
 
 ## Bootstrap hardening options
 

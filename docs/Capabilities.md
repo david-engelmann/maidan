@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v392.0.0 — Wave 3 #32: hash-chained log + strong refs
+
+Four impl PRs (392.1–392.4) + a retro. Every stored event carries `{id, lsn, prev_hash, content_hash}` (SHA-256, `sha256:<hex>`). Peers detect a rewrite without trusting the host. `claim_next` and A2A citations pin `{uri, content_hash}`. Hashed, not signed; not MST/CAR; `lsn` is the event-log id, not WAL. **Row #32 is closed.** Do not start #33–36 from this close.
+
+| Change | Where |
+|--------|-------|
+| **Types (392.1):** `$type` `maidan.event-log.chain/1`, `EventLink` / `StrongRef` / `verify_chain` / `verify_peer_link`. | `crates/maidan-types/src/event_chain.rs` |
+| **Store (392.2):** columns on `maidan_events`; `append_in_tx` mints hashes; `Store::verify_event_chain`. | `crates/maidan-store/src/{postgres,sqlite}/events.rs`, migrations pg 0091 / sqlite 0090 |
+| **REST + federation (392.3):** `GET /workspaces/:wid/events/verify` (200 / 409); origin-hash check on ingest. | `crates/maidan-server/src/routes/workspace.rs`, `federation.rs`; pg 0092 / sqlite 0091 |
+| **Strong refs (392.4):** `ClaimedThread.pin` on `claim_next`; A2A `citations`. | `crates/maidan-server/src/routes/thread.rs`, `a2a_agent.rs`; `crates/maidan-a2a/src/protocol.rs` |
+
 ## v391.0.0 — Wave 3 #31: signed workspace export
 
 Three impl PRs (391.1–391.3) + a retro. A workspace leaves the host as a signed `maidan.workspace.export/1` envelope a blank GHCR instance can verify without calling the origin. **Tokens die on export** — secrets are omitted; stuffed credential fields fail closed; mint new tokens after import. Operator Ed25519 key (`MAIDAN_EXPORT_SIGNING_KEY`); optional `MAIDAN_EXPORT_VERIFY_KEYS` authenticity pin. Not Room-LSN / not Consistency-Token. **Row #31 is closed.** Do not start #32–36 from this close.

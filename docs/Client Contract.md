@@ -110,9 +110,10 @@ inside it. Server replies `subscribe_ack`, `schema_version`,
 benign control frame — deliver it and stop.
 
 Live frames and REST `GET /workspaces/{id}/events` (`StoredEvent`)
-carry `$type` (`maidan.event.{kind}/1`) in addition to `kind`. Ignore
-unknown fields. The pack is `contracts/lexicon/`. `$type` is not a
-stored column.
+carry `$type` (`maidan.event.{kind}/1`) in addition to `kind`. Each
+row also carries `{lsn, prev_hash, content_hash}` (Cluster 392 hash
+chain; `lsn` equals `id`). Ignore unknown fields. The pack is
+`contracts/lexicon/`. `$type` is not a stored column.
 
 REST responses stamp `Maidan-Room-LSN` (decimal event-log high-water).
 Clients expose `last_room_lsn` / `LastRoomLSN` / `lastRoomLsn` from
