@@ -22,6 +22,7 @@ pub mod reindex;
 pub mod score;
 pub mod sqlite;
 pub mod sqlite_vec;
+pub mod tap_projector;
 pub mod traits;
 
 pub use embedding_batcher::{BatchConfig, BatchingEmbeddingHandler, IndexerMetrics};
@@ -48,4 +49,5 @@ pub use sqlite_vec::{
     ensure_auto_extension, pool_options as sqlite_pool_options,
     pool_options_with as sqlite_pool_options_with, vec_available,
 };
+pub use tap_projector::{backfill_search, SearchTap};
 pub use traits::Search;
