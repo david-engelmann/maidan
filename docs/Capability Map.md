@@ -15,8 +15,8 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 
 | Capability | Routes / behavior |
 |------------|-------------------|
-| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
-| `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook` |
+| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, GET `/workspaces/:id/room`, GET `/workspaces/:id/handle`, GET `/capability-sets`, `POST /tokens/attenuate` (holder-side; no `token:admin`), group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
+| `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook`; `PUT /workspaces/:id/handle` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
 | `thread:transition` | POST thread FSM transitions; MCP `transition_thread` |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
@@ -28,8 +28,8 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 
 | Capability | Tools |
 |------------|-------|
-| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_log_snapshot`, `catch_up_events`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census` |
-| `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook` |
+| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_log_snapshot`, `catch_up_events`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census`, `list_capability_sets`, `parse_maidan_uri`, `get_room`, `attenuate_token` |
+| `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook`, `set_workspace_handle` |
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |
 | `search:query` | `search_messages` |

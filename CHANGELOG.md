@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [395.0.0] — 2026-09-15
+
+Post-gate hardening (Phase XXIV). **Wave 3 #35 — named capability sets
++ stable `maidan://` URIs.** Four impl PRs (395.1–395.4) + a retro. No
+new gate tag. **Row #35 is closed.** Do **not** start #36 from this
+close. Do not cut the tag from the retro PR.
+
+Named sets (`maidan.agent.worker`, `maidan.human.admin`) expand to
+atomics at mint time. Holders attenuate without `token:admin`
+(Levy/Madden, not Cedar). Room URIs use the workspace UUID; a handle
+is a renameable alias. `GET /.well-known/maidan-room` is scheme-only.
+
+- **395.1** `RoomUri` / handle / room discovery types.
+- **395.2** named sets + progressive grant + attenuate.
+- **395.3** `maidan_workspace_handles` (pg 0093 / sqlite 0092).
+- **395.4** REST + well-known + MCP.
+
 ## [394.0.0] — 2026-09-15
 
 Post-gate hardening (Phase XXIV). **Wave 3 #34 — tombstone explorer,
