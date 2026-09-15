@@ -2321,6 +2321,28 @@ impl EventStore for PostgresStore {
     ) -> Result<maidan_types::ChainVerifyReport, StoreError> {
         events::verify_chain(&self.pool, workspace_id).await
     }
+
+    async fn workspace_event_floor(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+        events::floor_link(&self.pool, workspace_id).await
+    }
+
+    async fn workspace_event_head(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+        events::head_link(&self.pool, workspace_id).await
+    }
+
+    async fn workspace_event_at_or_before(
+        &self,
+        workspace_id: WorkspaceId,
+        lsn: i64,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+        events::link_at_or_before(&self.pool, workspace_id, lsn).await
+    }
 }
 
 #[async_trait]
