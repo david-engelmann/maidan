@@ -19,8 +19,6 @@ use crate::models::*;
 /// That field is **not** a `maidan_events` column — the stored tag remains
 /// `kind`. Deserialize ignores unknown fields, including `$type`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "openapi", schema(as = StoredEventOpenApi))]
 pub struct StoredEvent {
     pub id: i64,
     pub kind: EventKind,
@@ -36,7 +34,6 @@ pub struct StoredEvent {
 #[cfg(feature = "openapi")]
 #[allow(dead_code)]
 #[derive(utoipa::ToSchema)]
-#[schema(as = StoredEvent)]
 struct StoredEventOpenApi {
     /// Observable lexicon type. Computed from `kind` on serialize. Not stored.
     #[schema(rename = "$type", example = "maidan.event.message_posted/1")]
@@ -48,6 +45,17 @@ struct StoredEventOpenApi {
     thread_id: Option<ThreadId>,
     payload: serde_json::Value,
     occurred_at: DateTime<Utc>,
+}
+
+#[cfg(feature = "openapi")]
+impl<'s> utoipa::ToSchema<'s> for StoredEvent {
+    fn schema() -> (
+        &'s str,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    ) {
+        let (_, schema) = StoredEventOpenApi::schema();
+        ("StoredEvent", schema)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
