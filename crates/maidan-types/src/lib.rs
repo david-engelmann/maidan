@@ -7,6 +7,7 @@
 pub mod cursor;
 pub mod egress;
 pub mod erase;
+pub mod event_chain;
 pub mod events;
 pub mod freeze;
 pub mod ids;
@@ -31,6 +32,7 @@ pub mod workspace_import;
 pub use cursor::*;
 pub use egress::*;
 pub use erase::*;
+pub use event_chain::*;
 pub use events::*;
 pub use freeze::*;
 pub use ids::*;
