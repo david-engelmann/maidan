@@ -3,6 +3,7 @@
 
 pub mod access;
 pub mod capability;
+pub mod capability_set;
 pub mod context;
 pub mod error;
 pub mod export_sign;
@@ -16,6 +17,10 @@ pub use access::{
     private_channel_deny_set, MessageScope, ThreadScope,
 };
 pub use capability::*;
+pub use capability_set::{
+    attenuate, attenuate_expiry, expand_set, held_sets, is_named_set, named_sets,
+    progressive_grant, CapabilitySet, AGENT_WORKER, HUMAN_ADMIN,
+};
 pub use context::AuthContext;
 pub use error::AuthError;
 pub use export_sign::{

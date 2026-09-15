@@ -49,6 +49,20 @@ fn unknown_capabilities_are_rejected() {
 }
 
 #[test]
+fn named_sets_expand_to_known_capabilities() {
+    for set in capability::named_sets() {
+        assert!(capability::is_named_set(&set.name), "{}", set.name);
+        assert!(capability::validate_list(&set.capabilities).is_ok());
+    }
+    let worker = capability::expand_set(capability::AGENT_WORKER).unwrap();
+    assert!(worker.iter().any(|c| c == WORKSPACE_READ));
+    assert!(!worker.iter().any(|c| c == TOKEN_ADMIN));
+    let admin = capability::expand_set(capability::HUMAN_ADMIN).unwrap();
+    assert!(admin.iter().any(|c| c == TOKEN_ADMIN));
+    assert!(capability::held_sets(&admin).contains(&capability::AGENT_WORKER.to_string()));
+}
+
+#[test]
 fn default_minted_set_is_a_known_subset() {
     let minted = capability::default_minted();
     assert!(capability::validate_list(&minted).is_ok());
