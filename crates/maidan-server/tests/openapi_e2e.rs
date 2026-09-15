@@ -72,5 +72,22 @@ async fn openapi_json_serves_document() {
         .expect("securitySchemes");
     assert!(schemes.contains_key("sessionCookie"));
 
+    let stored_event = &doc["components"]["schemas"]["StoredEvent"];
+    let properties = stored_event["properties"]
+        .as_object()
+        .expect("StoredEvent properties");
+    assert!(
+        properties.contains_key("$type"),
+        "OpenAPI StoredEvent must list wire $type"
+    );
+    assert!(
+        properties.contains_key("kind"),
+        "OpenAPI StoredEvent must keep kind (stored column)"
+    );
+    assert_eq!(
+        stored_event["properties"]["$type"]["type"].as_str(),
+        Some("string")
+    );
+
     server.abort();
 }

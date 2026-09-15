@@ -158,10 +158,12 @@ Server replies with `subscribe_ack`, `schema_version`, `resume_token`, `after_id
 and `room_lsn` (the event-log high-water at subscribe time — many WebSocket
 clients never see HTTP 101 response headers).
 
-Live frames (WS and MCP SSE) carry `$type` (`maidan.event.{kind}/1`) in
-addition to `kind`. New fields on a `/1` type are optional; unknown fields
-are ignored; a breaking change is a new type (`/2`). The JSON-Schema pack
+Live frames (WS and MCP SSE) and REST `GET /workspaces/{id}/events`
+(`StoredEvent`) carry `$type` (`maidan.event.{kind}/1`) in addition to
+`kind`. New fields on a `/1` type are optional; unknown fields are
+ignored; a breaking change is a new type (`/2`). The JSON-Schema pack
 is [contracts/lexicon/catalog.json](../contracts/lexicon/catalog.json).
+`$type` is a wire envelope, not a `maidan_events` column.
 
 **Two headers, two jobs — do not conflate them:**
 

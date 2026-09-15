@@ -13,8 +13,14 @@ use crate::ids::*;
 use crate::models::*;
 
 /// Row in the persistent `maidan_events` log (Cluster D.6).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Wire JSON (REST `GET /events`, federation pull, A2A envelopes) also
+/// carries `$type` (`maidan.event.{kind}/1`) via [`crate::lexicon::stored_event_wire`].
+/// That field is **not** a `maidan_events` column — the stored tag remains
+/// `kind`. Deserialize ignores unknown fields, including `$type`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = StoredEventOpenApi))]
 pub struct StoredEvent {
     pub id: i64,
     pub kind: EventKind,
@@ -23,6 +29,25 @@ pub struct StoredEvent {
     pub thread_id: Option<ThreadId>,
     pub payload: serde_json::Value,
     pub occurred_at: DateTime<Utc>,
+}
+
+/// OpenAPI / utoipa shape of [`StoredEvent`]: the durable columns plus the
+/// wire-only `$type` Cluster 390 deferred on this type.
+#[cfg(feature = "openapi")]
+#[allow(dead_code)]
+#[derive(utoipa::ToSchema)]
+#[schema(as = StoredEvent)]
+struct StoredEventOpenApi {
+    /// Observable lexicon type. Computed from `kind` on serialize. Not stored.
+    #[schema(rename = "$type", example = "maidan.event.message_posted/1")]
+    r#type: String,
+    id: i64,
+    kind: EventKind,
+    workspace_id: Option<WorkspaceId>,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    payload: serde_json::Value,
+    occurred_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
