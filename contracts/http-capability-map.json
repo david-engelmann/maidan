@@ -901,6 +901,18 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/export/verify",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/export-public-key",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/import",
     "capability": "token:admin",
     "surface": "http"

@@ -180,6 +180,14 @@ pub struct AppState {
     /// captured from the `PostgresSearch` when a replica is configured. `None` otherwise,
     /// so the metric simply isn't emitted.
     pub search_read_routing_metrics: Option<std::sync::Arc<maidan_search::SearchReadMetrics>>,
+    /// Operator Ed25519 seed for signed workspace export (Cluster 391). `None`
+    /// in [`AppState::new`] — tests attach a fixture key; the binary loads
+    /// `MAIDAN_EXPORT_SIGNING_KEY`. Export refuses when unset (fail closed;
+    /// never emit an unsigned bundle).
+    pub export_signing: Option<maidan_auth::ExportSigningKey>,
+    /// Optional public-key pin for import/verify (`MAIDAN_EXPORT_VERIFY_KEYS`).
+    /// Empty = integrity against the embedded key only (blank-instance default).
+    pub export_verify_keys: Vec<[u8; 32]>,
 }
 
 impl AppState {
@@ -241,7 +249,20 @@ impl AppState {
             read_replica_enabled: false,
             read_routing_metrics: None,
             search_read_routing_metrics: None,
+            export_signing: None,
+            export_verify_keys: Vec::new(),
         }
+    }
+
+    /// Wire the operator export signing key (Cluster 391). Called by the server
+    /// binary when `MAIDAN_EXPORT_SIGNING_KEY` is set; tests attach a fixture.
+    pub fn attach_export_signing(&mut self, key: maidan_auth::ExportSigningKey) {
+        self.export_signing = Some(key);
+    }
+
+    /// Pin public keys that import/verify will accept (Cluster 391).
+    pub fn attach_export_verify_keys(&mut self, keys: Vec<[u8; 32]>) {
+        self.export_verify_keys = keys;
     }
 
     /// Wire the Web Push sender (Cluster 366, N1). Called by the server binary when

@@ -348,6 +348,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     maidan_auth::init_decrypt_fallback_keys(decrypt_fallback_keys);
+
+    let export_signing =
+        maidan_auth::export_signing_key_from_env().context("MAIDAN_EXPORT_SIGNING_KEY")?;
+    let export_verify_keys =
+        maidan_auth::export_verify_keys_from_env().context("MAIDAN_EXPORT_VERIFY_KEYS")?;
     let federation = maidan_server::FederationRuntime::new(
         federation_disabled,
         federation_encryption_key.clone(),
@@ -434,6 +439,25 @@ async fn main() -> anyhow::Result<()> {
     state.read_replica_enabled = config.replica_url.is_some();
     state.read_routing_metrics = read_routing_metrics;
     state.search_read_routing_metrics = search_read_routing_metrics;
+
+    if let Some(key) = export_signing {
+        tracing::info!(
+            public_key = %key.public_key_hex(),
+            "workspace export signing configured"
+        );
+        state.attach_export_signing(key);
+    } else {
+        tracing::warn!(
+            "MAIDAN_EXPORT_SIGNING_KEY unset; GET /workspaces/:id/export refuses until configured"
+        );
+    }
+    if !export_verify_keys.is_empty() {
+        tracing::info!(
+            count = export_verify_keys.len(),
+            "workspace export verify keyring loaded"
+        );
+        state.attach_export_verify_keys(export_verify_keys);
+    }
 
     // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
     // configured — otherwise the notification router sends no email.

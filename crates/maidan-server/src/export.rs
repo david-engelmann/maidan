@@ -1,20 +1,23 @@
-//! Workspace export / portability (Cluster 187).
+//! Workspace export / portability (Cluster 187 + signed envelope, Cluster 391).
 //!
 //! Assembles a workspace's collaboration graph into one JSON bundle so an
 //! operator can migrate or archive a tenant — the read-side counterpart to the
 //! erase/purge paths, which were the only whole-workspace operations. Flat,
 //! id-linked collections (not deep nesting) keep it easy to diff and re-import.
 //!
-//! **Excludes secrets** (API tokens, webhook/slash secrets, OIDC/OAuth) and
-//! operational tables (events, audit, deliveries) — this is user content, not
-//! credentials or ops state. Reactions/votes are deferred (per-message N+1 over
-//! a large workspace); tracked in Open Work.
+//! **Tokens die on export.** Secrets (API tokens, webhook/slash secrets,
+//! OIDC/OAuth) and operational tables (events, audit, deliveries) are omitted.
+//! Cluster 391 wraps the bundle in a signed `maidan.workspace.export/1`
+//! envelope so a blank instance can verify it without calling the origin.
 
 use std::sync::Arc;
 
+use maidan_auth::{sign_export, verify_export, ExportSigningKey};
 use maidan_store::{Store, StoreError};
 use maidan_types::*;
 use serde::{Deserialize, Serialize};
+
+use crate::error::ApiError;
 
 /// Bump when the bundle shape changes in a way an importer must notice.
 pub const FORMAT_VERSION: u32 = 1;
@@ -115,4 +118,45 @@ pub async fn build(
         pins,
         references,
     })
+}
+
+/// Sign the content graph. Refuses if the operator key is missing — never
+/// emit an unsigned bundle.
+pub fn sign_bundle(
+    key: Option<&ExportSigningKey>,
+    bundle: &WorkspaceExport,
+) -> Result<SignedExport, ApiError> {
+    let key = key.ok_or_else(|| {
+        ApiError::BadRequest(
+            "export signing key is not configured (MAIDAN_EXPORT_SIGNING_KEY)".into(),
+        )
+    })?;
+    let payload = serde_json::to_value(bundle)
+        .map_err(|e| ApiError::Internal(format!("export serialize: {e}")))?;
+    sign_export(key, payload).map_err(|e| ApiError::BadRequest(e.to_string()))
+}
+
+/// Verify a signed envelope. Empty `expected` = integrity against the
+/// embedded public key (blank GHCR instance). Non-empty = authenticity pin.
+pub fn verify_bundle(envelope: &SignedExport, expected: &[[u8; 32]]) -> Result<(), ApiError> {
+    let pin = if expected.is_empty() {
+        None
+    } else {
+        Some(expected)
+    };
+    verify_export(envelope, pin).map_err(|e| ApiError::BadRequest(e.to_string()))
+}
+
+/// Decode the inner Cluster-187 graph after the signature has been checked.
+pub fn inner_bundle(envelope: &SignedExport) -> Result<WorkspaceExport, ApiError> {
+    serde_json::from_value(envelope.payload.clone())
+        .map_err(|e| ApiError::BadRequest(format!("export payload is not a workspace bundle: {e}")))
+}
+
+pub fn payload_workspace_id(payload: &serde_json::Value) -> Option<uuid::Uuid> {
+    payload
+        .get("workspace")
+        .and_then(|w| w.get("id"))
+        .and_then(|id| id.as_str())
+        .and_then(|s| s.parse().ok())
 }

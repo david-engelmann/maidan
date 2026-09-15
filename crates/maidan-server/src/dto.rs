@@ -806,6 +806,26 @@ pub struct ImportResult {
     pub mode: ImportMode,
 }
 
+/// Outcome of `POST /workspaces/export/verify` (Cluster 391). The inner
+/// graph is not imported.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VerifyExportResult {
+    pub ok: bool,
+    pub token_policy: maidan_types::TokenPolicy,
+    pub public_key: String,
+    pub content_sha256: String,
+    pub workspace_id: Option<uuid::Uuid>,
+}
+
+/// `GET /operator/export-public-key` — out-of-band pin for a destination
+/// instance's `MAIDAN_EXPORT_VERIFY_KEYS`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ExportPublicKey {
+    pub alg: String,
+    pub public_key: String,
+    pub token_policy: maidan_types::TokenPolicy,
+}
+
 /// Result of marking all of a member's notifications read (Cluster 239).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MarkAllRead {

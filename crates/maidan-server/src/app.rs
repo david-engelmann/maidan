@@ -81,6 +81,10 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/:id", delete(routes::erase_workspace))
         .route("/workspaces/:id/audit", get(routes::list_workspace_audit))
         .route("/workspaces/:id/export", get(routes::export_workspace))
+        .route(
+            "/workspaces/export/verify",
+            post(routes::verify_workspace_export),
+        )
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
         .route(
@@ -658,6 +662,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/operator/reindex-embeddings/:job_id",
             get(reindex_ops::get_reindex_embeddings_job),
+        )
+        .route(
+            "/operator/export-public-key",
+            get(routes::export_public_key),
         )
         .route("/operator/audit", get(routes::list_global_audit))
         .route("/operator/legal-holds", get(routes::list_legal_holds))

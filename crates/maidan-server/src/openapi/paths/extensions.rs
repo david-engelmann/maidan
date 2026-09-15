@@ -22,9 +22,30 @@ pub fn purge_workspace() {}
     tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
-    responses((status = 200, description = "Workspace content bundle (JSON)"))
+    responses((status = 200, description = "Signed workspace export envelope (maidan.workspace.export/1 JSON)"))
 )]
 pub fn export_workspace() {}
+
+#[utoipa::path(
+    post,
+    path = "/workspaces/export/verify",
+    tag = "workspaces",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = VerifyExportResult, description = "Signature valid; tokens die on export"),
+        (status = 400, description = "Tamper, bad signature, secret fields, or key not in pin")
+    )
+)]
+pub fn verify_workspace_export() {}
+
+#[utoipa::path(
+    get,
+    path = "/operator/export-public-key",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ExportPublicKey, description = "Operator Ed25519 public key for export verify pins"))
+)]
+pub fn export_public_key() {}
 
 #[utoipa::path(
     post,
@@ -33,7 +54,8 @@ pub fn export_workspace() {}
     params(ImportQuery),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = ImportResult, description = "Imported; body is the workspace content bundle produced by export"),
+        (status = 200, body = ImportResult, description = "Imported after signature verify; body is a signed maidan.workspace.export/1 envelope"),
+        (status = 400, description = "Signature invalid or bundle rejected"),
         (status = 409, description = "restore mode: a workspace with the bundle's id already exists (retry with force=true)")
     )
 )]
