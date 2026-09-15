@@ -81,6 +81,9 @@ Do **not** cut `v393.0.0` from this PR — the maintainer tags.
   successor's `prev_hash`.
 - MCP tool handlers take `&Arc<dyn Store>`, not `&dyn Store` —
   dispatch already holds the Arc.
+- The 393.2 postgres helper dropped the testcontainer before the
+  suite ran (`PoolTimedOut` on CI). The container must stay in the
+  test scope — same as `event_chain.rs`.
 
 ## Test evidence
 
