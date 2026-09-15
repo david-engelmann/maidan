@@ -2494,8 +2494,16 @@ impl PeerStore for PostgresStore {
         peer_id: PeerId,
         remote_event_id: i64,
         local_event_id: i64,
+        origin: &maidan_types::EventLink,
     ) -> Result<bool, StoreError> {
-        peers::try_record_ingest(&self.pool, peer_id, remote_event_id, local_event_id).await
+        peers::try_record_ingest(&self.pool, peer_id, remote_event_id, local_event_id, origin).await
+    }
+
+    async fn last_federated_origin_link(
+        &self,
+        peer_id: PeerId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+        peers::last_origin_link(&self.pool, peer_id).await
     }
 
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError> {

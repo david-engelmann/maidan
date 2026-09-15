@@ -141,6 +141,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/:wid/events", get(routes::list_events))
         .route(
+            "/workspaces/:wid/events/verify",
+            get(routes::verify_event_chain),
+        )
+        .route(
             "/workspaces/:wid/outbox/:oid/replay",
             post(routes::replay_quarantined_outbox),
         )

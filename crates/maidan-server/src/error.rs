@@ -59,6 +59,11 @@ pub enum ApiError {
         after_id: i64,
         oldest_id: i64,
     },
+    /// Hash-chained event log is broken (Cluster 392). 409 fail-closed.
+    EventLogBroken {
+        break_at: Option<i64>,
+        reason: maidan_types::ChainBreakReason,
+    },
 }
 
 impl ApiError {
@@ -72,7 +77,7 @@ impl ApiError {
             Self::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::CursorTooOld { .. } => StatusCode::CONFLICT,
+            Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
         }
     }
 
@@ -87,6 +92,7 @@ impl ApiError {
             Self::TooManyRequests(_) => "Too Many Requests",
             Self::Internal(_) => "Internal Server Error",
             Self::CursorTooOld { .. } => "Cursor Too Old",
+            Self::EventLogBroken { .. } => "Event Log Broken",
         }
     }
 
@@ -106,6 +112,10 @@ impl ApiError {
             } => format!(
                 "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
             ),
+            Self::EventLogBroken { break_at, reason } => match break_at {
+                Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
+                None => format!("event log chain broken: {}", reason.as_str()),
+            },
         }
     }
 
@@ -120,6 +130,7 @@ impl ApiError {
             Self::TooManyRequests(_) => "https://maidan.dev/problems/rate-limited",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
+            Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
         }
     }
 }
@@ -272,5 +283,21 @@ mod tests {
         assert!(err.detail().contains("must refetch"));
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn event_log_broken_is_409_fail_closed() {
+        let err = ApiError::EventLogBroken {
+            break_at: Some(4),
+            reason: maidan_types::ChainBreakReason::ContentHashMismatch,
+        };
+        assert_eq!(err.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            err.problem_type(),
+            "https://maidan.dev/problems/event-log-broken"
+        );
+        assert!(err.detail().contains("id=4"));
+        assert!(err.detail().contains("content_hash_mismatch"));
+        assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
     }
 }

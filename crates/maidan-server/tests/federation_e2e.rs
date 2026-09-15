@@ -535,3 +535,157 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
         Some(plaintext)
     );
 }
+
+async fn mint_peer(h: &Harness, ws: WorkspaceId, name: &str) -> (PeerId, String) {
+    let admin = mint_admin_token(h.store.as_ref(), ws).await;
+    let create = h
+        .client
+        .post(format!("{}/workspaces/{}/peers", h.base(), ws.0))
+        .bearer_auth(&admin)
+        .json(&json!({ "name": name, "base_url": "https://remote.example" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let body: serde_json::Value = create.json().await.unwrap();
+    let peer_id = PeerId(uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap());
+    let peer_secret = body["secret"].as_str().unwrap().to_string();
+    (peer_id, peer_secret)
+}
+
+fn member_joined_envelope(
+    peer_id: PeerId,
+    id: i64,
+    event: &Event,
+    previous: Option<&maidan_types::EventLink>,
+) -> (FederationEnvelope, maidan_types::EventLink) {
+    let payload = serde_json::to_value(event).unwrap();
+    let link = maidan_types::link_for(id, &payload, previous).unwrap();
+    let stored = StoredEvent {
+        id,
+        lsn: id,
+        kind: EventKind::MemberJoined,
+        workspace_id: event.workspace_id(),
+        channel_id: None,
+        thread_id: None,
+        payload,
+        occurred_at: chrono::Utc::now(),
+        prev_hash: link.prev_hash.clone(),
+        content_hash: link.content_hash.clone(),
+    };
+    (
+        FederationEnvelope {
+            origin_peer_id: peer_id,
+            remote_event_id: id,
+            event: stored,
+        },
+        link,
+    )
+}
+
+#[tokio::test]
+async fn federation_ingest_rejects_payload_rewrite() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-hash".to_string(),
+        })
+        .await
+        .unwrap();
+    let (peer_id, peer_secret) = mint_peer(&h, ws.id, "remote-hash").await;
+    let member = h
+        .store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bot".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let event = Event::MemberJoined {
+        occurred_at: chrono::Utc::now(),
+        workspace_id: ws.id,
+        member,
+    };
+    let (mut envelope, _) = member_joined_envelope(peer_id, 1, &event, None);
+    envelope.event.payload["kind"] = json!("message_posted");
+    let ingest = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(&peer_secret)
+        .json(&FederatedEventBatch {
+            events: vec![envelope],
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ingest.status(), StatusCode::CONFLICT);
+    let problem: serde_json::Value = ingest.json().await.unwrap();
+    assert_eq!(
+        problem["type"],
+        "https://maidan.dev/problems/event-log-broken"
+    );
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn federation_ingest_rejects_prev_hash_break() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-prev".to_string(),
+        })
+        .await
+        .unwrap();
+    let (peer_id, peer_secret) = mint_peer(&h, ws.id, "remote-prev").await;
+    let member = h
+        .store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bot".to_string(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let first = Event::MemberJoined {
+        occurred_at: chrono::Utc::now(),
+        workspace_id: ws.id,
+        member: member.clone(),
+    };
+    let (envelope1, link1) = member_joined_envelope(peer_id, 1, &first, None);
+    let ok = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(&peer_secret)
+        .json(&FederatedEventBatch {
+            events: vec![envelope1],
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), StatusCode::OK);
+
+    let second = Event::MemberJoined {
+        occurred_at: chrono::Utc::now(),
+        workspace_id: ws.id,
+        member,
+    };
+    let (mut envelope2, _) = member_joined_envelope(peer_id, 2, &second, Some(&link1));
+    envelope2.event.prev_hash = maidan_types::genesis_hash();
+    let ingest = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(&peer_secret)
+        .json(&FederatedEventBatch {
+            events: vec![envelope2],
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ingest.status(), StatusCode::CONFLICT);
+    h.shutdown().await;
+}
