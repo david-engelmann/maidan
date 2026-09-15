@@ -6,8 +6,10 @@ mod api;
 mod auth;
 mod extensions;
 mod health;
+mod room;
 
 pub use api::*;
 pub use auth::*;
 pub use extensions::*;
 pub use health::*;
+pub use room::*;

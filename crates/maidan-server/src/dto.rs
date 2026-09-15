@@ -942,6 +942,8 @@ pub struct WhoAmI {
     pub capabilities: Vec<String>,
     pub is_bearer: bool,
     pub known_capabilities: Vec<String>,
+    /// Named sets whose full expansion the caller currently holds.
+    pub capability_sets: Vec<String>,
 }
 
 /// Link a Slack channel to a Maidan thread (Cluster 346). The link's
@@ -1250,9 +1252,33 @@ pub struct MintApiToken {
     pub label: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Named set (`maidan.agent.worker` / `maidan.human.admin`). Combined
+    /// with `capabilities` this is progressive grant: requested ⊆ set.
+    #[serde(default)]
+    pub capability_set: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub quotas: Vec<maidan_types::TokenQuota>,
+}
+
+/// Holder-side attenuation body. No `token:admin` — the caller can only drop
+/// rights they already hold.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AttenuateToken {
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CapabilitySetView {
+    pub name: String,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetWorkspaceHandle {
+    pub handle: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

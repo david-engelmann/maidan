@@ -516,6 +516,13 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_reference).get(routes::list_references),
         )
         .route("/tokens/:id", delete(routes::revoke_api_token))
+        .route("/tokens/attenuate", post(routes::attenuate_api_token))
+        .route("/capability-sets", get(routes::list_capability_sets))
+        .route("/workspaces/:id/room", get(routes::get_workspace_room))
+        .route(
+            "/workspaces/:id/handle",
+            get(routes::get_workspace_handle).put(routes::set_workspace_handle),
+        )
         .route(
             "/workspaces/:wid/peers",
             post(federation::create_peer).get(federation::list_peers),
@@ -975,6 +982,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/.well-known/maidan.json", get(federation::well_known))
+        .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
         // Slack projector ingress (Cluster 307): unauthed — Slack authenticates via

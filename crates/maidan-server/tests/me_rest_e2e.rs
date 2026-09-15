@@ -116,6 +116,7 @@ async fn get_me_reflects_the_callers_identity() {
         .collect();
     assert!(caps.contains(&capability::WORKSPACE_READ.to_string()));
     assert!(caps.contains(&capability::MESSAGE_POST.to_string()));
+    assert!(me["capability_sets"].as_array().unwrap().is_empty());
 
     // Missing the Authorization header → 401 (no identity to reflect).
     let anon = client.get(format!("{base}/me")).send().await.unwrap();
