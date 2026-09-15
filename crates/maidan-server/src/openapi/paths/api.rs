@@ -67,6 +67,17 @@ pub fn erase_workspace() {}
     ))]
 pub fn list_events() {}
 
+#[utoipa::path(get, path = "/workspaces/{wid}/events/verify", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ChainVerifyReport),
+        (status = 401, body = ProblemDetails),
+        (status = 403, body = ProblemDetails),
+        (status = 409, description = "Event log chain broken", body = ProblemDetails),
+    ))]
+pub fn verify_event_chain() {}
+
 #[utoipa::path(get, path = "/workspaces/{wid}/search", tag = "search",
     params(
         ("wid" = Uuid, Path, description = "Workspace id"),

@@ -15,7 +15,7 @@ use maidan_auth::{
     decrypt_peer_secret_rotating, encrypt_peer_secret, hash_secret, resolve_peer_bearer,
     AuthContext, TokenSecret,
 };
-use maidan_types::{Event, NewPeer, Peer, PeerId, WorkspaceId};
+use maidan_types::{verify_peer_link, Event, NewPeer, Peer, PeerId, WorkspaceId};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -153,6 +153,21 @@ pub(crate) async fn ingest_envelope(
         return Ok(IngestOutcome::SkippedDuplicate);
     }
 
+    // Hash check before parse: a rewritten payload is a chain break (409),
+    // not a 400 from serde. The origin link is verified without trusting
+    // the sender's Event interpretation.
+    let previous = state.store.last_federated_origin_link(peer.id).await?;
+    if let Err(reason) = verify_peer_link(
+        &envelope.event.link(),
+        &envelope.event.payload,
+        previous.as_ref(),
+    ) {
+        return Err(ApiError::EventLogBroken {
+            break_at: Some(envelope.event.id),
+            reason,
+        });
+    }
+
     let mut event = event_from_stored(&envelope.event)?;
     // Cluster 215 federation ingest trust policy: only accept event kinds a peer
     // is allowed to push (allowlist-by-default; artifact-existence claims are
@@ -169,7 +184,12 @@ pub(crate) async fn ingest_envelope(
     };
     let recorded = state
         .store
-        .try_record_federated_ingest(peer.id, envelope.remote_event_id, log_id)
+        .try_record_federated_ingest(
+            peer.id,
+            envelope.remote_event_id,
+            log_id,
+            &envelope.event.link(),
+        )
         .await?;
     if !recorded {
         return Ok(IngestOutcome::SkippedDuplicate);

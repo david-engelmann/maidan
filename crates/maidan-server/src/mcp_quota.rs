@@ -46,6 +46,10 @@ pub async fn enforce_mcp_quota(
             } => format!(
                 "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
             ),
+            ApiError::EventLogBroken { break_at, reason } => match break_at {
+                Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
+                None => format!("event log chain broken: {}", reason.as_str()),
+            },
         };
         return Err(JsonRpcResponse::failure(
             id,

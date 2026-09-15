@@ -768,3 +768,38 @@ pub async fn list_events(
             .await?,
     ))
 }
+
+/// Verify the retained hash chain for this workspace (Cluster 392).
+/// 200 when intact; 409 `event-log-broken` when a splice or rewrite is
+/// detected. Same auth as [`list_events`] so a federated peer can check
+/// without trusting the host process.
+pub async fn verify_event_chain(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    auth: Option<Extension<AuthContext>>,
+    peer: Option<Extension<PeerContext>>,
+) -> ApiResult<Json<ChainVerifyReport>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    match (&auth, &peer) {
+        (Some(Extension(auth)), None) => {
+            cap(auth, WORKSPACE_READ)?;
+            ensure_workspace(auth, workspace_id)?;
+        }
+        (None, Some(Extension(PeerContext(peer)))) => {
+            if peer.remote_workspace_id != workspace_id {
+                return Err(ApiError::Forbidden(
+                    "peer may only read its registered remote workspace".into(),
+                ));
+            }
+        }
+        _ => return Err(ApiError::Unauthorized),
+    }
+    let report = state.store.verify_event_chain(workspace_id).await?;
+    if !report.ok {
+        return Err(ApiError::EventLogBroken {
+            break_at: report.break_at,
+            reason: report.reason.unwrap_or(ChainBreakReason::MalformedHash),
+        });
+    }
+    Ok(Json(report))
+}

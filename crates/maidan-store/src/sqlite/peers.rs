@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{NewPeer, Peer, PeerId, WorkspaceId};
+use maidan_types::{EventLink, NewPeer, Peer, PeerId, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -136,20 +136,49 @@ pub async fn try_record_ingest(
     peer_id: PeerId,
     remote_event_id: i64,
     local_event_id: i64,
+    origin: &EventLink,
 ) -> Result<bool, StoreError> {
     let now = Utc::now();
     let result = sqlx::query(
-        "INSERT INTO maidan_federated_ingest (peer_id, remote_event_id, local_event_id, ingested_at)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO maidan_federated_ingest
+            (peer_id, remote_event_id, local_event_id, ingested_at, origin_prev_hash, origin_content_hash)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (peer_id, remote_event_id) DO NOTHING",
     )
     .bind(peer_id.0)
     .bind(remote_event_id)
     .bind(local_event_id)
     .bind(now)
+    .bind(&origin.prev_hash)
+    .bind(&origin.content_hash)
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn last_origin_link(
+    pool: &SqlitePool,
+    peer_id: PeerId,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT remote_event_id, origin_prev_hash, origin_content_hash
+         FROM maidan_federated_ingest
+         WHERE peer_id = ? AND origin_content_hash <> ''
+         ORDER BY remote_event_id DESC
+         LIMIT 1",
+    )
+    .bind(peer_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let id: i64 = row.get("remote_event_id");
+        EventLink {
+            id,
+            lsn: id,
+            prev_hash: row.get("origin_prev_hash"),
+            content_hash: row.get("origin_content_hash"),
+        }
+    }))
 }
 
 pub async fn is_federated_local_event(

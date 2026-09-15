@@ -1171,6 +1171,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{wid}/events/verify",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{wid}/fsm-hooks",
     "capability": "workspace:read",
     "surface": "http"

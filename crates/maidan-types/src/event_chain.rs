@@ -73,6 +73,17 @@ pub enum ChainBreakReason {
     IdNotIncreasing,
 }
 
+impl ChainBreakReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ContentHashMismatch => "content_hash_mismatch",
+            Self::PrevHashMismatch => "prev_hash_mismatch",
+            Self::MalformedHash => "malformed_hash",
+            Self::IdNotIncreasing => "id_not_increasing",
+        }
+    }
+}
+
 /// Report from walking a chain. `ok` is the fail-closed bit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

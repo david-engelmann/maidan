@@ -29,6 +29,11 @@ impl FederationEnvelope {
                 "event.id must be non-negative".into(),
             ));
         }
+        if self.event.lsn != self.event.id {
+            return Err(FederationError::InvalidEnvelope(
+                "event.lsn must equal event.id".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -64,5 +69,18 @@ mod tests {
             event: sample_stored_event(7, EventKind::VoteCast),
         };
         envelope.validate().expect("consistent");
+    }
+
+    #[test]
+    fn validate_requires_lsn_equal_id() {
+        let mut event = sample_stored_event(7, EventKind::VoteCast);
+        event.lsn = 8;
+        let envelope = FederationEnvelope {
+            origin_peer_id: PeerId(uuid::Uuid::new_v4()),
+            remote_event_id: 7,
+            event,
+        };
+        let err = envelope.validate().unwrap_err();
+        assert!(matches!(err, FederationError::InvalidEnvelope(_)));
     }
 }

@@ -138,12 +138,21 @@ async fn federated_ingest_dedupes_by_peer_and_remote_id() {
         .expect("append");
 
     let first = store
-        .try_record_federated_ingest(peer.id, 99, event.id)
+        .try_record_federated_ingest(peer.id, 99, event.id, &event.link())
         .await
         .expect("record");
     assert!(first);
+    let origin = store
+        .last_federated_origin_link(peer.id)
+        .await
+        .expect("origin");
+    assert_eq!(origin.as_ref().map(|l| l.id), Some(99));
+    assert_eq!(
+        origin.as_ref().map(|l| l.content_hash.as_str()),
+        Some(event.content_hash.as_str())
+    );
     let dup = store
-        .try_record_federated_ingest(peer.id, 99, event.id)
+        .try_record_federated_ingest(peer.id, 99, event.id, &event.link())
         .await
         .expect("record again");
     assert!(!dup);

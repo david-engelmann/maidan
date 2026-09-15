@@ -1996,7 +1996,15 @@ pub trait PeerStore: Send + Sync {
         peer_id: PeerId,
         remote_event_id: i64,
         local_event_id: i64,
+        origin: &maidan_types::EventLink,
     ) -> Result<bool, StoreError>;
+    /// Last origin [`maidan_types::EventLink`] accepted from this peer
+    /// (Cluster 392 sequential ingest verify). `None` if this peer has
+    /// never ingested a hashed envelope.
+    async fn last_federated_origin_link(
+        &self,
+        peer_id: PeerId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError>;
     async fn is_federated_local_event(&self, local_event_id: i64) -> Result<bool, StoreError>;
 }
 
