@@ -551,6 +551,15 @@ async fn main() -> anyhow::Result<()> {
     if let Some(key) = state.federation.encryption_key.clone() {
         state.mcp.set_encryption_key(key);
     }
+    // Cluster 391: MCP export/verify/import share the REST operator keyring.
+    if let Some(key) = state.export_signing.clone() {
+        state.mcp.set_export_signing(key);
+    }
+    if !state.export_verify_keys.is_empty() {
+        state
+            .mcp
+            .set_export_verify_keys(state.export_verify_keys.clone());
+    }
 
     // Background data-retention sweeper (Cluster 186): opt-in via
     // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable

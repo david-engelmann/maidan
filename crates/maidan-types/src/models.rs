@@ -795,6 +795,32 @@ pub struct ThreadFollow {
     pub created_at: DateTime<Utc>,
 }
 
+/// Bump when the inner export graph changes in a way an importer must notice.
+pub const WORKSPACE_EXPORT_FORMAT_VERSION: u32 = 1;
+
+/// Nested channel + members as assembled for export (Cluster 187).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportChannel {
+    pub channel: Channel,
+    pub members: Vec<ChannelMember>,
+}
+
+/// Workspace content graph (Cluster 187). Secrets are omitted — tokens die
+/// on export (Cluster 391). This is the signed envelope's `payload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceExport {
+    pub format_version: u32,
+    pub exported_at: DateTime<Utc>,
+    pub workspace: Workspace,
+    pub members: Vec<Member>,
+    pub channels: Vec<ExportChannel>,
+    pub threads: Vec<Thread>,
+    pub messages: Vec<Message>,
+    pub message_edits: Vec<MessageEdit>,
+    pub pins: Vec<Pin>,
+    pub references: Vec<Reference>,
+}
+
 /// A workspace's content graph for import (Cluster 269) — the flat, id-linked
 /// collections of an export bundle, ready to insert. The server flattens its
 /// `WorkspaceExport` (which nests channel members under each channel) into this and
