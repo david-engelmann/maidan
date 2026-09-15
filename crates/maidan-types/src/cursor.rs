@@ -196,12 +196,15 @@ mod tests {
 
         let stored = StoredEvent {
             id: 1,
+            lsn: 1,
             kind: EventKind::MessagePosted,
             workspace_id: Some(ws()),
             channel_id: shape.channel_id,
             thread_id: shape.thread_id,
             payload: serde_json::json!({}),
             occurred_at: chrono::Utc::now(),
+            prev_hash: crate::genesis_hash(),
+            content_hash: crate::content_hash(&serde_json::json!({})).unwrap(),
         };
         assert!(shape.matches_stored(&stored));
         let other = StoredEvent {

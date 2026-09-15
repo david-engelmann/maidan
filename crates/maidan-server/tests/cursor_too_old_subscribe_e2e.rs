@@ -225,6 +225,14 @@ async fn list_events_stamps_type_on_stored_event_for_known_kinds() {
             event["payload"].get("$type").is_none(),
             "stored payload is not rewritten; $type is the row envelope"
         );
+        assert_eq!(event["lsn"], event["id"], "lsn is the event-log id");
+        let prev = event["prev_hash"].as_str().expect("prev_hash");
+        let content = event["content_hash"].as_str().expect("content_hash");
+        assert!(prev.starts_with("sha256:"), "prev_hash is sha256:<hex>");
+        assert!(
+            content.starts_with("sha256:"),
+            "content_hash is sha256:<hex>"
+        );
     }
 
     server.abort();

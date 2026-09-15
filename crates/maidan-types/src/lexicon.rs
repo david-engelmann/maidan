@@ -58,12 +58,15 @@ pub fn event_wire(event: &Event) -> Result<Value, serde_json::Error> {
 #[derive(Serialize)]
 struct StoredEventFields<'a> {
     id: i64,
+    lsn: i64,
     kind: EventKind,
     workspace_id: Option<WorkspaceId>,
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     payload: &'a Value,
     occurred_at: DateTime<Utc>,
+    prev_hash: &'a str,
+    content_hash: &'a str,
 }
 
 /// Serialize a log row and stamp `$type` from `kind`. Does not rewrite the
@@ -71,12 +74,15 @@ struct StoredEventFields<'a> {
 pub fn stored_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error> {
     let mut value = serde_json::to_value(StoredEventFields {
         id: event.id,
+        lsn: event.lsn,
         kind: event.kind,
         workspace_id: event.workspace_id,
         channel_id: event.channel_id,
         thread_id: event.thread_id,
         payload: &event.payload,
         occurred_at: event.occurred_at,
+        prev_hash: &event.prev_hash,
+        content_hash: &event.content_hash,
     })?;
     inject_type(&mut value, &event.kind.type_id());
     Ok(value)
@@ -300,6 +306,7 @@ mod tests {
     fn stored_event_wire_stamps_type_and_keeps_kind() {
         let stored = StoredEvent {
             id: 7,
+            lsn: 7,
             kind: EventKind::MessagePosted,
             workspace_id: None,
             channel_id: None,
@@ -308,11 +315,17 @@ mod tests {
             occurred_at: chrono::DateTime::parse_from_rfc3339("2023-11-14T22:13:20Z")
                 .expect("ts")
                 .with_timezone(&chrono::Utc),
+            prev_hash: crate::genesis_hash(),
+            content_hash: crate::content_hash(&json!({"kind": "message_posted", "body": "hi"}))
+                .expect("hash"),
         };
         let wire = stored_event_wire(&stored).expect("wire");
         assert_eq!(wire["$type"], "maidan.event.message_posted/1");
         assert_eq!(wire["kind"], "message_posted");
         assert_eq!(wire["id"], 7);
+        assert_eq!(wire["lsn"], 7);
+        assert_eq!(wire["prev_hash"], stored.prev_hash);
+        assert_eq!(wire["content_hash"], stored.content_hash);
         assert_eq!(wire["payload"]["kind"], "message_posted");
         assert!(
             wire["payload"].get("$type").is_none(),
