@@ -22,6 +22,7 @@ mod budget;
 mod catalog;
 mod channel;
 mod delivery;
+mod event_log;
 mod export;
 mod freeze;
 mod glossary;
@@ -153,7 +154,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_review_status"
         | "list_reviews"
         | "get_land_gate"
-        | "whoami" => Ok(WORKSPACE_READ),
+        | "whoami"
+        | "get_log_snapshot"
+        | "catch_up_events"
+        | "verify_event_chain" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -501,6 +505,9 @@ pub async fn dispatch(
         "export_workspace" => export::export_workspace(server, auth, args).await,
         "verify_workspace_export" => export::verify_workspace_export(server, args),
         "import_workspace" => export::import_workspace(server, args).await,
+        "get_log_snapshot" => event_log::get_log_snapshot(store, auth, args).await,
+        "catch_up_events" => event_log::catch_up_events(store, auth, args).await,
+        "verify_event_chain" => event_log::verify_event_chain(store, auth, args).await,
         "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
         "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
         "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,

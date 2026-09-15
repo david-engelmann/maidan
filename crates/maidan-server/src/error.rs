@@ -9,6 +9,7 @@ use axum::{
     Json,
 };
 use maidan_store::StoreError;
+use maidan_types::{LogSnapshot, WorkspaceId};
 use serde::{de::DeserializeOwned, Serialize};
 use utoipa::ToSchema;
 
@@ -54,10 +55,12 @@ pub enum ApiError {
     TooManyRequests(String),
     Internal(String),
     /// Subscribe / backfill cursor is behind the retained log (Cluster 388).
-    /// 409 + `must_refetch: true` — fail loud, never clamp.
+    /// 409 + `must_refetch: true` — fail loud, never clamp. Cluster 393
+    /// stamps `snapshot` so the client can refetch the pruned prefix.
     CursorTooOld {
         after_id: i64,
         oldest_id: i64,
+        snapshot: Option<String>,
     },
     /// Hash-chained event log is broken (Cluster 392). 409 fail-closed.
     EventLogBroken {
@@ -109,9 +112,17 @@ impl ApiError {
             Self::CursorTooOld {
                 after_id,
                 oldest_id,
-            } => format!(
-                "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
-            ),
+                snapshot,
+            } => {
+                let mut detail = format!(
+                    "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
+                );
+                if let Some(path) = snapshot {
+                    detail.push_str("; snapshot ");
+                    detail.push_str(path);
+                }
+                detail
+            }
             Self::EventLogBroken { break_at, reason } => match break_at {
                 Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
                 None => format!("event log chain broken: {}", reason.as_str()),
@@ -131,6 +142,30 @@ impl ApiError {
             Self::Internal(_) => "https://maidan.dev/problems/internal",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
+        }
+    }
+
+    /// Point a CursorTooOld 409 at the workspace snapshot a peer must
+    /// refetch (Cluster 393). Other errors are unchanged.
+    pub fn with_snapshot(self, workspace_id: WorkspaceId) -> Self {
+        match self {
+            Self::CursorTooOld {
+                after_id,
+                oldest_id,
+                ..
+            } => Self::CursorTooOld {
+                after_id,
+                oldest_id,
+                snapshot: Some(LogSnapshot::path(workspace_id)),
+            },
+            other => other,
+        }
+    }
+
+    pub fn with_snapshot_opt(self, workspace_id: Option<WorkspaceId>) -> Self {
+        match workspace_id {
+            Some(ws) => self.with_snapshot(ws),
+            None => self,
         }
     }
 }
@@ -158,17 +193,26 @@ pub struct ProblemDetails {
     /// Cluster 388: a CursorTooOld 409 is a must-refetch, never a silent clamp.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub must_refetch: bool,
+    /// Cluster 393: GET this path for a hashed snapshot covering the
+    /// pruned prefix, then catch up from `as_of_lsn`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status();
+        let snapshot = match &self {
+            Self::CursorTooOld { snapshot, .. } => snapshot.clone(),
+            _ => None,
+        };
         let body = ProblemDetails {
             type_: self.problem_type().to_string(),
             title: self.title().to_string(),
             status: status.as_u16(),
             detail: self.detail(),
             must_refetch: matches!(self, Self::CursorTooOld { .. }),
+            snapshot,
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(
@@ -202,6 +246,7 @@ impl From<StoreError> for ApiError {
             } => Self::CursorTooOld {
                 after_id,
                 oldest_id,
+                snapshot: None,
             },
             StoreError::InvalidInput(msg) => Self::BadRequest(msg),
             StoreError::Database(e) => {
@@ -271,6 +316,7 @@ impl From<axum::extract::rejection::PathRejection> for ApiError {
 mod tests {
     use super::*;
     use axum::http::StatusCode;
+    use maidan_types::{LogSnapshot, WorkspaceId};
 
     #[test]
     fn cursor_too_old_is_409_must_refetch() {
@@ -283,6 +329,20 @@ mod tests {
         assert!(err.detail().contains("must refetch"));
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn cursor_too_old_snapshot_href_is_workspace_scoped() {
+        let ws = WorkspaceId(uuid::Uuid::from_u128(1));
+        let err = ApiError::from(StoreError::cursor_too_old(10, 50)).with_snapshot(ws);
+        assert!(err.detail().contains("/workspaces/"));
+        assert!(err.detail().contains("/snapshot"));
+        match err {
+            ApiError::CursorTooOld { snapshot, .. } => {
+                assert_eq!(snapshot.as_deref(), Some(LogSnapshot::path(ws).as_str()));
+            }
+            other => panic!("expected CursorTooOld, got {other:?}"),
+        }
     }
 
     #[test]

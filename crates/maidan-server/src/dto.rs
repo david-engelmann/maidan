@@ -668,6 +668,23 @@ pub struct ListEventsQuery {
     pub consumer_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct LogSnapshotQuery {
+    /// Include the domain graph. Requires `token:admin` (or a federation
+    /// peer). Default false — header and `graph_hash` only.
+    #[serde(default)]
+    pub include_graph: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct CatchUpQuery {
+    /// Exclusive cursor: events have `id > after_lsn`.
+    #[serde(default)]
+    pub after_lsn: i64,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ListAuditQuery {
     #[serde(default = "default_limit")]

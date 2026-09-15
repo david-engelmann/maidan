@@ -145,6 +145,11 @@ pub fn router(state: AppState) -> Router {
             get(routes::verify_event_chain),
         )
         .route(
+            "/workspaces/:wid/events/catch-up",
+            get(routes::catch_up_events),
+        )
+        .route("/workspaces/:wid/snapshot", get(routes::get_log_snapshot))
+        .route(
             "/workspaces/:wid/outbox/:oid/replay",
             post(routes::replay_quarantined_outbox),
         )

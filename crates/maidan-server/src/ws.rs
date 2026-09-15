@@ -32,7 +32,7 @@ use maidan_auth::{
     resolve_bearer, AuthContext,
 };
 use maidan_store::StoreError;
-use maidan_types::{CursorTooOld, EventFilter, MemberId, ThreadId, WorkspaceId};
+use maidan_types::{EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
 use serde::Deserialize;
 use tokio::{
     sync::mpsc,
@@ -112,29 +112,29 @@ impl From<(u16, String)> for SubscribeReject {
 }
 
 impl SubscribeReject {
-    fn cursor_too_old(after_id: i64, oldest_id: i64) -> Self {
-        let body = CursorTooOld::new(after_id, oldest_id);
+    fn cursor_too_old(after_id: i64, oldest_id: i64, workspace_id: Option<WorkspaceId>) -> Self {
+        let mut frame = serde_json::json!({
+            "type": "cursor_too_old",
+            "after_id": after_id,
+            "oldest_id": oldest_id,
+            "must_refetch": true,
+        });
+        if let Some(ws) = workspace_id {
+            frame["snapshot"] = serde_json::json!(LogSnapshot::path(ws));
+        }
         Self {
             code: 1008,
             reason: "cursor_too_old".into(),
-            frame: Some(
-                serde_json::json!({
-                    "type": "cursor_too_old",
-                    "after_id": body.after_id,
-                    "oldest_id": body.oldest_id,
-                    "must_refetch": true,
-                })
-                .to_string(),
-            ),
+            frame: Some(frame.to_string()),
         }
     }
 
-    fn from_store(err: StoreError) -> Self {
+    fn from_store(err: StoreError, workspace_id: Option<WorkspaceId>) -> Self {
         match err {
             StoreError::CursorTooOld {
                 after_id,
                 oldest_id,
-            } => Self::cursor_too_old(after_id, oldest_id),
+            } => Self::cursor_too_old(after_id, oldest_id, workspace_id),
             other => (1011u16, other.to_string()).into(),
         }
     }
@@ -492,11 +492,11 @@ async fn read_subscribe(
             after_id,
         )
         .await
-        .map_err(SubscribeReject::from_store)?;
+        .map_err(|e| SubscribeReject::from_store(e, filter.workspace_id))?;
     }
     crate::delivery::ensure_subscribe_cursor(state.store.as_ref(), filter.workspace_id, after_id)
         .await
-        .map_err(SubscribeReject::from_store)?;
+        .map_err(|e| SubscribeReject::from_store(e, filter.workspace_id))?;
 
     let member_id = sub.member_id.map(MemberId);
     if member_id.is_some() && filter.workspace_id.is_none() {

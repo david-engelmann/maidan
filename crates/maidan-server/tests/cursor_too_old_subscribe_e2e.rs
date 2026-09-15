@@ -125,6 +125,10 @@ async fn list_events_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
         Some("https://maidan.dev/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
+    assert_eq!(
+        body["snapshot"],
+        json!(format!("/workspaces/{}/snapshot", ws.0))
+    );
 
     // Fresh subscriber and adjacent resume stay 200.
     let fresh = client
@@ -260,6 +264,10 @@ async fn durable_consumer_cursor_that_points_into_a_pruned_gap_is_409() {
     assert_eq!(resp.status(), StatusCode::CONFLICT);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["must_refetch"], json!(true));
+    assert_eq!(
+        body["snapshot"],
+        json!(format!("/workspaces/{}/snapshot", ws.0))
+    );
 
     server.abort();
 }
@@ -293,6 +301,10 @@ async fn ws_subscribe_sends_cursor_too_old_frame_then_closes() {
                 if v["type"] == "cursor_too_old" {
                     assert_eq!(v["must_refetch"], json!(true));
                     assert_eq!(v["after_id"], ids[0]);
+                    assert_eq!(
+                        v["snapshot"],
+                        json!(format!("/workspaces/{}/snapshot", ws_id.0))
+                    );
                     saw_too_old = true;
                 }
             }
@@ -330,6 +342,10 @@ async fn mcp_stream_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
         Some("https://maidan.dev/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
+    assert_eq!(
+        body["snapshot"],
+        json!(format!("/workspaces/{}/snapshot", ws.0))
+    );
 
     let fresh = client
         .get(format!(
