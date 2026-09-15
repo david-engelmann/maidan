@@ -237,6 +237,28 @@ never clamp. Search is a projector of message posted/edited/tombstoned
 events; a chain break or `Lagged` without a durable log fails loud
 (`RebuildRequired`) instead of serving a silently diverged index.
 
+### Tombstones, backlinks, and kind census
+
+Three `workspace:read` integrity reads over existing rows (no new
+table). Soft-delete keeps the message row and clears `body` / `content`.
+Hard purge removes the row; `include_purged=true` reconstructs it from
+the `MessageTombstoned` event. The body is gone either way — this is
+an honest deletion trail, not undelete.
+
+| Surface | REST | MCP |
+|---------|------|-----|
+| Tombstone explorer | `GET /workspaces/:id/tombstones` (`channel_id`, `thread_id`, `include_purged`, `limit` 1–500 default 100) | `list_tombstones` |
+| Backlink index | `GET /messages/:id/backlinks` | `list_message_backlinks` |
+| Kind census | `GET /workspaces/:id/kind-census` (`channel_id`, `thread_id`) | `get_kind_census` |
+
+Backlinks are incoming pointers: Cluster 320 `RelationKind` reverse
+edges plus pins, reactions, and votes. Mentions are outgoing and
+omitted. A retained tombstone still answers; a hard-purged message is
+404 / not-found. Private-channel and DM rows the caller cannot access
+are dropped. The census excludes inaccessible private channels in the
+query (`private_channel_deny_set`) and keeps workspace-level events
+that have no `channel_id`.
+
 **Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire.
 
 ---

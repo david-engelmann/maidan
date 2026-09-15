@@ -146,6 +146,7 @@ flowchart LR
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
 | Events | `GET /workspaces/:wid/events`, `GET …/events/verify`, `GET …/snapshot`, `GET …/events/catch-up`, outbox admin routes | Replay + hash-chain integrity + hashed snapshot / since-LSN catch-up + quarantined-outbox list/replay |
+| Integrity explorer | `GET /workspaces/:id/tombstones`, `GET /messages/:id/backlinks`, `GET /workspaces/:id/kind-census`; MCP twins | Soft-delete + optional hard-purge reconstructions; incoming `RelationKind` edges + pins/reactions/votes; `EventKind` counts (private channels denied) |
 | Subscribe | `GET /ws/subscribe`, `GET /mcp/stream`, `GET /agui/stream` | Live bus + resume tokens + `at_least_once` + lean frames; `/agui/stream` maps events to AG-UI run frames (a thread is a run) |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |

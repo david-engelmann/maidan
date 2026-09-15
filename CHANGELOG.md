@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [394.0.0] — 2026-09-15
+
+Post-gate hardening (Phase XXIV). **Wave 3 #34 — tombstone explorer,
+backlink index, kind census.** Three impl PRs (394.1–394.3) + a retro.
+No new gate tag. **Row #34 is closed.** Do not start #35–36 from this
+close.
+
+Read-only integrity surfaces over existing rows — no new table. Soft-
+deleted messages (body already cleared) plus optional hard-purge
+reconstructions from `MessageTombstoned`. Incoming pointers at a
+message (`RelationKind` reverse edges + pins, reactions, votes).
+`EventKind` counts for a workspace, with inaccessible private channels
+excluded. Mentions are outgoing and omitted.
+
+- **394.1** types (`TombstoneRecord` / `MessageBacklinks` / `KindCensus`)
+  + `IntegrityStore` (both backends).
+- **394.2** REST `GET /workspaces/:id/tombstones`,
+  `GET /messages/:id/backlinks`, `GET /workspaces/:id/kind-census`.
+- **394.3** MCP `list_tombstones` / `list_message_backlinks` /
+  `get_kind_census`.
+
 ## [393.0.0] — 2026-09-15
 
 Post-gate hardening (Phase XXIV). **Wave 3 #33 — snapshot + since-LSN

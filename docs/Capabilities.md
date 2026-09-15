@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v394.0.0 — Wave 3 #34: tombstone explorer, backlink index, kind census
+
+Three impl PRs (394.1–394.3) + a retro. Discover deleted messages honestly
+(soft-delete + optional hard-purge reconstructions), query what points at
+a message, and count `EventKind` in a workspace. No new table. **Row #34
+is closed.** Do not start #35–36 from this close.
+
+| Change | Where |
+|--------|-------|
+| **Types + store (394.1):** `TombstoneRecord` / `MessageBacklinks` / `KindCensus`; `IntegrityStore` on both backends. | `crates/maidan-types/src/explorer.rs`, `crates/maidan-store/src/{postgres,sqlite}/explorer.rs` |
+| **REST (394.2):** `GET /workspaces/:id/tombstones`, `GET /messages/:id/backlinks`, `GET /workspaces/:id/kind-census`. | `crates/maidan-server/src/routes/{workspace,message}.rs` |
+| **MCP (394.3):** `list_tombstones` / `list_message_backlinks` / `get_kind_census`. | `crates/maidan-mcp/src/tools/explorer.rs` |
+
 ## v393.0.0 — Wave 3 #33: snapshot catch-up + tap projector contract
 
 Four impl PRs (393.1–393.4) + a retro. A peer that missed a pruned prefix takes a hashed `maidan.event-log.snapshot/1` checkpoint and catches up with `maidan.event-log.catch-up/1` pages (getRepo-shaped, not MST/CAR). Complements Cluster 392 (retained-suffix hash chain). Search is a tap projector and fails loud on a gap or chain break. **Row #33 is closed.** Do not start #34–36 from this close.
