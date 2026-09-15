@@ -197,7 +197,10 @@ async fn pruned_prefix_requires_snapshot_sqlite() {
     assert_pruned_prefix(&store, ws, events[0].id, events[2].id).await;
 }
 
-async fn postgres() -> Option<PostgresStore> {
+async fn postgres() -> Option<(
+    PostgresStore,
+    testcontainers::ContainerAsync<testcontainers_modules::postgres::Postgres>,
+)> {
     use maidan_store::run_postgres_migrations;
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration;
@@ -226,12 +229,12 @@ async fn postgres() -> Option<PostgresStore> {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    Some(PostgresStore::new(pool))
+    Some((PostgresStore::new(pool), container))
 }
 
 #[tokio::test]
 async fn snapshot_then_catch_up_postgres() {
-    let Some(store) = postgres().await else {
+    let Some((store, _container)) = postgres().await else {
         return;
     };
     run_suite(&store).await;
@@ -239,7 +242,7 @@ async fn snapshot_then_catch_up_postgres() {
 
 #[tokio::test]
 async fn catch_up_tamper_fails_closed_postgres() {
-    let Some(store) = postgres().await else {
+    let Some((store, _container)) = postgres().await else {
         return;
     };
     let ws = seed(&store).await;
@@ -257,7 +260,7 @@ async fn catch_up_tamper_fails_closed_postgres() {
 
 #[tokio::test]
 async fn pruned_prefix_requires_snapshot_postgres() {
-    let Some(store) = postgres().await else {
+    let Some((store, _container)) = postgres().await else {
         return;
     };
     let ws = seed(&store).await;
