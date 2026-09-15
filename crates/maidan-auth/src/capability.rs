@@ -1,4 +1,12 @@
 //! Capability strings for v0.5.0. Stored on API tokens as JSON arrays.
+//!
+//! Named sets and Levy/Madden attenuation live in [`crate::capability_set`]
+//! and are re-exported here so callers keep using `capability::…`.
+
+pub use crate::capability_set::{
+    attenuate, attenuate_expiry, expand_set, held_sets, is_named_set, named_sets,
+    progressive_grant, CapabilitySet, AGENT_WORKER, HUMAN_ADMIN,
+};
 
 pub const WORKSPACE_READ: &str = "workspace:read";
 pub const WORKSPACE_WRITE: &str = "workspace:write";
