@@ -23,6 +23,7 @@ mod catalog;
 mod channel;
 mod delivery;
 mod event_log;
+mod explorer;
 mod export;
 mod freeze;
 mod glossary;
@@ -157,7 +158,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "whoami"
         | "get_log_snapshot"
         | "catch_up_events"
-        | "verify_event_chain" => Ok(WORKSPACE_READ),
+        | "verify_event_chain"
+        | "list_tombstones"
+        | "list_message_backlinks"
+        | "get_kind_census" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -351,8 +355,23 @@ async fn enforce_channel_access(
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
         }
-        "edit_message" | "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction"
-        | "list_reactions" | "seed_from_message" => {
+        "list_tombstones" | "get_kind_census" => {
+            if let Some(id) = field("channel_id") {
+                maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
+                    .await?;
+            }
+            if let Some(id) = field("thread_id") {
+                maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
+            }
+        }
+        "edit_message"
+        | "record_mention"
+        | "cast_vote"
+        | "add_reaction"
+        | "remove_reaction"
+        | "list_reactions"
+        | "seed_from_message"
+        | "list_message_backlinks" => {
             if let Some(id) = field("message_id") {
                 maidan_auth::ensure_message_access(store, auth, maidan_types::MessageId(id))
                     .await?;
@@ -508,6 +527,9 @@ pub async fn dispatch(
         "get_log_snapshot" => event_log::get_log_snapshot(store, auth, args).await,
         "catch_up_events" => event_log::catch_up_events(store, auth, args).await,
         "verify_event_chain" => event_log::verify_event_chain(store, auth, args).await,
+        "list_tombstones" => explorer::list_tombstones(store, auth, args).await,
+        "list_message_backlinks" => explorer::list_message_backlinks(store, args).await,
+        "get_kind_census" => explorer::get_kind_census(store, auth, args).await,
         "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
         "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
         "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,
