@@ -88,6 +88,14 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
         .route(
+            "/workspaces/:id/tombstones",
+            get(routes::list_workspace_tombstones),
+        )
+        .route(
+            "/workspaces/:id/kind-census",
+            get(routes::get_workspace_kind_census),
+        )
+        .route(
             "/workspaces/:id/results",
             get(routes::list_workspace_results),
         )
@@ -465,6 +473,10 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::tombstone_message),
         )
         .route("/messages/:id/edits", get(routes::list_message_edits))
+        .route(
+            "/messages/:id/backlinks",
+            get(routes::list_message_backlinks),
+        )
         .route("/messages/:id/purge", delete(routes::purge_message))
         .route("/messages/:id/seed", post(routes::seed_from_message))
         .route("/messages/:id/mentions", post(routes::create_mention))

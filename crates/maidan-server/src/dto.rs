@@ -780,6 +780,25 @@ pub struct DecisionsQuery {
     pub limit: Option<i64>,
 }
 
+/// Query params for `GET /workspaces/:id/tombstones` (Cluster 394.2).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListTombstonesQuery {
+    pub channel_id: Option<uuid::Uuid>,
+    pub thread_id: Option<uuid::Uuid>,
+    /// Include hard-purged reconstructions from `MessageTombstoned` events.
+    #[serde(default)]
+    pub include_purged: bool,
+    /// Max rows (default 100, clamp 1..=500).
+    pub limit: Option<i64>,
+}
+
+/// Query params for `GET /workspaces/:id/kind-census` (Cluster 394.2).
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct KindCensusQuery {
+    pub channel_id: Option<uuid::Uuid>,
+    pub thread_id: Option<uuid::Uuid>,
+}
+
 /// Query params for `GET /workspaces/:id/results` (Cluster 381.2).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListThreadResultsQuery {
