@@ -14,6 +14,7 @@ pub(super) async fn whoami(auth: &AuthContext) -> Result<Value, McpError> {
         "member_id": auth.member_id.0,
         "workspace_id": auth.workspace_id.0,
         "capabilities": auth.capabilities(),
+        "capability_sets": maidan_auth::held_sets(auth.capabilities()),
         // A bearer token acts as any member (orchestrator model); a browser/OIDC
         // session is pinned to its own member. `bypass` = auth disabled (dev).
         "is_bearer": auth.token_id.is_some(),

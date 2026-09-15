@@ -7,8 +7,60 @@ pub fn catalog() -> Vec<Value> {
     vec![
         json!({
             "name": "whoami",
-            "description": "Return the caller's own identity: member_id, workspace_id, capabilities, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.",
+            "description": "Return the caller's own identity: member_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.",
             "inputSchema": { "type": "object", "properties": {} }
+        }),
+        json!({
+            "name": "list_capability_sets",
+            "description": "List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.",
+            "inputSchema": { "type": "object", "properties": {} }
+        }),
+        json!({
+            "name": "parse_maidan_uri",
+            "description": "Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "uri": {"type": "string"}
+                },
+                "required": ["uri"]
+            }
+        }),
+        json!({
+            "name": "get_room",
+            "description": "Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "set_workspace_handle",
+            "description": "Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "handle": {"type": "string"}
+                },
+                "required": ["workspace_id", "handle"]
+            }
+        }),
+        json!({
+            "name": "attenuate_token",
+            "description": "Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "capabilities": {"type": "array", "items": {"type": "string"}},
+                    "expires_at": {"type": "string", "format": "date-time"},
+                    "label": {"type": "string"}
+                },
+                "required": ["capabilities"]
+            }
         }),
         json!({
             "name": "open_dm_conversation",

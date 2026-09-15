@@ -392,6 +392,15 @@ fn apply_route_defaults(
             "label": "deny-matrix"
         }));
     }
+    if path == "/tokens/attenuate" && method == "POST" {
+        return b.json(&json!({
+            "capabilities": [capability::WORKSPACE_READ],
+            "label": "deny-matrix"
+        }));
+    }
+    if path.ends_with("/handle") && method == "PUT" {
+        return b.json(&json!({ "handle": "cap-matrix" }));
+    }
     if path.ends_with("/mention-webhook") && method == "PUT" {
         return b.json(&json!({ "webhook_id": null }));
     }

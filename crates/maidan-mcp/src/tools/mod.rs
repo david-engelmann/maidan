@@ -35,6 +35,7 @@ mod projector;
 mod recipe;
 mod reference;
 mod review;
+mod room;
 mod schedule;
 mod search;
 mod secret;
@@ -161,7 +162,11 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "verify_event_chain"
         | "list_tombstones"
         | "list_message_backlinks"
-        | "get_kind_census" => Ok(WORKSPACE_READ),
+        | "get_kind_census"
+        | "list_capability_sets"
+        | "get_room"
+        | "parse_maidan_uri"
+        | "attenuate_token" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -184,7 +189,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_memory_block_value"
         | "attach_memory_block"
         | "detach_memory_block"
-        | "replay_result_delivery" => Ok(WORKSPACE_WRITE),
+        | "replay_result_delivery"
+        | "set_workspace_handle" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -641,6 +647,11 @@ pub async fn dispatch(
         "request_approval" => approval::request_approval(server, auth, args).await,
         "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
         "whoami" => whoami::whoami(auth).await,
+        "list_capability_sets" => room::list_capability_sets().await,
+        "parse_maidan_uri" => room::parse_maidan_uri(args).await,
+        "get_room" => room::get_room(store, auth, args).await,
+        "set_workspace_handle" => room::set_workspace_handle(store, auth, args).await,
+        "attenuate_token" => room::attenuate_token(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

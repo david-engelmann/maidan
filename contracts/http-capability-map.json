@@ -1678,5 +1678,35 @@
     "path": "/channels/{cid}/members/{mid}",
     "capability": "channel:admin",
     "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/capability-sets",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/tokens/attenuate",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/room",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/handle",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/handle",
+    "capability": "workspace:write",
+    "surface": "http"
   }
 ]
