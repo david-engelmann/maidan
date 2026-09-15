@@ -1,18 +1,18 @@
-//! Background indexer: subscribes to the event bus and ensures every
-//! state-changing message event keeps the search indexes current.
+//! Background indexer: a **tap projector** over the event log (Cluster 393).
 //!
-//! For v0.2.0 the FT triggers (Postgres) and FTS5 triggers (SQLite)
-//! already maintain the lexical index synchronously. The indexer is
-//! the async pipeline that future clusters will use to generate
-//! embeddings, vector-index updates, and any other side effects that
-//! shouldn't block writes.
+//! Lexical FT/FTS5 triggers still maintain the index on write. This task
+//! is the async projection (embeddings and any other side effect that
+//! must not block the append). It is bound by the tap contract: verify
+//! every backfill page, drain history before live, filter to message
+//! kinds, fail closed on a gap or chain break. A silently diverged
+//! index is a bug.
 //!
 //! The default [`LoggingHandler`] just observes events for metrics +
 //! tracing; tests can swap in any [`EventHandler`].
 
 use std::{
     sync::{
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc,
     },
     time::Duration,
@@ -21,10 +21,12 @@ use std::{
 use async_trait::async_trait;
 use maidan_bus::{EventBus, EventStream};
 use maidan_store::Store;
-use maidan_types::{Event, EventFilter, EventKind};
+use maidan_types::{Event, EventFilter, EventKind, SEARCH_PROJECTOR_KINDS};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, warn};
+
+use crate::tap_projector::{backfill_search, SearchTap};
 
 /// Per-event behavior. Implementations should be cheap and non-blocking;
 /// the indexer awaits them serially within a single subscription.
@@ -115,14 +117,12 @@ impl Indexer {
     pub fn spawn_with_heartbeat(self, last_event_unix_ms: Arc<AtomicI64>) -> IndexerHandle {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         let heartbeat = last_event_unix_ms.clone();
+        let rebuild_needed = Arc::new(AtomicBool::new(false));
+        let rebuild_flag = rebuild_needed.clone();
         let join = tokio::spawn(async move {
             let mut backoff = RECONNECT_INITIAL;
             loop {
-                let filter = EventFilter::all().with_kinds([
-                    EventKind::MessagePosted,
-                    EventKind::MessageEdited,
-                    EventKind::MessageTombstoned,
-                ]);
+                let filter = EventFilter::all().with_kinds(SEARCH_PROJECTOR_KINDS.iter().copied());
                 let stream = match self.bus.subscribe(filter).await {
                     Ok(s) => s,
                     Err(err) => {
@@ -145,12 +145,24 @@ impl Indexer {
                     self.log.as_deref(),
                     &mut shutdown_rx,
                     &heartbeat,
+                    &rebuild_flag,
                 )
                 .await;
                 match outcome {
                     ConsumeOutcome::ShutdownRequested => return,
                     ConsumeOutcome::StreamEnded => {
                         warn!("indexer stream ended; resubscribing");
+                    }
+                    ConsumeOutcome::RebuildRequired => {
+                        rebuild_flag.store(true, Ordering::Relaxed);
+                        error!("search projector must rebuild; index must not diverge silently");
+                        if tokio::time::timeout(backoff, shutdown_rx.recv())
+                            .await
+                            .is_ok()
+                        {
+                            return;
+                        }
+                        backoff = (backoff * 2).min(RECONNECT_MAX);
                     }
                 }
             }
@@ -159,6 +171,7 @@ impl Indexer {
             shutdown: shutdown_tx,
             join,
             last_event_unix_ms,
+            rebuild_needed,
         }
     }
 }
@@ -168,6 +181,17 @@ impl Indexer {
 enum ConsumeOutcome {
     ShutdownRequested,
     StreamEnded,
+    RebuildRequired,
+}
+
+async fn project_row(
+    handler: &dyn EventHandler,
+    row: maidan_types::StoredEvent,
+) -> Result<(), maidan_types::TapFault> {
+    let event = serde_json::from_value::<Event>(row.payload)
+        .map_err(|_| maidan_types::TapFault::MissingHistory)?;
+    handler.handle(&event).await;
+    Ok(())
 }
 
 async fn consume(
@@ -176,13 +200,36 @@ async fn consume(
     log: Option<&dyn Store>,
     shutdown_rx: &mut mpsc::Receiver<()>,
     last_event_unix_ms: &AtomicI64,
+    rebuild_flag: &AtomicBool,
 ) -> ConsumeOutcome {
+    let mut tap = SearchTap::new();
     let mut watermark: i64 = 0;
+    if let Some(store) = log {
+        match backfill_search(store, &mut tap, |row| async move {
+            project_row(handler, row).await
+        })
+        .await
+        {
+            Ok(hw) => {
+                watermark = hw;
+                rebuild_flag.store(false, Ordering::Relaxed);
+            }
+            Err(fault) => {
+                error!(?fault, "search projector backfill failed closed");
+                rebuild_flag.store(true, Ordering::Relaxed);
+                return ConsumeOutcome::RebuildRequired;
+            }
+        }
+    }
+
     loop {
         tokio::select! {
             item = stream.next() => {
                 match item {
                     Some(maidan_bus::BusItem::Event(envelope)) => {
+                        if log.is_some() && envelope.log_id <= watermark {
+                            continue;
+                        }
                         watermark = watermark.max(envelope.log_id);
                         handler.handle(&envelope.event).await;
                         last_event_unix_ms.store(
@@ -192,31 +239,31 @@ async fn consume(
                     }
                     Some(maidan_bus::BusItem::Lagged { skipped }) => {
                         let Some(store) = log else {
-                            warn!(skipped, "indexer bus subscriber lagged; events may be missing from the index");
-                            continue;
+                            error!(
+                                skipped,
+                                "indexer lagged with no durable log; search projector must rebuild"
+                            );
+                            rebuild_flag.store(true, Ordering::Relaxed);
+                            return ConsumeOutcome::RebuildRequired;
                         };
-                        warn!(skipped, watermark, "indexer bus subscriber lagged; resuming from log");
-                        match maidan_store::resume_from_log(store, watermark, |page| async move {
-                            for row in page {
-                                if !matches!(
-                                    row.kind,
-                                    EventKind::MessagePosted
-                                        | EventKind::MessageEdited
-                                        | EventKind::MessageTombstoned
-                                ) {
-                                    continue;
-                                }
-                                let Ok(event) = serde_json::from_value::<Event>(row.payload) else {
-                                    continue;
-                                };
-                                handler.handle(&event).await;
-                            }
+                        warn!(
+                            skipped,
+                            watermark, "indexer bus subscriber lagged; re-verifying log"
+                        );
+                        tap = SearchTap::new();
+                        match backfill_search(store, &mut tap, |row| async {
+                            project_row(handler, row).await
                         })
                         .await
                         {
-                            Ok(hw) => watermark = watermark.max(hw),
-                            Err(err) => {
-                                warn!(error = %err, "indexer lag resume from log failed");
+                            Ok(hw) => {
+                                watermark = hw;
+                                rebuild_flag.store(false, Ordering::Relaxed);
+                            }
+                            Err(fault) => {
+                                error!(?fault, "search projector lag rebuild failed closed");
+                                rebuild_flag.store(true, Ordering::Relaxed);
+                                return ConsumeOutcome::RebuildRequired;
                             }
                         }
                         last_event_unix_ms.store(
@@ -239,6 +286,10 @@ pub struct IndexerHandle {
     shutdown: mpsc::Sender<()>,
     join: tokio::task::JoinHandle<()>,
     pub last_event_unix_ms: Arc<AtomicI64>,
+    /// Set when the tap contract fails closed (gap, chain break, lagged
+    /// without a log). Operators rebuild from the messages table; the
+    /// indexer must not keep projecting a gapped suffix.
+    pub rebuild_needed: Arc<AtomicBool>,
 }
 
 impl IndexerHandle {
