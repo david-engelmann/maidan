@@ -190,7 +190,8 @@ flowchart LR
   by back-filling from the log. Every stored event is **hash-chained** per workspace
   (`{id, lsn, prev_hash, content_hash}`, SHA-256 of canonical JSON — hashed, not signed).
   `GET /workspaces/:wid/events/verify` walks the retained suffix and 409s on a break.
-  Delivery cursors give opt-in at-least-once per consumer; lean frames offer a "go fetch"
+  A peer that missed a pruned prefix takes `GET /workspaces/:wid/snapshot` then
+  `…/events/catch-up`. Delivery cursors give opt-in at-least-once per consumer; lean frames offer a "go fetch"
   pointer. Resource-update notifications and presence/roster fan out **across replicas**
   over dedicated NOTIFY channels.
 - **Notifications & reach.** A per-recipient ledger (one row per recipient × source event)
