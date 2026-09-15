@@ -73,6 +73,32 @@ pub fn get_workspace_usage() {}
 
 #[utoipa::path(
     get,
+    path = "/workspaces/{id}/tombstones",
+    tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        ListTombstonesQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [TombstoneRecord], description = "Tombstoned messages, newest first; include_purged reconstructs hard deletes"))
+)]
+pub fn list_workspace_tombstones() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/kind-census",
+    tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        KindCensusQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = KindCensus, description = "EventKind counts for the workspace or a narrower scope"))
+)]
+pub fn get_workspace_kind_census() {}
+
+#[utoipa::path(
+    get,
     path = "/workspaces/{id}/results",
     tag = "workspaces",
     params(

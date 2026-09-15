@@ -285,6 +285,21 @@ pub async fn get_message(
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
+/// Incoming pointers at a message (Cluster 394.2): `RelationKind` reverse
+/// edges plus pins, reactions, and votes. `workspace:read` + message access.
+/// Works on a retained tombstone (the row is still there).
+pub async fn list_message_backlinks(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<MessageBacklinks>> {
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
+    Ok(Json(
+        state.store.list_message_backlinks(MessageId(id)).await?,
+    ))
+}
+
 pub async fn list_message_edits(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

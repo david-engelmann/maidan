@@ -420,6 +420,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/messages/{id}/backlinks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/messages/{id}/mentions",
     "capability": "workspace:write",
@@ -920,6 +926,18 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/usage",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/tombstones",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/kind-census",
     "capability": "workspace:read",
     "surface": "http"
   },

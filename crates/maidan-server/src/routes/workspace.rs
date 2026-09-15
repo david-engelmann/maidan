@@ -183,6 +183,83 @@ pub async fn get_workspace_usage(
     Ok(Json(state.store.workspace_usage(workspace_id).await?))
 }
 
+/// Tombstone / deletion explorer (Cluster 394.2). Soft-deleted messages in
+/// this workspace (body already cleared); `include_purged` reconstructs
+/// hard-deleted rows from `MessageTombstoned`. `workspace:read`; inaccessible
+/// private-channel / DM rows are dropped.
+pub async fn list_workspace_tombstones(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ListTombstonesQuery>,
+) -> ApiResult<Json<Vec<TombstoneRecord>>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    if let Some(cid) = q.channel_id {
+        maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ChannelId(cid)).await?;
+    }
+    if let Some(tid) = q.thread_id {
+        maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(tid)).await?;
+    }
+    let limit = maidan_types::clamp_tombstone_limit(q.limit);
+    let rows = state
+        .store
+        .list_tombstones(
+            workspace_id,
+            q.channel_id.map(ChannelId),
+            q.thread_id.map(ThreadId),
+            q.include_purged,
+            limit,
+        )
+        .await?;
+    if auth.bypass {
+        return Ok(Json(rows));
+    }
+    let mut visible = Vec::with_capacity(rows.len());
+    for row in rows {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, row.thread_id).await? {
+            visible.push(row);
+        }
+    }
+    Ok(Json(visible))
+}
+
+/// EventKind census for a workspace (Cluster 394.2). Optional channel/thread
+/// narrowing. `workspace:read`; private channels the caller cannot access are
+/// excluded in the query (`private_channel_deny_set`).
+pub async fn get_workspace_kind_census(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<KindCensusQuery>,
+) -> ApiResult<Json<KindCensus>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    if let Some(cid) = q.channel_id {
+        maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ChannelId(cid)).await?;
+    }
+    if let Some(tid) = q.thread_id {
+        maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(tid)).await?;
+    }
+    let deny =
+        maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
+    Ok(Json(
+        state
+            .store
+            .event_kind_census(
+                workspace_id,
+                q.channel_id.map(ChannelId),
+                q.thread_id.map(ThreadId),
+                &deny,
+            )
+            .await?,
+    ))
+}
+
 /// Workspace-scoped thread-result list (Cluster 381.2). Optional exact-match
 /// `result_kind` facet on the namespaced string (e.g. `example.review.result/1`).
 /// `workspace:read`; private-channel rows the caller cannot access are dropped.

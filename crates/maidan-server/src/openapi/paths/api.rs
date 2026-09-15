@@ -804,6 +804,12 @@ pub fn post_message() {}
     responses((status = 200, body = Message)))]
 pub fn get_message() {}
 
+#[utoipa::path(get, path = "/messages/{id}/backlinks", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MessageBacklinks, description = "Incoming RelationKind edges plus pins, reactions, and votes")))]
+pub fn list_message_backlinks() {}
+
 #[utoipa::path(patch, path = "/messages/{id}", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
     request_body = EditMessageRequest,

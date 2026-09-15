@@ -15,7 +15,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 
 | Capability | Routes / behavior |
 |------------|-------------------|
-| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
+| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
 | `thread:transition` | POST thread FSM transitions; MCP `transition_thread` |
