@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v395.0.0 — Wave 3 #35: named capability sets + stable `maidan://` URIs
+
+Four impl PRs (395.1–395.4) + a retro. Named sets `maidan.agent.worker` / `maidan.human.admin` expand at mint time. Holders derive a weaker token without `token:admin` (Levy/Madden attenuation). Room URIs are `maidan://{workspace_id}/…` with an optional content-hash fragment; a handle rename cannot break stored ids. `GET /.well-known/maidan-room` is scheme-only. **Row #35 is closed.** Do **not** start #36 from this close.
+
+| Change | Where |
+|--------|-------|
+| **Types (395.1):** `RoomUri` / `RoomCard` / `RoomDiscovery` / handle syntax. | `crates/maidan-types/src/{room_uri,room}.rs` |
+| **Auth (395.2):** `named_sets` / `progressive_grant` / `attenuate` / `attenuate_expiry`. | `crates/maidan-auth/src/capability_set.rs` |
+| **Store (395.3):** `maidan_workspace_handles` (pg 0093 / sqlite 0092). | `crates/maidan-store/src/{postgres,sqlite}/workspace_handles.rs` |
+| **REST + MCP (395.4):** mint `capability_set`; `POST /tokens/attenuate`; well-known + room card + handle; MCP twins. | `crates/maidan-server/src/routes/{token,room}.rs`, `crates/maidan-mcp/src/tools/room.rs` |
+
 ## v394.0.0 — Wave 3 #34: tombstone explorer, backlink index, kind census
 
 Three impl PRs (394.1–394.3) + a retro. Discover deleted messages honestly

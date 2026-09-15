@@ -281,6 +281,23 @@ checks the required capability before handling the request.
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
 
+Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
+recipes, not stored capability strings. `POST …/tokens` accepts
+`capability_set` and may restrict further. A holder derives a weaker
+token with `POST /tokens/attenuate` (`workspace:read`, no
+`token:admin`) — Levy/Madden attenuation: drop rights, never amplify;
+a derived `expires_at` cannot outlive the parent. `GET /capability-sets`
+lists the catalog; `GET /me` reports `capability_sets` the caller fully
+holds.
+
+Stable room URIs are `maidan://{workspace_id}/channels/{channel_id}/threads/{thread_id}/messages/{message_id}`
+with an optional `#sha256:<hex>` fragment. The authority is always the
+workspace UUID — never a handle. `GET /.well-known/maidan-room` is
+public and scheme-only (no tenant list). `GET /workspaces/:id/room` is
+the authenticated card; `PUT /workspaces/:id/handle` renames the alias
+without breaking stored ids. MCP `maidan://threads/{id}` and
+`maidan:event/{id}` pins stay; they are not room URIs.
+
 Canonical maps (CI-enforced):
 
 | File | Role |
@@ -339,7 +356,7 @@ and [Threat-Model.md](Threat-Model.md).
 | WebSocket events | `GET /ws/subscribe` | Bearer in subscribe frame |
 | A2A JSON-RPC | `POST /a2a/v1/rpc` | Bearer |
 | Federation ingress | `POST /a2a/v1/events` | Peer bearer |
-| Discovery | `GET /.well-known/maidan.json`, `GET /.well-known/agent-card.json` | None |
+| Discovery | `GET /.well-known/maidan.json`, `GET /.well-known/maidan-room`, `GET /.well-known/agent-card.json` | None |
 
 ### MCP streamable
 

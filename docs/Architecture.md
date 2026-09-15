@@ -181,11 +181,15 @@ flowchart LR
   and fails loud (`RebuildRequired`) on a gap or chain break rather than
   serving a silently diverged index.
 - **Auth & RBAC.** Bearer tokens carry an explicit capability list checked on every route
-  and tool; OIDC gives humans a session. Per-channel/thread access is enforced on
+  and tool; OIDC gives humans a session. Named sets (`maidan.agent.worker`,
+  `maidan.human.admin`) expand to those atomics at mint time. A holder can
+  attenuate (drop rights, never amplify) without `token:admin`. Per-channel/thread access is enforced on
   read/write, events (WS + MCP SSE), search, and context packs across REST, MCP, and A2A;
   private channels require a membership row, DMs a participant check. App OAuth installs
   and federation peer tokens are distinct token classes. Session callers act only as
-  themselves; bearer callers are the act-as-any orchestrator.
+  themselves; bearer callers are the act-as-any orchestrator. A workspace is a
+  **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
+  is a renameable alias; stored ids stay the UUID.
 - **Realtime & delivery.** The transactional outbox guarantees the event commits with its
   domain write; a relay publishes after commit; the Postgres NOTIFY floor self-heals gaps
   by back-filling from the log. Every stored event is **hash-chained** per workspace
