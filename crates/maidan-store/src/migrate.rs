@@ -128,6 +128,8 @@ const POSTGRES_UP_V90: &str = include_str!("../../../migrations/postgres/0090_th
 const POSTGRES_UP_V91: &str = include_str!("../../../migrations/postgres/0091_event_chain.sql");
 const POSTGRES_UP_V92: &str =
     include_str!("../../../migrations/postgres/0092_federated_origin_link.sql");
+const POSTGRES_UP_V93: &str =
+    include_str!("../../../migrations/postgres/0093_workspace_handles.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -232,6 +234,7 @@ const SQLITE_UP_V89: &str = include_str!("../../../migrations/sqlite/0089_thread
 const SQLITE_UP_V90: &str = include_str!("../../../migrations/sqlite/0090_event_chain.sql");
 const SQLITE_UP_V91: &str =
     include_str!("../../../migrations/sqlite/0091_federated_origin_link.sql");
+const SQLITE_UP_V92: &str = include_str!("../../../migrations/sqlite/0092_workspace_handles.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -377,6 +380,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 91, POSTGRES_UP_V91).await?;
     crate::postgres::events::backfill_chain(pool).await?;
     apply_postgres(pool, 92, POSTGRES_UP_V92).await?;
+    apply_postgres(pool, 93, POSTGRES_UP_V93).await?;
     Ok(())
 }
 
@@ -483,6 +487,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 90, SQLITE_UP_V90).await?;
     crate::sqlite::events::backfill_chain(pool).await?;
     apply_sqlite(pool, 91, SQLITE_UP_V91).await?;
+    apply_sqlite(pool, 92, SQLITE_UP_V92).await?;
     Ok(())
 }
 

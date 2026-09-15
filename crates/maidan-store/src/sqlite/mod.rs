@@ -80,6 +80,7 @@ mod votes;
 mod waits;
 mod webhooks;
 mod wip;
+mod workspace_handles;
 mod workspaces;
 
 use async_trait::async_trait;
@@ -172,6 +173,25 @@ impl WorkspaceStore for SqliteStore {
     }
     async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError> {
         wip::get_limit(&self.pool, workspace_id).await
+    }
+    async fn set_workspace_handle(
+        &self,
+        workspace_id: WorkspaceId,
+        handle: &str,
+    ) -> Result<WorkspaceHandle, StoreError> {
+        workspace_handles::set(&self.pool, workspace_id, handle).await
+    }
+    async fn get_workspace_handle(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<WorkspaceHandle>, StoreError> {
+        workspace_handles::get(&self.pool, workspace_id).await
+    }
+    async fn workspace_id_for_handle(
+        &self,
+        handle: &str,
+    ) -> Result<Option<WorkspaceId>, StoreError> {
+        workspace_handles::workspace_id_for_handle(&self.pool, handle).await
     }
 }
 
