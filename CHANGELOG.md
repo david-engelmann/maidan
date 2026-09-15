@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [391.0.0] — 2026-09-14
+
+Post-gate hardening (Phase XXIV). **Wave 3 #31 — signed workspace
+export.** Three impl PRs (391.1–391.3) + a retro. No new gate tag.
+**Row #31 is closed.** Do not start #32–36 from this close.
+
+A workspace export is a self-contained `maidan.workspace.export/1`
+Ed25519 envelope. A blank instance verifies the file without calling
+the origin (embedded public key + canonical statement hash). Optional
+`MAIDAN_EXPORT_VERIFY_KEYS` pins authenticity. **Tokens die on
+export** — API tokens and secrets are omitted; after import the
+operator mints new tokens. Do **not** conflate with Room-LSN or
+`Maidan-Consistency-Token`.
+
+- **391.1** envelope types + Ed25519 sign/verify.
+- **391.2** signed REST export / verify / import.
+- **391.3** MCP twins; shared assemble/flatten.
+
 ## [390.0.0] — 2026-09-14
 
 Post-gate hardening (Phase XXIV). **Wave 3 #30 — EventKind JSON-Schema
