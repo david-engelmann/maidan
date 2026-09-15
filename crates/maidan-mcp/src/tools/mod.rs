@@ -22,6 +22,7 @@ mod budget;
 mod catalog;
 mod channel;
 mod delivery;
+mod export;
 mod freeze;
 mod glossary;
 mod land_gate;
@@ -184,7 +185,12 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "snapshot_thread_context" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         "list_secrets" | "resolve_secret" => Ok(SECRET_READ),
-        "freeze_member" | "unfreeze_member" | "list_frozen_members" => Ok(TOKEN_ADMIN),
+        "freeze_member"
+        | "unfreeze_member"
+        | "list_frozen_members"
+        | "export_workspace"
+        | "verify_workspace_export"
+        | "import_workspace" => Ok(TOKEN_ADMIN),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
         "list_references" => Ok(WORKSPACE_READ),
@@ -492,6 +498,9 @@ pub async fn dispatch(
         "freeze_member" => freeze::freeze_member(store, auth, args).await,
         "unfreeze_member" => freeze::unfreeze_member(store, auth, args).await,
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
+        "export_workspace" => export::export_workspace(server, auth, args).await,
+        "verify_workspace_export" => export::verify_workspace_export(server, args),
+        "import_workspace" => export::import_workspace(server, args).await,
         "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
         "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
         "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,

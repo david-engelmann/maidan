@@ -84,6 +84,12 @@ pub struct McpServer {
     /// once at startup from the server's keyring; unset in tests/embedders that
     /// don't configure one, in which case `resolve_secret` reports it's unavailable.
     encryption_key: std::sync::OnceLock<Arc<[u8; 32]>>,
+    /// Operator Ed25519 key for signed workspace export (Cluster 391). Unset
+    /// means `export_workspace` refuses — never emit an unsigned bundle.
+    export_signing: std::sync::OnceLock<maidan_auth::ExportSigningKey>,
+    /// Optional public-key pin for `verify_workspace_export` / import.
+    /// Empty = integrity against the embedded key only (blank-instance default).
+    export_verify_keys: std::sync::OnceLock<Vec<[u8; 32]>>,
 }
 
 impl McpServer {
@@ -109,6 +115,8 @@ impl McpServer {
             resource_notifier: None,
             slash_dispatcher: std::sync::OnceLock::new(),
             encryption_key: std::sync::OnceLock::new(),
+            export_signing: std::sync::OnceLock::new(),
+            export_verify_keys: std::sync::OnceLock::new(),
         }
     }
 
@@ -121,6 +129,29 @@ impl McpServer {
 
     pub(crate) fn encryption_key(&self) -> Option<&Arc<[u8; 32]>> {
         self.encryption_key.get()
+    }
+
+    /// Install the operator signing key for `export_workspace` (Cluster 391).
+    /// Called once at startup; unset means the tool refuses.
+    pub fn set_export_signing(&self, key: maidan_auth::ExportSigningKey) {
+        let _ = self.export_signing.set(key);
+    }
+
+    pub(crate) fn export_signing(&self) -> Option<&maidan_auth::ExportSigningKey> {
+        self.export_signing.get()
+    }
+
+    /// Install the optional authenticity pin for verify/import. Empty or
+    /// unset = integrity against the envelope's embedded public key only.
+    pub fn set_export_verify_keys(&self, keys: Vec<[u8; 32]>) {
+        let _ = self.export_verify_keys.set(keys);
+    }
+
+    pub(crate) fn export_verify_keys(&self) -> &[[u8; 32]] {
+        self.export_verify_keys
+            .get()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Attach the server-side slash-command dispatcher (Cluster 345). Called once

@@ -17,6 +17,7 @@ pub mod postgres;
 pub mod result_delivery;
 pub mod sqlite;
 pub mod store;
+pub mod workspace_export;
 
 pub use automation_deliveries::AutomationDeliveryFilter;
 pub use dialect::Dialect;
@@ -56,6 +57,7 @@ pub async fn configure_sqlite_pool_with(
     sqlite::configure_pool_with(pool, busy_timeout_ms).await
 }
 pub use store::Store;
+pub use workspace_export::build_workspace_export;
 // The domain sub-traits `Store` composes (Cluster 349). Re-exported so a caller
 // that needs only one concern can bound on the narrower trait; `dyn Store` still
 // exposes them all via the super-trait.

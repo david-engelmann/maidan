@@ -26,6 +26,7 @@ pub mod signed_export;
 pub mod spawn;
 pub mod usage;
 pub mod waiter;
+pub mod workspace_import;
 
 pub use cursor::*;
 pub use egress::*;
@@ -49,3 +50,4 @@ pub use signed_export::*;
 pub use spawn::*;
 pub use usage::*;
 pub use waiter::*;
+pub use workspace_import::*;

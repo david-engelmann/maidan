@@ -908,6 +908,39 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "export_workspace",
+            "description": "Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "defaults to the caller's workspace"}
+                }
+            }
+        }),
+        json!({
+            "name": "verify_workspace_export",
+            "description": "Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "envelope": {"type": "object", "description": "the signed envelope; you may also pass the envelope fields at the top level"}
+                }
+            }
+        }),
+        json!({
+            "name": "import_workspace",
+            "description": "Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "envelope": {"type": "object", "description": "the signed maidan.workspace.export/1 envelope"},
+                    "mode": {"type": "string", "enum": ["new", "restore"], "description": "defaults to new"},
+                    "force": {"type": "boolean", "description": "erase an existing workspace when mode is restore"}
+                },
+                "required": ["envelope"]
+            }
+        }),
+        json!({
             "name": "create_memory_block",
             "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
             "inputSchema": {
