@@ -72,6 +72,25 @@ pub trait WorkspaceStore: Send + Sync {
     ) -> Result<(), StoreError>;
     /// The workspace's WIP limit, or `None` if unset (unlimited).
     async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
+
+    /// Set or rename a workspace handle (Cluster 395). The workspace id
+    /// is unchanged. Invalid syntax is [`StoreError::InvalidInput`]; a
+    /// handle owned by another workspace is [`StoreError::Conflict`].
+    async fn set_workspace_handle(
+        &self,
+        workspace_id: WorkspaceId,
+        handle: &str,
+    ) -> Result<WorkspaceHandle, StoreError>;
+    /// The workspace's current handle, or `None`.
+    async fn get_workspace_handle(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<WorkspaceHandle>, StoreError>;
+    /// Resolve a handle to a workspace id, or `None`.
+    async fn workspace_id_for_handle(
+        &self,
+        handle: &str,
+    ) -> Result<Option<WorkspaceId>, StoreError>;
 }
 
 #[async_trait]
