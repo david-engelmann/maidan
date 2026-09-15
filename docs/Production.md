@@ -22,6 +22,8 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` | no | Explicit acknowledgement required to honor `AUTH_DISABLED`. Never set in production. |
 | `MAIDAN_BOOTSTRAP` | no    | Set to `1` only during initial seed when auth is on **and** the server was built with the `bootstrap` Cargo feature (default for local dev; **off** in the production Docker image unless `MAIDAN_ENABLE_BOOTSTRAP=1` at image build). Allows unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members`. Only the **first** workspace may be created via bootstrap; remove the flag and restart after minting tokens. |
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
+| `MAIDAN_EXPORT_SIGNING_KEY` | to *produce* a signed workspace export | 32-byte Ed25519 seed (64-char hex or standard base64). `GET /workspaces/:id/export` and MCP `export_workspace` refuse until set — never an unsigned bundle. Back up with your other operator secrets; losing it does not strand existing files (the public key is in the artifact). |
+| `MAIDAN_EXPORT_VERIFY_KEYS` | no | Comma-separated 32-byte public keys (hex or base64). When set, verify/import accept only those keys (authenticity pin). Empty / unset = integrity against the embedded key only — the blank-instance default. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
@@ -645,7 +647,8 @@ Two operator scripts implement it:
 **Not in the data backup — restore these from your secret manager, out of band:**
 `DATABASE_URL`, `MAIDAN_SESSION_SECRET` (subscribe-resume/session signing),
 `FEDERATION_ENCRYPTION_KEY` (+ any `FEDERATION_DECRYPT_KEYS` — see the Cluster-189
-rotation keyring), and SMTP/OIDC credentials. A DB dump without the session secret
+rotation keyring), `MAIDAN_EXPORT_SIGNING_KEY` (and any
+`MAIDAN_EXPORT_VERIFY_KEYS` pin), and SMTP/OIDC credentials. A DB dump without the session secret
 still restores all data; only signed-token continuity needs the same secret.
 
 **RPO / RTO.** A periodic `backup.sh` (e.g. hourly cron) gives an RPO of one backup
@@ -661,6 +664,24 @@ store + indexer + the `LISTEN` bus) → scale out. Because artifacts are
 content-addressed, a message referencing a blob that predates the artifact backup is
 still consistent after restore; a blob written *after* the last artifact archive is
 the only thing a stale artifact backup can miss.
+
+## Signed workspace export
+
+A **tenant portability** file is not a `pg_dump`. `GET /workspaces/:id/export`
+(`token:admin`) writes a `maidan.workspace.export/1` Ed25519 envelope a
+fresh GHCR instance can verify with `POST /workspaces/export/verify` and
+import with `POST /workspaces/import` — no callback to the origin host.
+
+**Tokens die on export.** The bundle omits API tokens and secrets. After
+import, mint new tokens (`token:admin`). A `pg_dump` restore *does*
+preserve hashed tokens (same `DATABASE_URL` / same instance); a signed
+export is a *different* machine and must not.
+
+Set `MAIDAN_EXPORT_SIGNING_KEY` on the origin. On a destination that
+should accept *only your* key, set `MAIDAN_EXPORT_VERIFY_KEYS` to that
+public key (`GET /operator/export-public-key` on the origin). A blank
+instance with neither key still verifies integrity (tamper-evident).
+See [Integration.md](Integration.md#workspace-portability-signed-export).
 
 ## API stability
 

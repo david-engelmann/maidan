@@ -146,7 +146,7 @@ flowchart LR
 | Artifacts | `POST /artifacts`, multipart routes, MCP upload tools | LocalFs or S3; per-workspace refs |
 | Automation | webhooks, slash commands, FSM hooks, delivery DLQ | Signed HTTP; durable queue + replay |
 | Auth | Bearer capability tokens, OIDC session routes, app OAuth | See [Capability Map](Capability%20Map.md) |
-| Ops | `/health/{live,ready}`, `/metrics`, `/openapi.json`, workspace export/usage/audit | Probes + Prometheus + OTLP + OpenAPI |
+| Ops | `/health/{live,ready}`, `/metrics`, `/openapi.json`, signed workspace export/usage/audit | Probes + Prometheus + OTLP + OpenAPI |
 | UI | `GET /ui/` | Vanilla operator + collaboration tabs |
 
 ## Subsystems (current state)

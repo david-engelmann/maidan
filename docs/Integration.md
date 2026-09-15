@@ -190,7 +190,7 @@ checks the required capability before handling the request.
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
-| `token:admin` | Mint/list/revoke API tokens, app install admin |
+| `token:admin` | Mint/list/revoke API tokens, app install admin, signed workspace export / verify / import |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
 
@@ -203,6 +203,39 @@ Canonical maps (CI-enforced):
 | [contracts/mcp-tool-names.json](../contracts/mcp-tool-names.json) | Allowed MCP tool names |
 
 Human-readable summary: [Capability Map.md](Capability%20Map.md).
+
+### Workspace portability (signed export)
+
+`GET /workspaces/:id/export` (`token:admin`) returns a self-contained
+`maidan.workspace.export/1` envelope: the Cluster-187 content graph
+(members, channels, threads, messages, edits, pins, references) plus an
+Ed25519 signature. A **blank** Maidan instance (empty database, GHCR
+image, no route back to the origin) verifies the file with
+`POST /workspaces/export/verify` and imports with
+`POST /workspaces/import` (`?mode=new` remaps ids; `?mode=restore`
+keeps them). MCP twins: `export_workspace`, `verify_workspace_export`,
+`import_workspace`.
+
+**Tokens die on export.** API tokens, webhook / slash / OIDC secrets,
+and at-rest keys are omitted. Presence of a credential field
+(`token_hash`, `webhook_secret`, …) is a verification failure, not a
+feature. After import, mint new tokens on the destination
+(`POST /workspaces/{id}/members/{member_id}/tokens`). There is no
+re-bind story — continuity is unsafe.
+
+**Who signs / who verifies.** The origin operator holds
+`MAIDAN_EXPORT_SIGNING_KEY` (32-byte Ed25519 seed, hex or base64). The
+public key travels in the artifact. Verification recomputes a canonical
+JSON statement (every field except `content_sha256` and `signature`),
+checks the SHA-256, then checks Ed25519 — no HTTP callback. Optional
+`MAIDAN_EXPORT_VERIFY_KEYS` pins expected public keys (authenticity).
+When that pin is empty, a stranger still detects *tamper* against the
+embedded key. Missing signing key → export refuses (never unsigned).
+Bit-flip or a bad signature → 400.
+
+This envelope is not `Maidan-Room-LSN` and not
+`Maidan-Consistency-Token`. See [Production.md](Production.md#signed-workspace-export)
+and [Threat-Model.md](Threat-Model.md).
 
 ---
 

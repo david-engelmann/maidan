@@ -22,7 +22,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
-| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`) |
+| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); signed workspace export / verify / import |
 
 ## MCP (`POST /mcp` tools/call)
 

@@ -3,6 +3,16 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v391.0.0 — Wave 3 #31: signed workspace export
+
+Three impl PRs (391.1–391.3) + a retro. A workspace leaves the host as a signed `maidan.workspace.export/1` envelope a blank GHCR instance can verify without calling the origin. **Tokens die on export** — secrets are omitted; stuffed credential fields fail closed; mint new tokens after import. Operator Ed25519 key (`MAIDAN_EXPORT_SIGNING_KEY`); optional `MAIDAN_EXPORT_VERIFY_KEYS` authenticity pin. Not Room-LSN / not Consistency-Token. **Row #31 is closed.** Do not start #32–36 from this close.
+
+| Change | Where |
+|--------|-------|
+| **Envelope (391.1):** `$type` `maidan.workspace.export/1`, `TokenPolicy::TokensDieOnExport`, canonical JSON + Ed25519. | `crates/maidan-types/src/signed_export.rs`, `crates/maidan-auth/src/export_sign.rs` |
+| **REST (391.2):** signed `GET /workspaces/:id/export`, `POST /workspaces/export/verify`, signed `POST /workspaces/import`, `GET /operator/export-public-key`. All `token:admin`. | `crates/maidan-server/src/{export,routes/workspace}.rs` |
+| **MCP (391.3):** `export_workspace` / `verify_workspace_export` / `import_workspace`; shared assemble/flatten. | `crates/maidan-mcp/src/tools/export.rs`, `crates/maidan-store/src/workspace_export.rs` |
+
 ## v390.0.0 — Wave 3 #30: EventKind lexicon, `$type`, Room-LSN
 
 Four impl PRs (390.1–390.4) + a retro. An EventKind JSON-Schema pack (lexicon analogue) plus `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type). `Maidan-Room-LSN` is the event-log high-water so clients see projector / broadcast lag — **not** `Maidan-Consistency-Token` (WAL, replica-gated, Cluster 263). Canon snapshot tests over normalized wire shapes. SDK stays 0.1.0. **Row #30 is closed.**
