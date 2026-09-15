@@ -15,20 +15,20 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 
 | Capability | Routes / behavior |
 |------------|-------------------|
-| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
+| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:wid/mention-webhook`, group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
 | `thread:transition` | POST thread FSM transitions; MCP `transition_thread` |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
-| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); signed workspace export / verify / import |
+| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); signed workspace export / verify / import; snapshot `include_graph=true` |
 
 ## MCP (`POST /mcp` tools/call)
 
 | Capability | Tools |
 |------------|-------|
-| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context` |
+| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_log_snapshot`, `catch_up_events`, `verify_event_chain` |
 | `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook` |
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |

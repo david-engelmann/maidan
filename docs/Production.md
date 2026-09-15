@@ -291,6 +291,7 @@ no per-workspace series).
 | `maidan_subscribe_replay_total{outcome="replay_hint"}` | Lag without workspace scope or auto-replay failed | Fix client filter; inspect store/DB errors in logs |
 | `maidan_subscribe_replay_total{outcome="replay_truncated"}` sustained | Event log replay hitting 500-row window | Client should loop on `after_id` / `resume_token` until truncation stops |
 | `maidan_indexer_last_event_age_seconds` high (with `INDEXER_STALE_SECS` set) | Indexer silent while messages post | Check embedding provider errors on `/health`; verify indexer task running |
+| Indexer `rebuild_needed` / `RebuildRequired` in logs | Search tap hit a chain break or `Lagged` without a durable log | Do not keep serving the gapped index. Reindex from the messages table (`maidan reindex-embeddings`). A peer that missed a pruned prefix takes `GET /workspaces/:id/snapshot` then `…/events/catch-up` — never clamp |
 | `maidan_bus_listener_ok == 0` | Postgres `LISTEN` task degraded | Inspect DB connectivity; `maidan_bus_listener_errors_total` trend |
 
 ### Postgres bus NOTIFY pointers (`v7.0.0`)
@@ -696,10 +697,20 @@ chain is the signed-export envelope above.
 retained suffix and **409s** (`event-log-broken`) on a break. Federation
 ingest checks origin hashes the same way before remap. After retention
 prune, verify the remaining suffix — snapshot catch-up of a dropped
-prefix is Open Work #33.
+prefix is Cluster 393 (below).
 
 No extra env vars. See [Integration.md](Integration.md#event-log-hash-chain)
 and [Threat-Model.md](Threat-Model.md).
+
+## Log snapshot
+
+A **log snapshot** (`GET /workspaces/:id/snapshot`, Cluster 393) is a
+different artifact: a hashed checkpoint of the same content graph plus
+the retained event-log floor/head, so a peer can catch up after
+retention pruned the prefix. It is not Ed25519-signed (391 is
+authorship). `include_graph=true` is `token:admin` or a federation
+peer — the default header + `graph_hash` is enough to verify a later
+graph fetch. See [Integration.md](Integration.md#snapshot--since-lsn-catch-up).
 
 ## API stability
 

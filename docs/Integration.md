@@ -190,7 +190,7 @@ verifies; rewrite-detection is for a peer that already has a prefix.
 retained suffix. Intact → 200 `ChainVerifyReport`. Break → **409**
 `https://maidan.dev/problems/event-log-broken`. After retention prune,
 the oldest remaining row is the floor (it need not chain from genesis).
-Snapshot catch-up of a pruned prefix is Open Work #33.
+Snapshot catch-up of a pruned prefix is Cluster 393 (below).
 
 Federation ingest (`POST /a2a/v1/events`) verifies the **origin**
 envelope's hashes before parse/remap. A rewrite is the same 409. Local
@@ -206,6 +206,36 @@ persist on `metadata.citations` and echo on the agent reply. Malformed
 
 This chain is not MST/CAR, not Room-LSN-as-a-header, and not signed
 workspace export.
+
+### Snapshot + since-LSN catch-up
+
+A peer that missed a pruned prefix does **not** clamp onto the remaining
+log. It takes `GET /workspaces/{id}/snapshot`
+(`maidan.event-log.snapshot/1`) and pages
+`GET /workspaces/{id}/events/catch-up?after_lsn=`
+(`maidan.event-log.catch-up/1`). The snapshot is hashed (SHA-256 of
+the domain graph, no `exported_at`) plus the retained floor/head
+`EventLink`. It is **not** the Cluster 391 Ed25519 export — that
+answers authorship. Cluster 392 verifies the retained suffix; the
+snapshot covers history the log no longer holds.
+
+Default `include_graph=false`: `workspace:read` (or a federation peer)
+gets the header + `graph_hash`. `include_graph=true` is `token:admin`
+or a registered peer — the graph is an export dump. A 409
+`must_refetch` (CursorTooOld) now includes a `snapshot` href
+(`/workspaces/{id}/snapshot`) on REST problem JSON, WS frames, and
+MCP SSE. A broken catch-up page is 409 `event-log-broken`. MCP twins:
+`get_log_snapshot`, `catch_up_events`, `verify_event_chain`.
+
+**Tap projector contract.** Webhook, WS, MCP SSE, AG-UI, and search
+are taps — they are not the log. Each must (1) **verify** every
+backfill page, (2) **backfill** before live, (3) **filter** by
+projector shape, (4) **wait for history** against the workspace or
+shape head (not the global Room-LSN), (5) treat webhook / WS the
+same as SSE. A pruned gap is CursorTooOld → refetch the snapshot,
+never clamp. Search is a projector of message posted/edited/tombstoned
+events; a chain break or `Lagged` without a durable log fails loud
+(`RebuildRequired`) instead of serving a silently diverged index.
 
 **Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire.
 
@@ -225,7 +255,7 @@ checks the required capability before handling the request.
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
-| `token:admin` | Mint/list/revoke API tokens, app install admin, signed workspace export / verify / import |
+| `token:admin` | Mint/list/revoke API tokens, app install admin, signed workspace export / verify / import, snapshot `include_graph=true` |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
 

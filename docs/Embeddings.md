@@ -89,6 +89,15 @@ per-message write path retries `ensure_model` lazily.
 Backfill runs on its own task/queue and never enters the live indexer's bounded
 queue (Cluster 116), so a large-workspace reindex does not delay live indexing.
 
+The live indexer is a **tap projector** of the event log (Cluster 393).
+It verifies every backfill row on the per-workspace hash chain, projects
+only `message_posted` / `message_edited` / `message_tombstoned`, and
+drains history before applying live frames. A pruned gap or chain break
+fails closed (`RebuildRequired` on `IndexerHandle`); `Lagged` without a
+durable log is an error, not a warn-and-continue. Rebuild from the
+messages table via the existing reindex path — do not keep serving a
+gapped suffix.
+
 ### HNSW index parameters (Postgres)
 
 The HNSW build params (`m`, `ef_construction`) are applied when a model's table
