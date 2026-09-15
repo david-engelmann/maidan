@@ -47,6 +47,7 @@ const FORBIDDEN_PAYLOAD_KEYS: &[&str] = &[
 /// Continuity is unsafe (hashed secrets plus AEAD keys do not travel).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TokenPolicy {
     TokensDieOnExport,
 }

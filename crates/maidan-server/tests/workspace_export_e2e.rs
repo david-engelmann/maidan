@@ -7,7 +7,7 @@ use std::{
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_auth::{capability, hash_secret, TokenSecret};
+use maidan_auth::{capability, hash_secret, ExportSigningKey, TokenSecret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -49,6 +49,7 @@ async fn spawn() -> (
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.attach_export_signing(ExportSigningKey::from_seed([0x11; 32]));
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -148,21 +149,28 @@ async fn export_requires_token_admin_and_returns_the_content_graph() {
     assert_eq!(ok.status(), StatusCode::OK);
     let bundle: serde_json::Value = ok.json().await.unwrap();
 
-    assert_eq!(bundle["format_version"], 1);
+    assert_eq!(bundle["$type"], "maidan.workspace.export/1");
+    assert_eq!(bundle["alg"], "ed25519");
+    assert_eq!(bundle["token_policy"], "tokens_die_on_export");
+    assert!(bundle["signature"].as_str().unwrap().len() == 128);
+    let payload = &bundle["payload"];
+    assert_eq!(payload["format_version"], 1);
     assert_eq!(
-        bundle["workspace"]["id"].as_str().unwrap(),
+        payload["workspace"]["id"].as_str().unwrap(),
         ws.id.0.to_string()
     );
-    assert_eq!(bundle["members"].as_array().unwrap().len(), 1);
-    assert_eq!(bundle["channels"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["members"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["channels"].as_array().unwrap().len(), 1);
     assert_eq!(
-        bundle["channels"][0]["channel"]["name"].as_str().unwrap(),
+        payload["channels"][0]["channel"]["name"].as_str().unwrap(),
         "general"
     );
-    assert_eq!(bundle["threads"].as_array().unwrap().len(), 1);
-    let messages = bundle["messages"].as_array().unwrap();
+    assert_eq!(payload["threads"].as_array().unwrap().len(), 1);
+    let messages = payload["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0]["body"].as_str().unwrap(), "hello export");
+    assert!(payload.get("tokens").is_none());
+    assert!(payload.get("token_hash").is_none());
 
     server.abort();
 }

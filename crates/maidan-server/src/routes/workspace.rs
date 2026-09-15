@@ -54,36 +54,76 @@ pub async fn get_workspace(
     Ok(Json(state.store.get_workspace(workspace_id).await?))
 }
 
-/// Export the whole workspace content graph as one JSON bundle (Cluster 187).
-/// Gated on `token:admin` — it dumps every channel (private included) and DM,
-/// so it's a workspace-admin operation, not a per-member read. Secrets and
-/// operational tables are excluded (see [`crate::export`]).
+/// Export the whole workspace content graph as a signed
+/// `maidan.workspace.export/1` envelope (Cluster 187 + 391). Gated on
+/// `token:admin`. Tokens die on export — secrets are omitted and the
+/// envelope records `token_policy`. Refuses if the operator signing key
+/// is not configured.
 pub async fn export_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-) -> ApiResult<Json<crate::export::WorkspaceExport>> {
+) -> ApiResult<Json<SignedExport>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    Ok(Json(
-        crate::export::build(&state.store, workspace_id).await?,
-    ))
+    let bundle = crate::export::build(&state.store, workspace_id).await?;
+    Ok(Json(crate::export::sign_bundle(
+        state.export_signing.as_ref(),
+        &bundle,
+    )?))
 }
 
-/// Import a workspace content bundle (Cluster 270) — the write-side inverse of
-/// [`export_workspace`]. Gated on `token:admin` (it creates or overwrites a whole
-/// workspace). `mode=new` (default) remaps every id and lands a fresh workspace;
-/// `mode=restore` preserves the bundle's ids — 409 if that workspace already
-/// exists, unless `force=true` erases it first.
+/// Verify a signed export without importing it. A blank instance uses this
+/// to check the file before `POST /workspaces/import`. `token:admin`.
+pub async fn verify_workspace_export(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiJson(envelope): ApiJson<SignedExport>,
+) -> ApiResult<Json<crate::dto::VerifyExportResult>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    crate::export::verify_bundle(&envelope, &state.export_verify_keys)?;
+    Ok(Json(crate::dto::VerifyExportResult {
+        ok: true,
+        token_policy: envelope.token_policy,
+        public_key: envelope.public_key,
+        content_sha256: envelope.content_sha256,
+        workspace_id: crate::export::payload_workspace_id(&envelope.payload),
+    }))
+}
+
+/// Operator public key for out-of-band authenticity pins. `token:admin`.
+pub async fn export_public_key(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> ApiResult<Json<crate::dto::ExportPublicKey>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let key = state.export_signing.as_ref().ok_or_else(|| {
+        ApiError::BadRequest(
+            "export signing key is not configured (MAIDAN_EXPORT_SIGNING_KEY)".into(),
+        )
+    })?;
+    Ok(Json(crate::dto::ExportPublicKey {
+        alg: SIGNED_EXPORT_ALG.into(),
+        public_key: key.public_key_hex(),
+        token_policy: TokenPolicy::TokensDieOnExport,
+    }))
+}
+
+/// Import a **signed** workspace bundle (Cluster 270 + 391). Verification
+/// is fail-closed (tamper / bad sig / secret fields / wrong pin). Gated on
+/// `token:admin`. `mode=new` remaps ids; `mode=restore` preserves them
+/// (409 if that workspace exists unless `force=true`).
 pub async fn import_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Query(q): Query<crate::dto::ImportQuery>,
-    ApiJson(bundle): ApiJson<crate::export::WorkspaceExport>,
+    ApiJson(envelope): ApiJson<SignedExport>,
 ) -> ApiResult<Json<crate::dto::ImportResult>> {
     use crate::dto::ImportMode;
     cap(&auth, TOKEN_ADMIN)?;
+    crate::export::verify_bundle(&envelope, &state.export_verify_keys)?;
+    let bundle = crate::export::inner_bundle(&envelope)?;
 
     let flat = crate::import::flatten(bundle);
     let to_write = match q.mode {

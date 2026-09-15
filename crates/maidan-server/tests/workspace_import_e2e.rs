@@ -8,7 +8,7 @@ use std::{
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_auth::{capability, hash_secret, TokenSecret};
+use maidan_auth::{capability, hash_secret, ExportSigningKey, TokenSecret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -51,6 +51,7 @@ async fn spawn() -> (
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.attach_export_signing(ExportSigningKey::from_seed([0x11; 32]));
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

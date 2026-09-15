@@ -269,6 +269,38 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     template.to_string()
 }
 
+/// Shape-valid signed envelope so `ApiJson<SignedExport>` deserializes and
+/// `cap()` is what the matrix exercises (verify fails after a capable token).
+fn signed_export_stub() -> Value {
+    json!({
+        "$type": "maidan.workspace.export/1",
+        "alg": "ed25519",
+        "token_policy": "tokens_die_on_export",
+        "public_key": "11".repeat(32),
+        "signed_at": "2026-01-01T00:00:00Z",
+        "payload": {
+            "format_version": 1,
+            "exported_at": "2026-01-01T00:00:00Z",
+            "workspace": {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "name": "x",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "tombstoned_at": null
+            },
+            "members": [],
+            "channels": [],
+            "threads": [],
+            "messages": [],
+            "message_edits": [],
+            "pins": [],
+            "references": []
+        },
+        "content_sha256": "00".repeat(32),
+        "signature": "00".repeat(64)
+    })
+}
+
 fn apply_route_defaults(
     builder: reqwest::RequestBuilder,
     method: &str,
@@ -298,24 +330,10 @@ fn apply_route_defaults(
         return b.json(&json!({ "confirm_workspace_id": f.workspace }));
     }
     if path == "/workspaces/import" && method == "POST" {
-        return b.json(&json!({
-            "format_version": 1,
-            "exported_at": "2026-01-01T00:00:00Z",
-            "workspace": {
-                "id": f.workspace,
-                "name": "x",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-                "tombstoned_at": null
-            },
-            "members": [],
-            "channels": [],
-            "threads": [],
-            "messages": [],
-            "message_edits": [],
-            "pins": [],
-            "references": []
-        }));
+        return b.json(&signed_export_stub());
+    }
+    if path == "/workspaces/export/verify" && method == "POST" {
+        return b.json(&signed_export_stub());
     }
     if path.contains("/inbox/read") {
         return b.json(&json!({ "read_through": "2026-01-01T00:00:00Z" }));
