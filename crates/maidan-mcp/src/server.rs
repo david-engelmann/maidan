@@ -860,6 +860,17 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(claimed["id"], json!(pub_thread.id.0));
+        assert!(
+            claimed["pin"]["uri"]
+                .as_str()
+                .unwrap()
+                .starts_with("maidan:event/"),
+            "claim pins the assignment event"
+        );
+        assert!(claimed["pin"]["content_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:"));
 
         // list_assigned shows the public-channel assignment, but the private one
         // is filtered out — the agent isn't a member of that channel.

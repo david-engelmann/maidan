@@ -486,7 +486,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "claim_next_thread",
-            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread, or null when there is no claimable work.",
+            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

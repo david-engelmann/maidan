@@ -203,7 +203,11 @@ async fn a2a_send_message_preserves_parts_as_structured_content() {
                 "parts": [
                     { "type": "text", "text": "part one" },
                     { "type": "text", "text": "part two" }
-                ]
+                ],
+                "citations": [{
+                    "uri": "maidan:event/1",
+                    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }]
             },
             "metadata": { "maidan": { "threadId": thread_id, "authorId": author_id } }
         }))
@@ -229,6 +233,11 @@ async fn a2a_send_message_preserves_parts_as_structured_content() {
     assert_eq!(content.len(), 2);
     assert_eq!(content[0], json!({"type": "text", "text": "part one"}));
     assert_eq!(content[1], json!({"type": "text", "text": "part two"}));
+    assert_eq!(msg["metadata"]["citations"][0]["uri"], "maidan:event/1");
+    assert!(msg["metadata"]["citations"][0]["content_hash"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
 }
 
 #[tokio::test]

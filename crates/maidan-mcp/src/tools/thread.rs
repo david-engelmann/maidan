@@ -666,7 +666,7 @@ struct ClaimNextThreadArgs {
 
 /// Atomically claim the oldest claimable thread in a channel (Cluster 191/192).
 /// Channel access is enforced pre-dispatch (the `channel_id` arg). Returns the
-/// claimed thread, or `null` when there is no claimable work.
+/// claimed thread plus a content-addressed pin, or `null` when there is no claimable work.
 pub(super) async fn claim_next_thread(
     server: &crate::server::McpServer,
     args: &Value,
@@ -690,7 +690,14 @@ pub(super) async fn claim_next_thread(
     for stored in &events {
         server.publish_stored(stored).await;
     }
-    Ok(content_json(&claimed))
+    match claimed {
+        None => Ok(content_json(&Value::Null)),
+        Some(thread) => {
+            let claimed = maidan_types::claimed_thread(thread, &events)
+                .map_err(|e| McpError::Internal(e.to_string()))?;
+            Ok(content_json(&claimed))
+        }
+    }
 }
 
 #[derive(Deserialize)]

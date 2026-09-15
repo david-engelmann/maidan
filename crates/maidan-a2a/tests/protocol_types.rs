@@ -28,6 +28,7 @@ fn message_text_joins_text_parts() {
             },
         ],
         metadata: None,
+        citations: vec![],
     };
     assert_eq!(message_text(&msg).as_deref(), Some("hello\nworld"));
 }

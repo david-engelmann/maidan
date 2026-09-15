@@ -63,6 +63,16 @@ pub struct StrongRef {
     pub content_hash: String,
 }
 
+/// `claim_next` body: the claimed thread plus a content-addressed pin.
+/// `pin` is additive; thread fields stay at the top level (`flatten`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClaimedThread {
+    #[serde(flatten)]
+    pub thread: crate::models::Thread,
+    pub pin: StrongRef,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +149,33 @@ impl StrongRef {
             content_hash: content_hash.into(),
         }
     }
+}
+
+/// Pin for a successful `claim_next`. Prefers the `ThreadAssignmentChanged`
+/// event (in the hash chain). Falls back to a thread-snapshot pin.
+pub fn claim_pin(
+    thread: &crate::models::Thread,
+    events: &[crate::events::StoredEvent],
+) -> Result<StrongRef, EventChainError> {
+    if let Some(stored) = events
+        .iter()
+        .rev()
+        .find(|e| e.kind == crate::events::EventKind::ThreadAssignmentChanged)
+    {
+        return Ok(StrongRef::event(stored.id, stored.content_hash.clone()));
+    }
+    Ok(StrongRef::thread(thread.id, content_hash_of(thread)?))
+}
+
+/// Wrap a claimed thread with its pin.
+pub fn claimed_thread(
+    thread: crate::models::Thread,
+    events: &[crate::events::StoredEvent],
+) -> Result<ClaimedThread, EventChainError> {
+    Ok(ClaimedThread {
+        pin: claim_pin(&thread, events)?,
+        thread,
+    })
 }
 
 pub fn event_uri(id: i64) -> String {
@@ -318,7 +355,7 @@ fn encode_digest(digest: &[u8]) -> String {
     format!("{HASH_PREFIX}{}", hex_encode(digest))
 }
 
-fn is_well_formed_hash(s: &str) -> bool {
+pub fn is_well_formed_hash(s: &str) -> bool {
     let Some(hex) = s.strip_prefix(HASH_PREFIX) else {
         return false;
     };

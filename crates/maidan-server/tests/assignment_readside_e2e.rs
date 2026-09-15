@@ -105,6 +105,13 @@ async fn claim_next_then_list_mine_then_empty() {
         body["assignee_id"].as_str().unwrap(),
         agent.id.0.to_string()
     );
+    let pin = body["pin"].as_object().expect("pin");
+    assert!(
+        pin["uri"].as_str().unwrap().starts_with("maidan:event/"),
+        "claim pins the assignment event: {:?}",
+        pin["uri"]
+    );
+    assert!(pin["content_hash"].as_str().unwrap().starts_with("sha256:"));
 
     // list-mine now shows it.
     let mine = client
