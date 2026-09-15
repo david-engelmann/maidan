@@ -21,6 +21,7 @@ mod egress_targets;
 mod email_digest;
 mod erase_workspace;
 pub mod events;
+mod explorer;
 mod follows;
 mod fsm_hooks;
 mod github_links;
@@ -2113,6 +2114,52 @@ impl EventStore for SqliteStore {
         lsn: i64,
     ) -> Result<Option<maidan_types::EventLink>, StoreError> {
         events::link_at_or_before(&self.pool, workspace_id, lsn).await
+    }
+}
+
+#[async_trait]
+impl IntegrityStore for SqliteStore {
+    async fn list_tombstones(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        include_purged: bool,
+        limit: i64,
+    ) -> Result<Vec<TombstoneRecord>, StoreError> {
+        explorer::list_tombstones(
+            &self.pool,
+            workspace_id,
+            channel_id,
+            thread_id,
+            include_purged,
+            limit,
+        )
+        .await
+    }
+
+    async fn list_message_backlinks(
+        &self,
+        message_id: MessageId,
+    ) -> Result<MessageBacklinks, StoreError> {
+        explorer::list_message_backlinks(&self.pool, message_id).await
+    }
+
+    async fn event_kind_census(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        deny_channels: &[ChannelId],
+    ) -> Result<KindCensus, StoreError> {
+        explorer::event_kind_census(
+            &self.pool,
+            workspace_id,
+            channel_id,
+            thread_id,
+            deny_channels,
+        )
+        .await
     }
 }
 

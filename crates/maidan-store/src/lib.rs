@@ -65,11 +65,12 @@ pub use workspace_export::build_workspace_export;
 // exposes them all via the super-trait.
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
-    DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore, GlossaryStore, MailStore,
-    MemberStore, MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore,
-    PeerStore, PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore,
-    SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore, ThreadDepStore,
-    ThreadLineageStore, ThreadResultStore, ThreadStore, TokenStore, WebhookStore, WorkspaceStore,
+    DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore, GlossaryStore,
+    IntegrityStore, MailStore, MemberStore, MentionInboxStore, MessageStore, MetaStore,
+    NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore, ProjectorLinkStore,
+    ReferenceStore, ReindexStore, SessionStore, SkillStore, SlashCommandStore, SocialStore,
+    TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore,
+    TokenStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.

@@ -1780,6 +1780,41 @@ pub trait ReferenceStore: Send + Sync {
     ) -> Result<Vec<Reference>, StoreError>;
 }
 
+/// Tombstone explorer, message backlink index, and EventKind census
+/// (Cluster 394, Wave 3 #34). Reads only — no new table.
+#[async_trait]
+pub trait IntegrityStore: Send + Sync {
+    /// Tombstoned messages in `workspace_id`, newest first. Optional channel /
+    /// thread narrowing. `include_purged` reconstructs hard-deleted rows from
+    /// `MessageTombstoned` events (`retained = false`).
+    async fn list_tombstones(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        include_purged: bool,
+        limit: i64,
+    ) -> Result<Vec<TombstoneRecord>, StoreError>;
+
+    /// Incoming pointers at `message_id` (`RelationKind` reverse edges + pins
+    /// + reactions + votes). `NotFound` if the message row is gone.
+    async fn list_message_backlinks(
+        &self,
+        message_id: MessageId,
+    ) -> Result<MessageBacklinks, StoreError>;
+
+    /// `EventKind` counts for `workspace_id`, optionally narrowed to a channel
+    /// or thread. `deny_channels` drops those channels' events (private-channel
+    /// pre-filter); `channel_id IS NULL` workspace-level events stay.
+    async fn event_kind_census(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        deny_channels: &[ChannelId],
+    ) -> Result<KindCensus, StoreError>;
+}
+
 #[async_trait]
 pub trait ArtifactMetaStore: Send + Sync {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
@@ -2317,6 +2352,7 @@ pub trait Store:
     + ReferenceStore
     + ArtifactMetaStore
     + EventStore
+    + IntegrityStore
     + AppStore
     + OAuthCodeStore
     + ReindexStore
@@ -2370,6 +2406,7 @@ impl<
             + ReferenceStore
             + ArtifactMetaStore
             + EventStore
+            + IntegrityStore
             + AppStore
             + OAuthCodeStore
             + ReindexStore
