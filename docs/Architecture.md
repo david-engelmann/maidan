@@ -101,7 +101,8 @@ flowchart LR
    `log_id` pointer that the listener hydrates from the log (with a self-healing backfill
    for missed ranges). Subscribers filter by workspace, channel, thread, member, and kind
    over WebSocket (`GET /ws/subscribe`) or MCP SSE (`GET /mcp/stream`). Live frames
-   carry `$type` (`maidan.event.{kind}/1`); the JSON-Schema pack lives under
+   and REST `GET /workspaces/:wid/events` (`StoredEvent`) carry `$type`
+   (`maidan.event.{kind}/1`); the JSON-Schema pack lives under
    `contracts/lexicon/`. Responses stamp `Maidan-Room-LSN` (event-log high-water)
    so clients can measure projector / broadcast lag — distinct from the replica
    WAL `Maidan-Consistency-Token`. The optimistic

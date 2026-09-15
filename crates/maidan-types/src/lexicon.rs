@@ -15,9 +15,12 @@
 //! The committed pack under `contracts/lexicon/` is the input for a future
 //! SDK 0.2 typed model — this crate does not bump the SDK.
 
+use chrono::{DateTime, Utc};
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use crate::events::{Event, EventKind};
+use crate::events::{Event, EventKind, StoredEvent};
+use crate::ids::{ChannelId, ThreadId, WorkspaceId};
 use crate::waiter::{EXAMPLE_PLAN_RESULT_KIND, EXAMPLE_REVIEW_RESULT_KIND, WAITER_RESULT_SCHEMA};
 
 /// JSON Schema dialect the pack is written against.
@@ -48,6 +51,43 @@ pub fn event_wire(event: &Event) -> Result<Value, serde_json::Error> {
     let mut value = serde_json::to_value(event)?;
     inject_type(&mut value, &event.kind().type_id());
     Ok(value)
+}
+
+/// Durable columns of [`StoredEvent`] without going through its `Serialize`
+/// impl (which calls this helper).
+#[derive(Serialize)]
+struct StoredEventFields<'a> {
+    id: i64,
+    kind: EventKind,
+    workspace_id: Option<WorkspaceId>,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    payload: &'a Value,
+    occurred_at: DateTime<Utc>,
+}
+
+/// Serialize a log row and stamp `$type` from `kind`. Does not rewrite the
+/// nested `payload` (that stays the stored `Event` JSON, tagged on `kind`).
+pub fn stored_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error> {
+    let mut value = serde_json::to_value(StoredEventFields {
+        id: event.id,
+        kind: event.kind,
+        workspace_id: event.workspace_id,
+        channel_id: event.channel_id,
+        thread_id: event.thread_id,
+        payload: &event.payload,
+        occurred_at: event.occurred_at,
+    })?;
+    inject_type(&mut value, &event.kind.type_id());
+    Ok(value)
+}
+
+impl Serialize for StoredEvent {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        stored_event_wire(self)
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
 }
 
 /// Recursively sort object keys. Arrays keep order. The snapshot canon
@@ -254,6 +294,42 @@ mod tests {
         assert_eq!(v["kind"], "message_posted");
         assert_eq!(v["$type"], "maidan.event.message_posted/1");
         assert_eq!(v["body"], "hi");
+    }
+
+    #[test]
+    fn stored_event_wire_stamps_type_and_keeps_kind() {
+        let stored = StoredEvent {
+            id: 7,
+            kind: EventKind::MessagePosted,
+            workspace_id: None,
+            channel_id: None,
+            thread_id: None,
+            payload: json!({"kind": "message_posted", "body": "hi"}),
+            occurred_at: chrono::DateTime::parse_from_rfc3339("2023-11-14T22:13:20Z")
+                .expect("ts")
+                .with_timezone(&chrono::Utc),
+        };
+        let wire = stored_event_wire(&stored).expect("wire");
+        assert_eq!(wire["$type"], "maidan.event.message_posted/1");
+        assert_eq!(wire["kind"], "message_posted");
+        assert_eq!(wire["id"], 7);
+        assert_eq!(wire["payload"]["kind"], "message_posted");
+        assert!(
+            wire["payload"].get("$type").is_none(),
+            "payload stays the stored Event JSON; $type is the row envelope"
+        );
+
+        let via_serde = serde_json::to_value(&stored).expect("serde");
+        assert_eq!(via_serde["$type"], stored.kind.type_id());
+        assert_eq!(via_serde["kind"], "message_posted");
+
+        let mut raw = wire.clone();
+        raw["$type"] = json!("maidan.event.message_posted/2");
+        raw["unknown_optional"] = json!("ignored");
+        let back: StoredEvent = serde_json::from_value(raw).expect("unknown fields ignored");
+        assert_eq!(back.kind, EventKind::MessagePosted);
+        assert_eq!(back.id, 7);
+        assert_eq!(back.payload["kind"], "message_posted");
     }
 
     #[test]

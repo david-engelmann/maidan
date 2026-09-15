@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- REST `GET /workspaces/:id/events` `StoredEvent` now carries `$type`
+  (`maidan.event.{kind}/1`), matching live WS/MCP frames and webhook
+  bodies (Cluster 390 leftover). OpenAPI lists the field. The stored
+  `maidan_events.kind` column is unchanged; unknown JSON fields stay
+  ignored.
+
 ## [391.0.0] — 2026-09-14
 
 Post-gate hardening (Phase XXIV). **Wave 3 #31 — signed workspace

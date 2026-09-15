@@ -109,8 +109,10 @@ inside it. Server replies `subscribe_ack`, `schema_version`,
 `resume_token`, `after_id`, `room_lsn`. `type: cursor_too_old` is **not** a
 benign control frame — deliver it and stop.
 
-Live frames carry `$type` (`maidan.event.{kind}/1`) in addition to
-`kind`. Ignore unknown fields. The pack is `contracts/lexicon/`.
+Live frames and REST `GET /workspaces/{id}/events` (`StoredEvent`)
+carry `$type` (`maidan.event.{kind}/1`) in addition to `kind`. Ignore
+unknown fields. The pack is `contracts/lexicon/`. `$type` is not a
+stored column.
 
 REST responses stamp `Maidan-Room-LSN` (decimal event-log high-water).
 Clients expose `last_room_lsn` / `LastRoomLSN` / `lastRoomLsn` from

@@ -180,6 +180,9 @@ async fn list_events_filters_by_projector_shape_types() {
         .unwrap();
     assert!(!only.is_empty());
     assert!(only.iter().all(|e| e["kind"] == "channel_created"));
+    assert!(only.iter().all(|e| {
+        e["$type"] == "maidan.event.channel_created/1" && e["kind"] == "channel_created"
+    }));
 
     let bad = client
         .get(format!(
@@ -190,6 +193,39 @@ async fn list_events_filters_by_projector_shape_types() {
         .await
         .unwrap();
     assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn list_events_stamps_type_on_stored_event_for_known_kinds() {
+    let (addr, client, server, _dir, store) = spawn().await;
+    let (ws, _ids) = seed(store.as_ref()).await;
+
+    let events: Vec<Value> = client
+        .get(format!(
+            "http://{addr}/workspaces/{}/events?after_id=0&limit=50",
+            ws.0
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(!events.is_empty());
+    for event in &events {
+        let kind = event["kind"].as_str().expect("kind");
+        assert_eq!(
+            event["$type"].as_str(),
+            Some(format!("maidan.event.{kind}/1").as_str()),
+            "HTTP StoredEvent must carry lexicon $type for {kind}"
+        );
+        assert!(
+            event["payload"].get("$type").is_none(),
+            "stored payload is not rewritten; $type is the row envelope"
+        );
+    }
 
     server.abort();
 }
