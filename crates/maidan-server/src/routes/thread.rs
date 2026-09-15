@@ -1020,13 +1020,14 @@ pub async fn get_member_wip(
 
 /// Atomically claim the oldest unassigned thread in a channel (Cluster 190) —
 /// the "pull the next task" primitive. Returns the claimed thread, or `null`
-/// when the channel has no unassigned work.
+/// when the channel has no unassigned work. A successful claim includes a
+/// content-addressed `pin` `{uri, content_hash}` (the assignment event).
 pub async fn claim_next_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(cid): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<ClaimNextThread>,
-) -> ApiResult<Json<Option<Thread>>> {
+) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
@@ -1046,10 +1047,17 @@ pub async fn claim_next_thread(
         .await?;
     // A reclaim may emit two events: ClaimExpired (dead holder) then the claim's
     // ThreadAssignmentChanged. Publish in order.
-    for stored in events {
-        super::publish_stored(&state, stored).await;
+    for stored in &events {
+        super::publish_stored(&state, stored.clone()).await;
     }
-    Ok(Json(claimed))
+    match claimed {
+        None => Ok(Json(None)),
+        Some(thread) => {
+            let claimed =
+                claimed_thread(thread, &events).map_err(|e| ApiError::Internal(e.to_string()))?;
+            Ok(Json(Some(claimed)))
+        }
+    }
 }
 
 /// Extend a claimed thread's lease (heartbeat), for the current assignee only

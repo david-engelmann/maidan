@@ -202,6 +202,7 @@ fn gate_as_task(gate: &ApprovalGate) -> Task {
                     text: gate.prompt.clone(),
                 }],
                 metadata: None,
+                citations: vec![],
             }),
         },
         metadata: Some(serde_json::json!({
@@ -289,6 +290,20 @@ async fn post_a2a_message(
     // Preserve the A2A message's parts as structured content (Cluster 194); A2A
     // ingest previously dropped them (`content: None`), unlike REST/MCP posts.
     let content = message_content(&req.message);
+    let mut metadata = serde_json::json!({ "a2a": true });
+    if !req.message.citations.is_empty() {
+        for c in &req.message.citations {
+            if c.uri.is_empty() || !maidan_types::is_well_formed_hash(&c.content_hash) {
+                return Err(JsonRpcResponse::error(
+                    id.clone(),
+                    ERR_PARAMS,
+                    "citation must pin a non-empty uri and sha256:<hex> content_hash",
+                ));
+            }
+        }
+        metadata["citations"] = serde_json::to_value(&req.message.citations)
+            .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_PARAMS, e.to_string()))?;
+    }
     let thread_ctx = resolve_thread_context(state.store.as_ref(), ThreadId(ctx.thread_id))
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_PARAMS, e.to_string()))?;
@@ -311,7 +326,7 @@ async fn post_a2a_message(
                 thread_id: ThreadId(ctx.thread_id),
                 author_id: MemberId(ctx.author_id),
                 body: body_text,
-                metadata: serde_json::json!({ "a2a": true }),
+                metadata,
                 content,
             },
             None,
@@ -336,6 +351,7 @@ async fn post_a2a_message(
         role: req.message.role.clone(),
         parts: out_parts,
         metadata: req.message.metadata.clone(),
+        citations: req.message.citations.clone(),
     };
     Ok(PostedA2a {
         task_id: uuid::Uuid::new_v4().to_string(),

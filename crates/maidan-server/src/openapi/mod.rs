@@ -399,6 +399,8 @@ impl Modify for SecurityAddon {
         DlqQuery,
         ClaimThread,
         ClaimNextThread,
+        ClaimedThread,
+        StrongRef,
         RenewClaim,
         AcknowledgeClaim,
         ReleaseClaim,

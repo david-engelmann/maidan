@@ -247,7 +247,7 @@ pub fn list_assigned_threads() {}
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = ClaimNextThread,
     security(("bearerAuth" = [])),
-    responses((status = 200, body = Thread, description = "The claimed thread, or null when the channel has no claimable work"))
+    responses((status = 200, body = ClaimedThread, description = "The claimed thread plus a content-addressed pin, or null when the channel has no claimable work"))
 )]
 pub fn claim_next_thread() {}
 

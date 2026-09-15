@@ -1,6 +1,6 @@
 //! Subset of the [A2A protocol](https://a2a-protocol.org/v1.0.0/specification) v1.0 JSON-RPC surface.
 
-use maidan_types::ContentBlock;
+use maidan_types::{ContentBlock, StrongRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -111,6 +111,9 @@ pub struct A2aMessage {
     pub parts: Vec<TextPart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
+    /// Content-addressed citations (Cluster 392). Empty is omitted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub citations: Vec<StrongRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,6 +377,7 @@ pub fn maidan_context_from_metadata(metadata: &Option<Value>) -> Result<MaidanA2
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maidan_types::StrongRef;
     use proptest::prelude::*;
     use serde_json::json;
 
@@ -470,11 +474,44 @@ mod tests {
                 },
             ],
             metadata: None,
+            citations: vec![],
         };
         let back: A2aMessage =
             serde_json::from_value(serde_json::to_value(&msg).unwrap()).expect("round trip");
         assert_eq!(back.parts.len(), 3);
         assert_eq!(message_text(&msg).as_deref(), Some("line one\nline two"));
+        assert!(back.citations.is_empty());
+    }
+
+    #[test]
+    fn citations_round_trip_and_omit_when_empty() {
+        let msg = A2aMessage {
+            role: "user".into(),
+            parts: vec![TextPart {
+                kind: "text".into(),
+                text: "see this".into(),
+            }],
+            metadata: None,
+            citations: vec![StrongRef::event(
+                9,
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )],
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v["citations"][0]["uri"], "maidan:event/9");
+        let back: A2aMessage = serde_json::from_value(v).unwrap();
+        assert_eq!(back.citations.len(), 1);
+        let empty = A2aMessage {
+            role: "user".into(),
+            parts: vec![TextPart {
+                kind: "text".into(),
+                text: "x".into(),
+            }],
+            metadata: None,
+            citations: vec![],
+        };
+        let v = serde_json::to_value(&empty).unwrap();
+        assert!(v.get("citations").is_none());
     }
 
     #[test]
@@ -486,6 +523,7 @@ mod tests {
                 text: "x".into(),
             }],
             metadata: None,
+            citations: vec![],
         };
         assert_eq!(message_text(&msg), None);
     }
@@ -509,6 +547,7 @@ mod tests {
                 },
             ],
             metadata: None,
+            citations: vec![],
         };
         let content = message_content(&msg).expect("some content");
         assert_eq!(content.len(), 2, "only the two text parts become blocks");
@@ -531,6 +570,7 @@ mod tests {
                 text: "x".into(),
             }],
             metadata: None,
+            citations: vec![],
         };
         assert_eq!(message_content(&no_text), None);
     }
@@ -551,6 +591,7 @@ mod tests {
                 },
             ],
             metadata: None,
+            citations: vec![],
         })
         .unwrap();
         let parts = message_parts_from_content(&blocks);
@@ -657,6 +698,7 @@ mod tests {
                     .map(|(kind, text)| TextPart { kind: kind.clone(), text: text.clone() })
                     .collect(),
                 metadata: None,
+                citations: vec![],
             };
             let expected: Vec<&str> = parts
                 .iter()
