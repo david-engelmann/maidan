@@ -107,7 +107,13 @@ flowchart LR
    so clients can measure projector / broadcast lag — distinct from the replica
    WAL `Maidan-Consistency-Token`. The optimistic
    path is at-most-once; an opt-in `at_least_once` cursor path (per `consumer_id`) plus
-   replay + signed resume tokens close gaps.
+   replay + signed resume tokens close gaps. A peer that missed a **pruned
+   prefix** takes `GET /workspaces/:wid/snapshot` (hashed
+   `maidan.event-log.snapshot/1` checkpoint) and pages
+   `…/events/catch-up` — Cluster 392 verifies the retained suffix;
+   the snapshot is the history the log no longer holds. Taps (webhook,
+   WS, MCP SSE, AG-UI, search) verify backfill, drain history before
+   live, and fail closed on a gap (`CursorTooOld` → snapshot href).
 
 ## Backends
 
@@ -139,7 +145,7 @@ flowchart LR
 | Thread-result list | `GET /workspaces/:id/results?result_kind=`, MCP `list_thread_results` | Exact-match facet on the namespaced `result_kind` string (e.g. `example.review.result/1`), not a closed enum and not message-FTS. Omit the query to list every accessible non-tombstoned result. Private-channel rows the caller cannot read are dropped. |
 | Search | `GET /workspaces/:wid/search` | Lexical + semantic + hybrid; facets; normalized `[0,1]` `score` |
 | Context | `GET /workspaces/:wid/context`, `GET /threads/:id/context` | Token-lean agent context packs |
-| Events | `GET /workspaces/:wid/events`, `GET …/events/verify`, outbox admin routes | Replay + hash-chain integrity + quarantined-outbox list/replay |
+| Events | `GET /workspaces/:wid/events`, `GET …/events/verify`, `GET …/snapshot`, `GET …/events/catch-up`, outbox admin routes | Replay + hash-chain integrity + hashed snapshot / since-LSN catch-up + quarantined-outbox list/replay |
 | Subscribe | `GET /ws/subscribe`, `GET /mcp/stream`, `GET /agui/stream` | Live bus + resume tokens + `at_least_once` + lean frames; `/agui/stream` maps events to AG-UI run frames (a thread is a run) |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
@@ -168,7 +174,11 @@ flowchart LR
   fusing normalized scores. Embeddings live in **per-model tables** via a registry, from a
   pluggable provider (`hash-v1` default, `openai-compatible` for real semantics); the
   indexer batches embed calls on a bounded, back-pressured queue. `score` is normalized to
-  `[0,1]`; private-channel hits are excluded in-query (filtered-ANN).
+  `[0,1]`; private-channel hits are excluded in-query (filtered-ANN). The
+  indexer is a **tap projector**: it verifies every backfill row on the
+  per-workspace hash chain, projects only message posted/edited/tombstoned,
+  and fails loud (`RebuildRequired`) on a gap or chain break rather than
+  serving a silently diverged index.
 - **Auth & RBAC.** Bearer tokens carry an explicit capability list checked on every route
   and tool; OIDC gives humans a session. Per-channel/thread access is enforced on
   read/write, events (WS + MCP SSE), search, and context packs across REST, MCP, and A2A;

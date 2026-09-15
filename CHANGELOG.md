@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [393.0.0] — 2026-09-15
+
+Post-gate hardening (Phase XXIV). **Wave 3 #33 — snapshot + since-LSN
+catch-up and the tap projector contract.** Four impl PRs (393.1–393.4)
++ a retro. No new gate tag. **Row #33 is closed.** Do not start #34–36
+from this close. Do not cut the tag from the retro PR.
+
+A peer that missed a pruned prefix takes a hashed
+`maidan.event-log.snapshot/1` checkpoint and walks
+`maidan.event-log.catch-up/1` pages from that Room-LSN. Cluster 392
+verifies the retained suffix; this covers the prefix. The snapshot is
+hashed, not signed (391 is authorship). `include_graph` defaults false.
+Search is a tap: verify, backfill, filter, live-waits-for-history;
+`Lagged` without a log is `RebuildRequired`.
+
+- **393.1** snapshot / catch-up / tap types.
+- **393.2** store assemble + both-backend tests.
+- **393.3** REST + MCP + CursorTooOld snapshot href.
+- **393.4** search indexer as tap projector.
+
 ## [392.0.0] — 2026-09-15
 
 Post-gate hardening (Phase XXIV). **Wave 3 #32 — hash-chained log +

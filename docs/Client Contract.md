@@ -99,6 +99,8 @@ Create body: `{ "name", "private": false }`.
 |-----|------|------------|
 | `subscribe` | `GET /ws/subscribe` | `event:subscribe` |
 | `list_events` | `GET /workspaces/{id}/events` | `workspace:read` |
+| `snapshot` | `GET /workspaces/{id}/snapshot` | `workspace:read` (`include_graph=true` needs `token:admin`) |
+| `catch_up` | `GET /workspaces/{id}/events/catch-up` | `workspace:read` |
 | `follow` | HTTP backfill then WS cutover | `workspace:read` + `event:subscribe` |
 
 Subscribe frame: `contracts/ws-subscribe-filter.schema.json`
@@ -125,7 +127,16 @@ questions (projector lag vs read-your-writes).
 `channel_id`, `thread_id`, `types`, `consumer_id`). `follow` pages
 that route, then cuts over to `subscribe` at the last seen id. A
 409 `must_refetch` is CursorTooOld — never clamp onto the remaining
-log.
+log. The problem body (and the WS / MCP SSE frame) may include
+`snapshot` → `/workspaces/{id}/snapshot`. Fetch that hashed
+checkpoint, then page `GET /workspaces/{id}/events/catch-up?after_lsn=`
+until `has_more` is false, then `follow` from the page head.
+`include_graph=true` is `token:admin` (or a federation peer), not
+the SDK default.
+
+Taps (webhook, WS, search) verify backfill, drain history before
+live, and compare live-ready to the **workspace / shape** head —
+not the global `Maidan-Room-LSN`.
 
 Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 

@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v393.0.0 — Wave 3 #33: snapshot catch-up + tap projector contract
+
+Four impl PRs (393.1–393.4) + a retro. A peer that missed a pruned prefix takes a hashed `maidan.event-log.snapshot/1` checkpoint and catches up with `maidan.event-log.catch-up/1` pages (getRepo-shaped, not MST/CAR). Complements Cluster 392 (retained-suffix hash chain). Search is a tap projector and fails loud on a gap or chain break. **Row #33 is closed.** Do not start #34–36 from this close.
+
+| Change | Where |
+|--------|-------|
+| **Types (393.1):** `LogSnapshot` / `CatchUpPage` / `verify_snapshot` / `verify_catch_up`; `TapContract` / `TapFault` / `SEARCH_PROJECTOR_KINDS`. | `crates/maidan-types/src/{log_snapshot,tap}.rs` |
+| **Store (393.2):** `build_log_snapshot` + `catch_up_since`; workspace floor / head / at-or-before. | `crates/maidan-store/src/log_snapshot.rs` |
+| **REST + MCP (393.3):** `GET /workspaces/:wid/snapshot`, `GET …/events/catch-up`; MCP `get_log_snapshot` / `catch_up_events` / `verify_event_chain`; CursorTooOld `snapshot` href. | `crates/maidan-server/src/routes/workspace.rs`, `crates/maidan-mcp/src/tools/event_log.rs` |
+| **Search tap (393.4):** per-workspace verify on backfill; live waits for history; `Lagged` without a log → `RebuildRequired`. | `crates/maidan-search/src/{tap_projector,indexer}.rs` |
+
 ## v392.0.0 — Wave 3 #32: hash-chained log + strong refs
 
 Four impl PRs (392.1–392.4) + a retro. Every stored event carries `{id, lsn, prev_hash, content_hash}` (SHA-256, `sha256:<hex>`). Peers detect a rewrite without trusting the host. `claim_next` and A2A citations pin `{uri, content_hash}`. Hashed, not signed; not MST/CAR; `lsn` is the event-log id, not WAL. **Row #32 is closed.** Do not start #33–36 from this close.
