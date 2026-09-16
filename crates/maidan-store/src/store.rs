@@ -583,10 +583,25 @@ pub trait MailStore: Send + Sync {
     ) -> Result<(), StoreError>;
     async fn count_dead_mail(&self) -> Result<i64, StoreError>;
     /// Dead-lettered entries for the operator DLQ view (Cluster 306), newest first.
-    async fn list_dead_mail(&self, limit: i64) -> Result<Vec<DeadMail>, StoreError>;
+    /// Dead-lettered mail for the operator DLQ (Cluster 398.3). `scope` is the
+    /// caller's workspace; `None` is the `operator:global` view and the only way
+    /// to see rows with a `NULL` workspace (pre-398.3, or tenant-less mail).
+    /// The rows carry recipient addresses, subjects and bodies, so an unscoped
+    /// query behind the per-workspace `token:admin` was a cross-tenant read.
+    async fn list_dead_mail(
+        &self,
+        scope: Option<WorkspaceId>,
+        limit: i64,
+    ) -> Result<Vec<DeadMail>, StoreError>;
     /// Requeue a dead entry (`pending`, due now, `attempts` reset); returns whether
     /// a dead row was actually requeued.
-    async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError>;
+    /// Requeue a dead entry, scoped like [`Self::list_dead_mail`] — another
+    /// tenant's id is a no-op, not a re-send of their mail.
+    async fn requeue_dead_mail(
+        &self,
+        scope: Option<WorkspaceId>,
+        id: MailOutboxId,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

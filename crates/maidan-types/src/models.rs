@@ -864,6 +864,10 @@ pub struct MailOutbox {
 /// (Cluster 304). Enqueued `pending` with `next_attempt_at = now`.
 #[derive(Debug, Clone)]
 pub struct NewMailOutbox {
+    /// Owning workspace (Cluster 398.3). `None` only for mail with no tenant
+    /// context; such a row is visible to `operator:global` alone, because it
+    /// cannot be attributed to a caller's workspace.
+    pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
     pub body: String,
@@ -875,6 +879,8 @@ pub struct NewMailOutbox {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeadMail {
     pub id: MailOutboxId,
+    /// `None` for a pre-Cluster-398.3 row or tenant-less mail.
+    pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
     pub attempts: i64,

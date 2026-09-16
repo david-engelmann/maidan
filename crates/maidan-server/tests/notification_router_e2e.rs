@@ -359,6 +359,7 @@ async fn email_delivery_when_configured_and_address_present() {
     // A member with an address on file gets emailed.
     notification_router::deliver_notification_email(
         &state,
+        ws.id,
         with_addr.id,
         EventKind::MentionRecorded,
         1,
@@ -367,6 +368,7 @@ async fn email_delivery_when_configured_and_address_present() {
     // A member without one does not.
     notification_router::deliver_notification_email(
         &state,
+        ws.id,
         no_addr.id,
         EventKind::MentionRecorded,
         2,

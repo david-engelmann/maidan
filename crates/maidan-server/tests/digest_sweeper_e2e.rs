@@ -111,6 +111,7 @@ async fn router_skips_immediate_email_for_digest_mode_member() {
 
     notification_router::deliver_notification_email(
         &state,
+        ws.id,
         digester,
         EventKind::MentionRecorded,
         1,
@@ -118,6 +119,7 @@ async fn router_skips_immediate_email_for_digest_mode_member() {
     .await;
     notification_router::deliver_notification_email(
         &state,
+        ws.id,
         immediate,
         EventKind::MentionRecorded,
         2,

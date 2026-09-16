@@ -8,17 +8,18 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::StoreError;
-use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox};
+use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox, WorkspaceId};
 
 pub async fn enqueue(pool: &SqlitePool, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
     let id = MailOutboxId::new();
     let now = Utc::now().to_rfc3339();
     sqlx::query(
         "INSERT INTO maidan_mail_outbox
-           (id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)",
+           (id, workspace_id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)",
     )
     .bind(id.0)
+    .bind(new.workspace_id.map(|w| w.0))
     .bind(&new.to_address)
     .bind(&new.subject)
     .bind(&new.body)
@@ -120,30 +121,50 @@ pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("c"))
 }
 
-pub async fn list_dead(pool: &SqlitePool, limit: i64) -> Result<Vec<DeadMail>, StoreError> {
+/// Dead-lettered mail for the operator DLQ, scoped like the Postgres twin
+/// (Cluster 398.3). `None` is the `operator:global` view and the only way to see
+/// a row whose workspace is `NULL`.
+pub async fn list_dead(
+    pool: &SqlitePool,
+    scope: Option<WorkspaceId>,
+    limit: i64,
+) -> Result<Vec<DeadMail>, StoreError> {
+    let scope_id = scope.map(|w| w.0);
     let rows = sqlx::query(
-        "SELECT id, to_address, subject, attempts, last_error, updated_at
+        "SELECT id, workspace_id, to_address, subject, attempts, last_error, updated_at
          FROM maidan_mail_outbox
          WHERE status = 'dead'
+           AND (? IS NULL OR workspace_id = ?)
          ORDER BY updated_at DESC
          LIMIT ?",
     )
+    .bind(scope_id)
+    .bind(scope_id)
     .bind(limit)
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_dead).collect())
 }
 
-pub async fn requeue_dead(pool: &SqlitePool, id: MailOutboxId) -> Result<bool, StoreError> {
+/// Requeue a dead entry, scoped like [`list_dead`].
+pub async fn requeue_dead(
+    pool: &SqlitePool,
+    scope: Option<WorkspaceId>,
+    id: MailOutboxId,
+) -> Result<bool, StoreError> {
     let now = Utc::now().to_rfc3339();
+    let scope_id = scope.map(|w| w.0);
     let res = sqlx::query(
         "UPDATE maidan_mail_outbox
          SET status = 'pending', attempts = 0, next_attempt_at = ?, updated_at = ?
-         WHERE id = ? AND status = 'dead'",
+         WHERE id = ? AND status = 'dead'
+           AND (? IS NULL OR workspace_id = ?)",
     )
     .bind(&now)
     .bind(&now)
     .bind(id.0)
+    .bind(scope_id)
+    .bind(scope_id)
     .execute(pool)
     .await?;
     Ok(res.rows_affected() > 0)
@@ -152,6 +173,9 @@ pub async fn requeue_dead(pool: &SqlitePool, id: MailOutboxId) -> Result<bool, S
 fn row_to_dead(row: &sqlx::sqlite::SqliteRow) -> DeadMail {
     DeadMail {
         id: MailOutboxId(row.get("id")),
+        workspace_id: row
+            .get::<Option<uuid::Uuid>, _>("workspace_id")
+            .map(WorkspaceId),
         to_address: row.get("to_address"),
         subject: row.get("subject"),
         attempts: row.get("attempts"),

@@ -980,7 +980,7 @@
   {
     "method": "GET",
     "path": "/operator/legal-holds",
-    "capability": "token:admin",
+    "capability": "operator:global",
     "surface": "http"
   },
   {

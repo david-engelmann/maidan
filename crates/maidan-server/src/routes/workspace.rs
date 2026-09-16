@@ -7,7 +7,9 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{AUDIT_READ_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{
+        AUDIT_READ_GLOBAL, OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    },
     AuthContext,
 };
 use maidan_store::StoreError;
@@ -785,11 +787,18 @@ pub async fn get_legal_hold(
 
 /// `GET /operator/legal-holds` (Cluster 366) — every active hold across all
 /// workspaces, newest first. `token:admin` — the operator/compliance view.
+/// `GET /operator/legal-holds` — every workspace's hold.
+///
+/// `operator:global` since Cluster 398.3, not the per-workspace `token:admin`
+/// this used to take: the query is instance-wide and deliberately stays that
+/// way, because scoping it to the caller would make it a duplicate of
+/// `GET /workspaces/:id/legal-hold`. A genuinely global read needs a genuinely
+/// global capability.
 pub async fn list_legal_holds(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
 ) -> ApiResult<Json<Vec<LegalHold>>> {
-    cap(&auth, TOKEN_ADMIN)?;
+    cap(&auth, OPERATOR_GLOBAL)?;
     Ok(Json(state.store.list_legal_holds().await?))
 }
 

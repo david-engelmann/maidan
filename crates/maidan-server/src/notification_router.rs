@@ -459,7 +459,7 @@ async fn fan_out_message_posted(
             let st = state.clone();
             let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
             tokio::spawn(async move {
-                deliver_notification_email(&st, member_id, kind, log_id).await;
+                deliver_notification_email(&st, workspace_id, member_id, kind, log_id).await;
             });
         }
         // Web Push (Cluster 366, N1), only when a sender is configured. Spawned +
@@ -583,7 +583,7 @@ async fn write_notification(
         if state.mail.is_some() {
             let st = state.clone();
             tokio::spawn(async move {
-                deliver_notification_email(&st, member_id, kind, source_log_id).await;
+                deliver_notification_email(&st, workspace_id, member_id, kind, source_log_id).await;
             });
         }
         // Web Push (Cluster 366, N1): notify iff no live WS (gated inside).
@@ -618,6 +618,7 @@ fn presence_skip_window_secs() -> Option<i64> {
 /// spawned task in [`notify`].
 pub async fn deliver_notification_email(
     state: &AppState,
+    workspace_id: WorkspaceId,
     member_id: MemberId,
     kind: EventKind,
     source_log_id: i64,
@@ -682,6 +683,10 @@ pub async fn deliver_notification_email(
     match state
         .store
         .enqueue_mail(maidan_types::NewMailOutbox {
+            // Cluster 398.3: the row is attributable, so the operator DLQ can be
+            // scoped to a tenant instead of showing everyone's mail to any
+            // workspace admin.
+            workspace_id: Some(workspace_id),
             to_address: address,
             subject,
             body,

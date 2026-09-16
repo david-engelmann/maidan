@@ -6,17 +6,18 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 
 use crate::StoreError;
-use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox};
+use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox, WorkspaceId};
 
 /// Enqueue an email for durable delivery: `pending`, due now.
 pub async fn enqueue(pool: &PgPool, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
     let id = MailOutboxId::new();
     sqlx::query(
         "INSERT INTO maidan_mail_outbox
-           (id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'pending', 0, now(), now(), now())",
+           (id, workspace_id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'pending', 0, now(), now(), now())",
     )
     .bind(id.0)
+    .bind(new.workspace_id.map(|w| w.0))
     .bind(&new.to_address)
     .bind(&new.subject)
     .bind(&new.body)
@@ -115,14 +116,27 @@ pub async fn count_dead(pool: &PgPool) -> Result<i64, StoreError> {
 }
 
 /// List dead-lettered entries, newest-updated first (the operator DLQ view).
-pub async fn list_dead(pool: &PgPool, limit: i64) -> Result<Vec<DeadMail>, StoreError> {
+/// Dead-lettered mail for the operator DLQ (Cluster 398.3).
+///
+/// `scope = Some(ws)` returns that workspace's rows only — the default, because
+/// `token:admin` is per-workspace and these rows carry recipient addresses,
+/// subjects and bodies. `scope = None` is the `operator:global` view and also
+/// the only way to see rows with a `NULL` workspace: mail enqueued before this
+/// cluster, or with no tenant context, which cannot be attributed to anyone.
+pub async fn list_dead(
+    pool: &PgPool,
+    scope: Option<WorkspaceId>,
+    limit: i64,
+) -> Result<Vec<DeadMail>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, to_address, subject, attempts, last_error, updated_at
+        "SELECT id, workspace_id, to_address, subject, attempts, last_error, updated_at
          FROM maidan_mail_outbox
          WHERE status = 'dead'
+           AND ($1::uuid IS NULL OR workspace_id = $1)
          ORDER BY updated_at DESC
-         LIMIT $1",
+         LIMIT $2",
     )
+    .bind(scope.map(|w| w.0))
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -131,13 +145,21 @@ pub async fn list_dead(pool: &PgPool, limit: i64) -> Result<Vec<DeadMail>, Store
 
 /// Requeue a dead entry for a fresh delivery attempt: `pending`, due now,
 /// `attempts` reset. Returns whether a dead row was actually requeued.
-pub async fn requeue_dead(pool: &PgPool, id: MailOutboxId) -> Result<bool, StoreError> {
+/// Requeue a dead entry, scoped like [`list_dead`]. Another tenant's id is a
+/// no-op rather than a re-send of their mail.
+pub async fn requeue_dead(
+    pool: &PgPool,
+    scope: Option<WorkspaceId>,
+    id: MailOutboxId,
+) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_mail_outbox
          SET status = 'pending', attempts = 0, next_attempt_at = now(), updated_at = now()
-         WHERE id = $1 AND status = 'dead'",
+         WHERE id = $1 AND status = 'dead'
+           AND ($2::uuid IS NULL OR workspace_id = $2)",
     )
     .bind(id.0)
+    .bind(scope.map(|w| w.0))
     .execute(pool)
     .await?;
     Ok(res.rows_affected() > 0)
@@ -146,6 +168,9 @@ pub async fn requeue_dead(pool: &PgPool, id: MailOutboxId) -> Result<bool, Store
 fn row_to_dead(row: &sqlx::postgres::PgRow) -> DeadMail {
     DeadMail {
         id: MailOutboxId(row.get("id")),
+        workspace_id: row
+            .get::<Option<uuid::Uuid>, _>("workspace_id")
+            .map(WorkspaceId),
         to_address: row.get("to_address"),
         subject: row.get("subject"),
         attempts: row.get("attempts"),
