@@ -34,6 +34,20 @@ pub const SECRET_READ: &str = "secret:read";
 /// `secret:read` so a resolver token can't also mint or destroy secrets.
 pub const SECRET_ADMIN: &str = "secret:admin";
 
+/// Operate the instance across **all** workspaces (Cluster 398.3).
+///
+/// Distinct from [`AUDIT_READ_GLOBAL`], which is a *read* capability and so
+/// cannot gate a write like a dead-letter requeue. This one covers the operator
+/// surfaces that are genuinely instance-wide and cannot be workspace-scoped:
+/// the system rows of the mail DLQ (a `maidan_mail_outbox` row predating
+/// Cluster 398.3 has no workspace, and mail sent outside a workspace context
+/// never will) and `GET /operator/legal-holds`, which scoping would make
+/// redundant with the per-workspace `GET /workspaces/:id/legal-hold`.
+///
+/// In [`crate::capability_set::HUMAN_ADMIN`] and never in `AGENT_WORKER`: an
+/// agent has no business reading across tenants.
+pub const OPERATOR_GLOBAL: &str = "operator:global";
+
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
@@ -46,6 +60,7 @@ const KNOWN: &[&str] = &[
     FEDERATION_INGEST,
     FEDERATION_ADMIN,
     AUDIT_READ_GLOBAL,
+    OPERATOR_GLOBAL,
     CHANNEL_ADMIN,
     SECRET_READ,
     SECRET_ADMIN,

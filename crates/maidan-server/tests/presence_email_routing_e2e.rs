@@ -95,13 +95,20 @@ async fn presence_window_skips_email_for_recently_seen_member() {
 
     notification_router::deliver_notification_email(
         &state,
+        ws.id,
         present.id,
         EventKind::MentionRecorded,
         1,
     )
     .await;
-    notification_router::deliver_notification_email(&state, away.id, EventKind::MentionRecorded, 2)
-        .await;
+    notification_router::deliver_notification_email(
+        &state,
+        ws.id,
+        away.id,
+        EventKind::MentionRecorded,
+        2,
+    )
+    .await;
 
     // Delivery is durable now (Cluster 305): the present member was skipped before
     // enqueue, so draining the outbox emails only the away member.

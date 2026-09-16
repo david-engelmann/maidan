@@ -932,11 +932,19 @@ impl MailStore for PostgresStore {
     async fn count_dead_mail(&self) -> Result<i64, StoreError> {
         mail_outbox::count_dead(&self.pool).await
     }
-    async fn list_dead_mail(&self, limit: i64) -> Result<Vec<DeadMail>, StoreError> {
-        mail_outbox::list_dead(&self.pool, limit).await
+    async fn list_dead_mail(
+        &self,
+        scope: Option<WorkspaceId>,
+        limit: i64,
+    ) -> Result<Vec<DeadMail>, StoreError> {
+        mail_outbox::list_dead(&self.pool, scope, limit).await
     }
-    async fn requeue_dead_mail(&self, id: MailOutboxId) -> Result<bool, StoreError> {
-        mail_outbox::requeue_dead(&self.pool, id).await
+    async fn requeue_dead_mail(
+        &self,
+        scope: Option<WorkspaceId>,
+        id: MailOutboxId,
+    ) -> Result<bool, StoreError> {
+        mail_outbox::requeue_dead(&self.pool, scope, id).await
     }
 }
 

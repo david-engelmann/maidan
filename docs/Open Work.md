@@ -1010,27 +1010,27 @@ because the tests assert the happy path of a single tenant.
    `auth.workspace_id` at the store, so a tenant sees only its own dead
    deliveries and a guessed cross-tenant id is a no-op rather than a re-send.
 
-   **Two siblings found while fixing it, still OPEN.** Both are the same class —
-   a genuinely global query behind the per-workspace `token:admin` — but neither
-   can be closed the same way, so each needs a decision rather than a patch:
+   **Two siblings found while fixing it — both ✅ FIXED (Cluster 398.3),** using
+   *both* remedies rather than picking one, because the two routes need different
+   ones:
 
-   - **`GET /operator/mail/dead` + `POST …/:id/requeue`.** `maidan_mail_outbox`
-     has **no `workspace_id` column**, so there is nothing to scope by, and the
-     rows carry `to_address`, `subject` and `body` — every tenant's outbound
-     email, readable by any workspace admin. Fixing it means either adding a
-     workspace column (with no way to backfill existing rows) or moving both
-     routes behind a genuinely global capability.
-   - **`GET /operator/legal-holds`.** Lists every workspace's hold. Scoping it to
-     the caller would make it redundant with `GET /workspaces/:id/legal-hold`,
-     so this one *wants* to stay global — which means it wants a global
-     capability.
+   - **`GET /operator/mail/dead` + `POST …/:id/requeue`** — the rows carry
+     `to_address`, `subject` and `body`, so any workspace admin could read every
+     other tenant's outbound email and requeue it to their recipient.
+     `maidan_mail_outbox` now has a `workspace_id` (pg 0096 / sqlite 0095),
+     populated at enqueue from the notification router, which already knows it.
+     Both routes scope to `auth.workspace_id`.
+   - **`GET /operator/legal-holds`** — genuinely instance-wide, and scoping it
+     would make it a duplicate of `GET /workspaces/:id/legal-hold`, so it keeps
+     its global query and moves to the new capability.
 
-   The capability vocabulary has exactly one cross-workspace marker today,
-   `audit:read-global` (Cluster 132), and it is a **read** capability — so it
-   cannot gate the mail requeue, which is a write. The honest options are a new
-   `operator:global` capability (correct, but rippling through the named sets,
-   both capability maps and the deny-caps matrices) or splitting these routes
-   out of `/operator` entirely. **Not decided; deliberately not invented here.**
+   **New capability `operator:global`** (in `maidan.human.admin`, never in
+   `maidan.agent.worker`). `audit:read-global` could not be reused: it is a
+   *read* capability and the mail requeue is a write. It also covers the mail
+   rows whose `workspace_id` is `NULL` — enqueued before this cluster, or with no
+   tenant context — which cannot be attributed to a caller's workspace and so are
+   visible to an instance operator alone. The column is deliberately nullable:
+   there is nothing to backfill, because the table never stored a workspace.
 
 ### P1
 

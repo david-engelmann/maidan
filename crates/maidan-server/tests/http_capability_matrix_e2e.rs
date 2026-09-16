@@ -150,6 +150,13 @@ fn http_deny_caps(required: &str) -> Vec<String> {
         capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
         capability::FEDERATION_ADMIN => vec![capability::WORKSPACE_READ.into()],
         capability::AUDIT_READ_GLOBAL => vec![capability::WORKSPACE_READ.into()],
+        // Cluster 398.3: the deny-token holds everything EXCEPT operator:global,
+        // so a route gated on it must still 403 — which is the whole point of
+        // introducing it rather than reusing the per-workspace token:admin.
+        capability::OPERATOR_GLOBAL => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::TOKEN_ADMIN.into(),
+        ],
         capability::CHANNEL_ADMIN => vec![
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),
