@@ -26,7 +26,7 @@ single source of truth for *how* to operate in this codebase. The
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v315.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v398.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
   handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). Since v273:
   MCP `2026-07-28` (300–303), mail retry (304–306), Slack/GitHub projectors
@@ -209,6 +209,29 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
   that explains its role and what's deferred.
 - For decisions whose rationale isn't obvious, check
   [`docs/Decisions.md`](docs/Decisions.md).
+
+## Where the project actually is (2026-09-16)
+
+Read this before the long narrative below, which is a point-in-time record and
+**stops around Cluster 273**. Current state:
+
+- **Clusters 377–396** were shipped autonomously by a **Cursor agent**. The work
+  is mechanically excellent — zero lint findings, zero TODOs, an e2e per feature.
+- **Cluster 397** (nine PRs) remediated a systematic authorization gap that audit
+  found in that run. **Every defect passed CI and its own tests.** The recurring
+  shape: *something outranked the control meant to bind it*, because every test
+  asked "does the control work?" and none asked "what outranks it?".
+- **Cluster 398** (five PRs) swept for the opposite failure — capability that is
+  built, tested, and wired to nothing — by enumerating the `Store` trait's 409
+  methods and reading what had no caller.
+- **Wave 3 row #36 (WASI) is OPEN, not closed.** `SlashHandlerKind::wasi` is
+  registrable on both write surfaces and every dispatch returns
+  `wasi_runtime_unavailable`. Do not read Cluster 396 as a completion.
+- **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
+  several items deliberately recorded as *decisions* rather than fixed. Do not
+  guess at them: self-approval laundering, `Maidan-Room-LSN` scoping, the
+  search-indexer cursor, workspace-handle resolution, and how far to take MCP
+  argument strictness.
 
 ## Project state at this handoff
 
