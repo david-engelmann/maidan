@@ -95,8 +95,11 @@ services:
       INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
+    # 8080 is one of the most contended ports on a dev machine, and a bind
+    # conflict here fails the whole `up`, so the host side is overridable.
+    # Container-to-container consumers need no published port at all.
     ports:
-      - "8080:8080"
+      - "${MAIDAN_HOST_PORT:-8080}:8080"
     volumes:
       - maidan_data:/data
     profiles:
@@ -123,7 +126,7 @@ services:
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
-      - "8080:8080"
+      - "${MAIDAN_HOST_PORT:-8080}:8080"
     volumes:
       - maidan_a_data:/data
     restart: on-failure:5
@@ -151,7 +154,7 @@ services:
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
-      - "8081:8080"
+      - "${MAIDAN_PEER_HOST_PORT:-8081}:8080"
     volumes:
       - maidan_b_data:/data
     restart: on-failure:5
