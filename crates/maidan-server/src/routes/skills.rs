@@ -8,7 +8,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -32,10 +32,32 @@ pub async fn add_member_skill(
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
     }
+    // A governance skill is not a routing tag: declaring it is what qualifies
+    // the holder to satisfy a gate, so granting one *widens* who may approve.
+    // Ratchets like the Cluster-397.2 gates — the ordinary path keeps
+    // `workspace:write`, widening needs `channel:admin`, which
+    // `maidan.agent.worker` does not carry. Without this an agent could grant
+    // itself the skill the close-gate checks for.
+    if is_governance_skill(&body.skill) {
+        cap(&auth, CHANNEL_ADMIN)?;
+    }
     state
         .store
         .add_member_skill(member.id, body.skill.trim())
         .await?;
+    if is_governance_skill(&body.skill) {
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "member_skill.grant_governance".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member.id.0),
+                metadata: serde_json::json!({ "skill": body.skill.trim() }),
+            },
+        )
+        .await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

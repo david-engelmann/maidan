@@ -562,7 +562,7 @@ pub async fn dispatch(
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
-        "add_member_skill" => skill::add_member_skill(store, args).await,
+        "add_member_skill" => skill::add_member_skill(store, auth, args).await,
         "list_member_skills" => skill::list_member_skills(store, args).await,
         "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,
         "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,

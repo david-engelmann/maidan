@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use maidan_auth::{capability::CHANNEL_ADMIN, AuthContext};
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
@@ -23,11 +24,21 @@ struct MemberSkillArgs {
 /// Declare a skill for a member (Cluster 233). `workspace:write`.
 pub(super) async fn add_member_skill(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: MemberSkillArgs = serde_json::from_value(args.clone())?;
     if a.skill.trim().is_empty() {
         return Err(McpError::InvalidParams("skill must not be empty".into()));
+    }
+    // The REST twin's ratchet (Cluster 400.5), and it has to be here rather
+    // than in the static `required_capability` arm: whether this call widens
+    // who may approve depends on the *argument*, not the tool. A governance
+    // skill is what a gate reads as authority, so granting one needs
+    // `channel:admin` — which `maidan.agent.worker` does not carry.
+    if is_governance_skill(&a.skill) && !auth.bypass {
+        auth.require_capability(CHANNEL_ADMIN)
+            .map_err(McpError::from)?;
     }
     store
         .add_member_skill(MemberId(a.member_id), a.skill.trim())
