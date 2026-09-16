@@ -5303,9 +5303,28 @@ mod tests {
         );
         assert_eq!(got["landable"], json!(true));
 
-        let cleared = content(
+        // Cluster 397.2: the gate ratchets. `op` holds `thread:transition` — the
+        // capability a close needs — so it must not be able to delete the gate
+        // that constrains the close.
+        assert!(
             server
                 .call_tool(&op, "clear_land_gate", &json!({ "thread_id": tid }))
+                .await
+                .is_err(),
+            "a transitioner must not clear the gate constraining it"
+        );
+        let admin = AuthContext::from_session(
+            owner.id,
+            ws.id,
+            vec![
+                THREAD_TRANSITION.to_string(),
+                WORKSPACE_READ.to_string(),
+                maidan_auth::capability::CHANNEL_ADMIN.to_string(),
+            ],
+        );
+        let cleared = content(
+            server
+                .call_tool(&admin, "clear_land_gate", &json!({ "thread_id": tid }))
                 .await
                 .unwrap(),
         );

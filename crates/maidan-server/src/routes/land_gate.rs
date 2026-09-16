@@ -3,6 +3,13 @@
 //! green/amber/red land vocabulary. An external verifier records
 //! pass/fail. Writes are `thread:transition`; reads are `workspace:read`.
 //! The FSM close-gate (385.2) enforces a qualifying green pass.
+//!
+//! **A gate ratchets** (Cluster 397.2). Arming or recording against it is
+//! `thread:transition`, but *removing* it is `channel:admin`. Clearing the row
+//! makes `gate_in_tx` vacuous, so a clear is exactly as powerful as a close —
+//! and `thread:transition` is the capability a close already needs, and is in
+//! the `maidan.agent.worker` bundle. Guarding both with it let the constrained
+//! agent delete its own constraint in one extra call, and left no trace.
 
 use axum::{
     extract::{Path, State},
@@ -10,7 +17,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{THREAD_TRANSITION, WORKSPACE_READ},
+    capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ},
     AuthContext,
 };
 use maidan_types::*;
@@ -52,15 +59,29 @@ pub async fn get_land_gate(
     Ok(Json(state.store.get_land_gate_standing(thread_id).await?))
 }
 
+/// Remove the gate entirely — `channel:admin`, and audited. This is the waiver,
+/// not a write against the gate, so it answers to the administrative capability
+/// rather than the one the gate constrains.
 pub async fn clear_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, THREAD_TRANSITION)?;
+    cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     if state.store.clear_land_gate(thread_id).await? {
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "land_gate.clear".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

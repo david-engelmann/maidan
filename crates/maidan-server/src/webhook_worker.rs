@@ -76,7 +76,18 @@ async fn run_bus_consumer(state: AppState, mut shutdown: watch::Receiver<()>) {
         };
         backoff = RECONNECT_INITIAL;
         info!("webhook worker attached to bus");
-        if consume_bus(stream, &state, &mut stop_rx).await {
+        let seed = match crate::event_stream::attach_watermark(&state).await {
+            Ok(head) => head,
+            Err(err) => {
+                warn!(error = %err, ?backoff, "webhook could not read the log head; retrying");
+                if tokio::time::timeout(backoff, stop_rx.recv()).await.is_ok() {
+                    return;
+                }
+                backoff = (backoff * 2).min(RECONNECT_MAX);
+                continue;
+            }
+        };
+        if consume_bus(stream, seed, &state, &mut stop_rx).await {
             return;
         }
         warn!("webhook bus stream ended; resubscribing");
@@ -85,10 +96,11 @@ async fn run_bus_consumer(state: AppState, mut shutdown: watch::Receiver<()>) {
 
 async fn consume_bus(
     mut stream: EventStream,
+    seed: i64,
     state: &AppState,
     stop_rx: &mut mpsc::Receiver<()>,
 ) -> bool {
-    let mut watermark: i64 = 0;
+    let mut watermark: i64 = seed;
     loop {
         tokio::select! {
             item = stream.next() => {
