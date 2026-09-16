@@ -977,9 +977,33 @@ because the tests assert the happy path of a single tenant.
    > closed PR #873. Recorded here because the repo's convention is that the PR
    > body *is* the commit body, and this one is not.
 
-   **Still open (related, larger):** the search indexer's `backfill_search`
-   re-walks the whole log from 0 on every start and resubscribe. That needs a
-   *persisted* cursor, not a seed.
+   **Still open (related, larger), and a decision rather than a fix:** the search
+   indexer's `backfill_search` starts at `after_id = 0` unconditionally, on every
+   process start, every resubscribe, and every `Lagged`. On Postgres the handler
+   is `BatchingEmbeddingHandler`, so a restart **re-embeds the entire history** —
+   cost, latency, and a bounded embedding queue to overflow. It can also compete
+   with itself: while backfilling, live frames are not consumed, so the broadcast
+   overflows → `Lagged` → backfill restarts from 0, which is a plausible livelock
+   on a busy deployment. And `SearchTap.fault` is sticky, so one chain break in
+   *any* workspace returns `RebuildRequired` and stops projection for **every**
+   tenant, retrying the same full scan on backoff forever — "fail loud" that in
+   practice reads as "silently stop indexing everything", since `rebuild_needed`
+   is an `AtomicBool` nothing consumes and there is no rebuild path.
+
+   The obvious fix — a persisted projector cursor — is **not obviously correct**,
+   which is why it is here rather than done. Re-walking from 0 is expensive but
+   *safe*: it re-verifies the whole chain on every start, which is what makes the
+   tap a verifier and not just a projector. Resuming from a cursor is cheap but
+   trusts a prefix it no longer checks, so a chain break behind the cursor becomes
+   invisible to the projector that exists partly to notice it. That is a
+   correctness tradeoff, not a performance one, and it wants an explicit answer to
+   "what is the tap's verification contract across restarts?" — plus, if the
+   answer is a cursor, a decision on whether verification moves to a separate
+   periodic full-chain check (`GET /workspaces/:wid/events/verify` already exists,
+   and Cluster 397.8 made it affordable to run).
+
+   The per-tenant blast radius is separable and less contentious: a fault in one
+   workspace should not stop projection for the others.
 4. ~~**`/operator/egress/dead` + requeue are global under a per-workspace
    `token:admin`** — read every tenant's Slack ids and repos, then requeue to
    post into them.~~ **✅ FIXED (Cluster 397.4)** — both are scoped to
