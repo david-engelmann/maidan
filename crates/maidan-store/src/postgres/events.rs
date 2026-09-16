@@ -69,7 +69,11 @@ pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     event: &Event,
 ) -> Result<StoredEvent, StoreError> {
-    let payload = serde_json::to_value(event)?;
+    let mut payload = serde_json::to_value(event)?;
+    // Both the hash and the stored copy must be this same normalized value, or
+    // a jsonb round trip can change one without the other — see
+    // `normalize_payload_numbers`.
+    maidan_types::normalize_payload_numbers(&mut payload);
     let ws = event.workspace_id().map(|w| w.0);
     // Serialize chain head per workspace so two concurrent first-events cannot
     // fork genesis. `hashtextextended` is stable across backends in the cluster.

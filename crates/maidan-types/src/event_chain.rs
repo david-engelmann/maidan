@@ -198,6 +198,71 @@ pub fn genesis_hash() -> String {
 }
 
 /// Hash canonical JSON of `payload` (the stored Event, not the wrapper).
+/// Rewrite every integral floating-point number in `payload` as an integer, in
+/// place, so the value hashes the same before and after a storage round trip.
+///
+/// # Why this exists
+///
+/// `maidan_events.payload` is Postgres `jsonb`, which parses each number into
+/// `numeric` and re-renders it. Measured against pg17, that preserves the
+/// decimal form (`1.0`→`1.0`, `1.10`→`1.10`, `0.1`→`0.1`) but **expands
+/// exponent notation**: `1E2`→`100`, `2.5e3`→`2500`.
+///
+/// That one case breaks the chain. `{"x": 1e2}` parses in memory as an `f64`
+/// and renders as `100.0`; jsonb stores `100`, which reads back as an
+/// *integer* and renders as `100`. `verify_chain` recomputes the hash from the
+/// stored payload, gets a different answer, and reports a tamper on an event
+/// nobody touched — permanently, for that workspace. Message `metadata` is
+/// arbitrary client JSON and `JSON.stringify` emits exponents above `1e21`, so
+/// this is reachable from ordinary use, not only federation.
+///
+/// Collapsing integral floats to integers removes the ambiguity the round trip
+/// introduces: both spellings now hash identically, so it no longer matters
+/// which one comes back.
+///
+/// # What is deliberately left alone
+///
+/// **Integers are never routed through `f64`** — a `u64` past 2^53 would lose
+/// precision, and it already round-trips exactly.
+///
+/// **Integral floats outside integer range** (`1e30`) keep their shortest form.
+/// jsonb expands them to a long decimal, but re-parsing that lands back on the
+/// same `f64` and renders the same way, so they already agree.
+///
+/// **Non-integral values are untouched.** `f64` → shortest decimal → exact
+/// `numeric` → decimal → `f64` round-trips, so `1.10` and `0.1` already agree.
+///
+/// This normalizes the *payload*, not [`canonical_json`]. Changing the
+/// canonicaliser would invalidate every stored chain hash and every signed
+/// export, with no rebuild path (Cluster 397.8 removed it deliberately).
+/// Normalizing the payload changes the hash only of payloads that are
+/// currently unverifiable anyway.
+pub fn normalize_payload_numbers(payload: &mut Value) {
+    match payload {
+        Value::Number(n) => {
+            let Some(f) = n.as_f64() else {
+                return;
+            };
+            // `as_i64`/`as_u64` succeed for a JSON integer, and those must not
+            // be rewritten — this is only about floats that happen to be whole.
+            if n.as_i64().is_some() || n.as_u64().is_some() {
+                return;
+            }
+            if !f.is_finite() || f.fract() != 0.0 {
+                return;
+            }
+            if f >= 0.0 && f <= u64::MAX as f64 {
+                *n = serde_json::Number::from(f as u64);
+            } else if f >= i64::MIN as f64 && f < 0.0 {
+                *n = serde_json::Number::from(f as i64);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(normalize_payload_numbers),
+        Value::Object(map) => map.values_mut().for_each(normalize_payload_numbers),
+        _ => {}
+    }
+}
+
 pub fn content_hash(payload: &Value) -> Result<String, EventChainError> {
     let bytes = canonical_json(payload)?;
     Ok(hash_bytes(&bytes))
@@ -609,6 +674,82 @@ mod tests {
         assert_ne!(
             chain_hash(&e.prev_hash, &e.content_hash, e.id),
             chain_hash(&moved.prev_hash, &moved.content_hash, moved.id)
+        );
+    }
+
+    /// The window that breaks: serde renders an `f64` with an exponent from
+    /// 1e16 up, and Postgres `jsonb` expands that to a plain integer which
+    /// still fits `u64` below ~1.8e19 — so it reads back as an integer and
+    /// hashes differently from the float that went in.
+    #[test]
+    fn integral_floats_in_the_jsonb_rewrite_window_become_integers() {
+        for (input, expected) in [
+            (1e16_f64, 10_000_000_000_000_000u64),
+            (5e18, 5_000_000_000_000_000_000),
+            (1e2, 100),
+        ] {
+            let mut v = serde_json::json!({ "n": input });
+            normalize_payload_numbers(&mut v);
+            assert_eq!(
+                v["n"],
+                serde_json::json!(expected),
+                "{input:e} should normalize to an integer"
+            );
+        }
+    }
+
+    /// Over-reaching is the failure mode worth guarding: normalizing is allowed
+    /// to change a number's spelling, never its value.
+    #[test]
+    fn normalization_leaves_every_other_shape_alone() {
+        let original = serde_json::json!({
+            "fractional": 0.1,
+            "trailing_zero": 1.10,
+            "tiny": 1e-7,
+            // Past u64 — both sides already route through f64 and agree.
+            "huge": 1e30,
+            // An integer past 2^53 must never go through f64 or it loses a bit.
+            "exact_big_integer": 9007199254740993i64,
+            "plain": 3,
+            "text": "1e16",
+            "null": null,
+        });
+        let mut v = original.clone();
+        normalize_payload_numbers(&mut v);
+        assert_eq!(v, original);
+    }
+
+    /// The property that actually matters: normalize, and the value hashes the
+    /// same whether or not something re-spelled its numbers in between.
+    #[test]
+    fn a_normalized_payload_hashes_the_same_as_its_respelled_self() {
+        let mut in_memory = serde_json::json!({ "a": 1e16, "b": [2e17, { "c": 3e16 }] });
+        // What jsonb hands back: the same values, spelled as integers.
+        let mut from_storage = serde_json::json!({
+            "a": 10_000_000_000_000_000u64,
+            "b": [200_000_000_000_000_000u64, { "c": 30_000_000_000_000_000u64 }]
+        });
+        assert_ne!(
+            content_hash(&in_memory).unwrap(),
+            content_hash(&from_storage).unwrap(),
+            "the two spellings must genuinely differ, or this proves nothing"
+        );
+        normalize_payload_numbers(&mut in_memory);
+        normalize_payload_numbers(&mut from_storage);
+        assert_eq!(
+            content_hash(&in_memory).unwrap(),
+            content_hash(&from_storage).unwrap()
+        );
+    }
+
+    /// Nested structures are walked, not just the top level.
+    #[test]
+    fn normalization_reaches_into_arrays_and_objects() {
+        let mut v = serde_json::json!({ "a": [{ "b": [[1e16]] }] });
+        normalize_payload_numbers(&mut v);
+        assert_eq!(
+            v["a"][0]["b"][0][0],
+            serde_json::json!(10_000_000_000_000_000u64)
         );
     }
 }
