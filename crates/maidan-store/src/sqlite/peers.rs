@@ -217,3 +217,67 @@ fn row_to_peer(row: &sqlx::sqlite::SqliteRow) -> Result<Peer, StoreError> {
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     })
 }
+
+/// Record the last origin [`EventLink`] **verified** from this peer, whether or
+/// not the event was then kept (Cluster 397.6).
+///
+/// The origin chain covers every event in the peer's workspace, but federation
+/// only accepts the `federatable()` allowlist. Recording the link only on the
+/// ingest path meant a policy-refused event left the pointer behind it, so every
+/// later envelope failed `PrevHashMismatch` — permanently. Monotonic: a replayed
+/// or out-of-order envelope never moves it backwards.
+pub async fn record_verified_link(
+    pool: &SqlitePool,
+    peer_id: PeerId,
+    link: &EventLink,
+) -> Result<(), StoreError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO maidan_federated_verified_link
+             (peer_id, remote_event_id, origin_prev_hash, origin_content_hash, verified_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (peer_id) DO UPDATE SET
+             remote_event_id = excluded.remote_event_id,
+             origin_prev_hash = excluded.origin_prev_hash,
+             origin_content_hash = excluded.origin_content_hash,
+             verified_at = ?
+         WHERE maidan_federated_verified_link.remote_event_id < excluded.remote_event_id",
+    )
+    .bind(peer_id.0)
+    .bind(link.id)
+    .bind(&link.prev_hash)
+    .bind(&link.content_hash)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// The last verified origin link, falling back to the last *ingested* one for a
+/// peer that predates Cluster 397.6 and so has no verified-link row yet.
+pub async fn last_verified_link(
+    pool: &SqlitePool,
+    peer_id: PeerId,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT remote_event_id, origin_prev_hash, origin_content_hash
+         FROM maidan_federated_verified_link
+         WHERE peer_id = ? AND origin_content_hash <> ''",
+    )
+    .bind(peer_id.0)
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        Some(row) => {
+            let id: i64 = row.get("remote_event_id");
+            Ok(Some(EventLink {
+                id,
+                lsn: id,
+                prev_hash: row.get("origin_prev_hash"),
+                content_hash: row.get("origin_content_hash"),
+            }))
+        }
+        None => last_origin_link(pool, peer_id).await,
+    }
+}

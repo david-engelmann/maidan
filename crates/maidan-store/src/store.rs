@@ -2087,6 +2087,21 @@ pub trait PeerStore: Send + Sync {
         local_event_id: i64,
         origin: &maidan_types::EventLink,
     ) -> Result<bool, StoreError>;
+    /// Record the last origin link **verified** from this peer, whether or not
+    /// the event was kept (Cluster 397.6). Monotonic.
+    async fn record_federated_verified_link(
+        &self,
+        peer_id: PeerId,
+        link: &maidan_types::EventLink,
+    ) -> Result<(), StoreError>;
+    /// The last origin link verified from this peer, falling back to the last
+    /// ingested one for a peer that predates Cluster 397.6 (Cluster 397.6).
+    /// This is what sequential ingest verify compares against — the *ingested*
+    /// link is not it, because a policy-refused event still advances the chain.
+    async fn last_federated_verified_link(
+        &self,
+        peer_id: PeerId,
+    ) -> Result<Option<maidan_types::EventLink>, StoreError>;
     /// Last origin [`maidan_types::EventLink`] accepted from this peer
     /// (Cluster 392 sequential ingest verify). `None` if this peer has
     /// never ingested a hashed envelope.

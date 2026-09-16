@@ -274,9 +274,14 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
     h.shutdown().await;
 }
 
-/// Cluster 215: the federation ingest allowlist rejects a non-federatable event
-/// kind. `ArtifactUpserted` is not federatable (blob bytes aren't transferred), so
-/// a peer pushing one is `403`ed rather than injecting a dangling reference.
+/// Cluster 215: the federation ingest allowlist refuses a non-federatable event
+/// kind. `ArtifactUpserted` is not federatable (blob bytes aren't transferred),
+/// so it is never ingested.
+///
+/// Cluster 397.6 changed the *reporting*, not the rule: it is counted as
+/// `refused` in the summary rather than `403`ing the batch. A peer's chain
+/// necessarily contains kinds we do not accept, so refusing the whole batch made
+/// a mixed batch unreplicable. The event is still not ingested.
 #[tokio::test]
 async fn federation_ingest_rejects_non_federatable_artifact_event() {
     let h = spawn().await;
@@ -344,7 +349,10 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
         .send()
         .await
         .unwrap();
-    assert_eq!(ingest.status(), StatusCode::FORBIDDEN);
+    assert_eq!(ingest.status(), StatusCode::OK);
+    let summary: serde_json::Value = ingest.json().await.unwrap();
+    assert_eq!(summary["refused"], 1, "refused, not ingested: {summary}");
+    assert_eq!(summary["ingested"], 0);
 
     h.shutdown().await;
 }
@@ -687,5 +695,143 @@ async fn federation_ingest_rejects_prev_hash_break() {
         .await
         .unwrap();
     assert_eq!(ingest.status(), StatusCode::CONFLICT);
+    h.shutdown().await;
+}
+
+/// Cluster 397.6: a refused event must not wedge the chain.
+///
+/// The origin chain covers **every** event in the peer's workspace, but
+/// federation only accepts the `federatable()` allowlist. The origin link used
+/// to be recorded on the ingest path only, so a refused event left the pointer
+/// behind it — and every later envelope, whose `prev_hash` chains from the
+/// refused one, then failed `PrevHashMismatch` forever. Sequence here is the
+/// minimal reproduction: accepted, refused, accepted.
+#[tokio::test]
+async fn a_refused_event_does_not_wedge_the_origin_chain() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-wedge".to_string(),
+        })
+        .await
+        .unwrap();
+    let admin = mint_admin_token(h.store.as_ref(), ws.id).await;
+
+    let create = h
+        .client
+        .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
+        .bearer_auth(&admin)
+        .json(&json!({ "name": "remote-wedge", "base_url": "https://remote.example" }))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = create.json().await.unwrap();
+    let peer_id = PeerId(uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap());
+    let peer_secret = body["secret"].as_str().unwrap().to_string();
+
+    let now = chrono::Utc::now();
+    let member = |n: u128| MemberId(uuid::Uuid::from_u128(n));
+    // A federatable event and a refused one, from the same producer.
+    let federatable = |n: u128| Event::MemberJoined {
+        occurred_at: now,
+        workspace_id: ws.id,
+        member: maidan_types::Member {
+            id: member(n),
+            workspace_id: ws.id,
+            handle: format!("m{n}"),
+            display_name: None,
+            kind: MemberKind::Agent,
+            created_at: now,
+            updated_at: now,
+            tombstoned_at: None,
+        },
+    };
+    let refused = Event::ArtifactUpserted {
+        occurred_at: now,
+        artifact: Artifact {
+            id: ArtifactId(uuid::Uuid::from_u128(99)),
+            sha256: "b".repeat(64),
+            size_bytes: 3,
+            mime_type: None,
+            kind: ArtifactKind::Attachment,
+            uploaded_by: None,
+            created_at: now,
+            tombstoned_at: None,
+        },
+    };
+
+    // Build a genuine chain: each prev_hash folds its predecessor's link.
+    let mut prev = maidan_types::genesis_hash();
+    let mut envelopes = Vec::new();
+    for (id, (event, kind)) in [
+        (federatable(1), EventKind::MemberJoined),
+        (refused.clone(), EventKind::ArtifactUpserted),
+        (federatable(3), EventKind::MemberJoined),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, e)| (i as i64 + 1, e))
+    {
+        let payload = serde_json::to_value(&event).unwrap();
+        let content_hash = maidan_types::content_hash(&payload).unwrap();
+        let stored = StoredEvent {
+            id,
+            lsn: id,
+            kind,
+            workspace_id: None,
+            channel_id: None,
+            thread_id: None,
+            payload,
+            occurred_at: now,
+            prev_hash: prev.clone(),
+            content_hash: content_hash.clone(),
+        };
+        prev = maidan_types::chain_hash(&stored.prev_hash, &content_hash, id);
+        envelopes.push(FederationEnvelope {
+            origin_peer_id: peer_id,
+            remote_event_id: id,
+            event: stored,
+        });
+    }
+
+    // Push them one batch at a time, the way the pull worker walks a log.
+    let mut outcomes = Vec::new();
+    for envelope in envelopes {
+        let res = h
+            .client
+            .post(format!("{}/a2a/v1/events", h.base()))
+            .bearer_auth(&peer_secret)
+            .json(&FederatedEventBatch {
+                events: vec![envelope],
+            })
+            .send()
+            .await
+            .unwrap();
+        let status = res.status();
+        let body: serde_json::Value = res.json().await.unwrap_or(json!({}));
+        outcomes.push((status, body));
+    }
+
+    assert_eq!(outcomes[0].0, StatusCode::OK);
+    assert_eq!(outcomes[0].1["ingested"], 1);
+
+    assert_eq!(
+        outcomes[1].0,
+        StatusCode::OK,
+        "the refused one is not an error"
+    );
+    assert_eq!(outcomes[1].1["refused"], 1);
+    assert_eq!(outcomes[1].1["ingested"], 0, "and it is not ingested");
+
+    // The one that used to 409 forever.
+    assert_eq!(
+        outcomes[2].0,
+        StatusCode::OK,
+        "an event after a refusal must still verify: {:?}",
+        outcomes[2].1
+    );
+    assert_eq!(outcomes[2].1["ingested"], 1, "{:?}", outcomes[2].1);
+
     h.shutdown().await;
 }
