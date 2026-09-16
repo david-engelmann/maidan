@@ -969,11 +969,19 @@ impl EgressStore for PostgresStore {
     async fn count_dead_egress(&self) -> Result<i64, StoreError> {
         egress_outbox::count_dead(&self.pool).await
     }
-    async fn list_dead_egress(&self, limit: i64) -> Result<Vec<DeadEgress>, StoreError> {
-        egress_outbox::list_dead(&self.pool, limit).await
+    async fn list_dead_egress(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<DeadEgress>, StoreError> {
+        egress_outbox::list_dead(&self.pool, workspace_id, limit).await
     }
-    async fn requeue_dead_egress(&self, id: EgressOutboxId) -> Result<bool, StoreError> {
-        egress_outbox::requeue_dead(&self.pool, id).await
+    async fn requeue_dead_egress(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressOutboxId,
+    ) -> Result<bool, StoreError> {
+        egress_outbox::requeue_dead(&self.pool, workspace_id, id).await
     }
     async fn allow_egress_target(
         &self,

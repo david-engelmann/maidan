@@ -129,14 +129,19 @@ pub async fn count_dead(pool: &PgPool) -> Result<i64, StoreError> {
 }
 
 /// List dead-lettered deliveries, newest-updated first (the operator DLQ view).
-pub async fn list_dead(pool: &PgPool, limit: i64) -> Result<Vec<DeadEgress>, StoreError> {
+pub async fn list_dead(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<DeadEgress>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, thread_id, surface, selector, attempts, last_error, updated_at
          FROM maidan_egress_outbox
-         WHERE status = 'dead'
+         WHERE status = 'dead' AND workspace_id = $1
          ORDER BY updated_at DESC
-         LIMIT $1",
+         LIMIT $2",
     )
+    .bind(workspace_id.0)
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -145,13 +150,18 @@ pub async fn list_dead(pool: &PgPool, limit: i64) -> Result<Vec<DeadEgress>, Sto
 
 /// Requeue a dead delivery for a fresh attempt: `pending`, due now, `attempts`
 /// reset. Returns whether a dead row was actually requeued.
-pub async fn requeue_dead(pool: &PgPool, id: EgressOutboxId) -> Result<bool, StoreError> {
+pub async fn requeue_dead(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    id: EgressOutboxId,
+) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_egress_outbox
          SET status = 'pending', attempts = 0, next_attempt_at = now(), updated_at = now()
-         WHERE id = $1 AND status = 'dead'",
+         WHERE id = $1 AND status = 'dead' AND workspace_id = $2",
     )
     .bind(id.0)
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(res.rows_affected() > 0)

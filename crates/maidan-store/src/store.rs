@@ -622,11 +622,26 @@ pub trait EgressStore: Send + Sync {
     ) -> Result<(), StoreError>;
     async fn count_dead_egress(&self) -> Result<i64, StoreError>;
     /// Dead-lettered deliveries for the operator DLQ view (Cluster 377.4),
-    /// newest first.
-    async fn list_dead_egress(&self, limit: i64) -> Result<Vec<DeadEgress>, StoreError>;
+    /// newest first — **scoped to one workspace** (Cluster 397.4).
+    ///
+    /// The scope is a parameter rather than a route-level filter because the rows
+    /// name other tenants' Slack channel ids and GitHub repositories, and
+    /// `token:admin` is per-workspace. A global query behind a per-workspace
+    /// capability is a cross-tenant read.
+    async fn list_dead_egress(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<DeadEgress>, StoreError>;
     /// Requeue a dead delivery (`pending`, due now, `attempts` reset); returns
-    /// whether a dead row was actually requeued.
-    async fn requeue_dead_egress(&self, id: EgressOutboxId) -> Result<bool, StoreError>;
+    /// whether a dead row was actually requeued. Scoped like the list, so a
+    /// guessed id from another tenant is a no-op rather than a re-send into
+    /// their channel.
+    async fn requeue_dead_egress(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressOutboxId,
+    ) -> Result<bool, StoreError>;
 
     /// The egress trust boundary (Cluster 378.1): a per-workspace allowlist of the
     /// destinations Maidan may deliver to. A result's `deliver_to` is written by an

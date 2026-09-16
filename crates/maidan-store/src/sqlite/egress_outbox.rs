@@ -135,30 +135,40 @@ pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("c"))
 }
 
-pub async fn list_dead(pool: &SqlitePool, limit: i64) -> Result<Vec<DeadEgress>, StoreError> {
+pub async fn list_dead(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<DeadEgress>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, thread_id, surface, selector, attempts, last_error, updated_at
          FROM maidan_egress_outbox
-         WHERE status = 'dead'
+         WHERE status = 'dead' AND workspace_id = ?
          ORDER BY updated_at DESC
          LIMIT ?",
     )
+    .bind(workspace_id.0)
     .bind(limit)
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_dead).collect())
 }
 
-pub async fn requeue_dead(pool: &SqlitePool, id: EgressOutboxId) -> Result<bool, StoreError> {
+pub async fn requeue_dead(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    id: EgressOutboxId,
+) -> Result<bool, StoreError> {
     let now = Utc::now().to_rfc3339();
     let res = sqlx::query(
         "UPDATE maidan_egress_outbox
          SET status = 'pending', attempts = 0, next_attempt_at = ?, updated_at = ?
-         WHERE id = ? AND status = 'dead'",
+         WHERE id = ? AND status = 'dead' AND workspace_id = ?",
     )
     .bind(&now)
     .bind(&now)
     .bind(id.0)
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(res.rows_affected() > 0)

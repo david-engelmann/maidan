@@ -158,14 +158,14 @@ async fn run_suite(store: &dyn Store) {
 
     // DLQ ops (Cluster 377.4): the dead entry is listed with its destination and
     // last error, then requeued -> pending + due, no longer dead + claimable.
-    let dead = store.list_dead_egress(10).await.expect("list dead");
+    let dead = store.list_dead_egress(ws.id, 10).await.expect("list dead");
     assert_eq!(dead.len(), 1);
     assert_eq!(dead[0].id, id);
     assert_eq!(dead[0].surface, "slack");
     assert_eq!(dead[0].selector, "C0123ABCDEF");
     assert_eq!(dead[0].thread_id, thread.id);
     assert_eq!(dead[0].last_error.as_deref(), Some("gave up"));
-    assert!(store.requeue_dead_egress(id).await.expect("requeue"));
+    assert!(store.requeue_dead_egress(ws.id, id).await.expect("requeue"));
     assert_eq!(store.count_dead_egress().await.expect("count3"), 0);
     let reclaimed = store
         .claim_next_due_egress(Utc::now(), 300)
@@ -175,7 +175,10 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(reclaimed.id, id);
     assert_eq!(reclaimed.attempts, 1, "requeue reset attempts (claim -> 1)");
     assert!(
-        !store.requeue_dead_egress(id).await.expect("requeue2"),
+        !store
+            .requeue_dead_egress(ws.id, id)
+            .await
+            .expect("requeue2"),
         "requeue only affects a dead entry"
     );
     // Leave the queue empty for the dedup suite that follows.
@@ -294,6 +297,7 @@ async fn egress_outbox_enqueue_claim_retry_deadletter_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
     run_dedup_suite(&store).await;
+    run_dlq_scope_suite(&store).await;
 }
 
 #[tokio::test]
@@ -329,4 +333,111 @@ async fn egress_outbox_enqueue_claim_retry_deadletter_postgres() {
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
     run_dedup_suite(&store).await;
+    run_dlq_scope_suite(&store).await;
+}
+
+/// Cluster 397.4: the DLQ is per-workspace. `token:admin` is minted per
+/// workspace, but the DLQ query used to be global — so one tenant's admin could
+/// read every other tenant's Slack channel ids, GitHub repositories and
+/// delivery errors, and requeue a delivery into them.
+async fn run_dlq_scope_suite(store: &dyn Store) {
+    async fn room(store: &dyn Store, name: &str) -> (WorkspaceId, ThreadId) {
+        let ws = store
+            .create_workspace(NewWorkspace { name: name.into() })
+            .await
+            .expect("ws");
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .expect("ch");
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("t".into()),
+            })
+            .await
+            .expect("thread");
+        (ws.id, thread.id)
+    }
+
+    let (ws_a, thread_a) = room(store, "dlq-alpha").await;
+    let (ws_b, thread_b) = room(store, "dlq-bravo").await;
+
+    // One dead delivery in each tenant, with distinguishable destinations.
+    let mut dead = Vec::new();
+    for (i, (ws, thread, channel_id)) in [
+        (ws_a, thread_a, "C0AAAAAAAAA"),
+        (ws_b, thread_b, "C0BBBBBBBBB"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = store
+            .enqueue_egress(NewEgressOutbox {
+                workspace_id: ws,
+                thread_id: thread,
+                source_log_id: 900_100 + i as i64,
+                target: EgressTarget::Slack {
+                    channel_id: channel_id.into(),
+                },
+                body: "b".into(),
+                kind: EgressKind::Projector,
+            })
+            .await
+            .expect("enqueue")
+            .expect("inserted");
+        store
+            .mark_egress_failed(id, "gave up", None)
+            .await
+            .expect("dead-letter");
+        dead.push((ws, id, channel_id));
+    }
+
+    // Each tenant sees exactly its own.
+    for (ws, id, channel_id) in &dead {
+        let seen = store.list_dead_egress(*ws, 50).await.expect("list");
+        assert_eq!(seen.len(), 1, "a tenant sees only its own dead deliveries");
+        assert_eq!(seen[0].id, *id);
+        assert_eq!(&seen[0].selector, channel_id);
+        assert_eq!(seen[0].workspace_id, *ws);
+    }
+
+    // A cannot requeue B's delivery even holding its exact id — the point, since
+    // a requeue re-sends into the destination channel.
+    let (_, b_id, _) = dead[1];
+    assert!(
+        !store
+            .requeue_dead_egress(ws_a, b_id)
+            .await
+            .expect("cross-tenant requeue"),
+        "workspace A must not requeue workspace B's dead delivery"
+    );
+    assert_eq!(
+        store.list_dead_egress(ws_b, 50).await.expect("b").len(),
+        1,
+        "B's row is untouched"
+    );
+
+    // B's own admin can, and then it is gone from B's DLQ.
+    assert!(store
+        .requeue_dead_egress(ws_b, b_id)
+        .await
+        .expect("own requeue"));
+    assert!(store
+        .list_dead_egress(ws_b, 50)
+        .await
+        .expect("b2")
+        .is_empty());
+
+    // Drain so a later suite on this store sees an empty queue.
+    for (ws, id, _) in dead {
+        let _ = store.requeue_dead_egress(ws, id).await;
+        let _ = store.mark_egress_delivered(id).await;
+    }
 }
