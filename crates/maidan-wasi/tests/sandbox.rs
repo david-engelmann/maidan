@@ -304,3 +304,59 @@ fn the_invoke_envelope_is_readable_on_stdin() {
     assert_eq!(echoed["args"], "some args");
     assert_eq!(echoed["$type"], maidan_types::wasi::WASI_INVOKE_TYPE);
 }
+
+/// Every name on the allowlist actually links.
+///
+/// The allowlist and the host implementations are two lists that have to agree,
+/// and nothing else makes them. A name allowlisted but never registered passes
+/// `check_imports` and then dies in the linker — reported as an
+/// `invalid_module`, which reads as "your wasm is broken" to the one person who
+/// did nothing wrong. This is the test that fails instead.
+#[test]
+fn every_allowlisted_import_resolves() {
+    let sigs: &[(&str, &str)] = &[
+        ("args_get", "(param i32 i32) (result i32)"),
+        ("args_sizes_get", "(param i32 i32) (result i32)"),
+        ("clock_res_get", "(param i32 i32) (result i32)"),
+        ("clock_time_get", "(param i32 i64 i32) (result i32)"),
+        ("environ_get", "(param i32 i32) (result i32)"),
+        ("environ_sizes_get", "(param i32 i32) (result i32)"),
+        ("fd_close", "(param i32) (result i32)"),
+        ("fd_fdstat_get", "(param i32 i32) (result i32)"),
+        ("fd_prestat_dir_name", "(param i32 i32 i32) (result i32)"),
+        ("fd_prestat_get", "(param i32 i32) (result i32)"),
+        ("fd_read", "(param i32 i32 i32 i32) (result i32)"),
+        ("fd_seek", "(param i32 i64 i32 i32) (result i32)"),
+        ("fd_write", "(param i32 i32 i32 i32) (result i32)"),
+        ("proc_exit", "(param i32)"),
+        ("random_get", "(param i32 i32) (result i32)"),
+        ("sched_yield", "(result i32)"),
+    ];
+    assert_eq!(
+        sigs.len(),
+        maidan_types::wasi::WASI_ALLOWED_PREVIEW1.len(),
+        "a name was added to the allowlist without a signature here"
+    );
+    for (name, _) in sigs {
+        assert!(
+            maidan_types::wasi::WASI_ALLOWED_PREVIEW1.contains(name),
+            "{name} is not on the allowlist"
+        );
+    }
+
+    let imports: String = sigs
+        .iter()
+        .map(|(n, sig)| format!(r#"(import "wasi_snapshot_preview1" "{n}" (func ${n} {sig}))"#))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let m = wat(&format!(
+        r#"(module {imports} (memory (export "memory") 1) (func (export "_start")))"#
+    ));
+
+    let out = maidan_wasi::run(&m, &invoke(), WasiLimits::default());
+    assert!(
+        out.ok,
+        "a module importing the whole allowlist must link and run, got {:?} / {:?}",
+        out.error_kind, out.error
+    );
+}

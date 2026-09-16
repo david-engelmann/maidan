@@ -42,7 +42,7 @@ top_pages=(
   "Dependencies" "Open Work" "Roadmap" "README" "Claims"
   "Providers" "Protocols" "Handoff" "Launch" "Promotion"
   "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"
-  "Framework Integrations"
+  "Framework Integrations" "WASI-Handlers"
 )
 for name in "${top_pages[@]}"; do
   cp "$repo_root/docs/$name.md" "$src_docs/${name// /-}.md"

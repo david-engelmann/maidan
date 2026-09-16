@@ -225,3 +225,46 @@ pub async fn ensure_message_access(
     }
     authorize_message(store, auth, message_id).await.map(|_| ())
 }
+
+/// Resolve a WASI slash handler's `handler_target` to the sha the workspace may
+/// actually run (Cluster 399.4).
+///
+/// `handler_target` is a content hash, not a URL, so a registration names bytes
+/// in the shared artifact store. Artifacts are deduplicated across tenants and
+/// carry no `workspace_id` of their own — the Cluster-204 access link is what
+/// makes them belong to anyone — so an unchecked registration could name any
+/// sha on the instance and have Maidan **execute** it.
+///
+/// Checked at registration as well as at dispatch, because the two answer
+/// different questions. Dispatch asks "may this run now?" and must keep asking,
+/// since a workspace can lose an artifact after the fact. Registration asks "can
+/// this ever run?" — and accepting a configuration that can never be honoured is
+/// worse than refusing it, because the failure surfaces later, to a different
+/// person, as a broken command rather than a rejected form.
+///
+/// Both failures return the same message on purpose: "this sha is not yours" and
+/// "this sha does not exist" must be indistinguishable, or registration becomes
+/// an oracle for which artifacts exist on the instance.
+///
+/// `bypass` skips the check. Under `AUTH_DISABLED` the upload path records no
+/// access links at all, so a ref check would reject every module — the same
+/// carve-out dispatch makes.
+pub async fn resolve_wasi_handler_target(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    target: &str,
+) -> Result<String, String> {
+    let hex = maidan_types::normalize_wasi_handler_target(target).map_err(|e| e.to_string())?;
+    if auth.bypass {
+        return Ok(hex);
+    }
+    match store.artifact_ref_exists(workspace_id, &hex).await {
+        Ok(true) => Ok(hex),
+        Ok(false) => Err(
+            "handler_target is not an artifact of this workspace — upload the module first"
+                .to_string(),
+        ),
+        Err(e) => Err(format!("could not resolve handler_target: {e}")),
+    }
+}

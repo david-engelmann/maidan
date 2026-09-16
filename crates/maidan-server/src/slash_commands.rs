@@ -138,8 +138,16 @@ pub async fn create_slash_command(
             validate_mcp_target(&body.handler_target)?;
             body.handler_target.trim().to_string()
         }
-        SlashHandlerKind::Wasi => maidan_types::normalize_wasi_handler_target(&body.handler_target)
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?,
+        // Not just a syntax check: the sha must name an artifact this workspace
+        // owns, or the command would be registrable and permanently unrunnable.
+        SlashHandlerKind::Wasi => maidan_auth::resolve_wasi_handler_target(
+            state.store.as_ref(),
+            &auth,
+            workspace_id,
+            &body.handler_target,
+        )
+        .await
+        .map_err(ApiError::BadRequest)?,
     };
 
     let mut secret_plain: Option<String> = None;
