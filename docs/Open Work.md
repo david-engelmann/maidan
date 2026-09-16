@@ -1136,6 +1136,76 @@ Cluster 396) waits. Each item is a cluster or a sub-PR, not a sweep — the
 recurring cause is that one-tenant tests cannot see a two-tenant bug, so each fix
 lands with a regression test that provisions **two** workspaces.
 
+## `report_usage` accepts arguments it silently discards (2026-09-16)
+
+Raised indirectly by the soundcheck integration review. Not what they asked for
+— their two asks were a stale doc read and a pi-side spelling — but their report
+makes the gap visible, so it is written down here.
+
+[Result Delivery.md](Result%20Delivery.md) promises, in the strongest terms the
+doc has: *"There is no `duration_secs`/`wall_secs` argument and there will not be
+one"*, because a self-reported clock is the same trust hole as a self-reported
+cost and Maidan already holds the authoritative one (the Cluster-351 working
+clock). The reasoning is right and the doc is clear.
+
+**But `ReportUsageArgs` has no `deny_unknown_fields`.** A producer that sends
+`duration_secs` — or `cost_usd`, the other argument the doc says does not exist
+— gets a `200` and silence. It believes it reported wall time. It did not. The
+API's silence actively contradicts the promise the doc makes, and the producer
+has no way to discover that except by reading the doc it already ignored.
+
+Same for the REST twin, `POST /threads/:id/usage`.
+
+**Options, in order of preference:**
+
+1. `#[serde(deny_unknown_fields)]` on the usage args, both surfaces. A producer
+   sending a phantom field gets a clear `InvalidParams` / `400` naming it.
+   Precedent exists — `maidan-a2a`'s envelope, peer and batch types and
+   `maidan-types::lexicon` all deny unknown fields already. Pre-launch there is
+   no compatibility argument against it ([[maidan-no-backwards-compat-prelaunch]]).
+   **Caveat worth checking before shipping:** this turns a silent no-op into a
+   hard failure for any live producer currently sending extras. Soundcheck
+   reports that pi deliberately does not send `duration_secs`, so the known
+   integration is safe — but that should be confirmed, not assumed.
+2. Warn-and-accept: log + meter unknown fields without failing. Observable
+   without breaking anyone, but a producer that does not read logs still gets
+   silence.
+3. Leave it. The doc is explicit, so arguably the contract is stated. Weakest —
+   it relies on producers reading a doc rather than on the API being honest.
+
+### The sweep, done: 128 structs, zero strict
+
+Across `crates/maidan-mcp/src/tools/`: **128 `*Args` structs, none with
+`deny_unknown_fields`, 47 carrying at least one `#[serde(default)]`.** So on 47
+tool surfaces a mistyped argument key is silently absorbed as a default rather
+than rejected.
+
+**`set_thread_budget` is the sharp case, and it is sharper than `report_usage`.**
+Its replace semantics are deliberate and documented — the catalog says *"Omitted
+dimensions are unbounded"*, and the store does a full `ON CONFLICT DO UPDATE SET`
+of every `max_*` column. That is a defensible PUT-shaped API and is **not** the
+bug.
+
+The bug is what those two facts compose into. Because **omission is load-bearing
+on this call — it means "remove this limit"** — a typo'd field name is
+indistinguishable from a deliberate omission. Send `max_wall_seconds` instead of
+`max_wall_secs` and the wall cap is silently removed, with a `200` and the budget
+echoed back. This is the one place in the codebase where the absence of
+`deny_unknown_fields` converts a spelling mistake directly into a **disarmed
+safety control**.
+
+The same shape applies to the partial-update instinct generally: `set_thread_budget
+{thread_id, max_tokens: N}`, intending to raise one cap, clears the other three.
+That IS documented, so it is a sharp edge rather than a defect — but it is worth
+asking whether a safety envelope should be PUT-shaped at all, or whether
+raising one dimension should not require restating the rest.
+
+Ranking the 47 by consequence rather than fixing them blind: `SetBudgetArgs`
+(4 defaults, disarms limits), `ImportArgs` (2, changes import mode),
+`RequestApprovalArgs` (2, HITL gate), `ReportUsageArgs` (3, the trust case
+above), `CatchUpArgs`/`SnapshotArgs`/`ListTombstonesArgs` (read-shape only, low
+consequence).
+
 ## Standing risks (still open)
 
 - **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` self-only: **assessed in 315 — the "session can read another's inbox" concern was a FALSE POSITIVE** (bearer-only routes, no `/ui/api` mount → sessions get 401; bearers are act-as-any by design). Defensive `ensure_acting_member` guards added anyway (no-op today; future-proofs a `/ui/api` mount).
