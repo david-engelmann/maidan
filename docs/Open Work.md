@@ -911,6 +911,133 @@ starts without an explicit go.**
 | **P3 (adoption)** | **Hosted cloud** (managed Maidan) | Later; multi-tenant hosting. `docs/Adoption.md` §4 |
 | **P2** | **SDK interop CI** | A CI job running the `docs/Client Testing.md` scenario catalog across the SDKs once they exist (the report-only A2A interop job, Cluster 289, is the pattern) |
 
+## Post-Cursor security audit (2026-09-15) — remediation program, OPEN
+
+A four-agent audit of clusters **377–396** (the run shipped 2026-09-12→15, PRs
+#768–#868) after the fact. Read this before adding a Wave row: the audit found
+no defect in the *shape* of that work, and a recurring defect in its
+**authorization**.
+
+**What the audit cleared.** `cargo fmt`, `clippy --all-targets -D warnings`, and
+the strict `-D clippy::unwrap_used -D clippy::expect_used` sweep all return
+zero. No `TODO`/`FIXME`/`unimplemented!` in lib code. The migration register is
+complete (94/94 pg, 93/93 sqlite). The lexicon pack is a clean bijection (28
+kinds ↔ 28 schemas, CI-guarded). ~30 new e2e files, one per feature. The Cluster
+395 **capability-set algebra is sound** — no expansion path, named sets are a
+recipe and never authority, unknown set names fail closed, no wildcards exist,
+expiry is bounded by the parent, and re-attenuation cannot widen. The Cluster
+391 **signing is sound** — genuine canonical JSON, the public key is bound into
+the signed statement (no key-substitution), constant-time compares, fail-closed
+on every malformed input. The Cluster 392 **hash chain is sound** — `prev_hash`
+transitively commits to the whole prefix, genesis is domain-separated, and the
+per-workspace advisory lock genuinely prevents a concurrent fork.
+
+**The pattern it found.** Two idioms recur across the new surfaces:
+`cap()` called **without `ensure_workspace`** (so a *per-workspace* capability
+acts globally), and **the same capability guarding a control and its removal**.
+Neither is a typo; both are a threat-model gap that the tests could not see
+because the tests assert the happy path of a single tenant.
+
+### P0 — cross-tenant or destructive
+
+1. **`POST /workspaces/import` has no workspace scope.** `cap(&auth, TOKEN_ADMIN)`
+   with no `ensure_workspace`; the workspace written is the id *inside a
+   caller-supplied bundle*. With the documented no-pin default the attacker signs
+   with their own key and the envelope verifies, so the signature authorizes
+   nothing. `?mode=restore&force=true` → `erase_workspace(victim)`, **bypassing
+   the Cluster-366 legal hold** that the dedicated erase route enforces. The MCP
+   twin takes no `AuthContext` at all, so it cannot scope or audit.
+2. **Both governance gates are two calls from bypassed.** `DELETE
+   /threads/:id/land-gate` and `DELETE …/review-requirement` are gated on
+   `thread:transition` — the same capability needed to close, and part of
+   `maidan.agent.worker`. No row ⇒ close permitted. Neither calls
+   `audit::record`; neither emits an event. **The bypass is untraceable.** The
+   same hole un-arms the Cluster-383 `k=1`.
+3. **Bus-consumer lag resume replays the entire global log.** Every consumer
+   declares `watermark = 0` *inside* the consume loop, so a `Lagged` before the
+   first event (reachable at boot and on every resubscribe) resumes from id 1
+   across all workspaces. Worst case `fsm_hook_worker`: re-fires every historical
+   hook through `dispatch_mcp_tool` with `AuthContext::bypass()`. `webhook_worker`
+   re-POSTs all history to every tenant's endpoint (no unique on
+   `(subscription_id, log_id)`). Seed from `max_event_id()` as `PostgresBus`
+   already does.
+4. **`/operator/egress/dead` + requeue are global under a per-workspace
+   `token:admin`** — read every tenant's Slack ids and repos, then requeue to
+   post into them. Wants the `audit:read-global` treatment.
+
+### P1
+
+5. **The egress neutralization boundary is incomplete** (four ways). The
+   non-`reviewed` Slack path returns `failure_notice(status)` **raw** — an
+   agent-written `status` of `<!channel>` is a real broadcast. One unmatched
+   inline backtick classifies the rest of the input as code and disables
+   neutralization downstream (CommonMark renders it literally, so it is prose).
+   `view_url` is appended *after* neutralization on GitHub, so `…) @org/team (`
+   breaks out of the markdown link. And `map_prose` skips code spans on the
+   stated grounds that "a mention inside code already does not notify on either
+   surface" — **false for Slack**, whose `<!…>`/`<@…>` are an API-level escape
+   layer that backticks do not defuse. Truncation running after neutralization
+   can also split a defusing wrapper back into a live mention.
+6. **Federation ingest wedges permanently** on the first non-federatable event:
+   it verifies, is 403'd by policy, never records the origin link, and every
+   later event then fails `PrevHashMismatch` forever — while the puller advances
+   the cursor past them, so they are lost silently.
+7. **Self-approval launders through a claim release.** Both gates test the
+   *live* `assignee_id` (`IS NULL OR <>` / `!= Some(_)`), so release the claim
+   and your own approval qualifies. The `land_gate` skill is also self-grantable
+   (`add_member_skill` is `workspace:write`, no self-only guard), and an
+   outstanding `request_changes` subtracts nothing — its own author can approve
+   it away. Needs a durable record of who did the work; none exists today
+   (assignment history is prunable event-log rows).
+8. **Attenuation loses three properties**: it strips `app_installation_id`
+   (escaping the app-uninstall kill-switch), resets per-token quotas and the
+   global rate-limit bucket (a self-service amplification primitive), and records
+   no parent link, so revoking a parent does not reach its children.
+9. **`Maidan-Room-LSN` is the global head, not the room's** — a caught-up
+   projector can never reach it, and it is a cross-tenant activity side channel
+   shipped to third-party webhooks. Its middleware also runs a primary DB query
+   per request *outside* the rate limiter, including on 401s and 429s.
+10. **Unbounded reads**: `events/verify` collects every link *and* payload into
+    memory on a `workspace:read` token; `backfill_chain` runs on every boot and
+    materializes whole workspaces in one transaction — and, because its guard is
+    global, re-links every row against *current* payloads, which launders a
+    tampered chain into `ok: true`. The tombstone explorer's `include_purged`
+    has no `LIMIT`.
+11. **Postgres `jsonb` re-normalizes numbers**, so a `content_hash` computed
+    from the in-memory value can never verify against the stored payload.
+    Reachable today via federation ingest, which hashes peer-supplied JSON.
+12. **Log snapshots are not point-in-time** — the graph is assembled before the
+    head is read, so an event committed during assembly is in neither the
+    snapshot nor the catch-up stream. A silent gap, not at-least-once.
+
+### Doc and hygiene debt
+
+- **Cluster 387 has no retro, no Capabilities entry, no CHANGELOG entry** — 3
+  impl PRs, a table, 5 REST routes and 4 MCP tools with no record. **C5 is the
+  bug that fell through that gap**: `RunOccupancy` never learned about
+  `maidan_thread_blocks`, so it reports `queued` where `ChannelOccupancy` reports
+  `blocked`.
+- **386's PRs are committed under Cluster 384's number** (`d11f880`, `3df8bf6`),
+  and the 384 retro merged before them.
+- **Cluster 389 renamed a producer-visible wire contract** (`pi.waiter.result/1`
+  → `maidan.waiter.result/1`, `pi.review.result/1` → `example.review.result/1`,
+  `view_in_pi` → `view_url`) and **no doc flagged it as a producer break**. The
+  fixture lock could not fire because the rename moved the fixture and the parser
+  in lockstep. Now disclosed at the top of [[Result Delivery]]. One cluster later,
+  390 codified "**no renames**, breaking = new type" — the rename violates the
+  rule the next cluster wrote down.
+- **Cluster 396 is a live stub on the default branch**: `SlashHandlerKind::Wasi`
+  is registrable and persisted by both write surfaces, and every dispatch returns
+  `wasi_runtime_unavailable`. No feature flag, no runtime, documented nowhere.
+- Land-gate enforcement is stated unconditionally in `Capabilities.md`,
+  `Architecture.md`, `Integration.md` and Retros 385/389; 383 claims a "third-party
+  **human**" resolver and neither third-party-ness nor human-ness is enforced.
+
+**Sequencing.** P0 first, in the order above; the feature roadmap (row #36 /
+Cluster 396) waits. Each item is a cluster or a sub-PR, not a sweep — the
+recurring cause is that one-tenant tests cannot see a two-tenant bug, so each fix
+lands with a regression test that provisions **two** workspaces.
+
 ## Standing risks (still open)
 
 - **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` self-only: **assessed in 315 — the "session can read another's inbox" concern was a FALSE POSITIVE** (bearer-only routes, no `/ui/api` mount → sessions get 401; bearers are act-as-any by design). Defensive `ensure_acting_member` guards added anyway (no-op today; future-proofs a `/ui/api` mount).
