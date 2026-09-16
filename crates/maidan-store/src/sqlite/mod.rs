@@ -187,12 +187,6 @@ impl WorkspaceStore for SqliteStore {
     ) -> Result<Option<WorkspaceHandle>, StoreError> {
         workspace_handles::get(&self.pool, workspace_id).await
     }
-    async fn workspace_id_for_handle(
-        &self,
-        handle: &str,
-    ) -> Result<Option<WorkspaceId>, StoreError> {
-        workspace_handles::workspace_id_for_handle(&self.pool, handle).await
-    }
 }
 
 #[async_trait]

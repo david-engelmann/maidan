@@ -399,6 +399,51 @@ one mode without parsing backend-specific `rank` ranges.
 
 ## Security
 
+### A workspace handle is a display label, not an address (`v398.7.0`)
+
+**Decision.** Maidan will **not** resolve a handle to a workspace. There is no
+`GET /rooms/:handle`, and the store's reverse lookup (`workspace_id_for_handle`,
+shipped unused in Cluster 395) is removed. A handle is a renameable, unique,
+human-readable label shown on the room card — nothing addresses by it.
+
+**Context.** Cluster 395 shipped the handle table, `PUT`/`GET
+/workspaces/:id/handle`, and a both-backend `workspace_id_for_handle` with a
+test. No route ever called it. That reads as a half-built feature — you can name
+a workspace and read the name back, but nothing finds a workspace *by* name — so
+the obvious instinct is to add the missing endpoint.
+
+**Why the endpoint should not exist.** It has no consumer in Maidan's actual
+model, and it is not free:
+
+- **A token already carries its workspace.** Tokens are minted per workspace
+  through `POST /workspaces/:wid/members/:mid/tokens` and the resolved
+  `AuthContext` holds `workspace_id`. A caller holding a token has nothing to
+  look up.
+- **There is no self-serve join.** Nothing lets a stranger discover a workspace
+  and request access, which is the flow a public handle serves elsewhere
+  (`acme.slack.com`). An admin mints the token out of band; the client is
+  configured with it.
+- **`maidan://` URIs deliberately use the UUID.** Cluster 395 chose that so a
+  rename cannot break a stored citation, pin or export. The addressable identity
+  is the id *by design* — a resolver would introduce a second, weaker one.
+- **It would be a tenant-existence probe.** `/.well-known/maidan-room` already
+  refuses to list tenants ("handles are aliases, not a public directory").
+  Resolution is not enumeration — you must guess the handle — but it answers
+  "does `acme` use this instance?" to anyone who asks, with no compensating use.
+- **Authenticating it does not rescue it.** Scoped to the caller's own workspace
+  it only restates what the token already says; unscoped-but-authenticated it
+  still probes, just with a token.
+
+**Uniqueness is unaffected.** It comes from the table's constraint, surfaced as
+`StoreError::Conflict` by `set_workspace_handle` — never from a reverse lookup.
+
+**Revisit if** a pre-authentication flow appears that genuinely needs it: a
+self-serve join, an instance-level workspace picker, or a hosted front door where
+a client arrives knowing only a name. Resolution should then be designed *with*
+that flow — rate-limited, returning the room card rather than membership, and
+with the enumeration trade taken knowingly — rather than added now because a
+store method looked lonely.
+
 ### WASI slash handlers run on **wasmi**, not wasmtime (Wave 3 #36)
 
 **Decision.** Use **[wasmi](https://github.com/wasmi-labs/wasmi)** — a pure
