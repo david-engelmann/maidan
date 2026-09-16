@@ -183,6 +183,26 @@ One impl PR + a retro. The Cluster 385 close-gate keeps its semantics (pointer +
 | **Rename (389.1):** close-gate public surface → land-gate across types, store, REST, MCP, OpenAPI, contracts, tests. Migrations rewritten in place (greenfield). | `crates/maidan-types/src/land_gate.rs`, `crates/maidan-store/src/{postgres,sqlite}/land_gate.rs`, `crates/maidan-server/src/routes/land_gate.rs`, `crates/maidan-mcp/src/tools/land_gate.rs` |
 | **Scrub:** `example.*` result kinds, `maidan.waiter.result/1`, `view_url`, `example/repo` fixtures; docs/retros rewritten. | `crates/maidan-types/src/waiter.rs`, `docs/{Integration,Result Delivery,Architecture,Open Work}.md` |
 
+## v387.0.0 — Wave 2 #28 (run-lineage half): the producer's `run_id` is the lineage
+
+*Recorded late.* Three impl PRs (387.1–387.3, #818/#824/#828) plus an Open Work
+note (#829) shipped with **no Capabilities entry, no CHANGELOG entry and no
+Roadmap paragraph** — a table, five REST routes and four MCP tools with no record
+anywhere. This section is that record. The cost of the gap was not abstract:
+**C5** — `run_occupancy` never learning about `maidan_thread_blocks` — sat
+undetected in the one surface nobody had written down, and was fixed in Cluster
+400.1.
+
+| Change | Where |
+|--------|-------|
+| **Lineage foundation (387.1):** `maidan_thread_lineage` (pg 0090 / sqlite 0089) homes a producer's `run_id` on a thread as `parent_run_id`. **The design call: accept the producer's id, do not mint a parallel one.** A second identifier would have to be correlated back to the first by every consumer, and the producer already has one that means something to it. Migration numbers were picked to clear in-flight 385 (land gate) and 386 (blocked reasons). | `crates/maidan-store/src/{postgres,sqlite}/thread_lineage.rs` |
+| **Nested occupancy (387.1):** `run_occupancy(workspace, run_id)` partitions every open thread sharing the value into `queued` / `claimed` / `working` / `blocked` over the Cluster-351 two clocks. **F7 mute stays orthogonal** — a muted nested thread still counts, because muting is about who gets told, not about whether the work exists. | `thread_lineage.rs` |
+| **REST (387.2):** `PUT` / `GET` / `DELETE /threads/:id/lineage`, `GET /workspaces/:id/run-threads`, `GET /workspaces/:id/run-occupancy`. `set_thread_result` **auto-homes** the run id when the waiter envelope carries one, so the common path needs no explicit call. | `crates/maidan-server/src/routes/{thread,workspace}.rs` |
+| **MCP (387.3):** `set_thread_lineage` / `get_thread_lineage` / `list_run_threads` / `get_run_occupancy`, with the same auto-home from `set_thread_result`. **Delete stays REST-only** — clearing lineage is an operator correction, not agent work. | `crates/maidan-mcp/src/tools/thread.rs` |
+
+**Wave 2 #28 is not closed by this.** Follow-a-member occupancy and the manager
+digest are the remaining halves.
+
 ## v386.0.0 — Wave 2 #27: a closed blocked-reason enum
 
 Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dispatch with a **closed** `BlockedReason` (`dag|gate|human|child|quota|unclaimable`) — unlike `result_kind`, a namespaced string. `claim_next` skips a `maidan_thread_blocks` row. Clearing emits `BlockedResolved` (non-federatable). Distinct from Cluster 218 DAG-children-must-be-terminal and Cluster 363's unclaimable park table (`unclaimable` here is vocabulary, not a replacement). **Row #27 is closed.**

@@ -1183,15 +1183,14 @@ because the tests assert the happy path of a single tenant.
 
 ### Doc and hygiene debt
 
-- **Cluster 387 has no retro, no Capabilities entry, no CHANGELOG entry** — 3
-  impl PRs, a table, 5 REST routes and 4 MCP tools with no record. **C5 is the
-  bug that fell through that gap, and it is confirmed (2026-09-16):**
-  `thread_lineage::occupancy` computes `blocked` from `maidan_thread_dependencies`
-  alone and never consults `maidan_thread_blocks`, while `threads::channel_occupancy`
-  consults both. The consequence is not cosmetic — `claim_next` *also* skips a
-  thread carrying a block row, so `run_occupancy` reports as `queued` work that
-  can never be claimed, and an orchestrator sizing its fleet off that number
-  waits forever for it to drain. Both backends, one `EXISTS` clause each.
+- ~~**Cluster 387 has no retro, no Capabilities entry, no CHANGELOG entry.**~~
+  **✅ CLOSED (Cluster 400.6)** — the Capabilities, CHANGELOG and Roadmap entries
+  it never got are now written, marked as recorded late. **C5, the bug that fell
+  through that gap, is ✅ FIXED (Cluster 400.1):** `run_occupancy` computed
+  `blocked` from the dependency DAG alone and never consulted
+  `maidan_thread_blocks`, while `channel_occupancy` consulted both — so
+  unclaimable work read as `queued`, and an orchestrator sizing off that number
+  would wait forever for it to drain.
 - **386's PRs are committed under Cluster 384's number** (`d11f880`, `3df8bf6`),
   and the 384 retro merged before them.
 - **Cluster 389 renamed a producer-visible wire contract** (`pi.waiter.result/1`
