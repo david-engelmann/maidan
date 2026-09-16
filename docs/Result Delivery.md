@@ -12,6 +12,31 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
+> ### ⚠️ Breaking change for existing producers (Cluster 389)
+>
+> The envelope discriminator was renamed. **Producers still sending the old
+> value are silently not delivered.**
+>
+> | Was | Is now |
+> |---|---|
+> | `pi.waiter.result/1` | **`maidan.waiter.result/1`** |
+> | `pi.review.result/1` | **`example.review.result/1`** (a `result_kind`) |
+> | `view_in_pi` | **`view_url`** |
+>
+> A `schema`/`$type` this build does not recognize makes `parse_waiter_result`
+> return `None`, which is **inert by design** — no delivery is attempted, and
+> because an unrecognized envelope is not an error there is no warning, no
+> `skipped` delivery row, and nothing on the status API. A producer on the old
+> string therefore goes dark rather than failing loudly. Update the
+> discriminator; nothing else about the grammar changed.
+>
+> This rename is also the reason the fixture lock could not catch it: Cluster
+> 389 renamed `crates/maidan-types/tests/fixtures/waiter_result_v1.json` and
+> edited its contents in lockstep with the parser, so the guard moved with the
+> code instead of failing. Going dark silently is the cost, and it is why this
+> notice exists rather than a changelog line.
+
+
 **Shipped (Clusters 379–381).** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `maidan.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
