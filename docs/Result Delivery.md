@@ -12,6 +12,31 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
+> ### ⚠️ Breaking change for existing producers (Cluster 389)
+>
+> The envelope discriminator was renamed. **Producers still sending the old
+> value are silently not delivered.**
+>
+> | Was | Is now |
+> |---|---|
+> | `pi.waiter.result/1` | **`maidan.waiter.result/1`** |
+> | `pi.review.result/1` | **`example.review.result/1`** (a `result_kind`) |
+> | `view_in_pi` | **`view_url`** |
+>
+> A `schema`/`$type` this build does not recognize makes `parse_waiter_result`
+> return `None`, which is **inert by design** — no delivery is attempted, and
+> because an unrecognized envelope is not an error there is no warning, no
+> `skipped` delivery row, and nothing on the status API. A producer on the old
+> string therefore goes dark rather than failing loudly. Update the
+> discriminator; nothing else about the grammar changed.
+>
+> This rename is also the reason the fixture lock could not catch it: Cluster
+> 389 renamed `crates/maidan-types/tests/fixtures/waiter_result_v1.json` and
+> edited its contents in lockstep with the parser, so the guard moved with the
+> code instead of failing. Going dark silently is the cost, and it is why this
+> notice exists rather than a changelog line.
+
+
 **Shipped (Clusters 379–381).** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `maidan.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
@@ -220,6 +245,38 @@ So delivery is authorized twice:
   secret-egress broker: with nothing configured, nothing is trusted and nothing
   is delivered.
 
+### Operator setup — blessing a target
+
+One `token:admin` call per destination, per workspace:
+
+```bash
+curl -sS -X POST "$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"surface":"github","selector":"example/repo"}'
+
+curl -sS -X POST "$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"surface":"slack","selector":"C0123ABCDEF"}'
+```
+
+`GET` the same path lists what is blessed; `DELETE …/egress-targets/:tid` revokes.
+Blessing is idempotent — a re-bless returns the existing entry with its original
+`created_at`, so the list stays "what may we post to" with nothing to reconcile.
+
+**The selector is two fields, not one string.** There is no `github:owner/repo`
+target syntax at this boundary: `surface` is the enum (`github` | `slack`) and
+`selector` is the per-surface id. The rules, enforced on every write path
+(`400` with the reason on a violation):
+
+| Surface | `selector` | Rejected |
+|---|---|---|
+| `github` | a repository, `owner/name` | anything containing `#` — the blessing is the **repo**, not the issue, so one call covers every PR in it |
+| `slack` | a channel id, `C…` or `G…` | `#channel-name` — a name is mutable, and the channel a name points at can change under the blessing |
+
+Leading/trailing whitespace is refused on both. The authorization key is coarser
+than the delivery target on GitHub: a result aimed at `example/repo#42` is
+authorized by the `example/repo` blessing.
+
 ### What this means for the producer
 
 **A perfectly correct `deliver_to` can still deliver nowhere.** That is not a
@@ -336,10 +393,49 @@ replay). Both are idempotent.
 
 ## Delivery status
 
-Per-thread delivery state (one row per target: disposition, external reference,
-last error, attempt count) is readable over REST and MCP, with an operator replay
-action. A producer can confirm where its result actually landed without scraping
-the external surface.
+Per-thread delivery state is readable over REST and MCP, with a replay action, so
+a producer can confirm where its result actually landed without scraping the
+external surface.
+
+| Call | Surface | Capability |
+|---|---|---|
+| `GET /threads/:id/deliveries` | REST | `workspace:read` + thread access |
+| `POST /threads/:id/deliveries/:did/replay` | REST | `workspace:write` + thread access |
+| `list_result_deliveries {thread_id}` | MCP | `workspace:read` + thread access |
+| `replay_result_delivery {thread_id, delivery_id}` | MCP | `workspace:write` + thread access |
+
+One row per `(thread, target)`:
+
+```json
+{
+  "id": "…", "thread_id": "…",
+  "surface": "github", "selector": "example/repo#42",
+  "status": "delivered",
+  "external_ref": "998877",
+  "armed_revision": "2026-09-15T10:00:00Z",
+  "delivered_revision": "2026-09-15T10:00:02Z",
+  "attempts": 1, "last_error": null,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+- **`status`** is `pending` (armed, not yet sent), `delivered`, `failed` (the
+  transport gave up and the egress queue dead-lettered it), or `skipped`
+  (deliberately not delivered — an unknown surface, or a target the workspace has
+  not blessed). `skipped` is **not an error**; `last_error` carries the reason.
+- **`selector`** is the full destination (`owner/name#123` on GitHub), which is
+  finer than the `owner/name` the allowlist is keyed on.
+- **`external_ref`** is the object we created — a Slack `ts`, a GitHub comment
+  id. It is what the next revision edits in place.
+- **`armed_revision` / `delivered_revision`** are `ThreadResult.produced_at`
+  watermarks: newest seen vs newest actually landed. `delivered_revision: null`
+  means never delivered. A result is re-delivered only when its `produced_at` is
+  newer than `armed_revision` — that is the dedup, and it is why a replayed event
+  is a no-op while a genuine re-review is an update.
+- **An empty list is `200 []`** — the result was routed nowhere, which is valid.
+
+Replay re-enqueues one row and **re-checks the allowlist**: an unblessed target
+stays `skipped` (status is not policy). It does not bump `armed_revision`.
 
 ---
 
@@ -361,7 +457,7 @@ surfaces, durably, once.
 
 ## Open requests to result producers
 
-Two of three are now carried; one remains:
+All three are now carried.
 
 1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used (Cluster 380).** Present on
    `maidan.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
@@ -369,12 +465,33 @@ Two of three are now carried; one remains:
 2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
    **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
    [Inline findings](#inline-findings-cluster-380).
-3. **Call `report_usage`** with the run's `cost_usd` and `duration_secs`. Maidan
-   ships a per-task token/USD/turn/wall budget envelope that stops a run when it
-   is exceeded; a producer that reports its spend only inside an opaque result
-   leaves that envelope blind. Self-reporting through the ledger API is the
-   supported path — Maidan deliberately does not fold an agent-declared cost out
-   of a result payload into its own billing basis.
+3. ~~**Call `report_usage`** with the run's cost and wall time.~~ **Carried, and
+   the wall half needs nothing.** Maidan ships a per-task token/USD/turn/wall
+   budget envelope that stops a run when it is exceeded, and a producer that
+   reports spend only inside an opaque result leaves that envelope blind.
+   Self-reporting through the ledger API is the supported path — Maidan
+   deliberately does not fold an agent-declared cost out of a result payload into
+   its own billing basis. The exact contract:
+
+   - **Cost, tokens, turns are reported.** `report_usage {thread_id, tokens,
+     usd_micros, turns}` — MCP, or `POST /threads/:id/usage`. `usd_micros` is
+     integer USD micros (`$1 = 1_000_000`); money never crosses the wire as a
+     float. There is **no `cost_usd` argument** — convert at the edge.
+   - **Wall time is *not* reported — it is derived.** There is no
+     `duration_secs`/`wall_secs` argument and there will not be one: a
+     self-reported clock is the same trust hole as a self-reported cost, and
+     Maidan already holds the authoritative one. `max_wall_secs` is measured
+     against the thread's Cluster-351 **working clock** (`work_started_at`), so
+     elapsed time is the room's own measurement.
+   - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
+     `NULL` until the holder calls `acknowledge_claim {thread_id, member_id,
+     claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). Until then
+     `max_wall_secs` is inert — a claimed-but-unacknowledged run is never stopped
+     on time. Acknowledging is idempotent (the first start time is kept) and is
+     also what splits `claimed` from `working` in `GET /channels/:cid/occupancy`.
+   - **Extra arguments are ignored, not rejected.** The handler does not set
+     `deny_unknown_fields`, so an unrecognized key cannot abort a run — but it is
+     silently dropped, so sending one buys nothing.
 
 ## Versioning
 
