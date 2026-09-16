@@ -28,6 +28,7 @@ maidan-search = { path = "../maidan-search", default-features = false }
 maidan-router = { path = "../maidan-router" }
 maidan-a2a = { path = "../maidan-a2a" }
 maidan-observability = { path = "../maidan-observability", default-features = false }
+maidan-wasi = { path = "../maidan-wasi" }
 async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
@@ -83,6 +84,8 @@ otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
+# Hand-written WAT for the WASI slash e2e (Cluster 399.2).
+wat = "1"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 testcontainers = "0.23"

@@ -217,6 +217,11 @@ pub fn normalize_wasi_handler_target(target: &str) -> Result<String, WasiTargetE
 }
 
 /// True when `(module, name)` is an allowed WASI preview 1 import.
+///
+/// The lookup is a binary search, so [`WASI_ALLOWED_PREVIEW1`] **must stay
+/// sorted** — an out-of-order entry would make this silently accept a banned
+/// import or reject an allowed one, with no error anywhere. Guarded by
+/// `the_preview1_allowlist_is_sorted`.
 /// Anything else is a banned network / filesystem / host call.
 pub fn is_allowed_wasi_import(module: &str, name: &str) -> bool {
     module == WASI_PREVIEW1_MODULE && WASI_ALLOWED_PREVIEW1.binary_search(&name).is_ok()
@@ -324,5 +329,50 @@ mod tests {
         let fail_json = serde_json::to_value(&fail).unwrap();
         assert_eq!(fail_json["error_kind"], "fuel_exhausted");
         assert_eq!(fail_json["ok"], false);
+    }
+}
+
+#[cfg(test)]
+mod allowlist_order_tests {
+    use super::{is_allowed_wasi_import, WASI_ALLOWED_PREVIEW1, WASI_PREVIEW1_MODULE};
+
+    /// `is_allowed_wasi_import` binary-searches the allowlist, so order is
+    /// load-bearing: an entry in the wrong place would make a banned import look
+    /// allowed (or the reverse) with nothing to notice it.
+    #[test]
+    fn the_preview1_allowlist_is_sorted() {
+        let mut sorted = WASI_ALLOWED_PREVIEW1.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            WASI_ALLOWED_PREVIEW1,
+            sorted.as_slice(),
+            "WASI_ALLOWED_PREVIEW1 must stay sorted for the binary search to be correct"
+        );
+    }
+
+    /// Every listed import resolves, and the obvious escapes do not.
+    #[test]
+    fn the_allowlist_admits_only_itself() {
+        for name in WASI_ALLOWED_PREVIEW1 {
+            assert!(
+                is_allowed_wasi_import(WASI_PREVIEW1_MODULE, name),
+                "{name} is on the allowlist but did not resolve"
+            );
+        }
+        for name in [
+            "path_open",
+            "sock_connect",
+            "fd_readdir",
+            "path_unlink_file",
+        ] {
+            assert!(
+                !is_allowed_wasi_import(WASI_PREVIEW1_MODULE, name),
+                "{name} must not be allowed"
+            );
+        }
+        assert!(
+            !is_allowed_wasi_import("env", "args_get"),
+            "module is checked too"
+        );
     }
 }
