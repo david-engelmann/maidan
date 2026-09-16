@@ -71,6 +71,7 @@ pub mod subscribe_metrics;
 pub mod subscribe_resume;
 pub mod thread_context;
 pub mod wait_sweeper;
+pub mod wasi_handler;
 pub mod web_push;
 pub mod webhook_worker;
 pub mod webhooks;

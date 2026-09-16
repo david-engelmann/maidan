@@ -283,7 +283,18 @@ pub async fn dispatch_slash_command(
                 .await
             }
             SlashHandlerKind::Wasi => {
-                json!({ "ok": false, "error": "wasi_runtime_unavailable" })
+                crate::wasi_handler::dispatch_wasi(
+                    state,
+                    auth,
+                    &registration.command,
+                    parsed,
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    author_id,
+                    message_id,
+                )
+                .await
             }
         }
     };
