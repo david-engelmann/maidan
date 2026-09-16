@@ -99,7 +99,16 @@ pub(super) fn verify_workspace_export(server: &McpServer, args: &Value) -> Resul
 
 /// Verify then import a signed envelope. `mode=new` remaps ids; `restore`
 /// keeps them (conflict unless `force`).
-pub(super) async fn import_workspace(server: &McpServer, args: &Value) -> Result<Value, McpError> {
+///
+/// Takes `auth` for the reason the REST twin does (Cluster 397.1): the
+/// signature proves integrity, never authority, so a `restore` names a
+/// caller-supplied workspace that has to be scoped. This handler previously
+/// took no [`AuthContext`] at all, which made scoping structurally impossible.
+pub(super) async fn import_workspace(
+    server: &McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
     let a = match serde_json::from_value::<ImportArgs>(args.clone()) {
         Ok(a) => a,
         Err(_) => ImportArgs {
@@ -120,6 +129,7 @@ pub(super) async fn import_workspace(server: &McpServer, args: &Value) -> Result
     let to_write = match mode {
         "new" => remap_import(flat, Uuid::new_v4),
         "restore" => {
+            auth.ensure_workspace(flat.workspace.id)?;
             match server.store.get_workspace(flat.workspace.id).await {
                 Ok(_) if !a.force => {
                     return Err(McpError::InvalidParams(format!(

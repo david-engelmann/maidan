@@ -114,6 +114,15 @@ pub async fn export_public_key(
 /// is fail-closed (tamper / bad sig / secret fields / wrong pin). Gated on
 /// `token:admin`. `mode=new` remaps ids; `mode=restore` preserves them
 /// (409 if that workspace exists unless `force=true`).
+///
+/// **The signature authorizes nothing** (Cluster 397.1). It proves the bundle
+/// is internally consistent with its own embedded key — and with the documented
+/// no-pin default (`MAIDAN_EXPORT_VERIFY_KEYS` unset) that key can be the
+/// caller's. So the workspace a `restore` names is a caller-supplied id and is
+/// scoped like every other one: `token:admin` is per-workspace, and a restore
+/// that names someone else's workspace is `403`, not a signature question.
+/// Without that check an admin could sign a bundle naming any tenant and have
+/// `force=true` erase it.
 pub async fn import_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -129,6 +138,9 @@ pub async fn import_workspace(
     let to_write = match q.mode {
         ImportMode::New => crate::import::remap(flat, uuid::Uuid::new_v4),
         ImportMode::Restore => {
+            // A restore writes to the id inside the bundle, so that id is the
+            // authorization subject — not the token's own workspace by assumption.
+            ensure_workspace(&auth, flat.workspace.id)?;
             let existing = state.store.get_workspace(flat.workspace.id).await;
             match existing {
                 Ok(_) if !q.force => {
@@ -138,7 +150,25 @@ pub async fn import_workspace(
                     )));
                 }
                 Ok(_) => {
-                    // force: erase the existing workspace so the restore lands cleanly.
+                    // force: erase the existing workspace so the restore lands
+                    // cleanly. This is the same destruction `erase_workspace`
+                    // performs, so it answers to the same guards — a legal hold
+                    // refuses it, and the intent is audited *before* the rows go.
+                    ensure_not_under_legal_hold(&state, flat.workspace.id).await?;
+                    state
+                        .store
+                        .append_audit(NewAuditEvent {
+                            actor_id: Some(auth.member_id),
+                            action: "workspace.import".into(),
+                            target_kind: Some("workspace".into()),
+                            target_id: Some(flat.workspace.id.0),
+                            metadata: serde_json::json!({
+                                "phase": "erase_started",
+                                "mode": q.mode,
+                                "force": q.force,
+                            }),
+                        })
+                        .await?;
                     state.store.erase_workspace(flat.workspace.id).await?;
                 }
                 Err(StoreError::NotFound) => {}

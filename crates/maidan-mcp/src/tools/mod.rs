@@ -529,7 +529,7 @@ pub async fn dispatch(
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
         "export_workspace" => export::export_workspace(server, auth, args).await,
         "verify_workspace_export" => export::verify_workspace_export(server, args),
-        "import_workspace" => export::import_workspace(server, args).await,
+        "import_workspace" => export::import_workspace(server, auth, args).await,
         "get_log_snapshot" => event_log::get_log_snapshot(store, auth, args).await,
         "catch_up_events" => event_log::catch_up_events(store, auth, args).await,
         "verify_event_chain" => event_log::verify_event_chain(store, auth, args).await,
