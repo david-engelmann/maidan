@@ -114,24 +114,44 @@ pub async fn ingest_events(
     batch.validate().map_err(federation_err)?;
     let mut ingested = 0u32;
     let mut skipped = 0u32;
+    let mut refused = 0u32;
     for envelope in batch.events {
         match ingest_envelope(&state, &peer, envelope).await? {
             IngestOutcome::Ingested => ingested += 1,
             IngestOutcome::SkippedDuplicate => skipped += 1,
+            IngestOutcome::SkippedNotFederatable => refused += 1,
         }
     }
-    Ok(Json(IngestSummary { ingested, skipped }))
+    Ok(Json(IngestSummary {
+        ingested,
+        skipped,
+        refused,
+    }))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct IngestSummary {
     pub ingested: u32,
     pub skipped: u32,
+    /// Verified but refused by the Cluster-215 allowlist (Cluster 397.6). A
+    /// non-zero count is informational, not an error — see
+    /// [`IngestOutcome::SkippedNotFederatable`].
+    #[serde(default)]
+    pub refused: u32,
 }
 
 pub(crate) enum IngestOutcome {
     Ingested,
     SkippedDuplicate,
+    /// Verified against the origin chain, then refused by the Cluster-215
+    /// allowlist (Cluster 397.6).
+    ///
+    /// This is a **normal** outcome, not peer misbehaviour, which is why it is
+    /// no longer a `403`. A peer's chain necessarily contains kinds federation
+    /// does not accept — `ThreadReady`, `ThreadResultSet` and `ClaimExpired` are
+    /// produced by any active workspace — so refusing the whole batch made a
+    /// mixed batch unreplicable, and the event is skipped either way.
+    SkippedNotFederatable,
 }
 
 pub(crate) async fn ingest_envelope(
@@ -156,7 +176,7 @@ pub(crate) async fn ingest_envelope(
     // Hash check before parse: a rewritten payload is a chain break (409),
     // not a 400 from serde. The origin link is verified without trusting
     // the sender's Event interpretation.
-    let previous = state.store.last_federated_origin_link(peer.id).await?;
+    let previous = state.store.last_federated_verified_link(peer.id).await?;
     if let Err(reason) = verify_peer_link(
         &envelope.event.link(),
         &envelope.event.payload,
@@ -167,16 +187,24 @@ pub(crate) async fn ingest_envelope(
             reason,
         });
     }
+    // The link verified, so the chain has advanced past this event — record that
+    // *before* any policy decision (Cluster 397.6). The origin chain covers every
+    // event in the peer's workspace, but federation only accepts the
+    // `federatable()` allowlist, so a refused event still sits between two
+    // accepted ones. Recording the link only on the ingest path left the pointer
+    // behind the refusal, and every later envelope then failed `PrevHashMismatch`
+    // forever.
+    state
+        .store
+        .record_federated_verified_link(peer.id, &envelope.event.link())
+        .await?;
 
     let mut event = event_from_stored(&envelope.event)?;
     // Cluster 215 federation ingest trust policy: only accept event kinds a peer
     // is allowed to push (allowlist-by-default; artifact-existence claims are
     // rejected since blob bytes aren't federated).
     if !event.kind().federatable() {
-        return Err(ApiError::Forbidden(format!(
-            "event kind {} is not accepted from federated peers",
-            event.kind().as_str()
-        )));
+        return Ok(IngestOutcome::SkippedNotFederatable);
     }
     event = remap_event_workspace(event, peer.workspace_id);
     let Some(log_id) = publish(state, event).await else {

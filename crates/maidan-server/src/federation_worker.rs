@@ -63,17 +63,30 @@ async fn poll_once(state: &AppState, outbound: &Outbound) -> Result<(), String> 
             .list_events(&peer, &secret, peer.last_synced_event_id, 100)
             .await
             .map_err(|e| e.to_string())?;
+        // The cursor advances only over events actually processed (Cluster
+        // 397.6). It used to be set to the batch's highest id regardless of
+        // outcome, so a failed ingest was skipped past and never retried —
+        // silent, permanent loss. A failure now stops the batch and leaves the
+        // cursor behind it, so the next poll retries from the same place.
         let mut max_id = peer.last_synced_event_id;
         for stored in events {
-            max_id = max_id.max(stored.id);
+            let remote_event_id = stored.id;
             let envelope = FederationEnvelope {
                 origin_peer_id: peer.id,
-                remote_event_id: stored.id,
+                remote_event_id,
                 event: stored,
             };
             match ingest_envelope(state, &peer, envelope).await {
-                Ok(_) => {}
-                Err(err) => warn!(peer = %peer.id, error = ?err, "ingest failed"),
+                Ok(_) => max_id = max_id.max(remote_event_id),
+                Err(err) => {
+                    warn!(
+                        peer = %peer.id,
+                        remote_event_id,
+                        error = ?err,
+                        "ingest failed; holding the cursor so the next poll retries"
+                    );
+                    break;
+                }
             }
         }
         if max_id > peer.last_synced_event_id {
