@@ -632,10 +632,19 @@ mod tests {
             neutralize_slack_mentions("see <https://x.test/a>"),
             "see <https://x.test/a>"
         );
+        // Cluster 397.5: this used to assert the opposite, on the grounds that
+        // "code already does not broadcast". That is true on GitHub and false
+        // here — `<!channel>` is Slack's own escape sequence, expanded when the
+        // message is parsed, so backticks never defused it.
         assert_eq!(
             neutralize_slack_mentions("`<!channel>`"),
-            "`<!channel>`",
-            "code already does not broadcast"
+            "`&lt;!channel>`",
+            "a backtick is not a defence on Slack"
+        );
+        assert_eq!(
+            neutralize_slack_mentions("```\n<!here>\n```"),
+            "```\n&lt;!here>\n```",
+            "nor is a fence"
         );
     }
 
@@ -809,15 +818,19 @@ mod tests {
 
     #[test]
     fn segmenting_an_unclosed_fence_treats_the_rest_as_code() {
-        // The conservative direction: better to leave text alone than to rewrite
-        // something the renderer will show verbatim.
+        // An unclosed *fence* really does run to end of input, per CommonMark.
         assert_eq!(
             neutralize_github_mentions("before\n```\n@octocat"),
             "before\n```\n@octocat"
         );
+        // An unclosed *inline* run does not (Cluster 397.5). CommonMark renders a
+        // lone backtick literally, so what follows is prose and its mentions are
+        // live. This asserted the opposite, which meant one stray backtick —
+        // trivially plantable in a quoted diff — switched defusal off for the
+        // rest of the body.
         assert_eq!(
             neutralize_github_mentions("an `unclosed span @octocat"),
-            "an `unclosed span @octocat"
+            "an `unclosed span `@octocat`"
         );
     }
 
