@@ -88,6 +88,27 @@ async fn legal_hold_blocks_purge_over_rest() {
         .await
         .unwrap();
     let auth = format!("Bearer {}", secret.as_str());
+    // Cluster 398.3: `GET /operator/legal-holds` is a genuinely instance-wide
+    // read and now needs `operator:global`; the per-workspace `token:admin`
+    // above is deliberately not enough.
+    let op_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: admin.id,
+            app_installation_id: None,
+            token_hash: hash_secret(op_secret.as_str()),
+            label: Some("instance-operator".into()),
+            capabilities: vec![
+                "workspace:read".into(),
+                "token:admin".into(),
+                "operator:global".into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let op_auth = format!("Bearer {}", op_secret.as_str());
     let hold_url = format!("{base}/workspaces/{}/legal-hold", ws.id.0);
     let purge_url = format!("{base}/workspaces/{}/purge", ws.id.0);
 
@@ -129,10 +150,23 @@ async fn legal_hold_blocks_purge_over_rest() {
         StatusCode::OK
     );
 
-    // Operator list contains it.
+    // A per-workspace admin cannot read every workspace's holds (Cluster 398.3).
+    assert_eq!(
+        client
+            .get(format!("{base}/operator/legal-holds"))
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN,
+        "token:admin is per-workspace; an instance-wide read needs operator:global"
+    );
+
+    // The instance operator can, and the hold is there.
     let list: serde_json::Value = client
         .get(format!("{base}/operator/legal-holds"))
-        .header("Authorization", &auth)
+        .header("Authorization", &op_auth)
         .send()
         .await
         .unwrap()
