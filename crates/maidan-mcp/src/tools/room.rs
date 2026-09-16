@@ -98,6 +98,13 @@ struct AttenuateArgs {
 
 /// Holder-side attenuation: derive a weaker token without `token:admin`.
 /// Amplification is rejected. A derived expiry cannot outlive the parent.
+///
+/// Inherits the parent's `app_installation_id` and per-token quotas, for the
+/// reason the REST twin does (Cluster 397.7): attenuation may be a no-op
+/// re-issue, so any bound the parent carried and the child did not was a way to
+/// shed it by asking. Also writes the `token.mint` audit row this path was
+/// missing entirely — minting a bearer is the audited mutation Cluster 182
+/// established, and the REST twin already recorded it.
 pub(super) async fn attenuate_token(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -112,18 +119,51 @@ pub(super) async fn attenuate_token(
     };
     let expires_at = maidan_auth::attenuate_expiry(parent, a.expires_at, Utc::now())
         .map_err(McpError::InvalidParams)?;
+    let inherited_quotas = match auth.token_id {
+        Some(parent_id) => store.list_token_quotas(parent_id).await?,
+        None => Vec::new(),
+    };
     let secret = TokenSecret::generate();
     let record = store
         .create_api_token(NewApiToken {
             workspace_id: auth.workspace_id,
             member_id: auth.member_id,
-            app_installation_id: None,
+            app_installation_id: auth.app_installation_id,
             token_hash: hash_secret(secret.as_str()),
             label: a.label,
             capabilities: capabilities.clone(),
             expires_at,
         })
         .await?;
+    if !inherited_quotas.is_empty() {
+        store
+            .replace_token_quotas(record.id, &inherited_quotas)
+            .await?;
+    }
+    // Best-effort, like `crate::audit::record`: a mint must not lose its
+    // response-only secret to an audit hiccup.
+    if let Err(err) = store
+        .append_audit(maidan_types::NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "token.mint".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: json!({
+                "workspace_id": record.workspace_id.0,
+                "subject_member_id": record.member_id.0,
+                "capabilities": record.capabilities.clone(),
+                "expires_at": record.expires_at,
+                "attenuated": true,
+                "surface": "mcp",
+                "parent_token_id": auth.token_id.map(|t| t.0),
+                "app_installation_id": record.app_installation_id.map(|i| i.0),
+                "inherited_quotas": inherited_quotas.len(),
+            }),
+        })
+        .await
+    {
+        tracing::warn!(error = %err, "audit.write_failed");
+    }
     Ok(content_json(&json!({
         "id": record.id.0,
         "secret": secret.as_str(),
