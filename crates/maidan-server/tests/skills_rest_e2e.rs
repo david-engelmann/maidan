@@ -19,6 +19,25 @@ use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
+    mint_with(
+        store,
+        ws,
+        member,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+            capability::THREAD_TRANSITION.into(),
+        ],
+    )
+    .await
+}
+
+async fn mint_with(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    member: MemberId,
+    capabilities: Vec<String>,
+) -> String {
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -27,11 +46,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![
-                capability::WORKSPACE_READ.into(),
-                capability::WORKSPACE_WRITE.into(),
-                capability::THREAD_TRANSITION.into(),
-            ],
+            capabilities,
             expires_at: None,
         })
         .await
@@ -191,4 +206,119 @@ async fn skills_crud_over_http() {
         .await
         .unwrap();
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
+}
+
+/// Cluster 400.5: a governance skill is not self-service.
+///
+/// The Cluster-385 close-gate counts a green pass only from a member who
+/// **declared** `land_gate`, and Cluster 383 arms `request_changes` only for a
+/// producer who declared `review`. Granting was plain `workspace:write` with no
+/// restriction on which skill — so an agent could grant *itself* the
+/// qualification the gate exists to check, leaving separation of duties as the
+/// only thing still standing.
+///
+/// Granting now ratchets like the Cluster-397.2 gates: `channel:admin`, which
+/// `maidan.agent.worker` does not carry.
+#[tokio::test]
+async fn an_agent_cannot_grant_itself_a_governance_skill() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "gov".into() })
+        .await
+        .unwrap();
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "worker".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let worker_token = mint(&*store, ws.id, agent.id).await;
+
+    let grant = |token: String, member: MemberId, skill: &'static str| {
+        let (base, client) = (base.clone(), client.clone());
+        async move {
+            client
+                .post(format!("{base}/members/{}/skills", member.0))
+                .bearer_auth(token)
+                .json(&json!({ "skill": skill }))
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    // The escalation this closes: the agent naming itself.
+    for skill in ["land_gate", "review"] {
+        assert_eq!(
+            grant(worker_token.clone(), agent.id, skill).await,
+            StatusCode::FORBIDDEN,
+            "{skill} must not be self-grantable on workspace:write"
+        );
+    }
+    // Spelling is not a way around it — the grant surface stores what it is sent.
+    assert_eq!(
+        grant(worker_token.clone(), agent.id, "  LAND_GATE ").await,
+        StatusCode::FORBIDDEN,
+        "the gate must not be case- or whitespace-evadable"
+    );
+
+    // Ordinary routing tags stay self-service. The point is a narrow gate, not
+    // a locked-down registry — `claim_next` routing must keep working.
+    assert_eq!(
+        grant(worker_token.clone(), agent.id, "rust").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        store.list_member_skills(agent.id).await.unwrap().len(),
+        1,
+        "only the routing tag landed"
+    );
+
+    // An operator holding channel:admin can grant it — the capability is the
+    // control, not a blanket ban.
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "human-admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let admin_token = mint_with(
+        &*store,
+        ws.id,
+        admin.id,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+            capability::CHANNEL_ADMIN.into(),
+        ],
+    )
+    .await;
+    assert_eq!(
+        grant(admin_token, agent.id, "land_gate").await,
+        StatusCode::NO_CONTENT,
+        "channel:admin may widen who approves"
+    );
+    let skills = store.list_member_skills(agent.id).await.unwrap();
+    assert!(skills.iter().any(|s| s.skill == "land_gate"));
+
+    // And the grant is audited, because it is now a privileged operation.
+    let audit = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .expect("audit");
+    assert!(
+        audit
+            .iter()
+            .any(|a| a.action == "member_skill.grant_governance"),
+        "widening who may approve must leave a trace: {audit:?}"
+    );
 }
