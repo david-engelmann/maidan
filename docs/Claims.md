@@ -28,15 +28,32 @@ post-gate hardening (no new gate tag).
 | "Durable, shared memory: threads, results, artifacts, tool-call transcripts, all searchable" | `maidan-store` (Postgres + SQLite `Store` parity, `backend_parity` test); content-addressed artifacts; `thread_results`; `tool_transcript`; full-text (`tsvector`/FTS5) + semantic (`pgvector`) search | Shipped |
 | "Tasks with dependencies, skill-based claiming, assignment + leases, scheduled runs, blocking waits" | Task-DAG + queue, scheduled/recurring tasks, skill routing, coordination waits (`wait_for_ready`/`wait_for_result`) — store tests `thread_deps`, `skill_routing`, `task_schedules`, `run_ready_dependents_suite`; e2es `thread_dependencies_e2e`, `thread_result_e2e` | Shipped |
 | "Pull exactly the context a step needs — far fewer tokens" | Thread/workspace context packs (lean edits by default, `include_edits` opt-in); `snippet_only` search; capability-filtered `tools/list`; opt-in lean event frames; omit-empty metadata. **Measured: a scoped pack is ~6.8× fewer tokens than dumping the whole channel** (`token_pack` harness → [Benchmark.md](Benchmark.md#context-pack-token-savings-token_pack)) | Shipped + measured |
-| "Access is scoped on every token; private channels enforced on reads, events, and search; every action is audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; audit trail — `audit_coverage_e2e` | Shipped |
+| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; audit trail over **28 security-sensitive action kinds** (token/app-token mint + revoke, channel membership, purge, legal hold, member freeze, gate clears, replays, reindex) — `audit_coverage_e2e` | Shipped — see the audit-scope note below |
 | "Speaks MCP, REST, and WebSocket over one data model and one login" | One `AppState`/`Store`; REST (OpenAPI 3.0, `openapi_e2e` bijection), MCP (JSON-RPC + streamable HTTP), WebSocket subscribe — all bearer-authed | Shipped |
 | "MCP-native — an MCP client connects directly and gets typed tools + live notifications" | `POST /mcp` + streamable HTTP; MCP `2026-07-28` (negotiated, default) with `2024-11-05` fallback; `resources/updated`; live-verified LangChain + AutoGen recipes (`docs/Framework Integrations.md`) | Shipped |
 | "Single static binary, laptop SQLite → multi-replica Postgres cluster" | One binary selected by `DATABASE_URL`; `scale-out smoke` required CI job; workspace-sharded fan-out; LSN causal read-replica routing (`read_routing` e2e vs real streaming replication) | Shipped (`maidan-scale-1.0`) |
-| "Operationally honest — probes, Prometheus, OTLP, durable event log + replay, cross-replica correctness" | `/health/{live,ready}`; `/metrics`; `otlp smoke` + `promtool (alert rules)` required CI; transactional outbox (events commit atomically with their domain write); self-healing NOTIFY floor (chaos-validated 40/40) | Shipped |
+| "Operationally honest — probes, Prometheus, OTLP, durable event log + replay, cross-replica correctness" | `/health/{live,ready}`; `/metrics`; `otlp smoke` + `promtool (alert rules)` required CI; transactional outbox (events commit atomically with their domain write); **leased outbox claim so N replicas relay each row once** (`concurrent_relays_claim_disjoint_outbox_rows`, Cluster 398.1); self-healing NOTIFY floor (chaos-validated 40/40) | Shipped |
 | "Signed release artifacts" | Keyless cosign bundles + SBOM on every release (`release.yml`); per-arch tarballs SHA-256-pinned in the quickstart image. Verify: see [SECURITY.md](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release) | Shipped |
 | "A2A transport" | A2A v1.0 over **JSON-RPC + REST §11** (complete); **gRPC §10 exposes task read/cancel/list** (`get_task`/`cancel_task`/`list_tasks`) — **`SendMessage`/push/streaming over gRPC are not yet implemented; send a message over JSON-RPC or REST**. Agent Card §4.4.1; interop conformance client + report-only `a2a interop` CI job | Shipped (JSON-RPC/REST complete; gRPC partial) |
 | "Off-platform reach: notifications, email, Slack, GitHub" | Per-recipient notification ledger + router + unified inbox; SMTP transport + durable mail retry queue (outbox + worker + DLQ); Slack + GitHub projectors (bidirectional, loop-safe) | **Shipped, config-gated** — inert until you set `MAIDAN_SMTP_*` / `MAIDAN_SLACK_*` / `MAIDAN_GITHUB_*` and create the apps |
 | "Client SDKs" | Four 0.1.0 clients (TypeScript, Python, Go, Rust) to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job | Shipped (0.1.0, early) |
+
+## What "audited" covers
+
+The audit trail is **not** a log of every mutation, and is not meant to be. It
+records the ~28 privileged action kinds — the ones where "who did this, and when"
+is the question you will actually ask after an incident. Three deliberate
+exclusions, so the scope is not mistaken for a gap:
+
+- **Ordinary content mutations are in the event log, not the audit log.** Posting,
+  editing and reacting are durable, ordered and replayable there; writing them a
+  second time into `maidan_audit` would double every write for no added answer.
+- **Denials are not audited** (decided in Cluster 182). A rejected,
+  attacker-controlled request stream is an unbounded write amplifier against the
+  audit table. Denials go to logs and metrics.
+- **Reads are not audited.** There is no per-read access log; `audit:read-global`
+  and `operator:global` bound who *can* read across tenants rather than recording
+  each read.
 
 ## Not yet / honest limits
 
