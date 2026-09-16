@@ -1132,33 +1132,38 @@ because the tests assert the happy path of a single tenant.
     version of the original finding — but a heavily-purged workspace still pays
     full materialization for a `limit=10` read.
 11. **Postgres `jsonb` re-normalizes numbers, so some events can never verify.
-    OPEN — confirmed, and narrower than first written.** Measured against
-    `pgvector/pgvector:pg17` on 2026-09-16: jsonb preserves a number's decimal
-    form (`1.0`→`1.0`, `1.10`→`1.10`, `0.1`→`0.1`) but **normalizes exponent
-    notation** (`1E2`→`100`, `2.5e3`→`2500`, `1e-7`→`0.0000001`).
+    ✅ FIXED (Cluster 400.3) — and far narrower than first written.** Measured
+    against `pgvector/pgvector:pg17`, and against serde's own rendering, which
+    is the half the original note missed.
 
-    So it is not that a hash "can never verify" — ordinary numbers round-trip
-    fine. The break is one specific case: an **exponent-notation number with an
-    integral value**. `{"x": 1e2}` hashes in memory as `100.0` (serde_json parses
-    to `f64`, renders `"100.0"`), is stored by jsonb as `100`, and reads back as
-    an *integer* → `"100"`. `content_hash` over the stored payload then differs
-    from the stored `content_hash`, and `verify_chain` reports a tamper on an
-    untouched event — permanently, for that workspace.
+    Two things have to coincide. **serde** renders an `f64` in plain decimal
+    below `1e16` and with an exponent at or above it. **jsonb** expands an
+    exponent to a plain integer. So only in the window `1e16`…~`1.8e19` does a
+    float go in and an *integer* come back — above `u64` the expansion
+    overflows, both sides fall back to `f64`, and they agree again. Everything
+    below the window (`1.0`, `1.10`, `0.1`, `100.0`, and `1e2`, which serde
+    writes as `100.0`) already round-tripped correctly.
 
-    Reachable from ordinary use, not just federation: message `metadata` is
-    arbitrary client JSON, and `JSON.stringify` emits exponent notation above
-    `1e21`.
+    **And it was never reachable through a local post.** A message's metadata
+    goes into a `jsonb` column first and the event is built from what came
+    back, so both sides were already laundered and agreed. The reachable path
+    is an event that reaches the log *without* a prior round trip — which is
+    exactly **federation ingest**: parse a peer's JSON, publish it.
 
-    **The fix, and why it is the narrow one.** Normalize the payload *before*
-    hashing and storing: an `f64` with an integral value that fits an integer
-    becomes one. Then what jsonb stores is already what a re-read produces.
-    Deliberately **not** a change to `canonical_json` itself — that would
-    invalidate every stored chain hash and every signed export, and there is no
-    rebuild path (397.8 removed it on purpose). Normalizing the payload only
-    changes the hash of payloads that are *currently unverifiable anyway*.
+    Fixed by `normalize_payload_numbers`, which rewrites integral floats in that
+    window as integers before the hash and before the store, so both see one
+    value. Integers are never routed through `f64` (a `u64` past 2^53 would lose
+    a bit), and non-integral values are untouched. Deliberately **not** a change
+    to `canonical_json` — that would invalidate every stored chain hash and
+    every signed export, with no rebuild path (397.8 removed it on purpose),
+    where normalizing the payload changes only hashes that could not verify.
 
-    Out-of-range integral floats (`1e30`) are left alone: both sides route
-    through `f64` and agree on the shortest form, so they already round-trip.
+    > **Method note, because it repeated three times.** Two earlier versions of
+    > the regression test passed against the *unfixed* code: the first used
+    > `1e2` (no bug — serde writes `100.0`), the second posted through the
+    > normal message path (laundered). Only the federation-shaped append
+    > reproduced `ContentHashMismatch`. A test that has not been run against the
+    > broken code is not known to test anything.
 12. **Log snapshots are not point-in-time. OPEN — confirmed, one-line cause.**
     `build_log_snapshot` (`crates/maidan-store/src/log_snapshot.rs`) assembles
     the domain graph via `build_workspace_export` and reads
@@ -1216,11 +1221,11 @@ that had silently been fixed are struck through above.
 
 | # | Item | Shape | Size |
 |---|------|-------|------|
-| C5 | `run_occupancy` ignores `maidan_thread_blocks`, so unclaimable work reads as `queued` | one `EXISTS` clause, both backends | small |
-| 12 | Log snapshot reads the head *after* assembling the graph → silent gap | reorder two reads | small |
+| ~~C5~~ | ~~`run_occupancy` ignores `maidan_thread_blocks`~~ | ✅ **fixed, Cluster 400.1** | — |
+| ~~12~~ | ~~Log snapshot reads the head after assembling the graph~~ | ✅ **fixed, Cluster 400.2** | — |
 | 10 | `list_purged` materializes the scope before truncating | push the limit into the query | small |
 | 7a | Governance skills (`land_gate`, review) are self-grantable | ratchet to `channel:admin`, per 397.2 | small |
-| 11 | jsonb normalizes integral exponent numbers → chain never verifies | normalize payload numbers before hashing | medium |
+| ~~11~~ | ~~jsonb normalizes integral exponent numbers~~ | ✅ **fixed, Cluster 400.3** | — |
 | 7b | Self-approval launders through a claim release | durable "who did the work" ledger | **schema decision** |
 | 8 | Attenuation records no parent link → revocation does not cascade | migration + traversal, and a cascade-vs-mark call | **decision** |
 | — | Search-indexer backfill restarts from 0 on every resubscribe | cursor vs full re-verification | **correctness decision** |
