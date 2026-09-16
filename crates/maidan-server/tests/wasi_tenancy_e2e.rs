@@ -1,4 +1,5 @@
-//! Cluster 399.2: a WASI handler runs only over a module its own workspace owns.
+//! Clusters 399.2 + 399.4: a WASI handler runs only over a module its own
+//! workspace owns — refused at registration, and still refused at dispatch.
 //!
 //! Auth is **enabled** here on purpose. Under `AUTH_DISABLED` the upload path
 //! records no Cluster-204 access links at all, so ownership is not a thing that
@@ -8,6 +9,13 @@
 //! Without the check, a registration could name any sha on the instance and turn
 //! a slash command into a cross-tenant artifact reader — it executes the bytes,
 //! so it would also be a cross-tenant *code* reader.
+//!
+//! **Two gates, two questions.** Registration asks "can this ever run?" and
+//! refuses a configuration that could never be honoured. Dispatch asks "may this
+//! run *now*?" and has to keep asking, because a workspace can lose an artifact
+//! after the registration was accepted. Neither subsumes the other, and this
+//! file asserts both — the second by taking the access link away from a
+//! registration that was legitimately accepted.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -57,7 +65,8 @@ async fn a_handler_cannot_run_another_tenants_module() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let mut state = AppState::new(
         store.clone(),
@@ -156,19 +165,38 @@ async fn a_handler_cannot_run_another_tenants_module() {
         let (base, token, ws, sha) = (base.clone(), t.token.clone(), t.ws, sha.clone());
         let client = client.clone();
         async move {
-            let r = client
+            client
                 .post(format!("{base}/workspaces/{}/slash-commands", ws.0))
                 .bearer_auth(token)
                 .json(&json!({ "name": name, "handler_kind": "wasi", "handler_target": sha }))
                 .send()
                 .await
-                .unwrap();
-            assert_eq!(r.status(), reqwest::StatusCode::CREATED);
+                .unwrap()
         }
     };
-    register(owner, "mine").await;
-    // The stranger registers a handler pointing at the *owner's* sha.
-    register(stranger, "theirs").await;
+    assert_eq!(
+        register(owner, "mine").await.status(),
+        reqwest::StatusCode::CREATED,
+        "the workspace that owns the bytes may register them"
+    );
+
+    // Gate one: the stranger cannot even register a handler over the owner's
+    // sha. Refused here rather than accepted-and-permanently-broken.
+    let refused = register(stranger, "theirs").await;
+    assert_eq!(
+        refused.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "registering another tenant's sha must be refused at registration"
+    );
+    let why = refused.text().await.unwrap_or_default();
+    assert!(
+        why.contains("not an artifact of this workspace"),
+        "the refusal should say what is wrong, got: {why}"
+    );
+    assert!(
+        !why.contains(&sha),
+        "the refusal must not echo the sha back as confirmation it exists: {why}"
+    );
 
     let invoke = |t: &Tenant, body: &'static str| {
         let (base, token, thread, author) = (base.clone(), t.token.clone(), t.thread, t.author);
@@ -193,16 +221,34 @@ async fn a_handler_cannot_run_another_tenants_module() {
     assert_eq!(mine_resp["ok"], true, "owner should run: {mine_resp:?}");
     assert_eq!(mine_resp["response"]["content"][0]["text"], "ran");
 
-    // The stranger's does not, despite naming a sha that genuinely exists.
+    // The stranger's command was never created, so `/theirs` is not a command at
+    // all — it posts as ordinary text with no slash metadata, which is what an
+    // unregistered name has always done.
     let theirs = invoke(stranger, "/theirs").await;
-    let theirs_resp = &theirs["metadata"]["slash_response"];
-    assert_eq!(
-        theirs_resp["ok"], false,
-        "a workspace must not execute another tenant's module: {theirs_resp:?}"
+    assert!(
+        theirs["metadata"]["slash_response"].is_null(),
+        "the refused registration must not have been persisted: {theirs:?}"
     );
-    assert_eq!(theirs_resp["error_kind"], "invalid_module");
+
+    // Gate two: a registration that was legitimately accepted still has to pass
+    // at dispatch, because ownership can go away afterwards. Drop the
+    // Cluster-204 access link out from under the owner's own command.
+    sqlx::query("DELETE FROM maidan_artifact_refs WHERE workspace_id = ? AND sha256 = ?")
+        .bind(owner.ws.0)
+        .bind(&sha)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let orphaned = invoke(owner, "/mine").await;
+    let orphaned_resp = &orphaned["metadata"]["slash_response"];
     assert_eq!(
-        theirs_resp["stdout"], "",
+        orphaned_resp["ok"], false,
+        "losing the artifact must stop the handler: {orphaned_resp:?}"
+    );
+    assert_eq!(orphaned_resp["error_kind"], "invalid_module");
+    assert_eq!(
+        orphaned_resp["stdout"], "",
         "the guest must not have run at all"
     );
 }

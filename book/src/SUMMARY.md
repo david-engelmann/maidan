@@ -21,6 +21,7 @@
 - [Scale gate (maidan-scale-1.0)](docs/Gates/maidan-scale-1.0.md)
 - [Embeddings & semantic search](docs/Embeddings.md)
 - [Deploy](docs/Deploy.md)
+- [WASI slash handlers](docs/WASI-Handlers.md)
 - [Raspberry Pi / ARM64](docs/Pi.md)
 - [Threat model](docs/Threat-Model.md)
 - [Glossary](docs/Glossary.md)

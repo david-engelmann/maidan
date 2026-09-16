@@ -14,7 +14,7 @@
 //!
 //! # Why the allowlist is structural
 //!
-//! [`WASI_ALLOWED_PREVIEW1`] names 17 preview-1 calls — stdin/stdout, args, env,
+//! [`WASI_ALLOWED_PREVIEW1`] names 16 preview-1 calls — stdin/stdout, args, env,
 //! clocks, random — and nothing that touches a path or a socket. This module
 //! *implements those and only those*. A guest that imports `path_open` or
 //! `sock_connect` fails to **link**; there is no filter to bypass and no

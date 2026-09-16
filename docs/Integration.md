@@ -694,6 +694,33 @@ a link to a thread that has none is fine.
 
 ---
 
+## Slash commands
+
+A workspace registers `/name` handlers over
+`POST /workspaces/{workspace_id}/slash-commands` (`workspace:write`), or the MCP
+twin `register_slash_command`. Typing `/name args` in a message dispatches the
+handler and stores its answer in that message's `metadata.slash_response`.
+
+Three handler kinds:
+
+| `handler_kind` | `handler_target` | Runs |
+|---|---|---|
+| `http` | an https URL | your service, over an HMAC-signed POST |
+| `mcp_tool` | an MCP tool name | a tool already in the catalog |
+| `wasi` | an artifact sha256 | a sandboxed wasm module you uploaded |
+
+`wasi` handlers have their own page —
+[WASI slash handlers](WASI-Handlers.md) — covering the invoke/result ABI, the
+import allowlist, the fuel and memory bounds, and what each failure kind means.
+The short version: upload the module as an artifact, register the command with
+its sha, and the guest reads a JSON invoke on stdin and writes its answer to
+stdout. No network, no filesystem.
+
+Dispatch is bounded at 5 seconds for every kind. FSM hooks accept `http` and
+`mcp_tool` only.
+
+---
+
 ## Webhooks
 
 Create outbound subscriptions:

@@ -48,8 +48,16 @@ pub(super) async fn register_slash_command(
             required_capability(&a.handler_target)?;
             a.handler_target.trim().to_string()
         }
-        SlashHandlerKind::Wasi => normalize_wasi_handler_target(&a.handler_target)
-            .map_err(|e| McpError::InvalidParams(e.to_string()))?,
+        // Not just a syntax check: the sha must name an artifact this workspace
+        // owns, or the command would be registrable and permanently unrunnable.
+        SlashHandlerKind::Wasi => maidan_auth::resolve_wasi_handler_target(
+            store.as_ref(),
+            auth,
+            workspace_id,
+            &a.handler_target,
+        )
+        .await
+        .map_err(McpError::InvalidParams)?,
     };
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
         let key = maidan_auth::encryption_key_from_env().map_err(|_| {
