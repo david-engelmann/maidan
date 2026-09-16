@@ -56,7 +56,12 @@ pub async fn list_approval_gates(
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(wid);
     ensure_workspace(&auth, workspace_id)?;
-    let secret = state.subscribe_resume_secret();
+    // A gate list without a signing key cannot carry the `requestState` the
+    // answer route requires, so an unsigned list would be a dead end (Cluster
+    // 398.2). 500 is the honest answer: the deployment is misconfigured.
+    let secret = state
+        .subscribe_resume_secret()
+        .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
     let gates = state
         .store
         .list_pending_approval_gates(workspace_id, 200)
@@ -107,11 +112,12 @@ pub async fn answer_approval_gate(
         .ok_or(ApiError::NotFound)?;
     // Integrity of the untrusted `/ui` round-trip: the answer must echo the
     // server-issued token for this gate.
-    if !verify_request_state(
-        &body.request_state,
-        gate.id,
-        state.subscribe_resume_secret(),
-    ) {
+    // No signing key means no `requestState` could have been issued, so nothing
+    // can legitimately verify — fail closed rather than waving the answer through.
+    let secret = state
+        .subscribe_resume_secret()
+        .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
+    if !verify_request_state(&body.request_state, gate.id, secret) {
         return Err(ApiError::Forbidden("invalid request_state".into()));
     }
     match state

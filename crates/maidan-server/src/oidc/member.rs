@@ -1,5 +1,5 @@
 use maidan_store::Store;
-use maidan_types::{Member, MemberId, MemberKind, NewMember, NewOidcIdentity, WorkspaceId};
+use maidan_types::{MemberId, MemberKind, NewMember, NewOidcIdentity, WorkspaceId};
 
 use crate::error::ApiError;
 
@@ -108,9 +108,4 @@ pub async fn touch_identity(
         })
         .await?;
     Ok(())
-}
-
-#[allow(dead_code)]
-pub fn member_kind_is_human(member: &Member) -> bool {
-    member.kind == MemberKind::Human
 }

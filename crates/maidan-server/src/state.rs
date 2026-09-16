@@ -330,15 +330,22 @@ impl AppState {
         self.presence = Arc::new(PresenceHub::default().with_presence_notifier(notifier));
     }
 
-    pub fn subscribe_resume_secret(&self) -> &[u8] {
+    /// The key that signs subscribe-resume and approval-gate `requestState`
+    /// tokens, or `None` when none is configured (Cluster 398.2).
+    ///
+    /// This used to `panic!` on the `None` arm, on the grounds that `main.rs`
+    /// establishes the invariant — and it does: all four of its branches either
+    /// set a secret or refuse to boot. But `AppState::new` leaves the field
+    /// `None`, so anything embedding this crate as a library could construct a
+    /// state that aborts the process on a *request*. A panic on a getter is
+    /// exactly what the repo's own "no panic in library code" rule is for, so
+    /// the absence is now a value the caller handles — in practice a `500`,
+    /// which is the honest answer to "this deployment cannot sign that token".
+    pub fn subscribe_resume_secret(&self) -> Option<&[u8]> {
         if let Some(oidc) = &self.oidc {
-            return oidc.session_secret.as_ref();
+            return Some(oidc.session_secret.as_ref());
         }
-        match self.subscribe_resume_secret.as_deref() {
-            Some(secret) => secret,
-            // Invariant established at construction; no Result to thread here.
-            None => panic!("subscribe resume secret must be configured"),
-        }
+        self.subscribe_resume_secret.as_deref()
     }
 
     /// E2E harness: auth and federation disabled, fresh indexer heartbeat.

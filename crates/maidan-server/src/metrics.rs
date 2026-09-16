@@ -450,6 +450,19 @@ async fn refresh_runtime_gauges(state: &AppState) {
             gauge!("maidan_outbox_oldest_pending_seconds").set(0.0);
         }
     }
+
+    // The other two dead-letter queues (Cluster 398.2). Both had a
+    // `count_dead_*` store method on each backend and no gauge, so the only way
+    // to notice a filling DLQ was to call the operator route and look — a
+    // projector delivery that has given up on a tenant's Slack channel, or a
+    // notification email that will never arrive, was invisible to alerting.
+    // The outbox has had `maidan_outbox_pending` / `_quarantined` since 84.
+    if let Ok(dead) = state.store.count_dead_egress().await {
+        gauge!("maidan_egress_dead").set(dead as f64);
+    }
+    if let Ok(dead) = state.store.count_dead_mail().await {
+        gauge!("maidan_mail_dead").set(dead as f64);
+    }
 }
 
 /// `GET /metrics` — Prometheus text exposition.
