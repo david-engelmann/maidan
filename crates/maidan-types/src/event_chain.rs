@@ -281,6 +281,84 @@ pub fn verify_link(
 }
 
 /// Walk `links` with matching `payloads`. Empty is ok.
+/// Verify a chain one row at a time, holding only the previous link
+/// (Cluster 397.8).
+///
+/// [`verify_chain`] takes whole slices, so the store collected every link *and*
+/// a clone of every payload before checking any of them — on a large workspace,
+/// gigabytes of resident memory per request, on the lowest read capability.
+/// Verification is a fold, not a collect, so this exposes it as one: the caller
+/// pages the log and discards each page as it goes.
+///
+/// Semantics are identical to [`verify_chain`], which now delegates to it.
+#[derive(Debug)]
+pub struct ChainVerifier {
+    genesis: String,
+    from_genesis: bool,
+    previous: Option<EventLink>,
+    checked: u32,
+    started: bool,
+}
+
+impl Default for ChainVerifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChainVerifier {
+    pub fn new() -> Self {
+        Self {
+            genesis: genesis_hash(),
+            from_genesis: true,
+            previous: None,
+            checked: 0,
+            started: false,
+        }
+    }
+
+    /// Check one row. `Some(report)` is a break — stop paging; the report is
+    /// final. `None` means keep going.
+    pub fn push(&mut self, link: &EventLink, payload: &Value) -> Option<ChainVerifyReport> {
+        // The first row decides whether this chain starts at genesis or at a
+        // retention floor, exactly as the slice version reads `links[0]`.
+        if !self.started {
+            self.from_genesis = link.prev_hash == self.genesis;
+            self.started = true;
+        }
+        let floor_genesis = self.from_genesis && self.checked == 0;
+        if let Err(reason) = verify_link(link, payload, self.previous.as_ref(), floor_genesis) {
+            return Some(ChainVerifyReport {
+                ok: false,
+                algorithm: EVENT_CHAIN_ALG.to_string(),
+                genesis: self.genesis.clone(),
+                checked: self.checked,
+                head: self.previous.clone(),
+                from_genesis: self.from_genesis,
+                break_at: Some(link.id),
+                reason: Some(reason),
+            });
+        }
+        self.previous = Some(link.clone());
+        self.checked += 1;
+        None
+    }
+
+    /// The report for a chain that verified all the way to its head.
+    pub fn finish(self) -> ChainVerifyReport {
+        ChainVerifyReport {
+            ok: true,
+            algorithm: EVENT_CHAIN_ALG.to_string(),
+            genesis: self.genesis,
+            checked: self.checked,
+            head: self.previous,
+            from_genesis: self.from_genesis,
+            break_at: None,
+            reason: None,
+        }
+    }
+}
+
 pub fn verify_chain(links: &[EventLink], payloads: &[Value]) -> ChainVerifyReport {
     let genesis = genesis_hash();
     if links.len() != payloads.len() {
@@ -308,34 +386,13 @@ pub fn verify_chain(links: &[EventLink], payloads: &[Value]) -> ChainVerifyRepor
         };
     }
 
-    let from_genesis = links[0].prev_hash == genesis;
-    let mut previous: Option<&EventLink> = None;
-    for (i, (link, payload)) in links.iter().zip(payloads.iter()).enumerate() {
-        let floor_genesis = from_genesis && i == 0;
-        if let Err(reason) = verify_link(link, payload, previous, floor_genesis) {
-            return ChainVerifyReport {
-                ok: false,
-                algorithm: EVENT_CHAIN_ALG.to_string(),
-                genesis,
-                checked: i as u32,
-                head: previous.cloned(),
-                from_genesis,
-                break_at: Some(link.id),
-                reason: Some(reason),
-            };
+    let mut verifier = ChainVerifier::new();
+    for (link, payload) in links.iter().zip(payloads.iter()) {
+        if let Some(report) = verifier.push(link, payload) {
+            return report;
         }
-        previous = Some(link);
     }
-    ChainVerifyReport {
-        ok: true,
-        algorithm: EVENT_CHAIN_ALG.to_string(),
-        genesis,
-        checked: links.len() as u32,
-        head: links.last().cloned(),
-        from_genesis,
-        break_at: None,
-        reason: None,
-    }
+    verifier.finish()
 }
 
 /// Peer-side check: the envelope's stored hashes match its payload and,
