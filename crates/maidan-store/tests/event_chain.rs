@@ -318,3 +318,161 @@ async fn a_blanked_hash_cannot_launder_a_tampered_payload_sqlite() {
         "the break surfaces at the successor, whose prev_hash still names the original"
     );
 }
+
+/// Cluster 400.3: a payload carrying exponent-notation numbers still verifies.
+///
+/// Postgres `jsonb` parses each number into `numeric` and re-renders it, which
+/// **expands exponent notation** — `1E2` is stored as `100`. An in-memory `1e2`
+/// hashes as the float `100.0`; the stored `100` reads back as an *integer* and
+/// hashes differently, so `verify_event_chain` reported a tamper on an event
+/// nobody had touched, permanently, for that workspace.
+///
+/// Reachable from ordinary use: message `metadata` is arbitrary client JSON and
+/// `JSON.stringify` emits exponents above `1e21`.
+///
+/// Postgres only — SQLite stores the payload text verbatim, so the round trip
+/// that causes this does not exist there. The normalization runs on both
+/// backends anyway, because a federated origin hash computed on one must verify
+/// on the other.
+async fn assert_exponent_numbers_survive_the_round_trip(store: &dyn Store) {
+    let (ws, member) = seed(store).await;
+
+    // Every shape jsonb rewrites, plus the ones it leaves alone, so a future
+    // change to the normalizer that over-reaches fails here.
+    let payload = serde_json::json!({
+        // The window that actually breaks: serde renders an `f64` with an
+        // exponent from 1e16 up, and jsonb expands that to a plain integer that
+        // still fits `u64` below ~1.8e19 — so it reads back as an *integer* and
+        // hashes differently from the float that was hashed on the way in.
+        "at_the_boundary": 1e16,
+        "inside_the_window": 5e18,
+        "nested_in_window": [1e17, {"deep": 2e16}],
+        // Below the window serde writes plain decimal, which jsonb preserves.
+        "below_window": 1e15,
+        "small_integral": 1e2,
+        // Above it the expansion overflows `u64`, so both sides fall back to
+        // `f64` and already agree.
+        "above_window": 1e30,
+        // Untouched shapes — a normalizer that over-reaches fails here.
+        "small_exponent": 1e-7,
+        "fractional": 0.1,
+        "trailing_zero": 1.10,
+        "plain_integer": 3,
+        "big_integer": 9007199254740993i64,
+        "negative_in_window": -5e18,
+    });
+
+    // Appended the way **federation ingest** does it: a peer's JSON is parsed
+    // into an `Event` and published straight to the log. That is the reachable
+    // path, and the distinction matters — a *local* post is laundered first,
+    // because the message row is inserted into a `jsonb` column and the event
+    // is built from what came back, so both sides already agree. Only an event
+    // that reaches the log without a prior round trip can disagree with itself.
+    let channel = store.list_channels(ws).await.expect("channels")[0].id;
+    let thread = store
+        .create_thread(maidan_types::NewThread {
+            channel_id: channel,
+            parent_thread_id: None,
+            title: Some("numbers".into()),
+        })
+        .await
+        .expect("thread");
+    let now = chrono::Utc::now();
+    let stored = store
+        .append_event(&Event::MessagePosted {
+            occurred_at: now,
+            workspace_id: ws,
+            channel_id: channel,
+            thread_id: thread.id,
+            dm_conversation_id: None,
+            message: maidan_types::Message {
+                id: maidan_types::MessageId::new(),
+                thread_id: thread.id,
+                author_id: member.id,
+                body: "numbers".into(),
+                metadata: payload.clone(),
+                content: None,
+                posted_at: now,
+                edited_at: None,
+                tombstoned_at: None,
+            },
+        })
+        .await
+        .expect("append with exponent numbers");
+
+    let report = store.verify_event_chain(ws).await.expect("verify");
+    assert!(
+        report.ok,
+        "an untouched event with exponent numbers must verify: {report:?}"
+    );
+
+    // And the stored payload must still mean the same thing — normalizing is
+    // allowed to change a number's spelling, never its value.
+    let read_back = store
+        .list_events_after(ws, stored.id - 1, 1)
+        .await
+        .expect("read back");
+    let got = &read_back[0].payload["message"]["metadata"];
+    assert_eq!(
+        got["at_the_boundary"],
+        serde_json::json!(10_000_000_000_000_000u64)
+    );
+    assert_eq!(
+        got["inside_the_window"],
+        serde_json::json!(5_000_000_000_000_000_000u64)
+    );
+    assert_eq!(
+        got["negative_in_window"],
+        serde_json::json!(-5_000_000_000_000_000_000i64)
+    );
+    assert_eq!(
+        got["fractional"],
+        serde_json::json!(0.1),
+        "a non-integral value must be left alone"
+    );
+    assert_eq!(
+        got["big_integer"],
+        serde_json::json!(9007199254740993i64),
+        "an integer past 2^53 must never be routed through f64"
+    );
+}
+
+#[tokio::test]
+async fn exponent_numbers_survive_the_jsonb_round_trip_postgres() {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            eprintln!("skipping: docker unavailable ({err})");
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store = PostgresStore::new(pool);
+    assert_exponent_numbers_survive_the_round_trip(&store).await;
+}
+
+#[tokio::test]
+async fn exponent_numbers_survive_the_round_trip_sqlite() {
+    let store = sqlite().await;
+    assert_exponent_numbers_survive_the_round_trip(&store).await;
+}

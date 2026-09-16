@@ -76,7 +76,12 @@ pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     event: &Event,
 ) -> Result<StoredEvent, StoreError> {
-    let payload_value = serde_json::to_value(event)?;
+    let mut payload_value = serde_json::to_value(event)?;
+    // Both the hash and the stored copy must be this same normalized value.
+    // SQLite stores the text verbatim so it would round-trip either way, but
+    // the two backends have to agree on the hash of a given event — a
+    // federated origin hash computed on Postgres is verified here.
+    maidan_types::normalize_payload_numbers(&mut payload_value);
     let payload = serde_json::to_string(&payload_value)?;
     let ws = event.workspace_id().map(|w| w.0);
     let previous = chain_head_in_tx(tx, ws).await?;
