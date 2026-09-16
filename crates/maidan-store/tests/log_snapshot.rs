@@ -278,3 +278,100 @@ async fn pruned_prefix_requires_snapshot_postgres() {
         .expect("delete 1");
     assert_pruned_prefix(&store, ws, events[0].id, events[2].id).await;
 }
+
+/// Cluster 400.2: a snapshot and its catch-up leave no gap under concurrent
+/// writes.
+///
+/// A consumer reads this pair as "here is the world, now tail from `head`", so
+/// between them they must cover everything. `build_workspace_export` is many
+/// queries rather than one transaction, so when the head was read *after* the
+/// graph, a channel created mid-assembly could miss the sub-query that lists
+/// channels *and* fall at or below the head the consumer tails from — in
+/// neither, with nothing to tell the consumer to look.
+///
+/// Channels are the probe because the graph carries them directly, so "was this
+/// in the snapshot?" is a membership test rather than an inference.
+///
+/// **This cannot fail spuriously.** With the head read first, the graph is
+/// assembled afterwards and therefore reflects a state at least as new as the
+/// head: every channel whose `ChannelCreated` event is at or below the head is
+/// necessarily already in the graph, however the writer interleaves. Timing
+/// decides only whether the run would have *caught* the old ordering.
+///
+/// Postgres only: the concurrency has to be real. A shared in-memory SQLite
+/// store serializes writers against the reader, so the interleaving this is
+/// about cannot arise there — and the code under test is backend-independent.
+async fn assert_snapshot_leaves_no_gap(store: std::sync::Arc<dyn Store>) {
+    let ws = seed(store.as_ref()).await;
+
+    let writer_ws = ws;
+    let writer_store = std::sync::Arc::clone(&store);
+    let writer = tokio::spawn(async move {
+        for i in 0..400u32 {
+            let _ = writer_store
+                .create_channel_with_event(NewChannel {
+                    workspace_id: writer_ws,
+                    name: format!("c-{i}"),
+                    topic: None,
+                    private: false,
+                })
+                .await;
+            tokio::task::yield_now().await;
+        }
+    });
+
+    for round in 0..40 {
+        let snapshot = build_log_snapshot(store.as_ref(), ws, true)
+            .await
+            .expect("snapshot");
+        let head_lsn = snapshot.head.as_ref().map(|h| h.lsn).unwrap_or(0);
+        let in_graph: std::collections::HashSet<_> = snapshot
+            .graph
+            .as_ref()
+            .expect("graph requested")
+            .channels
+            .iter()
+            .map(|c| c.channel.id)
+            .collect();
+
+        // Every ChannelCreated at or below the head must already be in the
+        // graph — anything else is a channel the consumer will never hear
+        // about, because catch-up starts above the head.
+        for event in store
+            .list_events_after(ws, 0, 10_000)
+            .await
+            .expect("events")
+        {
+            if event.id > head_lsn || event.kind != maidan_types::EventKind::ChannelCreated {
+                continue;
+            }
+            let Ok(Event::ChannelCreated { channel, .. }) =
+                serde_json::from_value::<Event>(event.payload.clone())
+            else {
+                continue;
+            };
+            assert!(
+                in_graph.contains(&channel.id),
+                "round {round}: channel {} was created by event {} (at or below \
+                 the snapshot head {head_lsn}) but is not in the snapshot graph — \
+                 catch-up starts above the head, so nothing will ever deliver it",
+                channel.id.0,
+                event.id
+            );
+        }
+
+        if writer.is_finished() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    let _ = writer.await;
+}
+
+#[tokio::test]
+async fn snapshot_and_catch_up_leave_no_gap_postgres() {
+    let Some((store, _container)) = postgres().await else {
+        return;
+    };
+    assert_snapshot_leaves_no_gap(std::sync::Arc::new(store)).await;
+}

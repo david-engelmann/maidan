@@ -13,15 +13,39 @@ use maidan_types::{CatchUpPage, LogSnapshot, SnapshotGraph, WorkspaceId};
 pub const CATCH_UP_LIMIT: i64 = 500;
 
 /// Current domain graph + retained-floor/head chain links.
+///
+/// # The head is read *first*, and that ordering is the correctness property
+///
+/// A consumer uses this as "here is the world, now tail from `head`", so the
+/// pair has to leave no gap. `build_workspace_export` is many queries rather
+/// than one transaction, so an event committing while it runs can land after
+/// the sub-query that would have shown it — and if the head were read at the
+/// end, that event would also be *below* the point the consumer tails from. In
+/// neither the snapshot nor the catch-up stream: a silent gap, which is not
+/// something an at-least-once consumer can recover from, because nothing tells
+/// it to look.
+///
+/// Reading the head first inverts the error. The graph may now contain events
+/// *newer* than the head, and catch-up re-delivers them — overlap, which every
+/// consumer of this pair already handles, since at-least-once is the contract
+/// the catch-up stream advertises.
+///
+/// The floor moves the same way for the same reason: read early it can only be
+/// staler than reality, so a cursor that has actually been pruned away still
+/// fails loudly as `CursorTooOld` instead of being silently accepted.
+///
+/// A repeatable-read snapshot spanning the whole export would be stricter
+/// still, but the `Store` trait is not transactional across methods and the two
+/// backends differ; this ordering is correct on both.
 pub async fn build_log_snapshot(
     store: &dyn Store,
     workspace_id: WorkspaceId,
     include_graph: bool,
 ) -> Result<LogSnapshot, StoreError> {
-    let export = build_workspace_export(store, workspace_id).await?;
-    let graph = SnapshotGraph::from(export);
     let floor = store.workspace_event_floor(workspace_id).await?;
     let head = store.workspace_event_head(workspace_id).await?;
+    let export = build_workspace_export(store, workspace_id).await?;
+    let graph = SnapshotGraph::from(export);
     LogSnapshot::new(workspace_id, floor, head, graph, include_graph)
         .map_err(|e| StoreError::InvalidInput(e.to_string()))
 }
