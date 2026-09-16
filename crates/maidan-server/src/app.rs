@@ -1012,13 +1012,19 @@ pub fn router(state: AppState) -> Router {
         .merge(a2a)
         .merge(protected)
         .layer(middleware::from_fn(metrics::middleware))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            rate_limit::middleware,
-        ))
+        // Room-LSN sits *inside* the rate limiter (Cluster 397.9): a later
+        // `.layer` is the outer one, so this order makes the limiter outermost.
+        // It used to wrap the limiter, which meant a 429 — the response whose
+        // job is to stop work — still ran `MAX(id)` against the primary, and an
+        // unauthenticated client could force one database round-trip per
+        // request with nothing able to shed it.
         .layer(middleware::from_fn_with_state(
             state.clone(),
             room_lsn::middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit::middleware,
         ))
         .layer(middleware::from_fn(request_id::middleware))
         // Cap request bodies before extractors buffer them (Cluster 183).
