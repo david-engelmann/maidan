@@ -7,6 +7,86 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [398.0.0] — 2026-09-16
+
+Post-gate hardening (Phase XXIV). **Verification sweep — what was built,
+tested, and never wired.** Five PRs (398.1–398.5). No new gate tag.
+
+Found by enumerating the `Store` trait's 409 methods and reading what had
+no caller outside the store crate. It is the only check that catches
+"built, tested, never wired" — there is no caller to fail a test.
+
+- **398.1** Outbox **claim** with a lease. The relay is spawned in every
+  replica and cannot be disabled in production, so an unlocked
+  `list_pending` relayed each row once per replica: N POSTs to every
+  tenant webhook, N `fsm_hook` firings under `AuthContext::bypass()`.
+  pg `FOR UPDATE SKIP LOCKED` / sqlite serialized-writer. A claim is not
+  a publish — at-least-once holds. (pg 0095 / sqlite 0094)
+- **398.2** Egress + mail **DLQ gauges and alerts** (`count_dead_*` had
+  zero callers, so both queues filled silently); `subscribe_resume_secret()`
+  returns `Option` instead of panicking on a getter.
+- **398.3** Mail DLQ **scoped per workspace** — it carried `to_address`,
+  `subject` and body behind a *per-workspace* `token:admin`. New
+  **`operator:global`** capability for the genuinely instance-wide reads
+  (`audit:read-global` is a read cap and cannot gate a requeue).
+  (pg 0096 / sqlite 0095)
+- **398.4–398.5** `deny_unknown_fields` on the two argument structs where
+  omission is load-bearing and means "turn a control off":
+  `SetBudgetArgs` and `RequestApprovalArgs`. The other 45 of 47 are left
+  alone on purpose.
+
+Also corrected two overstated claims in `docs/Claims.md` / README: "every
+action is audited" (28 audited kinds vs 150 mutating routes) and
+"cross-replica correctness", whose evidence could not support it until
+398.1.
+
+## [397.0.0] — 2026-09-16
+
+Post-gate hardening (Phase XXIV). **Post-Cursor security audit
+remediation.** Nine PRs (397.1–397.9). No new gate tag.
+
+Clusters 377–396 shipped autonomously via a Cursor agent; a four-agent
+audit then found a systematic authorization gap. The run was
+mechanically excellent — zero lint findings, zero TODOs, an e2e per
+feature — and **every defect below passed CI and its own tests.** One
+shape recurs: *something outranked the control meant to bind it.*
+
+- **397.1** `POST /workspaces/import` had no workspace scope — tenant A
+  could erase and replace tenant B, bypassing the legal hold. A signature
+  proves integrity, never authority.
+- **397.2** Governance gates **ratchet**: loosening needs `channel:admin`
+  and is audited. Four operations loosen, not the two the audit named.
+- **397.3** Bus-consumer lag resume replayed the entire global log
+  (worst case: every historical FSM hook re-fired with `bypass()`).
+  Shipped inside the 397.2 PR — see the provenance note in Open Work.
+- **397.4** `/operator/egress/dead` + requeue scoped to the caller.
+- **397.5** Four ways around the egress mention defusal, closed.
+- **397.6** A refused federated event no longer wedges the origin chain.
+  (pg 0094 / sqlite 0093)
+- **397.7** A derived token inherits the parent's app installation and
+  quotas — re-issuing could previously shed both.
+- **397.8** `backfill_chain` could launder a tampered payload into a
+  chain that verifies; `verify_chain` now streams.
+- **397.9** The Room-LSN middleware no longer pays for a primary read on
+  a rate-limited or rejected request.
+
+Four items are recorded as **decisions** rather than patched:
+self-approval laundering, `Maidan-Room-LSN` scoping, the search-indexer
+cursor, and workspace-handle resolution.
+
+## [396.0.0] — 2026-09-15
+
+Post-gate hardening (Phase XXIV). **Wave 3 #36 (partial) — WASI
+slash-handler types.** One PR (396.1). No new gate tag.
+
+- **396.1** `SlashHandlerKind::wasi`, invoke/result lexicon types,
+  sha256 handler-target validation.
+
+**Row #36 is open, not closed.** The kind is registrable on both write
+surfaces and every dispatch returns `wasi_runtime_unavailable` — no
+runtime, no feature flag. A user can register a handler that can never
+run.
+
 ## [395.0.0] — 2026-09-15
 
 Post-gate hardening (Phase XXIV). **Wave 3 #35 — named capability sets

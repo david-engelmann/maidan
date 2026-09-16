@@ -3,6 +3,72 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v398.0.0 — verification sweep: what was built, tested, and never wired
+
+Five PRs (398.1–398.5). Where 397 answered an audit's findings, 398 asked a
+different question — *is anything claimed but not actually done?* — and answered
+it by enumerating the `Store` trait's 409 methods and reading what had no caller
+outside the store crate. Most of the residue is benign (methods superseded by
+their `*_with_event` twins in the 205–214 outbox migration); the rest is below.
+It is the only check that finds "built, tested, never wired", because there is no
+caller to fail a test.
+
+| Change | Where |
+|--------|-------|
+| **Outbox claim (398.1):** the relay is spawned in *every* replica and `validate_startup` refuses to disable it in production, so an unlocked `list_pending` relayed every row once per replica — N POSTs to each tenant webhook (no unique on `(subscription_id, log_id)`) and N `fsm_hook` firings under `AuthContext::bypass()`. Now a leased `claim_pending` (pg `FOR UPDATE SKIP LOCKED`, sqlite serialized-writer), released on failure, reclaimable after the lease. A claim is not a publish — at-least-once holds. | `crates/maidan-store/src/{postgres,sqlite}/outbox.rs`, `crates/maidan-server/src/outbox_relay.rs`, pg 0095 / sqlite 0094 |
+| **DLQ visibility (398.2):** `count_dead_egress` / `count_dead_mail` existed on both backends with **zero callers** — the egress and mail dead-letter queues had no gauge and no alert, while the outbox has had both since Cluster 90. A projector delivery that gave up on a tenant's Slack channel, or an email that would never arrive, accumulated silently. | `crates/maidan-server/src/metrics.rs`, `docs/alerts/prometheus-rules-maidan-slo.yaml` |
+| **Panic on a getter (398.2):** `subscribe_resume_secret()` panicked on its `None` arm. Unreachable via `main.rs` (all four branches set a secret or refuse boot) but reachable through the library API, where `AppState::new` leaves it `None`. Now `Option<&[u8]>`; six call sites degrade to a `500` / close code. | `crates/maidan-server/src/{state,ws,mcp_stream}.rs`, `routes/approval_gate.rs` |
+| **Mail DLQ scope + `operator:global` (398.3):** `GET /operator/mail/dead` ran a global query behind the per-workspace `token:admin`, and the rows carry `to_address`, `subject` and the body — any workspace admin could read every tenant's outbound email and requeue it to their recipient. `maidan_mail_outbox` gains `workspace_id`; both routes scope to the caller. New `operator:global` capability (in `maidan.human.admin`, never in `maidan.agent.worker`) covers the `NULL`-workspace rows and `GET /operator/legal-holds`, which is genuinely instance-wide. `audit:read-global` could not be reused — it is a *read* capability and the requeue is a write. | `crates/maidan-auth/src/capability{,_set}.rs`, `crates/maidan-server/src/routes/{mail_ops,workspace}.rs`, pg 0096 / sqlite 0095 |
+| **Argument strictness (398.4–398.5):** of 128 MCP `*Args` structs — none with `deny_unknown_fields`, 47 with `#[serde(default)]` — exactly two have the property that makes strictness matter: **omission is load-bearing, and its meaning is "turn a control off."** `SetBudgetArgs` (a typo'd dimension silently removes that limit; the replace itself is documented and correct) and `RequestApprovalArgs` (a typo'd `thread_id` leaves the gate unattached, so `claim_next` never blocks and the agent proceeds without the human). The other 45 are left alone deliberately — a typo there means a default page size. `ImportArgs` was checked and **excluded**: its deserialize error is swallowed by an `Err(_)` fallback, so the attribute would be dead code, and it fails safe. | `crates/maidan-types/src/models.rs`, `crates/maidan-mcp/src/tools/{budget,approval,catalog}.rs` |
+
+**Claims corrected in the same sweep.** `docs/Claims.md` promises every claim maps
+to a test or an honest "not yet". Two did not: *"every action is audited"* (28
+audited action kinds against 150 mutating routes — the scope is by design, the
+absolute was not), and *"cross-replica correctness"*, whose evidence cited the
+transactional outbox — true, adjacent, and silent on whether the outbox is
+relayed once, which it was not until 398.1.
+
+## v397.0.0 — post-Cursor security audit remediation
+
+Nine PRs (397.1–397.9). Clusters 377–396 were shipped autonomously by a Cursor
+agent; a four-agent audit then found a systematic authorization gap. The run was
+mechanically excellent — zero lint findings, zero TODOs, an e2e per feature — and
+**every defect below passed CI and its own tests.**
+
+One shape recurs: *something outranked the control meant to bind it.* Every test
+asked "does the control work?"; none asked "what outranks it?"
+
+| Change | Where |
+|--------|-------|
+| **Import scope (397.1):** `POST /workspaces/import` checked the per-workspace `token:admin` and never called `ensure_workspace` — the workspace written is the id inside a *caller-supplied bundle*, so tenant A could erase and replace tenant B, bypassing the Cluster-366 legal hold. A signature proves integrity, never authority. | `crates/maidan-server/src/routes/workspace.rs`, `crates/maidan-mcp/src/tools/export.rs` |
+| **Gate ratchet (397.2):** both close-gates were guarded by `thread:transition` on *both* sides — the capability a close needs, and one `maidan.agent.worker` carries — so the constrained agent could delete its own constraint, untraceably. Loosening now needs `channel:admin` and is audited. **Four** operations loosen, not two: the fourth is `DELETE …/reviewers/:member_id`, because an empty named set means *any* non-implementer approval counts. | `crates/maidan-server/src/routes/{land_gate,review}.rs` |
+| **Lag-resume watermark (397.3):** every bus consumer declared `watermark = 0` *inside* its consume loop, so a `Lagged` before the first event replayed the entire global log — for `fsm_hook_worker`, re-firing every historical hook through `dispatch_mcp_tool` with `AuthContext::bypass()`. Seeded from the log head at attach. Shipped inside #874. | `crates/maidan-server/src/{event_stream,webhook_worker,fsm_hook_worker,notification_router}.rs` |
+| **Operator DLQ scope (397.4):** `GET /operator/egress/dead` + requeue ran global queries behind the per-workspace `token:admin` — read every tenant's Slack ids and repos, then requeue into them. | `crates/maidan-store/src/{postgres,sqlite}/egress_outbox.rs` |
+| **Egress defusal (397.5):** four ways around Cluster 378.3's mention defusal — Slack escaping skipped code spans (`<!channel>` is Slack's own escape, not Markdown); the non-`reviewed` Slack body went out raw; one unmatched backtick disabled defusal for the rest of the body; a crafted `view_url` broke out of its Markdown link. | `crates/maidan-server/src/{egress_body,result_delivery}.rs` |
+| **Federation wedge (397.6):** the origin chain covers every event, but federation accepts only the `federatable()` allowlist — and the link was recorded on the ingest path only, so one refused event wedged the peer permanently while the pull worker advanced past the loss. New `maidan_federated_verified_link`; the link is recorded *before* the policy check; the worker holds its cursor at the first failure. | `crates/maidan-server/src/{federation,federation_worker}.rs`, pg 0094 / sqlite 0093 |
+| **Attenuation inheritance (397.7):** `attenuate` permits an equal capability list, so any bound the parent carried and the child did not could be shed by re-issuing. The derived token dropped `app_installation_id` (surviving the app being uninstalled) and per-token quotas. | `crates/maidan-server/src/routes/token.rs`, `crates/maidan-mcp/src/tools/room.rs` |
+| **Chain integrity (397.8):** `backfill_chain` runs on every startup and its guard was global — one empty `content_hash` re-linked every row of every workspace against the *current* payloads, so edit-a-payload / blank-a-hash / restart made `verify_event_chain` report `ok: true`. A row that already carries a hash is now never rewritten; backfill is batched; `verify_chain` streams instead of collecting the whole log. | `crates/maidan-store/src/{postgres,sqlite}/events.rs`, `crates/maidan-types/src/event_chain.rs` |
+| **Room-LSN DoS (397.9):** the header middleware sat *outside* the rate limiter, so a `429` still ran `MAX(id)` against the primary. The limiter is now outer and rejected responses skip the read. | `crates/maidan-server/src/{room_lsn,app}.rs` |
+
+**Four items were written up as decisions rather than patched**, because each
+needs a call rather than a diff: self-approval laundering (both gates test the
+*live* `assignee_id`, so releasing a claim launders a self-approval — needs a
+durable record of who did the work), `Maidan-Room-LSN` scoping (a published
+contract across four SDKs), the search-indexer cursor (resuming trades away chain
+re-verification — a correctness trade, not a perf one), and handle resolution.
+
+## v396.0.0 — Wave 3 #36 (partial): WASI slash-handler types
+
+One PR (396.1). Landed the `SlashHandlerKind::wasi` variant, the invoke/result
+lexicon types and handle validation. **Registrable on both write surfaces, and
+every dispatch returns `wasi_runtime_unavailable`** — there is no runtime, no
+feature flag, and it is documented nowhere else. Row #36 is **open**, not closed;
+a user can successfully register a handler that can never run.
+
+| Change | Where |
+|--------|-------|
+| **Types (396.1):** `WASI_INVOKE_TYPE` / `WASI_RESULT_TYPE`, handler-target validation (sha256), lexicon schemas. | `crates/maidan-types/src/{wasi,lexicon}.rs` |
+
 ## v395.0.0 — Wave 3 #35: named capability sets + stable `maidan://` URIs
 
 Four impl PRs (395.1–395.4) + a retro. Named sets `maidan.agent.worker` / `maidan.human.admin` expand at mint time. Holders derive a weaker token without `token:admin` (Levy/Madden attenuation). Room URIs are `maidan://{workspace_id}/…` with an optional content-hash fragment; a handle rename cannot break stored ids. `GET /.well-known/maidan-room` is scheme-only. **Row #35 is closed.** Do **not** start #36 from this close.
