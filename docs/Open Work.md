@@ -1206,6 +1206,36 @@ Ranking the 47 by consequence rather than fixing them blind: `SetBudgetArgs`
 above), `CatchUpArgs`/`SnapshotArgs`/`ListTombstonesArgs` (read-shape only, low
 consequence).
 
+## Wave 3 #36 — the WASI slash handler is a registrable stub
+
+`SlashHandlerKind::wasi` is registrable on **both** write surfaces and every
+dispatch returns `wasi_runtime_unavailable`. There is no runtime, no feature
+flag, and it is documented nowhere a registering user would look. A workspace can
+successfully configure a handler that can never run — accepting configuration you
+cannot honour is worse than rejecting it.
+
+**The engine is decided** (see [Decisions.md](Decisions.md) — *WASI slash
+handlers run on wasmi, not wasmtime*): a pure interpreter, so there is no codegen
+in the trust path, and wasmi 2.0's fuel metering is stable across versions, which
+`WASI_DEFAULT_FUEL` needs in order to keep meaning the same thing after a
+dependency bump.
+
+**Still to build**, and it is a multi-cluster arc because it is a code-execution
+surface rather than a feature:
+
+1. Module storage + fetch by content-addressed SHA (the ABI already pins
+   `handler_target` to a sha256), with the artifact-ref tenancy check from
+   Cluster 204.
+2. The host shim: `wasmi` + `wasmi-wasi` preview 1, fuel and memory caps wired
+   from the existing constants, **imports rejected outside
+   `wasi_snapshot_preview1`** so a guest cannot reach the network.
+3. Invoke/result envelope plumbing through `dispatch_slash_command`, inside the
+   existing `DISPATCH_TIMEOUT`.
+4. Failure semantics: fuel exhaustion, memory exhaustion, trap and non-zero exit
+   each need a distinct, non-leaking result rather than one opaque error.
+5. Only then: make the kind registrable. **Until step 5, registration should be
+   refused** rather than accepted-and-broken.
+
 ## Standing risks (still open)
 
 - **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` self-only: **assessed in 315 — the "session can read another's inbox" concern was a FALSE POSITIVE** (bearer-only routes, no `/ui/api` mount → sessions get 401; bearers are act-as-any by design). Defensive `ensure_acting_member` guards added anyway (no-op today; future-proofs a `/ui/api` mount).
