@@ -245,8 +245,12 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_thread_steer"
         | "transition_thread"
         | "set_land_gate"
-        | "require_land_gate"
-        | "clear_land_gate" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "require_land_gate" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        // A gate ratchets (Cluster 397.2): arming is `thread:transition`,
+        // removing it is `channel:admin`. Clearing the row makes the close-gate
+        // vacuous, so a clear is as powerful as a close — and `thread:transition`
+        // is what a close needs and what `maidan.agent.worker` carries.
+        "clear_land_gate" => Ok(maidan_auth::capability::CHANNEL_ADMIN),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

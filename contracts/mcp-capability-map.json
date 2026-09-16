@@ -17,7 +17,7 @@
   "catch_up_events": "workspace:read",
   "claim_next_thread": "thread:transition",
   "claim_thread": "thread:transition",
-  "clear_land_gate": "thread:transition",
+  "clear_land_gate": "channel:admin",
   "clear_thread_block": "thread:transition",
   "complete_artifact_multipart": "artifact:upload",
   "create_memory_block": "workspace:write",

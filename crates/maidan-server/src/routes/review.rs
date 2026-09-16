@@ -4,6 +4,14 @@
 //! (Cluster 375.2) then refuses `closed` until `k` qualifying approvals exist and
 //! no `refutes` edge blocks the thread. Governance writes are `thread:transition`;
 //! reads are `workspace:read`.
+//!
+//! **A gate ratchets** (Cluster 397.2). Making the requirement *stricter* is
+//! `thread:transition`; making it looser is `channel:admin`, and audited.
+//! Loosening is exactly as powerful as closing — and `thread:transition` is
+//! what a close needs and what `maidan.agent.worker` carries, so guarding both
+//! with it let the constrained agent dissolve its own gate. Three operations
+//! loosen: clearing the requirement, lowering `k`, and un-designating a
+//! reviewer (an empty named set means *any* non-implementer approval counts).
 
 use axum::{
     extract::{Path, State},
@@ -11,7 +19,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{THREAD_TRANSITION, WORKSPACE_READ},
+    capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ},
     AuthContext,
 };
 use maidan_types::*;
@@ -32,6 +40,28 @@ pub async fn set_review_requirement(
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     if body.required_count < 0 {
         return Err(ApiError::BadRequest("required_count must be >= 0".into()));
+    }
+    // Raising `k` is a tightening any transitioner may do. Lowering it — `0`
+    // included, which disarms the gate — is the waiver.
+    let current = state
+        .store
+        .get_review_requirement(thread_id)
+        .await?
+        .map(|r| r.required_count)
+        .unwrap_or(0);
+    if body.required_count < current {
+        cap(&auth, CHANNEL_ADMIN)?;
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "review_requirement.lower".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: serde_json::json!({ "from": current, "to": body.required_count }),
+            },
+        )
+        .await;
     }
     let req = state
         .store
@@ -56,15 +86,28 @@ pub async fn get_review_requirement(
         .ok_or(ApiError::NotFound)
 }
 
+/// Remove the requirement — `channel:admin`, audited. The gate only fires when
+/// `required_count > 0`, so deleting the row is a full waiver.
 pub async fn clear_review_requirement(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, THREAD_TRANSITION)?;
+    cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     if state.store.clear_review_requirement(thread_id).await? {
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "review_requirement.clear".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -97,7 +140,10 @@ pub async fn remove_reviewer(
     Extension(auth): Extension<AuthContext>,
     Path((id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, THREAD_TRANSITION)?;
+    // Un-designating is `channel:admin` unconditionally rather than only when it
+    // empties the set: "is this the last one?" is a read-then-write, so two
+    // concurrent removes could each see a survivor and still empty it together.
+    cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     if state
@@ -105,6 +151,17 @@ pub async fn remove_reviewer(
         .remove_reviewer(thread_id, MemberId(member_id))
         .await?
     {
+        crate::audit::record(
+            &state,
+            NewAuditEvent {
+                actor_id: Some(auth.member_id),
+                action: "reviewer.remove".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: serde_json::json!({ "member_id": member_id }),
+            },
+        )
+        .await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
