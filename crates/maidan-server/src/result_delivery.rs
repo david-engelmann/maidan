@@ -58,6 +58,13 @@ pub fn failure_notice(status: &str) -> String {
 /// Slack gets `summary` plus a compact digest — **never** `rendered`, which
 /// is GFM and would arrive visibly broken. A non-`reviewed` status replaces
 /// both with [`failure_notice`].
+///
+/// **Every Slack body is escaped on the way out** (Cluster 397.5), including the
+/// failure notice. The notice interpolates the producer's `status`, which is an
+/// arbitrary agent-written string, and it used to be returned raw: a result with
+/// `status: "<!channel>"` aimed at a blessed channel was a real broadcast under
+/// Maidan's identity. Escaping is idempotent, so the reviewed path — already
+/// escaped inside `slack_message_body` — is unchanged by passing through again.
 pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &WaiterResult) -> String {
     let inner = if waiter.is_reviewed() {
         reviewed_body(target, waiter)
@@ -77,7 +84,11 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
             // truncates either way, reserving the marker in the budget.
             github_result_comment_body(thread_id, &inner, backlink)
         }
-        EgressTarget::Slack { .. } => inner,
+        EgressTarget::Slack { .. } => crate::egress_body::truncate_with_tail(
+            &crate::egress_body::neutralize_slack_mentions(&inner),
+            crate::egress_body::SLACK_BODY_MAX_CHARS,
+            None,
+        ),
     }
 }
 
