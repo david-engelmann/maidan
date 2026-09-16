@@ -159,18 +159,124 @@ fn proc_exit_zero_is_success_and_keeps_prior_output() {
     assert_eq!(out.stdout, "done");
 }
 
-/// A non-zero exit is a failure that still reports what the guest managed to say.
+/// A non-zero exit is its own failure, not a trap.
+///
+/// The handler *chose* to fail and picked the code; reporting that as a trap
+/// sends its author looking for a crash that never happened.
 #[test]
-fn a_nonzero_exit_fails_but_keeps_output() {
+fn a_nonzero_exit_is_distinct_from_a_trap() {
     let m = wat(r#"(module
              (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
-             (func (export "_start") (call $exit (i32.const 3))))"#);
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 1)
+             (func (export "_start")
+               (i32.store (i32.const 0) (i32.const 100))
+               (i32.store (i32.const 4) (i32.const 7))
+               (i32.store8 (i32.const 100) (i32.const 0x70))
+               (i32.store8 (i32.const 101) (i32.const 0x61))
+               (i32.store8 (i32.const 102) (i32.const 0x72))
+               (i32.store8 (i32.const 103) (i32.const 0x74))
+               (i32.store8 (i32.const 104) (i32.const 0x69))
+               (i32.store8 (i32.const 105) (i32.const 0x61))
+               (i32.store8 (i32.const 106) (i32.const 0x6c))
+               (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))
+               (call $exit (i32.const 3))))"#);
     let out = maidan_wasi::run(&m, &invoke(), WasiLimits::default());
     assert!(!out.ok);
+    assert_eq!(
+        out.error_kind,
+        Some(WasiFailureKind::ExitNonZero),
+        "a chosen exit is not a trap, got {:?}",
+        out.error_kind
+    );
+    assert_eq!(
+        out.exit_code,
+        Some(3),
+        "the status belongs in a field, not only in prose"
+    );
     assert!(
         out.error.clone().unwrap_or_default().contains('3'),
-        "the exit status should be reported, got {:?}",
+        "the exit status should also be readable, got {:?}",
         out.error
+    );
+    assert_eq!(
+        out.stdout, "partial",
+        "what the guest managed to say before failing is the diagnosis"
+    );
+}
+
+/// Every failure kind the ABI names is reachable, and each arrives with its own
+/// kind rather than a shared "it broke".
+///
+/// A vocabulary that is only *declared* is not a vocabulary — this is the test
+/// that would fail if a future refactor collapsed two causes back into `Trap`.
+#[test]
+fn each_failure_cause_reports_its_own_kind() {
+    let exit = r#"(import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))"#;
+    let cases: Vec<(WasiFailureKind, Vec<u8>)> = vec![
+        (
+            WasiFailureKind::FuelExhausted,
+            wat(r#"(module (func (export "_start") (loop $l (br $l))))"#),
+        ),
+        (
+            WasiFailureKind::MemoryLimit,
+            wat(r#"(module (memory 1) (func (export "_start")
+                   (drop (memory.grow (i32.const 2000)))
+                   (i32.store (i32.const 70000000) (i32.const 1))))"#),
+        ),
+        (
+            WasiFailureKind::Trap,
+            wat(r#"(module (func (export "_start") (unreachable)))"#),
+        ),
+        (
+            WasiFailureKind::ExitNonZero,
+            wat(&format!(
+                r#"(module {exit} (func (export "_start") (call $exit (i32.const 9))))"#
+            )),
+        ),
+        (
+            WasiFailureKind::BannedImport,
+            wat(
+                r#"(module (import "wasi_snapshot_preview1" "path_open" (func $f))
+                   (func (export "_start")))"#,
+            ),
+        ),
+        (WasiFailureKind::InvalidModule, b"not wasm at all".to_vec()),
+    ];
+
+    let mut seen = Vec::new();
+    for (expected, module) in cases {
+        let out = maidan_wasi::run(&module, &invoke(), WasiLimits::default());
+        assert!(!out.ok, "{expected:?} must not report success");
+        assert_eq!(
+            out.error_kind,
+            Some(expected),
+            "wrong kind for {expected:?}: {:?}",
+            out.error
+        );
+        seen.push(expected);
+    }
+    assert_eq!(seen.len(), 6, "every named kind should have a case");
+}
+
+/// A failure message is partly guest-derived, so it is bounded before it can be
+/// persisted into a message's metadata and broadcast.
+#[test]
+fn a_hostile_module_cannot_return_an_unbounded_error() {
+    // The export name is attacker-chosen and quoted back by the validator.
+    let huge = "n".repeat(100_000);
+    let m = wat(&format!(
+        r#"(module (import "wasi_snapshot_preview1" "{huge}" (func $f))
+           (func (export "_start")))"#
+    ));
+    let out = maidan_wasi::run(&m, &invoke(), WasiLimits::default());
+    assert!(!out.ok);
+    let err = out.error.clone().unwrap_or_default();
+    assert!(
+        err.len() <= maidan_types::wasi::WASI_MAX_ERROR_BYTES,
+        "error text must be bounded, got {} bytes",
+        err.len()
     );
 }
 
