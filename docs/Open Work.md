@@ -1017,10 +1017,33 @@ because the tests assert the happy path of a single tenant.
    (escaping the app-uninstall kill-switch), resets per-token quotas and the
    global rate-limit bucket (a self-service amplification primitive), and records
    no parent link, so revoking a parent does not reach its children.
-9. **`Maidan-Room-LSN` is the global head, not the room's** — a caught-up
-   projector can never reach it, and it is a cross-tenant activity side channel
-   shipped to third-party webhooks. Its middleware also runs a primary DB query
-   per request *outside* the rate limiter, including on 401s and 429s.
+9. **`Maidan-Room-LSN`** — the DoS half is **✅ FIXED (Cluster 397.9)**: the
+   limiter is now the outer layer and the middleware skips 401/403/429/5xx, so a
+   refused request costs no `MAX(id)` and an unauthenticated caller can no longer
+   force a primary round-trip per attempt with nothing able to shed it.
+
+   **The scoping half is OPEN, and it is a decision rather than a patch.** The
+   header reports the **global** head, so a caught-up projector can never reach
+   it (the value it is compared against is a number the consumer cannot fetch
+   to), and every tenant learns instance-wide event volume — a low-grade activity
+   side channel, shipped to third-party endpoints on outbound webhooks.
+
+   Scoping it per workspace is not a one-liner, for two reasons:
+
+   - **Layering.** `auth::middleware` is applied per-router, *inside* these outer
+     layers, so the middleware has no `AuthContext` on the way in and cannot know
+     the room. Fixing it means either attaching the resolved workspace to the
+     response for the outer layer to read, or moving the stamp inside each
+     authenticated router — and the A2A and `/ui` routers authenticate
+     differently, so "inside auth" is three places, not one.
+   - **It is a published contract.** Cluster 390 documented the header as always
+     on, and all four SDKs capture `last_room_lsn` at 0.1.0. Changing what the
+     number means, and which responses carry it, is a client-visible change.
+
+   The honest third option is that the header is the wrong shape: a per-room
+   signal belongs where the room is known (`subscribe_ack` already stamps it
+   explicitly via `room_lsn::stamp`), not in a global middleware that has to
+   guess. **Not decided here** — it needs a call on the contract, not a fix.
 10. **Unbounded reads**: `events/verify` collects every link *and* payload into
     memory on a `workspace:read` token; `backfill_chain` runs on every boot and
     materializes whole workspaces in one transaction — and, because its guard is

@@ -57,14 +57,33 @@ pub fn stamp(headers: &mut axum::http::HeaderMap, room_lsn: i64) {
     insert_header(headers, room_lsn);
 }
 
+/// Whether a response is one we should not spend an event-log read on
+/// (Cluster 397.9).
+///
+/// A rejected request has no room head to report, and querying for one hands an
+/// unauthenticated caller a database round-trip per attempt. This layer also
+/// used to sit *outside* the rate limiter, so a 429 — the response whose entire
+/// job is to stop work — still paid for a `MAX(id)`. The limiter is now the
+/// outer layer, and this is the belt to that braces: 401/403 come from auth
+/// middleware further in, which the limiter does not shield.
+fn skip_status(status: axum::http::StatusCode) -> bool {
+    matches!(
+        status,
+        axum::http::StatusCode::UNAUTHORIZED
+            | axum::http::StatusCode::FORBIDDEN
+            | axum::http::StatusCode::TOO_MANY_REQUESTS
+    ) || status.is_server_error()
+}
+
 /// Always-on companion to [`crate::consistency::middleware`]. Queries
 /// `Store::max_event_id` after the handler (the room head at response time).
 /// Skips liveness/metrics/static/docs paths so a process-alive probe never
-/// waits on the event log.
+/// waits on the event log, and skips rejected responses so a refused request
+/// costs no read.
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let skip = skip_path(req.uri().path());
     let mut resp = next.run(req).await;
-    if skip {
+    if skip || skip_status(resp.status()) {
         return resp;
     }
     if let Some(lsn) = current(state.store.as_ref()).await {
@@ -91,5 +110,19 @@ mod tests {
         assert!(!skip_path("/mcp/stream"));
         assert!(!skip_path("/a2a/v1/rpc"));
         assert!(!skip_path("/integrations/slack/events"));
+    }
+
+    #[test]
+    fn rejected_responses_do_not_pay_for_an_event_log_read() {
+        use axum::http::StatusCode;
+        assert!(skip_status(StatusCode::UNAUTHORIZED));
+        assert!(skip_status(StatusCode::FORBIDDEN));
+        assert!(skip_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(skip_status(StatusCode::INTERNAL_SERVER_ERROR));
+        // A real answer still reports the head.
+        assert!(!skip_status(StatusCode::OK));
+        assert!(!skip_status(StatusCode::CREATED));
+        assert!(!skip_status(StatusCode::NOT_FOUND));
+        assert!(!skip_status(StatusCode::CONFLICT));
     }
 }
