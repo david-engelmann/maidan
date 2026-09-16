@@ -1053,68 +1053,140 @@ because the tests assert the happy path of a single tenant.
    surface" — **false for Slack**, whose `<!…>`/`<@…>` are an API-level escape
    layer that backticks do not defuse. Truncation running after neutralization
    can also split a defusing wrapper back into a live mention.
-6. **Federation ingest wedges permanently** on the first non-federatable event:
-   it verifies, is 403'd by policy, never records the origin link, and every
-   later event then fails `PrevHashMismatch` forever — while the puller advances
-   the cursor past them, so they are lost silently.
-7. **Self-approval launders through a claim release.** Both gates test the
-   *live* `assignee_id` (`IS NULL OR <>` / `!= Some(_)`), so release the claim
-   and your own approval qualifies. The `land_gate` skill is also self-grantable
-   (`add_member_skill` is `workspace:write`, no self-only guard), and an
-   outstanding `request_changes` subtracts nothing — its own author can approve
-   it away. Needs a durable record of who did the work; none exists today
-   (assignment history is prunable event-log rows).
-8. **Attenuation loses three properties**: it strips `app_installation_id`
-   (escaping the app-uninstall kill-switch), resets per-token quotas and the
-   global rate-limit bucket (a self-service amplification primitive), and records
-   no parent link, so revoking a parent does not reach its children.
-9. **`Maidan-Room-LSN`** — the DoS half is **✅ FIXED (Cluster 397.9)**: the
-   limiter is now the outer layer and the middleware skips 401/403/429/5xx, so a
-   refused request costs no `MAX(id)` and an unauthenticated caller can no longer
-   force a primary round-trip per attempt with nothing able to shed it.
+6. ~~**Federation ingest wedges permanently** on the first non-federatable
+   event.~~ **✅ FIXED (Cluster 397.6, #877).** The origin link is now recorded
+   on the refusal path too, so a policy-refused event no longer leaves the
+   pointer behind it and strands every later event on `PrevHashMismatch`; the
+   pull worker computes its cursor after ingesting rather than before, so a
+   refused event is no longer silently skipped past. (pg 0094 / sqlite 0093)
+7. **Self-approval launders through a claim release. OPEN — two halves, and
+   only one of them is hard.**
 
-   **The scoping half is OPEN, and it is a decision rather than a patch.** The
-   header reports the **global** head, so a caught-up projector can never reach
-   it (the value it is compared against is a number the consumer cannot fetch
-   to), and every tenant learns instance-wide event volume — a low-grade activity
-   side channel, shipped to third-party endpoints on outbound webhooks.
+   **The hard half.** Both gates test the *live* `assignee_id` (`IS NULL OR <>` /
+   `!= Some(_)`), so release the claim and your own approval qualifies. Closing
+   it needs a durable record of who did the work, and none exists: assignment
+   history lives in prunable event-log rows, so there is nothing to read. That is
+   a schema decision (a `maidan_thread_workers` ledger, written on claim and
+   never pruned, that separation-of-duties reads instead of the live column) —
+   sized but not started.
 
-   Scoping it per workspace is not a one-liner, for two reasons:
+   **The easy half, verified 2026-09-16 and worth doing on its own:**
+   `add_member_skill` (`crates/maidan-server/src/routes/skills.rs:23`) is
+   `workspace:write` + same-workspace with **no restriction on which skill**. The
+   Cluster-385 close-gate requires a green pass from a **land-gate-skilled**
+   member, and Cluster 383 requires a **review-skilled** producer — so any agent
+   holding `workspace:write` can grant *itself* the skill that qualifies it to
+   approve. The SoD check is then the only thing left standing, which is the
+   half that launders.
 
-   - **Layering.** `auth::middleware` is applied per-router, *inside* these outer
-     layers, so the middleware has no `AuthContext` on the way in and cannot know
-     the room. Fixing it means either attaching the resolved workspace to the
-     response for the outer layer to read, or moving the stamp inside each
-     authenticated router — and the A2A and `/ui` routers authenticate
-     differently, so "inside auth" is three places, not one.
-   - **It is a published contract.** Cluster 390 documented the header as always
-     on, and all four SDKs capture `last_room_lsn` at 0.1.0. Changing what the
-     number means, and which responses carry it, is a client-visible change.
+   The fix has an exact precedent in **397.2's ratchet**: a small closed set of
+   governance-bearing skills (`land_gate`, the review skills) requires
+   `channel:admin` to grant — in `maidan.human.admin`, *not* in
+   `maidan.agent.worker` — while ordinary routing skills stay `workspace:write`.
+   Same shape as "tightening keeps `thread:transition`, loosening needs
+   `channel:admin`".
 
-   The honest third option is that the header is the wrong shape: a per-room
-   signal belongs where the room is known (`subscribe_ack` already stamps it
-   explicitly via `room_lsn::stamp`), not in a global middleware that has to
-   guess. **Not decided here** — it needs a call on the contract, not a fix.
-10. **Unbounded reads**: `events/verify` collects every link *and* payload into
-    memory on a `workspace:read` token; `backfill_chain` runs on every boot and
-    materializes whole workspaces in one transaction — and, because its guard is
-    global, re-links every row against *current* payloads, which launders a
-    tampered chain into `ok: true`. The tombstone explorer's `include_purged`
-    has no `LIMIT`.
-11. **Postgres `jsonb` re-normalizes numbers**, so a `content_hash` computed
-    from the in-memory value can never verify against the stored payload.
-    Reachable today via federation ingest, which hashes peer-supplied JSON.
-12. **Log snapshots are not point-in-time** — the graph is assembled before the
-    head is read, so an event committed during assembly is in neither the
-    snapshot nor the catch-up stream. A silent gap, not at-least-once.
+   Also still true: an outstanding `request_changes` subtracts nothing — its own
+   author can approve it away.
+8. **Attenuation loses three properties — two fixed, one open.**
+   **✅ FIXED (Cluster 397.7, #878):** a derived token now inherits the parent's
+   `app_installation_id` (so the app-uninstall kill-switch still reaches it) and
+   its per-token quotas (so re-issuing is no longer a self-service amplification
+   primitive), on both the REST and MCP paths.
+
+   **Still open: no parent link.** `parent_token_id` is recorded in the *audit
+   metadata* only, not as a column, so revoking a parent cannot traverse to its
+   children. That needs a migration plus revoke-time traversal, and a decision on
+   whether revocation cascades or merely marks — deliberately deferred in 397.7
+   rather than half-built.
+9. ~~**`Maidan-Room-LSN` reports the global head.**~~ **✅ FIXED — both
+   halves.** The **DoS half (Cluster 397.9)**: the limiter is now the outer
+   layer and the middleware skips 401/403/429/5xx, so a refused request costs no
+   `MAX(id)` and an unauthenticated caller can no longer force a primary
+   round-trip per attempt with nothing able to shed it.
+
+   The **scoping half (Cluster 398.8, #893)**, which was recorded here as a
+   decision rather than a patch. It was decided as follows, and the reasoning is
+   worth keeping because the layering objection was real: `auth::middleware`
+   runs *inside* the outer layers and so has no `AuthContext` on the way in. The
+   answer was to make the resolved workspace flow *outward* — `auth` tags the
+   response with a `RoomScope` extension from all four authenticating paths
+   (bearer, peer, `/ui` bearer, `/ui` session), and the outer middleware reads it
+   on the way back. That keeps one stamping site instead of three routers, and a
+   response with no scope (unauthenticated, or `AUTH_DISABLED`) falls back to the
+   instance head rather than omitting the header, so the Cluster-390 published
+   contract — *always on* — still holds. A caught-up projector can now actually
+   reach the number it is compared against, and a tenant no longer learns
+   instance-wide event volume from a header shipped to third-party webhook
+   endpoints.
+10. **Unbounded reads — mostly ✅ FIXED (Cluster 397.8, #879), one residual.**
+    `verify_chain` now streams instead of collecting every link and payload;
+    `backfill_chain` never rewrites a row that already carries a `content_hash`,
+    which closes the laundering path (blank one row, restart, have the chain
+    recomputed to agree with a tamper); the tombstone explorer takes a `limit`.
+
+    **Residual:** `explorer::list_purged` still materializes *every* purged row
+    for the scope before the merged result is truncated to `limit`
+    (`crates/maidan-store/src/{sqlite,postgres}/explorer.rs`). Bounded by
+    workspace/channel/thread rather than unbounded, so it is a much smaller
+    version of the original finding — but a heavily-purged workspace still pays
+    full materialization for a `limit=10` read.
+11. **Postgres `jsonb` re-normalizes numbers, so some events can never verify.
+    OPEN — confirmed, and narrower than first written.** Measured against
+    `pgvector/pgvector:pg17` on 2026-09-16: jsonb preserves a number's decimal
+    form (`1.0`→`1.0`, `1.10`→`1.10`, `0.1`→`0.1`) but **normalizes exponent
+    notation** (`1E2`→`100`, `2.5e3`→`2500`, `1e-7`→`0.0000001`).
+
+    So it is not that a hash "can never verify" — ordinary numbers round-trip
+    fine. The break is one specific case: an **exponent-notation number with an
+    integral value**. `{"x": 1e2}` hashes in memory as `100.0` (serde_json parses
+    to `f64`, renders `"100.0"`), is stored by jsonb as `100`, and reads back as
+    an *integer* → `"100"`. `content_hash` over the stored payload then differs
+    from the stored `content_hash`, and `verify_chain` reports a tamper on an
+    untouched event — permanently, for that workspace.
+
+    Reachable from ordinary use, not just federation: message `metadata` is
+    arbitrary client JSON, and `JSON.stringify` emits exponent notation above
+    `1e21`.
+
+    **The fix, and why it is the narrow one.** Normalize the payload *before*
+    hashing and storing: an `f64` with an integral value that fits an integer
+    becomes one. Then what jsonb stores is already what a re-read produces.
+    Deliberately **not** a change to `canonical_json` itself — that would
+    invalidate every stored chain hash and every signed export, and there is no
+    rebuild path (397.8 removed it on purpose). Normalizing the payload only
+    changes the hash of payloads that are *currently unverifiable anyway*.
+
+    Out-of-range integral floats (`1e30`) are left alone: both sides route
+    through `f64` and agree on the shortest form, so they already round-trip.
+12. **Log snapshots are not point-in-time. OPEN — confirmed, one-line cause.**
+    `build_log_snapshot` (`crates/maidan-store/src/log_snapshot.rs`) assembles
+    the domain graph via `build_workspace_export` and reads
+    `workspace_event_head` **after** it. The export is many queries, not one
+    transaction, so an event committed mid-assembly can miss the sub-query that
+    would have shown it *and* fall below the head a consumer catches up from. It
+    is in neither the snapshot nor the catch-up stream: a silent gap, not
+    at-least-once.
+
+    **The fix is the ordering, not a transaction.** Read the floor and head
+    *before* assembling the graph. The graph may then contain events newer than
+    the head, and catch-up re-delivers them — overlap, which at-least-once
+    consumers already handle, instead of a gap, which nothing handles. A
+    repeatable-read snapshot across the whole export would be stricter, but the
+    `Store` trait is not transactional across methods and the two backends
+    differ; the reorder is correct on both.
 
 ### Doc and hygiene debt
 
 - **Cluster 387 has no retro, no Capabilities entry, no CHANGELOG entry** — 3
   impl PRs, a table, 5 REST routes and 4 MCP tools with no record. **C5 is the
-  bug that fell through that gap**: `RunOccupancy` never learned about
-  `maidan_thread_blocks`, so it reports `queued` where `ChannelOccupancy` reports
-  `blocked`.
+  bug that fell through that gap, and it is confirmed (2026-09-16):**
+  `thread_lineage::occupancy` computes `blocked` from `maidan_thread_dependencies`
+  alone and never consults `maidan_thread_blocks`, while `threads::channel_occupancy`
+  consults both. The consequence is not cosmetic — `claim_next` *also* skips a
+  thread carrying a block row, so `run_occupancy` reports as `queued` work that
+  can never be claimed, and an orchestrator sizing its fleet off that number
+  waits forever for it to drain. Both backends, one `EXISTS` clause each.
 - **386's PRs are committed under Cluster 384's number** (`d11f880`, `3df8bf6`),
   and the 384 retro merged before them.
 - **Cluster 389 renamed a producer-visible wire contract** (`pi.waiter.result/1`
@@ -1124,19 +1196,43 @@ because the tests assert the happy path of a single tenant.
   in lockstep. Now disclosed at the top of [[Result Delivery]]. One cluster later,
   390 codified "**no renames**, breaking = new type" — the rename violates the
   rule the next cluster wrote down.
-- **Cluster 396 is a live stub on the default branch**: `SlashHandlerKind::Wasi`
-  is registrable and persisted by both write surfaces, and every dispatch returns
-  `wasi_runtime_unavailable`. No feature flag, no runtime, documented nowhere.
+- ~~**Cluster 396 is a live stub on the default branch.**~~ **✅ CLOSED
+  (Cluster 399).** The runtime exists, the kind is registrable on purpose, and
+  [WASI-Handlers.md](WASI-Handlers.md) is the page a registering user reads.
 - Land-gate enforcement is stated unconditionally in `Capabilities.md`,
   `Architecture.md`, `Integration.md` and Retros 385/389; 383 claims a "third-party
   **human**" resolver and neither third-party-ness nor human-ness is enforced.
 
-**Sequencing.** P0 first, in the order above; the feature roadmap (row #36 /
-Cluster 396) waits. Each item is a cluster or a sub-PR, not a sweep — the
-recurring cause is that one-tenant tests cannot see a two-tenant bug, so each fix
-lands with a regression test that provisions **two** workspaces.
+**Sequencing.** P0 is complete (397.1–397.4 + 398.1/398.3), and the feature
+roadmap it was blocking — row #36 / the WASI runtime — shipped as Cluster 399.
+Each item is a cluster or a sub-PR, not a sweep: the recurring cause is that
+one-tenant tests cannot see a two-tenant bug, so each fix lands with a regression
+test that provisions **two** workspaces.
 
-## `report_usage` accepts arguments it silently discards (2026-09-16)
+### What is actually left (reconciled 2026-09-16, against code)
+
+Every item below was re-read in the source before being listed here; the ones
+that had silently been fixed are struck through above.
+
+| # | Item | Shape | Size |
+|---|------|-------|------|
+| C5 | `run_occupancy` ignores `maidan_thread_blocks`, so unclaimable work reads as `queued` | one `EXISTS` clause, both backends | small |
+| 12 | Log snapshot reads the head *after* assembling the graph → silent gap | reorder two reads | small |
+| 10 | `list_purged` materializes the scope before truncating | push the limit into the query | small |
+| 7a | Governance skills (`land_gate`, review) are self-grantable | ratchet to `channel:admin`, per 397.2 | small |
+| 11 | jsonb normalizes integral exponent numbers → chain never verifies | normalize payload numbers before hashing | medium |
+| 7b | Self-approval launders through a claim release | durable "who did the work" ledger | **schema decision** |
+| 8 | Attenuation records no parent link → revocation does not cascade | migration + traversal, and a cascade-vs-mark call | **decision** |
+| — | Search-indexer backfill restarts from 0 on every resubscribe | cursor vs full re-verification | **correctness decision** |
+| — | `set_thread_budget` is PUT-shaped, so raising one cap clears three | API shape | **decision** |
+| — | Cluster 387 has no retro / Capabilities / CHANGELOG entry | docs | small |
+| — | Land-gate enforcement is stated unconditionally in four docs | docs | small |
+
+The five marked **decision** are the ones that should not be taken unilaterally:
+each trades one correctness property for another, and the trade is the whole
+question. The rest are ordinary work.
+
+## `report_usage` accepts arguments it silently discards — ✅ CLOSED (Cluster 398.6)
 
 Raised indirectly by the soundcheck integration review. Not what they asked for
 — their two asks were a stale doc read and a pi-side spelling — but their report
@@ -1206,35 +1302,70 @@ Ranking the 47 by consequence rather than fixing them blind: `SetBudgetArgs`
 above), `CatchUpArgs`/`SnapshotArgs`/`ListTombstonesArgs` (read-shape only, low
 consequence).
 
-## Wave 3 #36 — the WASI slash handler is a registrable stub
+### Resolution: all of them, uniformly (Cluster 398.6, #890)
 
-`SlashHandlerKind::wasi` is registrable on **both** write surfaces and every
-dispatch returns `wasi_runtime_unavailable`. There is no runtime, no feature
-flag, and it is documented nowhere a registering user would look. A workspace can
-successfully configure a handler that can never run — accepting configuration you
-cannot honour is worse than rejecting it.
+**398.4–398.5 fixed the two sharpest** (`SetBudgetArgs`, `RequestApprovalArgs`)
+and recorded a decision to leave the other 45 alone. **398.6 reversed that and
+took all of them.** The ranking above is still a correct reading of
+*consequence*, but it is the wrong basis for *which to fix*: a per-struct
+judgement call has to be re-made every time someone adds a struct, and the
+person adding the 129th will not read this list. Uniform strictness is a rule a
+reviewer can apply without deciding anything, and pre-launch there is no
+compatibility argument against it ([[maidan-no-backwards-compat-prelaunch]]).
 
-**The engine is decided** (see [Decisions.md](Decisions.md) — *WASI slash
-handlers run on wasmi, not wasmtime*): a pure interpreter, so there is no codegen
-in the trust path, and wasmi 2.0's fuel metering is stable across versions, which
-`WASI_DEFAULT_FUEL` needs in order to keep meaning the same thing after a
-dependency bump.
+`crates/maidan-mcp/tests/arg_strictness_contract.rs` is the guard: a static scan
+asserting every `Deserialize`-deriving `*Args` carries `deny_unknown_fields`. It
+also asserts it checked more than 100 structs, so a scan that silently stops
+matching reports itself rather than passing vacuously.
 
-**Still to build**, and it is a multi-cluster arc because it is a code-execution
-surface rather than a feature:
+Two things surfaced while doing it, both worth keeping:
 
-1. Module storage + fetch by content-addressed SHA (the ABI already pins
-   `handler_target` to a sha256), with the artifact-ref tenancy check from
-   Cluster 204.
-2. The host shim: `wasmi` + `wasmi-wasi` preview 1, fuel and memory caps wired
-   from the existing constants, **imports rejected outside
-   `wasi_snapshot_preview1`** so a guest cannot reach the network.
-3. Invoke/result envelope plumbing through `dispatch_slash_command`, inside the
-   existing `DISPATCH_TIMEOUT`.
-4. Failure semantics: fuel exhaustion, memory exhaustion, trap and non-zero exit
-   each need a distinct, non-leaking result rather than one opaque error.
-5. Only then: make the kind registrable. **Until step 5, registration should be
-   refused** rather than accepted-and-broken.
+- **The `set_thread_budget` PUT shape was left alone deliberately.** Strictness
+  fixes the typo-disarms-a-limit case; it does not change that raising one cap
+  still requires restating the other three. That is documented behaviour, and
+  whether a safety envelope should be PUT-shaped at all is a separate question,
+  still open.
+- **`build_mcp_arguments` was injecting context into calls that did not declare
+  it** — four ids into every MCP-tool slash dispatch, including `list_channels`,
+  which takes only `workspace_id`. Strictness turned a silent extra field into a
+  `400`, which is how it was found. Injection is now filtered by the tool's own
+  `inputSchema`, and an unknown tool gets **no** injected context (fail closed).
+
+## Wave 3 #36 — the WASI slash handler — ✅ COMPLETE (Cluster 399)
+
+Shipped as four PRs against the five steps this section used to list.
+
+| Step | Shipped |
+|---|---|
+| 1. Module storage + fetch by sha, with the Cluster-204 tenancy check | 399.2 (#895) |
+| 2. Host shim: `wasmi`, fuel + memory caps, imports rejected outside the allowlist | 399.1 (#894) |
+| 3. Invoke/result plumbing through `dispatch_slash_command` | 399.2 (#895) |
+| 4. Failure semantics: fuel, memory, trap and non-zero exit each distinct | 399.3 (#897) |
+| 5. Make the kind registrable — properly | 399.4 (#898) |
+
+**The engine decision held** — `wasmi`, not `wasmtime` (ADR in
+[Decisions.md](Decisions.md)): a pure interpreter, so the
+miscompilation-to-sandbox-escape class does not exist, and fuel metering is
+stable across versions so `WASI_DEFAULT_FUEL` keeps meaning the same thing after
+a dependency bump.
+
+Three things landed differently from the plan above, and each is worth keeping:
+
+- **`wasmi_wasi` was dropped entirely.** It pulled a duplicate `wast` that
+  `cargo deny` bans, and implementing the 16 allowlisted preview-1 calls
+  directly turned out to be the better security design anyway: the host
+  implements those and *only* those, so a banned import fails to **link**.
+  There is no filter to bypass and no filesystem surface to escape from.
+- **Step 5's "registration should be refused until the runtime is complete"
+  never happened** — registration was open the whole time, which is what made
+  396 a live stub. It is moot now, and 399.4 went further than the original
+  ask: registration verifies the workspace actually *owns* the sha, so a
+  handler that could never run is refused rather than accepted.
+- **Two bounds on guest output, not one.** The sandbox's cap protects host
+  memory during a run; a slash response is *persisted into message metadata and
+  fanned out to every subscriber*, so the room needs its own, tighter one.
+
+**Wave 3 is closed.** Rows #30–#36 are all complete.
 
 ## Standing risks (still open)
 
@@ -1270,7 +1401,7 @@ _Closed (verified v126/v131/v132/v144/v148): OpenAPI↔capability map (**121**),
 
 ## Known state
 
-- **Latest merged: Cluster 395 (Wave 3 #35 — named capability sets + stable `maidan://` URIs) on `main`; tag `v395.0.0` pending the maintainer.** Four impl PRs (#863 types, #864 auth, #865 store, #866 REST + MCP) + this retro (#867) — see [[Retros/Cluster 395]]. Named sets expand at mint time; `POST /tokens/attenuate` is holder-side (no `token:admin`). Room URI authority is the workspace UUID; `GET /.well-known/maidan-room` is scheme-only. **Row #35 is closed.** Do **not** start #36 from this close. *(v350–v395 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 394 (Wave 3 #34 — tombstone explorer + backlink index + kind census) on `main`; tag `v394.0.0` pending the maintainer.** Three impl PRs (#859 types+store, #860 REST, #861 MCP) + retro #862 — see [[Retros/Cluster 394]]. No new table. Soft-delete explorer + optional hard-purge reconstructions; incoming `RelationKind` edges + pins/reactions/votes; `EventKind` census with a private-channel deny-set. **Row #34 is closed.** *(v350–v394 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 393 (Wave 3 #33 — snapshot catch-up + tap projector contract) on `main`; tag `v393.0.0` pending the maintainer.** Four impl PRs (#854 types, #855 store, #856 REST + MCP, #857 search tap) + this retro (#858) — see [[Retros/Cluster 393]]. `$type` `maidan.event-log.snapshot/1` + `maidan.event-log.catch-up/1`; hashed checkpoint + since-LSN pages; search is a tap that fails loud. Complements 392 (retained suffix). **Row #33 is closed.** Do not start #34–36 from this close. *(v350–v393 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 392 (Wave 3 #32 — hash-chained log + strong refs) on `main`; tag `v392.0.0` pending the maintainer.** Four impl PRs (#849 types, #850 store, #851 REST + federation, #852 strong refs) + this retro (#853) — see [[Retros/Cluster 392]]. SHA-256 (`sha256:<hex>`); every `StoredEvent` `{id, lsn, prev_hash, content_hash}`; `GET /workspaces/:wid/events/verify` (409 fail-closed); federation origin-hash check; `claim_next` pin + A2A `citations`. Hashed, not signed. **Row #32 is closed.** Do not start #33–36 from this close. *(v350–v392 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 391 (Wave 3 #31 — signed workspace export) on `main`; tag `v391.0.0` pending the maintainer.** Three impl PRs (#844 envelope + Ed25519, #845 REST, #846 MCP) + this retro (#847) — see [[Retros/Cluster 391]]. `$type` `maidan.workspace.export/1`; operator key `MAIDAN_EXPORT_SIGNING_KEY`; blank instance verifies without the origin. **Tokens die on export.** **Row #31 is closed.** Do not start #32–36 from this close. *(v350–v391 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 390 (Wave 3 #30 — EventKind lexicon, `$type`, Room-LSN) on `main`; tag `v390.0.0` pending the maintainer.** Four impl PRs (#839 lexicon, #840 `max_event_id` / `RoomLsn`, #841 header + live `$type`, #842 webhooks + four SDKs) + this retro (#843) — see [[Retros/Cluster 390]]. Pack under `contracts/lexicon/`. `Maidan-Room-LSN` is projector/broadcast lag (event-log id); do not conflate with `Maidan-Consistency-Token` (WAL, Cluster 263). SDK stays 0.1.0. **Row #30 is closed.** Do not start #31–36 from this close. *(v350–v390 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 389 (OSS hygiene — de-internalize / land-gate) on `main`; tag `v389.0.0` pending the maintainer.** The Cluster 385 close-gate is now `{kind:"land_gate",…}` over `/threads/:id/land-gate` and MCP `set/get/require/clear_land_gate`. Waiter examples are `example.review.result/1`; envelope `maidan.waiter.result/1`; backlink `view_url`. Public surface has no internal product names. See [[Retros/Cluster 389]]. **386–387 already used; 388 left unused.** *(v350–v389 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 386 (Wave 2 #27 — a closed blocked-reason enum) on `main`; tags `v350.0.0`–`v386.0.0` pending the maintainer.** Four impl PRs (#817 store, #820 `claim_next` skip, #822 `BlockedResolved`, #825 REST/MCP/e2e) + this retro (#830) — see [[Retros/Cluster 386]]. Closed `BlockedReason` (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips a block row; clearing emits `BlockedResolved`. Distinct from Cluster 218 DAG readiness and Cluster 363 unclaimable. **Row #27 is closed.** *(v350–v386 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 387 (Wave 2 #28 run-lineage half — `parent_run_id` accepts the producer `run_id`) on `main`.** Store + REST + MCP + Open Work note (#818/#824/#828/#829). Nested occupancy attributes every open workspace thread that shares the value; F7 mute stays orthogonal. Follow-a-member occupancy and the manager digest remain on #28. **(prior) Cluster 385 (Wave 2 #25 remainder — LandGate gate pointer + green/amber/red) on `main`; tags `v350.0.0`–`v385.0.0` pending the maintainer.** Four impl PRs (#819 store+types, #821 FSM close-gate, #826 REST+MCP, #827 e2e) + retro #831 — see [[Retros/Cluster 385]]. A thread holds `{kind:"land_gate", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the gate (no row = vacuous green). `closed` refuses unless a green pass from a land-gate-skilled member ≠ owner/assignee. Amber is not a land. Fail is always red. Room holds the pointer; an external verifier records pass/fail. **Row #25 is closed** (383 composition + 385 pointer). *(v350–v385 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 384 (P1.1d — MCP `transition_thread` twin) on `main`.** One impl PR (#816) + this retro (#823) — see [[Retros/Cluster 384]]. MCP agents can now advance the thread FSM (`start_review` / `close` / `archive`) under the same SoD / close-gate / required-reviewers / critical-composition rules as REST. No new Wave number. Cluster 385 (LandGate) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not claimed. *(v350–v384 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 383 (Wave 2 #25 composition — critical waiter findings → Cluster-375 `request_changes`) on `main`.** Three impl PRs (#809 store+types, #811 arm `k` + `ThreadResultSet` — replaces closed #810, #814 REST/MCP write-path + e2e — replaces closed #812) + its retro — see [[Retros/Cluster 383]]. A reviewed `example.review.result/1` with any `critical` finding from a review-skilled producer writes `request_changes` and, if the thread has no requirement, arms `k=1`. Owner/assignee approvals still do not count (SoD). A third-party human `approve` unblocks. Never auto-approve. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The pointer remainder shipped as Cluster 385. *(v350–v383 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 381 (Wave 2 #24 facet half — `result_kind` namespaced-string list).** Four impl PRs (#798 store, #799 REST, #801 MCP, #802 Integration + Result Delivery — not a retro) + its retro — see [[Retros/Cluster 381]]. The facet is the namespaced string (`example.review.result/1`), never a closed enum. Workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. **Row #24 is closed** (382 pack + 381 facet). **Clusters 380 and 382 are already closed.** **The result-delivery arc (377–381) is COMPLETE.** *(v350–v382 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 380 (inline per-finding PR review comments).** Three impl PRs (#803 the frame, #805 the review POST, #806 skip/fail/replay e2e) + its retro — see [[Retros/Cluster 380]]. `commit_id` is envelope `head_sha` (never the live PR head); GitHub RIGHT; `event: COMMENT`; 404/422 skip; 5xx/auth fail + replay; review errors never `disable_link`. Cluster 379's summary path is unchanged. **(prior) Cluster 382 (Wave 2 #24 pack half — the claimer pack includes in-channel accepted decisions).** Three impl PRs (#792 store, #797 REST pack, #796 MCP twin) + its retro — see [[Retros/Cluster 382]]. `claim_next` still returns `Option<Thread>`; the live thread pack (`GET /threads/:id/context` + MCP `get_thread_context`) attaches `accepted_decisions` teasers (default on, cap 10). Waiter envelopes only when `reviewed`; `result_kind` is a namespaced string, not a closed enum. **Row #24 is closed** (pack 382 + facet 381). *(v350–v382 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 379 (the result-delivery primitive — result delivery, cluster 3 of the arc).** 379.1–379.5 are on `main` (five impl PRs: #787 the store, #788 the contract lock, #789 the trigger, #791 update-in-place, #793 status + replay) + its retro — see [[Retros/Cluster 379]]. A `maidan.waiter.result/1` envelope written with `set_thread_result` is fetched, parsed, allowlist-checked per `deliver_to` target, and delivered: GitHub gets `rendered` (updated in place; recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0), Slack gets `summary`. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. Skip is a recorded normal outcome, not an error. **Two watermarks:** `armed_revision` (seen — the monotonic test every replica contends on) and `delivered_revision` (landed). Arming against only `delivered_revision` cannot tell a second replica of the *same* revision from a newer result arriving in-flight. Replay does not re-arm; it re-checks the allowlist. **The grammar is frozen at `maidan.waiter.result/1`** (the note back to the producer). **Cluster 380 is complete.** **Cluster 381 is complete** (this retro). **Row #24 is closed.** *(v350–v379 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 378 (the egress trust boundary + the sender upgrade — result delivery, cluster 2 of the arc)** — three impl PRs (#782 the allowlist, #783 the sender upgrade, #784 the `egress_body` projection) + a retro, [[Retros/Cluster 378]]. 377 made projector egress durable; 378 makes it safe to **aim** and safe to **repeat**. A destination must be blessed by an operator before Maidan will post to it — **`deliver_to` selects, `maidan_egress_targets` authorizes**, default empty ⇒ deliver nowhere — over a `token:admin` REST surface whose *reads* are admin too, because the allowlist is policy and enumerating it would hand an agent the list of destinations worth aiming at. A selector is an **id**, never a mutable name, and on GitHub the grain is the **repository**. The senders now return an `ExternalRef` and can `update_message`/`update_comment`; a post that succeeded is never reported as a failure. And `egress_body` defuses mentions (a code span on GitHub, `&lt;` on Slack), truncates to GitHub's 65536-char ceiling while keeping the backlink, and projects GFM onto mrkdwn — all outside fenced diffs. **(prior) Cluster 377 (durable projector egress — row #38, the result-delivery foundation)** — four impl PRs (#777 the outbox store, #778 the worker, #779 retry-then-disable + `ProjectorMisconfigured`, #780 the operator DLQ) + a retro, [[Retros/Cluster 377]]. Projector egress is no longer best-effort log-and-drop: a projector-bound message is **enqueued** on `maidan_egress_outbox` and delivered by a retry/backoff worker (dead-letter at 8), an auth/config-class failure **disables the link** and emits `ProjectorMisconfigured` instead of burning eight doomed attempts per message forever, and an exhausted delivery lands in a `token:admin` DLQ with replay. A rate-limited GitHub **403 is explicitly not** a misconfiguration; ingress is untouched by an outbound credential failure; re-linking is the re-enable path. **Row #38 is closed** (it was a reorder, not new scope). See the "Result delivery — the external last mile" section above and the pinned contract in [Result Delivery](Result%20Delivery.md). **(prior) Cluster 376 (Wave 2 #23 — a spawn budget, G6+G-dev-3+W3)** — six impl PRs (#765 store, #768 children+depth gate, #770 max-tools gate, #771 REST+MCP config, #772 GitHub-link cap, #774 `ThreadSpawnDenied`) + a retro, [[Retros/Cluster 376]]. A workspace now caps agent fan-out on three opt-in axes (`max_children`/`max_depth`/`max_tools`, `null` = unlimited), enforced in the store so every spawn path inherits it, settable over REST + MCP, and observable as a `ThreadSpawnDenied` event; a claim also holds at most one GitHub link. A budget, not a scheduler. **Wave 1 (#1–14) + Wave 2 #15–24 + P1.1c are COMPLETE, and the result-delivery arc (377–381) is COMPLETE** — Wave 2 #25 (LandGate) later closed as Cluster 383 + Cluster 385. This 376 retro did not start it. **(prior) Cluster 375 (Wave 2 #22 — required reviewers)** — four impl PRs (#759/#761/#762/#763) + a CI chore (#760, minio→quay), [[Retros/Cluster 375]]; a thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge. **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). **P1.1d is closed (Cluster 384).** **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
+- **Latest merged: Cluster 399 (Wave 3 #36 — the WASI slash-handler runtime) on `main`; tag `v399.0.0` pending the maintainer.** Four impl PRs (#894 the sandbox, #895 module fetch + dispatch, #897 failure semantics, #898 registration + docs) + this retro — see the *Wave 3 #36* section above and [WASI-Handlers.md](WASI-Handlers.md). `wasmi`, not `wasmtime`; the host implements the 16 allowlisted preview-1 calls and only those, so a banned import fails to link; a module belongs to a workspace by its Cluster-204 access link, checked at registration *and* at dispatch. **Row #36 is closed, and with it Wave 3.** **(prior) Cluster 398 (verification sweep) — eight PRs, not the five its first retro recorded:** 398.6 took `deny_unknown_fields` across all 47 argument structs (reversing 398.4–398.5's "only the sharpest two"), 398.7 decided a workspace handle is a display label rather than an address, and 398.8 scoped `Maidan-Room-LSN` to the caller's room. **(prior) Cluster 397 (post-Cursor audit remediation) — nine PRs.** **(prior) Cluster 395 (Wave 3 #35 — named capability sets + stable `maidan://` URIs) on `main`; tag `v395.0.0` pending the maintainer.** Four impl PRs (#863 types, #864 auth, #865 store, #866 REST + MCP) + this retro (#867) — see [[Retros/Cluster 395]]. Named sets expand at mint time; `POST /tokens/attenuate` is holder-side (no `token:admin`). Room URI authority is the workspace UUID; `GET /.well-known/maidan-room` is scheme-only. **Row #35 is closed.** Do **not** start #36 from this close. *(v350–v395 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 394 (Wave 3 #34 — tombstone explorer + backlink index + kind census) on `main`; tag `v394.0.0` pending the maintainer.** Three impl PRs (#859 types+store, #860 REST, #861 MCP) + retro #862 — see [[Retros/Cluster 394]]. No new table. Soft-delete explorer + optional hard-purge reconstructions; incoming `RelationKind` edges + pins/reactions/votes; `EventKind` census with a private-channel deny-set. **Row #34 is closed.** *(v350–v394 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 393 (Wave 3 #33 — snapshot catch-up + tap projector contract) on `main`; tag `v393.0.0` pending the maintainer.** Four impl PRs (#854 types, #855 store, #856 REST + MCP, #857 search tap) + this retro (#858) — see [[Retros/Cluster 393]]. `$type` `maidan.event-log.snapshot/1` + `maidan.event-log.catch-up/1`; hashed checkpoint + since-LSN pages; search is a tap that fails loud. Complements 392 (retained suffix). **Row #33 is closed.** Do not start #34–36 from this close. *(v350–v393 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 392 (Wave 3 #32 — hash-chained log + strong refs) on `main`; tag `v392.0.0` pending the maintainer.** Four impl PRs (#849 types, #850 store, #851 REST + federation, #852 strong refs) + this retro (#853) — see [[Retros/Cluster 392]]. SHA-256 (`sha256:<hex>`); every `StoredEvent` `{id, lsn, prev_hash, content_hash}`; `GET /workspaces/:wid/events/verify` (409 fail-closed); federation origin-hash check; `claim_next` pin + A2A `citations`. Hashed, not signed. **Row #32 is closed.** Do not start #33–36 from this close. *(v350–v392 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 391 (Wave 3 #31 — signed workspace export) on `main`; tag `v391.0.0` pending the maintainer.** Three impl PRs (#844 envelope + Ed25519, #845 REST, #846 MCP) + this retro (#847) — see [[Retros/Cluster 391]]. `$type` `maidan.workspace.export/1`; operator key `MAIDAN_EXPORT_SIGNING_KEY`; blank instance verifies without the origin. **Tokens die on export.** **Row #31 is closed.** Do not start #32–36 from this close. *(v350–v391 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 390 (Wave 3 #30 — EventKind lexicon, `$type`, Room-LSN) on `main`; tag `v390.0.0` pending the maintainer.** Four impl PRs (#839 lexicon, #840 `max_event_id` / `RoomLsn`, #841 header + live `$type`, #842 webhooks + four SDKs) + this retro (#843) — see [[Retros/Cluster 390]]. Pack under `contracts/lexicon/`. `Maidan-Room-LSN` is projector/broadcast lag (event-log id); do not conflate with `Maidan-Consistency-Token` (WAL, Cluster 263). SDK stays 0.1.0. **Row #30 is closed.** Do not start #31–36 from this close. *(v350–v390 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 389 (OSS hygiene — de-internalize / land-gate) on `main`; tag `v389.0.0` pending the maintainer.** The Cluster 385 close-gate is now `{kind:"land_gate",…}` over `/threads/:id/land-gate` and MCP `set/get/require/clear_land_gate`. Waiter examples are `example.review.result/1`; envelope `maidan.waiter.result/1`; backlink `view_url`. Public surface has no internal product names. See [[Retros/Cluster 389]]. **386–387 already used; 388 left unused.** *(v350–v389 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 386 (Wave 2 #27 — a closed blocked-reason enum) on `main`; tags `v350.0.0`–`v386.0.0` pending the maintainer.** Four impl PRs (#817 store, #820 `claim_next` skip, #822 `BlockedResolved`, #825 REST/MCP/e2e) + this retro (#830) — see [[Retros/Cluster 386]]. Closed `BlockedReason` (`dag|gate|human|child|quota|unclaimable`); `claim_next` skips a block row; clearing emits `BlockedResolved`. Distinct from Cluster 218 DAG readiness and Cluster 363 unclaimable. **Row #27 is closed.** *(v350–v386 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 387 (Wave 2 #28 run-lineage half — `parent_run_id` accepts the producer `run_id`) on `main`.** Store + REST + MCP + Open Work note (#818/#824/#828/#829). Nested occupancy attributes every open workspace thread that shares the value; F7 mute stays orthogonal. Follow-a-member occupancy and the manager digest remain on #28. **(prior) Cluster 385 (Wave 2 #25 remainder — LandGate gate pointer + green/amber/red) on `main`; tags `v350.0.0`–`v385.0.0` pending the maintainer.** Four impl PRs (#819 store+types, #821 FSM close-gate, #826 REST+MCP, #827 e2e) + retro #831 — see [[Retros/Cluster 385]]. A thread holds `{kind:"land_gate", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the gate (no row = vacuous green). `closed` refuses unless a green pass from a land-gate-skilled member ≠ owner/assignee. Amber is not a land. Fail is always red. Room holds the pointer; an external verifier records pass/fail. **Row #25 is closed** (383 composition + 385 pointer). *(v350–v385 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 384 (P1.1d — MCP `transition_thread` twin) on `main`.** One impl PR (#816) + this retro (#823) — see [[Retros/Cluster 384]]. MCP agents can now advance the thread FSM (`start_review` / `close` / `archive`) under the same SoD / close-gate / required-reviewers / critical-composition rules as REST. No new Wave number. Cluster 385 (LandGate) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not claimed. *(v350–v384 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 383 (Wave 2 #25 composition — critical waiter findings → Cluster-375 `request_changes`) on `main`.** Three impl PRs (#809 store+types, #811 arm `k` + `ThreadResultSet` — replaces closed #810, #814 REST/MCP write-path + e2e — replaces closed #812) + its retro — see [[Retros/Cluster 383]]. A reviewed `example.review.result/1` with any `critical` finding from a review-skilled producer writes `request_changes` and, if the thread has no requirement, arms `k=1`. Owner/assignee approvals still do not count (SoD). A third-party human `approve` unblocks. Never auto-approve. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The pointer remainder shipped as Cluster 385. *(v350–v383 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 381 (Wave 2 #24 facet half — `result_kind` namespaced-string list).** Four impl PRs (#798 store, #799 REST, #801 MCP, #802 Integration + Result Delivery — not a retro) + its retro — see [[Retros/Cluster 381]]. The facet is the namespaced string (`example.review.result/1`), never a closed enum. Workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. **Row #24 is closed** (382 pack + 381 facet). **Clusters 380 and 382 are already closed.** **The result-delivery arc (377–381) is COMPLETE.** *(v350–v382 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 380 (inline per-finding PR review comments).** Three impl PRs (#803 the frame, #805 the review POST, #806 skip/fail/replay e2e) + its retro — see [[Retros/Cluster 380]]. `commit_id` is envelope `head_sha` (never the live PR head); GitHub RIGHT; `event: COMMENT`; 404/422 skip; 5xx/auth fail + replay; review errors never `disable_link`. Cluster 379's summary path is unchanged. **(prior) Cluster 382 (Wave 2 #24 pack half — the claimer pack includes in-channel accepted decisions).** Three impl PRs (#792 store, #797 REST pack, #796 MCP twin) + its retro — see [[Retros/Cluster 382]]. `claim_next` still returns `Option<Thread>`; the live thread pack (`GET /threads/:id/context` + MCP `get_thread_context`) attaches `accepted_decisions` teasers (default on, cap 10). Waiter envelopes only when `reviewed`; `result_kind` is a namespaced string, not a closed enum. **Row #24 is closed** (pack 382 + facet 381). *(v350–v382 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 379 (the result-delivery primitive — result delivery, cluster 3 of the arc).** 379.1–379.5 are on `main` (five impl PRs: #787 the store, #788 the contract lock, #789 the trigger, #791 update-in-place, #793 status + replay) + its retro — see [[Retros/Cluster 379]]. A `maidan.waiter.result/1` envelope written with `set_thread_result` is fetched, parsed, allowlist-checked per `deliver_to` target, and delivered: GitHub gets `rendered` (updated in place; recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0), Slack gets `summary`. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. Skip is a recorded normal outcome, not an error. **Two watermarks:** `armed_revision` (seen — the monotonic test every replica contends on) and `delivered_revision` (landed). Arming against only `delivered_revision` cannot tell a second replica of the *same* revision from a newer result arriving in-flight. Replay does not re-arm; it re-checks the allowlist. **The grammar is frozen at `maidan.waiter.result/1`** (the note back to the producer). **Cluster 380 is complete.** **Cluster 381 is complete** (this retro). **Row #24 is closed.** *(v350–v379 tags not yet cut — a `git tag` triggers `release.yml` image builds; left for the maintainer.)* **(prior) Cluster 378 (the egress trust boundary + the sender upgrade — result delivery, cluster 2 of the arc)** — three impl PRs (#782 the allowlist, #783 the sender upgrade, #784 the `egress_body` projection) + a retro, [[Retros/Cluster 378]]. 377 made projector egress durable; 378 makes it safe to **aim** and safe to **repeat**. A destination must be blessed by an operator before Maidan will post to it — **`deliver_to` selects, `maidan_egress_targets` authorizes**, default empty ⇒ deliver nowhere — over a `token:admin` REST surface whose *reads* are admin too, because the allowlist is policy and enumerating it would hand an agent the list of destinations worth aiming at. A selector is an **id**, never a mutable name, and on GitHub the grain is the **repository**. The senders now return an `ExternalRef` and can `update_message`/`update_comment`; a post that succeeded is never reported as a failure. And `egress_body` defuses mentions (a code span on GitHub, `&lt;` on Slack), truncates to GitHub's 65536-char ceiling while keeping the backlink, and projects GFM onto mrkdwn — all outside fenced diffs. **(prior) Cluster 377 (durable projector egress — row #38, the result-delivery foundation)** — four impl PRs (#777 the outbox store, #778 the worker, #779 retry-then-disable + `ProjectorMisconfigured`, #780 the operator DLQ) + a retro, [[Retros/Cluster 377]]. Projector egress is no longer best-effort log-and-drop: a projector-bound message is **enqueued** on `maidan_egress_outbox` and delivered by a retry/backoff worker (dead-letter at 8), an auth/config-class failure **disables the link** and emits `ProjectorMisconfigured` instead of burning eight doomed attempts per message forever, and an exhausted delivery lands in a `token:admin` DLQ with replay. A rate-limited GitHub **403 is explicitly not** a misconfiguration; ingress is untouched by an outbound credential failure; re-linking is the re-enable path. **Row #38 is closed** (it was a reorder, not new scope). See the "Result delivery — the external last mile" section above and the pinned contract in [Result Delivery](Result%20Delivery.md). **(prior) Cluster 376 (Wave 2 #23 — a spawn budget, G6+G-dev-3+W3)** — six impl PRs (#765 store, #768 children+depth gate, #770 max-tools gate, #771 REST+MCP config, #772 GitHub-link cap, #774 `ThreadSpawnDenied`) + a retro, [[Retros/Cluster 376]]. A workspace now caps agent fan-out on three opt-in axes (`max_children`/`max_depth`/`max_tools`, `null` = unlimited), enforced in the store so every spawn path inherits it, settable over REST + MCP, and observable as a `ThreadSpawnDenied` event; a claim also holds at most one GitHub link. A budget, not a scheduler. **Wave 1 (#1–14) + Wave 2 #15–24 + P1.1c are COMPLETE, and the result-delivery arc (377–381) is COMPLETE** — Wave 2 #25 (LandGate) later closed as Cluster 383 + Cluster 385. This 376 retro did not start it. **(prior) Cluster 375 (Wave 2 #22 — required reviewers)** — four impl PRs (#759/#761/#762/#763) + a CI chore (#760, minio→quay), [[Retros/Cluster 375]]; a thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — SoD) + no unresolved `refutes` edge. **CI infra note:** Docker Hub began denying `minio/minio` + `minio/mc` pulls mid-session (registry-side); fixed durably by repointing the compose + k8s references to `quay.io/minio/*` (#760). **P1.1d is closed (Cluster 384).** **The `context_query_count_e2e` connection-warm-up flake was fixed (PR #746).**
 
 - **(prior) Cluster 367 (Wave 2 #15 — the human work console) on `main`** — stacked `/ui` PRs #722/#723/#724, [[Retros/Cluster 367]].
 - **(prior) Cluster 366 (Wave 1 #14) on `main`** — four independent PRs (#717/#718/#719/#720), [[Retros/Cluster 366]].
