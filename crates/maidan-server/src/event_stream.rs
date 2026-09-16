@@ -512,6 +512,25 @@ pub async fn reconcile_deliver(
     }
 }
 
+/// The log head to treat as "already accounted for" when this subscription
+/// starts (Cluster 397.3).
+///
+/// A bus subscriber is live-only: it is not owed anything that happened before
+/// it attached. The watermark therefore starts at the head *at attach time*, and
+/// a later `Lagged` resumes from there — the missed window, and only that.
+///
+/// It used to start at `0` in every consumer, which meant a `Lagged` arriving
+/// before the first event replayed the entire global log from id 1. That window
+/// is reachable at boot and on every resubscribe, since the counter was
+/// re-declared per subscription. Read *after* a successful subscribe, so every
+/// event at or below the seed was either delivered on this stream or predates
+/// the subscription.
+pub async fn attach_watermark(
+    state: &crate::state::AppState,
+) -> Result<i64, maidan_store::StoreError> {
+    state.store.max_event_id().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
