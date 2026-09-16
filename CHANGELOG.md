@@ -299,6 +299,31 @@ pass/fail.
 - **389.1** rename + scrub — types, store, REST, MCP, OpenAPI,
   contracts, tests, published docs, historical retros.
 
+## [387.0.0] — 2026-09-13
+
+Wave 2 #28, run-lineage half. Three PRs (387.1–387.3). No new gate tag.
+
+*Recorded late:* this cluster shipped with no CHANGELOG, Capabilities or
+Roadmap entry. **C5** — `run_occupancy` not consulting `maidan_thread_blocks`
+— went undetected in the surface nobody had written down, and was fixed in
+Cluster 400.1.
+
+- **387.1** `maidan_thread_lineage` (pg 0090 / sqlite 0089) homes a producer's
+  `run_id` on a thread as `parent_run_id`. The design call is to **accept the
+  producer's id rather than mint a parallel one** — a second identifier would
+  have to be correlated back to the first by every consumer. Plus
+  `run_occupancy`, partitioning every open thread that shares the value.
+  F7 mute is orthogonal: a muted nested thread still counts.
+- **387.2** REST — `PUT`/`GET`/`DELETE /threads/:id/lineage`,
+  `GET /workspaces/:id/run-threads`, `GET /workspaces/:id/run-occupancy`, and
+  `set_thread_result` auto-homes the run id when the waiter envelope carries
+  one.
+- **387.3** MCP twins (`set`/`get_thread_lineage`, `list_run_threads`,
+  `get_run_occupancy`) with the same auto-home. Delete stays REST-only.
+
+Wave 2 #28 is **not** closed: follow-a-member occupancy and the manager digest
+remain.
+
 ## [386.0.0] — 2026-09-13
 
 Post-gate hardening (Phase XXIV). **Wave 2 #27 — a closed blocked-reason
