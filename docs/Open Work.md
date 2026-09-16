@@ -961,9 +961,33 @@ because the tests assert the happy path of a single tenant.
    re-POSTs all history to every tenant's endpoint (no unique on
    `(subscription_id, log_id)`). Seed from `max_event_id()` as `PostgresBus`
    already does.
-4. **`/operator/egress/dead` + requeue are global under a per-workspace
+4. ~~**`/operator/egress/dead` + requeue are global under a per-workspace
    `token:admin`** — read every tenant's Slack ids and repos, then requeue to
-   post into them. Wants the `audit:read-global` treatment.
+   post into them.~~ **✅ FIXED (Cluster 397.4)** — both are scoped to
+   `auth.workspace_id` at the store, so a tenant sees only its own dead
+   deliveries and a guessed cross-tenant id is a no-op rather than a re-send.
+
+   **Two siblings found while fixing it, still OPEN.** Both are the same class —
+   a genuinely global query behind the per-workspace `token:admin` — but neither
+   can be closed the same way, so each needs a decision rather than a patch:
+
+   - **`GET /operator/mail/dead` + `POST …/:id/requeue`.** `maidan_mail_outbox`
+     has **no `workspace_id` column**, so there is nothing to scope by, and the
+     rows carry `to_address`, `subject` and `body` — every tenant's outbound
+     email, readable by any workspace admin. Fixing it means either adding a
+     workspace column (with no way to backfill existing rows) or moving both
+     routes behind a genuinely global capability.
+   - **`GET /operator/legal-holds`.** Lists every workspace's hold. Scoping it to
+     the caller would make it redundant with `GET /workspaces/:id/legal-hold`,
+     so this one *wants* to stay global — which means it wants a global
+     capability.
+
+   The capability vocabulary has exactly one cross-workspace marker today,
+   `audit:read-global` (Cluster 132), and it is a **read** capability — so it
+   cannot gate the mail requeue, which is a write. The honest options are a new
+   `operator:global` capability (correct, but rippling through the named sets,
+   both capability maps and the deny-caps matrices) or splitting these routes
+   out of `/operator` entirely. **Not decided; deliberately not invented here.**
 
 ### P1
 

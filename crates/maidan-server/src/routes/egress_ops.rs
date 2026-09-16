@@ -26,8 +26,14 @@ pub struct ListDeadEgressQuery {
     pub limit: i64,
 }
 
-/// `GET /operator/egress/dead` — dead-lettered projector deliveries, newest
-/// first: what failed, where it was going, and the surface's own last error.
+/// `GET /operator/egress/dead` — dead-lettered projector deliveries for **the
+/// caller's workspace**, newest first: what failed, where it was going, and the
+/// surface's own last error.
+///
+/// Scoped in Cluster 397.4. `token:admin` is minted per workspace, but this
+/// query was global, so one tenant's admin could read every other tenant's
+/// Slack channel ids, GitHub repositories and delivery errors — and then
+/// requeue into them.
 pub async fn list_dead_egress(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -35,7 +41,12 @@ pub async fn list_dead_egress(
 ) -> ApiResult<Json<Vec<DeadEgress>>> {
     cap(&auth, TOKEN_ADMIN)?;
     let limit = q.limit.clamp(1, 500);
-    Ok(Json(state.store.list_dead_egress(limit).await?))
+    Ok(Json(
+        state
+            .store
+            .list_dead_egress(auth.workspace_id, limit)
+            .await?,
+    ))
 }
 
 /// `POST /operator/egress/dead/{id}/requeue` — requeue a dead delivery
@@ -51,7 +62,13 @@ pub async fn requeue_dead_egress(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, TOKEN_ADMIN)?;
-    if state.store.requeue_dead_egress(EgressOutboxId(id)).await? {
+    // Scoped like the list: another tenant's id is a 404, not a re-send into
+    // their channel.
+    if state
+        .store
+        .requeue_dead_egress(auth.workspace_id, EgressOutboxId(id))
+        .await?
+    {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
