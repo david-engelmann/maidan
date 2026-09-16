@@ -7,10 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [399.0.0] — 2026-09-16
+
+Post-gate hardening (Phase XXIV). **The WASI slash-handler runtime — Wave 3
+#36.** Four PRs (399.1–399.4). No new gate tag.
+
+Cluster 396 left `SlashHandlerKind::wasi` registrable with no runtime behind
+it: every dispatch returned `wasi_runtime_unavailable`, so a workspace could
+successfully configure a handler that could never run. **Row #36, and with it
+Wave 3, is closed.**
+
+- **399.1** The sandbox: a `wasmi` host with fuel metering, a linear-memory
+  cap and an output cap. An interpreter, so there is no code generator in the
+  trust path. `wasmi_wasi` was dropped — it pulls a duplicate `wast` that
+  `cargo deny` bans, and implementing the 16 allowlisted preview-1 calls
+  directly is the better design: the host implements those and only those, so
+  a banned import fails to **link**. There is nothing to filter.
+- **399.2** Module fetch + tenancy. `handler_target` is a sha256, so the
+  Cluster-204 access link is what makes a module belong to a workspace —
+  without the check a registration could name any sha on the instance and
+  Maidan would *execute* it. The guest runs on `spawn_blocking`.
+- **399.3** Failure semantics. Fuel, memory, trap and non-zero exit each
+  report their own kind; a `proc_exit(3)` was previously `Trap` with its
+  message overwritten. Precedence is now a decision — a host-enforced limit
+  outranks the guest's own verdict. Failure text and room-facing output are
+  each bounded, and both cuts are marked.
+- **399.4** Registration verifies the workspace owns the sha, on both write
+  surfaces, and [docs/WASI-Handlers.md](docs/WASI-Handlers.md) is the page a
+  registering user reads. Writing it found that the crate doc claimed 17
+  allowlisted calls (there are 16) and that **nothing checked an allowlisted
+  name was actually registered**.
+
+Also: `MAIDAN_HOST_PORT` makes the compose stacks' published port
+overridable — 8080 is contended, and a publish conflict fails the whole `up`.
+
 ## [398.0.0] — 2026-09-16
 
 Post-gate hardening (Phase XXIV). **Verification sweep — what was built,
-tested, and never wired.** Five PRs (398.1–398.5). No new gate tag.
+tested, and never wired.** Eight PRs (398.1–398.8). No new gate tag.
 
 Found by enumerating the `Store` trait's 409 methods and reading what had
 no caller outside the store crate. It is the only check that catches
@@ -32,8 +66,22 @@ no caller outside the store crate. It is the only check that catches
   (pg 0096 / sqlite 0095)
 - **398.4–398.5** `deny_unknown_fields` on the two argument structs where
   omission is load-bearing and means "turn a control off":
-  `SetBudgetArgs` and `RequestApprovalArgs`. The other 45 of 47 are left
-  alone on purpose.
+  `SetBudgetArgs` and `RequestApprovalArgs`, leaving the other 45 of 47.
+- **398.6** …then **all** of them, reversing that. Ranking by consequence
+  reads risk correctly and is the wrong basis for *which to fix*: a
+  per-struct judgement has to be re-made every time someone adds a struct.
+  A static contract test guards it. Found on the way: `build_mcp_arguments`
+  was injecting four context ids into every MCP-tool slash dispatch,
+  including tools that declare only `workspace_id` — now filtered by the
+  tool's own `inputSchema`, fail closed for an unknown tool.
+- **398.7** A workspace handle is a display label, not an address —
+  decided, not patched; the unused reverse lookup is gone. ADR in
+  `docs/Decisions.md`.
+- **398.8** `Maidan-Room-LSN` reports the caller's room, not the instance.
+  `auth` tags the response with a `RoomScope` extension from all four
+  authenticating paths and the outer middleware reads it on the way back, so
+  there is one stamping site rather than three routers. An unscoped response
+  still falls back to the instance head, keeping the Cluster-390 contract.
 
 Also corrected two overstated claims in `docs/Claims.md` / README: "every
 action is audited" (28 audited kinds vs 150 mutating routes) and

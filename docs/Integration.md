@@ -585,6 +585,14 @@ neither owner nor assignee. Amber (flags-then-still-engages) is not a
 land. Fail is always red, even if `land=green` is requested. The room
 holds the pointer; an external verifier records pass/fail. Not a CI product.
 
+> **Read "declared the `land_gate` skill" literally.** *Declared* is the
+> operative word: `add_member_skill` is `workspace:write` with no restriction
+> on which skill, so an agent holding that capability can grant itself the
+> skill that qualifies it. The separation-of-duties test (reviewer ≠ owner /
+> assignee) is the part that actually binds today. Tracked in
+> [Open Work](Open%20Work.md) — the fix is to ratchet governance-bearing
+> skills to `channel:admin`, the same shape as the Cluster-397.2 gate ratchet.
+
 If the payload carries a `run_id` (the waiter envelope does), Cluster 387
 homes that **producer string** as `parent_run_id` on the thread — it does
 not mint a parallel id. Nested work that shares the value is attributed

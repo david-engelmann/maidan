@@ -111,3 +111,29 @@ release_secrets.txt
 /maidan_world_launch_design_reference_catalog.md
 # Per-agent scratch notes staged under docs/ (underscore-prefixed by convention).
 docs/_*
+
+# The 2026-09 research round's working notes. Untracked *and* unignored, they
+# have twice been swept into a commit by a `git add -A docs/` — once far enough
+# to reach a remote branch. Ignoring them decides nothing about whether they
+# eventually belong in the repo: `git add -f` still stages any of them
+# deliberately. It only removes the accident.
+/docs/research-*.md
+/docs/reddit-mine-*.md
+/docs/Baked.md
+/docs/Book Roadmap.md
+/docs/Fabrics.md
+/docs/Fold Ready.md
+/docs/Gaps.md
+/docs/GitHub Roadmap.md
+/docs/Horizon.md
+/docs/Industry.md
+/docs/Integration Reality.md
+/docs/Launch Roadmap.md
+/docs/Massive Roadmap.md
+/docs/Missed.md
+/docs/Propose.md
+/docs/Reddit Gems.md
+/docs/Source Map.md
+/docs/Splice Prompt.md
+/docs/Undeniable.md
+/docs/Undeniable Final.md
