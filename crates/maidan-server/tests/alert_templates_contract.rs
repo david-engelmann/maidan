@@ -21,6 +21,13 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_indexer_queue_depth",
         "maidan_indexer_queue_capacity",
         "maidan_indexer_embed_failed_total",
+        // Cluster 398.2: the other two dead-letter queues. Both had a
+        // `count_dead_*` store method and no gauge, so a projector delivery that
+        // had given up on a tenant's Slack channel — or a notification email
+        // that would never arrive — was invisible to alerting, while the outbox
+        // has been alertable since Cluster 90.
+        "maidan_egress_dead",
+        "maidan_mail_dead",
     ];
     for metric in expected {
         assert!(

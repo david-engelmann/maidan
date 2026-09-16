@@ -89,6 +89,33 @@ spec:
             description: |
               {{ $value }} quarantined outbox row(s). Replay or fix poison payloads.
 
+        - alert: MaidanEgressDeadLettered
+          expr: maidan_egress_dead > 0
+          for: 5m
+          labels:
+            severity: warning
+            slo: egress_dlq
+          annotations:
+            summary: Projector deliveries dead-lettered
+            description: |
+              {{ $value }} dead-lettered projector delivery(ies). A thread's
+              result has stopped reaching its Slack channel or GitHub issue.
+              Inspect GET /operator/egress/dead; re-link a disabled credential
+              before requeueing, or the requeue fails the same way.
+
+        - alert: MaidanMailDeadLettered
+          expr: maidan_mail_dead > 0
+          for: 5m
+          labels:
+            severity: warning
+            slo: mail_dlq
+          annotations:
+            summary: Notification email dead-lettered
+            description: |
+              {{ $value }} dead-lettered message(s). Members are not receiving
+              notification email. Check SMTP credentials and
+              GET /operator/mail/dead.
+
         - alert: MaidanBusListenerDown
           expr: maidan_bus_listener_ok == 0
           for: 2m

@@ -135,10 +135,13 @@ pub async fn stream(
         .await;
     }
 
+    let secret = state
+        .subscribe_resume_secret()
+        .ok_or_else(|| ApiError::Internal("subscribe resume not configured on server".into()))?;
     let token = subscribe_resume::sign_resume_token(
         &filter,
         high_water,
-        state.subscribe_resume_secret(),
+        secret,
         state.subscribe_resume_ttl_secs,
     )
     .map_err(|e| ApiError::Internal(format!("resume token: {e}")))?;
@@ -216,9 +219,11 @@ fn resolve_stream_params(
                 "subscribe resume not configured on server".into(),
             ));
         }
-        let (filter, after_id) =
-            subscribe_resume::verify_resume_token(token, state.subscribe_resume_secret())
-                .map_err(|e| ApiError::BadRequest(format!("invalid resume_token: {e}")))?;
+        let secret = state.subscribe_resume_secret().ok_or_else(|| {
+            ApiError::Internal("subscribe resume not configured on server".into())
+        })?;
+        let (filter, after_id) = subscribe_resume::verify_resume_token(token, secret)
+            .map_err(|e| ApiError::BadRequest(format!("invalid resume_token: {e}")))?;
         if after_id > 0 && filter.workspace_id.is_none() {
             return Err(ApiError::BadRequest(
                 "resume token requires workspace_id for replay".into(),

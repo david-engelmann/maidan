@@ -403,10 +403,13 @@ async fn send_subscribe_ack(
     after_id: i64,
     text_tx: &mpsc::Sender<String>,
 ) -> Result<(), String> {
+    let secret = state
+        .subscribe_resume_secret()
+        .ok_or_else(|| "subscribe resume not configured on server".to_string())?;
     let token = subscribe_resume::sign_resume_token(
         filter,
         after_id,
-        state.subscribe_resume_secret(),
+        secret,
         state.subscribe_resume_ttl_secs,
     )
     .map_err(|e| format!("resume token: {e}"))?;
@@ -552,9 +555,12 @@ fn resolve_subscribe_params(
         if state.subscribe_resume_secret.is_none() && state.oidc.is_none() {
             return Err((1011u16, "subscribe resume not configured on server".into()));
         }
-        let (filter, after_id) =
-            subscribe_resume::verify_resume_token(token, state.subscribe_resume_secret())
-                .map_err(|e| (1008u16, format!("invalid resume_token: {e}")))?;
+        let secret = state.subscribe_resume_secret().ok_or((
+            1011u16,
+            "subscribe resume not configured on server".to_string(),
+        ))?;
+        let (filter, after_id) = subscribe_resume::verify_resume_token(token, secret)
+            .map_err(|e| (1008u16, format!("invalid resume_token: {e}")))?;
         if after_id > 0 && filter.workspace_id.is_none() {
             return Err((
                 1008u16,

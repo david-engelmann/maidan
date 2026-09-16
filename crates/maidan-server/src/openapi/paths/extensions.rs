@@ -1,4 +1,11 @@
-//! OpenAPI stubs for routes wired in `app.rs` but missing from `api.rs` (Cluster 77).
+//! OpenAPI path stubs for routes whose spec entry lives here rather than in
+//! `api.rs`.
+//!
+//! These are utoipa annotation carriers, not unwired routes: every one is
+//! mounted in `app.rs` and covered by the `openapi_e2e` bijection against
+//! `contracts/http-capability-map.json`. The banner used to read "missing from
+//! `api.rs` (Cluster 77)", which scanned as "these routes are not implemented"
+//! (Cluster 398.2). The split is purely where the annotation sits.
 
 use uuid::Uuid;
 
