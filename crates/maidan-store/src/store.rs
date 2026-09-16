@@ -76,6 +76,11 @@ pub trait WorkspaceStore: Send + Sync {
     /// Set or rename a workspace handle (Cluster 395). The workspace id
     /// is unchanged. Invalid syntax is [`StoreError::InvalidInput`]; a
     /// handle owned by another workspace is [`StoreError::Conflict`].
+    ///
+    /// **A handle is a display label, not an address** (Cluster 398.7). Nothing
+    /// resolves a handle *to* a workspace, deliberately — see the ADR in
+    /// `docs/Decisions.md`. Uniqueness is enforced by the table's constraint,
+    /// not by a reverse lookup.
     async fn set_workspace_handle(
         &self,
         workspace_id: WorkspaceId,
@@ -86,11 +91,6 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<WorkspaceHandle>, StoreError>;
-    /// Resolve a handle to a workspace id, or `None`.
-    async fn workspace_id_for_handle(
-        &self,
-        handle: &str,
-    ) -> Result<Option<WorkspaceId>, StoreError>;
 }
 
 #[async_trait]

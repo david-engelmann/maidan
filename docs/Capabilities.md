@@ -55,7 +55,9 @@ needs a call rather than a diff: self-approval laundering (both gates test the
 *live* `assignee_id`, so releasing a claim launders a self-approval — needs a
 durable record of who did the work), `Maidan-Room-LSN` scoping (a published
 contract across four SDKs), the search-indexer cursor (resuming trades away chain
-re-verification — a correctness trade, not a perf one), and handle resolution.
+re-verification — a correctness trade, not a perf one). **Handle resolution is
+now decided** (Cluster 398.7): a handle is a display label, not an address — see
+[Decisions.md](Decisions.md).
 
 ## v396.0.0 — Wave 3 #36 (partial): WASI slash-handler types
 

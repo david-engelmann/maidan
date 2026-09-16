@@ -45,17 +45,6 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_handle))
 }
 
-pub async fn workspace_id_for_handle(
-    pool: &SqlitePool,
-    handle: &str,
-) -> Result<Option<WorkspaceId>, StoreError> {
-    let row = sqlx::query("SELECT workspace_id FROM maidan_workspace_handles WHERE handle = ?")
-        .bind(handle)
-        .fetch_optional(pool)
-        .await?;
-    Ok(row.map(|r| WorkspaceId(r.get::<Uuid, _>("workspace_id"))))
-}
-
 fn map_handle_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {

@@ -52,25 +52,22 @@ async fn run_suite(store: &dyn Store) {
         .expect("some");
     assert_eq!(got.handle, "acme");
 
-    assert_eq!(
-        store.workspace_id_for_handle("acme").await.expect("lookup"),
-        Some(ws.id)
-    );
-
+    // Cluster 398.7: a handle is a display label, not an address — there is no
+    // reverse lookup, so the rename property is asserted from the workspace side.
     let renamed = store
         .set_workspace_handle(ws.id, "renamed")
         .await
         .expect("rename");
     assert_eq!(renamed.workspace_id, ws.id);
     assert_eq!(renamed.handle, "renamed");
-    assert!(store
-        .workspace_id_for_handle("acme")
+    let after_rename = store
+        .get_workspace_handle(ws.id)
         .await
-        .expect("old")
-        .is_none());
+        .expect("get after rename")
+        .expect("some");
     assert_eq!(
-        store.workspace_id_for_handle("renamed").await.expect("new"),
-        Some(ws.id)
+        after_rename.handle, "renamed",
+        "the old handle is gone, not kept alongside the new one"
     );
 
     let after = store.get_workspace(ws.id).await.expect("ws still");

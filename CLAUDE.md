@@ -230,7 +230,7 @@ Read this before the long narrative below, which is a point-in-time record and
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
   guess at them: self-approval laundering, `Maidan-Room-LSN` scoping, the
-  search-indexer cursor, workspace-handle resolution, and how far to take MCP
+  search-indexer cursor, and how far to take MCP
   argument strictness.
 
 ## Project state at this handoff

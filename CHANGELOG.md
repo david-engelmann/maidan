@@ -72,7 +72,7 @@ shape recurs: *something outranked the control meant to bind it.*
 
 Four items are recorded as **decisions** rather than patched:
 self-approval laundering, `Maidan-Room-LSN` scoping, the search-indexer
-cursor, and workspace-handle resolution.
+cursor. Workspace-handle resolution was a fourth, decided in 398.7.
 
 ## [396.0.0] — 2026-09-15
 
