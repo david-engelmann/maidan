@@ -1,0 +1,40 @@
+{
+  "$id": "maidan.slash.wasi-result/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "WASI slash runtime result. stdout is the guest capture. Fail-closed kinds: fuel_exhausted, memory_limit, trap, banned_import, invalid_module. Unknown fields ignored. Breaking = /2.",
+  "properties": {
+    "$type": {
+      "const": "maidan.slash.wasi-result/1",
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    },
+    "error_kind": {
+      "enum": [
+        "fuel_exhausted",
+        "memory_limit",
+        "trap",
+        "banned_import",
+        "invalid_module"
+      ],
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "stderr": {
+      "type": "string"
+    },
+    "stdout": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "ok"
+  ],
+  "title": "maidan.slash.wasi-result/1",
+  "type": "object"
+}

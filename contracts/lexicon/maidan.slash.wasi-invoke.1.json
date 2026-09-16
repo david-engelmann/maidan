@@ -1,0 +1,50 @@
+{
+  "$id": "maidan.slash.wasi-invoke/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Host→guest slash invoke. Stdin JSON. The guest is a tool, not an agent. Unknown fields ignored. Breaking = /2.",
+  "properties": {
+    "$type": {
+      "const": "maidan.slash.wasi-invoke/1",
+      "type": "string"
+    },
+    "args": {
+      "type": "string"
+    },
+    "author_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "channel_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "command",
+    "args",
+    "workspace_id",
+    "channel_id",
+    "thread_id",
+    "author_id",
+    "message_id"
+  ],
+  "title": "maidan.slash.wasi-invoke/1",
+  "type": "object"
+}

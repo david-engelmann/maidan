@@ -35,14 +35,21 @@ pub(super) async fn register_slash_command(
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
     let name = normalize_slash_name(&a.name)?;
-    let handler_kind = SlashHandlerKind::parse(&a.handler_kind)
-        .ok_or_else(|| McpError::InvalidParams("handler_kind must be http or mcp_tool".into()))?;
-    match handler_kind {
-        SlashHandlerKind::Http => validate_http_target(&a.handler_target)?,
+    let handler_kind = SlashHandlerKind::parse(&a.handler_kind).ok_or_else(|| {
+        McpError::InvalidParams("handler_kind must be http, mcp_tool, or wasi".into())
+    })?;
+    let handler_target = match handler_kind {
+        SlashHandlerKind::Http => {
+            validate_http_target(&a.handler_target)?;
+            a.handler_target.trim().to_string()
+        }
         SlashHandlerKind::McpTool => {
             required_capability(&a.handler_target)?;
+            a.handler_target.trim().to_string()
         }
-    }
+        SlashHandlerKind::Wasi => normalize_wasi_handler_target(&a.handler_target)
+            .map_err(|e| McpError::InvalidParams(e.to_string()))?,
+    };
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
         let key = maidan_auth::encryption_key_from_env().map_err(|_| {
             McpError::InvalidParams(
@@ -58,7 +65,7 @@ pub(super) async fn register_slash_command(
                 name,
                 description: a.description,
                 handler_kind,
-                handler_target: a.handler_target.trim().to_string(),
+                handler_target,
                 secret_ciphertext: ciphertext,
             })
             .await
@@ -76,7 +83,7 @@ pub(super) async fn register_slash_command(
             name,
             description: a.description,
             handler_kind,
-            handler_target: a.handler_target.trim().to_string(),
+            handler_target,
             secret_ciphertext,
         })
         .await
@@ -183,12 +190,18 @@ pub(super) async fn register_fsm_hook(
         .map_err(McpError::from)?;
     let from_state = parse_opt_state_mcp(a.from_state)?;
     let to_state = parse_opt_state_mcp(a.to_state)?;
-    let handler_kind = SlashHandlerKind::parse(&a.handler_kind)
-        .ok_or_else(|| McpError::InvalidParams("handler_kind must be http or mcp_tool".into()))?;
+    let handler_kind = SlashHandlerKind::parse(&a.handler_kind).ok_or_else(|| {
+        McpError::InvalidParams("handler_kind must be http, mcp_tool, or wasi".into())
+    })?;
     match handler_kind {
         SlashHandlerKind::Http => validate_http_target(&a.handler_target)?,
         SlashHandlerKind::McpTool => {
             required_capability(&a.handler_target)?;
+        }
+        SlashHandlerKind::Wasi => {
+            return Err(McpError::InvalidParams(
+                "wasi handlers are not supported for fsm hooks".into(),
+            ));
         }
     }
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {

@@ -126,12 +126,21 @@ pub async fn create_slash_command(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
     let name = validate_command_name(&body.name)?;
-    let handler_kind = SlashHandlerKind::parse(&body.handler_kind)
-        .ok_or_else(|| ApiError::BadRequest("handler_kind must be http or mcp_tool".into()))?;
-    match handler_kind {
-        SlashHandlerKind::Http => validate_http_target(&body.handler_target)?,
-        SlashHandlerKind::McpTool => validate_mcp_target(&body.handler_target)?,
-    }
+    let handler_kind = SlashHandlerKind::parse(&body.handler_kind).ok_or_else(|| {
+        ApiError::BadRequest("handler_kind must be http, mcp_tool, or wasi".into())
+    })?;
+    let handler_target = match handler_kind {
+        SlashHandlerKind::Http => {
+            validate_http_target(&body.handler_target)?;
+            body.handler_target.trim().to_string()
+        }
+        SlashHandlerKind::McpTool => {
+            validate_mcp_target(&body.handler_target)?;
+            body.handler_target.trim().to_string()
+        }
+        SlashHandlerKind::Wasi => maidan_types::normalize_wasi_handler_target(&body.handler_target)
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?,
+    };
 
     let mut secret_plain: Option<String> = None;
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
@@ -156,7 +165,7 @@ pub async fn create_slash_command(
             name,
             description: body.description,
             handler_kind,
-            handler_target: body.handler_target.trim().to_string(),
+            handler_target,
             secret_ciphertext,
         })
         .await?;
@@ -272,6 +281,9 @@ pub async fn dispatch_slash_command(
                     author_id,
                 )
                 .await
+            }
+            SlashHandlerKind::Wasi => {
+                json!({ "ok": false, "error": "wasi_runtime_unavailable" })
             }
         }
     };

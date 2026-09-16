@@ -22,16 +22,19 @@ use serde_json::{json, Map, Value};
 use crate::events::{Event, EventKind, StoredEvent};
 use crate::ids::{ChannelId, ThreadId, WorkspaceId};
 use crate::waiter::{EXAMPLE_PLAN_RESULT_KIND, EXAMPLE_REVIEW_RESULT_KIND, WAITER_RESULT_SCHEMA};
+use crate::wasi::{WASI_INVOKE_TYPE, WASI_RESULT_TYPE};
 
 /// JSON Schema dialect the pack is written against.
 pub const JSON_SCHEMA_DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// Extra (non-event) `$type`s registered in the pack: the frozen waiter
-/// envelope plus generic namespaced producer examples.
+/// envelope, generic namespaced producer examples, and the WASI slash ABI.
 pub const EXTRA_TYPE_IDS: &[&str] = &[
     WAITER_RESULT_SCHEMA,
     EXAMPLE_REVIEW_RESULT_KIND,
     EXAMPLE_PLAN_RESULT_KIND,
+    WASI_INVOKE_TYPE,
+    WASI_RESULT_TYPE,
 ];
 
 /// File name for a `$type` inside `contracts/lexicon/` (`/` → `.`).
@@ -222,6 +225,59 @@ pub fn example_plan_result_schema() -> Value {
     )
 }
 
+/// JSON Schema for `maidan.slash.wasi-invoke/1`.
+pub fn wasi_invoke_schema() -> Value {
+    json!({
+        "$schema": JSON_SCHEMA_DIALECT,
+        "$id": WASI_INVOKE_TYPE,
+        "title": WASI_INVOKE_TYPE,
+        "description": "Host→guest slash invoke. Stdin JSON. The guest is a tool, not an agent. Unknown fields ignored. Breaking = /2.",
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["$type", "command", "args", "workspace_id", "channel_id", "thread_id", "author_id", "message_id"],
+        "properties": {
+            "$type": {
+                "type": "string",
+                "const": WASI_INVOKE_TYPE,
+            },
+            "command": { "type": "string" },
+            "args": { "type": "string" },
+            "workspace_id": { "type": "string", "format": "uuid" },
+            "channel_id": { "type": "string", "format": "uuid" },
+            "thread_id": { "type": "string", "format": "uuid" },
+            "author_id": { "type": "string", "format": "uuid" },
+            "message_id": { "type": "string", "format": "uuid" },
+        },
+    })
+}
+
+/// JSON Schema for `maidan.slash.wasi-result/1`.
+pub fn wasi_result_schema() -> Value {
+    json!({
+        "$schema": JSON_SCHEMA_DIALECT,
+        "$id": WASI_RESULT_TYPE,
+        "title": WASI_RESULT_TYPE,
+        "description": "WASI slash runtime result. stdout is the guest capture. Fail-closed kinds: fuel_exhausted, memory_limit, trap, banned_import, invalid_module. Unknown fields ignored. Breaking = /2.",
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["$type", "ok"],
+        "properties": {
+            "$type": {
+                "type": "string",
+                "const": WASI_RESULT_TYPE,
+            },
+            "ok": { "type": "boolean" },
+            "stdout": { "type": "string" },
+            "stderr": { "type": "string" },
+            "error": { "type": "string" },
+            "error_kind": {
+                "type": "string",
+                "enum": ["fuel_exhausted", "memory_limit", "trap", "banned_import", "invalid_module"],
+            },
+        },
+    })
+}
+
 /// Sorted catalogue of every `$type` in the pack.
 pub fn catalog() -> Value {
     let mut types: Vec<String> = EventKind::ALL
@@ -256,6 +312,14 @@ pub fn pack_files() -> Vec<(String, String)> {
     files.push((
         schema_filename(EXAMPLE_PLAN_RESULT_KIND),
         pretty(&example_plan_result_schema()),
+    ));
+    files.push((
+        schema_filename(WASI_INVOKE_TYPE),
+        pretty(&wasi_invoke_schema()),
+    ));
+    files.push((
+        schema_filename(WASI_RESULT_TYPE),
+        pretty(&wasi_result_schema()),
     ));
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files

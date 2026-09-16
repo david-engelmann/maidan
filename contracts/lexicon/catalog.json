@@ -31,6 +31,8 @@
     "maidan.event.vote_cast/1",
     "maidan.event.wait_timed_out/1",
     "maidan.event.workspace_created/1",
+    "maidan.slash.wasi-invoke/1",
+    "maidan.slash.wasi-result/1",
     "maidan.waiter.result/1"
   ]
 }
