@@ -11,7 +11,11 @@ use serde_json::Value;
 use super::content_json;
 use crate::error::McpError;
 
+/// Unknown fields are rejected (Cluster 398.4) — see [`maidan_types::BudgetLimits`].
+/// A typo'd dimension would otherwise read as an omission, and an omission on
+/// this call means "remove that limit".
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetBudgetArgs {
     thread_id: uuid::Uuid,
     #[serde(default)]

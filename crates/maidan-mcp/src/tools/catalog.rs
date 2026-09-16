@@ -231,7 +231,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "set_thread_budget",
-            "description": "Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs. Omitted dimensions are unbounded. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
+            "description": "Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs. This is a REPLACE: omitted dimensions become unbounded, so restate the ones you want to keep. An unrecognized key is rejected rather than ignored, because a typo would otherwise read as an omission and silently drop that limit. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

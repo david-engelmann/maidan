@@ -455,8 +455,17 @@ pub struct ThreadBudget {
 /// The maxima an orchestrator sets on a thread's budget (Cluster 358). Each
 /// dimension is optional — set the ones you want to bind; omit (or `None`) leaves
 /// that dimension unbounded. Does not touch accumulated usage.
+///
+/// **Unknown fields are rejected** (Cluster 398.4). The write is a replace, so
+/// omission is load-bearing: leaving a dimension out *removes* that limit. That
+/// makes a misspelled key indistinguishable from a deliberate omission — send
+/// `max_wall_seconds` instead of `max_wall_secs` and the wall cap is silently
+/// dropped, with a `200` and the budget echoed back. Of everywhere in this
+/// codebase that absorbs an unknown field, this is the one where a typo disarms
+/// a safety control, so here the strictness is worth the rigidity.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
 pub struct BudgetLimits {
     #[serde(default)]
     pub max_tokens: Option<i64>,
@@ -2967,5 +2976,45 @@ mod blocked_reason_tests {
         assert_eq!(BlockedReason::parse("stuck"), None);
         assert_eq!(BlockedReason::parse("decision"), None);
         assert!(serde_json::from_str::<BlockedReason>("\"stuck\"").is_err());
+    }
+}
+
+#[cfg(test)]
+mod budget_limits_strictness_tests {
+    use super::BudgetLimits;
+
+    /// Cluster 398.4: a misspelled dimension must not read as an omission.
+    ///
+    /// The write is a replace — omitting a dimension *removes* that limit — so
+    /// before this, `max_wall_seconds` deserialized to `max_wall_secs: None` and
+    /// silently disarmed the wall cap, returning `200` with the budget echoed
+    /// back. A caller had no way to tell that from success.
+    #[test]
+    fn a_misspelled_dimension_is_rejected_rather_than_silently_dropped() {
+        let typo = serde_json::json!({ "max_tokens": 100, "max_wall_seconds": 3600 });
+        let err = serde_json::from_value::<BudgetLimits>(typo)
+            .expect_err("a misspelled dimension must not parse");
+        assert!(
+            err.to_string().contains("max_wall_seconds"),
+            "the error should name the offending key, got: {err}"
+        );
+    }
+
+    /// Omission itself still means "unbounded" — the documented semantics are
+    /// unchanged, only typos are now distinguishable from them.
+    #[test]
+    fn omitting_a_dimension_still_means_unbounded() {
+        let partial = serde_json::json!({ "max_tokens": 100 });
+        let limits: BudgetLimits = serde_json::from_value(partial).expect("parses");
+        assert_eq!(limits.max_tokens, Some(100));
+        assert_eq!(
+            limits.max_wall_secs, None,
+            "omission still leaves it unbound"
+        );
+
+        // And an explicit null is accepted, so a caller can clear on purpose.
+        let explicit = serde_json::json!({ "max_tokens": 100, "max_wall_secs": null });
+        let limits: BudgetLimits = serde_json::from_value(explicit).expect("parses");
+        assert_eq!(limits.max_wall_secs, None);
     }
 }
