@@ -1173,10 +1173,38 @@ Same for the REST twin, `POST /threads/:id/usage`.
 3. Leave it. The doc is explicit, so arguably the contract is stated. Weakest —
    it relies on producers reading a doc rather than on the API being honest.
 
-Broader question this raises: **how many other MCP tool argument structs silently
-absorb typos?** `report_usage` is the one where the discarded field has trust
-weight, but a mistyped `thread_id` key would also deserialize to a default
-rather than erroring anywhere `#[serde(default)]` is used. Worth a sweep.
+### The sweep, done: 128 structs, zero strict
+
+Across `crates/maidan-mcp/src/tools/`: **128 `*Args` structs, none with
+`deny_unknown_fields`, 47 carrying at least one `#[serde(default)]`.** So on 47
+tool surfaces a mistyped argument key is silently absorbed as a default rather
+than rejected.
+
+**`set_thread_budget` is the sharp case, and it is sharper than `report_usage`.**
+Its replace semantics are deliberate and documented — the catalog says *"Omitted
+dimensions are unbounded"*, and the store does a full `ON CONFLICT DO UPDATE SET`
+of every `max_*` column. That is a defensible PUT-shaped API and is **not** the
+bug.
+
+The bug is what those two facts compose into. Because **omission is load-bearing
+on this call — it means "remove this limit"** — a typo'd field name is
+indistinguishable from a deliberate omission. Send `max_wall_seconds` instead of
+`max_wall_secs` and the wall cap is silently removed, with a `200` and the budget
+echoed back. This is the one place in the codebase where the absence of
+`deny_unknown_fields` converts a spelling mistake directly into a **disarmed
+safety control**.
+
+The same shape applies to the partial-update instinct generally: `set_thread_budget
+{thread_id, max_tokens: N}`, intending to raise one cap, clears the other three.
+That IS documented, so it is a sharp edge rather than a defect — but it is worth
+asking whether a safety envelope should be PUT-shaped at all, or whether
+raising one dimension should not require restating the rest.
+
+Ranking the 47 by consequence rather than fixing them blind: `SetBudgetArgs`
+(4 defaults, disarms limits), `ImportArgs` (2, changes import mode),
+`RequestApprovalArgs` (2, HITL gate), `ReportUsageArgs` (3, the trust case
+above), `CatchUpArgs`/`SnapshotArgs`/`ListTombstonesArgs` (read-shape only, low
+consequence).
 
 ## Standing risks (still open)
 
