@@ -30,6 +30,13 @@
 /// GitHub's hard ceiling on an issue/PR comment body, in characters.
 pub const GITHUB_BODY_MAX_CHARS: usize = 65536;
 
+/// A safe ceiling for a Slack `chat.postMessage` text, in characters
+/// (Cluster 397.5). Slack's own limit is ~40k; under it, because the Slack path
+/// had no ceiling at all and an over-long body comes back as `msg_too_long` —
+/// which is not in the misconfiguration set, so it was retried eight times over
+/// an hour before dead-lettering.
+pub const SLACK_BODY_MAX_CHARS: usize = 39_000;
+
 /// Hidden HTML comment at byte 0 of a result-delivery GitHub body (Cluster 379.4).
 /// The recovery path if the stored `external_ref` is lost: list the issue's
 /// comments and PATCH the one whose body starts with this marker. Matches the
@@ -62,9 +69,13 @@ struct Segment<'a> {
 ///
 /// Handles fenced blocks (a line-leading run of 3+ backticks or tildes, closed
 /// by a run at least as long) and inline code spans (a run of N backticks closed
-/// by a run of exactly N). An *unclosed* opener runs to end of input and is
-/// treated as code — the conservative direction, since the alternative is
-/// rewriting text the renderer will show verbatim.
+/// by a run of exactly N).
+///
+/// An unclosed **fence** does run to end of input, per CommonMark. An unclosed
+/// **inline** run does not: CommonMark renders a lone backtick literally, so the
+/// text after it is ordinary prose. Treating it as code-to-EOF (Cluster 397.5)
+/// meant a single stray backtick anywhere in `rendered` — trivially plantable in
+/// a quoted diff — switched off mention defusal for everything that followed.
 fn segments(md: &str) -> Vec<Segment<'_>> {
     let bytes = md.as_bytes();
     let mut out: Vec<Segment<'_>> = Vec::new();
@@ -131,7 +142,12 @@ fn segments(md: &str) -> Vec<Segment<'_>> {
                 }
                 j += 1;
             }
-            let end = end.unwrap_or(bytes.len());
+            let Some(end) = end else {
+                // Never closed: these backticks are literal text. Leave them in
+                // the surrounding prose segment and keep scanning past them.
+                i += fence;
+                continue;
+            };
             if prose_start < i {
                 out.push(Segment {
                     text: &md[prose_start..i],
@@ -243,19 +259,85 @@ pub fn neutralize_github_mentions(md: &str) -> String {
 /// broadcasts (`<!channel>`, `<!here>`, `<!everyone>`), user pings (`<@U…>`) and
 /// user-group pings (`<!subteam^S…>`), because all of them share the `<!` / `<@`
 /// opener. A plain `<https://…>` autolink is left alone.
+///
+/// **Unlike the GitHub twin, this deliberately does not skip code spans**
+/// (Cluster 397.5). `<!channel>` is not Markdown: it is Slack's own escape
+/// sequence, expanded when the message is parsed, and wrapping it in backticks
+/// does not stop it notifying. The shared `map_prose` justification — "a mention
+/// inside code already does not notify on either surface" — holds for GitHub and
+/// is false here, so a `` `<!channel>` `` in a producer's `summary` used to
+/// broadcast.
 pub fn neutralize_slack_mentions(text: &str) -> String {
-    map_prose(text, |prose| {
-        let mut out = String::with_capacity(prose.len());
-        let mut chars = prose.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '<' && matches!(chars.peek(), Some('!') | Some('@')) {
-                out.push_str("&lt;");
-            } else {
-                out.push(c);
-            }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '<' && matches!(chars.peek(), Some('!') | Some('@')) {
+            out.push_str("&lt;");
+        } else {
+            out.push(c);
         }
-        out
-    })
+    }
+    out
+}
+
+/// Byte offset of an inline backtick run in `s` that is never closed, if any
+/// (Cluster 397.5).
+///
+/// Mention defusal wraps `@x` as `` `@x` ``, so a cut landing between the two
+/// backticks leaves the opener dangling — and per CommonMark an unmatched
+/// backtick renders literally, which puts the mention back on the page live.
+/// Truncation uses this to pull the cut back in front of the opener instead.
+/// Fences are ignored: an unclosed fence really is code to end of input.
+fn unclosed_inline_backtick(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let run_len = |pos: usize, ch: u8| {
+        let mut n = 0;
+        while pos + n < bytes.len() && bytes[pos + n] == ch {
+            n += 1;
+        }
+        n
+    };
+    let at_line_start = |pos: usize| pos == 0 || bytes[pos - 1] == b'\n';
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let fence = run_len(i, b'`');
+        if fence >= 3 && at_line_start(i) {
+            // A fenced block consumes to its closer, or to the end.
+            let mut j = i + fence;
+            while j < bytes.len() {
+                if bytes[j] == b'`' && at_line_start(j) && run_len(j, b'`') >= fence {
+                    j += run_len(j, b'`');
+                    break;
+                }
+                j += 1;
+            }
+            i = j.min(bytes.len());
+            continue;
+        }
+        let mut j = i + fence;
+        let mut closed = None;
+        while j < bytes.len() {
+            if bytes[j] == b'`' {
+                let closing = run_len(j, b'`');
+                if closing == fence {
+                    closed = Some(j + closing);
+                    break;
+                }
+                j += closing;
+                continue;
+            }
+            j += 1;
+        }
+        match closed {
+            Some(end) => i = end,
+            None => return Some(i),
+        }
+    }
+    None
 }
 
 /// Fit `body` (plus an optional backlink tail) inside `max` characters.
@@ -291,6 +373,12 @@ pub fn truncate_with_tail(body: &str, max: usize, tail: Option<&str>) -> String 
                 .filter(|idx| kept[..*idx].chars().count() >= floor)
         })
         .unwrap_or(kept.len());
+    // Never end inside a defusing code span: that would re-expose the mention it
+    // was wrapping. Pull the cut back in front of the dangling opener.
+    let cut = match unclosed_inline_backtick(&kept[..cut]) {
+        Some(open_at) => open_at,
+        None => cut,
+    };
     format!("{}{TRUNCATION_NOTICE}{tail}", kept[..cut].trim_end())
 }
 
@@ -407,11 +495,30 @@ fn collapse_bold(line: &str) -> String {
     out
 }
 
+/// A producer-supplied `view_url` that is safe to put inside a Markdown link
+/// destination, or `None` (Cluster 397.5).
+///
+/// The backlink tail is appended *after* mention defusal, so whatever is in it
+/// reaches GitHub unexamined. `[View](…)` ends at the first `)`, so a `view_url`
+/// of `https://x.test) @acme/platform (` closes the link and everything after it
+/// renders as live Markdown — including the team mention. Rather than try to
+/// escape a URL into safety, this refuses anything that is not a plain absolute
+/// http(s) URL; a dropped backlink is a cosmetic loss, a working one is a ping.
+fn safe_backlink(url: &str) -> Option<&str> {
+    let ok_scheme = url.starts_with("https://") || url.starts_with("http://");
+    let clean = !url
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || "()<>\"`\\".contains(c));
+    (ok_scheme && clean).then_some(url)
+}
+
 /// The body for a GitHub issue/PR comment: the producer's `rendered` GFM with
 /// mentions defused, plus the backlink, truncated to GitHub's ceiling.
 pub fn github_comment_body(rendered: &str, backlink: Option<&str>) -> String {
     let safe = neutralize_github_mentions(rendered);
-    let tail = backlink.map(|url| format!("\n\n[View in the producer]({url})"));
+    let tail = backlink
+        .and_then(safe_backlink)
+        .map(|url| format!("\n\n[View in the producer]({url})"));
     truncate_with_tail(&safe, GITHUB_BODY_MAX_CHARS, tail.as_deref())
 }
 
@@ -427,7 +534,9 @@ pub fn github_result_comment_body(
     let prefix = format!("{}\n", result_delivery_marker(thread_id));
     let budget = GITHUB_BODY_MAX_CHARS.saturating_sub(prefix.chars().count());
     let safe = neutralize_github_mentions(rendered);
-    let tail = backlink.map(|url| format!("\n\n[View in the producer]({url})"));
+    let tail = backlink
+        .and_then(safe_backlink)
+        .map(|url| format!("\n\n[View in the producer]({url})"));
     format!(
         "{prefix}{}",
         truncate_with_tail(&safe, budget, tail.as_deref())
@@ -523,10 +632,19 @@ mod tests {
             neutralize_slack_mentions("see <https://x.test/a>"),
             "see <https://x.test/a>"
         );
+        // Cluster 397.5: this used to assert the opposite, on the grounds that
+        // "code already does not broadcast". That is true on GitHub and false
+        // here — `<!channel>` is Slack's own escape sequence, expanded when the
+        // message is parsed, so backticks never defused it.
         assert_eq!(
             neutralize_slack_mentions("`<!channel>`"),
-            "`<!channel>`",
-            "code already does not broadcast"
+            "`&lt;!channel>`",
+            "a backtick is not a defence on Slack"
+        );
+        assert_eq!(
+            neutralize_slack_mentions("```\n<!here>\n```"),
+            "```\n&lt;!here>\n```",
+            "nor is a fence"
         );
     }
 
@@ -700,15 +818,19 @@ mod tests {
 
     #[test]
     fn segmenting_an_unclosed_fence_treats_the_rest_as_code() {
-        // The conservative direction: better to leave text alone than to rewrite
-        // something the renderer will show verbatim.
+        // An unclosed *fence* really does run to end of input, per CommonMark.
         assert_eq!(
             neutralize_github_mentions("before\n```\n@octocat"),
             "before\n```\n@octocat"
         );
+        // An unclosed *inline* run does not (Cluster 397.5). CommonMark renders a
+        // lone backtick literally, so what follows is prose and its mentions are
+        // live. This asserted the opposite, which meant one stray backtick —
+        // trivially plantable in a quoted diff — switched defusal off for the
+        // rest of the body.
         assert_eq!(
             neutralize_github_mentions("an `unclosed span @octocat"),
-            "an `unclosed span @octocat"
+            "an `unclosed span `@octocat`"
         );
     }
 

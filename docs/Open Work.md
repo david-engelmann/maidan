@@ -940,27 +940,46 @@ because the tests assert the happy path of a single tenant.
 
 ### P0 — cross-tenant or destructive
 
-1. **`POST /workspaces/import` has no workspace scope.** `cap(&auth, TOKEN_ADMIN)`
-   with no `ensure_workspace`; the workspace written is the id *inside a
-   caller-supplied bundle*. With the documented no-pin default the attacker signs
-   with their own key and the envelope verifies, so the signature authorizes
-   nothing. `?mode=restore&force=true` → `erase_workspace(victim)`, **bypassing
-   the Cluster-366 legal hold** that the dedicated erase route enforces. The MCP
-   twin takes no `AuthContext` at all, so it cannot scope or audit.
-2. **Both governance gates are two calls from bypassed.** `DELETE
-   /threads/:id/land-gate` and `DELETE …/review-requirement` are gated on
-   `thread:transition` — the same capability needed to close, and part of
-   `maidan.agent.worker`. No row ⇒ close permitted. Neither calls
-   `audit::record`; neither emits an event. **The bypass is untraceable.** The
-   same hole un-arms the Cluster-383 `k=1`.
-3. **Bus-consumer lag resume replays the entire global log.** Every consumer
-   declares `watermark = 0` *inside* the consume loop, so a `Lagged` before the
-   first event (reachable at boot and on every resubscribe) resumes from id 1
-   across all workspaces. Worst case `fsm_hook_worker`: re-fires every historical
-   hook through `dispatch_mcp_tool` with `AuthContext::bypass()`. `webhook_worker`
-   re-POSTs all history to every tenant's endpoint (no unique on
-   `(subscription_id, log_id)`). Seed from `max_event_id()` as `PostgresBus`
-   already does.
+1. ~~**`POST /workspaces/import` has no workspace scope.**~~ **✅ FIXED
+   (Cluster 397.1, #871).** A `restore` now answers to the same three guards the
+   dedicated erase does: `ensure_workspace` on the bundle's workspace id,
+   `ensure_not_under_legal_hold` before the force-erase, and an audit row written
+   *before* the rows go. The MCP twin takes an `AuthContext` — it previously took
+   none, so scoping was structurally impossible. The load-bearing sentence, now
+   in the handler's doc comment: **a signature proves integrity, never
+   authority**; with the documented no-pin default the attacker signs with their
+   own key and the envelope verifies fine. `mode=new` is untouched (it remaps to
+   fresh ids and cannot reach an existing tenant); that it can mint unlimited
+   detached workspaces is sprawl, not cross-tenant, and stays open.
+2. ~~**Both governance gates are two calls from bypassed.**~~ **✅ FIXED
+   (Cluster 397.2, #874).** Gates now ratchet: tightening keeps
+   `thread:transition`, loosening requires `channel:admin` (in
+   `maidan.human.admin`, *not* in `maidan.agent.worker`) and is audited. **Four**
+   operations loosen, not the two named here — the fourth is `DELETE
+   …/reviewers/:member_id`, because the approval query is `NOT EXISTS(reviewers)
+   OR EXISTS(reviewer in set)`, so emptying the named set widens who may approve.
+   **Still open: self-approval laundering** — both gates test the *live*
+   `assignee_id`, so releasing a claim makes the exclusion vacuous and your own
+   approval qualifies. Needs a durable record of who did the work; assignment
+   history is prunable event-log rows, so there is nothing to read today.
+3. ~~**Bus-consumer lag resume replays the entire global log.**~~ **✅ FIXED
+   (Cluster 397.3).** The watermark is seeded from `max_event_id()` *after* a
+   successful subscribe, so a `Lagged` resumes over the missed window only; a
+   failed head read retries the subscription rather than proceeding with an
+   unknown watermark. The seed is a **required parameter** of each consume
+   function, so the old default cannot come back by deleting a line.
+
+   > **Provenance note.** This shipped inside **#874**, whose title and body
+   > describe Cluster 397.2 only: the 397.3 commit was made while still standing
+   > on the 397.2 branch, so that branch carried both. The code was fully tested
+   > and linted, and CI passed on the combined branch — but the squash commit on
+   > `main` documents half of what it contains, and the full 397.3 writeup is on
+   > closed PR #873. Recorded here because the repo's convention is that the PR
+   > body *is* the commit body, and this one is not.
+
+   **Still open (related, larger):** the search indexer's `backfill_search`
+   re-walks the whole log from 0 on every start and resubscribe. That needs a
+   *persisted* cursor, not a seed.
 4. ~~**`/operator/egress/dead` + requeue are global under a per-workspace
    `token:admin`** — read every tenant's Slack ids and repos, then requeue to
    post into them.~~ **✅ FIXED (Cluster 397.4)** — both are scoped to
@@ -991,7 +1010,15 @@ because the tests assert the happy path of a single tenant.
 
 ### P1
 
-5. **The egress neutralization boundary is incomplete** (four ways). The
+5. ~~**The egress neutralization boundary is incomplete** (four ways).~~
+   **✅ FIXED (Cluster 397.5).** Slack escaping no longer skips code spans (its
+   `<!…>` is an API-level escape, not Markdown, so backticks never defused it);
+   an unclosed *inline* backtick run is prose rather than code-to-EOF (an
+   unclosed *fence* still runs to the end, per CommonMark); the producer's
+   `view_url` must be a plain absolute http(s) URL or the backlink is dropped;
+   truncation pulls its cut back in front of a dangling code-span opener; and the
+   non-`reviewed` Slack path is escaped and bounded like every other. Details of
+   the original four: The
    non-`reviewed` Slack path returns `failure_notice(status)` **raw** — an
    agent-written `status` of `<!channel>` is a real broadcast. One unmatched
    inline backtick classifies the rest of the input as code and disables
