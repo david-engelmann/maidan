@@ -8,6 +8,73 @@ use crate::postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 
 const RELAYABLE: &str = "published_at IS NULL AND quarantined_at IS NULL";
 
+/// Atomically claim up to `limit` relayable rows (Cluster 398.1) — the SQLite
+/// twin of the Postgres `FOR UPDATE SKIP LOCKED` claim.
+///
+/// SQLite serializes writers, so a select-then-update inside one transaction is
+/// already exclusive; the pattern matches `claim_next_due_schedule`. The lease
+/// still matters: a relay that crashes between claim and publish must not strand
+/// the row, so an expired claim is reclaimable. **A claim is not a publish** —
+/// at-least-once is preserved.
+pub async fn claim_pending(
+    pool: &SqlitePool,
+    limit: i64,
+    lease_secs: i64,
+) -> Result<Vec<OutboxRow>, StoreError> {
+    let now = chrono::Utc::now();
+    let cutoff = (now - chrono::Duration::seconds(lease_secs)).to_rfc3339();
+    let now_s = now.to_rfc3339();
+    let mut tx = pool.begin().await?;
+    let picked = sqlx::query(&format!(
+        "SELECT o.id FROM maidan_outbox o
+         WHERE {RELAYABLE}
+           AND (o.claimed_at IS NULL OR o.claimed_at < ?)
+         ORDER BY o.id ASC
+         LIMIT ?"
+    ))
+    .bind(&cutoff)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let ids: Vec<i64> = picked.iter().map(|r| r.get("id")).collect();
+    if ids.is_empty() {
+        tx.commit().await?;
+        return Ok(Vec::new());
+    }
+    for id in &ids {
+        sqlx::query("UPDATE maidan_outbox SET claimed_at = ? WHERE id = ?")
+            .bind(&now_s)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "SELECT o.id, o.log_id, o.attempts, e.payload
+         FROM maidan_outbox o
+         JOIN maidan_events e ON e.id = o.log_id
+         WHERE o.id IN ({placeholders})
+         ORDER BY o.id ASC"
+    );
+    let mut q = sqlx::query(&sql);
+    for id in &ids {
+        q = q.bind(id);
+    }
+    let rows = q.fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    rows.iter()
+        .map(|row| {
+            let payload: String = row.get("payload");
+            Ok(OutboxRow {
+                id: row.get("id"),
+                log_id: row.get("log_id"),
+                attempts: row.get("attempts"),
+                payload: serde_json::from_str(&payload)?,
+            })
+        })
+        .collect()
+}
+
 pub async fn list_pending(pool: &SqlitePool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
         "SELECT o.id, o.log_id, o.attempts, e.payload
@@ -70,10 +137,12 @@ pub async fn mark_published_batch(pool: &SqlitePool, outbox_ids: &[i64]) -> Resu
     Ok(())
 }
 
+/// Count a failed relay attempt and release the claim (Cluster 398.1) — see the
+/// Postgres twin.
 pub async fn record_attempt(pool: &SqlitePool, outbox_id: i64) -> Result<i32, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_outbox
-         SET attempts = attempts + 1
+         SET attempts = attempts + 1, claimed_at = NULL
          WHERE id = ?
          RETURNING attempts",
     )

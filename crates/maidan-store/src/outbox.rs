@@ -13,6 +13,25 @@ pub enum OutboxBackend {
 }
 
 impl OutboxBackend {
+    /// Atomically claim relayable rows for this relay (Cluster 398.1). Use this,
+    /// not [`Self::list_pending`], from the relay loop: the relay runs in every
+    /// replica, so an unlocked read relays every row once per replica.
+    pub async fn claim_pending(
+        &self,
+        limit: i64,
+        lease_secs: i64,
+    ) -> Result<Vec<OutboxRow>, StoreError> {
+        match self {
+            Self::Postgres(pool) => {
+                crate::postgres::outbox::claim_pending(pool, limit, lease_secs).await
+            }
+            Self::Sqlite(pool) => {
+                crate::sqlite::outbox::claim_pending(pool, limit, lease_secs).await
+            }
+        }
+    }
+
+    /// Unlocked read of relayable rows — metrics and tests only.
     pub async fn list_pending(&self, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
         match self {
             Self::Postgres(pool) => crate::postgres::outbox::list_pending(pool, limit).await,

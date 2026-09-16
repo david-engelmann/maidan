@@ -241,3 +241,98 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
     assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
 }
+
+/// Cluster 398.1: two relays must not claim the same row.
+///
+/// The relay is spawned in **every** replica and `validate_startup` refuses to
+/// disable it in production, so the old unlocked `list_pending` had every
+/// replica relay every row. Downstream that is not a benign duplicate:
+/// `maidan_webhook_deliveries` has no unique on `(subscription_id, log_id)`, so
+/// each tenant endpoint got N POSTs, and `fsm_hook_worker` re-fired every hook
+/// through `dispatch_mcp_tool` with `AuthContext::bypass()`.
+#[tokio::test]
+async fn concurrent_relays_claim_disjoint_outbox_rows() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+    let store = PostgresStore::new(pool.clone());
+
+    // Drain anything a sibling test left behind so the counts below are ours.
+    loop {
+        let drained = outbox::claim_pending(&pool, 256, 0).await.unwrap();
+        if drained.is_empty() {
+            break;
+        }
+        let ids: Vec<i64> = drained.iter().map(|r| r.id).collect();
+        outbox::mark_published_batch(&pool, &ids).await.unwrap();
+    }
+
+    let mut expected = Vec::new();
+    for i in 0..6 {
+        let stored = store
+            .append_event(&workspace_created_event(&format!("claim-ws-{i}")))
+            .await
+            .unwrap();
+        expected.push(stored.id);
+    }
+
+    // Prove the hazard is real before proving the fix: the unlocked read that
+    // the relay used to call hands BOTH callers the same rows.
+    let listed_a = outbox::list_pending(&pool, 6).await.unwrap();
+    let listed_b = outbox::list_pending(&pool, 6).await.unwrap();
+    let la: std::collections::HashSet<i64> = listed_a.iter().map(|r| r.log_id).collect();
+    let lb: std::collections::HashSet<i64> = listed_b.iter().map(|r| r.log_id).collect();
+    assert!(
+        !la.is_disjoint(&lb) && !la.is_empty(),
+        "list_pending must still overlap — otherwise this test proves nothing about the claim"
+    );
+
+    // Two relays claim concurrently, exactly as two replicas would.
+    let a = outbox::claim_pending(&pool, 6, 60);
+    let b = outbox::claim_pending(&pool, 6, 60);
+    let (claimed_a, claimed_b) = tokio::join!(a, b);
+    let claimed_a = claimed_a.unwrap();
+    let claimed_b = claimed_b.unwrap();
+
+    let ids_a: std::collections::HashSet<i64> = claimed_a.iter().map(|r| r.log_id).collect();
+    let ids_b: std::collections::HashSet<i64> = claimed_b.iter().map(|r| r.log_id).collect();
+    let overlap: Vec<_> = ids_a.intersection(&ids_b).collect();
+    assert!(
+        overlap.is_empty(),
+        "two relays claimed the same rows: {overlap:?} — every event would relay twice"
+    );
+
+    // Between them they still see every row: a claim must not drop work.
+    for id in &expected {
+        assert!(
+            ids_a.contains(id) || ids_b.contains(id),
+            "log_id {id} was claimed by neither relay"
+        );
+    }
+
+    // A claimed row is not claimable again while the lease holds...
+    assert!(
+        outbox::claim_pending(&pool, 6, 60)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a live claim must exclude the row"
+    );
+    // ...but a failure releases it, so a retry is not stuck behind the lease.
+    let first = claimed_a.first().or_else(|| claimed_b.first()).unwrap();
+    outbox::record_attempt(&pool, first.id).await.unwrap();
+    let reclaimed = outbox::claim_pending(&pool, 6, 60).await.unwrap();
+    assert_eq!(
+        reclaimed.len(),
+        1,
+        "record_attempt should release the claim for retry"
+    );
+    assert_eq!(reclaimed[0].id, first.id);
+
+    // And an expired lease is reclaimable, so a crashed relay strands nothing.
+    let stale = outbox::claim_pending(&pool, 6, 0).await.unwrap();
+    assert!(
+        !stale.is_empty(),
+        "an expired claim must be reclaimable — otherwise a crashed relay strands the row"
+    );
+}

@@ -544,6 +544,8 @@ protocol. 2026 industry stack (AAIF / Linux Foundation): **MCP** = agent↔tools
 different job (editor↔coding agent). Maidan already speaks the four
 transports.
 
+> **Superseded 2026-09-16:** J3 shipped in clusters 300–303 and gRPC in 282–289. The paragraph below is kept as the original finding.
+
 **MCP `2024-11-05`-only is not acceptable.** Current spec is `2026-07-28`
 (stateless Streamable HTTP, `Mcp-Method`/`Mcp-Name`). J3 is a required
 upgrade cluster, not a freeze-on-2024 decision. J2 is only so we do not
@@ -555,9 +557,9 @@ upgrades.
 | Surface | Today | Honest caveat |
 |---------|-------|----------------|
 | REST + OpenAPI 3.0 | `GET /openapi.json` | No `workspaces.list`. Hero seed is REST/CLI. |
-| MCP | `POST /mcp`, streamable, SSE, `maidan mcp-stdio` | **`2024-11-05` only.** Streamable still uses `Mcp-Session-Id` + GET. Spec `2026-07-28` is stateless and requires `Mcp-Method`/`Mcp-Name`. |
+| MCP | `POST /mcp`, streamable, SSE, `maidan mcp-stdio` | ✅ **J3 SHIPPED (clusters 300–303).** `SUPPORTED_PROTOCOL_VERSIONS = ["2026-07-28", "2024-11-05"]`; `2026-07-28` negotiates the stateless Streamable HTTP path with SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers. The caveat below is historical. |
 | WebSocket | `GET /ws/subscribe` | Resumable. Agent↔UI live path. |
-| A2A JSON-RPC v1.0 | `POST /a2a/v1/rpc` | Subset of methods. Egress parts **text-only** (v267). No gRPC. |
+| A2A JSON-RPC v1.0 | `POST /a2a/v1/rpc` | Subset of methods. Egress parts text-only (v267). ~~No gRPC~~ — ✅ **gRPC shipped** in the A2A v1.0 arc (clusters 282–289); `tonic 0.14` is a first-party dep of `maidan-server`. |
 | A2A Agent Card | `/.well-known/agent-card.json` | Custom schema, not spec v1.0 `supportedInterfaces[]`. |
 | Webhooks / slash / FSM hooks | HTTP callbacks | The n8n/Zapier path. |
 | OIDC + app OAuth + Prometheus | humans / apps / scrape | Agents stay on capability bearers. Not MCP resource-server OAuth yet. |
@@ -585,6 +587,12 @@ bootstrap tools; OpenAI Assistants as a native wire.
 
 ### K. Bug sweep leftovers (fix in polish PRs, not 272) (**P0/P1**)
 
+> **Triaged against the code 2026-09-16** (this doc is dated 2026-08-25 and
+> predates clusters 273–397). K5 and K9 had already shipped; K4 turned out to be
+> mitigated by the Cluster-157 ack; **K8 was real and is fixed in 398.1**. K2,
+> K3, K6, K7 remain open. Status is per-row below — do not re-derive it from the
+> unchecked boxes elsewhere in this file, which were never ticked.
+
 Full `rg` 2026-08-25. Do **not** mix with the other agent's search-replica
 files (`maidan-search`, `metrics.rs` replica counters). These are honesty
 and small correctness, not features.
@@ -592,14 +600,14 @@ and small correctness, not features.
 | ID | Sev | Scope |
 |----|-----|--------|
 | **K1** | ✅ done (316) | **A6.** `mail.rs` module docs rewritten to match `notification_router` (wired 249, spawn, presence/digest gates, DLQ 305–306). |
-| **K2** | P1 | Strike Open Work "Cluster 180 still open" / `v143` baseline. DM generic-thread hole **shipped** (`ensure_thread_access`). E5 stale-plan pass. |
-| **K3** | P1 | Replace `subscribe_resume_secret()` panic with boot-time invariant (assert in `AppState::new` / `main`) or `Option` + 500. Do not leave a panic on a getter. |
-| **K4** | P1 | `AUTH_DISABLED` + missing `MAIDAN_SESSION_SECRET` must not silently use `TEST_SUBSCRIBE_RESUME_SECRET` except in tests. Fail boot, or require an explicit `MAIDAN_ALLOW_INSECURE_RESUME_SECRET=1` next to the existing insecure-auth ack. |
-| **K5** | P1 | When provider is `hash-v1`, `tracing::warn` at boot: not semantic; set `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` for real search. Pair with E4 README. |
-| **K6** | P2 | Delete unused `member_kind_is_human` (or use it). `#[allow(dead_code)]` with zero callers. |
-| **K7** | P2 | Rename `openapi/paths/extensions.rs` banner ("Cluster 77 missing") so it does not claim routes are unwired. Keep phantoms; they are utoipa. C3 owns spec=binary. |
-| **K8** | P1 | Outbox `list_pending`: add `FOR UPDATE SKIP LOCKED` (steal from `claim_next` / schedules) so two replicas cannot relay the same row. Not Redis. Not batched `pg_notify`. |
-| **K9** | P2 | Log (metrics already exist?) failed `advance_delivery_cursor` instead of `let _ =`. At-least-once subscribe depends on that write. |
+| **K2** | P1 | **OPEN (docs).** Stale-claim strike pass across Open Work still owed. |
+| **K3** | P1 | **OPEN (narrow).** `state.rs:340` still panics on the getter. Verified unreachable via `main.rs` — all four branches set a secret or refuse boot — but reachable through the library API (`AppState::new` leaves it `None`), which violates the repo's own no-panic-in-library rule. |
+| **K4** | P1 | **MITIGATED — not a live hole.** The `TEST_SUBSCRIBE_RESUME_SECRET` fallback fires only under `auth_disabled`, which since Cluster 157 already requires the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack and refuses in production — and it `warn!`s. A second ack would be belt-and-braces. |
+| **K5** | P1 | ✅ **SHIPPED** — `main.rs:255` warns at boot when the provider is `hash-v1`. |
+| **K6** | P2 | **OPEN.** `oidc/member.rs:114 member_kind_is_human` still has zero callers. |
+| **K7** | P2 | **OPEN (cosmetic).** The banner still reads "missing from `api.rs` (Cluster 77)". |
+| **K8** | P1 | ✅ **FIXED (Cluster 398.1).** Was real: the relay is spawned in *every* replica and `validate_startup` refuses to disable it in production, so an unlocked `list_pending` relayed every row once per replica — N POSTs per tenant webhook (no unique on `(subscription_id, log_id)`) and N `fsm_hook` firings under `AuthContext::bypass()`. Now a leased `claim_pending` (pg `FOR UPDATE SKIP LOCKED`, sqlite serialized-writer), released on failure and reclaimable after the lease. |
+| **K9** | P2 | ✅ **SHIPPED** — all three `advance_delivery_cursor` sites log on error. |
 
 **Already on other IDs, do not duplicate work:** H5 (Production load sentence), C5/J2 (README MCP freeze), A4 (Production wikilinks), F4 (default-secure demo — include K4).
 
