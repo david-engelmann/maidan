@@ -4,6 +4,9 @@ use maidan_types::{
 };
 use sqlx::{PgPool, Row};
 
+/// Rows per batch when filling pre-Cluster-392 chain fields (Cluster 397.8).
+const CHAIN_BACKFILL_BATCH: i64 = 256;
+
 use crate::error::StoreError;
 use crate::postgres::outbox;
 
@@ -353,64 +356,113 @@ pub async fn verify_chain(
     pool: &PgPool,
     workspace_id: WorkspaceId,
 ) -> Result<ChainVerifyReport, StoreError> {
+    // Verify as a fold, discarding each page (Cluster 397.8). Collecting every
+    // link *and* a clone of every payload first meant a large workspace was
+    // gigabytes of resident memory per request — on `workspace:read`, with no
+    // limit and no pagination, so repeated calls were a trivial OOM.
     const PAGE: i64 = 256;
     let mut after = 0i64;
-    let mut links = Vec::new();
-    let mut payloads = Vec::new();
+    let mut verifier = maidan_types::ChainVerifier::new();
     loop {
         let page = list_after(pool, workspace_id, after, PAGE).await?;
         if page.is_empty() {
-            break;
+            return Ok(verifier.finish());
         }
         after = page.last().map(|e| e.id).unwrap_or(after);
         for stored in page {
-            payloads.push(stored.payload.clone());
-            links.push(stored.link());
+            if let Some(report) = verifier.push(&stored.link(), &stored.payload) {
+                return Ok(report);
+            }
         }
     }
-    Ok(maidan_types::verify_chain(&links, &payloads))
 }
 
-/// Rewrite empty `prev_hash`/`content_hash` in id order per workspace.
+/// Fill the chain fields of rows that predate Cluster 392, in batches.
+///
+/// **A row that already carries a `content_hash` is never rewritten**
+/// (Cluster 397.8). That is the whole security property. This used to re-link
+/// *every row of every workspace* from genesis against the **current** payloads
+/// whenever any single row had an empty hash — so an attacker with database
+/// write access could edit a payload, blank one unrelated row's `content_hash`,
+/// restart the process, and have the chain recomputed to agree with the tamper.
+/// `verify_event_chain` then reported `ok: true, from_genesis: true`, which is
+/// precisely the claim a tamper-evident log exists to be unable to make.
+///
+/// Now a blanked row is refilled from its own payload and nothing else moves, so
+/// its successor's `prev_hash` — still chaining from the *original* hash — no
+/// longer matches and verify breaks at that successor. Tampering is detected
+/// rather than laundered.
+///
+/// Batched rather than one transaction per workspace: the old shape did
+/// `fetch_all` of every payload in a workspace and rewrote them in a single tx,
+/// which on a large deployment is an OOM and/or blows the Cluster-156 30s
+/// `statement_timeout` — during migration, so the server would not boot.
 pub async fn backfill_chain(pool: &PgPool) -> Result<(), StoreError> {
-    let pending: (i64,) =
-        sqlx::query_as("SELECT COUNT(*)::bigint FROM maidan_events WHERE content_hash = ''")
-            .fetch_one(pool)
-            .await?;
-    if pending.0 == 0 {
-        return Ok(());
-    }
-    let workspaces: Vec<(Option<uuid::Uuid>,)> =
-        sqlx::query_as("SELECT DISTINCT workspace_id FROM maidan_events")
-            .fetch_all(pool)
-            .await?;
-    for (ws,) in workspaces {
-        let mut tx = pool.begin().await?;
+    loop {
         let rows = sqlx::query(
-            "SELECT id, payload FROM maidan_events
-             WHERE workspace_id IS NOT DISTINCT FROM $1
-             ORDER BY id ASC",
+            "SELECT id, workspace_id, payload FROM maidan_events
+             WHERE content_hash = ''
+             ORDER BY id ASC
+             LIMIT $1",
         )
-        .bind(ws)
-        .fetch_all(&mut *tx)
+        .bind(CHAIN_BACKFILL_BATCH)
+        .fetch_all(pool)
         .await?;
-        let mut previous: Option<EventLink> = None;
-        for row in rows {
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let short = (rows.len() as i64) < CHAIN_BACKFILL_BATCH;
+        for row in &rows {
             let id: i64 = row.get("id");
+            let ws: Option<uuid::Uuid> = row.get("workspace_id");
             let payload: serde_json::Value = row.get("payload");
+            // The predecessor inside this row's own workspace chain, whatever
+            // state it is in. `None` means this row is the workspace's floor.
+            let previous = previous_link(pool, ws, id).await?;
             let link = maidan_types::link_for(id, &payload, previous.as_ref())
                 .map_err(|e| StoreError::InvalidInput(e.to_string()))?;
-            sqlx::query("UPDATE maidan_events SET prev_hash = $1, content_hash = $2 WHERE id = $3")
-                .bind(&link.prev_hash)
-                .bind(&link.content_hash)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
-            previous = Some(link);
+            sqlx::query(
+                "UPDATE maidan_events SET prev_hash = $1, content_hash = $2
+                 WHERE id = $3 AND content_hash = ''",
+            )
+            .bind(&link.prev_hash)
+            .bind(&link.content_hash)
+            .bind(id)
+            .execute(pool)
+            .await?;
         }
-        tx.commit().await?;
+        if short {
+            return Ok(());
+        }
     }
-    Ok(())
+}
+
+/// The chain link of the row immediately before `id` in the same workspace, or
+/// `None` when `id` is that workspace's floor.
+async fn previous_link(
+    pool: &PgPool,
+    workspace_id: Option<uuid::Uuid>,
+    id: i64,
+) -> Result<Option<EventLink>, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, prev_hash, content_hash FROM maidan_events
+         WHERE workspace_id IS NOT DISTINCT FROM $1 AND id < $2
+         ORDER BY id DESC
+         LIMIT 1",
+    )
+    .bind(workspace_id)
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let id: i64 = row.get("id");
+        EventLink {
+            id,
+            lsn: id,
+            prev_hash: row.get("prev_hash"),
+            content_hash: row.get("content_hash"),
+        }
+    }))
 }
 
 /// Parse the persisted `kind` column back into an [`EventKind`]. Delegates to

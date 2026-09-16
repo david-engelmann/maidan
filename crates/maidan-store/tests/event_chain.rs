@@ -255,3 +255,66 @@ async fn tamper_is_detected_postgres() {
     assert_eq!(report.break_at, Some(stored.id));
     assert_eq!(report.reason, Some(ChainBreakReason::ContentHashMismatch));
 }
+
+/// Cluster 397.8: a blanked `content_hash` must not launder a tampered payload.
+///
+/// `backfill_chain` runs on every startup. Its guard used to be global — if *any*
+/// row had an empty `content_hash`, it re-linked **every row of every workspace**
+/// from genesis against the current payloads. So the attack against a
+/// tamper-evident log was: edit a payload, blank one row's hash, restart, and the
+/// chain is recomputed to agree with you. `verify_event_chain` then said
+/// `ok: true, from_genesis: true`.
+///
+/// Now backfill only fills rows that are actually empty and never rewrites a row
+/// that already has a hash, so the successor's `prev_hash` — still chaining from
+/// the original — no longer matches, and the break surfaces.
+#[tokio::test]
+async fn a_blanked_hash_cannot_launder_a_tampered_payload_sqlite() {
+    let store = sqlite().await;
+    let (ws, member) = seed(&store).await;
+
+    let first = store
+        .append_event(&Event::MemberJoined {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws,
+            member: member.clone(),
+        })
+        .await
+        .expect("append 1");
+    let second = store
+        .append_event(&Event::MemberJoined {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: ws,
+            member,
+        })
+        .await
+        .expect("append 2");
+    assert!(store.verify_event_chain(ws).await.expect("pre").ok);
+
+    // The attack: rewrite the first event's payload, then blank its hash so the
+    // startup backfill treats it as an un-hashed legacy row.
+    let mut payload = first.payload.clone();
+    payload["kind"] = serde_json::json!("message_posted");
+    sqlx::query("UPDATE maidan_events SET payload = ?, content_hash = '' WHERE id = ?")
+        .bind(payload.to_string())
+        .bind(first.id)
+        .execute(store.pool())
+        .await
+        .expect("tamper + blank");
+
+    // Restart: migrations (and so the backfill) run again.
+    maidan_store::run_sqlite_migrations(store.pool())
+        .await
+        .expect("re-run migrations");
+
+    let report = store.verify_event_chain(ws).await.expect("verify");
+    assert!(
+        !report.ok,
+        "the tamper must still be visible after a backfill pass; got {report:?}"
+    );
+    assert_eq!(
+        report.break_at,
+        Some(second.id),
+        "the break surfaces at the successor, whose prev_hash still names the original"
+    );
+}
