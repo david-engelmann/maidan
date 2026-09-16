@@ -35,6 +35,47 @@ fn echo_module() -> Vec<u8> {
     .expect("valid wat")
 }
 
+/// A guest that says something, then fails on its own terms.
+fn exiting_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"(module
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+             (memory (export "memory") 1)
+             (data (i32.const 8) "got this far")
+             (func (export "_start")
+               (i32.store (i32.const 0) (i32.const 8))
+               (i32.store (i32.const 4) (i32.const 12))
+               (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))
+               (call $exit (i32.const 3))))"#,
+    )
+    .expect("valid wat")
+}
+
+/// A guest that writes 64 KiB — well inside the sandbox's own output cap, well
+/// past what the room will carry.
+fn noisy_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"(module
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 2)
+             (data (i32.const 64) "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+             (func (export "_start")
+               (local $i i32)
+               (i32.store (i32.const 0) (i32.const 64))
+               (i32.store (i32.const 4) (i32.const 64))
+               (block $done
+                 (loop $l
+                   (br_if $done (i32.ge_u (local.get $i) (i32.const 1000)))
+                   (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))
+                   (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                   (br $l)))))"#,
+    )
+    .expect("valid wat")
+}
+
 /// A guest that reaches for the filesystem — must never run.
 fn escaping_module() -> Vec<u8> {
     wat::parse_str(
@@ -239,5 +280,62 @@ async fn a_module_reaching_for_the_filesystem_is_refused_through_the_slash_path(
     assert!(
         err.contains("path_open"),
         "the error should name the import, got: {err}"
+    );
+}
+
+/// A handler that fails on its own terms is reported as having done so.
+///
+/// `exit_non_zero` rather than `trap` is the whole point: the author is looking
+/// for their own error path, and "trap" would send them hunting a crash that
+/// never happened. The partial stdout is what makes the report diagnosable.
+#[tokio::test]
+async fn a_handler_that_exits_non_zero_reports_its_own_status() {
+    let ctx = spawn().await;
+    let sha = ctx.upload(exiting_module()).await;
+    ctx.register("bail", &sha).await;
+
+    let msg = ctx.invoke("/bail").await;
+    let response = &msg["metadata"]["slash_response"];
+    assert_eq!(response["ok"], false);
+    assert_eq!(
+        response["error_kind"], "exit_non_zero",
+        "a chosen exit is not a trap: {response:?}"
+    );
+    assert_eq!(
+        response["exit_code"], 3,
+        "the status reaches the room as a field: {response:?}"
+    );
+    assert_eq!(
+        response["stdout"], "got this far",
+        "a failure still carries what the guest managed to say"
+    );
+}
+
+/// Guest output is bounded by what the *room* will carry, not only by what the
+/// sandbox was willing to buffer.
+///
+/// A slash response is written into the triggering message's metadata and fanned
+/// out to every subscriber, so this bound governs the event log, not host
+/// memory — and a clipped value has to say it was clipped.
+#[tokio::test]
+async fn guest_output_is_clamped_before_it_reaches_the_room() {
+    let ctx = spawn().await;
+    let sha = ctx.upload(noisy_module()).await;
+    ctx.register("noisy", &sha).await;
+
+    let msg = ctx.invoke("/noisy").await;
+    let response = &msg["metadata"]["slash_response"];
+    assert_eq!(response["ok"], true, "a loud handler still succeeds");
+    let text = response["response"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.len() <= maidan_types::wasi::WASI_MAX_ROOM_OUTPUT_BYTES,
+        "64 KiB of guest output must not land in the event log, got {} bytes",
+        text.len()
+    );
+    assert!(
+        text.contains("truncated"),
+        "a clipped response must not read as a complete one"
     );
 }

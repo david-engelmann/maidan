@@ -1124,7 +1124,15 @@
           status.textContent = `⟳ retrying${sr.error ? " · " + sr.error : ""}`;
         } else {
           status.className = "slash-err";
-          status.textContent = `✗ ${sr.error || "failed"}`;
+          // The failure kind leads: for a WASI handler it is the difference
+          // between "shrink your loop" and "fix your crash", and the prose
+          // alone does not carry that.
+          const kind = sr.error_kind ? `${sr.error_kind} · ` : "";
+          const code =
+            sr.exit_code !== undefined && sr.exit_code !== null
+              ? ` (exit ${sr.exit_code})`
+              : "";
+          status.textContent = `✗ ${kind}${sr.error || "failed"}${code}`;
         }
         boxEl.appendChild(status);
         if (sr.response !== undefined) {

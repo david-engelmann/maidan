@@ -253,11 +253,11 @@ fn run_inner(
         Err(_) if exit_code == Some(0) => Ok(WasiResult::ok(stdout, stderr)),
         Err(e) => {
             let mut failed = classify(&mut store, &memory_hit, &e.to_string());
+            // What the guest managed to say before it failed is the most useful
+            // thing in the report, so a failure carries it too.
             failed.stdout = stdout;
             failed.stderr = stderr;
-            if let Some(code) = exit_code {
-                failed.error = Some(format!("guest exited with status {code}"));
-            }
+            failed.exit_code = exit_code;
             Ok(failed)
         }
     }
@@ -268,6 +268,16 @@ fn run_inner(
 /// Fuel and the memory cap are checked from *host* state rather than by matching
 /// on the error text: both surface as ordinary traps, and a string match would
 /// silently reclassify them the first time wasmi reworded a message.
+///
+/// # Why this order
+///
+/// The four causes are not mutually exclusive, so precedence is a decision, not
+/// an accident. A guest that hits the memory cap typically fails its next
+/// allocation and *then* calls `proc_exit(1)` from its own error path — both
+/// facts are true, and reporting the exit would hand the author the symptom
+/// while hiding the cause. So a host-enforced limit outranks the guest's own
+/// verdict: memory, then fuel, then the guest's exit status, then a plain trap
+/// as the residual "it broke and we know nothing more specific".
 fn classify(
     store: &mut wasmi::Store<HostState>,
     memory_hit: &Arc<Mutex<bool>>,
@@ -284,6 +294,18 @@ fn classify(
             WasiFailureKind::FuelExhausted,
             "guest exhausted its fuel budget",
         );
+    }
+    // The status is read back out of host state, set by our own `proc_exit`,
+    // so this is an observed fact about the guest rather than an inference from
+    // an error string. Zero is not a failure cause and falls through.
+    match store.data().exit_code {
+        Some(code) if code != 0 => {
+            return WasiResult::fail(
+                WasiFailureKind::ExitNonZero,
+                format!("guest exited with status {code}"),
+            )
+        }
+        _ => {}
     }
     WasiResult::fail(WasiFailureKind::Trap, message)
 }

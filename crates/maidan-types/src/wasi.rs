@@ -38,6 +38,41 @@ pub const WASI_MAX_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
 /// Smallest memory we will grant (one Wasm page).
 pub const WASI_MIN_MEMORY_BYTES: u64 = 64 * 1024;
 
+/// Longest failure message we will carry out of a run.
+///
+/// A failure message is partly guest-derived — a wasm validation error quotes
+/// the offending import or export name, and those are attacker-chosen and
+/// effectively unbounded. The message is persisted in the triggering message's
+/// metadata and broadcast to every subscriber, so it is bounded here rather
+/// than trusted to be short.
+pub const WASI_MAX_ERROR_BYTES: usize = 512;
+
+/// Largest guest output the *room* will carry, independent of how much the
+/// sandbox was willing to buffer.
+///
+/// The sandbox's own output cap bounds host memory during a run. This bounds
+/// something different and more expensive: a slash response is written into the
+/// triggering message's metadata and fanned out to every live subscriber, so
+/// guest output here is persisted and replicated, not just held. A handler
+/// answering a chat message has no legitimate need for more.
+pub const WASI_MAX_ROOM_OUTPUT_BYTES: usize = 16 * 1024;
+
+/// Truncate `s` to at most `max` bytes without splitting a UTF-8 character,
+/// marking the cut so a reader never mistakes a clipped value for a complete
+/// one.
+pub fn truncate_utf8(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    const MARK: &str = "… [maidan: truncated]";
+    let budget = max.saturating_sub(MARK.len());
+    let mut end = budget.min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{MARK}", &s[..end])
+}
+
 /// Allowlisted `wasi_snapshot_preview1` imports. Sockets, filesystem
 /// paths, and unknown names are denied. Stdin/stdout/args/env/clocks
 /// only — the guest cannot leave the process.
@@ -134,6 +169,10 @@ pub enum WasiFailureKind {
     FuelExhausted,
     MemoryLimit,
     Trap,
+    /// The guest called `proc_exit` with a non-zero status. Distinct from
+    /// [`Self::Trap`]: the handler *chose* to fail and picked the code, so the
+    /// author is looking for their own error path, not a crash.
+    ExitNonZero,
     BannedImport,
     InvalidModule,
 }
@@ -144,6 +183,7 @@ impl WasiFailureKind {
             Self::FuelExhausted => "fuel_exhausted",
             Self::MemoryLimit => "memory_limit",
             Self::Trap => "trap",
+            Self::ExitNonZero => "exit_non_zero",
             Self::BannedImport => "banned_import",
             Self::InvalidModule => "invalid_module",
         }
@@ -165,6 +205,11 @@ pub struct WasiResult {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_kind: Option<WasiFailureKind>,
+    /// The guest's own `proc_exit` status, when it chose one. Carried
+    /// structurally rather than only inside `error`, so a caller can branch on
+    /// a handler's exit code without parsing prose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
 impl WasiResult {
@@ -176,18 +221,33 @@ impl WasiResult {
             stderr: stderr.into(),
             error: None,
             error_kind: None,
+            exit_code: None,
         }
     }
 
+    /// Every failure path goes through here, which is why the message is
+    /// bounded here rather than at each call site — a constructor that cannot
+    /// be bypassed is the only kind that cannot be forgotten.
     pub fn fail(kind: WasiFailureKind, error: impl Into<String>) -> Self {
         Self {
             type_id: WASI_RESULT_TYPE.to_string(),
             ok: false,
             stdout: String::new(),
             stderr: String::new(),
-            error: Some(error.into()),
+            error: Some(truncate_utf8(&error.into(), WASI_MAX_ERROR_BYTES)),
             error_kind: Some(kind),
+            exit_code: None,
         }
+    }
+
+    /// Clamp `stdout`/`stderr` to what the room will persist and broadcast.
+    ///
+    /// Applied at the slash surface, not inside the sandbox: the sandbox's cap
+    /// protects host memory during a run, this protects the event log.
+    pub fn clamp_for_room(mut self) -> Self {
+        self.stdout = truncate_utf8(&self.stdout, WASI_MAX_ROOM_OUTPUT_BYTES);
+        self.stderr = truncate_utf8(&self.stderr, WASI_MAX_ROOM_OUTPUT_BYTES);
+        self
     }
 }
 
@@ -374,5 +434,59 @@ mod allowlist_order_tests {
             !is_allowed_wasi_import("env", "args_get"),
             "module is checked too"
         );
+    }
+}
+
+#[cfg(test)]
+mod result_bounds_tests {
+    use super::{
+        truncate_utf8, WasiFailureKind, WasiResult, WASI_MAX_ERROR_BYTES,
+        WASI_MAX_ROOM_OUTPUT_BYTES,
+    };
+
+    /// The bound is in bytes but the content is text, and a guest chooses the
+    /// text — so the cut must land on a character boundary. Slicing a 3-byte
+    /// character in half would panic inside the failure path, turning a handled
+    /// guest failure into a host one.
+    #[test]
+    fn truncation_never_splits_a_character() {
+        let wide = "空".repeat(1000);
+        for max in [1, 2, 3, 7, 64, 512] {
+            let cut = truncate_utf8(&wide, max);
+            assert!(cut.len() <= max.max(1) + 64, "grossly over budget at {max}");
+            assert!(std::str::from_utf8(cut.as_bytes()).is_ok());
+        }
+        assert_eq!(
+            truncate_utf8("short", 512),
+            "short",
+            "under budget is intact"
+        );
+    }
+
+    /// A truncated value must never read as a complete one.
+    #[test]
+    fn truncation_marks_the_cut() {
+        let cut = truncate_utf8(&"x".repeat(5_000), WASI_MAX_ERROR_BYTES);
+        assert!(cut.len() <= WASI_MAX_ERROR_BYTES);
+        assert!(cut.contains("truncated"), "the cut must be visible: {cut}");
+    }
+
+    /// The room bound is separate from, and tighter than, the sandbox's own
+    /// output cap: this one governs what gets persisted and fanned out.
+    #[test]
+    fn a_result_is_clamped_to_what_the_room_will_carry() {
+        let noisy = WasiResult::ok("o".repeat(900_000), "e".repeat(900_000)).clamp_for_room();
+        assert!(noisy.stdout.len() <= WASI_MAX_ROOM_OUTPUT_BYTES);
+        assert!(noisy.stderr.len() <= WASI_MAX_ROOM_OUTPUT_BYTES);
+        assert!(noisy.stdout.contains("truncated"));
+        assert!(noisy.ok, "clamping is not a failure");
+    }
+
+    /// Every failure constructor bounds its message, including one handed an
+    /// oversized string directly.
+    #[test]
+    fn a_failure_message_is_bounded_at_construction() {
+        let f = WasiResult::fail(WasiFailureKind::Trap, "t".repeat(100_000));
+        assert!(f.error.as_deref().unwrap_or_default().len() <= WASI_MAX_ERROR_BYTES);
     }
 }

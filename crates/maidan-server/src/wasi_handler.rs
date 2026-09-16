@@ -98,7 +98,7 @@ pub async fn dispatch_wasi(
 ) -> Value {
     let module = match load_module(state, auth, command).await {
         Ok(bytes) => bytes,
-        Err(failure) => return envelope(&failure),
+        Err(failure) => return envelope(failure),
     };
 
     let invoke = WasiInvoke::new(
@@ -124,17 +124,24 @@ pub async fn dispatch_wasi(
             WasiResult::fail(WasiFailureKind::Trap, "handler execution failed")
         });
 
-    envelope(&result)
+    // Clamped here rather than in the sandbox: the sandbox's output cap bounds
+    // host memory for the duration of a run, this bounds what gets written into
+    // the triggering message's metadata and fanned out to every subscriber.
+    envelope(result.clamp_for_room())
 }
 
 /// Map a [`WasiResult`] onto the slash-response shape the other handler kinds
 /// use, so `/ui` and the message metadata do not need a WASI-specific branch.
 ///
 /// The failure *kind* is carried through rather than flattened into one opaque
-/// error: "you ran out of fuel" and "you trapped" are different messages to the
-/// person who wrote the handler, and collapsing them is the difference between a
-/// fixable report and a shrug.
-fn envelope(result: &WasiResult) -> Value {
+/// error: "you ran out of fuel", "you trapped" and "you exited 3" are different
+/// messages to the person who wrote the handler, and collapsing them is the
+/// difference between a fixable report and a shrug.
+///
+/// A failure still carries whatever the guest managed to write. A handler that
+/// prints its progress and then trips a limit is diagnosable from the partial
+/// output and useless without it.
+fn envelope(result: WasiResult) -> Value {
     if result.ok {
         return json!({
             "ok": true,
@@ -146,8 +153,9 @@ fn envelope(result: &WasiResult) -> Value {
     }
     json!({
         "ok": false,
-        "error": result.error.clone().unwrap_or_else(|| "handler failed".into()),
+        "error": result.error.unwrap_or_else(|| "handler failed".into()),
         "error_kind": result.error_kind.map(|k| k.as_str()),
+        "exit_code": result.exit_code,
         "stdout": result.stdout,
         "stderr": result.stderr,
     })
