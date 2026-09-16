@@ -677,7 +677,7 @@
     "capability": "thread:transition",
     "surface": "http"
   },
-    {
+  {
     "method": "GET",
     "path": "/threads/{id}/result",
     "capability": "workspace:read",
@@ -1520,7 +1520,7 @@
   {
     "method": "DELETE",
     "path": "/threads/{id}/review-requirement",
-    "capability": "thread:transition",
+    "capability": "channel:admin",
     "surface": "http"
   },
   {
@@ -1538,7 +1538,7 @@
   {
     "method": "DELETE",
     "path": "/threads/{id}/reviewers/{member_id}",
-    "capability": "thread:transition",
+    "capability": "channel:admin",
     "surface": "http"
   },
   {
@@ -1574,7 +1574,7 @@
   {
     "method": "DELETE",
     "path": "/threads/{id}/land-gate",
-    "capability": "thread:transition",
+    "capability": "channel:admin",
     "surface": "http"
   },
   {
