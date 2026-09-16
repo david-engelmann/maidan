@@ -204,6 +204,20 @@ pub async fn list_capability_sets(
 /// Levy/Madden holder-side attenuation: derive a weaker token for the
 /// caller. No `token:admin`. Amplification is rejected; a derived expiry
 /// cannot outlive the parent bearer.
+///
+/// **A derived token inherits every limit the parent carried** (Cluster 397.7).
+/// Attenuation is allowed to be a no-op re-issue — `attenuate` permits an equal
+/// capability list — so anything the parent was bound by and the child was not
+/// became a way to shed that bound by re-issuing:
+///
+/// - `app_installation_id` was dropped, so an installed third-party app could
+///   derive a standalone member token and keep it after the workspace revoked
+///   the installation. `get_active_by_hash` refuses a token whose installation is
+///   revoked, and the derived one no longer named an installation to check.
+/// - Per-token quotas were dropped, so a token throttled to N calls a minute
+///   could mint a functionally identical one with no quota at all.
+///
+/// Neither bound is something the holder should be able to shed by asking.
 pub async fn attenuate_api_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -216,19 +230,35 @@ pub async fn attenuate_api_token(
     let expires_at = maidan_auth::attenuate_expiry(parent, body.expires_at, Utc::now())
         .map_err(ApiError::BadRequest)?;
 
+    // Quotas are keyed on the token id, so the child needs its own copies of the
+    // parent's. Read them before minting: a child that outlives this call with no
+    // quota row is the amplification the parent's quota existed to stop.
+    let inherited_quotas = match auth.token_id {
+        Some(parent_id) => state.store.list_token_quotas(parent_id).await?,
+        None => Vec::new(),
+    };
+
     let secret = TokenSecret::generate();
     let record = state
         .store
         .create_api_token(NewApiToken {
             workspace_id: auth.workspace_id,
             member_id: auth.member_id,
-            app_installation_id: None,
+            // Inherited, not dropped: an app's grant dies with its installation,
+            // and a derived token is still that app acting.
+            app_installation_id: auth.app_installation_id,
             token_hash: hash_secret(secret.as_str()),
             label: body.label,
             capabilities: capabilities.clone(),
             expires_at,
         })
         .await?;
+    if !inherited_quotas.is_empty() {
+        state
+            .store
+            .replace_token_quotas(record.id, &inherited_quotas)
+            .await?;
+    }
 
     crate::audit::record(
         &state,
@@ -243,6 +273,9 @@ pub async fn attenuate_api_token(
                 "capabilities": record.capabilities.clone(),
                 "expires_at": record.expires_at,
                 "attenuated": true,
+                "parent_token_id": auth.token_id.map(|t| t.0),
+                "app_installation_id": record.app_installation_id.map(|a| a.0),
+                "inherited_quotas": inherited_quotas.len(),
             }),
         },
     )
@@ -257,7 +290,7 @@ pub async fn attenuate_api_token(
             member_id: record.member_id,
             capabilities: record.capabilities,
             expires_at: record.expires_at,
-            quotas: Vec::new(),
+            quotas: inherited_quotas,
         }),
     ))
 }
