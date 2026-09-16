@@ -29,6 +29,7 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemberLimitArgs {
     member_id: uuid::Uuid,
     #[serde(default)]
@@ -52,6 +53,7 @@ pub(super) async fn get_inbox(store: &Arc<dyn Store>, args: &Value) -> Result<Va
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MarkInboxReadArgs {
     member_id: uuid::Uuid,
     /// Advance the member's read cursor through this instant (RFC 3339).
@@ -71,6 +73,7 @@ pub(super) async fn mark_inbox_read(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitForMentionArgs {
     member_id: uuid::Uuid,
     /// Long-poll window in milliseconds (default 30 000, clamped to 1 000–300 000).
@@ -229,6 +232,7 @@ fn notifiable_kinds() -> HashSet<EventKind> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListNotificationsArgs {
     member_id: uuid::Uuid,
     #[serde(default)]
@@ -253,6 +257,7 @@ pub(super) async fn list_notifications(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitingArgs {
     member_id: uuid::Uuid,
     /// Seconds an item may wait before it is flagged overdue (default 86400 = 24h).
@@ -290,6 +295,7 @@ pub(super) async fn get_waiting_inbox(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BuriedDecisionsArgs {
     member_id: uuid::Uuid,
     /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).
@@ -352,6 +358,7 @@ pub(super) async fn get_unread_count(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MarkNotificationReadArgs {
     member_id: uuid::Uuid,
     notification_id: uuid::Uuid,
@@ -371,6 +378,7 @@ pub(super) async fn mark_notification_read(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SnoozeNotificationArgs {
     member_id: uuid::Uuid,
     notification_id: uuid::Uuid,
@@ -420,6 +428,7 @@ pub(super) async fn wait_for_notification(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetNotificationPrefArgs {
     member_id: uuid::Uuid,
     /// The event kind to (un)mute, snake_case (e.g. `mention_recorded`).
@@ -444,6 +453,7 @@ pub(super) async fn set_notification_pref(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListNotificationPrefsArgs {
     member_id: uuid::Uuid,
 }
@@ -459,6 +469,7 @@ pub(super) async fn list_notification_prefs(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetDeliveryModeArgs {
     member_id: uuid::Uuid,
     /// `immediate` (per-notification emails) or `digest` (a periodic rollup).
@@ -480,6 +491,7 @@ pub(super) async fn set_delivery_mode(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetDeliveryModeArgs {
     member_id: uuid::Uuid,
 }
@@ -495,6 +507,7 @@ pub(super) async fn get_delivery_mode(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetMemberEmailArgs {
     member_id: uuid::Uuid,
     email: String,
@@ -518,6 +531,7 @@ pub(super) async fn set_member_email(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemberEmailArgs {
     member_id: uuid::Uuid,
 }
@@ -543,6 +557,7 @@ pub(super) async fn delete_member_email(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FollowChannelArgs {
     member_id: uuid::Uuid,
     channel_id: uuid::Uuid,
@@ -585,6 +600,7 @@ pub(super) async fn list_channel_follows(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FollowThreadArgs {
     member_id: uuid::Uuid,
     thread_id: uuid::Uuid,

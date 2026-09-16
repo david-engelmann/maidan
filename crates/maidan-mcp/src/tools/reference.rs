@@ -11,6 +11,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AddReferenceArgs {
     src_kind: RefSide,
     src_id: uuid::Uuid,
@@ -41,6 +42,7 @@ pub(super) async fn add_reference(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListReferencesArgs {
     src_kind: Option<RefSide>,
     src_id: Option<uuid::Uuid>,

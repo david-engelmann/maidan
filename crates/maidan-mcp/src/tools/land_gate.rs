@@ -14,6 +14,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetArgs {
     thread_id: uuid::Uuid,
     status: LandGateStatus,

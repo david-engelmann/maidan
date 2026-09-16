@@ -21,6 +21,7 @@ const DEFAULT_WAIT_MS: i64 = 30_000;
 const MAX_WAIT_MS: i64 = 300_000;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CreateArgs {
     label: String,
     #[serde(default)]
@@ -62,6 +63,7 @@ pub(super) async fn create_memory_block(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LabelArgs {
     label: String,
 }
@@ -92,6 +94,7 @@ pub(super) async fn list_memory_blocks(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetArgs {
     label: String,
     value: String,
@@ -131,6 +134,7 @@ pub(super) async fn set_memory_block_value(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AttachArgs {
     thread_id: uuid::Uuid,
     label: String,
@@ -155,6 +159,7 @@ pub(super) async fn attach_memory_block(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ThreadArgs {
     thread_id: uuid::Uuid,
 }
@@ -176,6 +181,7 @@ pub(super) async fn list_thread_memory_blocks(
 /// Detach a block (by id) from a thread. `block_id` is used directly (a detach is
 /// a precise op the agent has the id for from `list_thread_memory_blocks`).
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DetachArgs {
     thread_id: uuid::Uuid,
     block_id: uuid::Uuid,
@@ -194,6 +200,7 @@ pub(super) async fn detach_memory_block(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitArgs {
     label: String,
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).

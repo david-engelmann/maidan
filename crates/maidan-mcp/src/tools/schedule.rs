@@ -16,6 +16,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CreateScheduleArgs {
     channel_id: uuid::Uuid,
     title: String,

@@ -18,6 +18,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SnapshotArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,
@@ -26,6 +27,7 @@ struct SnapshotArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CatchUpArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,
@@ -36,6 +38,7 @@ struct CatchUpArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct VerifyArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,

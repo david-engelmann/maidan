@@ -18,6 +18,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetRequirementArgs {
     thread_id: uuid::Uuid,
     required_count: i64,
@@ -61,6 +62,7 @@ pub(super) async fn set_review_requirement(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AddReviewerArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -80,6 +82,7 @@ pub(super) async fn add_reviewer(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SubmitReviewArgs {
     thread_id: uuid::Uuid,
     decision: ReviewDecision,

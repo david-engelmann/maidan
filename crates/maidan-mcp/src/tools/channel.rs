@@ -12,11 +12,13 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListChannelsArgs {
     workspace_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AddChannelMemberArgs {
     channel_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -25,12 +27,14 @@ struct AddChannelMemberArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ChannelMemberRefArgs {
     channel_id: uuid::Uuid,
     member_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ChannelRefArgs {
     channel_id: uuid::Uuid,
 }
@@ -121,6 +125,7 @@ pub(super) async fn list_channels(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OpenDmArgs {
     workspace_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -143,6 +148,7 @@ pub(super) async fn open_dm_conversation(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListDmArgs {
     workspace_id: uuid::Uuid,
     member_id: uuid::Uuid,

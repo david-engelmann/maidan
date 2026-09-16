@@ -17,6 +17,7 @@ use crate::error::McpError;
 use crate::server::McpServer;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LinkSlackArgs {
     thread_id: uuid::Uuid,
     slack_channel_id: String,
@@ -24,11 +25,13 @@ struct LinkSlackArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UnlinkSlackArgs {
     slack_channel_id: String,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LinkGithubArgs {
     thread_id: uuid::Uuid,
     repo: String,
@@ -37,6 +40,7 @@ struct LinkGithubArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UnlinkGithubArgs {
     repo: String,
     issue_number: i64,

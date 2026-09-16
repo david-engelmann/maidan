@@ -25,6 +25,7 @@ async fn record_ref(store: &Arc<dyn Store>, auth: &AuthContext, sha: &str) -> Re
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UploadArtifactArgs {
     kind: ArtifactKind,
     content_base64: String,
@@ -65,6 +66,7 @@ pub(super) async fn begin_artifact_multipart(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UploadMultipartPartArgs {
     upload_id: String,
     object_key: String,
@@ -98,6 +100,7 @@ struct MultipartPartArg {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CompleteMultipartArgs {
     upload_id: String,
     object_key: String,
@@ -145,6 +148,7 @@ pub(super) async fn complete_artifact_multipart(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AbortMultipartArgs {
     upload_id: String,
     object_key: String,
@@ -192,6 +196,7 @@ pub(super) async fn upload_artifact(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetArtifactMetadataArgs {
     sha256: String,
 }

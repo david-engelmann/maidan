@@ -13,6 +13,7 @@ use super::{content_json, required_capability};
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RegisterSlashCommandArgs {
     workspace_id: uuid::Uuid,
     name: String,
@@ -92,6 +93,7 @@ pub(super) async fn register_slash_command(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListSlashCommandsArgs {
     workspace_id: uuid::Uuid,
 }
@@ -166,6 +168,7 @@ fn parse_opt_state_mcp(raw: Option<String>) -> Result<Option<ThreadState>, McpEr
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RegisterFsmHookArgs {
     workspace_id: uuid::Uuid,
     label: Option<String>,
@@ -248,6 +251,7 @@ pub(super) async fn register_fsm_hook(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListFsmHooksArgs {
     workspace_id: uuid::Uuid,
 }

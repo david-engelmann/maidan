@@ -36,6 +36,7 @@ pub(super) async fn list_capability_sets() -> Result<Value, McpError> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ParseUriArgs {
     uri: String,
 }
@@ -49,6 +50,7 @@ pub(super) async fn parse_maidan_uri(args: &Value) -> Result<Value, McpError> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetRoomArgs {
     workspace_id: uuid::Uuid,
 }
@@ -70,6 +72,7 @@ pub(super) async fn get_room(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetHandleArgs {
     workspace_id: uuid::Uuid,
     handle: String,
@@ -88,6 +91,7 @@ pub(super) async fn set_workspace_handle(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AttenuateArgs {
     capabilities: Vec<String>,
     #[serde(default)]

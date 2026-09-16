@@ -17,6 +17,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CreateRecipeArgs {
     channel_id: uuid::Uuid,
     name: String,
@@ -79,6 +80,7 @@ pub(super) async fn list_recipes(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct InstantiateArgs {
     recipe_id: uuid::Uuid,
     #[serde(default)]

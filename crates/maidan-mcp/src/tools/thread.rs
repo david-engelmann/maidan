@@ -75,6 +75,7 @@ async fn lookback_event(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListThreadsArgs {
     channel_id: uuid::Uuid,
     /// Max threads to return (default 100, clamped 1..=500) — Cluster 343.
@@ -114,6 +115,7 @@ pub(super) async fn list_child_threads(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RecentThreadsArgs {
     channel_id: uuid::Uuid,
     /// Max threads to return (default 50, clamped 1..=200).
@@ -166,6 +168,7 @@ pub(super) async fn unmute_thread(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ToolTranscriptArgs {
     thread_id: uuid::Uuid,
     /// Max messages to scan (default 200, clamped 1..=500).
@@ -189,6 +192,7 @@ pub(super) async fn get_tool_transcript(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AssignThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,
@@ -199,12 +203,14 @@ struct AssignThreadArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClaimThreadArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UnassignThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,
@@ -307,6 +313,7 @@ pub(super) async fn unassign_thread(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TransitionThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,
@@ -374,6 +381,7 @@ pub(super) async fn transition_thread(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetWaitArgs {
     thread_id: uuid::Uuid,
     wait_until: chrono::DateTime<chrono::Utc>,
@@ -422,6 +430,7 @@ pub(super) async fn get_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Val
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetPriorityArgs {
     thread_id: uuid::Uuid,
     priority: i64,
@@ -452,6 +461,7 @@ pub(super) async fn get_priority(store: &Arc<dyn Store>, args: &Value) -> Result
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MarkUnclaimableArgs {
     thread_id: uuid::Uuid,
     reason: String,
@@ -506,6 +516,7 @@ pub(super) async fn list_unclaimable(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetThreadBlockArgs {
     thread_id: uuid::Uuid,
     reason: BlockedReason,
@@ -568,6 +579,7 @@ pub(super) async fn list_blocked_threads(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetWipLimitArgs {
     #[serde(default)]
     limit: Option<i64>,
@@ -603,6 +615,7 @@ pub(super) async fn get_wip_limit(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemberWipArgs {
     member_id: uuid::Uuid,
 }
@@ -624,6 +637,7 @@ pub(super) async fn get_member_wip(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListAssignedThreadsArgs {
     member_id: uuid::Uuid,
 }
@@ -655,6 +669,7 @@ pub(super) async fn list_assigned_threads(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClaimNextThreadArgs {
     channel_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -701,6 +716,7 @@ pub(super) async fn claim_next_thread(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RenewClaimArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -731,6 +747,7 @@ pub(super) async fn renew_claim(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AcknowledgeClaimArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -757,6 +774,7 @@ pub(super) async fn acknowledge_claim(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReleaseClaimArgs {
     thread_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -787,6 +805,7 @@ pub(super) async fn release_claim(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AddThreadDependencyArgs {
     thread_id: uuid::Uuid,
     depends_on_thread_id: uuid::Uuid,
@@ -823,6 +842,7 @@ pub(super) async fn add_thread_dependency(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ThreadDepsArgs {
     thread_id: uuid::Uuid,
 }
@@ -843,6 +863,7 @@ pub(super) async fn list_thread_dependencies(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
@@ -873,6 +894,7 @@ pub(super) async fn get_channel_occupancy(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetThreadLineageArgs {
     thread_id: uuid::Uuid,
     parent_run_id: String,
@@ -894,6 +916,7 @@ pub(super) async fn set_thread_lineage(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetThreadLineageArgs {
     thread_id: uuid::Uuid,
 }
@@ -910,6 +933,7 @@ pub(super) async fn get_thread_lineage(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RunLineageArgs {
     parent_run_id: String,
 }
@@ -964,6 +988,7 @@ pub(super) async fn get_run_occupancy(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetThreadResultArgs {
     thread_id: uuid::Uuid,
     result: Value,
@@ -1027,6 +1052,7 @@ pub(super) async fn set_thread_result(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetThreadResultArgs {
     thread_id: uuid::Uuid,
 }
@@ -1044,6 +1070,7 @@ pub(super) async fn get_thread_result(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListThreadResultsArgs {
     /// Exact-match facet on the namespaced `result_kind` string (e.g.
     /// `example.review.result/1`). Absent / empty = every non-tombstoned result.
@@ -1080,6 +1107,7 @@ pub(super) async fn list_thread_results(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetThreadOwnerArgs {
     thread_id: uuid::Uuid,
     /// The owner to set; omit (or null) to clear the owner (Cluster 355, W1).
@@ -1103,6 +1131,7 @@ pub(super) async fn set_thread_owner(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RenameThreadArgs {
     thread_id: uuid::Uuid,
     title: String,
@@ -1123,6 +1152,7 @@ pub(super) async fn rename_thread(store: &Arc<dyn Store>, args: &Value) -> Resul
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetThreadSteerArgs {
     thread_id: uuid::Uuid,
     steer: String,
@@ -1145,6 +1175,7 @@ pub(super) async fn set_thread_steer(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetThreadSteerArgs {
     thread_id: uuid::Uuid,
 }
@@ -1162,6 +1193,7 @@ pub(super) async fn get_thread_steer(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitForResultArgs {
     thread_id: uuid::Uuid,
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
@@ -1249,6 +1281,7 @@ pub(super) async fn wait_for_result(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DependencyResultsArgs {
     thread_id: uuid::Uuid,
 }
@@ -1285,6 +1318,7 @@ pub(super) async fn get_dependency_results(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitForReadyArgs {
     /// Optional channel to scope readiness to; omit to await any accessible ready
     /// thread in the caller's workspace.
@@ -1381,6 +1415,7 @@ pub(super) async fn wait_for_ready(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitForClaimExpiredArgs {
     /// Optional channel to scope to; omit to await any accessible expiry in the
     /// caller's workspace.
@@ -1474,6 +1509,7 @@ pub(super) async fn wait_for_claim_expired(
 }
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WaitForLandedArgs {
     /// Optional thread to scope to — wait for *this* thread's PR to land. Omit to
     /// await any accessible land in the caller's workspace (or channel).
