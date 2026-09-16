@@ -27,7 +27,7 @@ struct SetRequirementArgs {
 /// qualifying approvals before it can `close` (Cluster 375.4).
 pub(super) async fn set_review_requirement(
     store: &Arc<dyn Store>,
-    _auth: &AuthContext,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetRequirementArgs = serde_json::from_value(args.clone())?;
@@ -36,8 +36,26 @@ pub(super) async fn set_review_requirement(
             "required_count must be >= 0".into(),
         ));
     }
+    let thread_id = ThreadId(a.thread_id);
+    // A gate ratchets (Cluster 397.2). Raising `k` is a tightening any
+    // transitioner may do; lowering it — `0` included, which disarms the gate —
+    // is the waiver, and answers to `channel:admin`. The dispatch capability is
+    // static per tool, so the direction has to be checked here.
+    let current = store
+        .get_review_requirement(thread_id)
+        .await?
+        .map(|r| r.required_count)
+        .unwrap_or(0);
+    if a.required_count < current && !auth.bypass {
+        auth.require_capability(maidan_auth::capability::CHANNEL_ADMIN)
+            .map_err(|_| {
+                McpError::InvalidParams(
+                    "lowering a review requirement needs the channel:admin capability".into(),
+                )
+            })?;
+    }
     let req = store
-        .set_review_requirement(ThreadId(a.thread_id), a.required_count)
+        .set_review_requirement(thread_id, a.required_count)
         .await?;
     Ok(content_json(&req))
 }
