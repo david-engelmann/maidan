@@ -111,8 +111,13 @@ pub async fn occupancy(
             });
         }
     };
-    // Same two-clocks predicates as `threads::channel_occupancy`; the JOIN
-    // is the nested-attribution axis. Mute is not in this query.
+    // Same predicates as `threads::channel_occupancy`, and they have to stay
+    // the same: the two views answer the same question about the same threads,
+    // so a divergence is a contradiction rather than a nuance. `blocked` counts
+    // an explicit `maidan_thread_blocks` row as well as an unsatisfied
+    // dependency, because `claim_next` skips both — reporting a block row as
+    // `queued` advertises work that can never be claimed. The JOIN is the
+    // nested-attribution axis. Mute is not in this query.
     let row = sqlx::query(
         "SELECT
              COUNT(*) AS open_count,
@@ -125,16 +130,20 @@ pub async fn occupancy(
                        AND t.work_started_at IS NOT NULL
                      THEN 1 ELSE 0 END), 0) AS working_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
+                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
                        AND NOT EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
                      THEN 1 ELSE 0 END), 0) AS queued_count,
              COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
-                       AND EXISTS (
+                       AND (
+                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
+                           OR EXISTS (
                            SELECT 1 FROM maidan_thread_dependencies d
                            JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
                            WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
+                       )
                      THEN 1 ELSE 0 END), 0) AS blocked_count
          FROM maidan_threads t
          JOIN maidan_thread_lineage l ON l.thread_id = t.id

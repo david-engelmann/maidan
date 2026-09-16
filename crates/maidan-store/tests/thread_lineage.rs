@@ -189,6 +189,56 @@ async fn run_suite(store: &dyn Store) {
         "the mute row exists; occupancy just does not consult it"
     );
 
+    // C5: an explicit Cluster-386 block row is `blocked`, not `queued`.
+    //
+    // The two occupancy views answer the same question about the same threads,
+    // so a divergence between them is a contradiction. This one was not
+    // cosmetic: `claim_next` skips a blocked thread, so counting it as
+    // `queued` advertised work that could never be claimed, and an
+    // orchestrator sizing its fleet off the number would wait forever for it
+    // to drain. The parent thread here has no dependency edge at all — only a
+    // block row — which is exactly the case the DAG-only clause missed.
+    store
+        .set_thread_block(parent.id, maidan_types::BlockedReason::Human, member)
+        .await
+        .expect("block the parent");
+    let occ_blocked = store.run_occupancy(ws, PI_RUN_ID).await.expect("blocked");
+    assert_eq!(
+        occ_blocked.blocked, 1,
+        "an explicit block row must count as blocked"
+    );
+    assert_eq!(
+        occ_blocked.queued, 0,
+        "and must not also be advertised as claimable"
+    );
+    assert_eq!(occ_blocked.open, 2, "still open work either way");
+    assert_eq!(
+        occ_blocked.blocked + occ_blocked.queued + occ_blocked.claimed + occ_blocked.working,
+        occ_blocked.open,
+        "the four states partition `open` — a thread counted twice or not at \
+         all is the bug this guards"
+    );
+
+    // The two views scope differently — this channel also holds a thread
+    // outside the run — so their totals are not comparable. What must agree is
+    // the classification of the thread they share: the channel view has always
+    // counted this block row as `blocked`, and now the run view does too.
+    let channel_view = store
+        .channel_occupancy(parent.channel_id)
+        .await
+        .expect("channel occupancy");
+    assert_eq!(
+        channel_view.blocked, 1,
+        "the channel view classified it as blocked all along"
+    );
+
+    store.clear_thread_block(parent.id).await.expect("unblock");
+    assert_eq!(
+        store.run_occupancy(ws, PI_RUN_ID).await.expect("cleared"),
+        occ_working,
+        "clearing the block returns the run to where it was"
+    );
+
     let empty = store
         .run_occupancy(ws, "no-such-run")
         .await
