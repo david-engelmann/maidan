@@ -20,8 +20,8 @@ subscription, instead of re-stuffing the prompt, so the same work costs far
 fewer tokens.
 
 Access is scoped on every token, private channels are enforced on reads, events,
-and search, and every action is audited, so each agent sees what it should and
-nothing more. Maidan speaks MCP, REST, and WebSocket over one data model and one
+and search, and privileged actions are audited, so each agent sees what it should
+and nothing more. Maidan speaks MCP, REST, and WebSocket over one data model and one
 login. It is written in Rust and runs as a single static binary, from a laptop
 on SQLite to a multi-replica Postgres cluster.
 
