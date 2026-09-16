@@ -399,6 +399,80 @@ one mode without parsing backend-specific `rank` ranges.
 
 ## Security
 
+### WASI slash handlers run on **wasmi**, not wasmtime (Wave 3 #36)
+
+**Decision.** Use **[wasmi](https://github.com/wasmi-labs/wasmi)** — a pure
+interpreter — as the WASI engine for slash handlers. Not wasmtime, despite
+wasmtime being the Bytecode Alliance reference implementation and the default
+choice for most embedders.
+
+**Context.** Cluster 396 landed the ABI (`crates/maidan-types/src/wasi.rs`) and
+nothing else: `SlashHandlerKind::wasi` is registrable on both write surfaces and
+every dispatch returns `wasi_runtime_unavailable`. The ABI already pins the
+shape the engine has to satisfy — WASI preview 1 (`wasi_snapshot_preview1`, any
+other import module is a banned outbound host call), fuel (`WASI_DEFAULT_FUEL`
+25M, `WASI_MAX_FUEL` 100M) and a linear-memory cap (16 MiB default, 64 MiB hard).
+It is also already engine-agnostic in wording: *"interpreter / cranelift fuel
+units"*. Both engines satisfy preview 1; wasmi does so through `wasmi-wasi`.
+
+**Why not wasmtime.** This is a code-execution surface accepting untrusted guest
+modules, in a multi-tenant server. The threat that matters is sandbox escape, and
+wasmtime's escapes come from its **compilers**:
+
+- [Wasmtime's 9 April 2026 advisories](https://bytecodealliance.org/articles/wasmtime-security-advisories)
+  were the largest set in the project's history — triple the total for all of
+  2025, and double the number of Critical advisories ever published. Four issues
+  in the Winch backend, two in Cranelift.
+- [RUSTSEC-2026-0095](https://rustsec.org/advisories/RUSTSEC-2026-0095.html)
+  (CVE-2026-34987, CVSS 9.0 Critical) is a sandbox-escaping memory access via
+  the Winch backend.
+- RUSTSEC-2026-0269 is a **WASI filesystem sandbox escape** through trailing
+  slashes on paths and symlinks (CVSS 8.8), alongside RUSTSEC-2026-0268
+  (guest-controlled host allocation).
+- Earlier: [RUSTSEC-2026-0006](https://rustsec.org/advisories/RUSTSEC-2026-0006)
+  (out-of-sandbox load via `f64.copysign` on x86-64) and
+  [a longer tail](https://rustsec.org/packages/wasmtime.html).
+
+**In fairness to wasmtime:** Cranelift on x86-64 — the default, most-scrutinised
+backend — was *not* affected by the two Critical escapes; Winch was. Choosing
+wasmtime with Cranelift is a defensible position, and this ADR should not be read
+as "wasmtime is unsafe." It is a statement about which *class* of bug we want to
+be exposed to at all. A JIT has a codegen attack surface; an interpreter does not
+have one to have bugs in.
+
+[wasmi](https://wasmruntime.com/en/runtimes/wasmi) has no RUSTSEC advisories, has
+been audited twice, and is the execution engine for Polkadot/Substrate — an
+adversarial, high-value environment whose entire threat model is "run untrusted
+code submitted by strangers."
+
+**The deciding argument is fuel stability, not the advisory count.**
+`WASI_DEFAULT_FUEL` is a documented, operator-tunable constant. Under wasmtime it
+counts Cranelift fuel, whose cost per unit of work can move between versions — so
+the same guest can start exceeding an unchanged cap after a routine dependency
+bump, and the operator's number silently means something different.
+[Wasmi 2.0 ships *stable* fuel metering](https://wasmi-labs.github.io/blog/posts/wasmi-v2.0/):
+metered fuel per unit of execution is held constant across versions. For a
+published cap that operators tune, that is a correctness property.
+
+**What we give up.** Interpretation is materially slower than JIT. That is
+acceptable here and would not be everywhere: a slash handler is *the tool, not an
+agent runtime* — it parses arguments, does something small, returns JSON — it is
+already bounded by fuel and by the existing slash `DISPATCH_TIMEOUT`, and it runs
+on an interactive path where a guest needing JIT-class throughput is misplaced by
+design. We also give up the Component Model / WASI p2 trajectory, which the
+preview-1 ABI has already declined for now. Revisit if a real handler is
+compute-bound rather than IO-shaped.
+
+**Secondary benefits.** A much smaller dependency tree (no Cranelift, no object,
+no codegen stack) — less `cargo-deny` surface on a project that has already been
+bitten twice by transitive advisories, and a faster build on a workspace where
+the release arm64 leg has been the pole before.
+
+**Revisit if:** a handler's workload becomes genuinely compute-bound; wasmi's
+audit/advisory record degrades; WASI p2 / the Component Model becomes required by
+the ABI; or wasmtime ships an interpreter-only, codegen-free configuration that
+carries the same "no compiler in the trust path" property.
+
 ### Postgres Row-Level Security assessed, deferred; app-layer RBAC is authoritative (`v216.0.0`)
 
 **Decision.** Do **not** adopt Postgres Row-Level Security (RLS). Tenant isolation
