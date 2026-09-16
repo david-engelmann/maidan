@@ -56,3 +56,42 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
 }
+
+/// Cluster 398.1: the SQLite twin of the claim. SQLite serializes writers, so a
+/// second claimer sees the first's committed `claimed_at` and skips the row —
+/// and an expired lease is reclaimable so a crashed relay strands nothing.
+#[tokio::test]
+async fn a_claimed_row_is_excluded_until_its_lease_expires() {
+    let pool = sqlite_pool().await;
+    let store = SqliteStore::new(pool.clone());
+    store
+        .append_event(&workspace_created_event("sqlite-claim"))
+        .await
+        .unwrap();
+
+    let first = outbox::claim_pending(&pool, 8, 60).await.unwrap();
+    assert_eq!(first.len(), 1, "the row is claimable once");
+
+    assert!(
+        outbox::claim_pending(&pool, 8, 60)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a live claim must exclude the row from a second relay"
+    );
+
+    // A failed attempt releases the claim for a prompt retry.
+    outbox::record_attempt(&pool, first[0].id).await.unwrap();
+    assert_eq!(
+        outbox::claim_pending(&pool, 8, 60).await.unwrap().len(),
+        1,
+        "record_attempt should release the claim"
+    );
+
+    // An expired lease is reclaimable.
+    assert_eq!(
+        outbox::claim_pending(&pool, 8, 0).await.unwrap().len(),
+        1,
+        "an expired claim must be reclaimable"
+    );
+}

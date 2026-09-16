@@ -10,6 +10,11 @@ use metrics::counter;
 use tracing::warn;
 
 const BATCH: i64 = 64;
+
+/// How long a claimed-but-unpublished outbox row stays claimed before another
+/// relay may take it (Cluster 398.1). Long enough that a healthy tick never
+/// races itself, short enough that a crashed relay's rows resume promptly.
+const CLAIM_LEASE_SECS: i64 = 60;
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// Idle backoff cap: an idle relay polls at most this often (Cluster 108).
 const DEFAULT_MAX_POLL_INTERVAL: Duration = Duration::from_millis(1000);
@@ -133,7 +138,12 @@ impl OutboxRelay {
     }
 
     pub async fn run_once(&self) -> Result<RelayTick, maidan_store::StoreError> {
-        let pending = self.backend.list_pending(BATCH).await?;
+        // Claim, don't list (Cluster 398.1). This relay is spawned in every
+        // replica and cannot be disabled in production, so an unlocked read had
+        // every replica relaying every row — N POSTs per tenant webhook and N
+        // `fsm_hook` firings with `AuthContext::bypass()`. The claim is leased,
+        // not permanent, so a relay that dies mid-tick strands nothing.
+        let pending = self.backend.claim_pending(BATCH, CLAIM_LEASE_SECS).await?;
         let fetched = pending.len();
         // Collect the rows that publish cleanly and mark them in one statement
         // after the loop (Cluster 168, H4) rather than a round-trip per row. A

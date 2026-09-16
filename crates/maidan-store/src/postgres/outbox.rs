@@ -26,6 +26,62 @@ pub struct QuarantinedOutboxRow {
     pub quarantined_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Atomically claim up to `limit` relayable rows for this relay (Cluster 398.1).
+///
+/// The relay is spawned in **every** replica and `validate_startup` refuses to
+/// disable it in production, so an unlocked `SELECT` meant every replica relayed
+/// every row: N POSTs to each tenant webhook (there is no unique on
+/// `(subscription_id, log_id)`) and N `fsm_hook` firings through
+/// `dispatch_mcp_tool` with `AuthContext::bypass()`.
+///
+/// `FOR UPDATE SKIP LOCKED` inside a CTE is the same shape `claim_next_thread`
+/// (Cluster 192) and `claim_next_due_schedule` (Cluster 227) already use:
+/// concurrent claimers take disjoint rows rather than blocking. The lease is
+/// what makes a crash safe — a claimed-but-unpublished row becomes claimable
+/// again after `lease_secs`, so **at-least-once is preserved: a claim is not a
+/// publish.**
+pub async fn claim_pending(
+    pool: &PgPool,
+    limit: i64,
+    lease_secs: i64,
+) -> Result<Vec<OutboxRow>, StoreError> {
+    let rows = sqlx::query(&format!(
+        "WITH candidate AS (
+             SELECT o.id
+             FROM maidan_outbox o
+             WHERE {RELAYABLE}
+               AND (o.claimed_at IS NULL
+                    OR o.claimed_at < NOW() - make_interval(secs => $2::double precision))
+             ORDER BY o.id ASC
+             LIMIT $1
+             FOR UPDATE SKIP LOCKED
+         ), claimed AS (
+             UPDATE maidan_outbox o
+             SET claimed_at = NOW()
+             FROM candidate c
+             WHERE o.id = c.id
+             RETURNING o.id, o.log_id, o.attempts
+         )
+         SELECT c.id, c.log_id, c.attempts, e.payload
+         FROM claimed c
+         JOIN maidan_events e ON e.id = c.log_id
+         ORDER BY c.id ASC"
+    ))
+    .bind(limit)
+    .bind(lease_secs as f64)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| OutboxRow {
+            id: row.get("id"),
+            log_id: row.get("log_id"),
+            attempts: row.get("attempts"),
+            payload: row.get("payload"),
+        })
+        .collect())
+}
+
 pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
         "SELECT o.id, o.log_id, o.attempts, e.payload
@@ -84,10 +140,14 @@ pub async fn mark_published_batch(pool: &PgPool, outbox_ids: &[i64]) -> Result<(
 }
 
 /// Increments `attempts` and returns the new value.
+/// Count a failed relay attempt and **release the claim** (Cluster 398.1), so
+/// the row is retryable on the next tick rather than waiting out its lease. The
+/// lease exists to survive a crashed claimer, not to pace retries — `attempts`
+/// and the quarantine ceiling already do that.
 pub async fn record_attempt(pool: &PgPool, outbox_id: i64) -> Result<i32, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_outbox
-         SET attempts = attempts + 1
+         SET attempts = attempts + 1, claimed_at = NULL
          WHERE id = $1
          RETURNING attempts",
     )
