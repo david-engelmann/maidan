@@ -1,0 +1,34 @@
+[package]
+name = "maidan-wasi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+description = "Sandboxed WASI host for Maidan slash-command handlers."
+
+[dependencies]
+maidan-types = { path = "../maidan-types" }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# No `wasmi_wasi`. The ABI (`maidan_types::wasi::WASI_ALLOWED_PREVIEW1`) permits
+# exactly 17 preview-1 calls — stdin/stdout/args/env/clocks/random — and nothing
+# that touches paths or sockets. A full preview-1 implementation would supply the
+# filesystem surface and leave us filtering it back out; supplying only the
+# allowlist makes a banned import a *link* failure instead of a check we could
+# get wrong. It also keeps the filesystem-escape class (cf. the wasmtime WASI
+# trailing-slash escape, RUSTSEC-2026-0269) out of the trust path entirely.
+wasmi = "0.51"
+# `LimiterError` (the `ResourceLimiter` error type) is not re-exported from
+# `wasmi`, so the memory cap has to name it from `wasmi_core` directly. Same
+# version, already in the tree.
+wasmi_core = "0.51"
+
+[dev-dependencies]
+# Hand-written WAT keeps each sandbox test pinned to one property.
+wat = "1"
+serde_json.workspace = true
+uuid.workspace = true
