@@ -588,9 +588,11 @@ once the replica has replayed past the token; until then it falls back to the
 primary. A read with no token may be served from the replica immediately (the caller
 has asserted no causality requirement).
 
-**Not `Maidan-Room-LSN`.** That header is the event-log high-water
-(`MAX(maidan_events.id)`, decimal, always on — including SQLite) so a
-subscriber or webhook consumer can see projector / broadcast lag. It is
+**Not `Maidan-Room-LSN`.** That header is **your workspace's** event-log
+high-water (decimal, including SQLite) so a subscriber or webhook consumer can
+see projector / broadcast lag. Since Cluster 398.8 it is scoped to the caller's
+room rather than the instance — the instance head was not comparable to anything
+a client had seen, so a caught-up consumer could never reach it. It is
 **not** a WAL LSN, is not gated on a replica, and must not be echoed as
 `Maidan-Consistency-Token`. See [Integration.md](Integration.md) (subscribe).
 

@@ -46,17 +46,28 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
 
     match resolve_bearer(state.store.as_ref(), secret).await {
         Ok(ctx) => {
+            let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            next.run(req).await
+            tag_room(next.run(req).await, workspace_id)
         }
         Err(_) => match resolve_peer_bearer(state.store.as_ref(), secret).await {
             Ok(peer) => {
+                let workspace_id = peer.workspace_id;
                 req.extensions_mut().insert(PeerContext(peer));
-                next.run(req).await
+                tag_room(next.run(req).await, workspace_id)
             }
             Err(_) => ApiError::Unauthorized.into_response(),
         },
     }
+}
+
+/// Attach the resolved room to the response for the Room-LSN layer
+/// (Cluster 398.8), which is applied outside every auth layer and so cannot
+/// resolve the caller's workspace itself.
+fn tag_room(mut resp: Response, workspace_id: maidan_types::WorkspaceId) -> Response {
+    resp.extensions_mut()
+        .insert(crate::room_lsn::RoomScope(workspace_id));
+    resp
 }
 
 pub fn parse_bearer(header_value: &str) -> Option<&str> {
@@ -89,8 +100,9 @@ pub async fn session_or_bearer_middleware(
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
+            let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return next.run(req).await;
+            return tag_room(next.run(req).await, workspace_id);
         }
     }
 
@@ -105,9 +117,10 @@ pub async fn session_or_bearer_middleware(
                     SEARCH_QUERY.into(),
                 ],
             );
+            let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            next.run(req).await
+            tag_room(next.run(req).await, workspace_id)
         }
         Err(err) => err.into_response(),
     }
@@ -126,8 +139,9 @@ pub async fn ui_session_or_bearer_middleware(
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
+            let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return next.run(req).await;
+            return tag_room(next.run(req).await, workspace_id);
         }
     }
 
@@ -144,9 +158,10 @@ pub async fn ui_session_or_bearer_middleware(
                     SEARCH_QUERY.into(),
                 ],
             );
+            let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            next.run(req).await
+            tag_room(next.run(req).await, workspace_id)
         }
         Err(err) => err.into_response(),
     }

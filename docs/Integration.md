@@ -169,7 +169,7 @@ is [contracts/lexicon/catalog.json](../contracts/lexicon/catalog.json).
 
 | Header | Value | When | Job |
 |--------|-------|------|-----|
-| `Maidan-Room-LSN` | Decimal `maidan_events.id` high-water (`0` if empty) | Always (SQLite too). Skipped on `/health*`, `/metrics`, `/openapi.json`, `/ui`, `/.well-known/` | Projector / broadcast lag: compare last-seen `log_id` to the room head |
+| `Maidan-Room-LSN` | Decimal `maidan_events.id` high-water **for your workspace** (`0` if empty) | On authenticated responses (SQLite too). Skipped on `/health*`, `/metrics`, `/openapi.json`, `/ui`, `/.well-known/`, on rejected responses (401/403/429/5xx), and where there is no authenticated room | Projector / broadcast lag: compare last-seen `log_id` to the head you are chasing. It is **your room's** head, so a caught-up consumer reaches it — before Cluster 398.8 it was the instance-wide head and never could |
 | `Maidan-Consistency-Token` | Postgres WAL LSN (`high/low` hex) | Successful mutations, **only when a read replica is configured** | Read-your-writes (Cluster 263). Echo on a later `GET`/`HEAD` |
 
 A Room-LSN parser must reject `/` so a WAL token cannot be treated as a room head.
