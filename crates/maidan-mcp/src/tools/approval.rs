@@ -17,7 +17,17 @@ use crate::error::McpError;
 use maidan_auth::AuthContext;
 use maidan_types::{ApprovalGateId, NewApprovalGate};
 
-#[derive(Deserialize)]
+/// Unknown fields are rejected (Cluster 398.5).
+///
+/// `thread_id` is load-bearing by its absence: supplied, the pending gate blocks
+/// `claim_next` so no agent picks the thread up until a human answers; omitted,
+/// the gate is unattached and gates nothing. A misspelled key was
+/// indistinguishable from deliberate omission, so `threadId` or `thread`
+/// returned `200` with a gate that looks right and blocks nobody — the agent
+/// claims the thread and proceeds without the human. Same shape as the budget
+/// dimensions in Cluster 398.4: a typo silently disarms a control.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RequestApprovalArgs {
     /// Human-readable description of what needs approval.
     prompt: String,
@@ -85,5 +95,37 @@ pub(super) async fn get_approval_gate(
             Ok(content_json(&serde_json::to_value(g)?))
         }
         _ => Ok(content_json(&Value::Null)),
+    }
+}
+
+#[cfg(test)]
+mod arg_strictness_tests {
+    use super::RequestApprovalArgs;
+
+    /// Cluster 398.5: a misspelled `thread_id` must not read as an omission.
+    ///
+    /// Omission is meaningful here — an unattached gate blocks nothing, so
+    /// before this a `threadId` typo produced a `200` and a gate that looks
+    /// correct while `claim_next` hands the thread straight to an agent.
+    #[test]
+    fn a_misspelled_thread_id_is_rejected_rather_than_leaving_the_gate_unattached() {
+        for key in ["threadId", "thread", "thread_uuid"] {
+            let args = serde_json::json!({ "prompt": "ship it?", key: uuid::Uuid::nil() });
+            let err = serde_json::from_value::<RequestApprovalArgs>(args)
+                .expect_err("a misspelled thread_id must not parse as an omission");
+            assert!(
+                err.to_string().contains(key),
+                "the error should name the offending key {key}, got: {err}"
+            );
+        }
+    }
+
+    /// Deliberately omitting `thread_id` still means "a standalone gate".
+    #[test]
+    fn omitting_thread_id_still_means_an_unattached_gate() {
+        let args = serde_json::json!({ "prompt": "ship it?" });
+        let parsed: RequestApprovalArgs = serde_json::from_value(args).expect("parses");
+        assert!(parsed.thread_id.is_none());
+        assert!(parsed.schema.is_none());
     }
 }
