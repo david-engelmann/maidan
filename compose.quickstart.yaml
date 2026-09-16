@@ -34,8 +34,10 @@ services:
       MAIDAN_BOOTSTRAP: "1"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
+    # Loopback-only by design. The host port is overridable because 8080 is
+    # commonly already taken; a conflict would fail the whole `up`.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${MAIDAN_HOST_PORT:-8080}:8080"
     volumes:
       - maidan_quickstart_data:/data
     restart: unless-stopped

@@ -17,6 +17,31 @@ docker compose --profile full up   # + minio + maidan-server
 curl http://localhost:8080/health  # after maidan-server lands /health
 ```
 
+### Publishing the host port
+
+`MAIDAN_BIND` is the port *inside* the container and stays 8080. What the
+host sees is the published mapping, and 8080 is one of the most contended
+ports on a developer machine — if something else already owns it, the bind
+fails and the stack does not start at all. Override the host side:
+
+```sh
+MAIDAN_HOST_PORT=18080 docker compose --profile full up
+curl http://localhost:18080/health
+```
+
+`MAIDAN_PEER_HOST_PORT` (default 8081) does the same for the second server
+in the `federation` profile, and `compose.quickstart.yaml` honours
+`MAIDAN_HOST_PORT` too. The scale and OTLP profiles already had their own
+(`MAIDAN_SCALE_LB_PORT`, `MAIDAN_OTLP_PORT`).
+
+**A consumer on the same Docker network needs no published port at all.**
+Publishing exists to reach the server *from the host*; container-to-container
+traffic goes to the service name and the container port directly — so an
+adjacent compose project that joins Maidan's network reaches it at
+`http://maidan-server:8080` whether or not a host mapping exists, and is
+unaffected by a conflict on 8080. Publish only what a human or a
+host-resident process has to reach.
+
 ### Hot-reload dev stack
 
 ```sh
