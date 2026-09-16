@@ -24,7 +24,7 @@ pub async fn list_tombstones(
     if !include_purged {
         return Ok(retained);
     }
-    let purged = list_purged(pool, workspace_id, channel_id, thread_id).await?;
+    let purged = list_purged(pool, workspace_id, channel_id, thread_id, limit).await?;
     let retained_ids: std::collections::HashSet<Uuid> = retained.iter().map(|r| r.id).collect();
     for row in purged {
         if !retained_ids.contains(&row.id) {
@@ -85,11 +85,25 @@ fn row_to_retained(row: &sqlx::sqlite::SqliteRow) -> TombstoneRecord {
     }
 }
 
+/// The purged half of the explorer: tombstone records reconstructed from the
+/// event log, for messages whose rows were hard-deleted.
+///
+/// `limit` is applied **in the query** (Cluster 400.4). This used to
+/// materialize every `message_tombstoned` event in the scope and parse each
+/// payload, only for the caller to keep `limit` of them — so a heavily-purged
+/// workspace paid a full scan and a full parse for a `limit=10` read.
+///
+/// Taking the top `limit` from each side and merging is correct: the true top
+/// `limit` of a union is contained in the union of each side's top `limit`. The
+/// caller re-sorts and truncates, so ordering here only has to agree on the
+/// primary key (`occurred_at` descending) — and the dedup against retained rows
+/// removes duplicates, which never added to the count.
 async fn list_purged(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
+    limit: i64,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let mut sql = String::from(
         "SELECT id, payload, occurred_at, channel_id, thread_id
@@ -102,6 +116,7 @@ async fn list_purged(
     if thread_id.is_some() {
         sql.push_str(" AND thread_id = ?");
     }
+    sql.push_str(" ORDER BY occurred_at DESC, id DESC LIMIT ?");
     let mut q = sqlx::query(&sql).bind(workspace_id.0);
     if let Some(cid) = channel_id {
         q = q.bind(cid.0);
@@ -109,7 +124,7 @@ async fn list_purged(
     if let Some(tid) = thread_id {
         q = q.bind(tid.0);
     }
-    let rows = q.fetch_all(pool).await?;
+    let rows = q.bind(limit).fetch_all(pool).await?;
     let mut out = Vec::new();
     for row in &rows {
         let payload_text: String = row.get("payload");
