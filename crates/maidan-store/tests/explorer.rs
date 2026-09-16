@@ -296,10 +296,91 @@ async fn run_explorer_suite(store: &dyn Store) {
     );
 }
 
+/// Cluster 400.4: the limit binds the **purged** half of the explorer too.
+///
+/// `list_purged` used to fetch and parse every `message_tombstoned` event in
+/// the scope, leaving the caller to truncate — so a heavily-purged workspace
+/// paid a full scan and a full parse for a `limit=10` read.
+///
+/// Its own workspace on purpose: the assertion is about counts, and sharing the
+/// main suite's fixture made six extra purges change a census further down.
+async fn run_purged_bound_suite(store: &dyn Store) {
+    let (ws, _) = store
+        .create_workspace_with_event(NewWorkspace {
+            name: "purged-bound".into(),
+        })
+        .await
+        .expect("ws");
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bound-alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("alice");
+    let (channel, _) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: ws.id,
+            name: "bound-c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+        })
+        .await
+        .expect("thread");
+
+    let mut purged = Vec::new();
+    for i in 0..6 {
+        let (m, _) = store
+            .post_message_with_event(new_msg(thread.id, alice.id, &format!("doomed-{i}")), None)
+            .await
+            .expect("doomed");
+        store
+            .tombstone_message_with_event(m.id, None)
+            .await
+            .expect("tombstone");
+        store.purge_message(m.id).await.expect("purge");
+        purged.push(m.id.0);
+    }
+
+    let bounded = store
+        .list_tombstones(ws.id, None, None, true, 3)
+        .await
+        .expect("bounded include_purged");
+    assert_eq!(bounded.len(), 3, "the limit must bind the purged half");
+    let newest: std::collections::HashSet<_> = purged.iter().rev().take(3).copied().collect();
+    assert_eq!(
+        bounded
+            .iter()
+            .map(|t| t.id)
+            .collect::<std::collections::HashSet<_>>(),
+        newest,
+        "a bounded read must keep the newest, not an arbitrary prefix"
+    );
+
+    // An unbounded-enough read still sees all six, so the bound narrows the
+    // result rather than losing rows.
+    let all = store
+        .list_tombstones(ws.id, None, None, true, 50)
+        .await
+        .expect("all");
+    assert_eq!(all.len(), 6);
+}
+
 #[tokio::test]
 async fn explorer_tombstones_backlinks_and_census_sqlite() {
     let store = sqlite().await;
     run_explorer_suite(&store).await;
+    run_purged_bound_suite(&store).await;
 }
 
 #[tokio::test]
@@ -334,4 +415,5 @@ async fn explorer_tombstones_backlinks_and_census_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_explorer_suite(&store).await;
+    run_purged_bound_suite(&store).await;
 }
