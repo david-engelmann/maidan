@@ -20,6 +20,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListTombstonesArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,
@@ -34,11 +35,13 @@ struct ListTombstonesArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListMessageBacklinksArgs {
     message_id: Uuid,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KindCensusArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,

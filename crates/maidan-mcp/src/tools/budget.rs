@@ -66,6 +66,7 @@ pub(super) async fn get_thread_budget(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReportUsageArgs {
     thread_id: uuid::Uuid,
     #[serde(default)]
@@ -104,6 +105,7 @@ pub(super) async fn report_usage(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListDlqArgs {
     channel_id: uuid::Uuid,
     #[serde(default)]

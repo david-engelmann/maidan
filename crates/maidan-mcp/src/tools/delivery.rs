@@ -18,6 +18,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ThreadIdArgs {
     thread_id: uuid::Uuid,
 }
@@ -34,6 +35,7 @@ pub(super) async fn list_result_deliveries(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReplayArgs {
     thread_id: uuid::Uuid,
     delivery_id: uuid::Uuid,

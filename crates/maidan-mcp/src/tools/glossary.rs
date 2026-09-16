@@ -17,6 +17,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetGlossaryArgs {
     term: String,
     definition: String,
@@ -53,6 +54,7 @@ pub(super) async fn set_glossary_term(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetGlossaryArgs {
     term: String,
 }

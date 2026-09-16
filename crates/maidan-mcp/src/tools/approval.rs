@@ -73,6 +73,7 @@ pub(super) async fn request_approval(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GetApprovalGateArgs {
     gate_id: ApprovalGateId,
 }

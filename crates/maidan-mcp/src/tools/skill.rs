@@ -14,6 +14,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemberSkillArgs {
     member_id: uuid::Uuid,
     skill: String,
@@ -35,6 +36,7 @@ pub(super) async fn add_member_skill(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemberIdArgs {
     member_id: uuid::Uuid,
 }
@@ -50,6 +52,7 @@ pub(super) async fn list_member_skills(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ThreadSkillArgs {
     thread_id: uuid::Uuid,
     skill: String,
@@ -72,6 +75,7 @@ pub(super) async fn add_thread_required_skill(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ThreadIdArgs {
     thread_id: uuid::Uuid,
 }

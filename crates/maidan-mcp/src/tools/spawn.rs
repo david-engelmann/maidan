@@ -16,6 +16,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetSpawnBudgetArgs {
     #[serde(default)]
     max_children: Option<i64>,

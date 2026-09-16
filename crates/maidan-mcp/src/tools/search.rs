@@ -23,6 +23,7 @@ enum SearchMessagesMode {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SearchMessagesArgs {
     workspace_id: uuid::Uuid,
     query: String,

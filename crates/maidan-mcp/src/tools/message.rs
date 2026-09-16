@@ -38,6 +38,7 @@ async fn observe_spawn_denial<T>(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PostDmMessageArgs {
     dm_conversation_id: uuid::Uuid,
     author_id: uuid::Uuid,
@@ -148,6 +149,7 @@ async fn publish_routed_mentions(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListMessagesArgs {
     thread_id: uuid::Uuid,
     #[serde(default = "default_limit")]
@@ -167,6 +169,7 @@ pub(super) async fn list_messages(store: &Arc<dyn Store>, args: &Value) -> Resul
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PostMessageArgs {
     thread_id: uuid::Uuid,
     author_id: uuid::Uuid,
@@ -297,6 +300,7 @@ pub(super) async fn post_message(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EditMessageArgs {
     message_id: uuid::Uuid,
     editor_id: uuid::Uuid,
@@ -369,6 +373,7 @@ pub(super) async fn edit_message(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RecordMentionArgs {
     message_id: uuid::Uuid,
     member_id: uuid::Uuid,

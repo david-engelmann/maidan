@@ -25,6 +25,7 @@ pub(super) async fn list_secrets(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResolveArgs {
     name: String,
 }

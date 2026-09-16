@@ -47,7 +47,7 @@ mod spawn;
 mod thread;
 mod whoami;
 
-pub use catalog::catalog;
+pub use catalog::{catalog, declared_arguments};
 
 /// The tool catalog filtered to the tools the caller may invoke (Cluster 176,
 /// token round 3). Bypass callers (auth disabled) see everything; otherwise a

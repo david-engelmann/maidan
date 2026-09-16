@@ -11,6 +11,7 @@ use super::content_json;
 use crate::error::McpError;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CastVoteArgs {
     message_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -47,6 +48,7 @@ pub(super) async fn cast_vote(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReactionArgs {
     message_id: uuid::Uuid,
     member_id: uuid::Uuid,
@@ -87,6 +89,7 @@ pub(super) async fn remove_reaction(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListReactionsArgs {
     message_id: uuid::Uuid,
 }
@@ -103,6 +106,7 @@ pub(super) async fn list_reactions(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PinArgs {
     thread_id: uuid::Uuid,
     message_id: uuid::Uuid,
@@ -146,6 +150,7 @@ pub(super) async fn unpin_message(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListPinsArgs {
     thread_id: uuid::Uuid,
 }

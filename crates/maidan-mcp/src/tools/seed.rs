@@ -15,6 +15,7 @@ use crate::error::McpError;
 use crate::server::McpServer;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SeedArgs {
     message_id: uuid::Uuid,
     title: String,

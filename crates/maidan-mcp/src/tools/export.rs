@@ -19,12 +19,14 @@ use crate::error::McpError;
 use crate::server::McpServer;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExportArgs {
     #[serde(default)]
     workspace_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ImportArgs {
     envelope: SignedExport,
     #[serde(default)]
@@ -109,13 +111,24 @@ pub(super) async fn import_workspace(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a = match serde_json::from_value::<ImportArgs>(args.clone()) {
-        Ok(a) => a,
-        Err(_) => ImportArgs {
+    // Two accepted shapes: the envelope nested under `envelope` (which can also
+    // carry `mode`/`force`), or the bare envelope as the whole argument object.
+    //
+    // Which one the caller meant is decided by the presence of the `envelope`
+    // key, NOT by whether the nested shape happens to parse (Cluster 398.6).
+    // The old `Err(_) => defaults` swallowed the reason: a nested envelope with
+    // a malformed `mode`, or a typo'd key now that the struct is strict, fell
+    // through to the bare path and silently ran with `mode: "new"` — the caller
+    // asked for a restore and got a detached workspace, with no error.
+    let a = if args.get("envelope").is_some() {
+        serde_json::from_value::<ImportArgs>(args.clone())
+            .map_err(|e| McpError::InvalidParams(format!("import arguments: {e}")))?
+    } else {
+        ImportArgs {
             envelope: parse_envelope(args)?,
             mode: None,
             force: false,
-        },
+        }
     };
     maidan_auth::verify_export(&a.envelope, verify_pin(server))
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;

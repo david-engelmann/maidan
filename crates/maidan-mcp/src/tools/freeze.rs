@@ -33,6 +33,7 @@ async fn ensure_same_workspace(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FreezeArgs {
     member_id: uuid::Uuid,
     #[serde(default)]
@@ -59,6 +60,7 @@ pub(super) async fn freeze_member(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UnfreezeArgs {
     member_id: uuid::Uuid,
 }

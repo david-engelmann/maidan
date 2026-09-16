@@ -408,7 +408,14 @@ async fn dispatch_mcp_tool(
     thread_id: ThreadId,
     author_id: MemberId,
 ) -> Value {
-    let args = build_mcp_arguments(parsed, workspace_id, channel_id, thread_id, author_id);
+    let args = build_mcp_arguments(
+        &command.handler_target,
+        parsed,
+        workspace_id,
+        channel_id,
+        thread_id,
+        author_id,
+    );
     match state
         .mcp
         .call_tool(auth, &command.handler_target, &args)
@@ -419,13 +426,30 @@ async fn dispatch_mcp_tool(
     }
 }
 
+/// Build a tool call from a slash invocation, injecting **only the context the
+/// tool declares** (Cluster 398.6).
+///
+/// This used to inject `workspace_id`, `channel_id`, `thread_id` and `author_id`
+/// into every call regardless, and relied on each tool silently discarding what
+/// it did not declare. That stopped being true when the argument structs began
+/// rejecting unknown fields — `/channels` → `list_channels` started failing
+/// because it was handed three ids it never asked for — and it was a poor thing
+/// to depend on in the first place: a bridge that sprays arguments at a callee
+/// is indistinguishable from one that is passing the wrong ones.
+///
+/// The catalog already publishes each tool's `inputSchema`, so the declared
+/// property set is the honest filter. A tool with no schema entry (or an empty
+/// one) gets no injected context rather than all of it — fail closed, since an
+/// unknown tool is exactly the case where guessing is least safe.
 fn build_mcp_arguments(
+    tool: &str,
     parsed: &ParsedSlashCommand,
     workspace_id: WorkspaceId,
     channel_id: ChannelId,
     thread_id: ThreadId,
     author_id: MemberId,
 ) -> Value {
+    let declared = tools::declared_arguments(tool).unwrap_or_default();
     let mut base = if parsed.args.trim_start().starts_with('{') {
         serde_json::from_str(&parsed.args).unwrap_or_else(|_| json!({ "text": parsed.args }))
     } else if parsed.args.is_empty() {
@@ -434,20 +458,23 @@ fn build_mcp_arguments(
         json!({ "text": parsed.args })
     };
     let Some(obj) = base.as_object_mut() else {
-        return json!({
-            "workspace_id": workspace_id.0,
-            "channel_id": channel_id.0,
-            "thread_id": thread_id.0,
-            "author_id": author_id.0,
-            "text": parsed.args
-        });
+        return json!({});
     };
-    obj.entry("workspace_id")
-        .or_insert_with(|| json!(workspace_id.0));
-    obj.entry("channel_id")
-        .or_insert_with(|| json!(channel_id.0));
-    obj.entry("thread_id").or_insert_with(|| json!(thread_id.0));
-    obj.entry("author_id").or_insert_with(|| json!(author_id.0));
+    for (key, value) in [
+        ("workspace_id", json!(workspace_id.0)),
+        ("channel_id", json!(channel_id.0)),
+        ("thread_id", json!(thread_id.0)),
+        ("author_id", json!(author_id.0)),
+    ] {
+        if declared.contains(key) {
+            obj.entry(key).or_insert(value);
+        }
+    }
+    // `text` is only meaningful to a tool that declares it; the caller's own
+    // args are left alone either way.
+    if !declared.contains("text") {
+        obj.remove("text");
+    }
     base
 }
 
@@ -518,5 +545,80 @@ impl maidan_mcp::SlashDispatcher for ServerSlashDispatcher {
         )
         .await;
         slash_metadata(parsed, &result)
+    }
+}
+
+#[cfg(test)]
+mod mcp_argument_tests {
+    use super::*;
+
+    fn parsed(args: &str) -> ParsedSlashCommand {
+        ParsedSlashCommand {
+            name: "x".into(),
+            args: args.into(),
+        }
+    }
+
+    fn ids() -> (WorkspaceId, ChannelId, ThreadId, MemberId) {
+        (
+            WorkspaceId(uuid::Uuid::from_u128(1)),
+            ChannelId(uuid::Uuid::from_u128(2)),
+            ThreadId(uuid::Uuid::from_u128(3)),
+            MemberId(uuid::Uuid::from_u128(4)),
+        )
+    }
+
+    /// Cluster 398.6: the bridge injects only what the tool declares.
+    ///
+    /// It used to add all four context ids to every call and rely on the tool
+    /// discarding the ones it did not want. `list_channels` takes a
+    /// `workspace_id` and nothing else, so once the argument structs rejected
+    /// unknown fields the `/channels` command started failing outright.
+    #[test]
+    fn only_declared_context_is_injected() {
+        let (ws, ch, th, author) = ids();
+        let args = build_mcp_arguments("list_channels", &parsed(""), ws, ch, th, author);
+        let obj = args.as_object().expect("object");
+        assert_eq!(obj.get("workspace_id"), Some(&json!(ws.0)));
+        for undeclared in ["channel_id", "thread_id", "author_id", "text"] {
+            assert!(
+                !obj.contains_key(undeclared),
+                "list_channels does not declare {undeclared}; injecting it is what broke /channels"
+            );
+        }
+    }
+
+    /// A tool that declares the thread context still gets it.
+    #[test]
+    fn a_thread_scoped_tool_still_receives_its_context() {
+        let (ws, ch, th, author) = ids();
+        let args = build_mcp_arguments("list_messages", &parsed(""), ws, ch, th, author);
+        let obj = args.as_object().expect("object");
+        assert_eq!(obj.get("thread_id"), Some(&json!(th.0)));
+    }
+
+    /// An unknown tool gets no injected context — fail closed, since that is
+    /// exactly where guessing is least safe.
+    #[test]
+    fn an_unknown_tool_receives_no_injected_context() {
+        let (ws, ch, th, author) = ids();
+        let args = build_mcp_arguments("not_a_real_tool", &parsed(""), ws, ch, th, author);
+        assert_eq!(args, json!({}), "no schema means no guessing");
+    }
+
+    /// The caller's own explicit arguments are never overwritten.
+    #[test]
+    fn caller_supplied_arguments_win_over_injected_context() {
+        let (ws, ch, th, author) = ids();
+        let mine = uuid::Uuid::from_u128(99);
+        let args = build_mcp_arguments(
+            "list_channels",
+            &parsed(&format!(r#"{{"workspace_id":"{mine}"}}"#)),
+            ws,
+            ch,
+            th,
+            author,
+        );
+        assert_eq!(args["workspace_id"], json!(mine.to_string()));
     }
 }
