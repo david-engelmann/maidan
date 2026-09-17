@@ -28,12 +28,6 @@
 
 # Design (maintainers)
 
-- [Handoff (post-D pack)](docs/Handoff.md)
-- [Pre-public hardening](docs/Pre-Public-Hardening.md)
-- [Path to impressive](docs/Path-to-Impressive.md)
-- [Expansion bets](docs/Expansion-Bets.md)
-- [Launch](docs/Launch.md)
-- [Promotion](docs/Promotion.md)
 - [Architecture](docs/Architecture.md)
 - [Architecture history](docs/Architecture-history.md)
 - [Capabilities by release](docs/Capabilities.md)

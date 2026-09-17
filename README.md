@@ -1,36 +1,34 @@
 # Maidan
 
+[![ci](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver)](https://github.com/david-engelmann/maidan/releases)
+[![docs](https://img.shields.io/badge/docs-mdBook-blue)](https://david-engelmann.github.io/maidan/)
+[![license](https://img.shields.io/github/license/david-engelmann/maidan)](LICENSE)
+
 **The operating layer for teams of AI agents.**
 
-Run your agents as one coordinated team that works from a shared, durable memory
-and spends only the tokens it needs.
+Two agents that need to work together need somewhere to work. Today that means
+assembling a task queue, a state database, a memory store, a pub/sub and an auth
+layer, and writing the glue between them. Maidan is those five things as one
+server.
 
-Building a team of AI agents means stitching together a memory store, a task
-queue, a state database, a pub/sub, and an auth layer, then writing the glue.
-Even then, agents reload their whole history into the prompt on every turn,
-which burns tokens, and they still miss what happened inside another agent's run.
+It gives a team of agents three things they cannot get from a pile of tools:
 
-Maidan replaces that pile with one system. Agents coordinate real work through
-it: tasks with dependencies, skill-based claiming, assignment and leases,
-scheduled runs, and calls that block until a task is ready or a result comes in.
-They keep a durable, shared record of threads, results, artifacts, and tool-call
-transcripts, all searchable, so nothing is lost between runs. And they pull
-exactly the context a step needs, a scoped pack or a search hit or a single
-subscription, instead of re-stuffing the prompt, so the same work costs far
-fewer tokens.
+- **A shared place to put work.** Tasks with dependencies, claimed by exactly one
+  agent at a time, with leases so a dead agent's work comes back. Calls that
+  block until a task is ready or a result arrives, instead of polling.
+- **A memory that outlives the run.** Threads, results, artifacts and tool-call
+  transcripts, all searchable. What agent A learned is still there when agent B
+  picks the task up tomorrow.
+- **Context you fetch instead of resend.** Ask for one thread, one search hit, or
+  one subscription — rather than replaying the whole history into every prompt.
+  Same work, far fewer tokens.
 
-Access is scoped on every token, private channels are enforced on reads, events,
-and search, and privileged actions are audited, so each agent sees what it should
-and nothing more. Maidan speaks MCP, REST, and WebSocket over one data model and one
-login. It is written in Rust and runs as a single static binary, from a laptop
-on SQLite to a multi-replica Postgres cluster.
-
-```sh
-# Try it in one line (no Docker). Auth is on, so set a dev signing key (32+ bytes):
-DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
-  cargo run --bin maidan-server &
-curl -s localhost:8080/health        # {"status":"ok",...}
-```
+Every token carries an explicit capability list; private channels are enforced on
+reads, events and search; privileged actions are audited. Agents reach it over
+MCP, REST, WebSocket or A2A — one data model, one login. It is a single Rust
+binary that runs on SQLite on a laptop and Postgres across replicas in
+production.
 
 ---
 
@@ -51,9 +49,9 @@ curl -s localhost:8080/health        # {"status":"ok",...}
 - **Runs anywhere.** SQLite for local dev and edge (Raspberry Pi / ARM64);
   Postgres + S3-compatible object store for production. The same binary,
   selected by `DATABASE_URL`.
-- **Operationally honest.** Readiness probes, Prometheus metrics, OTLP traces,
-  a durable event log with replay, and cross-replica correctness (notifications,
-  presence, and ephemeral state survive a pod hop).
+- **Built to be run, not just demoed.** Readiness probes, Prometheus metrics,
+  OTLP traces, a durable event log with replay, and cross-replica correctness —
+  notifications, presence and ephemeral state survive a pod hop.
 
 ## When to use it
 
@@ -94,11 +92,16 @@ Every claim above maps to a test, a gate, or an honest "not yet" in
 
 ## Quickstart
 
-### One command (Docker): two agents collaborating
+### Two agents collaborating (Docker)
 
-The fastest way to see it work. This runs a released Maidan binary on SQLite with
-local artifacts, bound to loopback, **with authentication on — exactly like
-production**. You need Docker Compose, `curl`, and `jq`.
+**This is the path to try first.** Three commands, about five minutes, and you
+end with two agents that have written to and read from the same durable thread —
+which is the whole point of the system. It runs a released Maidan binary on
+SQLite with local artifacts, bound to loopback, **with authentication on, exactly
+like production**.
+
+Needs Docker Compose, `curl` and `jq`. No Rust toolchain, no clone of the
+workspace to build.
 
 ```sh
 # 1. Start Maidan (auth on, SQLite, loopback).
@@ -140,6 +143,9 @@ docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up
 and is refused outright when `MAIDAN_ENV=production` (see
 [docs/Threat-Model.md](docs/Threat-Model.md)).
 </details>
+
+<details>
+<summary><b>Other ways to run it</b> — no Docker, plain REST, MCP client, Postgres, the prebuilt image, building from source</summary>
 
 ### Run it (SQLite, no Docker)
 
@@ -233,6 +239,8 @@ git clone git@github.com:david-engelmann/maidan.git && cd maidan
 cargo build --workspace
 cargo test --workspace      # integration tests need Docker (Postgres testcontainers); they skip cleanly without it
 ```
+
+</details>
 
 ---
 

@@ -1300,6 +1300,59 @@ The five marked **decision** are the ones that should not be taken unilaterally:
 each trades one correctness property for another, and the trade is the whole
 question. The rest are ordinary work.
 
+## Docs & presentation audit dispositions (2026-09-17)
+
+A second, narrower audit looked only at what a newcomer and an integrating agent
+*see*: voice, the 30-second test, and presentation assets. 18 findings
+(D-01…D-18). Research input, not directives.
+
+Four questions were the maintainer's and were put to him rather than decided
+here. His answers, which set the work below: **unpublish** the strategy memos
+(keep them in the repo); the **Docker two-agent demo** is the one canonical trial
+path; **yes** to a full comparison page; assets are **demo GIF + wordmark + `/ui`
+screenshots**.
+
+| ID | Finding | Disposition | Note |
+|----|---------|-------------|------|
+| D-01 | Five flagged voice passages still verbatim | **adopt** | "Operationally honest" done; four remain in `docs/` |
+| D-02 | README value paragraph is jargon-dense | ✅ **done** | Rewritten to three concrete claims |
+| D-03 | "Try it in one line" hides a clone + Rust build | ✅ **done** | Subsumed by D-07 — the one-liner is below the fold with its cost stated |
+| D-04 | Architecture land-gate cell is a 150-word run-on | **adopt** | Split it; define the colour words or drop them |
+| ~~D-05~~ | ~~CLAUDE.md says 13 crates, actual 14~~ | ✅ **fixed + guarded, #922** | The count is now checked against `crates/` |
+| D-06 | Strategy memos published on the public site | ✅ **done** | Unpublished; inbound links rewritten to GitHub |
+| D-07 | Seven ways to start, no obvious one | ✅ **done** | Docker two-agent demo is canonical; six folded into `<details>` |
+| D-08 | Core jargon used before definition | **adapt** | The Glossary does not define claim/lease/tap/projector/room/land gate *at all* — add the terms, then link them. Linking to a glossary that lacks the word is worse than not linking |
+| ~~D-09~~ | ~~Hand-written numbers drift (P0)~~ | ✅ **fixed + guarded, #922** | Tool count, crate count and image pin now checked against their sources |
+| D-10 | `CLAUDE.md` tail duplicates the orientation | **adopt** | Collapse three overlapping "where we are" sections into one |
+| D-11 | Zero visual identity | **adopt** | GIF + wordmark + `/ui` screenshots |
+| D-12 | No README badges | ✅ **done** | CI, release, docs, licence — four, not five; MSRV is noise next to `rust-toolchain.toml` |
+| D-13 | No product comparison page | **adopt** | Maintainer asked for the full page |
+| D-14 | No `CODE_OF_CONDUCT.md` | **adopt** | — |
+| D-15 | "Already strong — do not fix" | **n/a** | Noted; no action by design |
+| D-16 | Benchmark numbers aging, no cadence | **adapt** | Stamp the run with the version it measured rather than promise a cadence — a promise is one more hand-maintained number |
+| D-17 | `CLAUDE.md` buries its command surface | **adopt** | Commands-first block at the top |
+| D-18 | No FAQ | **adopt** | Absorbs the "how is this different from X" half of D-13 |
+
+Two findings from the **code** audit resolved differently than filed:
+
+- **F-33 — migration numbering diverges after 0014.** **Reject.** The numbers
+  differ because the backends took different DDL paths to the same schema:
+  Postgres needed an `ALTER` for `maidan_outbox.quarantined_at`, SQLite folded
+  the column into its `CREATE TABLE`. Renumbering would make an existing
+  database re-run migrations it has already applied, for a cosmetic gain. The
+  invariant that actually matters — the two backends behaving identically — is
+  already tested by `dialect_parity`, with `backend_parity` covering module
+  parity and `migration_register` covering the register.
+- **F-43 — the full workspace test run is not in per-PR CI.** **Reject as
+  filed.** `unit tests` runs `cargo test --workspace --lib --bins` and
+  `integration (testcontainers)` runs `cargo nextest run --workspace --tests`;
+  together that is the workspace, and there are zero doctests to miss. The real
+  concern behind it — that each PR is green against *its own base*, not against
+  the tree it merges into — is a branch-protection setting ("require branches to
+  be up to date"), not a workflow change, and it costs a rebase plus a full
+  re-run of eight heavy checks on every merge. **Maintainer's call, open.**
+
+
 ## `report_usage` accepts arguments it silently discards — ✅ CLOSED (Cluster 398.6)
 
 Raised indirectly by the soundcheck integration review. Not what they asked for

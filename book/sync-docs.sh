@@ -40,8 +40,7 @@ top_pages=(
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README" "Claims"
-  "Providers" "Protocols" "Handoff" "Launch" "Promotion"
-  "Pre-Public Hardening" "Path to Impressive" "Expansion Bets"
+  "Providers" "Protocols"
   "Framework Integrations" "WASI-Handlers"
 )
 for name in "${top_pages[@]}"; do
@@ -66,14 +65,17 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{Agent%20Integration\.md}{Agent-Integration.md}g' "$f"
   perl -pi -e 's{Open%20Work\.md}{Open-Work.md}g' "$f"
   perl -pi -e 's{Cluster%20A\.md}{Cluster-A.md}g' "$f"
-  perl -pi -e 's{Pre-Public%20Hardening\.md}{Pre-Public-Hardening.md}g' "$f"
-  perl -pi -e 's{Path%20to%20Impressive\.md}{Path-to-Impressive.md}g' "$f"
-  perl -pi -e 's{Expansion%20Bets\.md}{Expansion-Bets.md}g' "$f"
   perl -pi -e 's{Framework%20Integrations\.md}{Framework-Integrations.md}g' "$f"
   perl -pi -e 's{Result%20Delivery\.md}{Result-Delivery.md}g' "$f"
 
   # 3) links to docs/ pages that are NOT in the published set -> GitHub
   perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Post-1\.0\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
+  # The strategy pack is planning material written for the maintainer. It stays
+  # in the repo and off the published site, so links to it leave the book.
+  perl -pi -e 's{\]\((?:\.\./)?(Handoff\.md|Launch\.md|Promotion\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
+  perl -pi -e 's{\]\(Pre-Public%20Hardening\.md\)}{]($ENV{GH}/docs/Pre-Public%20Hardening.md)}g' "$f"
+  perl -pi -e 's{\]\(Path%20to%20Impressive\.md\)}{]($ENV{GH}/docs/Path%20to%20Impressive.md)}g' "$f"
+  perl -pi -e 's{\]\(Expansion%20Bets\.md\)}{]($ENV{GH}/docs/Expansion%20Bets.md)}g' "$f"
   perl -pi -e 's{\]\(Presence%20and%20Roster\.md\)}{]($ENV{GH}/docs/Presence%20and%20Roster.md)}g' "$f"
   perl -pi -e 's{\]\(Remaining%20Work\.md\)}{]($ENV{GH}/docs/Remaining%20Work.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/Product%20Ladder%20102\+\.md\)}{]($ENV{GH}/docs/Clusters/Product%20Ladder%20102+.md)}g' "$f"
