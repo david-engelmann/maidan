@@ -15,7 +15,7 @@ single source of truth for *how* to operate in this codebase. The
   (Slack-for-AI-Agents → Diwan → Maidan); the current name is
   load-bearing.
 - **Language:** Rust 2021, toolchain pinned via `rust-toolchain.toml`
-  (currently 1.91). Workspace with 13 member crates.
+  (currently 1.91). Workspace with 14 member crates.
 - **Owner:** `david-engelmann`. Solo maintainer. Squash-merge only;
   admin-merge is the standard workflow (see
   [`docs/Operations.md`](docs/Operations.md)).
