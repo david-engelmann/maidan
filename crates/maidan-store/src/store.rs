@@ -1950,6 +1950,14 @@ pub trait EventStore: Send + Sync {
     /// has no rows). Cluster 388 CursorTooOld.
     async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 
+    /// Every workspace that has at least one event, so a chain verifier knows
+    /// what there is to verify (Cluster 402.3).
+    ///
+    /// Derived from the log rather than the workspaces table on purpose: a
+    /// workspace with no events has no chain, and verifying it would report a
+    /// vacuous pass that is indistinguishable from a real one.
+    async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError>;
+
     /// Highest event-log `id` across all workspaces (`0` when empty).
     /// Cluster 390 `Maidan-Room-LSN` — the room head a client compares to
     /// last-seen `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]

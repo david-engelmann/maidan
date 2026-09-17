@@ -1010,8 +1010,18 @@ because the tests assert the happy path of a single tenant.
    Whole-chain integrity is `GET /workspaces/:wid/events/verify`, which 397.8
    made streamable.
 
-   **Residual, and it is an operational one:** that verify has to actually be
-   scheduled. Closing that is the last piece of this item.
+   ~~**Residual, and it is an operational one:** that verify has to actually be
+   scheduled.~~ **✅ CLOSED (Cluster 402.3)** — an opt-in sweeper
+   (`MAIDAN_CHAIN_VERIFY_SECS`, off unless set) walks every workspace that has
+   events, continues past a break so one tenant's tamper does not hide the
+   others, and emits
+   `maidan_chain_verify_total{outcome=ok|broken|error}`. **`broken` and `error`
+   are deliberately distinct:** verified-and-failed is a tamper,
+   could-not-verify is a database problem, and an alert that cannot tell them
+   apart gets ignored. Documented in [Production.md](Production.md).
+
+   **The item is fully closed.** The decision, the fix, and the operational step
+   the decision depends on.
 
 ### P1
 

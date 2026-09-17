@@ -2352,6 +2352,10 @@ impl EventStore for PostgresStore {
         events::max_event_id(&self.pool).await
     }
 
+    async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
+        events::workspace_ids_with_events(self.read_pool()).await
+    }
+
     async fn tap_cursor(&self, surface: &str) -> Result<i64, StoreError> {
         tap_cursor::get(self.read_pool(), surface).await
     }
