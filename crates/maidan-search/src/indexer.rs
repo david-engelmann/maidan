@@ -184,6 +184,28 @@ enum ConsumeOutcome {
     RebuildRequired,
 }
 
+/// Name every workspace whose chain broke, and set the rebuild flag if any did.
+///
+/// The flag stays a whole-instance signal because that is what consumes it, but
+/// the log names the tenants — "search must rebuild" with no indication of
+/// *which* room is the report that sends an operator reading the entire log.
+fn report_workspace_faults(tap: &SearchTap, rebuild_flag: &AtomicBool) {
+    let faults = tap.faulted_workspaces();
+    if faults.is_empty() {
+        rebuild_flag.store(false, Ordering::Relaxed);
+        return;
+    }
+    for (workspace_id, fault) in &faults {
+        error!(
+            workspace_id = %workspace_id.0,
+            ?fault,
+            "search projector faulted for this workspace; its index is stale \
+             until rebuilt. Other workspaces continue indexing."
+        );
+    }
+    rebuild_flag.store(true, Ordering::Relaxed);
+}
+
 async fn project_row(
     handler: &dyn EventHandler,
     row: maidan_types::StoredEvent,
@@ -212,7 +234,12 @@ async fn consume(
         {
             Ok(hw) => {
                 watermark = hw;
-                rebuild_flag.store(false, Ordering::Relaxed);
+                // A per-workspace chain break (Cluster 402.1) is loud but not
+                // fatal: that tenant stops being projected, everyone else keeps
+                // indexing. Tearing the whole indexer down over one tenant is a
+                // far larger blast radius than the failure it reacts to — and
+                // the old teardown retried the full log walk forever.
+                report_workspace_faults(&tap, rebuild_flag);
             }
             Err(fault) => {
                 error!(?fault, "search projector backfill failed closed");
@@ -258,7 +285,7 @@ async fn consume(
                         {
                             Ok(hw) => {
                                 watermark = hw;
-                                rebuild_flag.store(false, Ordering::Relaxed);
+                                report_workspace_faults(&tap, rebuild_flag);
                             }
                             Err(fault) => {
                                 error!(?fault, "search projector lag rebuild failed closed");
