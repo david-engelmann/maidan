@@ -1314,24 +1314,36 @@ screenshots**.
 
 | ID | Finding | Disposition | Note |
 |----|---------|-------------|------|
-| D-01 | Five flagged voice passages still verbatim | **adopt** | "Operationally honest" done; four remain in `docs/` |
+| ~~D-01~~ | ~~Five flagged voice passages still verbatim~~ | ✅ **done, #926 + #930** | All five rewritten |
 | D-02 | README value paragraph is jargon-dense | ✅ **done** | Rewritten to three concrete claims |
 | D-03 | "Try it in one line" hides a clone + Rust build | ✅ **done** | Subsumed by D-07 — the one-liner is below the fold with its cost stated |
-| D-04 | Architecture land-gate cell is a 150-word run-on | **adopt** | Split it; define the colour words or drop them |
+| ~~D-04~~ | ~~Architecture land-gate cell is a 150-word run-on~~ | ✅ **done, #930** | 734 → 506 chars, colour words moved to the Glossary |
 | ~~D-05~~ | ~~CLAUDE.md says 13 crates, actual 14~~ | ✅ **fixed + guarded, #922** | The count is now checked against `crates/` |
 | D-06 | Strategy memos published on the public site | ✅ **done** | Unpublished; inbound links rewritten to GitHub |
 | D-07 | Seven ways to start, no obvious one | ✅ **done** | Docker two-agent demo is canonical; six folded into `<details>` |
-| D-08 | Core jargon used before definition | **adapt** | The Glossary does not define claim/lease/tap/projector/room/land gate *at all* — add the terms, then link them. Linking to a glossary that lacks the word is worse than not linking |
+| ~~D-08~~ | ~~Core jargon used before definition~~ | ✅ **done, #930** | The Glossary defined **none** of the six; nine entries added (claim, lease, fencing token, thread result, context pack, room, tap, projector, land gate) before any linking |
 | ~~D-09~~ | ~~Hand-written numbers drift (P0)~~ | ✅ **fixed + guarded, #922** | Tool count, crate count and image pin now checked against their sources |
-| D-10 | `CLAUDE.md` tail duplicates the orientation | **adopt** | Collapse three overlapping "where we are" sections into one |
-| D-11 | Zero visual identity | **adopt** | GIF + wordmark + `/ui` screenshots |
+| ~~D-10~~ | ~~`CLAUDE.md` tail duplicates the orientation~~ | ✅ **done, #928** | A 119,840-character line moved to `Cluster-history.md`; the file went 132 KB → 13 KB |
+| ~~D-11~~ | ~~Zero visual identity~~ | ✅ **done, #932** | Demo GIF (unstaged, found #931), three `/ui` screenshots from the seeded Playwright harness, typographic wordmark |
 | D-12 | No README badges | ✅ **done** | CI, release, docs, licence — four, not five; MSRV is noise next to `rust-toolchain.toml` |
-| D-13 | No product comparison page | **adopt** | Maintainer asked for the full page |
-| D-14 | No `CODE_OF_CONDUCT.md` | **adopt** | — |
+| ~~D-13~~ | ~~No product comparison page~~ | ✅ **done, #927** | `docs/Comparison.md` — every section ends with when to take the other thing |
+| ~~D-14~~ | ~~No `CODE_OF_CONDUCT.md`~~ | ✅ **done, #927** | Contributor Covenant 2.1; contact is the maintainer's GitHub profile, not an email |
 | D-15 | "Already strong — do not fix" | **n/a** | Noted; no action by design |
-| D-16 | Benchmark numbers aging, no cadence | **adapt** | Stamp the run with the version it measured rather than promise a cadence — a promise is one more hand-maintained number |
-| D-17 | `CLAUDE.md` buries its command surface | **adopt** | Commands-first block at the top |
-| D-18 | No FAQ | **adopt** | Absorbs the "how is this different from X" half of D-13 |
+| D-16 | Benchmark numbers aging, no cadence | **closed as already-done** | `Benchmark.md` already stamps date, commit and measured version, and says it is a reproducible floor rather than an SLA. A stated cadence would be one more hand-maintained promise; the stamp is the honest form |
+| ~~D-17~~ | ~~`CLAUDE.md` buries its command surface~~ | ✅ **done, #928** | Commands table first, plus the two-clippy-pass and unwatched-`mdbook` traps and the `AGENTS.md` split |
+| ~~D-18~~ | ~~No FAQ~~ | ✅ **done, #927** | `docs/FAQ.md`; every claim checked against the repo rather than recalled |
+
+All eighteen are now dispositioned and fifteen are closed. What the pass cost
+beyond the findings themselves:
+
+- **#931** — trying to *record* the README's canonical path found that it could
+  not complete: the quickstart health check added in #920 ran a flag the
+  released binary in that image predates, so `up --wait` failed after 121
+  seconds on a working server. CI never saw it, because CI exercises
+  `compose.yaml`, which is built from this tree.
+- **#929** — the source citation sweep in #921 missed 50 citations that had
+  wrapped across a line break, and the check that declared it clean was
+  line-based and structurally unable to see them.
 
 Two findings from the **code** audit resolved differently than filed:
 
