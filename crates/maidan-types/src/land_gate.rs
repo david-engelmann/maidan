@@ -156,13 +156,21 @@ pub fn resolve_land(status: LandGateStatus, requested: Option<LandColor>) -> Lan
 }
 
 /// A pass that may land: green, from a land-gate-skilled member who is
-/// not the implementer (owner or assignee).
+/// not the implementer.
+///
+/// "Not the implementer" is three tests, not two. `assignee_id` is the thread's
+/// **live** holder, and a release sets it to NULL — so on its own it let an
+/// implementer release the claim and then pass their own work. `recorder_worked`
+/// is the durable Cluster-401.1 answer to "did this member ever hold it", and it
+/// is the one a release cannot clear.
+#[allow(clippy::too_many_arguments)]
 pub fn is_qualifying_pass(
     status: LandGateStatus,
     land: LandColor,
     recorded_by: MemberId,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
+    recorder_worked: bool,
     recorder_has_skill: bool,
 ) -> bool {
     status == LandGateStatus::Pass
@@ -170,16 +178,19 @@ pub fn is_qualifying_pass(
         && recorder_has_skill
         && owner_id != Some(recorded_by)
         && assignee_id != Some(recorded_by)
+        && !recorder_worked
 }
 
 /// Gate-side land color. No row → green (additive). Armed with no pointer
 /// → red (pending). A skilled third-party amber pass stays amber. Anything
 /// else that is not a qualifying pass is red.
+#[allow(clippy::too_many_arguments)]
 pub fn standing_land(
     pointer: Option<&LandGatePointer>,
     recorded_by: Option<MemberId>,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
+    recorder_worked: bool,
     recorder_has_skill: bool,
     required: bool,
 ) -> LandColor {
@@ -198,6 +209,7 @@ pub fn standing_land(
         recorded_by,
         owner_id,
         assignee_id,
+        recorder_worked,
         recorder_has_skill,
     ) {
         return LandColor::Green;
@@ -207,6 +219,7 @@ pub fn standing_land(
         && recorder_has_skill
         && owner_id != Some(recorded_by)
         && assignee_id != Some(recorded_by)
+        && !recorder_worked
     {
         return LandColor::Amber;
     }
@@ -215,11 +228,13 @@ pub fn standing_land(
 
 /// Assemble standing from a stored row (or its absence) plus thread SoD
 /// context.
+#[allow(clippy::too_many_arguments)]
 pub fn land_gate_standing(
     required: bool,
     recorded: Option<RecordedLandGate>,
     owner_id: Option<MemberId>,
     assignee_id: Option<MemberId>,
+    recorder_worked: bool,
     recorder_has_skill: bool,
 ) -> LandGateStanding {
     let pointer = recorded.as_ref().map(|r| r.pointer.clone());
@@ -230,6 +245,7 @@ pub fn land_gate_standing(
         recorded_by,
         owner_id,
         assignee_id,
+        recorder_worked,
         recorder_has_skill,
         required,
     );
@@ -293,6 +309,7 @@ mod tests {
             sc,
             Some(owner),
             Some(assignee),
+            false,
             true
         ));
         assert!(
@@ -302,6 +319,7 @@ mod tests {
                 sc,
                 Some(owner),
                 Some(assignee),
+                false,
                 false
             ),
             "unskilled"
@@ -313,6 +331,7 @@ mod tests {
                 owner,
                 Some(owner),
                 Some(assignee),
+                false,
                 true
             ),
             "owner is the implementer"
@@ -324,6 +343,7 @@ mod tests {
                 assignee,
                 Some(owner),
                 Some(assignee),
+                false,
                 true
             ),
             "assignee is the implementer"
@@ -335,6 +355,7 @@ mod tests {
                 sc,
                 Some(owner),
                 Some(assignee),
+                false,
                 true
             ),
             "amber is not a land"
@@ -345,6 +366,7 @@ mod tests {
             sc,
             Some(owner),
             Some(assignee),
+            false,
             true
         ));
     }
@@ -352,22 +374,22 @@ mod tests {
     #[test]
     fn standing_land_vacuous_green_pending_red_amber_stays() {
         assert_eq!(
-            standing_land(None, None, None, None, false, false),
+            standing_land(None, None, None, None, false, false, false),
             LandColor::Green
         );
         assert_eq!(
-            standing_land(None, None, None, None, false, true),
+            standing_land(None, None, None, None, false, false, true),
             LandColor::Red
         );
         let sc = mid(1);
         let pointer = LandGatePointer::new(LandGateStatus::Pass, None, LandColor::Amber);
         assert_eq!(
-            standing_land(Some(&pointer), Some(sc), None, None, true, true),
+            standing_land(Some(&pointer), Some(sc), None, None, false, true, true),
             LandColor::Amber
         );
         let green = LandGatePointer::new(LandGateStatus::Pass, None, LandColor::Green);
         assert_eq!(
-            standing_land(Some(&green), Some(sc), None, None, true, true),
+            standing_land(Some(&green), Some(sc), None, None, false, true, true),
             LandColor::Green
         );
     }

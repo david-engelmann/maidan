@@ -10,6 +10,7 @@ use maidan_types::{
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use super::thread_workers;
 use crate::error::StoreError;
 
 fn artifact_sha_opt(raw: Option<&str>) -> Result<Option<String>, StoreError> {
@@ -42,7 +43,7 @@ async fn standing_for(
     .fetch_optional(pool)
     .await?;
     let Some(row) = row else {
-        return Ok(land_gate_standing(false, None, None, None, false));
+        return Ok(land_gate_standing(false, None, None, None, false, false));
     };
     let owner_id = row.get::<Option<Uuid>, _>("owner_id").map(MemberId);
     let assignee_id = row.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
@@ -68,11 +69,18 @@ async fn standing_for(
         Some(id) => recorder_has_skill(pool, id).await?,
         None => false,
     };
+    // Cluster 401.2: the durable half of "not the implementer". `assignee_id`
+    // above is the live holder, which a release clears.
+    let worked = match recorded.as_ref().map(|r| r.recorded_by) {
+        Some(id) => thread_workers::has_worked(pool, thread_id, id).await?,
+        None => false,
+    };
     Ok(land_gate_standing(
         true,
         recorded,
         owner_id,
         assignee_id,
+        worked,
         skill,
     ))
 }
@@ -200,7 +208,21 @@ pub async fn gate_in_tx(
     .fetch_one(&mut **tx)
     .await?;
     let skilled = skilled != 0;
-    if is_qualifying_pass(status, land, recorded_by, owner_id, assignee_id, skilled) {
+    // Cluster 401.2: did the recorder ever hold this thread? `assignee_id` is
+    // the live holder and a release clears it, so without this an implementer
+    // could release the claim and then pass their own work through the gate.
+    // Read on the enforcing transaction so a concurrent release cannot land
+    // between the check and the close.
+    let worked = thread_workers::has_worked_in_tx(tx, thread_id, recorded_by).await?;
+    if is_qualifying_pass(
+        status,
+        land,
+        recorded_by,
+        owner_id,
+        assignee_id,
+        worked,
+        skilled,
+    ) {
         return Ok(());
     }
     let verdict = standing_land(
@@ -208,6 +230,7 @@ pub async fn gate_in_tx(
         Some(recorded_by),
         owner_id,
         assignee_id,
+        worked,
         skilled,
         true,
     );

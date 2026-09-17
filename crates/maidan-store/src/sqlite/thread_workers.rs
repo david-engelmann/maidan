@@ -69,3 +69,24 @@ pub async fn list_workers(
     .await?;
     Ok(rows.iter().map(|r| MemberId(r.get("member_id"))).collect())
 }
+
+/// [`has_worked`] on the caller's transaction.
+///
+/// The land gate reads this while enforcing a close, so it must see the same
+/// snapshot as the rest of that transaction — a release committing between the
+/// check and the close would otherwise slip through.
+pub async fn has_worked_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
+    let row = sqlx::query(
+        "SELECT 1 AS hit FROM maidan_thread_workers
+         WHERE thread_id = ? AND member_id = ? LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.is_some())
+}

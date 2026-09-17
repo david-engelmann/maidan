@@ -191,6 +191,13 @@ pub async fn review_status(
            AND r.decision = 'approve'
            AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
            AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
+           -- Cluster 401.2: and never worked it. The live `assignee_id` above
+           -- is cleared by a release, so on its own it let an implementer
+           -- release the claim and then approve their own work.
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_thread_workers w
+             WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id
+           )
            AND (
              NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = ?)
              OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv

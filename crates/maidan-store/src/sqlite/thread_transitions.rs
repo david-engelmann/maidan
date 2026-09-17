@@ -12,7 +12,8 @@ use crate::sqlite::events;
 
 /// Cluster 375 (Wave 2 #22): gate a `closed` transition (SQLite twin). Refuses
 /// close until the review requirement is met — `k` distinct **qualifying**
-/// approvals (decision = approve, reviewer is neither owner nor assignee, and,
+/// approvals (decision = approve, reviewer is neither owner nor assignee nor a
+/// past holder, and,
 /// when a named reviewer set exists, is in it) — and no unresolved `refutes`
 /// reference targets the thread. Runs on the transition's own tx.
 async fn review_gate_in_tx(
@@ -29,6 +30,13 @@ async fn review_gate_in_tx(
               WHERE r.thread_id = ? AND r.decision = 'approve'
                 AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
                 AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
+                -- Cluster 401.2: and never held it. `assignee_id` is the live
+                -- holder, which a release clears — so on its own it let an
+                -- implementer release the claim and approve their own work.
+                AND NOT EXISTS (
+                  SELECT 1 FROM maidan_thread_workers w
+                  WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id
+                )
                 AND (NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = ?)
                      OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv
                                 WHERE rv.thread_id = ? AND rv.member_id = r.reviewer_id))

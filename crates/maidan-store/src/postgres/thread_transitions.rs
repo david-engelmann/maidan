@@ -28,6 +28,13 @@ async fn review_gate_in_tx(
               WHERE r.thread_id = $1 AND r.decision = 'approve'
                 AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
                 AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
+                -- Cluster 401.2: and never held it. `assignee_id` is the live
+                -- holder, which a release clears — so on its own it let an
+                -- implementer release the claim and approve their own work.
+                AND NOT EXISTS (
+                  SELECT 1 FROM maidan_thread_workers w
+                  WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id
+                )
                 AND (NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = $1)
                      OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv
                                 WHERE rv.thread_id = $1 AND rv.member_id = r.reviewer_id))
