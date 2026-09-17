@@ -399,6 +399,48 @@ one mode without parsing backend-specific `rank` ranges.
 
 ## Security
 
+### Separation of duties reads a worker ledger, not the live assignee (`v401.1.0`)
+
+**Decision.** A durable, append-only `maidan_thread_workers` table records every
+member who has ever held a thread. Both governance gates (Cluster 375 reviews,
+Cluster 385 land gate) ask *"has this reviewer ever worked this thread?"* rather
+than *"is this reviewer the current assignee?"*.
+
+**Why the live column could not stay the input.** Both gates tested
+`thread.assignee_id`, and releasing a claim sets it to `NULL` — so the exclusion
+became vacuous at exactly the moment someone wanted it to be. Do the work,
+release the claim, approve your own work as a qualifying third party. The gate
+still ran; it just had nothing left to compare against.
+
+**Why not the event log.** Assignment history *is* recorded there, and reading
+it would need no new table. But Cluster-186 retention prunes the event log, and
+a security control cannot depend on evidence that ages out. A gate that weakens
+after ninety days is a gate with a calendar.
+
+**Why not a `last_worked_by` column.** It is smaller and it is wrong: it
+remembers only the most recent holder. A bearer token is act-as-any by design
+(the orchestrator model, Cluster 202), so an agent could claim *as* another
+member, overwrite the column, and approve. A ledger accumulates, and nothing in
+the API can un-write a row.
+
+**Why the write lives in `append_assignment_event`.** Every event-emitting
+assignment path funnels through it, so that is one site per backend instead of
+three — and a separation-of-duties control that one call site can forget is not
+a control. The three non-event variants (`assign` / `claim` / `claim_next`,
+reachable through the `Store` trait) were converted to transactions and record
+there too. The write is always on the assignment's own transaction: a ledger row
+lost while the assignment commits fails **open**, which is the defect itself.
+
+**What this does not fix.** The ledger cannot reconstruct releases that already
+happened — the migration backfills only the current holder of each thread, so it
+makes the gate no weaker than before and no stronger about the past. It also
+does not address a *genuinely* colluding pair of members; separation of duties
+never did.
+
+**Trade accepted.** One row per (thread, member) that is never pruned except
+with its thread, in exchange for a gate whose exclusion cannot be cleared by the
+person it excludes.
+
 ### A workspace handle is a display label, not an address (`v398.7.0`)
 
 **Decision.** Maidan will **not** resolve a handle to a workspace. There is no

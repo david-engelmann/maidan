@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::postgres::events;
+use crate::postgres::thread_workers;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
@@ -97,6 +98,10 @@ pub async fn assign(
     assignee_id: MemberId,
 ) -> Result<Thread, StoreError> {
     let lease = ClaimLeaseId::new();
+    // In a transaction only so the Cluster-401.1 worker record commits with the
+    // assignment. This variant emits no event, so it does not pass through
+    // `append_assignment_event` where the other paths record.
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
@@ -105,9 +110,11 @@ pub async fn assign(
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
+    thread_workers::record_in_tx(&mut tx, thread_id, assignee_id).await?;
+    tx.commit().await?;
     row_to_thread(&row)
 }
 
@@ -292,6 +299,15 @@ async fn append_assignment_event(
     previous_assignee_id: Option<MemberId>,
     note: Option<String>,
 ) -> Result<StoredEvent, StoreError> {
+    // Every path that hands a thread to someone comes through here, so this is
+    // where the durable worker record is written (Cluster 401.1) — beside the
+    // event rather than at each of the three call sites, because a
+    // separation-of-duties control that one call site can forget is not a
+    // control. On the caller's tx: a ledger row lost while the assignment
+    // commits fails *open*, letting the worker approve their own work.
+    if let Some(assignee) = thread.assignee_id {
+        thread_workers::record_in_tx(tx, thread.id, assignee).await?;
+    }
     let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread.id).await?;
     let event = Event::ThreadAssignmentChanged {
         occurred_at: Utc::now(),
@@ -337,6 +353,10 @@ pub async fn claim(
     member_id: MemberId,
 ) -> Result<ThreadClaimResult, StoreError> {
     let lease = ClaimLeaseId::new();
+    // See `assign`: the transaction exists so the Cluster-401.1 worker record
+    // commits with the claim. Only a *winning* claim records — a losing
+    // compare-and-set never held the thread.
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
@@ -345,17 +365,24 @@ pub async fn claim(
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     match row {
-        Some(row) => Ok(ThreadClaimResult {
-            thread: row_to_thread(&row)?,
-            claimed: true,
-        }),
-        None => Ok(ThreadClaimResult {
-            thread: get(pool, thread_id).await?,
-            claimed: false,
-        }),
+        Some(row) => {
+            thread_workers::record_in_tx(&mut tx, thread_id, member_id).await?;
+            tx.commit().await?;
+            Ok(ThreadClaimResult {
+                thread: row_to_thread(&row)?,
+                claimed: true,
+            })
+        }
+        None => {
+            tx.commit().await?;
+            Ok(ThreadClaimResult {
+                thread: get(pool, thread_id).await?,
+                claimed: false,
+            })
+        }
     }
 }
 
@@ -443,6 +470,10 @@ pub async fn claim_next(
     let lease = ClaimLeaseId::new();
     // Claimable = unassigned OR the lease has expired (dead-agent recovery;
     // Cluster 192). FOR UPDATE SKIP LOCKED keeps concurrent claimers distinct.
+    // The explicit transaction exists so the Cluster-401.1 worker record
+    // commits with the claim — and it does not weaken SKIP LOCKED, which
+    // already ran inside an implicit transaction of its own.
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "WITH next AS (
              SELECT c.id FROM maidan_threads c
@@ -487,8 +518,13 @@ pub async fn claim_next(
     .bind(channel_id.0)
     .bind(expires)
     .bind(lease.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
+    if let Some(row) = row.as_ref() {
+        let thread = row_to_thread(row)?;
+        thread_workers::record_in_tx(&mut tx, thread.id, member_id).await?;
+    }
+    tx.commit().await?;
     row.as_ref().map(row_to_thread).transpose()
 }
 
