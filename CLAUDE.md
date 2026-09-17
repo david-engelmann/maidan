@@ -262,8 +262,9 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 Read this before the long narrative below, which is a point-in-time record and
 **stops around Cluster 273**. Current state:
 
-- **Clusters 377–396** were shipped autonomously by a **Cursor agent**. The work
-  is mechanically excellent — zero lint findings, zero TODOs, an e2e per feature.
+- **Clusters 377–396** were shipped autonomously by a **Cursor agent**: zero lint
+  findings, zero TODOs, an e2e per feature — and the authorization gaps below,
+  which every one of those checks passed.
 - **Cluster 397** (nine PRs) remediated a systematic authorization gap that audit
   found in that run. **Every defect passed CI and its own tests.** The recurring
   shape: *something outranked the control meant to bind it*, because every test
