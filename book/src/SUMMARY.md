@@ -25,6 +25,8 @@
 - [Raspberry Pi / ARM64](docs/Pi.md)
 - [Threat model](docs/Threat-Model.md)
 - [Glossary](docs/Glossary.md)
+- [FAQ](docs/FAQ.md)
+- [How Maidan relates to other things](docs/Comparison.md)
 
 # Design (maintainers)
 
