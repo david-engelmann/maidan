@@ -12,7 +12,7 @@ Read it alongside [Integrating with Maidan](Integration.md).
 
 ## Status — read this first
 
-> ### ⚠️ Breaking change for existing producers (Cluster 389)
+> ### ⚠️ Breaking change for existing producers
 >
 > The envelope discriminator was renamed. **Producers still sending the old
 > value are silently not delivered.**
@@ -30,37 +30,37 @@ Read it alongside [Integrating with Maidan](Integration.md).
 > string therefore goes dark rather than failing loudly. Update the
 > discriminator; nothing else about the grammar changed.
 >
-> This rename is also the reason the fixture lock could not catch it: Cluster
-> 389 renamed `crates/maidan-types/tests/fixtures/waiter_result_v1.json` and
+> This rename is also the reason the fixture lock could not catch it: the same
+> change renamed `crates/maidan-types/tests/fixtures/waiter_result_v1.json` and
 > edited its contents in lockstep with the parser, so the guard moved with the
 > code instead of failing. Going dark silently is the cost, and it is why this
 > notice exists rather than a changelog line.
 
 
-**Shipped (Clusters 379–381).** This page is the interface contract between a result producer
+**Shipped.** This page is the interface contract between a result producer
 and Maidan. The grammar is **frozen** at `maidan.waiter.result/1`. Additive fields are
 free; a change to the meaning of an existing field, or to the `deliver_to` shape,
-requires a new `schema` value. The `result_kind` list facet shipped in Cluster 381.
+requires a new `schema` value. The `result_kind` list facet shipped.
 
 | Piece | State on `main` today |
 |---|---|
-| `set_thread_result` / `get_thread_result` / `ThreadResultSet` event | **Shipped** (Clusters 234–236). A result is durable and observable. |
-| Slack + GitHub connectors (post, link tables, link management) | **Shipped** (Clusters 307–312, 346, 349.4). |
-| Durable retrying delivery queue + DLQ + replay | **Shipped** (Clusters 50, 304–306 for mail and webhooks; **377** for projector egress — a retrying queue, a link that disables itself on a credential failure, and a `token:admin` DLQ at `GET /operator/egress/dead`). |
-| The per-workspace egress allowlist (the trust boundary below) | **Shipped** (Cluster 378.1). `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. Cluster 379.3 consults it on every target. |
-| A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped** (Cluster 379.3). Fetch → parse → per-target allowlist check then enqueue. |
-| Idempotent update-in-place | **Shipped** (Cluster 379.4). Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
-| Per-thread delivery status + replay | **Shipped** (Cluster 379.5). `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
-| Inline per-finding PR review comments | **Shipped** (Cluster 380). After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
-| `result_kind` list facet | **Shipped** (Cluster 381). Exact-match on the namespaced string — see [Discoverability](#discoverability). |
-| Run lineage (`parent_run_id`) | **Shipped** (Cluster 387). The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage-cluster-387). |
+| `set_thread_result` / `get_thread_result` / `ThreadResultSet` event | **Shipped**. A result is durable and observable. |
+| Slack + GitHub connectors (post, link tables, link management) | **Shipped**. |
+| Durable retrying delivery queue + DLQ + replay | **Shipped**. |
+| The per-workspace egress allowlist (the trust boundary below) | **Shipped**. `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. |
+| A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped**. Fetch → parse → per-target allowlist check then enqueue. |
+| Idempotent update-in-place | **Shipped**. Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
+| Per-thread delivery status + replay | **Shipped**. `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
+| Inline per-finding PR review comments | **Shipped**. After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
+| `result_kind` list facet | **Shipped**. Exact-match on the namespaced string — see [Discoverability](#discoverability). |
+| Run lineage (`parent_run_id`) | **Shipped**. The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage-cluster-387). |
 
 **Producer loop:** write `deliver_to` on the envelope; bless the destination once over
 the allowlist; confirm where it landed with the status API. A perfectly correct
 `deliver_to` can still deliver nowhere if the target is unblessed — that is a
 normal outcome, not a producer bug.
 
-Inline per-finding PR review comments (Cluster 380) are **shipped**.
+Inline per-finding PR review comments are **shipped**.
 **380.1** pinned the `line_range` frame: file-absolute **post-image**
 lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
 GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
@@ -68,7 +68,7 @@ GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
 those coordinates and `commit_id = head_sha` — never the live PR head. **380.3**
 locks the remaining failure modes: replay after a 5xx review, dual-surface
 envelopes, review errors that must not `disable_link`, a vanished envelope at
-send time, and the projector kind-split. The Cluster 379 summary comment path
+send time, and the projector kind-split. The summary comment path
 is unchanged.
 
 ---
@@ -82,7 +82,7 @@ field never breaks delivery.
 | Field | Required | How Maidan uses it |
 |---|---|---|
 | `schema` | yes | Envelope discriminator. Must be `maidan.waiter.result/1`. An unrecognized value means no delivery is attempted. |
-| `result_kind` | yes | Which producer shape this is, e.g. `example.review.result/1`. Recorded; the list facet shipped in Cluster 381 (see "Discoverability"). |
+| `result_kind` | yes | Which producer shape this is, e.g. `example.review.result/1`. Recorded; the list facet shipped (see "Discoverability"). |
 | `status` | yes | Delivery happens only on `reviewed`. Any other value delivers a short **Maidan-authored** failure notice instead — never silence, never a clean pass. |
 | `deliver_to` | no | The routing list. Absent or empty is **valid and normal**: thread-only, delivered nowhere. |
 | `rendered` | on `reviewed` | The delivery body. Producer-authored trusted markdown. |
@@ -90,24 +90,24 @@ field never breaks delivery.
 | `view_url` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
 | `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
-| `findings` | no | Two readers. Cluster 380 inline comments: each usable finding needs `file`, `body`, and `line_range`. Cluster 383 close-gate: any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a review-skilled producer writes Cluster-375 `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
+| `findings` | no | Two readers. Each usable finding needs `file`, `body`, and `line_range`. Any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a review-skilled producer writes `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
 
 `run_id` is **not** a delivery-routing field. Delivery parse still ignores it.
-Cluster 387 homes the producer's string as `parent_run_id` on the thread — see
+The producer's string is homed as `parent_run_id` on the thread — see
 [Run lineage](#run-lineage-cluster-387). Everything else in the envelope —
 `corroboration`, `per_seat`, `seats`, `cost_usd`, `duration_secs`, `sandbox`,
 `finding_count`, `diff_available` — is carried through untouched. Maidan does
 not interpret those for delivery.
 
 **The canonical `Finding` wire shape is the producer's and does not change.**
-Maidan stores the envelope byte-for-byte. Cluster 380 *projects* `file` /
-`line_range` / `body` for the GitHub review POST. Cluster 383 reads
-`severity` for the close-gate adapter only. Cluster 387 reads `run_id` for
+Maidan stores the envelope byte-for-byte, then *projects* `file` /
+`line_range` / `body` for the GitHub review POST, reads
+`severity` for the close-gate adapter only, and reads `run_id` for
 lineage only.
 
 ---
 
-## Run lineage (Cluster 387)
+## Run lineage
 
 Wave 2 #28's lineage half. The waiter envelope already carries `run_id` (and
 `view_url`). Until this cluster that string had **no home in Maidan**. The
@@ -140,7 +140,7 @@ Those are later slices, not this cluster.
 
 ---
 
-## Inline findings (Cluster 380)
+## Inline findings
 
 **Frame of reference (pinned 380.1).** `findings[].line_range` is a 1-indexed
 **inclusive** span (`start`..=`end`) on the **post-image** file at `head_sha` —
@@ -161,7 +161,7 @@ GitHub mapping for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`:
 
 `event` is `COMMENT`. Maidan delivers findings; it does not approve or
 request-changes on the producer's behalf. The worker posts the review after a
-successful GitHub summary comment (Cluster 380.2). A missing `head_sha`, no
+successful GitHub summary comment. A missing `head_sha`, no
 usable findings, a non-`reviewed` status, Slack-only `deliver_to`, a vanished
 envelope at send time, or a GitHub **404/422** skips the review and still
 delivers the summary (`maidan_github_review_total{skipped}`). A GitHub **5xx**,
@@ -368,10 +368,10 @@ caller cannot access are omitted. This is not `GET /workspaces/{id}/search`
 and not the ADR JSON convention `"kind": "decision"` in
 [Integration.md](Integration.md#decision-records).
 
-## Close-gate (Cluster 383)
+## Close-gate
 
 A reviewed `example.review.result/1` whose `findings` contain any
-`severity == "critical"` is a Cluster-375 `request_changes` from a
+`severity == "critical"` is a `request_changes` from a
 review-skilled producer (`REVIEW_SKILL = "review"`). If the thread has no
 requirement, Maidan arms `k = 1` so the existing close-gate refuses
 `closed` until a human who is neither owner nor assignee approves.
@@ -384,7 +384,7 @@ This is an adapter, not a new gate:
 - A clean re-review does **not** auto-approve.
 - Empty `deliver_to` still arms — the room blocks the land even when
   nothing is posted externally.
-- The GitHub review posted by Cluster 380 stays `event: COMMENT`. The
+- The GitHub review posted stays `event: COMMENT`. The
   room gate is the land decision; the PR is not REQUEST_CHANGES.
 
 `PUT /threads/:id/result` and MCP `set_thread_result` arm on the write
@@ -447,10 +447,10 @@ stays `skipped` (status is not policy). It does not bump `armed_revision`.
 - Anything to a target the workspace has not blessed.
 
 Maidan does not run seats, does not render reviews, and does not become a
-CI product. Cluster 383 reads `findings[].severity` for the close-gate
-adapter only (`critical` → Cluster-375 `request_changes`); it does not
+CI product. The close-gate adapter reads `findings[].severity`
+adapter only (`critical` → `request_changes`); it does not
 judge finding bodies or invent a land vocabulary. GitHub review `event`
-stays `COMMENT` (Cluster 380). It delivers trusted bytes to blessed
+stays `COMMENT`. It delivers trusted bytes to blessed
 surfaces, durably, once.
 
 ---
@@ -459,7 +459,7 @@ surfaces, durably, once.
 
 All three are now carried.
 
-1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used (Cluster 380).** Present on
+1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used.** Present on
    `maidan.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
    rather than resolving the PR head at delivery time.
 2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
@@ -481,7 +481,7 @@ All three are now carried.
      `duration_secs`/`wall_secs` argument and there will not be one: a
      self-reported clock is the same trust hole as a self-reported cost, and
      Maidan already holds the authoritative one. `max_wall_secs` is measured
-     against the thread's Cluster-351 **working clock** (`work_started_at`), so
+     against the thread's **working clock** (`work_started_at`), so
      elapsed time is the room's own measurement.
    - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
      `NULL` until the holder calls `acknowledge_claim {thread_id, member_id,
@@ -495,7 +495,7 @@ All three are now carried.
 
 ## Versioning
 
-The grammar above is **frozen at `maidan.waiter.result/1`** (confirmed Cluster 379).
+The grammar above is **frozen at `maidan.waiter.result/1`** (confirmed against the shipped delivery path).
 Additive fields are free. A change to the meaning of an existing field, or to the
 `deliver_to` shape, requires a new `schema` value — Maidan will route on the
 discriminator and an unrecognized one is inert rather than mis-delivered. The

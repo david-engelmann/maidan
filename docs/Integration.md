@@ -169,8 +169,8 @@ is [contracts/lexicon/catalog.json](../contracts/lexicon/catalog.json).
 
 | Header | Value | When | Job |
 |--------|-------|------|-----|
-| `Maidan-Room-LSN` | Decimal `maidan_events.id` high-water **for your workspace** (`0` if empty) | On authenticated responses (SQLite too). Skipped on `/health*`, `/metrics`, `/openapi.json`, `/ui`, `/.well-known/`, on rejected responses (401/403/429/5xx), and where there is no authenticated room | Projector / broadcast lag: compare last-seen `log_id` to the head you are chasing. It is **your room's** head, so a caught-up consumer reaches it — before Cluster 398.8 it was the instance-wide head and never could |
-| `Maidan-Consistency-Token` | Postgres WAL LSN (`high/low` hex) | Successful mutations, **only when a read replica is configured** | Read-your-writes (Cluster 263). Echo on a later `GET`/`HEAD` |
+| `Maidan-Room-LSN` | Decimal `maidan_events.id` high-water **for your workspace** (`0` if empty) | On authenticated responses (SQLite too). Skipped on `/health*`, `/metrics`, `/openapi.json`, `/ui`, `/.well-known/`, on rejected responses (401/403/429/5xx), and where there is no authenticated room | Projector / broadcast lag: compare last-seen `log_id` to the head you are chasing. It is **your room's** head, so a caught-up consumer reaches it — it used to be the instance-wide head, which a caught-up consumer could never reach |
+| `Maidan-Consistency-Token` | Postgres WAL LSN (`high/low` hex) | Successful mutations, **only when a read replica is configured** | Read-your-writes. Echo on a later `GET`/`HEAD` |
 
 A Room-LSN parser must reject `/` so a WAL token cannot be treated as a room head.
 
@@ -190,7 +190,7 @@ verifies; rewrite-detection is for a peer that already has a prefix.
 retained suffix. Intact → 200 `ChainVerifyReport`. Break → **409**
 `https://maidan.dev/problems/event-log-broken`. After retention prune,
 the oldest remaining row is the floor (it need not chain from genesis).
-Snapshot catch-up of a pruned prefix is Cluster 393 (below).
+Snapshot catch-up of a pruned prefix is described below.
 
 Federation ingest (`POST /a2a/v1/events`) verifies the **origin**
 envelope's hashes before parse/remap. A rewrite is the same 409. Local
@@ -215,8 +215,8 @@ log. It takes `GET /workspaces/{id}/snapshot`
 `GET /workspaces/{id}/events/catch-up?after_lsn=`
 (`maidan.event-log.catch-up/1`). The snapshot is hashed (SHA-256 of
 the domain graph, no `exported_at`) plus the retained floor/head
-`EventLink`. It is **not** the Cluster 391 Ed25519 export — that
-answers authorship. Cluster 392 verifies the retained suffix; the
+`EventLink`. It is **not** the Ed25519 signed export — that
+answers authorship. The chain walk verifies the retained suffix; the
 snapshot covers history the log no longer holds.
 
 Default `include_graph=false`: `workspace:read` (or a federation peer)
@@ -251,7 +251,7 @@ an honest deletion trail, not undelete.
 | Backlink index | `GET /messages/:id/backlinks` | `list_message_backlinks` |
 | Kind census | `GET /workspaces/:id/kind-census` (`channel_id`, `thread_id`) | `get_kind_census` |
 
-Backlinks are incoming pointers: Cluster 320 `RelationKind` reverse
+Backlinks are incoming pointers: `RelationKind` reverse
 edges plus pins, reactions, and votes. Mentions are outgoing and
 omitted. A retained tombstone still answers; a hard-purged message is
 404 / not-found. Private-channel and DM rows the caller cannot access
@@ -311,7 +311,7 @@ Human-readable summary: [Capability Map.md](Capability%20Map.md).
 ### Workspace portability (signed export)
 
 `GET /workspaces/:id/export` (`token:admin`) returns a self-contained
-`maidan.workspace.export/1` envelope: the Cluster-187 content graph
+`maidan.workspace.export/1` envelope: the content graph
 (members, channels, threads, messages, edits, pins, references) plus an
 Ed25519 signature. A **blank** Maidan instance (empty database, GHCR
 image, no route back to the origin) verifies the file with
@@ -479,7 +479,7 @@ speaks MCP.
 
 `claim_next_thread {channel_id, member_id, lease_secs?}` returns the thread it
 handed you (plus a flatten `pin: {uri, content_hash}` on the assignment
-event — a strong ref, Cluster 392), or `null` when it handed you nothing. `null` is not an error — it is
+event — a strong ref), or `null` when it handed you nothing. `null` is not an error — it is
 the ordinary answer on an idle channel, and it is also what you get when you are
 at your WIP limit, when every candidate is blocked on an unfinished dependency or
 missing a skill you don't have, when the next task has an explicit
@@ -492,7 +492,7 @@ An orchestrator parks a thread with `PUT /threads/:id/block` `{ "reason": "gate"
 (MCP `set_thread_block`). `GET` / `list` (`GET /channels/:cid/blocked`, MCP
 `list_blocked_threads`) read the row. `DELETE` (MCP `clear_thread_block`) clears
 it and emits `BlockedResolved`. An explicit `claim` against a blocked thread is
-409 / InvalidParams. This is not Cluster 363's unclaimable park — that table
+409 / InvalidParams. This is not the unclaimable park — that table
 stays; `unclaimable` here is one of the six reasons.
 
 The thread you get back carries two fields worth keeping:
@@ -568,11 +568,11 @@ re-review updates the same comment or message. Empty `deliver_to` is valid
 
 If that envelope is a reviewed `example.review.result/1` and any finding has
 `severity` exactly `critical`, and the producer has declared the `review`
-skill, Maidan writes a Cluster-375 `request_changes` on the thread and —
+skill, Maidan writes a `request_changes` on the thread and —
 when no requirement exists — arms `k=1`. `closed` then refuses until a
 human who is neither owner nor assignee approves. A warning-only review
 does not arm the gate. A clean re-review does not auto-approve. The
-external GitHub review `event` is still `COMMENT` (Cluster 380); the room
+external GitHub review `event` is still `COMMENT`; the room
 gate is the land decision.
 
 A thread can also carry a **land-gate pointer**
@@ -586,13 +586,13 @@ land. Fail is always red, even if `land=green` is requested. The room
 holds the pointer; an external verifier records pass/fail. Not a CI product.
 
 > **Two things make the skill meaningful, and both are recent.** Granting
-> `land_gate` needs `channel:admin` (Cluster 400.5) — `maidan.agent.worker` does
+> `land_gate` needs `channel:admin` — `maidan.agent.worker` does
 > not carry it, so an agent cannot give itself the qualification the gate checks
 > for. And separation of duties tests whoever *ever held* the thread, not just
-> its current assignee (Cluster 401.2): releasing a claim used to empty the live
+> its current assignee: releasing a claim used to empty the live
 > column and make the exclusion vacuous.
 
-If the payload carries a `run_id` (the waiter envelope does), Cluster 387
+If the payload carries a `run_id` (the waiter envelope does)
 homes that **producer string** as `parent_run_id` on the thread — it does
 not mint a parallel id. Nested work that shares the value is attributed
 together (`GET /workspaces/:id/run-threads`, `GET …/run-occupancy`, MCP
@@ -634,7 +634,7 @@ fact, watch `get_channel_occupancy` for a thread that sits in `claimed` or
 It goes through the same store path as REST, so the same rules apply:
 separation of duties (the claimer cannot land owned work — the owner or
 another member must), the required-reviewers close-gate, an unresolved
-`refutes` edge, and a Cluster-383 critical review that armed `k=1`.
+`refutes` edge, and a critical review that armed `k=1`.
 There is no MCP bypass.
 
 A waiter that just `set_thread_result` should **not** then close its
@@ -873,7 +873,7 @@ ADR shape, so any agent reads it the same way:
 `status` is one of `proposed` / `accepted` / `rejected` / `superseded`. The decision lives on
 its own thread (title = the question); the thread's FSM state tracks progress, the result
 holds the record. Nothing here is a new server type — it is a JSON convention over the
-Cluster 235 `thread_results` store. The server facet for listing results is
+The server facet for listing results is
 `result_kind` (the namespaced string above), not this convention's `"kind"`
 field — a payload that only has `"kind": "decision"` will not match
 `?result_kind=decision`.
@@ -881,7 +881,7 @@ field — a payload that only has `"kind": "decision"` will not match
 ### Supersession
 
 When a new decision replaces an old one, link them with a typed **`supersedes`** reference
-(Cluster 319) from the new decision's thread to the old, and flip the old record's `status`
+ from the new decision's thread to the old, and flip the old record's `status`
 to `superseded`:
 
 ```http
@@ -898,7 +898,7 @@ decision uses the `grounds` relation the same way.
 
 An **`ack` vote** (`POST /messages/{id}/votes` with `kind: "ack"`) is a grounding act: the
 voter asserts "I have read and stand on this message **as it is now**." Add an optional
-`confidence` (Cluster 324) to weight it. An ack is **version-pinned by time**: it grounds the
+`confidence` to weight it. An ack is **version-pinned by time**: it grounds the
 message as it stood at the vote's `created_at`, so it is **stale** once the message is edited
 after that — compare the ack's `created_at` to the latest `message_edits[].edited_at` (both in
 the context pack). A stale ack is a signal to re-confirm, not an error.

@@ -6,7 +6,7 @@
 
 Snapshot: 2026-08-25. Code facts from the local tree (`SUPPORTED_PROTOCOL_VERSIONS`, `POST /a2a/v1/rpc`, Agent Card). Market facts from AAIF / Linux Foundation / MCP spec `2026-07-28` / A2A v1.0. Re-scan before you quote numbers in a blog post.
 
-**MCP `2026-07-28` shipped (Hardening J3, Clusters 300–303).** The server negotiates the current
+**MCP `2026-07-28` shipped (Hardening J3).** The server negotiates the current
 `2026-07-28` revision — stateless Streamable HTTP (no `Mcp-Session-Id`) + SEP-2243 `Mcp-Method`/`Mcp-Name`
 routing headers — and still accepts `2024-11-05` for older clients. See [Required protocol upgrades](#required-protocol-upgrades).
 
@@ -98,7 +98,7 @@ until the upgrade lands is not the same as accepting 2024 forever.
 
 | Protocol | Code today (2026-08-25) | Required | ID |
 |----------|-------------------------|----------|-----|
-| **MCP** | ✅ **`2026-07-28` shipped** (default; `2024-11-05` still accepted). Stateless Streamable HTTP (no `Mcp-Session-Id`), SEP-2243 `Mcp-Method`/`Mcp-Name` headers, live-wait on `GET /mcp/stream`/WS. | Done in Clusters 300–303. | **J3** ✅ (Clusters 300–303) |
+| **MCP** | ✅ **`2026-07-28` shipped** (default; `2024-11-05` still accepted). Stateless Streamable HTTP (no `Mcp-Session-Id`), SEP-2243 `Mcp-Method`/`Mcp-Name` headers, live-wait on `GET /mcp/stream`/WS. | Done–303. | **J3** ✅ |
 | **A2A Agent Card** | Custom `{rpc_url, capabilities[]}` | Spec v1.0 `supportedInterfaces` (`JSONRPC`) | J4 |
 | **A2A parts** | Egress text-only (v267) | File/data parts when artifacts exist | J5 |
 | MCP OAuth (RFC 8707) | Capability bearers | Only if a real 2026 host refuses bearer after J3 | J6 |
@@ -131,13 +131,13 @@ pack (M.1) and public cut wait on it. Do not sneak this into a docs PR.
 
 ## Gaps worth closing (Hardening J + existing bets)
 
-J3 shipped (`2026-07-28`, Clusters 300–303). The rest is adapters + honesty. No new native protocol.
+J3 shipped (`2026-07-28`). The rest is adapters + honesty. No new native protocol.
 
 | ID | Gap | Size | Notes |
 |----|-----|------|-------|
 | **J1** | This page | Docs | **Written 2026-08-25.** Keep true when `SUPPORTED_PROTOCOL_VERSIONS` changes. |
-| **J2** | ✅ Retired | Docs | Was: "temporary honesty (today 2024-11-05)". No longer needed — J3 shipped (Clusters 300–303); README/Integration now advertise `2026-07-28`. |
-| **J3** | ✅ MCP `2026-07-28` **shipped** | Done | Clusters 300 (negotiation) → 301 (stateless streamable core) → 302 (SEP-2243 routing headers) → 303 (advertise: default flip + card/reference/Integration). `2024-11-05` still accepted. |
+| **J2** | ✅ Retired | Docs | Was: "temporary honesty (today 2024-11-05)". No longer needed — J3 shipped; README/Integration now advertise `2026-07-28`. |
+| **J3** | ✅ MCP `2026-07-28` **shipped** | Done | Negotiation → stateless streamable core → SEP-2243 routing headers → advertise (default flip + card/reference/Integration). `2024-11-05` still accepted. |
 | **J4** | A2A Agent Card → spec v1.0 `supportedInterfaces` | Small | Keep JSON-RPC URL. Advertise `protocolBinding: JSONRPC`. Do not add gRPC just to fill the array. Signed JWS cards are enterprise-later. |
 | **J5** | A2A file/data parts | Cluster (after 267 text) | Ingress already preserves structured content; egress is text-only. Round-trip files when an artifact already exists. |
 | **J6** | MCP OAuth resource-server (RFC 8707) | Spike, then maybe | Remote Claude/Cursor may insist. Today: capability bearers. Implement only if a real host refuses the bearer. Do not replace workspace capabilities with a second ACL. |

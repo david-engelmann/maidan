@@ -30,7 +30,7 @@ to skip the probe (e.g. air-gapped boot, or to assert the expected dimension) â€
 `text-embedding-3-small` is `1536`, `text-embedding-3-large` is `3072`, BGE/GTE
 small models are `384`/`768`.
 
-Batching knobs for the live indexer (Cluster 116) are in
+Batching knobs for the live indexer are in
 [Production.md](Production.md): `MAIDAN_INDEXER_QUEUE_CAPACITY`,
 `MAIDAN_INDEXER_BATCH_SIZE`.
 
@@ -52,7 +52,7 @@ Consequences:
   `embedding_model` argument (the active provider's model is the default). A
   query against an unregistered model returns no hits rather than an error.
 
-### Startup registration (Cluster 117)
+### Startup registration
 
 On boot the server calls `Search::ensure_model` for the active provider, which
 creates the per-model table + index and inserts the registry row if absent.
@@ -87,9 +87,9 @@ per-message write path retries `ensure_model` lazily.
    you're confident; nothing references it after cutover.
 
 Backfill runs on its own task/queue and never enters the live indexer's bounded
-queue (Cluster 116), so a large-workspace reindex does not delay live indexing.
+queue, so a large-workspace reindex does not delay live indexing.
 
-The live indexer is a **tap projector** of the event log (Cluster 393).
+The live indexer is a **tap projector** of the event log.
 It verifies every backfill row on the per-workspace hash chain, projects
 only `message_posted` / `message_edited` / `message_tombstoned`, and
 drains history before applying live frames. A pruned gap or chain break

@@ -96,7 +96,7 @@ rows are never auto-deleted.
 or inflate `maidan_outbox_pending` indefinitely. NOTIFY remains at-least-once;
 quarantine stops relay only, not subscriber replay.
 
-**To revisit:** admin replay API; consumer dedup tables (Cluster 13).
+**To revisit:** admin replay API; consumer dedup tables.
 
 ### Delivery cursors (`v13.0.0`)
 
@@ -218,7 +218,7 @@ infrastructure.
 **Alternative.** Full MCP streamable HTTP session multiplexing on a single
 connection.
 
-**Why this:** closes HTTP parity for the Cluster 15 subscribe surface without
+**Why this:** closes HTTP parity for the subscribe surface without
 replacing `/mcp/stream` or implementing the full transport spec.
 
 **To revisit:** session-scoped MCP servers per bearer token; broader resource
@@ -266,7 +266,7 @@ legacy local-only hub.
 
 **Why this:** a presence table would mean a DB write per member per heartbeat
 (write amplification); Redis would be a new hard dependency for multi-replica
-presence. The NOTIFY + per-replica TTL view reuses Cluster 102's substrate with
+presence. The NOTIFY + per-replica TTL view reuses the substrate with
 no new infra. Unlike the resource notifier (attached in-memory everywhere),
 presence is gated to Postgres+NOTIFY: its heartbeat task is pure overhead in a
 single process, where the legacy local broadcast is already correct.
@@ -284,7 +284,7 @@ short TTL; single-use is enforced atomically by
 race). The reindex `ReindexJob` model moves to `maidan-types` so store and server
 share one definition.
 
-**Alternative.** Fan the state over NOTIFY like Clusters 102/103, or keep an
+**Alternative.** Fan the state over NOTIFY as presence and the resource bus do, or keep an
 in-memory map plus sticky-session load balancing.
 
 **Why this:** unlike presence/resource updates — *ephemeral signals* with nothing
@@ -425,7 +425,7 @@ applied to projection.
 by the tap. That is a real reduction and it should not be softened. But the tap
 only ever noticed such a tamper when the process happened to restart, which is
 an accident of implementation rather than a control anyone could rely on,
-schedule, or alert from. Cluster 397.8 made `verify_chain` stream, so a periodic
+schedule, or alert from. `verify_chain` streams rather than materializing, so a periodic
 full verify is affordable; that is a control you can actually operate.
 
 **What is not given up.** Every event the tap projects is still chain-verified
@@ -458,7 +458,7 @@ that happened when a process bounced.
 it, and `revoke_api_token` revokes the whole subtree — transitively, not one
 level.
 
-**Why cascade rather than mark.** Cluster 397.7 established the principle: *a
+**Why cascade rather than mark.** An earlier decision established the principle: *a
 derived token inherits every limit the parent carried*. It fixed exactly this
 shape for app installations and per-token quotas, because re-issuing was
 otherwise a way to shed a bound. Revocation is the ultimate limit, and it was the
@@ -475,7 +475,7 @@ there is no window for write-time cascade to miss.
 
 **Why not a field on `NewApiToken`.** That struct is constructed at 109 sites,
 100 of them tests, and only the attenuation path has a parent. A field would have
-been a hundred mechanical edits serving one caller — the ripple that Cluster 173
+been a hundred mechanical edits serving one caller — the ripple that adding
 hit on `NewMessage`. `create_attenuated_api_token` has zero blast radius.
 
 **`ON DELETE SET NULL` on the parent FK**, never CASCADE: deleting a parent row
@@ -492,8 +492,8 @@ have in mind. That is the intended meaning of a kill switch, and the alternative
 ### Separation of duties reads a worker ledger, not the live assignee (`v401.1.0`)
 
 **Decision.** A durable, append-only `maidan_thread_workers` table records every
-member who has ever held a thread. Both governance gates (Cluster 375 reviews,
-Cluster 385 land gate) ask *"has this reviewer ever worked this thread?"* rather
+member who has ever held a thread. Both governance gates (required reviews,
+the land gate) ask *"has this reviewer ever worked this thread?"* rather
 than *"is this reviewer the current assignee?"*.
 
 **Why the live column could not stay the input.** Both gates tested
@@ -503,13 +503,13 @@ release the claim, approve your own work as a qualifying third party. The gate
 still ran; it just had nothing left to compare against.
 
 **Why not the event log.** Assignment history *is* recorded there, and reading
-it would need no new table. But Cluster-186 retention prunes the event log, and
+it would need no new table. But retention prunes the event log, and
 a security control cannot depend on evidence that ages out. A gate that weakens
 after ninety days is a gate with a calendar.
 
 **Why not a `last_worked_by` column.** It is smaller and it is wrong: it
 remembers only the most recent holder. A bearer token is act-as-any by design
-(the orchestrator model, Cluster 202), so an agent could claim *as* another
+(the orchestrator model), so an agent could claim *as* another
 member, overwrite the column, and approve. A ledger accumulates, and nothing in
 the API can un-write a row.
 
@@ -535,10 +535,10 @@ person it excludes.
 
 **Decision.** Maidan will **not** resolve a handle to a workspace. There is no
 `GET /rooms/:handle`, and the store's reverse lookup (`workspace_id_for_handle`,
-shipped unused in Cluster 395) is removed. A handle is a renameable, unique,
+shipped unused) is removed. A handle is a renameable, unique,
 human-readable label shown on the room card — nothing addresses by it.
 
-**Context.** Cluster 395 shipped the handle table, `PUT`/`GET
+**Context.** The handle table shipped with `PUT`/`GET
 /workspaces/:id/handle`, and a both-backend `workspace_id_for_handle` with a
 test. No route ever called it. That reads as a half-built feature — you can name
 a workspace and read the name back, but nothing finds a workspace *by* name — so
@@ -555,7 +555,7 @@ model, and it is not free:
   and request access, which is the flow a public handle serves elsewhere
   (`acme.slack.com`). An admin mints the token out of band; the client is
   configured with it.
-- **`maidan://` URIs deliberately use the UUID.** Cluster 395 chose that so a
+- **`maidan://` URIs deliberately use the UUID.** That was chosen so a
   rename cannot break a stored citation, pin or export. The addressable identity
   is the id *by design* — a resolver would introduce a second, weaker one.
 - **It would be a tenant-existence probe.** `/.well-known/maidan-room` already
@@ -583,7 +583,7 @@ interpreter — as the WASI engine for slash handlers. Not wasmtime, despite
 wasmtime being the Bytecode Alliance reference implementation and the default
 choice for most embedders.
 
-**Context.** Cluster 396 landed the ABI (`crates/maidan-types/src/wasi.rs`) and
+**Context.** The ABI landed (`crates/maidan-types/src/wasi.rs`) and
 nothing else: `SlashHandlerKind::wasi` is registrable on both write surfaces and
 every dispatch returns `wasi_runtime_unavailable`. The ABI already pins the
 shape the engine has to satisfy — WASI preview 1 (`wasi_snapshot_preview1`, any
@@ -657,7 +657,7 @@ and channel/thread access control stay enforced entirely at the application laye
 the `maidan_auth::access` helpers (`ensure_channel_access` / `ensure_thread_access`
 / `ensure_message_access` and the `can_access_*` / `*_deny_set` filters), applied on
 every REST + MCP content route, the WS/MCP subscribe grants, the search + context
-filters, and the federation/A2A ingress (the Cluster 160–165 arc plus 179–183,
+filters, and the federation/A2A ingress (the channel-RBAC arc,
 202–204). This ADR is the Program-A "RLS spike": it records the assessment and the
 conditions under which RLS would be revisited.
 
@@ -691,7 +691,7 @@ application query forgets a `WHERE workspace_id = …`.
   still rely solely on app-layer RBAC — an asymmetry that weakens the "both backends
   are equivalent" guarantee the project leans on.
 - **The bearer/orchestrator model is cross-workspace by design.** A bearer token is
-  an act-as-any orchestrator (Cluster 202–203); a single `current_workspace` GUC
+  an act-as-any orchestrator; a single `current_workspace` GUC
   doesn't fit an operation that legitimately spans workspaces without per-operation
   GUC juggling or a broad bypass role — which reintroduces the app layer as the real
   policy.
@@ -799,7 +799,7 @@ schema redesign and break Postgres parity.
 
 ### At-least-once delivery via cursor reconciliation + a time-based stability horizon
 
-**Decision (Cluster 125).** Live subscription stays the low-latency optimistic
+**Decision.** Live subscription stays the low-latency optimistic
 path (broadcast bus, monotonic `watermark` per stream — which already dedups
 re-published / NOTIFY-duplicated `log_id`s). Completeness is provided by a
 **reconcile loop**: for `workspace + consumer_id` subscriptions, a periodic timer
@@ -1005,7 +1005,7 @@ external reverse proxy (OAuth2 Proxy) in front of `/ui/` only — documented in
 
 ### Fidelity + context flagship arc — the optional tail is declined (`v331.0.0`)
 
-**Decision.** The fidelity + context flagship arc (Clusters 319–330) is **complete**.
+**Decision.** The fidelity + context flagship arc is **complete**.
 Its explicitly-optional tail is **declined**, not deferred — the value each item promised
 is already deliverable by composing shipped primitives, and adding bespoke surfaces for it
 would violate the arc's locked anti-goals ("a room, not a brain; perfect at what it does,

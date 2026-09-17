@@ -110,7 +110,7 @@ flowchart LR
    replay + signed resume tokens close gaps. A peer that missed a **pruned
    prefix** takes `GET /workspaces/:wid/snapshot` (hashed
    `maidan.event-log.snapshot/1` checkpoint) and pages
-   `…/events/catch-up` — Cluster 392 verifies the retained suffix;
+   `…/events/catch-up` — the chain walk verifies the retained suffix;
    the snapshot is the history the log no longer holds. Taps (webhook,
    WS, MCP SSE, AG-UI, search) verify backfill, drain history before
    live, and fail closed on a gap (`CursorTooOld` → snapshot href).
@@ -131,12 +131,12 @@ flowchart LR
 | Surface | Path / scheme | Purpose |
 |---------|---------------|---------|
 | HTTP CRUD | workspaces, members, channels, threads, messages, DMs + group DMs, pins, reactions, votes | Authoritative entity API; RFC 7807 errors |
-| Thread FSM + tasks | `POST /threads/:id`, MCP `transition_thread`, assignee/claim/renew, dependencies, required-skills, result, deliveries, tool-transcript | Lifecycle + the agentic task layer. MCP `transition_thread` is the twin of the REST POST (same SoD / close-gate / required-reviewers / Cluster-383 critical composition — no bypass) |
+| Thread FSM + tasks | `POST /threads/:id`, MCP `transition_thread`, assignee/claim/renew, dependencies, required-skills, result, deliveries, tool-transcript | Lifecycle + the agentic task layer. MCP `transition_thread` is the twin of the REST POST (same SoD / close-gate / required-reviewers / critical composition — no bypass) |
 | Recipes | `/workspaces/:wid/recipes` (CRUD + `/instantiate`), `task_schedules.recipe_id` | Reusable thread-type blueprints; instantiate = parent + DAG children + skills, copy-on-fire snapshot; a schedule seeds a run (`ScheduleSkipped` if the prior run is in flight) |
 | Secrets | `/workspaces/:wid/secrets` (CRUD + `/:name/resolve`), MCP `resolve_secret` | Named secrets; the log holds a `secret://<name>` reference, the store the AEAD-encrypted value; resolve at exec (`secret:read`) or the egress broker substitutes on webhook delivery to `MAIDAN_SECRET_EGRESS_ALLOWLIST` hosts |
 | Freeze kill-switch | `/members/:id/freeze` (POST/DELETE/GET), `/workspaces/:wid/frozen-members`, MCP `freeze_member` | Freeze a member (`token:admin`, audited): drops their leases + `claim_next` refuses them until unfreeze; not a thread/workspace pause |
 | Memory blocks | `/workspaces/:wid/memory-blocks` + `/threads/:id/memory-blocks` (CRUD + attach/detach), MCP `create/get/set/attach_memory_block` + `wait_for_memory_block` | Letta-shaped `{label, description, limit, read_only, value}` shared object attachable to a thread; full-rewrite last-writer-wins; a parent watches a child's result block via the `MemoryBlockUpdated` event (a "go fetch" pointer) — not a transcript, not RAG |
-| Required reviewers | `/threads/:id/review-requirement` + `/reviewers` + `/reviews` + `/review-status`, MCP `set_review_requirement`/`add_reviewer`/`submit_review`/`get_review_status` | A thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — separation of duties) + no unresolved `refutes` edge; a gate, not a poll/closer. Cluster 383 feeds a reviewed `example.review.result/1` with any `critical` finding from a review-skilled producer in as `request_changes` and arms `k=1` when unset |
+| Required reviewers | `/threads/:id/review-requirement` + `/reviewers` + `/reviews` + `/review-status`, MCP `set_review_requirement`/`add_reviewer`/`submit_review`/`get_review_status` | A thread's `closed` transition is gated on `k` distinct qualifying approvals (reviewer ≠ owner/assignee — separation of duties) + no unresolved `refutes` edge; a gate, not a poll/closer. A reviewed `example.review.result/1` is fed in with any `critical` finding from a review-skilled producer in as `request_changes` and arms `k=1` when unset |
 | Land-gate pointer | `/threads/:id/land-gate` + `/land-gate/requirement`, MCP `set/get/require/clear_land_gate` | An opt-in gate on closing a thread — see [Glossary](Glossary.md#land-gate). Maidan stores the pointer; an external verifier decides pass or fail. Closing is refused unless a qualifying pass exists: recorded by a member who declared the `land_gate` skill, and who is neither the owner, nor the assignee, nor anyone who *ever held* the thread. No pointer and no requirement closes as before. |
 | Spawn budget | `PUT`/`GET /workspaces/:id/spawn-budget`, MCP `set_spawn_budget`/`get_spawn_budget` | Per-workspace cap on agent fan-out — `max_children` per parent, `max_depth` nesting, `max_tools` per thread (each `null` = unlimited). Refused at thread create / message post as a 409 (`SpawnRejected`) + a `ThreadSpawnDenied` event naming the axis and the caller; a claim also holds at most one GitHub link |
 | Projector egress DLQ | `GET /operator/egress/dead`, `POST /operator/egress/dead/{id}/requeue` | Dead-lettered Slack/GitHub projector deliveries (`token:admin`, cross-workspace — the mail-DLQ shape): what failed, where it was going, the surface's own last error, and a replay. Egress itself is a durable queue with retry/backoff; an auth/config-class failure disables the link and emits `ProjectorMisconfigured` instead of retrying forever |
@@ -207,7 +207,7 @@ flowchart LR
   envelope, allowlist-check each `deliver_to` target, enqueue onto the durable egress
   queue. A re-review updates the existing GitHub comment or Slack message in place.
   Intent lives in `maidan_result_deliveries` (`armed_revision` vs `delivered_revision`);
-  transport stays the Cluster-377 outbox. Status is readable per thread over REST + MCP.
+  transport stays the outbox. Status is readable per thread over REST + MCP.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
   to peers (allowlist-by-kind). Ingest verifies the **origin** envelope's hash chain
   (`verify_peer_link`) before parse/remap — a rewrite is 409 `event-log-broken`, not a

@@ -10,8 +10,7 @@ as a floor and a methodology, then re-run against your own deployment.
 
 Two things, from the harness in
 [`crates/maidan-server/tests/loadgen.rs`](https://github.com/david-engelmann/maidan/blob/main/crates/maidan-server/tests/loadgen.rs)
-(introduced in Cluster 198, extended with the post→observer measurement in Cluster
-281):
+(extended with the post→observer measurement):
 
 1. **Throughput + REST latency** (`load_baseline`) — concurrent workers each loop
    over post-a-message → read-the-thread → search-the-workspace, reporting
@@ -31,11 +30,11 @@ pure and unit-tested in CI.
 | Axis | Value |
 |------|-------|
 | Date | 2026-08-26 |
-| Commit | Cluster 281 harness on top of `v280.0.0` (`7abf67a`); the 281 change is test-only, so the measured server is `v280.0.0`) |
+| Commit | `7abf67a` — a test-only harness change on top of `v280.0.0`, so the measured server is `v280.0.0` |
 | Hardware | Apple M3 Max, 16 cores, 128 GB RAM |
 | OS | macOS 14.6 (arm64) |
 | Toolchain | rustc 1.91.1, `--release` |
-| Backend | SQLite (`sqlite::memory:`), **one connection** (the shipped default, Cluster 277), auth enabled |
+| Backend | SQLite (`sqlite::memory:`), **one connection** (the shipped default), auth enabled |
 | Embeddings | `hash-v1` (offline default; a real provider adds its own network latency) |
 | Transport | in-process over loopback (no network hop) |
 
@@ -89,7 +88,7 @@ tokenizer-independent to first order.
 - **SQLite has a single-writer ceiling, and that is by design.** Throughput is
   higher and latency lower at 8 concurrent workers (1 586 ops/s, post p50 6 ms) than
   at 32 (666 ops/s, post p50 49 ms): every query serializes through the one
-  connection Maidan uses for SQLite (Cluster 277 chose one connection because a
+  connection Maidan uses for SQLite (one connection, because a
   multi-connection SQLite pool deadlocks under write contention). Note there are
   **zero errors** at both levels — correctness holds; the cost of contention shows
   up as latency, not failures. SQLite is the local-dev / edge backend. For
