@@ -14,10 +14,26 @@ use maidan_types::{
 };
 
 /// Per-workspace chain cursor the search projector walks during backfill.
+///
+/// **Faults are per workspace** (Cluster 402.1). The chain itself always was —
+/// `last_link` is keyed by workspace — but the fault was a single `Option`, so
+/// one tenant's break made `ingest` refuse every subsequent row of *every*
+/// tenant, and the indexer's retry loop then re-walked the whole log forever
+/// behind exponential backoff. One workspace with a broken chain stopped search
+/// indexing for the entire instance, which is a far larger blast radius than
+/// the failure it was reacting to.
+///
+/// A faulted workspace stops being projected and stays that way; the others
+/// carry on. `MissingHistory` and a pruned-gap cursor are still whole-tap
+/// faults — they are statements about the log, not about one tenant.
 #[derive(Debug, Default)]
 pub struct SearchTap {
     last_link: HashMap<WorkspaceId, EventLink>,
     pub history_hw: i64,
+    /// Workspaces whose chain broke. Keyed, not a single flag.
+    faults: HashMap<WorkspaceId, TapFault>,
+    /// A fault that is not attributable to one workspace (a missing or pruned
+    /// log), which does stop the whole tap.
     pub fault: Option<TapFault>,
 }
 
@@ -34,11 +50,29 @@ impl SearchTap {
         SEARCH_PROJECTOR_KINDS.contains(&kind)
     }
 
-    /// Verify `row` continues this workspace's chain. Returns whether
-    /// the handler should project it (message posted/edited/tombstoned).
+    /// Verify `row` continues its workspace's chain. Returns whether the handler
+    /// should project it (message posted/edited/tombstoned).
+    ///
+    /// A chain break faults **that workspace** and returns `Ok(false)` from then
+    /// on: the row is not projected, the rest of the log keeps flowing, and the
+    /// high-water still advances so the tap does not stall the instance over one
+    /// tenant. `Err` is reserved for a fault that is not one tenant's — see
+    /// [`Self::fault`].
+    ///
+    /// The break is still loud: [`Self::faulted_workspaces`] names them, and the
+    /// caller reports them. Silence would be the actual danger, since a faulted
+    /// workspace's index stops advancing while the rest of the room looks
+    /// healthy.
     pub fn ingest(&mut self, row: &StoredEvent) -> Result<bool, TapFault> {
         if let Some(fault) = &self.fault {
             return Err(fault.clone());
+        }
+        // Already broken: keep walking, project nothing for this tenant.
+        if let Some(ws) = row.workspace_id {
+            if self.faults.contains_key(&ws) {
+                self.history_hw = self.history_hw.max(row.id);
+                return Ok(false);
+            }
         }
         let previous = row.workspace_id.and_then(|ws| self.last_link.get(&ws));
         let report = verify_catch_up(previous, std::slice::from_ref(row));
@@ -49,14 +83,38 @@ impl SearchTap {
                     .reason
                     .unwrap_or(maidan_types::ChainBreakReason::MalformedHash),
             };
-            self.fault = Some(fault.clone());
-            return Err(fault);
+            match row.workspace_id {
+                // Attributable: isolate it.
+                Some(ws) => {
+                    self.faults.insert(ws, fault);
+                    self.history_hw = self.history_hw.max(row.id);
+                    return Ok(false);
+                }
+                // A row with no workspace cannot be isolated, so it is a
+                // statement about the log and stops the tap.
+                None => {
+                    self.fault = Some(fault.clone());
+                    return Err(fault);
+                }
+            }
         }
         if let Some(ws) = row.workspace_id {
             self.last_link.insert(ws, row.link());
         }
         self.history_hw = self.history_hw.max(row.id);
         Ok(Self::is_search_kind(row.kind))
+    }
+
+    /// Workspaces whose chain broke, with the fault. Empty is healthy.
+    pub fn faulted_workspaces(&self) -> Vec<(WorkspaceId, TapFault)> {
+        let mut out: Vec<_> = self.faults.iter().map(|(ws, f)| (*ws, f.clone())).collect();
+        out.sort_by_key(|(ws, _)| ws.0);
+        out
+    }
+
+    /// Whether any workspace is faulted.
+    pub fn has_workspace_fault(&self) -> bool {
+        !self.faults.is_empty()
     }
 
     /// A resume cursor in a pruned gap must rebuild, never clamp.
@@ -168,12 +226,77 @@ mod tests {
         broken.payload = json!({"kind": "message_posted", "n": 99});
         let mut tap2 = SearchTap::new();
         tap2.ingest(&e1).unwrap();
-        let err = tap2.ingest(&broken).unwrap_err();
-        assert!(err.search_must_rebuild());
-        assert!(matches!(err, TapFault::ChainBreak { .. }));
+        // Cluster 402.1: a tamper faults *that workspace* rather than the tap.
+        // It still refuses to project — a diverged index is the thing we will
+        // not serve — but the walk continues so other tenants keep indexing.
         assert!(
-            tap2.ingest(&e2).is_err(),
-            "fault sticks; no more projecting"
+            !tap2.ingest(&broken).unwrap(),
+            "a broken chain must not be projected"
+        );
+        assert!(tap2.has_workspace_fault(), "and it must be recorded");
+        let (ws, fault) = tap2.faulted_workspaces().into_iter().next().unwrap();
+        assert_eq!(ws, WorkspaceId(Uuid::from_u128(1)));
+        assert!(fault.search_must_rebuild());
+        assert!(matches!(fault, TapFault::ChainBreak { .. }));
+        assert!(
+            !tap2.ingest(&e2).unwrap(),
+            "the fault sticks for that workspace; no more projecting it"
+        );
+    }
+
+    /// The bug this isolation exists for: one tenant's broken chain used to stop
+    /// search indexing for every tenant, because the fault was a single
+    /// `Option` while the chain itself was already per-workspace.
+    #[test]
+    fn a_broken_workspace_does_not_stop_the_others() {
+        let ws_a = WorkspaceId(Uuid::from_u128(1));
+        let ws_b = WorkspaceId(Uuid::from_u128(2));
+        let in_ws = |id: i64, ws: WorkspaceId, n: i64, prev: Option<&EventLink>| {
+            let payload = json!({"kind": "message_posted", "n": n});
+            let link = link_for(id, &payload, prev).unwrap();
+            StoredEvent {
+                id: link.id,
+                lsn: link.lsn,
+                kind: EventKind::MessagePosted,
+                workspace_id: Some(ws),
+                channel_id: None,
+                thread_id: None,
+                payload,
+                occurred_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+                prev_hash: link.prev_hash,
+                content_hash: link.content_hash,
+            }
+        };
+
+        let mut tap = SearchTap::new();
+        let a1 = in_ws(1, ws_a, 1, None);
+        let b1 = in_ws(2, ws_b, 1, None);
+        assert!(tap.ingest(&a1).unwrap());
+        assert!(tap.ingest(&b1).unwrap());
+
+        // A's chain breaks.
+        let mut a_broken = in_ws(3, ws_a, 2, Some(&a1.link()));
+        a_broken.payload = json!({"kind": "message_posted", "n": 999});
+        assert!(!tap.ingest(&a_broken).unwrap());
+
+        // B keeps indexing — this is the whole point.
+        let b2 = in_ws(4, ws_b, 2, Some(&b1.link()));
+        assert!(
+            tap.ingest(&b2).unwrap(),
+            "a healthy workspace must keep projecting while another is faulted"
+        );
+        assert_eq!(
+            tap.faulted_workspaces().len(),
+            1,
+            "only the broken workspace is faulted"
+        );
+        assert_eq!(tap.faulted_workspaces()[0].0, ws_a);
+
+        // And the high-water still advances, so the tap does not stall the
+        // instance waiting on a tenant that cannot recover without a rebuild.
+        assert!(
+            tap.live_ready(4),
+            "history high-water advanced past the break"
         );
     }
 

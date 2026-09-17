@@ -123,7 +123,12 @@ async fn broken_chain_fails_closed_and_does_not_project_later_messages() {
 
     let mut tap = SearchTap::new();
     let kinds = Arc::new(Mutex::new(Vec::new()));
-    let err = backfill_search(&store, &mut tap, {
+    // Cluster 402.1: the backfill completes rather than aborting the whole tap,
+    // but the tampered workspace is faulted and **nothing from it is
+    // projected**. The safety property is unchanged — a diverged chain is never
+    // served — what changed is that one tenant's break no longer stops indexing
+    // for every other tenant.
+    backfill_search(&store, &mut tap, {
         let kinds = kinds.clone();
         move |row| {
             let kinds = kinds.clone();
@@ -134,9 +139,17 @@ async fn broken_chain_fails_closed_and_does_not_project_later_messages() {
         }
     })
     .await
-    .expect_err("tamper must fail closed");
-    assert!(err.search_must_rebuild());
-    assert!(!kinds.lock().unwrap().contains(&EventKind::MessagePosted));
+    .expect("a per-workspace break no longer aborts the tap");
+    assert!(
+        tap.has_workspace_fault(),
+        "the tamper must still be caught, not ignored"
+    );
+    let (_, fault) = tap.faulted_workspaces().into_iter().next().unwrap();
+    assert!(fault.search_must_rebuild());
+    assert!(
+        !kinds.lock().unwrap().contains(&EventKind::MessagePosted),
+        "a diverged chain must never be projected"
+    );
 }
 
 #[tokio::test]
