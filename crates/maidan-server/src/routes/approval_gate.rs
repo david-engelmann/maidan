@@ -57,8 +57,8 @@ pub async fn list_approval_gates(
     let workspace_id = WorkspaceId(wid);
     ensure_workspace(&auth, workspace_id)?;
     // A gate list without a signing key cannot carry the `requestState` the
-    // answer route requires, so an unsigned list would be a dead end (Cluster
-    // 398.2). 500 is the honest answer: the deployment is misconfigured.
+    // answer route requires, so an unsigned list would be a dead end. 500 is
+    // the honest answer: the deployment is misconfigured.
     let secret = state
         .subscribe_resume_secret()
         .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;

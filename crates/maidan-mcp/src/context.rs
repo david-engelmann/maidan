@@ -70,9 +70,8 @@ async fn collect_edit_views(
     Ok(out)
 }
 
-/// Non-tombstoned artifacts referenced by a page's messages' metadata (Cluster
-/// 335 — MCP context packs previously omitted artifacts entirely). Ordered by
-/// `created_at`; a missing/tombstoned blob is skipped.
+/// Non-tombstoned artifacts referenced by a page's messages' metadata. Ordered
+/// by `created_at`; a missing/tombstoned blob is skipped.
 async fn collect_artifacts(store: &dyn Store, messages: &[Message]) -> Vec<Artifact> {
     let mut shas = HashSet::new();
     for m in messages {
@@ -142,8 +141,8 @@ struct WorkspaceContextArgs {
     #[serde(default = "default_transition_limit")]
     transition_limit: i64,
     thread_cursor: Option<Uuid>,
-    /// Include the workspace glossary once at the top level (grounding, Cluster
-    /// 323). Default `true`; omitted when empty. `false` drops it.
+    /// Include the workspace glossary once at the top level (grounding).
+    /// Default `true`; omitted when empty. `false` drops it.
     #[serde(default = "default_true")]
     include_glossary: bool,
     /// Token budget applied to **each** nested thread's message page. Omit for
@@ -295,10 +294,10 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
             out["accepted_decisions"] = serde_json::to_value(&decisions)?;
         }
     }
-    // The glossary grounds the pack in the workspace's shared vocabulary (Cluster
-    // 323). Attached only when present + requested, so an empty glossary costs no
-    // tokens and a workspace-context pack (which carries it once at the top) can
-    // suppress it per nested thread.
+    // The glossary grounds the pack in the workspace's shared vocabulary.
+    // Attached only when present + requested, so an empty glossary costs no
+    // tokens and a workspace-context pack (which carries it once at the top)
+    // can suppress it per nested thread.
     if a.include_glossary {
         let glossary = store.list_glossary_terms(channel.workspace_id).await?;
         if !glossary.is_empty() {

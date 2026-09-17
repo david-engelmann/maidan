@@ -59,8 +59,8 @@ struct GetGlossaryArgs {
     term: String,
 }
 
-/// Look up one term's definition in the caller's workspace glossary (Cluster
-/// 322). Returns `null` when the term is undefined.
+/// Look up one term's definition in the caller's workspace glossary. Returns
+/// `null` when the term is undefined.
 pub(super) async fn get_glossary_term(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

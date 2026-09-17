@@ -354,8 +354,8 @@ impl McpServer {
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
-        // Gate channel/thread resource content on per-channel access (Cluster
-        // 161); workspace/artifact resources remain workspace-scoped.
+        // Gate channel/thread resource content on per-channel access;
+        // workspace/artifact resources remain workspace-scoped.
         if !auth.bypass {
             if let Some(rest) = uri.strip_prefix("maidan://") {
                 let mut parts = rest.splitn(2, '/');

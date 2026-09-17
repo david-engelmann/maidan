@@ -661,8 +661,8 @@ pub async fn channel_occupancy(
     })
 }
 
-/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx (Cluster
-/// 209). Conditional: the event is appended **only** when a thread was claimed
+/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx.
+/// Conditional: the event is appended **only** when a thread was claimed
 /// (`(Some(thread), Some(event))`); an empty channel yields `(None, None)`.
 /// `previous_assignee_id` is `None` (behaviour-preserving — matches the old
 /// route; a lease-expiry reclaim does not surface the prior holder).
@@ -753,8 +753,8 @@ pub async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
-/// Extend a claim's lease (heartbeat), only for the current assignee (Cluster
-/// 192). `NotFound` if the thread is gone or the caller isn't the holder — so a
+/// Extend a claim's lease (heartbeat), only for the current assignee.
+/// `NotFound` if the thread is gone or the caller isn't the holder — so a
 /// member can't renew a lease it doesn't own.
 pub async fn renew_claim(
     pool: &SqlitePool,

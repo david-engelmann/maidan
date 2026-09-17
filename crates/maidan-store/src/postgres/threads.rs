@@ -631,9 +631,9 @@ pub async fn channel_occupancy(
     })
 }
 
-/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx (Cluster
-/// 209). Conditional: the event is appended **only** when a thread was claimed;
-/// an empty channel yields `(None, None)`. `previous_assignee_id` is `None`
+/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx.
+/// Conditional: the event is appended **only** when a thread was claimed; an
+/// empty channel yields `(None, None)`. `previous_assignee_id` is `None`
 /// (behaviour-preserving — matches the old route).
 pub async fn claim_next_with_event(
     pool: &PgPool,
@@ -712,8 +712,8 @@ pub async fn claim_next_with_event(
     }
 }
 
-/// Extend a claim's lease (heartbeat), only for the current assignee (Cluster
-/// 192). `NotFound` if the thread is gone or the caller isn't the holder.
+/// Extend a claim's lease (heartbeat), only for the current assignee.
+/// `NotFound` if the thread is gone or the caller isn't the holder.
 pub async fn renew_claim(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -925,10 +925,10 @@ async fn validate_parent(
 /// Enforce the workspace's spawn budget when creating a CHILD thread: refuse
 /// once the parent already holds `max_children` children, or once its nesting
 /// would exceed `max_depth`. Root threads (no parent) and workspaces with no
-/// budget are unrestricted. A refusal is a typed `SpawnRejected` (Cluster
-/// 376.6) → REST 409 / MCP InvalidParams, and it carries the payload the route
-/// publishes as `ThreadSpawnDenied`. Coordination cost is n(n-1)/2 — do not
-/// admit a further agent onto a late claim.
+/// budget are unrestricted. A refusal is a typed `SpawnRejected` → REST 409 /
+/// MCP InvalidParams, and it carries the payload the route publishes as
+/// `ThreadSpawnDenied`. Coordination cost is n(n-1)/2 — do not admit a further
+/// agent onto a late claim.
 async fn enforce_spawn_budget(
     pool: &PgPool,
     channel_id: ChannelId,

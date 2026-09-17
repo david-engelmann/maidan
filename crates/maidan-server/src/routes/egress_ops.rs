@@ -51,10 +51,9 @@ pub async fn list_dead_egress(
 /// `POST /operator/egress/dead/{id}/requeue` — requeue a dead delivery
 /// (`pending`, due now, `attempts` reset). `404` if no dead entry has that id.
 ///
-/// For a delivery that dead-lettered because its link was disabled (Cluster
-/// 377.3), fix the credential and **re-link** first: re-linking clears
-/// `disabled_at`, and a requeue on a still-disabled link just fails the same way
-/// again.
+/// For a delivery that dead-lettered because its link was disabled, fix the
+/// credential and **re-link** first: re-linking clears `disabled_at`, and a
+/// requeue on a still-disabled link just fails the same way again.
 pub async fn requeue_dead_egress(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

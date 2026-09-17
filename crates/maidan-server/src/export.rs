@@ -1,8 +1,8 @@
 //! Workspace export / portability.
 //!
 //! Assembles a workspace's collaboration graph into one JSON bundle so an
-//! operator can migrate or archive a tenant. **Tokens die on export.** Cluster
-//! 391 wraps the bundle in a signed `maidan.workspace.export/1` envelope so a
+//! operator can migrate or archive a tenant. **Tokens die on export.** The
+//! bundle is wrapped in a signed `maidan.workspace.export/1` envelope so a
 //! blank instance can verify it without calling the origin.
 
 use std::sync::Arc;

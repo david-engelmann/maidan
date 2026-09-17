@@ -269,11 +269,10 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
 ///
 /// The refusal already reaches the caller as a 409 — this is the *operator's*
 /// view: which member keeps pushing a claim past its fan-out cap, on the same
-/// event stream as everything else in the room. The store owns the gate
-/// (Cluster
-/// 376.2/376.3) but has no author on the thread-create path, so the route
-/// supplies `actor`. Best-effort by construction: [`publish`] already swallows
-/// a bus hiccup, and a lost append cannot make the refusal any less refused.
+/// event stream as everything else in the room. The store owns the gate but has
+/// no author on the thread-create path, so the route supplies `actor`.
+/// Best-effort by construction: [`publish`] already swallows a bus hiccup, and
+/// a lost append cannot make the refusal any less refused.
 pub(crate) async fn observe_spawn_denial<T>(
     state: &AppState,
     actor: Option<MemberId>,

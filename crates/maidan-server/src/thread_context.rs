@@ -362,9 +362,9 @@ async fn build_accepted_decisions(
     Ok(assemble_accepted_decisions(rows))
 }
 
-/// Reconstruct a thread's context as it stood at event-log id `as_of` (Cluster
-/// 326). The message set (and each message's body) is folded from the **immutable
-/// event log** — `MessagePosted`/`MessageEdited` carry the full `Message`,
+/// Reconstruct a thread's context as it stood at event-log id `as_of`. The
+/// message set (and each message's body) is folded from the **immutable event
+/// log** — `MessagePosted`/`MessageEdited` carry the full `Message`,
 /// `MessageTombstoned` its id — so a since-edited or since-tombstoned message
 /// shows its as-of body, not its current one. The additive components (edits,
 /// references, transitions, artifacts) are immutable rows cut by the anchor

@@ -59,8 +59,8 @@ pub(super) async fn search_messages(
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
-    // Exclude private channels the caller can't see at the query level (Cluster
-    // 200) so they don't crowd out `limit`; the post-filter below is still the
+    // Exclude private channels the caller can't see at the query level so they
+    // don't crowd out `limit`; the post-filter below is still the
     // authoritative, DM-aware check.
     let deny_channels =
         maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;

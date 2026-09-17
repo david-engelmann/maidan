@@ -266,8 +266,8 @@ pub fn verify_catch_up(previous: Option<&EventLink>, events: &[StoredEvent]) -> 
     verify_chain_from(previous, &links, &payloads)
 }
 
-/// Walk `links` chained from an optional predecessor. Used by catch-up; Cluster
-/// 392 `verify_chain` stays the retained-suffix walker (no predecessor).
+/// Walk `links` chained from an optional predecessor. Used by catch-up;
+/// `verify_chain` stays the retained-suffix walker (no predecessor).
 pub fn verify_chain_from(
     previous: Option<&EventLink>,
     links: &[EventLink],

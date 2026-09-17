@@ -646,9 +646,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             limit,
             observed,
         },
-        // Non-federatable (this deployment's own connector credentials, Cluster
-        // 377.3) — never actually ingested/remapped, but the exhaustive match
-        // must classify it.
+        // Non-federatable (this deployment's own connector credentials) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         ProjectorMisconfigured {
             occurred_at,
             workspace_id: _,

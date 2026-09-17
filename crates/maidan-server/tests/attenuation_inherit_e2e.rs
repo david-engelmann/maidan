@@ -231,9 +231,9 @@ async fn a_derived_token_inherits_the_parents_quotas() {
 /// credential actually stops working — not merely gets a column set.
 ///
 /// The parent link used to live only in audit metadata, so revocation could not
-/// traverse it and a child outlived the credential it was minted from. Cluster
-/// 397.7 closed the same shape for app installations and quotas; this is the
-/// third dimension.
+/// traverse it and a child outlived the credential it was minted from. The same
+/// shape was closed earlier for app installations and quotas; this is the third
+/// dimension.
 #[tokio::test]
 async fn a_derived_token_dies_with_its_parent() {
     let (addr, client, store) = spawn().await;

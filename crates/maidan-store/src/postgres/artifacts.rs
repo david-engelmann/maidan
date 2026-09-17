@@ -90,8 +90,8 @@ pub async fn record_ref(
     Ok(())
 }
 
-/// Record a per-workspace artifact access ref on a caller-supplied tx (Cluster
-/// 214) — used by `upsert_with_event` so the ref and the event commit atomically.
+/// Record a per-workspace artifact access ref on a caller-supplied tx — used by
+/// `upsert_with_event` so the ref and the event commit atomically.
 async fn record_ref_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     workspace_id: WorkspaceId,

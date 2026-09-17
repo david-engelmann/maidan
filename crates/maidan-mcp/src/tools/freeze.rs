@@ -1,7 +1,6 @@
 //! Member-freeze kill-switch MCP tools. An orchestrator with `token:admin` can
 //! freeze a misbehaving member (dropping their leases; `claim_next` then
-//! refuses them), unfreeze, and list the frozen. The REST twin is Cluster
-//! 372.3.
+//! refuses them), unfreeze, and list the frozen.
 
 use std::sync::Arc;
 

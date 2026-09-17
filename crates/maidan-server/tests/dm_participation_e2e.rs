@@ -1,8 +1,7 @@
 //! A non-participant cannot tail a DM's live events by supplying its
 //! `dm_conversation_id` or its `thread_id` on `GET /mcp/stream`. The gate is
-//! `expand_event_filter` → `ensure_thread_access` (DM-participant-aware,
-//! Cluster
-//! 180). A participant still subscribes fine.
+//! `expand_event_filter` → `ensure_thread_access` (DM-participant-aware). A
+//! participant still subscribes fine.
 
 use std::{
     net::SocketAddr,

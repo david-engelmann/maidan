@@ -199,8 +199,8 @@ pub async fn import_workspace(
     }))
 }
 
-/// Live per-workspace usage counts for metering / quota visibility (Cluster
-/// 188). Low-cardinality (a per-request DB aggregate, not a scraped per-tenant
+/// Live per-workspace usage counts for metering / quota visibility.
+/// Low-cardinality (a per-request DB aggregate, not a scraped per-tenant
 /// series). `workspace:read` — aggregate counts, not content.
 pub async fn get_workspace_usage(
     State(state): State<AppState>,
