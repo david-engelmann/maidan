@@ -44,7 +44,14 @@ services:
     healthcheck:
       # `docker compose up -d --wait` then returns when the server is serving,
       # so the very next command in the walkthrough cannot race the boot.
-      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      #
+      # curl, not `maidan-server --health-check` like compose.yaml uses. This
+      # image runs a **released** binary (MAIDAN_VERSION), so it cannot be
+      # assumed to know about a flag added after that release — and an older one
+      # ignores the flag and starts a second server, which fails on the port and
+      # marks the container unhealthy forever. The image has curl; the
+      # distroless one compose.yaml builds does not, which is why they differ.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 24
