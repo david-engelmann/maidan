@@ -22,8 +22,8 @@ pub const FEDERATION_ADMIN: &str = "federation:admin";
 /// workspace-scoped — a token holding it queries `/operator/audit` without an
 /// `ensure_workspace` check.
 pub const AUDIT_READ_GLOBAL: &str = "audit:read-global";
-/// Manage per-channel membership (add/remove/list `channel_members`; Cluster
-/// 164). Deliberately not in [`default_minted`] — channel administration is a
+/// Manage per-channel membership (add/remove/list `channel_members`).
+/// Deliberately not in [`default_minted`] — channel administration is a
 /// granted-on-purpose surface.
 pub const CHANNEL_ADMIN: &str = "channel:admin";
 /// Resolve a named secret's value — the "a consumer fetches at exec" grant.

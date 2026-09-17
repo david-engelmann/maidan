@@ -1,5 +1,4 @@
-//! Best-effort audit-trail writes for security-sensitive mutations (Cluster
-//! 182).
+//! Best-effort audit-trail writes for security-sensitive mutations.
 //!
 //! An audit write must never break the primary operation it records — a failed
 //! audit insert must not, for example, lose a freshly minted token secret that

@@ -266,11 +266,11 @@ impl GithubError {
         matches!(self, Self::Api { status: 404, .. })
     }
 
-    /// A 422 — GitHub understood the request but refused it (a line that is
-    /// not part of the pull's diff at `commit_id`, a review on an issue that
-    /// is not a PR in a way that still 422s, too many comments). Cluster
-    /// 380.2 treats this as a skip of the inline review, not a failure of
-    /// the 379 summary comment.
+    /// A 422 — GitHub understood the request but refused it (a line that is not
+    /// part of the pull's diff at `commit_id`, a review on an issue that is not
+    /// a PR in a way that still 422s, too many comments). The egress worker
+    /// treats this as a skip of the inline review, not a failure of the summary
+    /// comment.
     pub fn is_unprocessable(&self) -> bool {
         matches!(self, Self::Api { status: 422, .. })
     }

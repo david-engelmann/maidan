@@ -241,9 +241,9 @@ pub struct ThreadRequiredSkill {
     pub created_at: DateTime<Utc>,
 }
 
-/// The structured result an agent attaches to a task when it's done (Cluster
-/// 234). One per thread (a re-set overwrites). A requester — or a parent task
-/// that depends on it — reads this back; coordination waits block on it.
+/// The structured result an agent attaches to a task when it's done. One per
+/// thread (a re-set overwrites). A requester — or a parent task that depends on
+/// it — reads this back; coordination waits block on it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadResult {
@@ -2083,8 +2083,8 @@ pub enum RelationKind {
     Grounds,
     /// This entity supersedes the target (the target is now historical).
     Supersedes,
-    /// This entity was seeded/branched from the target (re-ask lineage, Cluster
-    /// 327): a new work thread spawned from a source message.
+    /// This entity was seeded/branched from the target (re-ask lineage): a new
+    /// work thread spawned from a source message.
     SeededFrom,
     /// Any relation outside the controlled set, preserved verbatim.
     Other(String),

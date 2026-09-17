@@ -263,8 +263,7 @@ pub struct SetTaskScheduleActive {
     pub active: bool,
 }
 
-/// Add a skill — to a member (`declares`) or a thread (`requires`) — Cluster
-/// 232.
+/// Add a skill — to a member (`declares`) or a thread (`requires`).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddSkill {
     pub skill: String,

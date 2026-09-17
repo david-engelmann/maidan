@@ -303,10 +303,10 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Register the active model in the per-model table scheme at boot (Cluster
-    // 117) so it's queryable before the first write and a dimension mismatch
-    // surfaces now. Non-fatal: embeddings are best-effort and the per-message
-    // path re-attempts; the server must still serve messaging.
+    // Register the active model in the per-model table scheme at boot so it's
+    // queryable before the first write and a dimension mismatch surfaces now.
+    // Non-fatal: embeddings are best-effort and the per-message path
+    // re-attempts; the server must still serve messaging.
     match search.ensure_model(embedding_provider.as_ref()).await {
         Ok(()) => tracing::info!(
             model = embedding_provider.model_name(),

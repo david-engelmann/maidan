@@ -88,13 +88,13 @@ struct WaitForMentionArgs {
     since_log_id: Option<i64>,
 }
 
-/// Block until `member_id` is next @mentioned, or the timeout lapses (Cluster
-/// 196). Subscribes to the event bus filtered to this member's
-/// `MentionRecorded` events and returns the first one whose thread the caller
-/// can access; returns `null` on timeout. This is a **live** primitive — it only
-/// sees mentions recorded *after* the call subscribes, so drain existing ones
-/// with `get_inbox`/`list_mentions` first (the `GET /mcp/stream` SSE transport
-/// is the at-least-once, resumable alternative when a missed mention is
+/// Block until `member_id` is next @mentioned, or the timeout lapses.
+/// Subscribes to the event bus filtered to this member's `MentionRecorded`
+/// events and returns the first one whose thread the caller can access; returns
+/// `null` on timeout. This is a **live** primitive — it only sees mentions
+/// recorded *after* the call subscribes, so drain existing ones with
+/// `get_inbox`/`list_mentions` first (the `GET /mcp/stream` SSE transport is
+/// the at-least-once, resumable alternative when a missed mention is
 /// unacceptable).
 pub(super) async fn wait_for_mention(
     server: &crate::server::McpServer,

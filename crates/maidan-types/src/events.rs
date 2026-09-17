@@ -208,8 +208,8 @@ impl EventKind {
     /// Kept in sync with the enum by the compile-time tripwire in
     /// `all_variants_round_trip` — a new variant fails that test's exhaustive
     /// match until it is listed here. `as_str`/`parse` are the single source of
-    /// truth for the wire form; the store layer parses through `parse` (Cluster
-    /// 181) so there is no per-backend copy to drift.
+    /// truth for the wire form; the store layer parses through `parse` so there
+    /// is no per-backend copy to drift.
     pub const ALL: &'static [EventKind] = &[
         Self::WorkspaceCreated,
         Self::MemberJoined,
@@ -292,8 +292,8 @@ impl EventKind {
             // A wait timeout is fired by *this* deployment's sweeper (this
             // clock); a peer must not inject one.
             Self::WaitTimedOut => false,
-            // A skipped firing is *this* deployment's scheduler decision (Cluster
-            // 370); a peer must not inject one.
+            // A skipped firing is *this* deployment's scheduler decision; a
+            // peer must not inject one.
             Self::ScheduleSkipped => false,
             // A refused spawn is *this* deployment's budget decision; a peer
             // must not inject one for our threads.

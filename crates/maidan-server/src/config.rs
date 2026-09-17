@@ -95,9 +95,9 @@ impl DbConfig {
 pub struct Config {
     pub bind: SocketAddr,
     pub database_url: String,
-    /// Optional read-replica connection string (`MAIDAN_DB_REPLICA_URL`). When set,
-    /// the store gets a separate reader pool for LSN-token read routing (Cluster
-    /// 262+); unset means reads stay on the primary (unchanged).
+    /// Optional read-replica connection string (`MAIDAN_DB_REPLICA_URL`). When
+    /// set, the store gets a separate reader pool for LSN-token read routing;
+    /// unset means reads stay on the primary (unchanged).
     pub replica_url: Option<String>,
     pub artifact_backend: ArtifactBackend,
     pub log_filter: String,

@@ -1205,8 +1205,7 @@ pub async fn add_thread_dependency(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// A task's dependencies + whether it is ready (all deps terminal) — Cluster
-/// 219.
+/// A task's dependencies + whether it is ready (all deps terminal).
 pub async fn list_thread_dependencies(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

@@ -158,13 +158,11 @@ async fn consume_bus(
 }
 
 /// Resolve an event to the members it concerns and write a per-recipient
-/// notification row for each — `MentionRecorded` → the mentioned member
-/// (Cluster
-/// 238); `MessagePosted` → the followers of its channel/thread minus the author
-/// Each write is mute-checked and deduped on `(member_id, source_log_id)`, so
-/// event replays and multiple replicas don't double-notify. A `ThreadResultSet`
-/// is the result-delivery trigger (Cluster
-/// 379.3), not an inbox row.
+/// notification row for each — `MentionRecorded` → the mentioned member;
+/// `MessagePosted` → the followers of its channel/thread minus the author Each
+/// write is mute-checked and deduped on `(member_id, source_log_id)`, so event
+/// replays and multiple replicas don't double-notify. A `ThreadResultSet` is
+/// the result-delivery trigger, not an inbox row.
 pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result<(), String> {
     match event {
         Event::MentionRecorded {

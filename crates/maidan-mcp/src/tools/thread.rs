@@ -842,8 +842,8 @@ struct ThreadDepsArgs {
     thread_id: uuid::Uuid,
 }
 
-/// A task's dependencies + whether it is ready (all deps terminal) — Cluster
-/// 220. Channel access is enforced pre-dispatch (the `thread_id` arg).
+/// A task's dependencies + whether it is ready (all deps terminal). Channel
+/// access is enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn list_thread_dependencies(
     store: &Arc<dyn Store>,
     args: &Value,

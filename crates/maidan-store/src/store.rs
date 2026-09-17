@@ -94,8 +94,7 @@ pub trait WorkspaceStore: Send + Sync {
 #[async_trait]
 pub trait MemberStore: Send + Sync {
     async fn create_member(&self, new: NewMember) -> Result<Member, StoreError>;
-    /// Create a member and append its `MemberJoined` event atomically (Cluster
-    /// 213).
+    /// Create a member and append its `MemberJoined` event atomically.
     async fn create_member_with_event(
         &self,
         new: NewMember,
@@ -1127,13 +1126,14 @@ pub trait TaskScheduleStore: Send + Sync {
         now: DateTime<Utc>,
         limit: i64,
     ) -> Result<Vec<TaskSchedule>, StoreError>;
-    /// Atomically claim the oldest due active schedule and advance it (Cluster
-    /// 227): a recurring schedule re-arms `next_run_at = now + interval_secs`
+    /// Atomically claim the oldest due active schedule and advance it: a
+    /// recurring schedule re-arms `next_run_at = now + interval_secs`
     /// (fire-once-per-tick, no catch-up storm); a one-shot deactivates. Returns
-    /// the advanced row, or `None` when nothing is due. Postgres uses `FOR UPDATE
-    /// SKIP LOCKED` so concurrent replicas claim distinct schedules; SQLite
-    /// serializes writers. The caller creates the task thread *after* the claim
-    /// commits (at-most-once on crash — a missed firing, never a double).
+    /// the advanced row, or `None` when nothing is due. Postgres uses `FOR
+    /// UPDATE SKIP LOCKED` so concurrent replicas claim distinct schedules;
+    /// SQLite serializes writers. The caller creates the task thread *after*
+    /// the claim commits (at-most-once on crash — a missed firing, never a
+    /// double).
     async fn claim_next_due_schedule(
         &self,
         now: DateTime<Utc>,
@@ -1620,8 +1620,8 @@ pub trait AssignmentStore: Send + Sync {
 
 #[async_trait]
 pub trait ThreadDepStore: Send + Sync {
-    /// Add a task-dependency edge: `thread_id` depends on `depends_on` (Cluster
-    /// 217). Idempotent; a self-dependency is rejected; both threads must exist.
+    /// Add a task-dependency edge: `thread_id` depends on `depends_on`.
+    /// Idempotent; a self-dependency is rejected; both threads must exist.
     async fn add_thread_dependency(
         &self,
         thread_id: ThreadId,
@@ -1681,8 +1681,7 @@ pub trait MessageStore: Send + Sync {
         editor_id: MemberId,
         edit: EditMessage,
     ) -> Result<Message, StoreError>;
-    /// Edit a message and append its `MessageEdited` event atomically (Cluster
-    /// 212).
+    /// Edit a message and append its `MessageEdited` event atomically.
     async fn edit_message_with_event(
         &self,
         id: MessageId,
@@ -1828,8 +1827,7 @@ pub trait SocialStore: Send + Sync {
 #[async_trait]
 pub trait ReferenceStore: Send + Sync {
     async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError>;
-    /// Add a reference and append its `ReferenceAdded` event atomically (Cluster
-    /// 214).
+    /// Add a reference and append its `ReferenceAdded` event atomically.
     async fn add_reference_with_event(
         &self,
         new: NewReference,
@@ -1970,8 +1968,8 @@ pub trait EventStore: Send + Sync {
     /// vacuous pass that is indistinguishable from a real one.
     async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError>;
 
-    /// Highest event-log `id` across all workspaces (`0` when empty). Cluster
-    /// 390 `Maidan-Room-LSN` — the room head a client compares to last-seen
+    /// Highest event-log `id` across all workspaces (`0` when empty). The
+    /// `Maidan-Room-LSN` value — the room head a client compares to last-seen
     /// `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]
     /// (`Maidan-Consistency-Token`).
     async fn max_event_id(&self) -> Result<i64, StoreError>;
@@ -2441,12 +2439,12 @@ pub trait A2aStore: Send + Sync {
 
 /// The full storage surface: the union of every domain sub-trait above.
 ///
-/// Split from a single 258-method trait into cohesive sub-traits (Cluster
-/// 349): `Store` is now a marker super-trait, so `dyn Store` / `Arc<dyn
-/// Store>` still expose every method, while a caller that needs only one
-/// concern can bound on the narrower sub-trait (e.g. `impl ThreadStore`).
-/// The blanket impl means any backend that implements all the sub-traits is
-/// automatically a `Store` — no per-backend `impl Store` block.
+/// Split from a single 258-method trait into cohesive sub-traits: `Store` is
+/// now a marker super-trait, so `dyn Store` / `Arc<dyn Store>` still expose
+/// every method, while a caller that needs only one concern can bound on the
+/// narrower sub-trait (e.g. `impl ThreadStore`). The blanket impl means any
+/// backend that implements all the sub-traits is automatically a `Store` — no
+/// per-backend `impl Store` block.
 pub trait Store:
     MetaStore
     + WorkspaceStore
