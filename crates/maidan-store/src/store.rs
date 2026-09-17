@@ -1956,6 +1956,23 @@ pub trait EventStore: Send + Sync {
     /// (`Maidan-Consistency-Token`).
     async fn max_event_id(&self) -> Result<i64, StoreError>;
 
+    /// Where a tap projector last finished (Cluster 402.2). `0` = never run.
+    ///
+    /// The search tap re-walked the whole log from genesis on every start,
+    /// resubscribe and `Lagged` — re-embedding all history each time, and
+    /// livelocking on a busy instance because the bus is not drained during a
+    /// backfill.
+    async fn tap_cursor(&self, surface: &str) -> Result<i64, StoreError>;
+
+    /// Advance a tap's resume point. Monotonic — a lower value is ignored, so a
+    /// slower replica cannot drag the cursor backwards.
+    async fn set_tap_cursor(&self, surface: &str, last_event_id: i64) -> Result<(), StoreError>;
+
+    /// Forget a tap's resume point so the next backfill re-walks from genesis.
+    /// The rebuild path: resuming past a detected break would preserve exactly
+    /// the divergence that was detected.
+    async fn clear_tap_cursor(&self, surface: &str) -> Result<(), StoreError>;
+
     /// Cross-workspace `id > after_id` page, in `id` order. Internal bus
     /// consumers (indexer, webhook, notification router, FSM hooks) resume
     /// from this after `RecvError::Lagged` (Cluster 388) instead of dropping.

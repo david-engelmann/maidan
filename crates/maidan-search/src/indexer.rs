@@ -184,6 +184,27 @@ enum ConsumeOutcome {
     RebuildRequired,
 }
 
+/// The tap surface this indexer projects. One row in `maidan_tap_cursor`.
+const SEARCH_TAP_SURFACE: &str = "search";
+
+/// Persist the resume point, but only when no workspace is faulted.
+///
+/// A faulted tenant's events were walked past without being projected, so the
+/// high-water covers rows its index does not have. Saving that would make the
+/// gap permanent: a later run would resume past the very events a rebuild needs
+/// to replay. Rebuilding is the recovery path, and it needs the cursor back at
+/// genesis — so while anything is faulted, the cursor stays where it was.
+async fn persist_cursor(store: &dyn Store, tap: &SearchTap, hw: i64) {
+    if tap.has_workspace_fault() {
+        return;
+    }
+    if let Err(err) = store.set_tap_cursor(SEARCH_TAP_SURFACE, hw).await {
+        // Non-fatal: the next run re-walks more than it needed to, which is
+        // slow rather than wrong.
+        warn!(?err, "could not persist the search tap cursor");
+    }
+}
+
 /// Name every workspace whose chain broke, and set the rebuild flag if any did.
 ///
 /// The flag stays a whole-instance signal because that is what consumes it, but
@@ -227,6 +248,14 @@ async fn consume(
     let mut tap = SearchTap::new();
     let mut watermark: i64 = 0;
     if let Some(store) = log {
+        // Resume where the last run finished (Cluster 402.2). Without this the
+        // tap re-walked the whole log on every start, resubscribe and `Lagged`
+        // — re-embedding all history each time, and livelocking on a busy
+        // instance because the bus is not drained *during* a backfill.
+        // A cursor we cannot read is treated as 0: a slower start beats
+        // skipping history we have not projected.
+        let resume = store.tap_cursor(SEARCH_TAP_SURFACE).await.unwrap_or(0);
+        tap.resume_at(resume);
         match backfill_search(store, &mut tap, |row| async move {
             project_row(handler, row).await
         })
@@ -240,9 +269,17 @@ async fn consume(
                 // far larger blast radius than the failure it reacts to — and
                 // the old teardown retried the full log walk forever.
                 report_workspace_faults(&tap, rebuild_flag);
+                persist_cursor(store, &tap, hw).await;
             }
             Err(fault) => {
                 error!(?fault, "search projector backfill failed closed");
+                // A whole-tap fault means the projection is not trustworthy, so
+                // drop the resume point: the next attempt must re-walk from
+                // genesis. Resuming past a detected break would preserve
+                // exactly the divergence that was detected.
+                if let Err(err) = store.clear_tap_cursor(SEARCH_TAP_SURFACE).await {
+                    error!(?err, "could not clear the search tap cursor");
+                }
                 rebuild_flag.store(true, Ordering::Relaxed);
                 return ConsumeOutcome::RebuildRequired;
             }
@@ -278,6 +315,10 @@ async fn consume(
                             watermark, "indexer bus subscriber lagged; re-verifying log"
                         );
                         tap = SearchTap::new();
+                        // Resume rather than re-walk. This is the livelock:
+                        // a full walk here overflows the broadcast again,
+                        // which lands right back in this arm.
+                        tap.resume_at(watermark);
                         match backfill_search(store, &mut tap, |row| async {
                             project_row(handler, row).await
                         })
@@ -286,9 +327,13 @@ async fn consume(
                             Ok(hw) => {
                                 watermark = hw;
                                 report_workspace_faults(&tap, rebuild_flag);
+                                persist_cursor(store, &tap, hw).await;
                             }
                             Err(fault) => {
                                 error!(?fault, "search projector lag rebuild failed closed");
+                                if let Err(err) = store.clear_tap_cursor(SEARCH_TAP_SURFACE).await {
+                                    error!(?err, "could not clear the search tap cursor");
+                                }
                                 rebuild_flag.store(true, Ordering::Relaxed);
                                 return ConsumeOutcome::RebuildRequired;
                             }

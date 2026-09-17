@@ -175,3 +175,202 @@ async fn indexer_with_log_backfills_before_live() {
     let _ = posted;
     indexer.shutdown().await;
 }
+
+/// Cluster 402.2: a resumed backfill projects only what is new, and still
+/// verifies it.
+///
+/// `backfill_search` walked from id 0 on every start, resubscribe and `Lagged`,
+/// re-projecting all history each time — on Postgres that means re-embedding it.
+#[tokio::test]
+async fn a_resumed_backfill_projects_only_new_events() {
+    let (store, _pool) = sqlite().await;
+    seed_with_message(&store).await;
+
+    // First pass, from genesis.
+    let mut tap = SearchTap::new();
+    let first = Arc::new(Mutex::new(Vec::new()));
+    let hw = backfill_search(&store, &mut tap, {
+        let seen = first.clone();
+        move |row| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(row.id);
+                Ok(())
+            }
+        }
+    })
+    .await
+    .expect("first pass");
+    let projected_first = first.lock().unwrap().len();
+    assert!(projected_first > 0, "the first pass projects history");
+
+    // A second pass resumed at the high-water projects nothing — there is
+    // nothing new. This is the whole point: a restart is not a reindex.
+    let mut resumed = SearchTap::new();
+    resumed.resume_at(hw);
+    let second = Arc::new(Mutex::new(Vec::new()));
+    backfill_search(&store, &mut resumed, {
+        let seen = second.clone();
+        move |row| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(row.id);
+                Ok(())
+            }
+        }
+    })
+    .await
+    .expect("resumed pass");
+    assert!(
+        second.lock().unwrap().is_empty(),
+        "a resume must not re-project history it already indexed"
+    );
+
+    // New work after the cursor is picked up, and only that.
+    let posted = seed_with_message(&store).await;
+    let mut tail = SearchTap::new();
+    tail.resume_at(hw);
+    let third = Arc::new(Mutex::new(Vec::new()));
+    backfill_search(&store, &mut tail, {
+        let seen = third.clone();
+        move |row| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(row.id);
+                Ok(())
+            }
+        }
+    })
+    .await
+    .expect("tail pass");
+    let ids = third.lock().unwrap().clone();
+    assert!(
+        ids.contains(&posted.id),
+        "the new message must be projected: {ids:?}"
+    );
+    assert!(
+        ids.iter().all(|id| *id > hw),
+        "a resume must project nothing at or below its cursor: {ids:?}"
+    );
+}
+
+/// A resume still checks that the first row after the cursor **chains from its
+/// real predecessor** — the property the seeded link exists for.
+///
+/// `verify_link` only compares `prev_hash` when it has a previous link. With
+/// none, `from_genesis` is false for a mid-chain row, so the `prev_hash` branch
+/// is skipped entirely: an unseeded resume would accept a row pointing at a
+/// predecessor that was deleted or reordered. A payload tamper is caught either
+/// way by `content_hash`, which is why this test corrupts the **link**, not the
+/// payload — the first version of it corrupted the payload, passed with the
+/// seeding removed, and so proved nothing.
+#[tokio::test]
+async fn a_resumed_backfill_verifies_the_link_to_its_predecessor() {
+    let (store, pool) = sqlite().await;
+    let first = seed_with_message(&store).await;
+    let ws = first.workspace_id.expect("workspace-scoped");
+
+    let mut tap = SearchTap::new();
+    let hw = backfill_search(&store, &mut tap, |_row| async { Ok(()) })
+        .await
+        .expect("first pass");
+
+    // A second message in the *same* workspace, so it genuinely continues that
+    // workspace's chain rather than starting a new one.
+    let (_, second) = store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: first.thread_id.expect("thread"),
+                author_id: maidan_types::MemberId(store.list_members(ws).await.unwrap()[0].id.0),
+                body: "second".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(second.id > hw, "the new event is past the cursor");
+
+    // Break the *link*: point it at a predecessor it does not have. The payload
+    // and its content_hash stay consistent, so only a prev_hash check can see
+    // this.
+    sqlx::query("UPDATE maidan_events SET prev_hash = ? WHERE id = ?")
+        .bind(maidan_types::genesis_hash())
+        .bind(second.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let mut resumed = SearchTap::new();
+    resumed.resume_at(hw);
+    let projected = Arc::new(Mutex::new(Vec::new()));
+    backfill_search(&store, &mut resumed, {
+        let seen = projected.clone();
+        move |row| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(row.id);
+                Ok(())
+            }
+        }
+    })
+    .await
+    .expect("resume completes; the break is per-workspace");
+    assert!(
+        resumed.has_workspace_fault(),
+        "a resumed walk must verify the first row against its real predecessor"
+    );
+    assert!(
+        !projected.lock().unwrap().contains(&second.id),
+        "and must not project a row whose chain link is wrong"
+    );
+}
+
+/// A payload tamper after the cursor is caught too, by `content_hash`.
+#[tokio::test]
+async fn a_resumed_backfill_still_catches_a_tamper_after_the_cursor() {
+    let (store, pool) = sqlite().await;
+    let first_msg = seed_with_message(&store).await;
+
+    let mut tap = SearchTap::new();
+    let hw = backfill_search(&store, &mut tap, |_row| async { Ok(()) })
+        .await
+        .expect("first pass");
+    assert!(hw >= first_msg.id);
+
+    // New event after the cursor, then tamper with it.
+    let posted = seed_with_message(&store).await;
+    let mut payload = posted.payload.clone();
+    payload["tampered"] = serde_json::json!(true);
+    sqlx::query("UPDATE maidan_events SET payload = ? WHERE id = ?")
+        .bind(payload.to_string())
+        .bind(posted.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let mut resumed = SearchTap::new();
+    resumed.resume_at(hw);
+    let projected = Arc::new(Mutex::new(Vec::new()));
+    backfill_search(&store, &mut resumed, {
+        let seen = projected.clone();
+        move |row| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(row.id);
+                Ok(())
+            }
+        }
+    })
+    .await
+    .expect("resume completes; the break is per-workspace");
+    assert!(
+        resumed.has_workspace_fault(),
+        "a tamper after the cursor must still be caught on a resumed walk"
+    );
+    assert!(
+        !projected.lock().unwrap().contains(&posted.id),
+        "and the tampered row must not be projected"
+    );
+}

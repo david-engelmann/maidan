@@ -399,6 +399,59 @@ one mode without parsing backend-specific `rank` ranges.
 
 ## Security
 
+### The search tap resumes; the verifier verifies (`v402.2.0`)
+
+**Decision.** The search tap persists a resume cursor and walks forward from it.
+Whole-chain integrity moves to an explicit, schedulable check — `GET
+/workspaces/:wid/events/verify` — rather than being a side effect of process
+restarts.
+
+**Why the old behaviour could not stay.** `backfill_search` walked from event id
+0 unconditionally: on process start, on every resubscribe, and on every
+`Lagged`. On Postgres the handler is `BatchingEmbeddingHandler`, so each walk
+re-embedded the entire history. Worse, it livelocked — the bus is not drained
+*during* a backfill, so a busy instance overflows the broadcast while walking,
+gets `Lagged` on the first poll, and walks from 0 again. On a large log it never
+converges.
+
+**Why the "cursor vs re-walk" framing is wrong.** It treats one component as
+doing one job. The tap does two: **projection** (keep the search index current)
+and **verification** (notice a tampered log). Projection wants to be
+incremental. Verification wants a full walk. Today projection paid
+verification's cost, and verification's failure mode — stop everything — was
+applied to projection.
+
+**What is actually given up.** A tamper *behind* the cursor is no longer noticed
+by the tap. That is a real reduction and it should not be softened. But the tap
+only ever noticed such a tamper when the process happened to restart, which is
+an accident of implementation rather than a control anyone could rely on,
+schedule, or alert from. Cluster 397.8 made `verify_chain` stream, so a periodic
+full verify is affordable; that is a control you can actually operate.
+
+**What is not given up.** Every event the tap projects is still chain-verified
+against its workspace's previous link. On a resume the predecessor is
+re-derived from the log — *not* stored alongside the cursor, because a second
+copy of the hashes could drift from the log it is supposed to attest. Without
+that seeding, `verify_link` skips the `prev_hash` comparison entirely for a
+mid-chain row (`previous = None`, `from_genesis = false`), so an unseeded resume
+would accept a row whose predecessor had been deleted or reordered —
+verification that looks like it ran and did not.
+
+**Cursor lifecycle.** Not persisted while any workspace is faulted: the
+high-water covers rows a faulted tenant's index does not have, and saving it
+would make the gap permanent. Cleared entirely on a whole-tap fault, because
+resuming past a detected break preserves exactly the divergence that was
+detected. Monotonic, so a slower replica cannot drag it backwards.
+
+**Not `maidan_delivery_cursor`.** Retention's floor is `min_delivery_cursor`, so
+registering the tap there would let a stuck tap block log pruning forever. A
+separate table keeps the failure isolated: a stuck tap hits `CursorTooOld` and
+rebuilds, which is the designed path.
+
+**Trade accepted.** The tap verifies what it projects. The chain is the
+verifier's job, and it is now a job someone can schedule rather than a thing
+that happened when a process bounced.
+
 ### Revoking a token revokes everything derived from it (`v401.3.0`)
 
 **Decision.** `maidan_api_tokens` gains a `parent_token_id`, attenuation records
