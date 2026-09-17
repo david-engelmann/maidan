@@ -92,7 +92,18 @@ pub async fn open_dm_conversation(
     Path(workspace_id): Path<uuid::Uuid>,
     Json(body): Json<OpenDmBody>,
 ) -> ApiResult<Json<DmConversation>> {
-    cap(&auth, WORKSPACE_READ)?;
+    // Opening a conversation *creates shared state*, so it is a write — and the
+    // MCP twin has always required `message:post` for the same operation. REST
+    // asked only for `workspace:read`, so the two surfaces disagreed about the
+    // same action and REST was the weaker one: a read-scoped token could create
+    // a conversation between two arbitrary members.
+    //
+    // The ids stay caller-supplied on purpose. A Bearer is the orchestrator and
+    // may act for any member in its workspace (Cluster 202), which is how a bot
+    // opens a DM on someone's behalf; what was wrong was the capability, not the
+    // act-as-any model. Whether act-as-any should also narrow here is a separate,
+    // open question that spans fourteen other routes.
+    cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_id = MemberId(body.member_id);
