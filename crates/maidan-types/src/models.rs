@@ -54,8 +54,8 @@ impl ThreadState {
         }
     }
 
-    /// A terminal state — no further transitions, so a task in it counts as done
-    /// for dependency readiness (Cluster 217).
+    /// A terminal state — no further transitions, so a task in it counts as
+    /// done for dependency readiness.
     pub fn is_terminal(self) -> bool {
         matches!(self, Self::Closed | Self::Archived)
     }
@@ -87,8 +87,8 @@ pub enum ArtifactKind {
     Transcript,
     CodeDump,
     Attachment,
-    /// A frozen, content-addressed context pack (Cluster 329) — tamper-evident
-    /// "exactly what the agent was handed".
+    /// A frozen, content-addressed context pack — tamper-evident "exactly what
+    /// the agent was handed".
     ContextSnapshot,
 }
 
@@ -183,8 +183,8 @@ pub struct NewChannel {
     pub private: bool,
 }
 
-/// A member's role within a channel (Cluster 159). `Admin` may manage
-/// membership; both roles grant access to a private channel.
+/// A member's role within a channel. `Admin` may manage membership; both roles
+/// grant access to a private channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -210,8 +210,8 @@ impl ChannelMemberRole {
     }
 }
 
-/// Membership row for a channel (Cluster 159). Rows exist for private
-/// channels; public channels are open to the whole workspace without rows.
+/// Membership row for a channel. Rows exist for private channels; public
+/// channels are open to the whole workspace without rows.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ChannelMember {
@@ -221,8 +221,8 @@ pub struct ChannelMember {
     pub created_at: DateTime<Utc>,
 }
 
-/// A free-form skill tag a member (agent) declares (Cluster 230). Skill routing
-/// matches a task's required skills against a member's declared skills.
+/// A free-form skill tag a member (agent) declares. Skill routing matches a
+/// task's required skills against a member's declared skills.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemberSkill {
@@ -231,8 +231,8 @@ pub struct MemberSkill {
     pub created_at: DateTime<Utc>,
 }
 
-/// A skill a task (thread) requires (Cluster 231). A task is claimable by a
-/// member only if every required skill is one the member has declared.
+/// A skill a task (thread) requires. A task is claimable by a member only if
+/// every required skill is one the member has declared.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadRequiredSkill {
@@ -254,13 +254,14 @@ pub struct ThreadResult {
     pub produced_at: DateTime<Utc>,
 }
 
-/// The search-facet value of a result payload (Cluster 381).
+/// The search-facet value of a result payload.
 ///
-/// `result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a
-/// closed enum — a waiter product ships a new kind without a Maidan release.
-/// Missing, empty, whitespace-only, or non-string values are `None` (the row is
-/// stored but not facetable under a kind). Does **not** require
-/// `schema = "maidan.waiter.result/1"`: the facet is the string, not the envelope.
+/// `result_kind` is a **namespaced string** (e.g. `example.review.result/1`),
+/// not a closed enum — a waiter product ships a new kind without a Maidan
+/// release. Missing, empty, whitespace-only, or non-string values are `None`
+/// (the row is stored but not facetable under a kind). Does **not** require
+/// `schema = "maidan.waiter.result/1"`: the facet is the string, not the
+/// envelope.
 pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
     value
         .get("result_kind")
@@ -269,12 +270,12 @@ pub fn result_kind_from_payload(value: &serde_json::Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-/// Abuse cap on a producer `run_id` / Maidan `parent_run_id` (Cluster 387).
-/// The fixture is a UUID (36 bytes); this is not a format rule — lineage
-/// accepts the producer's string as-is, up to this length.
+/// Abuse cap on a producer `run_id` / Maidan `parent_run_id`. The fixture is a
+/// UUID (36 bytes); this is not a format rule — lineage accepts the producer's
+/// string as-is, up to this length.
 pub const PARENT_RUN_ID_MAX_BYTES: usize = 256;
 
-/// The producer's `run_id` from an opaque result payload (Cluster 387).
+/// The producer's `run_id` from an opaque result payload.
 ///
 /// Same extractor shape as [`result_kind_from_payload`]: a **string, not a
 /// minted id**. Missing, empty, whitespace-only, or non-string values are
@@ -288,10 +289,10 @@ pub fn run_id_from_payload(value: &serde_json::Value) -> Option<&str> {
         .and_then(normalize_parent_run_id)
 }
 
-/// Trim and accept a producer run identifier for lineage (Cluster 387).
+/// Trim and accept a producer run identifier for lineage.
 ///
-/// Empty / whitespace / longer than [`PARENT_RUN_ID_MAX_BYTES`] → `None`.
-/// Not a UUID parse — the field accepts the producer's value.
+/// Empty / whitespace / longer than [`PARENT_RUN_ID_MAX_BYTES`] → `None`. Not a
+/// UUID parse — the field accepts the producer's value.
 pub fn normalize_parent_run_id(raw: &str) -> Option<&str> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed.len() > PARENT_RUN_ID_MAX_BYTES {
@@ -300,12 +301,12 @@ pub fn normalize_parent_run_id(raw: &str) -> Option<&str> {
     Some(trimmed)
 }
 
-/// A thread's run lineage (Cluster 387, Wave 2 #28).
+/// A thread's run lineage.
 ///
-/// `parent_run_id` is the **producer's** run identifier — the same string
-/// pi puts on the waiter envelope as `run_id`. Nested threads that share
-/// this value are attributed together for occupancy. F7 thread mute is
-/// orthogonal: a mute never writes or clears this row.
+/// `parent_run_id` is the **producer's** run identifier — the same string pi
+/// puts on the waiter envelope as `run_id`. Nested threads that share this
+/// value are attributed together for occupancy. F7 thread mute is orthogonal: a
+/// mute never writes or clears this row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadLineage {
@@ -314,12 +315,12 @@ pub struct ThreadLineage {
     pub set_at: DateTime<Utc>,
 }
 
-/// Occupancy of every **open** thread that shares a `parent_run_id`
-/// (Cluster 387) — the nested-attribution view of [`ChannelOccupancy`].
+/// Occupancy of every **open** thread that shares a `parent_run_id` — the
+/// nested-attribution view of [`ChannelOccupancy`].
 ///
 /// Same four buckets (`queued` / `claimed` / `working` / `blocked` partition
-/// `open`). Scoped to a workspace so two tenants cannot collide on a
-/// producer id. F7 mute is not consulted: muted nested work still counts.
+/// `open`). Scoped to a workspace so two tenants cannot collide on a producer
+/// id. F7 mute is not consulted: muted nested work still counts.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RunOccupancy {
@@ -331,10 +332,10 @@ pub struct RunOccupancy {
     pub blocked: i64,
 }
 
-/// A terminal thread's recorded result, as listed for a channel's claimer pack
-/// (Cluster 382, Wave 2 #24). Store-level row: closed/archived, non-tombstoned,
-/// newest first. The pack assembler (REST/MCP) projects this into a token-lean
-/// view and drops waiter envelopes that are not `reviewed`.
+/// A terminal thread's recorded result, as listed for a channel's claimer pack.
+/// Store-level row: closed/archived, non-tombstoned, newest first. The pack
+/// assembler (REST/MCP) projects this into a token-lean view and drops waiter
+/// envelopes that are not `reviewed`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ChannelClosedResult {
@@ -347,10 +348,10 @@ pub struct ChannelClosedResult {
     pub produced_at: DateTime<Utc>,
 }
 
-/// A thread parked from dispatch (Cluster 363, G3): while this exists, `claim_next`
-/// skips the thread and an explicit `claim` is refused, until it is cleared. An
-/// explicit human/owner park (needs triage, waiting on external, broken) — distinct
-/// from blocked-by-deps, blocked-by-gate, and skill-miss.
+/// A thread parked from dispatch: while this exists, `claim_next` skips the
+/// thread and an explicit `claim` is refused, until it is cleared. An explicit
+/// human/owner park (needs triage, waiting on external, broken) — distinct from
+/// blocked-by-deps, blocked-by-gate, and skill-miss.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadUnclaimable {
@@ -360,17 +361,16 @@ pub struct ThreadUnclaimable {
     pub marked_at: DateTime<Utc>,
 }
 
-/// Why a thread is explicitly blocked from dispatch (Cluster 386, Wave 2 #27,
-/// G14 + W2). A **closed** enum — unlike `result_kind`, which is a namespaced
-/// string a producer publishes. Presence of a [`ThreadBlock`] row is the block;
-/// absence is unblocked. Distinct from Cluster 217/218 DAG readiness (children
-/// / deps must be terminal before `claim_next` will pick a thread): that
-/// skip is derived from the dependency graph. This reason is an orchestrator-
-/// set taxonomy of *why* a thread is parked from the queue.
+/// Why a thread is explicitly blocked from dispatch. A **closed** enum — unlike
+/// `result_kind`, which is a namespaced string a producer publishes. Presence
+/// of a [`ThreadBlock`] row is the block; absence is unblocked. Distinct/218
+/// DAG readiness (children / deps must be terminal before `claim_next` will
+/// pick a thread): that skip is derived from the dependency graph. This reason
+/// is an orchestrator- set taxonomy of *why* a thread is parked from the queue.
 ///
-/// `child` is "waiting on a child the orchestrator named", not "every DAG
-/// child must be terminal". `unclaimable` here is the same vocabulary as
-/// Cluster 363's park, as one of six reasons — the 363 side table is unchanged.
+/// `child` is "waiting on a child the orchestrator named", not "every DAG child
+/// must be terminal". `unclaimable` here is the same vocabulary as the park, as
+/// one of six reasons — the 363 side table is unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -419,9 +419,9 @@ impl BlockedReason {
     ];
 }
 
-/// An explicit dispatch block on a thread (Cluster 386, Wave 2 #27): while this
-/// exists, `claim_next` skips the thread. One block per thread (upsert). Clearing
-/// the row is the unblock — later clusters emit `BlockedResolved`.
+/// An explicit dispatch block on a thread: while this exists, `claim_next`
+/// skips the thread. One block per thread (upsert). Clearing the row is the
+/// unblock — later clusters emit `BlockedResolved`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadBlock {
@@ -431,12 +431,12 @@ pub struct ThreadBlock {
     pub set_at: DateTime<Utc>,
 }
 
-/// A per-thread budget envelope (Cluster 358, T1/T5). An orchestrator sets any of
-/// the optional maxima; an agent reports incremental usage as it works, and when
-/// a dimension is exceeded the run is stopped (the claim fails → DLQ). USD is
-/// integer micros ($1 = 1_000_000) to keep money out of floats. Wall time is not
-/// stored — it derives from the thread's Cluster-351 working clock
-/// (`work_started_at`) against `max_wall_secs`.
+/// A per-thread budget envelope. An orchestrator sets any of the optional
+/// maxima; an agent reports incremental usage as it works, and when a dimension
+/// is exceeded the run is stopped (the claim fails → DLQ). USD is integer
+/// micros ($1 = 1_000_000) to keep money out of floats. Wall time is not stored
+/// — it derives from the thread's working clock (`work_started_at`) against
+/// `max_wall_secs`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadBudget {
@@ -452,11 +452,11 @@ pub struct ThreadBudget {
     pub updated_at: DateTime<Utc>,
 }
 
-/// The maxima an orchestrator sets on a thread's budget (Cluster 358). Each
-/// dimension is optional — set the ones you want to bind; omit (or `None`) leaves
-/// that dimension unbounded. Does not touch accumulated usage.
+/// The maxima an orchestrator sets on a thread's budget. Each dimension is
+/// optional — set the ones you want to bind; omit (or `None`) leaves that
+/// dimension unbounded. Does not touch accumulated usage.
 ///
-/// **Unknown fields are rejected** (Cluster 398.4). The write is a replace, so
+/// **Unknown fields are rejected**. The write is a replace, so
 /// omission is load-bearing: leaving a dimension out *removes* that limit. That
 /// makes a misspelled key indistinguishable from a deliberate omission — send
 /// `max_wall_seconds` instead of `max_wall_secs` and the wall cap is silently
@@ -477,14 +477,14 @@ pub struct BudgetLimits {
     pub max_wall_secs: Option<i64>,
 }
 
-/// A partial change to a thread's budget (Cluster 403).
+/// A partial change to a thread's budget.
 ///
 /// [`BudgetLimits`] is a **total replace**: every dimension it does not name
 /// becomes "no cap", and a dimension with no cap never binds. So sending
 /// `{max_tokens}` to raise one limit silently removed the usd, turns and wall
 /// limits — and a removed limit is a run that should have been stopped and was
-/// not. Cluster 398.6's `deny_unknown_fields` catches a *typo*; it cannot catch
-/// a well-formed body that simply omits a field.
+/// not. the `deny_unknown_fields` catches a *typo*; it cannot catch a
+/// well-formed body that simply omits a field.
 ///
 /// Each field here distinguishes three states:
 ///
@@ -619,7 +619,7 @@ mod budget_patch_tests {
         assert_eq!(null.apply(current()).max_tokens, None);
     }
 
-    /// A typo cannot masquerade as a dimension (Cluster 398.6's concern, kept).
+    /// A typo cannot masquerade as a dimension.
     #[test]
     fn an_unknown_field_is_rejected() {
         assert!(
@@ -648,8 +648,8 @@ mod budget_patch_tests {
     }
 }
 
-/// An increment of resource usage an agent reports against a thread's budget
-/// (Cluster 358). Each dimension defaults to 0.
+/// An increment of resource usage an agent reports against a thread's budget.
+/// Each dimension defaults to 0.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UsageDelta {
@@ -661,10 +661,10 @@ pub struct UsageDelta {
     pub turns: i64,
 }
 
-/// The outcome of reporting usage against a thread's budget (Cluster 358). Always
-/// carries the new totals; `stopped` is true when this report pushed the thread
-/// over budget and its claimed run was stopped (claim released + `ClaimFailed` +
-/// DLQ), with `reason` the dimension that bound.
+/// The outcome of reporting usage against a thread's budget. Always carries the
+/// new totals; `stopped` is true when this report pushed the thread over budget
+/// and its claimed run was stopped (claim released + `ClaimFailed` + DLQ), with
+/// `reason` the dimension that bound.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UsageReport {
@@ -674,8 +674,8 @@ pub struct UsageReport {
     pub reason: Option<String>,
 }
 
-/// Which budget dimension was exceeded (Cluster 358) — the reason a run was
-/// stopped, carried on the `ClaimFailed` event and the DLQ entry.
+/// Which budget dimension was exceeded — the reason a run was stopped, carried
+/// on the `ClaimFailed` event and the DLQ entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetReason {
     Tokens,
@@ -697,10 +697,10 @@ impl BudgetReason {
 
 impl ThreadBudget {
     /// The first budget dimension exceeded, if any — checked in a fixed order
-    /// (tokens, usd, turns, wall). `wall_secs_elapsed` is the thread's working-clock
-    /// elapsed time (Cluster 351); pass `None` when the thread isn't working (the
-    /// wall dimension is then never exceeded). A dimension with no maximum, or a
-    /// non-positive maximum, never binds.
+    /// (tokens, usd, turns, wall). `wall_secs_elapsed` is the thread's
+    /// working-clock elapsed time; pass `None` when the thread isn't working
+    /// (the wall dimension is then never exceeded). A dimension with no
+    /// maximum, or a non-positive maximum, never binds.
     pub fn exceeded(&self, wall_secs_elapsed: Option<i64>) -> Option<BudgetReason> {
         let bound = |used: i64, max: Option<i64>| max.is_some_and(|m| m > 0 && used >= m);
         if bound(self.used_tokens, self.max_tokens) {
@@ -721,10 +721,10 @@ impl ThreadBudget {
     }
 }
 
-/// A member's notifications for one thread, collapsed (Cluster 359, N5). The
-/// grouped inbox shows one row per thread — the newest notification plus how many
-/// (and how many unread) it stands for — so a busy thread doesn't flood the flat
-/// list. `thread_id` is `None` for the group of notifications that carry no thread.
+/// A member's notifications for one thread, collapsed. The grouped inbox shows
+/// one row per thread — the newest notification plus how many (and how many
+/// unread) it stands for — so a busy thread doesn't flood the flat list.
+/// `thread_id` is `None` for the group of notifications that carry no thread.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotificationThreadGroup {
@@ -735,10 +735,10 @@ pub struct NotificationThreadGroup {
     pub latest: Notification,
 }
 
-/// Collapse a member's notifications into per-thread groups (Cluster 359, N5),
-/// newest-activity first. Each group's `latest` is its most recent notification;
-/// groups are ordered by that notification's `created_at` (descending). The input
-/// is assumed newest-first (as [`Notification`] lists are), so the first
+/// Collapse a member's notifications into per-thread groups, newest-activity
+/// first. Each group's `latest` is its most recent notification; groups are
+/// ordered by that notification's `created_at` (descending). The input is
+/// assumed newest-first (as [`Notification`] lists are), so the first
 /// notification seen for a thread is its latest. Pure — the caller fetches the
 /// list (already snooze-filtered) and groups it.
 pub fn group_notifications_by_thread(
@@ -773,11 +773,11 @@ pub fn group_notifications_by_thread(
     out
 }
 
-/// A dead-lettered agent run (Cluster 358, T1/T5). When a claimed run is stopped
-/// because it exceeded its budget envelope, the claim fails and a DLQ entry is
-/// recorded — so the failed work is triageable (retry, raise the budget, give up)
-/// rather than silently lost or silently marked done. Captures the failure
-/// snapshot: which thread, which agent, why, and usage at the moment of failure.
+/// A dead-lettered agent run. When a claimed run is stopped because it exceeded
+/// its budget envelope, the claim fails and a DLQ entry is recorded — so the
+/// failed work is triageable (retry, raise the budget, give up) rather than
+/// silently lost or silently marked done. Captures the failure snapshot: which
+/// thread, which agent, why, and usage at the moment of failure.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DlqEntry {
@@ -795,8 +795,8 @@ pub struct DlqEntry {
     pub failed_at: DateTime<Utc>,
 }
 
-/// A new dead-letter entry to record (Cluster 358). `id`/`failed_at` are assigned
-/// by the store.
+/// A new dead-letter entry to record. `id`/`failed_at` are assigned by the
+/// store.
 #[derive(Debug, Clone)]
 pub struct NewDlqEntry {
     pub workspace_id: WorkspaceId,
@@ -809,11 +809,11 @@ pub struct NewDlqEntry {
     pub used_turns: i64,
 }
 
-/// Persisted steering guidance for a task/thread (Cluster 355, W1). A durable
-/// instruction from the owner (or a supervisor) that survives claims and
-/// handoffs, so a resuming or newly-assigned agent reads the CURRENT steer. One
-/// per thread (a re-set overwrites). Distinct from a Cluster-195 handoff note,
-/// which rides an assignment event and is not persisted.
+/// Persisted steering guidance for a task/thread. A durable instruction from
+/// the owner (or a supervisor) that survives claims and handoffs, so a resuming
+/// or newly-assigned agent reads the CURRENT steer. One per thread (a re-set
+/// overwrites). Distinct from a handoff note, which rides an assignment event
+/// and is not persisted.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadSteer {
@@ -823,10 +823,10 @@ pub struct ThreadSteer {
     pub steered_at: DateTime<Utc>,
 }
 
-/// The state of an approval gate (Cluster 350, the held gate). A gate opens
-/// `Pending`; a human resolves it to exactly one of accept/decline/cancel.
-/// Silence never resolves a gate (there is no timeout auto-approve), and a
-/// resolve is a compare-and-set on `Pending` so a double-answer can't flip it.
+/// The state of an approval gate. A gate opens `Pending`; a human resolves it
+/// to exactly one of accept/decline/cancel. Silence never resolves a gate
+/// (there is no timeout auto-approve), and a resolve is a compare-and-set on
+/// `Pending` so a double-answer can't flip it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -864,12 +864,12 @@ impl ApprovalGateState {
     }
 }
 
-/// A durable, queryable human-approval gate (Cluster 350, the held gate). An
-/// agent's `request_approval` opens one `Pending` gate and returns an
-/// `input-required` result instead of blocking; a human later resolves it via
-/// the `/ui`. Persisted so the gate survives a dropped connection and can be
-/// listed while outstanding (queryable). An optional `thread_id` attaches the
-/// gate to a thread for the N6 required-human claim gate.
+/// A durable, queryable human-approval gate. An agent's `request_approval`
+/// opens one `Pending` gate and returns an `input-required` result instead of
+/// blocking; a human later resolves it via the `/ui`. Persisted so the gate
+/// survives a dropped connection and can be listed while outstanding
+/// (queryable). An optional `thread_id` attaches the gate to a thread for the
+/// N6 required-human claim gate.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ApprovalGate {
@@ -888,7 +888,7 @@ pub struct ApprovalGate {
     pub resolved_at: Option<DateTime<Utc>>,
 }
 
-/// The inputs to open a new approval gate (Cluster 350).
+/// The inputs to open a new approval gate.
 #[derive(Debug, Clone)]
 pub struct NewApprovalGate {
     pub workspace_id: WorkspaceId,
@@ -898,14 +898,14 @@ pub struct NewApprovalGate {
     pub schema: Option<serde_json::Value>,
 }
 
-/// A per-recipient notification (Cluster 237, Program C). Where a mention is one
-/// shared `maidan_mentions` row read through a single inbox cursor, this is one
-/// row per (recipient, source event): *who* should know, *what* triggered it
+/// A per-recipient notification. Where a mention is one shared
+/// `maidan_mentions` row read through a single inbox cursor, this is one row
+/// per (recipient, source event): *who* should know, *what* triggered it
 /// (`kind` = the source [`EventKind`] + `source_log_id` = the event-log row),
 /// denormalized context (`channel/thread/message/actor`) so the inbox renders
 /// without re-fetching the event, and per-recipient read state. The
-/// zero-blast-radius foundation for the notification router + unified inbox that
-/// follow — nothing writes rows yet.
+/// zero-blast-radius foundation for the notification router + unified inbox
+/// that follow — nothing writes rows yet.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Notification {
@@ -924,9 +924,9 @@ pub struct Notification {
     pub created_at: DateTime<Utc>,
     /// `None` = unread.
     pub read_at: Option<DateTime<Utc>>,
-    /// Snoozed until this instant (Cluster 359, N5) — while in the future the
-    /// notification is hidden from the default inbox + badge, then resurfaces.
-    /// `None` = not snoozed. Orthogonal to `read_at`.
+    /// Snoozed until this instant — while in the future the notification is
+    /// hidden from the default inbox + badge, then resurfaces. `None` = not
+    /// snoozed. Orthogonal to `read_at`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed_until: Option<DateTime<Utc>>,
 }
@@ -943,10 +943,10 @@ pub struct NewNotification {
     pub actor_id: Option<MemberId>,
 }
 
-/// A member's notification preference for one event kind (Cluster 241, Program C
-/// Arc H). `muted` suppresses router-written notifications of `kind` for this
-/// member; the absence of a row is the default (notify). The routing brain the
-/// notification router consults before writing.
+/// A member's notification preference for one event kind. `muted` suppresses
+/// router-written notifications of `kind` for this member; the absence of a row
+/// is the default (notify). The routing brain the notification router consults
+/// before writing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotificationPref {
@@ -956,8 +956,8 @@ pub struct NotificationPref {
     pub updated_at: DateTime<Utc>,
 }
 
-/// A member following a channel (Cluster 244, Arc H) — presence = following. The
-/// notification router notifies followers of activity in the channel, honoring mutes.
+/// A member following a channel — presence = following. The notification router
+/// notifies followers of activity in the channel, honoring mutes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ChannelFollow {
@@ -966,7 +966,7 @@ pub struct ChannelFollow {
     pub created_at: DateTime<Utc>,
 }
 
-/// A member following a thread (Cluster 244, Arc H) — presence = following.
+/// A member following a thread — presence = following.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadFollow {
@@ -978,15 +978,15 @@ pub struct ThreadFollow {
 /// Bump when the inner export graph changes in a way an importer must notice.
 pub const WORKSPACE_EXPORT_FORMAT_VERSION: u32 = 1;
 
-/// Nested channel + members as assembled for export (Cluster 187).
+/// Nested channel + members as assembled for export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportChannel {
     pub channel: Channel,
     pub members: Vec<ChannelMember>,
 }
 
-/// Workspace content graph (Cluster 187). Secrets are omitted — tokens die
-/// on export (Cluster 391). This is the signed envelope's `payload`.
+/// Workspace content graph. Secrets are omitted — tokens die on export. This is
+/// the signed envelope's `payload`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceExport {
     pub format_version: u32,
@@ -1001,10 +1001,10 @@ pub struct WorkspaceExport {
     pub references: Vec<Reference>,
 }
 
-/// A workspace's content graph for import (Cluster 269) — the flat, id-linked
-/// collections of an export bundle, ready to insert. The server flattens its
-/// `WorkspaceExport` (which nests channel members under each channel) into this and
-/// optionally remaps every id for a fresh-workspace import.
+/// A workspace's content graph for import — the flat, id-linked collections of
+/// an export bundle, ready to insert. The server flattens its `WorkspaceExport`
+/// (which nests channel members under each channel) into this and optionally
+/// remaps every id for a fresh-workspace import.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceImport {
     pub workspace: Workspace,
@@ -1018,8 +1018,8 @@ pub struct WorkspaceImport {
     pub references: Vec<Reference>,
 }
 
-/// A member's delivery email address (Cluster 248, Arc I) — where email
-/// notifications go. One per member.
+/// A member's delivery email address — where email notifications go. One per
+/// member.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemberEmail {
@@ -1028,9 +1028,9 @@ pub struct MemberEmail {
     pub updated_at: DateTime<Utc>,
 }
 
-/// A claimed entry from the durable mail outbox (Cluster 304) the retry worker
-/// will attempt to send. `attempts` includes the current claim. Content-only —
-/// the outbox's status / scheduling columns stay internal to the store.
+/// A claimed entry from the durable mail outbox the retry worker will attempt
+/// to send. `attempts` includes the current claim. Content-only — the outbox's
+/// status / scheduling columns stay internal to the store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailOutbox {
     pub id: MailOutboxId,
@@ -1040,26 +1040,26 @@ pub struct MailOutbox {
     pub attempts: i64,
 }
 
-/// A new outbound notification email to enqueue for durable, retryable delivery
-/// (Cluster 304). Enqueued `pending` with `next_attempt_at = now`.
+/// A new outbound notification email to enqueue for durable, retryable
+/// delivery. Enqueued `pending` with `next_attempt_at = now`.
 #[derive(Debug, Clone)]
 pub struct NewMailOutbox {
-    /// Owning workspace (Cluster 398.3). `None` only for mail with no tenant
-    /// context; such a row is visible to `operator:global` alone, because it
-    /// cannot be attributed to a caller's workspace.
+    /// Owning workspace. `None` only for mail with no tenant context; such a
+    /// row is visible to `operator:global` alone, because it cannot be
+    /// attributed to a caller's workspace.
     pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
     pub body: String,
 }
 
-/// A dead-lettered outbox entry for the operator DLQ view (Cluster 306): a message
-/// that exhausted its retries. `last_error` is why the final attempt failed.
+/// A dead-lettered outbox entry for the operator DLQ view: a message that
+/// exhausted its retries. `last_error` is why the final attempt failed.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeadMail {
     pub id: MailOutboxId,
-    /// `None` for a pre-Cluster-398.3 row or tenant-less mail.
+    /// `None` for a pre-row or tenant-less mail.
     pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
@@ -1068,9 +1068,9 @@ pub struct DeadMail {
     pub updated_at: DateTime<Utc>,
 }
 
-/// A Slack projector channel link (Cluster 308): a Slack channel projects into the
-/// `thread_id` in `channel_id`/`workspace_id`, with inbound Slack messages posted as
-/// `member_id`. One Maidan thread per Slack channel.
+/// A Slack projector channel link: a Slack channel projects into the
+/// `thread_id` in `channel_id`/`workspace_id`, with inbound Slack messages
+/// posted as `member_id`. One Maidan thread per Slack channel.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SlackChannelLink {
@@ -1081,13 +1081,13 @@ pub struct SlackChannelLink {
     pub member_id: MemberId,
     pub created_at: DateTime<Utc>,
     /// When egress to this channel was disabled after an auth/config-class
-    /// failure (Cluster 377.3). `None` = enabled; re-linking clears it. Ingress is
-    /// unaffected — a revoked *write* scope does not stop Slack from reaching us.
+    /// failure. `None` = enabled; re-linking clears it. Ingress is unaffected —
+    /// a revoked *write* scope does not stop Slack from reaching us.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_at: Option<DateTime<Utc>>,
 }
 
-/// A new Slack channel link to create (Cluster 308).
+/// A new Slack channel link to create.
 #[derive(Debug, Clone)]
 pub struct NewSlackChannelLink {
     pub slack_channel_id: String,
@@ -1097,10 +1097,10 @@ pub struct NewSlackChannelLink {
     pub member_id: MemberId,
 }
 
-/// A GitHub projector issue/PR link (Cluster 311): a GitHub issue/PR (`repo`
-/// full-name + `issue_number`) projects into the `thread_id` in
-/// `channel_id`/`workspace_id`, with inbound comments posted as `member_id`. One
-/// Maidan thread per GitHub issue/PR.
+/// A GitHub projector issue/PR link: a GitHub issue/PR (`repo` full-name +
+/// `issue_number`) projects into the `thread_id` in
+/// `channel_id`/`workspace_id`, with inbound comments posted as `member_id`.
+/// One Maidan thread per GitHub issue/PR.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GithubIssueLink {
@@ -1112,13 +1112,13 @@ pub struct GithubIssueLink {
     pub member_id: MemberId,
     pub created_at: DateTime<Utc>,
     /// When egress to this issue/PR was disabled after an auth/config-class
-    /// failure (Cluster 377.3). `None` = enabled; re-linking clears it. Ingress is
-    /// unaffected — the webhook keeps delivering comments.
+    /// failure. `None` = enabled; re-linking clears it. Ingress is unaffected —
+    /// the webhook keeps delivering comments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_at: Option<DateTime<Utc>>,
 }
 
-/// A new GitHub issue/PR link to create (Cluster 311).
+/// A new GitHub issue/PR link to create.
 #[derive(Debug, Clone)]
 pub struct NewGithubIssueLink {
     pub repo: String,
@@ -1129,10 +1129,10 @@ pub struct NewGithubIssueLink {
     pub member_id: MemberId,
 }
 
-/// How a member wants notification emails delivered (Cluster 254, Arc I). The
-/// default (an absent preference row) is `Immediate` — the Cluster-249 behaviour.
-/// `Digest` opts out of per-notification emails in favour of a periodic rollup
-/// from the digest sweeper; the two are mutually exclusive by design.
+/// How a member wants notification emails delivered. The default (an absent
+/// preference row) is `Immediate` — the behaviour. `Digest` opts out of
+/// per-notification emails in favour of a periodic rollup from the digest
+/// sweeper; the two are mutually exclusive by design.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -1159,12 +1159,12 @@ impl EmailDeliveryMode {
     }
 }
 
-/// What a thread wait does when its deadline lapses (Cluster 364, G4). **Never a
-/// decision** — the "TimedOut ≠ Decline" rule: a timeout must not invent a human
-/// refusal (or approval). Both variants emit a `WaitTimedOut` event (the
-/// notification router then reaches the thread's owner); `Park` additionally marks
-/// the thread unclaimable (Cluster 363) so `claim_next` won't dispatch a stuck
-/// thread until a human intervenes.
+/// What a thread wait does when its deadline lapses. **Never a decision** — the
+/// "TimedOut ≠ Decline" rule: a timeout must not invent a human refusal (or
+/// approval). Both variants emit a `WaitTimedOut` event (the notification
+/// router then reaches the thread's owner); `Park` additionally marks the
+/// thread unclaimable so `claim_next` won't dispatch a stuck thread until a
+/// human intervenes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -1193,10 +1193,10 @@ impl EscalationPolicy {
     }
 }
 
-/// A durable timer on a thread (Cluster 364, G2): the thread is waiting until
-/// `wait_until`, and on timeout the `on_timeout` policy escalates. Either
-/// cancelled (satisfied — the awaited thing happened) or fired by the sweeper
-/// (`fired_at` set). One wait per thread. Steals the Restate/Temporal promise/timer
+/// A durable timer on a thread: the thread is waiting until `wait_until`, and
+/// on timeout the `on_timeout` policy escalates. Either cancelled (satisfied —
+/// the awaited thing happened) or fired by the sweeper (`fired_at` set). One
+/// wait per thread. Steals the Restate/Temporal promise/timer
 /// *shape* — this is not a workflow engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1212,11 +1212,11 @@ pub struct ThreadWait {
     pub fired_at: Option<DateTime<Utc>>,
 }
 
-/// A thread's dispatch priority (Cluster 365, G3 fair dispatch). Higher = more
-/// urgent; the default (no row) is `0` (normal). `claim_next` orders by an
-/// effective rank = `priority` aged upward the longer a thread has waited, so a
-/// high-priority task jumps the queue while a long-waiting normal task is never
-/// starved. One priority per thread.
+/// A thread's dispatch priority. Higher = more urgent; the default (no row) is
+/// `0` (normal). `claim_next` orders by an effective rank = `priority` aged
+/// upward the longer a thread has waited, so a high-priority task jumps the
+/// queue while a long-waiting normal task is never starved. One priority per
+/// thread.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadPriority {
@@ -1226,10 +1226,10 @@ pub struct ThreadPriority {
     pub set_at: DateTime<Utc>,
 }
 
-/// A legal hold on a workspace (Cluster 366, T6). While held, the workspace's
-/// event-log rows are exempt from retention pruning, audit pruning is frozen, and
-/// workspace purge/erase is refused — evidence is preserved for litigation. One
-/// active hold per workspace; presence of the record = under hold.
+/// A legal hold on a workspace. While held, the workspace's event-log rows are
+/// exempt from retention pruning, audit pruning is frozen, and workspace
+/// purge/erase is refused — evidence is preserved for litigation. One active
+/// hold per workspace; presence of the record = under hold.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LegalHold {
@@ -1240,11 +1240,11 @@ pub struct LegalHold {
     pub placed_at: DateTime<Utc>,
 }
 
-/// A member's Web Push subscription (Cluster 366, N1) — one browser/device. From
-/// the browser's `PushManager.subscribe()`: `endpoint` is the push service URL,
-/// `p256dh` the subscription's public ECDH key and `auth` its auth secret (both
-/// base64url). The notification router delivers a Web Push message to `endpoint`
-/// when the member has no live WebSocket connection.
+/// A member's Web Push subscription — one browser/device. From the browser's
+/// `PushManager.subscribe()`: `endpoint` is the push service URL, `p256dh` the
+/// subscription's public ECDH key and `auth` its auth secret (both base64url).
+/// The notification router delivers a Web Push message to `endpoint` when the
+/// member has no live WebSocket connection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PushSubscription {
@@ -1256,7 +1256,7 @@ pub struct PushSubscription {
     pub created_at: DateTime<Utc>,
 }
 
-/// A new Web Push subscription to register (Cluster 366, N1).
+/// A new Web Push subscription to register.
 #[derive(Debug, Clone)]
 pub struct NewPushSubscription {
     pub member_id: MemberId,
@@ -1265,10 +1265,9 @@ pub struct NewPushSubscription {
     pub auth: String,
 }
 
-/// SCIM 2.0 provisioning link for a member (Cluster 366, SCIM-as-OIDC-P3). Holds
-/// the SCIM-specific fields — the IdP's `externalId` and the `active` flag — while
-/// `userName`/`id` map to the member's handle/id. Deactivation revokes the
-/// member's tokens.
+/// SCIM 2.0 provisioning link for a member. Holds the SCIM-specific fields —
+/// the IdP's `externalId` and the `active` flag — while `userName`/`id` map to
+/// the member's handle/id. Deactivation revokes the member's tokens.
 #[derive(Debug, Clone)]
 pub struct ScimUser {
     pub member_id: MemberId,
@@ -1279,8 +1278,8 @@ pub struct ScimUser {
     pub updated_at: DateTime<Utc>,
 }
 
-/// A member due for an email digest (Cluster 254, Arc I): the sweeper's enumeration
-/// row — a digest-mode member with an address who has unread notifications created
+/// A member due for an email digest: the sweeper's enumeration row — a
+/// digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra
 /// per-member lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1288,16 +1287,16 @@ pub struct DigestDue {
     pub member_id: MemberId,
     pub email: String,
     pub unread_count: i64,
-    /// The member's digest watermark (Cluster 359, N2) — decisions produced after
-    /// this instant are the "buried" ones the digest surfaces. `None` = never
-    /// digested (treat as the epoch).
+    /// The member's digest watermark — decisions produced after this instant
+    /// are the "buried" ones the digest surfaces. `None` = never digested
+    /// (treat as the epoch).
     pub last_digest_at: Option<DateTime<Utc>>,
 }
 
-/// A decision the member may have missed (Cluster 359, N2) — a task result
-/// (Cluster 234 `ThreadResult`) produced by someone else in a channel or thread
-/// the member follows, since their last digest. The buried-decisions digest lists
-/// these instead of a bare unread count; it's also queryable directly.
+/// A decision the member may have missed — a task result produced by someone
+/// else in a channel or thread the member follows, since their last digest. The
+/// buried-decisions digest lists these instead of a bare unread count; it's
+/// also queryable directly.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BuriedDecision {
@@ -1367,34 +1366,34 @@ pub struct Thread {
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
     pub state: ThreadState,
-    /// The member this thread/task is assigned to, if any (Cluster 171). An
-    /// axis orthogonal to [`ThreadState`]: assignment persists across state
-    /// transitions. Set via assign/handoff, atomic claim, or cleared on unassign.
+    /// The member this thread/task is assigned to, if any. An axis orthogonal
+    /// to [`ThreadState`]: assignment persists across state transitions. Set
+    /// via assign/handoff, atomic claim, or cleared on unassign.
     pub assignee_id: Option<MemberId>,
-    /// Lease deadline for a claimed assignment (Cluster 192). When set and in the
-    /// past, the assignment is reclaimable by the next `claim_next` (dead-agent
+    /// Lease deadline for a claimed assignment. When set and in the past, the
+    /// assignment is reclaimable by the next `claim_next` (dead-agent
     /// recovery); `None` is a durable assignment with no lease.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignment_expires_at: Option<DateTime<Utc>>,
-    /// The fencing value for the current claim (Cluster 351, the occupancy
-    /// clocks). A fresh resource-version minted every time `assignee_id` is set
-    /// (claim / claim_next / assign) and cleared on unassign. `renew_claim` and
-    /// other claim-holder operations must present the matching value — a TTL
-    /// lease alone lets a stale holder act after the next owner has taken over.
+    /// The fencing value for the current claim. A fresh resource-version minted
+    /// every time `assignee_id` is set (claim / claim_next / assign) and
+    /// cleared on unassign. `renew_claim` and other claim-holder operations
+    /// must present the matching value — a TTL lease alone lets a stale holder
+    /// act after the next owner has taken over.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claim_lease_id: Option<ClaimLeaseId>,
-    /// The working clock (Cluster 351). `assignment_expires_at` is the *claim*
-    /// clock (lease deadline); this is when the current holder acknowledged and
-    /// began work (`acknowledge_claim`). `None` = claimed but not yet started, or
-    /// unassigned. Reset to `None` on every (re)claim/assign/unassign so it always
-    /// reflects the CURRENT claim epoch — letting occupancy separate a
+    /// The working clock. `assignment_expires_at` is the *claim* clock (lease
+    /// deadline); this is when the current holder acknowledged and began work
+    /// (`acknowledge_claim`). `None` = claimed but not yet started, or
+    /// unassigned. Reset to `None` on every (re)claim/assign/unassign so it
+    /// always reflects the CURRENT claim epoch — letting occupancy separate a
     /// claimed-but-idle agent from one actively working.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_started_at: Option<DateTime<Utc>>,
-    /// The durable OWNER of this task/thread (Cluster 355, W1): the accountable
-    /// party — a human, typically — distinct from the [`Thread::assignee_id`]
-    /// claimer that does the work. Orthogonal to the FSM and the claim axis. The
-    /// owner receives stuck notifications and, once set, opts the thread into
+    /// The durable OWNER of this task/thread: the accountable party — a human,
+    /// typically — distinct from the [`Thread::assignee_id`] claimer that does
+    /// the work. Orthogonal to the FSM and the claim axis. The owner receives
+    /// stuck notifications and, once set, opts the thread into
     /// separation-of-duties (the claimer cannot land its own work). `None` = no
     /// designated owner (unrestricted).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1411,9 +1410,9 @@ pub struct NewThread {
     pub title: Option<String>,
 }
 
-/// A child thread collapsed under its parent (Cluster 356, F2): the child thread
-/// plus a live count of its (non-tombstoned) messages, so a threaded view can show
-/// "N replies" without loading each child's messages.
+/// A child thread collapsed under its parent: the child thread plus a live
+/// count of its (non-tombstoned) messages, so a threaded view can show "N
+/// replies" without loading each child's messages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ChildThreadSummary {
@@ -1428,10 +1427,10 @@ pub struct ThreadTransitionResult {
     pub to_state: ThreadState,
 }
 
-/// Outcome of an atomic [`Thread`] claim (Cluster 171): `claimed` is `true` when
-/// this call won the compare-and-set (the thread was unassigned and is now the
-/// caller's), `false` when it was already assigned. `thread` is the current row
-/// either way.
+/// Outcome of an atomic [`Thread`] claim: `claimed` is `true` when this call
+/// won the compare-and-set (the thread was unassigned and is now the caller's),
+/// `false` when it was already assigned. `thread` is the current row either
+/// way.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadClaimResult {
@@ -1439,15 +1438,15 @@ pub struct ThreadClaimResult {
     pub claimed: bool,
 }
 
-/// A channel's task-queue depth (Cluster 224) — a point-in-time partition of its
+/// A channel's task-queue depth — a point-in-time partition of its
 /// **open** (non-terminal, non-tombstoned) task threads, for an orchestrator
 /// deciding whether to scale workers. The three sub-counts partition `open`:
 /// - `assigned`: actively held (an assignee with a live, non-expired lease).
 /// - `ready`: claimable now — unassigned or lease-expired, and every dependency
 ///   terminal (the `claim_next` predicate).
 /// - `blocked`: unassigned/lease-expired but waiting on a non-terminal dependency.
-/// - `unclaimable`: unassigned/lease-expired but parked from dispatch (Cluster 363,
-///   G3) — `claim_next` skips it. Takes precedence over ready/blocked, so the four
+/// - `unclaimable`: unassigned/lease-expired but parked from dispatch —
+///   `claim_next` skips it. Takes precedence over ready/blocked, so the four
 ///   sub-counts partition `open` exactly.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1459,9 +1458,9 @@ pub struct QueueDepth {
     pub unclaimable: i64,
 }
 
-/// The occupancy of a channel's **open** task threads (Cluster 351) — the
-/// two-clocks refinement of [`QueueDepth`]. It splits `assigned` by the *working*
-/// clock, so an orchestrator sees not just how much work is held but how much is
+/// The occupancy of a channel's **open** task threads — the two-clocks
+/// refinement of [`QueueDepth`]. It splits `assigned` by the *working* clock,
+/// so an orchestrator sees not just how much work is held but how much is
 /// actually underway. The four sub-counts partition `open`:
 /// - `queued`: claimable now — unassigned or lease-expired, with every dependency
 ///   terminal (the `QueueDepth::ready` predicate).
@@ -1483,7 +1482,7 @@ pub struct ChannelOccupancy {
     pub blocked: i64,
 }
 
-/// A schedule that materializes a task thread when due (Cluster 226). A one-shot
+/// A schedule that materializes a task thread when due. A one-shot
 /// (`interval_secs == None`) fires once then deactivates; a recurring schedule
 /// (`interval_secs == Some(n)`) re-arms `next_run_at += n s` after each firing.
 /// The background sweeper (a later cluster) creates a thread titled `title` in
@@ -1503,7 +1502,7 @@ pub struct TaskSchedule {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// When set, firing this schedule instantiates the recipe (parent + DAG
-    /// children, copy-on-fire) instead of creating one bare thread (Cluster 370.5).
+    /// children, copy-on-fire) instead of creating one bare thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recipe_id: Option<RecipeId>,
 }
@@ -1530,7 +1529,7 @@ pub struct ThreadTransition {
     pub occurred_at: DateTime<Utc>,
 }
 
-/// A task-dependency DAG edge (Cluster 217): the task `thread_id` depends on
+/// A task-dependency DAG edge: the task `thread_id` depends on
 /// `depends_on_thread_id` — i.e. it is blocked until that dependency reaches a
 /// terminal state. Edges are directed; the pair is unique.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1541,10 +1540,10 @@ pub struct ThreadDependency {
     pub created_at: DateTime<Utc>,
 }
 
-/// A typed part of a message's structured content (Cluster 173). The wire form
-/// is internally tagged (`{"type":"text","text":"…"}`), matching the MCP /
-/// Anthropic content-block dialect and the existing A2A `TextPart`. `body`
-/// remains the canonical searchable plain-text projection derived from these.
+/// A typed part of a message's structured content. The wire form is internally
+/// tagged (`{"type":"text","text":"…"}`), matching the MCP / Anthropic
+/// content-block dialect and the existing A2A `TextPart`. `body` remains the
+/// canonical searchable plain-text projection derived from these.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -1580,10 +1579,10 @@ pub enum ContentBlock {
     },
 }
 
-/// Derive the plain-text `body` projection from structured content blocks
-/// (Cluster 173) so full-text + semantic search stay unchanged. `ToolUse` adds
-/// nothing (a tool name is not prose); code is fenced; a resource link renders
-/// as its title or URI. Blocks are joined by blank lines.
+/// Derive the plain-text `body` projection from structured content blocks so
+/// full-text + semantic search stay unchanged. `ToolUse` adds nothing (a tool
+/// name is not prose); code is fenced; a resource link renders as its title or
+/// URI. Blocks are joined by blank lines.
 pub fn derive_body(blocks: &[ContentBlock]) -> String {
     blocks
         .iter()
@@ -1604,9 +1603,9 @@ pub fn derive_body(blocks: &[ContentBlock]) -> String {
 }
 
 /// Content-addressed artifact SHAs referenced by a message's `metadata` — the
-/// `artifact_sha256` / `sha256` scalar fields plus an `artifacts` array of either
-/// bare SHA strings or `{sha256}` objects. Sorted + deduped. Shared by the REST
-/// and MCP context assemblers (Cluster 335) so both surface the same artifacts.
+/// `artifact_sha256` / `sha256` scalar fields plus an `artifacts` array of
+/// either bare SHA strings or `{sha256}` objects. Sorted + deduped. Shared by
+/// the REST and MCP context assemblers so both surface the same artifacts.
 pub fn artifact_shas_from_metadata(metadata: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(s) = metadata.get("artifact_sha256").and_then(|v| v.as_str()) {
@@ -1629,9 +1628,9 @@ pub fn artifact_shas_from_metadata(metadata: &serde_json::Value) -> Vec<String> 
     out
 }
 
-/// One tool invocation in a thread's transcript (Cluster 197): a
-/// [`ContentBlock::ToolUse`] paired with its [`ContentBlock::ToolResult`]
-/// (correlated by id), plus the message context each block came from.
+/// One tool invocation in a thread's transcript: a [`ContentBlock::ToolUse`]
+/// paired with its [`ContentBlock::ToolResult`] (correlated by id), plus the
+/// message context each block came from.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ToolCallEntry {
@@ -1659,7 +1658,7 @@ pub struct ToolCallResult {
 }
 
 /// A `ToolResult` block whose `tool_use_id` matched no `ToolUse` in the scanned
-/// messages (Cluster 197) — surfaced rather than dropped so a gap is visible.
+/// messages — surfaced rather than dropped so a gap is visible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OrphanToolResult {
@@ -1671,11 +1670,11 @@ pub struct OrphanToolResult {
     pub posted_at: DateTime<Utc>,
 }
 
-/// A thread's tool-call transcript (Cluster 197): every [`ContentBlock::ToolUse`]
-/// across the thread's messages, each correlated with its `ToolResult` by id,
-/// plus any results whose call is outside the scanned window. A token-lean
-/// projection of the tool structure — `Text`/`Code`/`ResourceLink` blocks and
-/// `body` are dropped.
+/// A thread's tool-call transcript: every [`ContentBlock::ToolUse`] across the
+/// thread's messages, each correlated with its `ToolResult` by id, plus any
+/// results whose call is outside the scanned window. A token-lean projection of
+/// the tool structure — `Text`/`Code`/`ResourceLink` blocks and `body` are
+/// dropped.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ToolTranscript {
@@ -1685,9 +1684,9 @@ pub struct ToolTranscript {
     pub orphan_results: Vec<OrphanToolResult>,
 }
 
-/// Extract a [`ToolTranscript`] from a thread's messages (Cluster 197). Walks
-/// each non-tombstoned message's structured content, pairing every `ToolUse`
-/// with the first `ToolResult` carrying the same id (correlation is
+/// Extract a [`ToolTranscript`] from a thread's messages. Walks each
+/// non-tombstoned message's structured content, pairing every `ToolUse` with
+/// the first `ToolResult` carrying the same id (correlation is
 /// order-independent — a result may land in a later message). A result with no
 /// matching call is an orphan; a duplicate result for an already-resolved call
 /// is treated as an orphan too. `messages` should be chronological; entry order
@@ -1766,7 +1765,7 @@ pub fn tool_transcript(thread_id: ThreadId, messages: &[Message]) -> ToolTranscr
 }
 
 /// `true` for a JSON value that carries no information — `null` or an empty
-/// object — used to omit an empty `metadata` from the wire (Cluster 177).
+/// object — used to omit an empty `metadata` from the wire.
 fn json_value_is_empty(v: &serde_json::Value) -> bool {
     v.is_null() || v.as_object().is_some_and(|o| o.is_empty())
 }
@@ -1778,13 +1777,13 @@ pub struct Message {
     pub thread_id: ThreadId,
     pub author_id: MemberId,
     pub body: String,
-    /// Open annotation bag. Omitted from the wire when empty (Cluster 177, token
-    /// round 3) — most messages carry no metadata, so `"metadata":{}` on every
-    /// one was pure token waste. Deserializes back to an empty object by default.
+    /// Open annotation bag. Omitted from the wire when empty — most messages
+    /// carry no metadata, so `"metadata":{}` on every one was pure token waste.
+    /// Deserializes back to an empty object by default.
     #[serde(skip_serializing_if = "json_value_is_empty", default)]
     pub metadata: serde_json::Value,
-    /// Typed structured content (Cluster 173); `None` for plain/legacy messages.
-    /// `body` is the plain-text projection of these blocks.
+    /// Typed structured content; `None` for plain/legacy messages. `body` is
+    /// the plain-text projection of these blocks.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub content: Option<Vec<ContentBlock>>,
     pub posted_at: DateTime<Utc>,
@@ -1801,7 +1800,7 @@ pub struct NewMessage {
     pub content: Option<Vec<ContentBlock>>,
 }
 
-/// Body/metadata replacement for [`Store::edit_message`] (Cluster 29).
+/// Body/metadata replacement for [`Store::edit_message`].
 #[derive(Debug, Clone)]
 pub struct EditMessage {
     pub body: String,
@@ -1809,7 +1808,7 @@ pub struct EditMessage {
     pub content: Option<Vec<ContentBlock>>,
 }
 
-/// One recorded body change for a message (Cluster 46).
+/// One recorded body change for a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageEdit {
@@ -1829,8 +1828,7 @@ pub struct Mention {
     pub created_at: DateTime<Utc>,
 }
 
-/// What is waiting on a member (Cluster 368, Wave 2 #16 — G15/G9): the class of a
-/// [`WaitingItem`].
+/// What is waiting on a member: the class of a [`WaitingItem`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -1843,8 +1841,8 @@ pub enum WaitingKind {
     Mention,
 }
 
-/// One thing waiting on a member (Cluster 368) — with its age and whether it has
-/// breached the SLA.
+/// One thing waiting on a member — with its age and whether it has breached the
+/// SLA.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WaitingItem {
@@ -1861,9 +1859,9 @@ pub struct WaitingItem {
     pub overdue: bool,
 }
 
-/// The waiting-on-you inbox (Cluster 368): everything that needs a member's
-/// attention — assigned tasks, open gates, unread mentions — oldest-waiting first,
-/// with an SLA marking the overdue ones. Not `@everyone`: it is one member's queue.
+/// The waiting-on-you inbox: everything that needs a member's attention —
+/// assigned tasks, open gates, unread mentions — oldest-waiting first, with an
+/// SLA marking the overdue ones. Not `@everyone`: it is one member's queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WaitingInbox {
@@ -1906,11 +1904,11 @@ fn waiting_item(
     }
 }
 
-/// Assemble a member's waiting-on-you inbox from the three sources (Cluster 368):
-/// their assigned **non-terminal** threads, the workspace's pending approval gates
-/// (they need a human), and their unread mentions. Pure — the caller fetches the
-/// sources and the unread-mention filter; items come back oldest-waiting first,
-/// each aged against `sla_secs`.
+/// Assemble a member's waiting-on-you inbox from the three sources: their
+/// assigned **non-terminal** threads, the workspace's pending approval gates
+/// (they need a human), and their unread mentions. Pure — the caller fetches
+/// the sources and the unread-mention filter; items come back oldest-waiting
+/// first, each aged against `sla_secs`.
 pub fn assemble_waiting_inbox(
     assigned: &[Thread],
     pending_gates: &[ApprovalGate],
@@ -2012,8 +2010,8 @@ pub struct Vote {
     pub message_id: MessageId,
     pub member_id: MemberId,
     pub kind: String,
-    /// Optional confidence weight (Cluster 324), by convention in `0..=1`, for
-    /// weighted consensus. `None` when the voter stated no confidence.
+    /// Optional confidence weight, by convention in `0..=1`, for weighted
+    /// consensus. `None` when the voter stated no confidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
     pub created_at: DateTime<Utc>,
@@ -2024,7 +2022,7 @@ pub struct NewVote {
     pub message_id: MessageId,
     pub member_id: MemberId,
     pub kind: String,
-    /// Optional confidence weight (Cluster 324), by convention `0..=1`.
+    /// Optional confidence weight, by convention `0..=1`.
     pub confidence: Option<f64>,
 }
 
@@ -2060,13 +2058,13 @@ pub struct NewPin {
     pub member_id: MemberId,
 }
 
-/// The typed predicate on a [`Reference`] edge (Cluster 319). A small controlled
-/// vocabulary — the same subject→predicate→object shape as IBIS, W3C PROV,
-/// ClaimReview, and GitHub/Linear issue relations — so an agent's edges are
-/// machine-navigable ("what `refutes` this", "what this `supersedes`") instead of
-/// free prose. [`Other`] keeps expressivity: an unrecognized relation round-trips
-/// verbatim rather than being rejected. Serializes as the bare snake_case string on
-/// the wire (a controlled variant → its canonical name; `Other(s)` → `s`).
+/// The typed predicate on a [`Reference`] edge. A small controlled vocabulary —
+/// the same subject→predicate→object shape as IBIS, W3C PROV, ClaimReview, and
+/// GitHub/Linear issue relations — so an agent's edges are machine-navigable
+/// ("what `refutes` this", "what this `supersedes`") instead of free prose.
+/// [`Other`] keeps expressivity: an unrecognized relation round-trips verbatim
+/// rather than being rejected. Serializes as the bare snake_case string on the
+/// wire (a controlled variant → its canonical name; `Other(s)` → `s`).
 ///
 /// [`Other`]: RelationKind::Other
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2175,8 +2173,8 @@ pub struct Reference {
     pub src_id: uuid::Uuid,
     pub dst_kind: RefSide,
     pub dst_id: uuid::Uuid,
-    /// The typed predicate (Cluster 319). Wire form is a snake_case string; the
-    /// controlled set is [`RelationKind::CONTROLLED`], unknown values round-trip via
+    /// The typed predicate. Wire form is a snake_case string; the controlled
+    /// set is [`RelationKind::CONTROLLED`], unknown values round-trip via
     /// [`RelationKind::Other`].
     #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub relation: RelationKind,
@@ -2192,9 +2190,9 @@ pub struct NewReference {
     pub relation: RelationKind,
 }
 
-/// A workspace's canonical definition of a term (Cluster 321) — the anti-drift pin
-/// so agents use words the same way, and the target of the `defines` reference
-/// relation. One entry per `(workspace_id, term)`. Flat by design (no hierarchy).
+/// A workspace's canonical definition of a term — the anti-drift pin so agents
+/// use words the same way, and the target of the `defines` reference relation.
+/// One entry per `(workspace_id, term)`. Flat by design (no hierarchy).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GlossaryTerm {
@@ -2315,8 +2313,8 @@ pub struct NewApiToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// A one-time OAuth authorization code persisted for cross-replica exchange
-/// (Cluster 104). Only the SHA-256 hash of the code is stored.
+/// A one-time OAuth authorization code persisted for cross-replica exchange.
+/// Only the SHA-256 hash of the code is stored.
 #[derive(Debug, Clone)]
 pub struct NewOAuthCode {
     pub code_hash: String,
@@ -2681,8 +2679,8 @@ pub enum ReindexJobStatus {
 }
 
 /// An embedding reindex job, persisted so its status is visible on any replica
-/// and survives restart (Cluster 104). `job_id`/`workspace_id` are raw UUIDs to
-/// match the operator HTTP shape.
+/// and survives restart. `job_id`/`workspace_id` are raw UUIDs to match the
+/// operator HTTP shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReindexJob {
@@ -2798,7 +2796,7 @@ mod message_serde_tests {
 
     #[test]
     fn empty_metadata_is_omitted_from_the_wire() {
-        // {} and null both carry no info → omitted (Cluster 177).
+        // {} and null both carry no info → omitted.
         for empty in [serde_json::json!({}), serde_json::Value::Null] {
             let v = serde_json::to_value(msg(empty)).unwrap();
             assert!(
@@ -3154,12 +3152,12 @@ mod blocked_reason_tests {
 mod budget_limits_strictness_tests {
     use super::BudgetLimits;
 
-    /// Cluster 398.4: a misspelled dimension must not read as an omission.
+    /// A misspelled dimension must not read as an omission.
     ///
     /// The write is a replace — omitting a dimension *removes* that limit — so
-    /// before this, `max_wall_seconds` deserialized to `max_wall_secs: None` and
-    /// silently disarmed the wall cap, returning `200` with the budget echoed
-    /// back. A caller had no way to tell that from success.
+    /// before this, `max_wall_seconds` deserialized to `max_wall_secs: None`
+    /// and silently disarmed the wall cap, returning `200` with the budget
+    /// echoed back. A caller had no way to tell that from success.
     #[test]
     fn a_misspelled_dimension_is_rejected_rather_than_silently_dropped() {
         let typo = serde_json::json!({ "max_tokens": 100, "max_wall_seconds": 3600 });

@@ -1,18 +1,19 @@
-//! Token-budgeted context packing (Cluster 360, G-dev-1).
+//! Token-budgeted context packing.
 //!
 //! A thread context pack caps message *rows* (`message_limit`), not *tokens*: a
 //! page of wide `ContentBlock` messages within the row cap can still overflow a
 //! model's context window. Worse, a long middle is precisely the region a model
 //! attends to least ("Lost in the Middle"), so paying tokens for it is doubly
 //! wasteful. This module supplies the pure primitives to cap a pack by an
-//! estimated token budget: keep the thread's framing (its first message) and its
-//! most-recent tail, and fold the elided middle into an auditable [`PackElision`]
-//! marker so the omission is visible and recoverable.
+//! estimated token budget: keep the thread's framing (its first message) and
+//! its most-recent tail, and fold the elided middle into an auditable
+//! [`PackElision`] marker so the omission is visible and recoverable.
 //!
-//! The math is deliberately pure and model-independent (`chars/4`) so a caller can
-//! budget a pack without a live tokenizer, and so the whole fold is unit-testable
-//! with no store. The REST assembler (`build_thread_context`) and the MCP pack
-//! (`get_thread_context`) both fold through [`fold_messages_to_budget`].
+//! The math is deliberately pure and model-independent (`chars/4`) so a caller
+//! can budget a pack without a live tokenizer, and so the whole fold is
+//! unit-testable with no store. The REST assembler (`build_thread_context`) and
+//! the MCP pack (`get_thread_context`) both fold through
+//! [`fold_messages_to_budget`].
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -41,8 +42,8 @@ pub fn message_tokens(message: &Message) -> usize {
 }
 
 /// An auditable record of the messages a context pack dropped to fit its token
-/// budget (Cluster 360). The pack keeps the thread's opening message (framing) and
-/// its most-recent tail; the elided middle is summarized here, so the omission is
+/// budget. The pack keeps the thread's opening message (framing) and its
+/// most-recent tail; the elided middle is summarized here, so the omission is
 /// visible in the response and recoverable (page from `first_elided_id`, or
 /// refetch the thread without a budget).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,11 +61,11 @@ pub struct PackElision {
     pub summary: String,
 }
 
-/// Grounding for a **child** thread's context pack (Cluster 360, G-dev-1): a
-/// compact orientation to the parent it was spawned from, so a fresh claimer of a
-/// sub-task knows *why it exists* (the parent's opening ask) and *what the parent
-/// concluded* (its latest recorded decision). Deliberately bounded — one framing
-/// message plus one decision payload, not the parent's whole history.
+/// Grounding for a **child** thread's context pack: a compact orientation to
+/// the parent it was spawned from, so a fresh claimer of a sub-task knows *why
+/// it exists* (the parent's opening ask) and *what the parent concluded* (its
+/// latest recorded decision). Deliberately bounded — one framing message plus
+/// one decision payload, not the parent's whole history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ParentGrounding {
@@ -75,7 +76,7 @@ pub struct ParentGrounding {
     /// The parent's opening (oldest) message — the framing / task statement.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opening_message: Option<Message>,
-    /// The parent's latest recorded decision/result payload (Cluster 234), if any.
+    /// The parent's latest recorded decision/result payload, if any.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_result: Option<serde_json::Value>,
@@ -119,10 +120,10 @@ impl ParentGrounding {
     }
 }
 
-/// Default cap on in-channel accepted decisions attached to a live claimer pack
-/// (Cluster 382, Wave 2 #24). Small on purpose: this is orientation, not a
-/// dump of every historical result. The store clamps `1..=50`; the pack stays
-/// tighter so a busy channel does not blow the token budget.
+/// Default cap on in-channel accepted decisions attached to a live claimer
+/// pack. Small on purpose: this is orientation, not a dump of every historical
+/// result. The store clamps `1..=50`; the pack stays tighter so a busy channel
+/// does not blow the token budget.
 pub const ACCEPTED_DECISIONS_LIMIT: i64 = 10;
 
 /// UTF-8 byte budget for an accepted-decision `summary`. Matches the search
@@ -130,10 +131,10 @@ pub const ACCEPTED_DECISIONS_LIMIT: i64 = 10;
 pub const ACCEPTED_DECISION_SUMMARY_BYTES: usize = 240;
 
 /// A token-lean view of a closed/archived in-channel decision, for the next
-/// `claim_next` claimer's context pack (Cluster 382). Deliberately **not** the
-/// full `ThreadResult` JSON — `rendered` / findings stay on
-/// `GET /threads/:id/result`. `result_kind` is a **namespaced schema string**
-/// (e.g. `example.review.result/1`), never a closed enum.
+/// `claim_next` claimer's context pack. Deliberately **not** the full
+/// `ThreadResult` JSON — `rendered` / findings stay on `GET
+/// /threads/:id/result`. `result_kind` is a **namespaced schema string** (e.g.
+/// `example.review.result/1`), never a closed enum.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AcceptedDecision {
@@ -155,11 +156,10 @@ pub struct AcceptedDecision {
 
 impl AcceptedDecision {
     /// Project a store row into the pack view. Returns `None` when a recognized
-    /// waiter envelope (`maidan.waiter.result/1`) is **not** `reviewed` — those are
-    /// in-flight / failed producer states, not accepted decisions. Opaque JSON
-    /// on a terminal thread is treated as accepted (the Cluster 359 "closed +
-    /// has a result" model); a free-form string `result_kind` is copied through
-    /// without requiring the waiter schema.
+    /// waiter envelope (`maidan.waiter.result/1`) is **not** `reviewed` — those
+    /// are in-flight / failed producer states, not accepted decisions. Opaque
+    /// JSON on a terminal thread is treated as accepted; a free-form string
+    /// `result_kind` is copied through without requiring the waiter schema.
     pub fn from_closed_result(row: ChannelClosedResult) -> Option<Self> {
         if let Some(waiter) = parse_waiter_result(&row.result) {
             if !waiter.is_reviewed() {

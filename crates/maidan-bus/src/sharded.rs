@@ -1,12 +1,13 @@
-//! Workspace-sharded broadcast fan-out (Cluster 201).
+//! Workspace-sharded broadcast fan-out.
 //!
 //! The buses used one broadcast channel: every publish woke *every* subscriber,
 //! which then filter-and-discarded the events for other workspaces — O(total
-//! subscribers) per event regardless of relevance. [`ShardedBroadcast`] routes a
-//! publish only to the subscribers that could match it: the event's workspace
-//! shard, plus a global shard for cross-workspace subscribers (operators, or any
-//! filter without a `workspace_id`). A workspace-scoped subscriber subscribes to
-//! its workspace shard and never even sees another workspace's traffic.
+//! subscribers) per event regardless of relevance. [`ShardedBroadcast`] routes
+//! a publish only to the subscribers that could match it: the event's workspace
+//! shard, plus a global shard for cross-workspace subscribers (operators, or
+//! any filter without a `workspace_id`). A workspace-scoped subscriber
+//! subscribes to its workspace shard and never even sees another workspace's
+//! traffic.
 //!
 //! This is an optimization *under* the existing [`EventFilter`] — the filter
 //! still runs on each delivered event (for channel/thread/kind narrowing), it

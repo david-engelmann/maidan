@@ -1,7 +1,7 @@
-//! Cluster 326: as-of context replay. `GET /threads/:id/context?as_of=<event_id>`
-//! reconstructs the thread as it stood at that event-log id — from the immutable
-//! event log, so a since-edited message shows its as-of body and a since-tombstoned
-//! message reappears. Deterministic; no fresh search.
+//! As-of context replay. `GET /threads/:id/context?as_of=<event_id>`
+//! reconstructs the thread as it stood at that event-log id — from the
+//! immutable event log, so a since-edited message shows its as-of body and a
+//! since-tombstoned message reappears. Deterministic; no fresh search.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

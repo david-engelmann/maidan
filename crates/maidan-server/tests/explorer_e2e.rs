@@ -1,5 +1,5 @@
-//! Cluster 394.2: tombstone explorer, message backlinks, EventKind census REST.
-//! Auth ENABLED with a minted `workspace:read` bearer.
+//! Tombstone explorer, message backlinks, EventKind census REST. Auth ENABLED
+//! with a minted `workspace:read` bearer.
 
 use std::{
     net::SocketAddr,

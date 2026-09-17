@@ -1,7 +1,7 @@
-//! Fair-dispatch ordering (Cluster 365.2, G3): `claim_next` orders by an aged
-//! effective rank = base priority + one boost per hour waited. Proves (1) higher
-//! priority jumps the FIFO queue, (2) equal priority keeps the FIFO (oldest-first)
-//! tiebreak, and (3) aging lets a long-waiting low-priority task overtake a newer
+//! Fair-dispatch ordering: `claim_next` orders by an aged effective rank = base
+//! priority + one boost per hour waited. Proves (1) higher priority jumps the
+//! FIFO queue, (2) equal priority keeps the FIFO (oldest-first) tiebreak, and
+//! (3) aging lets a long-waiting low-priority task overtake a newer
 //! higher-priority one — the anti-starvation property. Both backends.
 
 use chrono::{Duration, Utc};

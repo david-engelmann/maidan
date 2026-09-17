@@ -49,7 +49,7 @@ pub fn pool_options() -> SqlitePoolOptions {
     pool_options_with(5000)
 }
 
-/// As [`pool_options`], with a configurable `busy_timeout` (Cluster 166).
+/// As [`pool_options`], with a configurable `busy_timeout`.
 ///
 /// `foreign_keys` and `busy_timeout` are **per-connection** settings in SQLite,
 /// so they must run on every connection the pool opens — not once on a single

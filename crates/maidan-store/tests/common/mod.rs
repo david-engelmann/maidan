@@ -155,7 +155,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
         .await
         .expect("cast vote");
     // Re-casting the same (message, member, kind) is idempotent in count but
-    // upserts the confidence (Cluster 324) — the latest cast wins.
+    // upserts the confidence — the latest cast wins.
     store
         .cast_vote(NewVote {
             message_id: msg1.id,
@@ -381,8 +381,8 @@ pub struct ParitySnapshot {
     pub reaction_emojis: Vec<String>,
 }
 
-/// Cluster 159: `channel_members` round-trip — add (idempotent upsert), query,
-/// list, remove — exercised against both backends from the roundtrip suites.
+/// `channel_members` round-trip — add (idempotent upsert), query, list, remove
+/// — exercised against both backends from the roundtrip suites.
 #[allow(dead_code)]
 pub async fn run_channel_members_scenario(store: &dyn Store) {
     let ws = store

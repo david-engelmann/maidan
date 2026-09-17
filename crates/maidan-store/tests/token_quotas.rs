@@ -1,4 +1,4 @@
-//! Token capability quotas persistence (Cluster 54).
+//! Token capability quotas persistence.
 
 use maidan_auth::hash_secret;
 use maidan_store::{prelude::*, run_sqlite_migrations};

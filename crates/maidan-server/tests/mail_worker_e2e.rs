@@ -1,4 +1,4 @@
-//! Cluster 305: the mail-outbox worker. An enqueued email is delivered by
+//! The mail-outbox worker. An enqueued email is delivered by
 //! `mail_worker::sweep_once` and not re-sent; a failed send is *rescheduled*
 //! (not dropped, not dead-lettered on the first failure), so a transient SMTP
 //! outage survives.

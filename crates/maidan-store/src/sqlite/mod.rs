@@ -855,9 +855,9 @@ impl EgressStore for SqliteStore {
     ) -> Result<(), StoreError> {
         result_deliveries::mark_skipped(&self.pool, id, reason).await
     }
-    // Delivery state is read on the write path (arm -> deliver -> record), and the
-    // Cluster-265 carve-out keeps that on the primary: a lagging replica could
-    // report a delivery as un-attempted and hand a caller a stale `external_ref`.
+    // Delivery state is read on the write path (arm -> deliver -> record), and
+    // the carve-out keeps that on the primary: a lagging replica could report a
+    // delivery as un-attempted and hand a caller a stale `external_ref`.
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,

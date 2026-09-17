@@ -1,4 +1,4 @@
-//! Context export pagination (Cluster 82.0).
+//! Context export pagination.
 
 use std::{sync::Arc, time::Duration};
 

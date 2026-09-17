@@ -12,23 +12,23 @@ use tracing::warn;
 const BATCH: i64 = 64;
 
 /// How long a claimed-but-unpublished outbox row stays claimed before another
-/// relay may take it (Cluster 398.1). Long enough that a healthy tick never
-/// races itself, short enough that a crashed relay's rows resume promptly.
+/// relay may take it. Long enough that a healthy tick never races itself, short
+/// enough that a crashed relay's rows resume promptly.
 const CLAIM_LEASE_SECS: i64 = 60;
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(50);
-/// Idle backoff cap: an idle relay polls at most this often (Cluster 108).
+/// Idle backoff cap: an idle relay polls at most this often.
 const DEFAULT_MAX_POLL_INTERVAL: Duration = Duration::from_millis(1000);
 pub const DEFAULT_MAX_ATTEMPTS: u32 = 16;
 
-/// Outcome of one relay tick (Cluster 108): how many pending rows were fetched
-/// and how many were successfully published. Drives the adaptive cadence.
+/// Outcome of one relay tick: how many pending rows were fetched and how many
+/// were successfully published. Drives the adaptive cadence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RelayTick {
     pub fetched: usize,
     pub relayed: usize,
 }
 
-/// Postgres bus + outbox relay delivery strategy (Cluster 84).
+/// Postgres bus + outbox relay delivery strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutboxRelayMode {
     /// `pg_notify` + LISTEN hydrate (default; multi-instance fan-out).
@@ -52,8 +52,8 @@ pub struct OutboxRelay {
     max_attempts: u32,
     poll_interval: Duration,
     max_poll_interval: Duration,
-    /// Optional wake signal: a freshly enqueued outbox row pings this so an idle
-    /// relay drains it without waiting out the backoff (Cluster 108.0.2).
+    /// Optional wake signal: a freshly enqueued outbox row pings this so an
+    /// idle relay drains it without waiting out the backoff.
     nudge: Option<tokio::sync::mpsc::Receiver<()>>,
 }
 
@@ -87,7 +87,7 @@ impl OutboxRelay {
         }
     }
 
-    /// Attach an enqueue-nudge receiver (Cluster 108.0.2). The matching
+    /// Attach an enqueue-nudge receiver. The matching
     /// [`tokio::sync::mpsc::Sender`] lives in `AppState`; `publish` pings it
     /// after enqueuing a row so an idle relay wakes immediately.
     pub fn with_nudge(mut self, rx: tokio::sync::mpsc::Receiver<()>) -> Self {
@@ -95,10 +95,10 @@ impl OutboxRelay {
         self
     }
 
-    /// Adaptive cadence (Cluster 108): drain back-to-back while a tick fully
-    /// relays a batch (more rows likely pending), then sleep when caught up —
-    /// growing the idle sleep up to the cap and resetting it on any activity.
-    /// Delivery semantics, metrics, and quarantine behavior are unchanged.
+    /// Adaptive cadence: drain back-to-back while a tick fully relays a batch
+    /// (more rows likely pending), then sleep when caught up — growing the idle
+    /// sleep up to the cap and resetting it on any activity. Delivery
+    /// semantics, metrics, and quarantine behavior are unchanged.
     pub async fn run(mut self) {
         let base = self.poll_interval;
         let cap = self.max_poll_interval;
@@ -138,17 +138,17 @@ impl OutboxRelay {
     }
 
     pub async fn run_once(&self) -> Result<RelayTick, maidan_store::StoreError> {
-        // Claim, don't list (Cluster 398.1). This relay is spawned in every
-        // replica and cannot be disabled in production, so an unlocked read had
-        // every replica relaying every row — N POSTs per tenant webhook and N
-        // `fsm_hook` firings with `AuthContext::bypass()`. The claim is leased,
-        // not permanent, so a relay that dies mid-tick strands nothing.
+        // Claim, don't list. This relay is spawned in every replica and cannot
+        // be disabled in production, so an unlocked read had every replica
+        // relaying every row — N POSTs per tenant webhook and N `fsm_hook`
+        // firings with `AuthContext::bypass()`. The claim is leased, not
+        // permanent, so a relay that dies mid-tick strands nothing.
         let pending = self.backend.claim_pending(BATCH, CLAIM_LEASE_SECS).await?;
         let fetched = pending.len();
         // Collect the rows that publish cleanly and mark them in one statement
-        // after the loop (Cluster 168, H4) rather than a round-trip per row. A
-        // crash between publish and the batch mark re-publishes on the next tick
-        // — the at-least-once contract already tolerates duplicates.
+        // after the loop rather than a round-trip per row. A crash between
+        // publish and the batch mark re-publishes on the next tick — the
+        // at-least-once contract already tolerates duplicates.
         let mut published = Vec::with_capacity(fetched);
         for row in pending {
             let outbox_id = row.id;
@@ -233,7 +233,7 @@ pub fn poll_interval_from_env() -> Duration {
         .unwrap_or(DEFAULT_POLL_INTERVAL)
 }
 
-/// Idle-backoff ceiling for the adaptive relay loop (Cluster 108).
+/// Idle-backoff ceiling for the adaptive relay loop.
 pub fn max_poll_interval_from_env() -> Duration {
     std::env::var("MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS")
         .ok()

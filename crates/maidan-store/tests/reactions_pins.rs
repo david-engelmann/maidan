@@ -1,4 +1,4 @@
-//! Reactions and thread pins (Cluster 41).
+//! Reactions and thread pins.
 
 use std::sync::Arc;
 

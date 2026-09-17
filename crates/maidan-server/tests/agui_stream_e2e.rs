@@ -1,11 +1,12 @@
-//! The AG-UI SSE door (`GET /agui/stream`, Cluster 369.2, Wave 2 #17, H1).
+//! The AG-UI SSE door (`GET /agui/stream`).
 //!
 //! Proves the door end-to-end: a thread's lifecycle (create → post a message)
 //! reaches an AG-UI client as `RUN_STARTED` then `TEXT_MESSAGE_*` frames, each
 //! carrying its source event-log `id:`, and a reconnect with `Last-Event-ID`
 //! resumes past what was already seen. Auth is bypass here (like the other
-//! `/mcp/stream` e2es), so the mapping + SSE framing + resume are exercised; the
-//! per-event RBAC filter composes the separately-tested `can_access_*` helpers.
+//! `/mcp/stream` e2es), so the mapping + SSE framing + resume are exercised;
+//! the per-event RBAC filter composes the separately-tested `can_access_*`
+//! helpers.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

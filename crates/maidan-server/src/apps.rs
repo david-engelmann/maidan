@@ -1,4 +1,4 @@
-//! Installed app registry and app-scoped API tokens (Cluster 57.0).
+//! Installed app registry and app-scoped API tokens.
 
 use axum::{
     extract::{Path, State},

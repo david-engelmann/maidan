@@ -1,4 +1,4 @@
-//! Thread wait timer (Cluster 364, G2): set/get/cancel over REST.
+//! Thread wait timer: set/get/cancel over REST.
 
 use std::{
     net::SocketAddr,

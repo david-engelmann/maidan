@@ -1,14 +1,13 @@
-//! Background indexer: a **tap projector** over the event log (Cluster 393).
+//! Background indexer: a **tap projector** over the event log.
 //!
-//! Lexical FT/FTS5 triggers still maintain the index on write. This task
-//! is the async projection (embeddings and any other side effect that
-//! must not block the append). It is bound by the tap contract: verify
-//! every backfill page, drain history before live, filter to message
-//! kinds, fail closed on a gap or chain break. A silently diverged
-//! index is a bug.
+//! Lexical FT/FTS5 triggers still maintain the index on write. This task is the
+//! async projection (embeddings and any other side effect that must not block
+//! the append). It is bound by the tap contract: verify every backfill page,
+//! drain history before live, filter to message kinds, fail closed on a gap or
+//! chain break. A silently diverged index is a bug.
 //!
-//! The default [`LoggingHandler`] just observes events for metrics +
-//! tracing; tests can swap in any [`EventHandler`].
+//! The default [`LoggingHandler`] just observes events for metrics + tracing;
+//! tests can swap in any [`EventHandler`].
 
 use std::{
     sync::{
@@ -88,8 +87,8 @@ const RECONNECT_MAX: Duration = Duration::from_secs(5);
 pub struct Indexer {
     bus: Arc<dyn EventBus>,
     handler: Arc<dyn EventHandler>,
-    /// Durable log for `BusItem::Lagged` resume (Cluster 388). Absent in
-    /// unit tests that only drive the live bus.
+    /// Durable log for `BusItem::Lagged` resume. Absent in unit tests that only
+    /// drive the live bus.
     log: Option<Arc<dyn Store>>,
 }
 
@@ -248,12 +247,12 @@ async fn consume(
     let mut tap = SearchTap::new();
     let mut watermark: i64 = 0;
     if let Some(store) = log {
-        // Resume where the last run finished (Cluster 402.2). Without this the
-        // tap re-walked the whole log on every start, resubscribe and `Lagged`
-        // — re-embedding all history each time, and livelocking on a busy
-        // instance because the bus is not drained *during* a backfill.
-        // A cursor we cannot read is treated as 0: a slower start beats
-        // skipping history we have not projected.
+        // Resume where the last run finished. Without this the tap re-walked
+        // the whole log on every start, resubscribe and `Lagged` — re-embedding
+        // all history each time, and livelocking on a busy instance because the
+        // bus is not drained *during* a backfill. A cursor we cannot read is
+        // treated as 0: a slower start beats skipping history we have not
+        // projected.
         let resume = store.tap_cursor(SEARCH_TAP_SURFACE).await.unwrap_or(0);
         tap.resume_at(resume);
         match backfill_search(store, &mut tap, |row| async move {
@@ -263,11 +262,11 @@ async fn consume(
         {
             Ok(hw) => {
                 watermark = hw;
-                // A per-workspace chain break (Cluster 402.1) is loud but not
-                // fatal: that tenant stops being projected, everyone else keeps
-                // indexing. Tearing the whole indexer down over one tenant is a
-                // far larger blast radius than the failure it reacts to — and
-                // the old teardown retried the full log walk forever.
+                // A per-workspace chain break is loud but not fatal: that
+                // tenant stops being projected, everyone else keeps indexing.
+                // Tearing the whole indexer down over one tenant is a far
+                // larger blast radius than the failure it reacts to — and the
+                // old teardown retried the full log walk forever.
                 report_workspace_faults(&tap, rebuild_flag);
                 persist_cursor(store, &tap, hw).await;
             }

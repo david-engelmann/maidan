@@ -1,4 +1,4 @@
-//! Outbound webhook delivery with HMAC verification (Cluster 50.0).
+//! Outbound webhook delivery with HMAC verification.
 
 use std::{
     net::SocketAddr,

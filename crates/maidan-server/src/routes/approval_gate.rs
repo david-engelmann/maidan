@@ -1,11 +1,11 @@
-//! Approval-gate REST surface (Cluster 350.3): the human side of the held gate.
+//! Approval-gate REST surface: the human side of the held gate.
 //!
 //! A workspace member lists the pending gates (each carrying a server-issued
 //! `request_state`) and answers one accept/decline/cancel. The `request_state`
-//! is an HMAC over the gate id — the `/ui` is an untrusted client, so the answer
-//! must echo a token the server actually issued, verified before the resolve.
-//! The resolve is a compare-and-set on `pending` (Cluster 350.1), so a second
-//! answer — or a late answer after cancel — is a no-op (silence is not consent).
+//! is an HMAC over the gate id — the `/ui` is an untrusted client, so the
+//! answer must echo a token the server actually issued, verified before the
+//! resolve. The resolve is a compare-and-set on `pending`, so a second answer —
+//! or a late answer after cancel — is a no-op (silence is not consent).
 
 use axum::{
     extract::{Path, State},
@@ -46,8 +46,8 @@ fn verify_request_state(token: &str, gate_id: ApprovalGateId, secret: &[u8]) -> 
     }
 }
 
-/// List a workspace's pending approval gates, each with its `request_state`
-/// (Cluster 350.3). `workspace:read`.
+/// List a workspace's pending approval gates, each with its `request_state`.
+/// `workspace:read`.
 pub async fn list_approval_gates(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -79,7 +79,7 @@ pub async fn list_approval_gates(
     Ok(Json(views))
 }
 
-/// Answer a pending approval gate — accept / decline / cancel (Cluster 350.3).
+/// Answer a pending approval gate — accept / decline / cancel.
 /// `workspace:write`. The `request_state` is integrity-verified and the gate
 /// must be in the caller's workspace. Resolve is a CAS on `pending`, so a
 /// second answer is a no-op → `409`.

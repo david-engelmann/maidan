@@ -1,4 +1,4 @@
-//! SQLite-backed one-time OAuth authorization codes (Cluster 104).
+//! SQLite-backed one-time OAuth authorization codes.
 //!
 //! The TTL comparison binds `Utc::now()` rather than a SQL `strftime` so both
 //! sides use sqlx's own `DateTime<Utc>` text encoding — keeping the lexical

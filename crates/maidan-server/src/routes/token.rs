@@ -201,11 +201,11 @@ pub async fn list_capability_sets(
     ))
 }
 
-/// Levy/Madden holder-side attenuation: derive a weaker token for the
-/// caller. No `token:admin`. Amplification is rejected; a derived expiry
-/// cannot outlive the parent bearer.
+/// Levy/Madden holder-side attenuation: derive a weaker token for the caller.
+/// No `token:admin`. Amplification is rejected; a derived expiry cannot outlive
+/// the parent bearer.
 ///
-/// **A derived token inherits every limit the parent carried** (Cluster 397.7).
+/// **A derived token inherits every limit the parent carried**.
 /// Attenuation is allowed to be a no-op re-issue — `attenuate` permits an equal
 /// capability list — so anything the parent was bound by and the child was not
 /// became a way to shed that bound by re-issuing:
@@ -250,10 +250,9 @@ pub async fn attenuate_api_token(
         capabilities: capabilities.clone(),
         expires_at,
     };
-    // Record the parent so revoking it reaches this token (Cluster 401.3).
-    // A holder without a token id is a session, which has nothing to derive
-    // from — that case cannot reach here, but it mints unlinked rather than
-    // guessing a parent.
+    // Record the parent so revoking it reaches this token. A holder without a
+    // token id is a session, which has nothing to derive from — that case
+    // cannot reach here, but it mints unlinked rather than guessing a parent.
     let record = match auth.token_id {
         Some(parent) => {
             state

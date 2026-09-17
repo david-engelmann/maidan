@@ -1,8 +1,9 @@
-//! Reproduction harness for the SQLite first-write "database is locked" finding
-//! (Cluster 277). Mirrors the server's file-backed pool: multiple connections,
-//! WAL, per-connection 5 s busy_timeout. Hammers concurrent read-modify-write
-//! transactions (the shape the store's `*_with_event` methods use: SELECT scope,
-//! then INSERT/UPDATE, in one deferred transaction) and counts lock failures.
+//! Reproduction harness for the SQLite first-write "database is locked"
+//! finding. Mirrors the server's file-backed pool: multiple connections, WAL,
+//! per-connection 5 s busy_timeout. Hammers concurrent read-modify-write
+//! transactions (the shape the store's `*_with_event` methods use: SELECT
+//! scope, then INSERT/UPDATE, in one deferred transaction) and counts lock
+//! failures.
 
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::Row;
@@ -94,10 +95,10 @@ async fn run_contention(max_connections: u32) -> usize {
     total_locked
 }
 
-/// The shipped default (`DEFAULT_SQLITE_MAX_CONNECTIONS`) survives heavy concurrent
-/// read-modify-write contention with zero "database is locked" failures. This guards
-/// the Cluster-277 fix: if the default is ever bumped above 1, the deferred-write
-/// deadlock returns and this test fails.
+/// The shipped default (`DEFAULT_SQLITE_MAX_CONNECTIONS`) survives heavy
+/// concurrent read-modify-write contention with zero "database is locked"
+/// failures. This guards the fix: if the default is ever bumped above 1, the
+/// deferred-write deadlock returns and this test fails.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn default_sqlite_pool_survives_write_contention() {
     let locked = run_contention(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS).await;

@@ -1,12 +1,12 @@
-//! Email digest data model (Cluster 254, Program C — Arc I) — the Postgres twin
-//! of the SQLite module. Foundation only — no worker/routes wire it yet.
+//! Email digest data model — the Postgres twin of the SQLite module. Foundation
+//! only — no worker/routes wire it yet.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{BuriedDecision, ChannelId, DigestDue, EmailDeliveryMode, MemberId, ThreadId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-/// Set a member's email delivery mode (Cluster 254). Upsert — one row per member.
+/// Set a member's email delivery mode. Upsert — one row per member.
 pub async fn set_delivery_mode(
     pool: &PgPool,
     member_id: MemberId,
@@ -24,7 +24,7 @@ pub async fn set_delivery_mode(
     Ok(())
 }
 
-/// A member's delivery mode, defaulting to `Immediate` when unset (Cluster 254).
+/// A member's delivery mode, defaulting to `Immediate` when unset.
 pub async fn get_delivery_mode(
     pool: &PgPool,
     member_id: MemberId,
@@ -39,7 +39,7 @@ pub async fn get_delivery_mode(
         .unwrap_or_default())
 }
 
-/// Advance a member's digest watermark to `now` (Cluster 254).
+/// Advance a member's digest watermark to `now`.
 pub async fn set_last_digest_at(
     pool: &PgPool,
     member_id: MemberId,
@@ -57,8 +57,8 @@ pub async fn set_last_digest_at(
     Ok(())
 }
 
-/// Members due for an email digest (Cluster 254) — see the SQLite twin. Native
-/// `timestamptz` comparison; `'epoch'` is the never-digested floor.
+/// Members due for an email digest — see the SQLite twin. Native `timestamptz`
+/// comparison; `'epoch'` is the never-digested floor.
 pub async fn members_due_for_digest(
     pool: &PgPool,
     limit: i64,
@@ -92,9 +92,9 @@ pub async fn members_due_for_digest(
         .collect())
 }
 
-/// Task results ("decisions", Cluster 359, N2) produced by someone else after
-/// `since`, in a channel or thread the member follows — the "buried decisions" a
-/// digest surfaces. Newest first. See the SQLite twin.
+/// Task results ("decisions") produced by someone else after `since`, in a
+/// channel or thread the member follows — the "buried decisions" a digest
+/// surfaces. Newest first. See the SQLite twin.
 pub async fn buried_decisions_for_member(
     pool: &PgPool,
     member_id: MemberId,

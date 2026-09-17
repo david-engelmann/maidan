@@ -1,5 +1,5 @@
-//! Workspace handle aliases (Cluster 395). Separate table so a rename
-//! cannot change stored workspace ids.
+//! Workspace handle aliases. Separate table so a rename cannot change stored
+//! workspace ids.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{validate_workspace_handle, WorkspaceHandle, WorkspaceId};

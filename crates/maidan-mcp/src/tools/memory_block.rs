@@ -1,8 +1,8 @@
-//! Attachable labeled memory-block MCP tools (Cluster 373.3, Wave 2 #21, H11).
-//! An agent creates/reads/rewrites a Letta-shaped memory block and attaches it
-//! to a thread — the way a parent watches a child's result block without a
-//! nested runtime. Blocks are addressed by `label` within the caller's
-//! workspace (their within-workspace key). The REST twin is Cluster 373.2.
+//! Attachable labeled memory-block MCP tools. An agent creates/reads/rewrites a
+//! Letta-shaped memory block and attaches it to a thread — the way a parent
+//! watches a child's result block without a nested runtime. Blocks are
+//! addressed by `label` within the caller's workspace (their within-workspace
+//! key). There is a REST twin.
 
 use std::sync::Arc;
 
@@ -34,8 +34,8 @@ struct CreateArgs {
     value: Option<String>,
 }
 
-/// Create a memory block (Cluster 373.3). Concurrent-safe on `(workspace, label)`
-/// — re-creating a label returns the existing block. `owner_id` is the caller.
+/// Create a memory block. Concurrent-safe on `(workspace, label)` — re-creating
+/// a label returns the existing block. `owner_id` is the caller.
 pub(super) async fn create_memory_block(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -83,7 +83,7 @@ pub(super) async fn get_memory_block(
     Ok(content_json(&block))
 }
 
-/// List the caller's workspace's memory blocks (Cluster 373.3).
+/// List the caller's workspace's memory blocks.
 pub(super) async fn list_memory_blocks(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -118,7 +118,7 @@ pub(super) async fn set_memory_block_value(
         .store
         .set_memory_block_value(block.id, &a.value)
         .await?;
-    // A "go fetch" pointer so a parent watching the block wakes (Cluster 373.4).
+    // A "go fetch" pointer so a parent watching the block wakes.
     if server.event_bus.is_some() {
         server
             .publish_event(Event::MemoryBlockUpdated {
@@ -164,8 +164,8 @@ struct ThreadArgs {
     thread_id: uuid::Uuid,
 }
 
-/// The blocks attached to a thread (Cluster 373.3). Thread access is enforced by
-/// the pre-dispatch gate.
+/// The blocks attached to a thread. Thread access is enforced by the
+/// pre-dispatch gate.
 pub(super) async fn list_thread_memory_blocks(
     store: &Arc<dyn Store>,
     _auth: &AuthContext,
@@ -209,12 +209,12 @@ struct WaitArgs {
 }
 
 /// Block until a memory block (by label) is rewritten — a `MemoryBlockUpdated`
-/// event (Cluster 373.4) in the caller's workspace — or the timeout lapses.
-/// Returns the block (with its fresh value) or `null` on timeout. This is how a
-/// parent watches a child's result block without a nested runtime. **Live**
-/// primitive: it only sees updates produced *after* it subscribes, so read the
-/// current value with `get_memory_block` first (the `GET /mcp/stream` SSE
-/// transport, `kinds=memory_block_updated`, is the resumable alternative).
+/// event in the caller's workspace — or the timeout lapses. Returns the block
+/// (with its fresh value) or `null` on timeout. This is how a parent watches a
+/// child's result block without a nested runtime. **Live** primitive: it only
+/// sees updates produced *after* it subscribes, so read the current value with
+/// `get_memory_block` first (the `GET /mcp/stream` SSE transport,
+/// `kinds=memory_block_updated`, is the resumable alternative).
 pub(super) async fn wait_for_memory_block(
     server: &crate::server::McpServer,
     auth: &AuthContext,

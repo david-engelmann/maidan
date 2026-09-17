@@ -1,14 +1,14 @@
-//! Durable projector egress (Cluster 377).
+//! Durable projector egress.
 //!
 //! The Slack (309) and GitHub (312) projectors posted inline and best-effort: a
-//! transient 502 dropped the message with a log line and nothing else. A message
-//! bound for an external surface is now enqueued in `maidan_egress_outbox` and
-//! delivered by a retry/backoff worker — the shape the mail outbox (304) already
-//! has.
+//! transient 502 dropped the message with a log line and nothing else. A
+//! message bound for an external surface is now enqueued in
+//! `maidan_egress_outbox` and delivered by a retry/backoff worker — the shape
+//! the mail outbox (304) already has.
 //!
 //! A destination is a typed [`EgressTarget`], persisted as the `(surface,
-//! selector)` text pair the Cluster-378 allowlist will also key on. The pair
-//! always round-trips: the store only ever writes what [`EgressTarget::selector`]
+//! selector)` text pair the allowlist will also key on. The pair always
+//! round-trips: the store only ever writes what [`EgressTarget::selector`]
 //! produced, and the worker decodes it back with [`EgressTarget::parse`].
 
 use std::fmt;
@@ -53,7 +53,7 @@ impl fmt::Display for EgressSurface {
     }
 }
 
-/// Why a row is on the egress outbox (Cluster 379.4).
+/// Why a row is on the egress outbox.
 ///
 /// Projector posts and result deliveries can aim at the same GitHub issue (a
 /// linked thread *and* a `deliver_to` target). Update-in-place is a result
@@ -118,11 +118,11 @@ impl EgressTarget {
         }
     }
 
-    /// The key this target is *authorized* by in the Cluster-378 allowlist, which
-    /// is deliberately coarser than [`Self::selector`] on GitHub: an operator
+    /// The key this target is *authorized* by in the allowlist, which is
+    /// deliberately coarser than [`Self::selector`] on GitHub: an operator
     /// blesses the **repository**, not each issue, because per-issue blessing
-    /// would mean an operator ticket per PR. Slack has no such split — a channel
-    /// id is already the unit an operator thinks in.
+    /// would mean an operator ticket per PR. Slack has no such split — a
+    /// channel id is already the unit an operator thinks in.
     pub fn allowlist_selector(&self) -> String {
         match self {
             Self::Slack { channel_id } => channel_id.clone(),
@@ -158,14 +158,15 @@ impl fmt::Display for EgressTarget {
     }
 }
 
-/// A handle on an object a sender created on an external surface (Cluster 378.2)
-/// — a Slack message's `ts`, a GitHub comment's id. It is what makes a re-delivery
-/// an **update in place** rather than a second comment.
+/// A handle on an object a sender created on an external surface — a Slack
+/// message's `ts`, a GitHub comment's id. It is what makes a re-delivery an
+/// **update in place** rather than a second comment.
 ///
 /// Only [`Self::handle`] needs persisting: a delivery row already carries its
-/// [`EgressTarget`], and everything else here is derivable from it. So the stored
-/// shape is one text column, reconstructed with [`Self::for_target`] — the same
-/// "store the narrow thing, decode it back" move as `(surface, selector)`.
+/// [`EgressTarget`], and everything else here is derivable from it. So the
+/// stored shape is one text column, reconstructed with [`Self::for_target`] —
+/// the same "store the narrow thing, decode it back" move as `(surface,
+/// selector)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExternalRef {
     /// `chat.update` addresses a message by channel **and** `ts`; the `ts` alone
@@ -216,13 +217,14 @@ impl ExternalRef {
     }
 }
 
-/// A destination a workspace's operator has blessed for egress (Cluster 378.1).
+/// A destination a workspace's operator has blessed for egress.
 ///
 /// `surface` is stored as text rather than an [`EgressSurface`], for the same
-/// reason [`EgressOutbox`] does: a row written by a newer build and read after a
-/// downgrade must still be *listable*, or the operator cannot see the entry they
-/// need to revoke. The write side is typed ([`NewEgressTarget`]), so a surface
-/// this build cannot deliver to can never be blessed in the first place.
+/// reason [`EgressOutbox`] does: a row written by a newer build and read after
+/// a downgrade must still be *listable*, or the operator cannot see the entry
+/// they need to revoke. The write side is typed ([`NewEgressTarget`]), so a
+/// surface this build cannot deliver to can never be blessed in the first
+/// place.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AllowedEgressTarget {
@@ -286,7 +288,7 @@ pub fn validate_allowlist_selector(
     }
 }
 
-/// A new delivery to enqueue (Cluster 377.1). Queued `pending`, due now.
+/// A new delivery to enqueue. Queued `pending`, due now.
 ///
 /// `source_log_id` is the `maidan_events` row that caused the send. It is the
 /// dedup key together with the target: every replica runs the notification
@@ -298,15 +300,16 @@ pub struct NewEgressOutbox {
     pub source_log_id: i64,
     pub target: EgressTarget,
     pub body: String,
-    /// [`EgressKind::Projector`] for linked-thread relays; [`EgressKind::Result`]
-    /// for Cluster 379 result delivery. The worker uses this to decide whether
-    /// a stored [`ExternalRef`] is an object it may edit.
+    /// [`EgressKind::Projector`] for linked-thread relays;
+    /// [`EgressKind::Result`] for result delivery. The worker uses
+    /// this to decide whether a stored [`ExternalRef`] is an object it may
+    /// edit.
     pub kind: EgressKind,
 }
 
-/// A claimed delivery the egress worker will attempt (Cluster 377.1). `attempts`
-/// includes the current claim; the queue's status / scheduling columns stay
-/// internal to the store.
+/// A claimed delivery the egress worker will attempt. `attempts` includes the
+/// current claim; the queue's status / scheduling columns stay internal to the
+/// store.
 ///
 /// The destination is carried as the stored text pair rather than a decoded
 /// [`EgressTarget`]: a row that does not decode has to reach the worker to be
@@ -331,9 +334,9 @@ impl EgressOutbox {
     }
 }
 
-/// A dead-lettered delivery for the operator DLQ view (Cluster 377.4): a message
-/// that exhausted its retries, or whose link was disabled as misconfigured.
-/// `last_error` is why the final attempt failed — the surface's own words.
+/// A dead-lettered delivery for the operator DLQ view: a message that exhausted
+/// its retries, or whose link was disabled as misconfigured. `last_error` is
+/// why the final attempt failed — the surface's own words.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeadEgress {

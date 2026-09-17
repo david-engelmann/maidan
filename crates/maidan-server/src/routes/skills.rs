@@ -1,6 +1,6 @@
-//! Capability-registry management (Cluster 232, Arc E): declare / list / remove a
-//! member's skills, and set / list / remove a task's required skills. Skill
-//! routing (Cluster 231) reads both to gate `claim_next`.
+//! Capability-registry management: declare / list / remove a member's skills,
+//! and set / list / remove a task's required skills. Skill routing reads both
+//! to gate `claim_next`.
 
 use axum::{
     extract::{Path, State},
@@ -34,10 +34,10 @@ pub async fn add_member_skill(
     }
     // A governance skill is not a routing tag: declaring it is what qualifies
     // the holder to satisfy a gate, so granting one *widens* who may approve.
-    // Ratchets like the Cluster-397.2 gates — the ordinary path keeps
-    // `workspace:write`, widening needs `channel:admin`, which
-    // `maidan.agent.worker` does not carry. Without this an agent could grant
-    // itself the skill the close-gate checks for.
+    // Ratchets like the gates — the ordinary path keeps `workspace:write`,
+    // widening needs `channel:admin`, which `maidan.agent.worker` does not
+    // carry. Without this an agent could grant itself the skill the close-gate
+    // checks for.
     if is_governance_skill(&body.skill) {
         cap(&auth, CHANNEL_ADMIN)?;
     }
@@ -97,8 +97,8 @@ pub async fn add_thread_required_skill(
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
-    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
-    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
+    // `ensure_thread_access` resolves + workspace-checks the thread; the prior
+    // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
@@ -117,7 +117,7 @@ pub async fn list_thread_required_skills(
 ) -> ApiResult<Json<Vec<ThreadRequiredSkill>>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`.
+    // Drop the redundant `resolve_thread_context` + `ensure_workspace`.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     Ok(Json(
         state.store.list_thread_required_skills(thread_id).await?,
@@ -131,8 +131,8 @@ pub async fn remove_thread_required_skill(
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
-    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
-    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
+    // `ensure_thread_access` resolves + workspace-checks the thread; the prior
+    // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if state
         .store

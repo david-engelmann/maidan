@@ -1,8 +1,7 @@
-//! Spawn-budget configuration tools (Cluster 376.4, Wave 2 #23, G6/G-dev-3/W3)
-//! — the MCP twin of the REST `/workspaces/:id/spawn-budget` surface. The budget
-//! caps how far an agent family may fan out (children per parent, nesting depth,
-//! tool calls per thread); the gate itself is Cluster 376.2 (thread create) and
-//! 376.3 (message post). Applies to the caller's own workspace, like
+//! Spawn-budget configuration tools — the MCP twin of the REST
+//! `/workspaces/:id/spawn-budget` surface. The budget caps how far an agent
+//! family may fan out (children per parent, nesting depth, tool calls per
+//! thread); the gate itself sits on thread create and message post. Applies to the caller's own workspace, like
 //! `set_wip_limit`.
 
 use std::sync::Arc;
@@ -26,9 +25,9 @@ struct SetSpawnBudgetArgs {
     max_tools: Option<i64>,
 }
 
-/// Set the caller's workspace spawn budget (Cluster 376.4). A full replace — an
-/// omitted or null axis is unlimited, so no arguments at all clears the budget;
-/// `0` freezes an axis. `workspace:write`.
+/// Set the caller's workspace spawn budget. A full replace — an omitted or null
+/// axis is unlimited, so no arguments at all clears the budget; `0` freezes an
+/// axis. `workspace:write`.
 pub(super) async fn set_spawn_budget(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -55,7 +54,7 @@ pub(super) async fn set_spawn_budget(
 }
 
 /// The caller's workspace spawn budget; every axis is null when unset
-/// (unlimited) (Cluster 376.4). `workspace:read`.
+/// (unlimited). `workspace:read`.
 pub(super) async fn get_spawn_budget(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

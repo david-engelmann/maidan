@@ -1,12 +1,12 @@
-//! The egress SecretBroker (Cluster 371.4, Wave 2 #19, G19/T3).
+//! The egress SecretBroker.
 //!
 //! On outbound delivery (a webhook POST), Maidan substitutes `secret://<name>`
-//! references in the payload with the resolved value — **but only when the target
-//! host is on an allowlist** (`MAIDAN_SECRET_EGRESS_ALLOWLIST`, comma-separated
-//! hostnames). A ref bound for a non-allowlisted host is left as the literal
-//! placeholder, so a secret is never leaked to an untrusted endpoint. The value
-//! is resolved + decrypted here at send time and never persists in the delivery
-//! queue or the event log.
+//! references in the payload with the resolved value — **but only when the
+//! target host is on an allowlist** (`MAIDAN_SECRET_EGRESS_ALLOWLIST`,
+//! comma-separated hostnames). A ref bound for a non-allowlisted host is left
+//! as the literal placeholder, so a secret is never leaked to an untrusted
+//! endpoint. The value is resolved + decrypted here at send time and never
+//! persists in the delivery queue or the event log.
 
 use std::sync::OnceLock;
 

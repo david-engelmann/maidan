@@ -1,32 +1,30 @@
-//! The waiter-result contract (Cluster 379.2, extended 380.1) — a **tolerant
-//! reader** for the envelope an external result producer writes with
-//! `set_thread_result`.
+//! The waiter-result contract — a **tolerant reader** for the envelope an
+//! external result producer writes with `set_thread_result`.
 //!
-//! The result is opaque JSON owned by the producer. Maidan parses only the fields
-//! it *routes on* and ignores everything else, so a producer adding a field never
-//! breaks delivery. The grammar is pinned in `docs/Result Delivery.md` and frozen
-//! at [`WAITER_RESULT_SCHEMA`]; the authoritative fixture is committed at
-//! `tests/fixtures/waiter_result_v1.json`, so a producer-side grammar change
-//! breaks a test in this crate rather than a delivery in production.
+//! The result is opaque JSON owned by the producer. Maidan parses only the
+//! fields it *routes on* and ignores everything else, so a producer adding a
+//! field never breaks delivery. The grammar is pinned in `docs/Result
+//! Delivery.md` and frozen at [`WAITER_RESULT_SCHEMA`]; the authoritative
+//! fixture is committed at `tests/fixtures/waiter_result_v1.json`, so a
+//! producer-side grammar change breaks a test in this crate rather than a
+//! delivery in production.
 //!
-//! **Tolerance has a floor.** `schema` (or Cluster 390 `$type`, the same NSID)
+//! **Tolerance has a floor.** `schema` (or `$type`, the same NSID)
 //! is the discriminator: an unrecognized one means no delivery is attempted at
 //! all, because routing on an envelope we do not understand is how you deliver
 //! the wrong bytes to the wrong place. Past that, missing optional fields
 //! degrade rather than fail.
 //!
-//! Cluster 380.1 reads `head_sha` and `findings[].{file,line_range,body}` so
-//! inline review comments can be placed. The summary-comment path (379) is
-//! unchanged: an envelope without those fields still delivers. Cluster 380.2
-//! posts the GitHub review from those fields.
+//! `head_sha` and `findings[].{file,line_range,body}` are read so inline review
+//! comments can be placed. The summary-comment path is unchanged: an envelope
+//! without those fields still delivers. The GitHub review is posted from them.
 //!
-//! Cluster 383.1 also reads `findings[].severity` (a **namespaced/free
+//! `findings[].severity` is also read (a **namespaced/free
 //! string**, not a closed enum) so a reviewed [`EXAMPLE_REVIEW_RESULT_KIND`]
 //! envelope with any `critical` finding maps onto
-//! [`ReviewDecision::RequestChanges`] — the decision Cluster 375's close-gate
-//! already understands. Severity is walked on the raw `findings` array: a
-//! critical finding that is unusable as an inline comment still arms the
-//! adapter.
+//! [`ReviewDecision::RequestChanges`] — the decision the close-gate already
+//! understands. Severity is walked on the raw `findings` array: a critical
+//! finding that is unusable as an inline comment still arms the adapter.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -39,7 +37,7 @@ pub const WAITER_RESULT_SCHEMA: &str = "maidan.waiter.result/1";
 
 /// The namespaced producer shape for a code-review waiter result.
 ///
-/// A **string, not an enum** — the same rule as the Cluster 381 facet. Compare
+/// A **string, not an enum** — the same rule as the result facet. Compare
 /// this constant; do not close the `result_kind` set.
 pub const EXAMPLE_REVIEW_RESULT_KIND: &str = "example.review.result/1";
 
@@ -47,14 +45,13 @@ pub const EXAMPLE_REVIEW_RESULT_KIND: &str = "example.review.result/1";
 /// Same rule as [`EXAMPLE_REVIEW_RESULT_KIND`]: a string, not an enum.
 pub const EXAMPLE_PLAN_RESULT_KIND: &str = "example.plan.result/1";
 
-/// The finding severity that Cluster 383 maps to
-/// [`ReviewDecision::RequestChanges`]. A free string on the wire; only this
+/// The finding severity that maps to [`ReviewDecision::RequestChanges`]. A free string on the wire; only this
 /// exact value arms the adapter (`warning` / `info` / future words do not).
 pub const FINDING_SEVERITY_CRITICAL: &str = "critical";
 
-/// Note stored on the Cluster-375 review row when the adapter writes
-/// `request_changes`. Human-readable so `list_reviews` shows *why* the
-/// land is blocked; the close-gate itself only reads `decision`.
+/// Note stored on the review row when the adapter writes `request_changes`.
+/// Human-readable so `list_reviews` shows *why* the land is blocked; the
+/// close-gate itself only reads `decision`.
 pub const CRITICAL_REVIEW_NOTE: &str = "critical finding in example.review.result/1";
 
 /// The only `status` that delivers the producer's own bytes. Any other value
@@ -62,10 +59,9 @@ pub const CRITICAL_REVIEW_NOTE: &str = "critical finding in example.review.resul
 /// never silence, and never rendered as a clean pass.
 pub const STATUS_REVIEWED: &str = "reviewed";
 
-/// GitHub `event` for a Maidan-authored pull-request review (Cluster 380).
-/// Maidan delivers findings; it does not approve or request-changes on the
-/// producer's behalf. The Cluster 379 summary is a separate issue comment,
-/// not this review's body.
+/// GitHub `event` for a Maidan-authored pull-request review. Maidan delivers
+/// findings; it does not approve or request-changes on the producer's behalf.
+/// The result summary is a separate issue comment, not this review's body.
 pub const GITHUB_REVIEW_EVENT_COMMENT: &str = "COMMENT";
 
 /// One entry of the producer's `deliver_to` routing list.
@@ -103,7 +99,7 @@ impl DeliverTarget {
     }
 
     /// Project a producer-selected target onto the delivery target the egress
-    /// queue speaks (Cluster 377).
+    /// queue speaks.
     ///
     /// `None` for a surface this build does not know, and for a target whose
     /// per-surface detail is missing or unusable — both of which are a *skip*
@@ -196,9 +192,9 @@ impl GithubDiffSide {
 }
 
 /// One producer finding Maidan can turn into an inline review comment.
-/// `severity` is the Cluster 383 land-gate projection (a free string, not
-/// an enum). Other finding fields (`quoted_line`, `category`, …) stay in
-/// the stored JSON; the comment body is the producer's `body` as written.
+/// `severity` is the land-gate projection (a free string, not an
+/// enum). Other finding fields (`quoted_line`, `category`, …) stay in the
+/// stored JSON; the comment body is the producer's `body` as written.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterFinding {
     pub file: String,
@@ -224,8 +220,8 @@ impl WaiterFinding {
     }
 }
 
-/// Coordinates for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`.
-/// Cluster 380.2 posts this; Cluster 380.1 pinned the mapping.
+/// Coordinates for `POST /repos/{repo}/pulls/{n}/reviews` `comments[]`. The
+/// egress worker posts these; the mapping is pinned by a fixture test.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GithubReviewComment {
     pub path: String,
@@ -238,11 +234,11 @@ pub struct GithubReviewComment {
 
 /// The routable projection of a producer's result envelope. Everything the
 /// producer carries that Maidan does not route on — `corroboration`,
-/// `per_seat`, `cost_usd`, … — stays in the stored result and is
-/// deliberately absent here. Cluster 380.1 added `head_sha` and `findings`
-/// because inline comments have to be placed, not just forwarded.
-/// `run_id` is not a delivery field either; Cluster 387 homes it as
-/// lineage via [`crate::run_id_from_payload`], not this struct.
+/// `per_seat`, `cost_usd`, … — stays in the stored result and is deliberately
+/// absent here. `head_sha` and `findings` are present because inline comments
+/// have to be placed, not just forwarded. `run_id` is not a delivery field
+/// either; it is lineage, read via [`crate::run_id_from_payload`], not this
+/// struct.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WaiterResult {
     /// Which producer shape this is, e.g. `example.review.result/1`. A **namespaced
@@ -262,11 +258,11 @@ pub struct WaiterResult {
     /// (`owner/name#123`) — not to be confused with `deliver_to[].pr`, which is
     /// an integer. Two different fields with the same name and different types.
     pub pr: Option<String>,
-    /// The commit the review was computed against. This is GitHub's
-    /// `commit_id` for inline comments. **There is no helper that resolves a
-    /// PR's current head** — that function must not exist; a newer head than
-    /// was reviewed would misplace every comment. Absent ⇒ Cluster 380.2
-    /// skips inline comments; the 379 summary comment still posts.
+    /// The commit the review was computed against. This is GitHub's `commit_id`
+    /// for inline comments. **There is no helper that resolves a PR's current
+    /// head** — that function must not exist; a newer head than was reviewed
+    /// would misplace every comment. Absent ⇒ inline comments are skipped; the
+    /// summary comment still posts.
     pub head_sha: Option<String>,
     /// Findings that have a file, a body, and a valid post-image
     /// [`FindingLineRange`]. Malformed entries are skipped, not an error.
@@ -297,8 +293,7 @@ impl WaiterResult {
     }
 }
 
-/// Map a waiter envelope onto the Cluster-375 decision the close-gate
-/// already understands.
+/// Map a waiter envelope onto the decision the close-gate already understands.
 ///
 /// `Some(RequestChanges)` when:
 /// - the envelope parses (`schema = maidan.waiter.result/1`),
@@ -309,9 +304,9 @@ impl WaiterResult {
 ///   entries that are unusable as inline comments (no file / body /
 ///   `line_range`).
 ///
-/// `None` otherwise. This function never returns [`ReviewDecision::Approve`]:
-/// a clean re-review does not auto-land. A human resolves by submitting
-/// an approve through the existing review surface.
+/// `None` otherwise. This function never returns [`ReviewDecision::Approve`]: a
+/// clean re-review does not auto-land. A human resolves by submitting an
+/// approve through the existing review surface.
 pub fn review_decision_from_waiter(value: &Value) -> Option<ReviewDecision> {
     let parsed = parse_waiter_result(value)?;
     if parsed.result_kind != EXAMPLE_REVIEW_RESULT_KIND || !parsed.is_reviewed() {
@@ -320,8 +315,8 @@ pub fn review_decision_from_waiter(value: &Value) -> Option<ReviewDecision> {
     findings_contain_critical(value).then_some(ReviewDecision::RequestChanges)
 }
 
-/// Walk the raw `findings` array. Usability-for-inline is Cluster 380's
-/// filter; a critical finding still counts here without `file`/`body`.
+/// Walk the raw `findings` array. Usability-for-inline is the filter; a
+/// critical finding still counts here without `file`/`body`.
 fn findings_contain_critical(value: &Value) -> bool {
     value
         .get("findings")
@@ -335,11 +330,11 @@ fn findings_contain_critical(value: &Value) -> bool {
 
 /// Whether this object is a `maidan.waiter.result/1` envelope.
 ///
-/// Cluster 390: `$type` is an alias of `schema` (same NSID). Either field
-/// matching [`WAITER_RESULT_SCHEMA`] is enough; if both are present they must
-/// agree. A `/2` (or any other value) is inert — breaking changes are a new
-/// type, not a silent accept. The committed producer fixture still uses
-/// `schema` only; this does not rewrite it.
+/// `$type` is an alias of `schema` (same NSID). Either field matching
+/// [`WAITER_RESULT_SCHEMA`] is enough; if both are present they must agree. A
+/// `/2` (or any other value) is inert — breaking changes are a new type, not a
+/// silent accept. The committed producer fixture still uses `schema` only; this
+/// does not rewrite it.
 fn waiter_schema_matches(obj: &serde_json::Map<String, Value>) -> bool {
     let schema = obj.get("schema").and_then(Value::as_str);
     let type_id = obj.get("$type").and_then(Value::as_str);
@@ -840,7 +835,7 @@ mod tests {
 
     #[test]
     fn a_reviewed_pi_review_with_any_critical_finding_is_request_changes() {
-        // The load-bearing Cluster 383 map. result_kind is compared as a
+        // The load-bearing map. result_kind is compared as a
         // namespaced string — a closed enum would need editing every time a
         // waiter product ships a new kind.
         let critical = json!({

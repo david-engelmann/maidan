@@ -1,5 +1,6 @@
-//! MCP streamable HTTP: JSON-RPC response plus live notifications on one SSE stream
-//! (`POST /mcp/streamable`). Cluster 27; follow-up mux on open session Cluster 78.
+//! MCP streamable HTTP: JSON-RPC response plus live notifications on one SSE
+//! stream (`POST /mcp/streamable`), with follow-ups multiplexed onto an open
+//! session.
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -189,7 +190,7 @@ async fn push_response_and_notifications(
     Ok(())
 }
 
-/// Close an open streamable session (`DELETE /mcp/streamable`, Cluster 60).
+/// Close an open streamable session (`DELETE /mcp/streamable`).
 pub async fn close_session(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -210,10 +211,10 @@ pub async fn close_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Server→client SSE stream for a streamable session (`GET /mcp/streamable`,
-/// Cluster 146). Delivers unsolicited server notifications (e.g. resource
-/// updates) per the MCP spec's server-initiated GET stream; touches and echoes
-/// an open `Mcp-Session-Id` when supplied.
+/// Server→client SSE stream for a streamable session (`GET /mcp/streamable`).
+/// Delivers unsolicited server notifications (e.g. resource updates) per the
+/// MCP spec's server-initiated GET stream; touches and echoes an open
+/// `Mcp-Session-Id` when supplied.
 pub async fn stream_get(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -235,7 +236,7 @@ pub async fn stream_get(
     };
 
     // Resumability: with an open session and a `Last-Event-ID`, replay the
-    // retained frames after that id before the live stream (Cluster 147).
+    // retained frames after that id before the live stream.
     let replay_frames = match (&session_id, last_event_id(&headers)) {
         (Some(id), Some(after)) => registry.replay_after(id, after).await,
         _ => Vec::new(),

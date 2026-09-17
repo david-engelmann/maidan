@@ -1,5 +1,5 @@
-//! Thread wait-timer queries (Cluster 364, G2/G4): the `maidan_thread_waits` side
-//! table + the sweeper's atomic fire-once claim.
+//! Thread wait-timer queries: the `maidan_thread_waits` side table + the
+//! sweeper's atomic fire-once claim.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{EscalationPolicy, MemberId, ThreadId, ThreadWait};

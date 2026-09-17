@@ -1,5 +1,5 @@
-//! Cluster 390.2: `Store::max_event_id` is the room head (`0` when empty).
-//! Both backends. This is an event-log id, not a Postgres WAL LSN.
+//! `Store::max_event_id` is the room head (`0` when empty). Both backends. This
+//! is an event-log id, not a Postgres WAL LSN.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace, RoomLsn};

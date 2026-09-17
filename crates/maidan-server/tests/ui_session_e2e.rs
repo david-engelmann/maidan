@@ -1,6 +1,6 @@
-//! The `/ui/api/me` capability-card source (Cluster 353.1): the `/ui` Session tab
-//! reads the caller's *real* capabilities from `GET /me` (reused under the `/ui`
-//! auth proxy) and renders `{can, can't}` = granted vs `known_capabilities −
+//! The `/ui/api/me` capability-card source: the `/ui` Session tab reads the
+//! caller's *real* capabilities from `GET /me` (reused under the `/ui` auth
+//! proxy) and renders `{can, can't}` = granted vs `known_capabilities −
 //! granted`. A declared "allowed-tools" list is not a grant — this endpoint is
 //! the ground truth. Driven with a bearer (the middleware accepts session OR
 //! bearer); the DOM render is covered by `ui-tests/tests/session.spec.ts`.

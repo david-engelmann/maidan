@@ -1,4 +1,4 @@
-//! Golden file for MCP tool names (Cluster 59).
+//! Golden file for MCP tool names.
 
 use std::path::PathBuf;
 

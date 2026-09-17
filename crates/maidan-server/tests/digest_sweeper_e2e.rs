@@ -1,7 +1,7 @@
-//! Cluster 255: the digest sweeper + the router honoring digest mode.
-//! A digest-mode member gets no immediate email (the router skips them) and
-//! instead receives a rollup from `digest::sweep_once`, whose watermark advance
-//! makes a second sweep a no-op.
+//! The digest sweeper + the router honoring digest mode. A digest-mode member
+//! gets no immediate email (the router skips them) and instead receives a
+//! rollup from `digest::sweep_once`, whose watermark advance makes a second
+//! sweep a no-op.
 
 use std::sync::Arc;
 
@@ -126,9 +126,9 @@ async fn router_skips_immediate_email_for_digest_mode_member() {
     )
     .await;
 
-    // Delivery is durable now (Cluster 305): the router enqueues, the mail worker
-    // sends. The digest-mode member was skipped before enqueue, so draining the
-    // outbox emails only the immediate member.
+    // Delivery is durable now: the router enqueues, the mail worker sends. The
+    // digest-mode member was skipped before enqueue, so draining the outbox
+    // emails only the immediate member.
     maidan_server::mail_worker::sweep_once(&state).await;
 
     let sent = mailer.sent.lock().unwrap();
@@ -175,8 +175,8 @@ async fn digest_sweeper_sends_rollup_then_advances_watermark() {
     );
 }
 
-/// Cluster 359 (N2): the digest leads with buried decisions — a task result
-/// produced by someone else in a channel the member follows, listed in the email.
+/// The digest leads with buried decisions — a task result produced by someone
+/// else in a channel the member follows, listed in the email.
 #[tokio::test]
 async fn digest_leads_with_buried_decisions() {
     let (state, mailer, store) = state_with_mailer().await;

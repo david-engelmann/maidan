@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Multi-replica scale-out smoke (Cluster 105).
+# Multi-replica scale-out smoke.
 #
 # Brings up two maidan-server replicas behind an nginx round-robin LB, sharing
 # one Postgres and one MinIO object store, then drives REST cross-replica paths
 # through the LB (so requests land on either replica with no session affinity):
 #   * a workspace/channel/thread/message round-trip — write on one replica,
 #     read back through the LB (typically the other replica);
-#   * an embedding reindex job (Cluster 104 durable state) started on one
+#   * an embedding reindex job started on one
 #     replica and polled to completion on another.
 # Replicas run with AUTH_DISABLED=1, so no bearer is needed.
 #

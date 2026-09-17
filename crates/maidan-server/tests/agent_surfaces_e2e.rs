@@ -1,4 +1,4 @@
-//! Agent integration surfaces (Clusters 59–67).
+//! Agent integration surfaces.
 
 use std::{
     net::SocketAddr,

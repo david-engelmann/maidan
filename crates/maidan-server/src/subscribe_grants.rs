@@ -1,4 +1,4 @@
-//! WS/MCP subscribe channel grant enforcement (Cluster 81.0).
+//! WS/MCP subscribe channel grant enforcement.
 
 use std::collections::HashSet;
 
@@ -26,11 +26,11 @@ pub async fn apply_subscribe_grants(
         .as_ref()
         .map(|v| v.iter().copied().collect())
         .unwrap_or_default();
-    // Verify asserted private-channel grants against actual membership
-    // (Cluster 163) — the client no longer merely *claims* access. Public and
-    // the DM system channel pass; a private-channel grant the caller isn't a
-    // member of is dropped, so the checks below deny that channel/thread and it
-    // lands in `private_channel_deny`. Bypass callers keep all asserted grants.
+    // Verify asserted private-channel grants against actual membership — the
+    // client no longer merely *claims* access. Public and the DM system channel
+    // pass; a private-channel grant the caller isn't a member of is dropped, so
+    // the checks below deny that channel/thread and it lands in
+    // `private_channel_deny`. Bypass callers keep all asserted grants.
     if !auth.bypass {
         let mut verified: HashSet<ChannelId> = HashSet::new();
         for cid in grants.iter().copied() {

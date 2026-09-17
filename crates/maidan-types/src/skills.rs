@@ -1,19 +1,18 @@
-//! Which member skills are **governance-bearing** (Cluster 400.5).
+//! Which member skills are **governance-bearing**.
 //!
-//! Skills are free-form tags an agent declares (Cluster 230), and routing them
-//! is set containment — `claim_next` hands a task to anyone who declares what
-//! it requires. That openness is the point, and for routing it is harmless: the
+//! Skills are free-form tags an agent declares, and routing them is set
+//! containment — `claim_next` hands a task to anyone who declares what it
+//! requires. That openness is the point, and for routing it is harmless: the
 //! worst a bogus skill buys you is work you cannot do.
 //!
-//! Two of them are not routing tags. The Cluster-385 close-gate only counts a
-//! green pass from a member who declared [`LAND_GATE_SKILL`], and Cluster 383's
-//! adapter only arms `request_changes` for a producer who declared
-//! [`REVIEW_SKILL`]. For those two, *declaring the skill is what qualifies you
-//! to approve* — so a self-service grant hands the holder the qualification the
-//! gate exists to check, and the separation-of-duties test is all that is left
-//! standing.
+//! Two of them are not routing tags. The close-gate only counts a green pass
+//! from a member who declared [`LAND_GATE_SKILL`], and the adapter only arms
+//! `request_changes` for a producer who declared [`REVIEW_SKILL`]. For those
+//! two, *declaring the skill is what qualifies you to approve* — so a
+//! self-service grant hands the holder the qualification the gate exists to
+//! check, and the separation-of-duties test is all that is left standing.
 //!
-//! So granting one ratchets, exactly as Cluster 397.2 made the gates ratchet:
+//! So granting one ratchets, exactly as the gates themselves ratchet:
 //! the ordinary path keeps `workspace:write`, and the operation that *widens*
 //! who may approve needs `channel:admin` — which lives in `maidan.human.admin`
 //! and deliberately not in `maidan.agent.worker`.

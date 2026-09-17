@@ -1,10 +1,10 @@
-//! Search as a tap projector (Cluster 393, Wave 3 #33 B19).
+//! Search as a tap projector.
 //!
 //! The indexer is not the log. It must verify every backfill page, drain
-//! history before live, filter to [`SEARCH_PROJECTOR_KINDS`], and fail
-//! closed on a gap or chain break — never warn-and-continue with a
-//! silently diverged index. Rebuild from the messages table (the
-//! domain snapshot) rather than serving a gapped projection.
+//! history before live, filter to [`SEARCH_PROJECTOR_KINDS`], and fail closed
+//! on a gap or chain break — never warn-and-continue with a silently diverged
+//! index. Rebuild from the messages table (the domain snapshot) rather than
+//! serving a gapped projection.
 
 use std::collections::HashMap;
 
@@ -15,7 +15,7 @@ use maidan_types::{
 
 /// Per-workspace chain cursor the search projector walks during backfill.
 ///
-/// **Faults are per workspace** (Cluster 402.1). The chain itself always was —
+/// **Faults are per workspace**. The chain itself always was —
 /// `last_link` is keyed by workspace — but the fault was a single `Option`, so
 /// one tenant's break made `ingest` refuse every subsequent row of *every*
 /// tenant, and the indexer's retry loop then re-walked the whole log forever
@@ -122,9 +122,9 @@ impl SearchTap {
         self.last_link.contains_key(&workspace_id)
     }
 
-    /// Restore a workspace's chain position when resuming (Cluster 402.2), so
-    /// the next row is verified against its real predecessor rather than being
-    /// accepted as a chain start.
+    /// Restore a workspace's chain position when resuming, so the next row is
+    /// verified against its real predecessor rather than being accepted as a
+    /// chain start.
     pub fn seed_link(&mut self, workspace_id: WorkspaceId, link: EventLink) {
         self.last_link.insert(workspace_id, link);
     }
@@ -157,23 +157,23 @@ impl SearchTap {
 /// Drain the durable log into `tap` + `on_project`. Returns the history
 /// high-water.
 ///
-/// Walks from `tap.history_hw`, which the caller seeds from the durable cursor
-/// (Cluster 402.2). Seeded with `0` this is a full walk from genesis, which is
-/// what a rebuild wants.
+/// Walks from `tap.history_hw`, which the caller seeds from the durable cursor.
+/// Seeded with `0` this is a full walk from genesis, which is what a rebuild
+/// wants.
 ///
 /// # What resuming does and does not verify
 ///
-/// Every event this projects is chain-verified against the previous link for its
-/// workspace, exactly as before. What a resume no longer does is re-prove the
-/// prefix it already proved on an earlier run.
+/// Every event this projects is chain-verified against the previous link for
+/// its workspace, exactly as before. What a resume no longer does is re-prove
+/// the prefix it already proved on an earlier run.
 ///
 /// That is a real reduction, and it is the trade. A tamper *behind* the cursor
 /// is no longer noticed by the tap — but the tap only ever noticed one when the
 /// process happened to restart, which is an accident of implementation rather
 /// than a control anyone could rely on or schedule. Whole-chain integrity is
-/// `GET /workspaces/:wid/events/verify`, which Cluster 397.8 made streamable and
-/// therefore affordable to run on a timer. The tap verifies what it projects;
-/// the verifier verifies the chain.
+/// `GET /workspaces/:wid/events/verify`, which streams and is therefore
+/// affordable to run on a timer. The tap verifies what it
+/// projects; the verifier verifies the chain.
 pub async fn backfill_search<F, Fut>(
     store: &dyn maidan_store::Store,
     tap: &mut SearchTap,
@@ -284,9 +284,9 @@ mod tests {
         broken.payload = json!({"kind": "message_posted", "n": 99});
         let mut tap2 = SearchTap::new();
         tap2.ingest(&e1).unwrap();
-        // Cluster 402.1: a tamper faults *that workspace* rather than the tap.
-        // It still refuses to project — a diverged index is the thing we will
-        // not serve — but the walk continues so other tenants keep indexing.
+        // A tamper faults *that workspace* rather than the tap. It still
+        // refuses to project — a diverged index is the thing we will not serve
+        // — but the walk continues so other tenants keep indexing.
         assert!(
             !tap2.ingest(&broken).unwrap(),
             "a broken chain must not be projected"

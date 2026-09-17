@@ -1,15 +1,16 @@
-//! Background wait-timer sweeper (Cluster 364, G2/G4).
+//! Background wait-timer sweeper.
 //!
 //! Opt-in via `MAIDAN_WAIT_SWEEP_TICK_SECS` (>0). Each tick drains every thread
-//! wait past its deadline: it **atomically** claims and fires the wait in the store
-//! (`claim_next_due_wait` — `FOR UPDATE SKIP LOCKED` on Postgres, so concurrent
-//! replicas never double-fire one wait) and then applies its escalation.
+//! wait past its deadline: it **atomically** claims and fires the wait in the
+//! store (`claim_next_due_wait` — `FOR UPDATE SKIP LOCKED` on Postgres, so
+//! concurrent replicas never double-fire one wait) and then applies its
+//! escalation.
 //!
 //! The escalation is **never a decision** (no auto close/approve/decline — the
-//! "TimedOut ≠ Decline" rule): it emits a `WaitTimedOut` event (the notification
-//! router then reaches the thread's owner) and, for the `Park` policy, additionally
-//! marks the thread unclaimable (Cluster 363) so `claim_next` won't dispatch a
-//! stuck thread until a human intervenes.
+//! "TimedOut ≠ Decline" rule): it emits a `WaitTimedOut` event (the
+//! notification router then reaches the thread's owner) and, for the `Park`
+//! policy, additionally marks the thread unclaimable so `claim_next` won't
+//! dispatch a stuck thread until a human intervenes.
 
 use std::time::Duration;
 

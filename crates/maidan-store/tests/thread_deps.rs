@@ -1,5 +1,5 @@
-//! Task-dependency DAG (Cluster 217): edges, dependents, and readiness
-//! (all dependencies terminal). Exercised on both backends.
+//! Task-dependency DAG: edges, dependents, and readiness (all dependencies
+//! terminal). Exercised on both backends.
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -159,8 +159,8 @@ async fn run_dag_suite(store: &dyn Store) {
     );
 }
 
-/// Cluster 218: `claim_next` skips a task whose dependencies aren't all terminal,
-/// and picks it up once they are.
+/// `claim_next` skips a task whose dependencies aren't all terminal, and picks
+/// it up once they are.
 async fn run_readiness_claim_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
@@ -234,9 +234,9 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
     assert_eq!(second.id, blocked.id);
 }
 
-/// Cluster 221: a dependency edge that would close a cycle is rejected — direct
-/// (A depends on B, then B depends on A) and transitive (A->B->C, then C->A) —
-/// while a valid DAG (a diamond) is accepted.
+/// A dependency edge that would close a cycle is rejected — direct (A depends
+/// on B, then B depends on A) and transitive (A->B->C, then C->A) — while a
+/// valid DAG (a diamond) is accepted.
 async fn run_cycle_prevention_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
@@ -307,10 +307,10 @@ async fn run_cycle_prevention_suite(store: &dyn Store) {
         .all(|dep| dep.depends_on_thread_id == c.id));
 }
 
-/// Cluster 222: `newly_ready_dependents(dep)` returns the dependents that became
-/// ready because `dep` reached a terminal state — empty while another dependency
-/// still blocks, the unblocked task once it's the last one, and never a dependent
-/// that is itself terminal.
+/// `newly_ready_dependents(dep)` returns the dependents that became ready
+/// because `dep` reached a terminal state — empty while another dependency
+/// still blocks, the unblocked task once it's the last one, and never a
+/// dependent that is itself terminal.
 async fn run_ready_dependents_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
@@ -392,8 +392,8 @@ async fn run_ready_dependents_suite(store: &dyn Store) {
     );
 }
 
-/// Cluster 224: `channel_queue_depth` partitions a channel's open task threads
-/// into ready / assigned / blocked, and excludes terminal threads.
+/// `channel_queue_depth` partitions a channel's open task threads into ready /
+/// assigned / blocked, and excludes terminal threads.
 async fn run_queue_depth_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "qd".into() })
@@ -487,8 +487,8 @@ async fn run_queue_depth_suite(store: &dyn Store) {
     );
 }
 
-/// Cluster 351: `channel_occupancy` refines the queue depth by the working clock —
-/// held threads split into `claimed` (not acknowledged) vs `working` (started).
+/// `channel_occupancy` refines the queue depth by the working clock — held
+/// threads split into `claimed` (not acknowledged) vs `working` (started).
 async fn run_occupancy_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "occ".into() })

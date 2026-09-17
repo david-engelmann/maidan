@@ -1,9 +1,8 @@
-//! Room discovery, handle aliases, and the authenticated room card
-//! (Cluster 395, Wave 3 #35 B22).
+//! Room discovery, handle aliases, and the authenticated room card.
 //!
-//! `GET /.well-known/maidan-room` is public and scheme-only — no tenant
-//! list. Handle writes rename the alias; the workspace UUID (and every
-//! stored `maidan://{uuid}/…` URI) stays put.
+//! `GET /.well-known/maidan-room` is public and scheme-only — no tenant list.
+//! Handle writes rename the alias; the workspace UUID (and every stored
+//! `maidan://{uuid}/…` URI) stays put.
 
 use axum::{
     extract::{Path, State},

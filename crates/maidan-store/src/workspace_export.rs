@@ -1,5 +1,5 @@
-//! Assemble a workspace content graph for export (Cluster 187 / 391).
-//! Shared by REST and MCP so both sign the same payload shape.
+//! Assemble a workspace content graph for export. Shared by REST and MCP so
+//! both sign the same payload shape.
 
 use crate::{Store, StoreError};
 use maidan_types::*;

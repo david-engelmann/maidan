@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Cluster 123 — OTLP end-to-end smoke.
+# OTLP end-to-end smoke.
 #
 # Brings up postgres + an OpenTelemetry Collector + a maidan-server configured
 # to push OTLP traces *and* metrics (OTLP_ENDPOINT + OTLP_METRICS=1), drives a
 # little HTTP traffic, then asserts the collector actually received both signals
-# from our service. This proves the Cluster 89 export wiring works against a
+# from our service. This proves the export wiring works against a
 # real collector — not just the in-process metrics_push unit test.
 set -euo pipefail
 

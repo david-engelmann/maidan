@@ -1,4 +1,4 @@
-//! Ed25519 sign / verify for [`maidan_types::SignedExport`] (Cluster 391).
+//! Ed25519 sign / verify for [`maidan_types::SignedExport`].
 //!
 //! The operator holds a 32-byte seed (`MAIDAN_EXPORT_SIGNING_KEY`, hex or
 //! base64). The public key travels in the artifact so a blank instance can

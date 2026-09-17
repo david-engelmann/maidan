@@ -9,8 +9,8 @@ use crate::error::StoreError;
 
 const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id";
 
-/// Create a task schedule (Cluster 226) — see the SQLite twin. `active`,
-/// `last_run_at`, and the timestamps take their column defaults.
+/// Create a task schedule — see the SQLite twin. `active`, `last_run_at`, and
+/// the timestamps take their column defaults.
 pub async fn create(pool: &PgPool, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError> {
     let id = TaskScheduleId::new();
     let row = sqlx::query(
@@ -82,10 +82,10 @@ pub async fn due(
     Ok(rows.iter().map(row_to_schedule).collect())
 }
 
-/// Atomically claim + advance the oldest due schedule (Cluster 227). `FOR UPDATE
-/// SKIP LOCKED` lets concurrent replicas each claim a distinct row. Recurring →
-/// `next_run_at = now + interval` (fire-once-per-tick); one-shot → `active =
-/// false`. See the SQLite twin.
+/// Atomically claim + advance the oldest due schedule. `FOR UPDATE SKIP LOCKED`
+/// lets concurrent replicas each claim a distinct row. Recurring → `next_run_at
+/// = now + interval` (fire-once-per-tick); one-shot → `active = false`. See the
+/// SQLite twin.
 pub async fn claim_next_due(
     pool: &PgPool,
     now: DateTime<Utc>,
@@ -114,7 +114,7 @@ pub async fn claim_next_due(
     Ok(row.as_ref().map(row_to_schedule))
 }
 
-/// Pause / resume a schedule (Cluster 228) — see the SQLite twin.
+/// Pause / resume a schedule — see the SQLite twin.
 pub async fn set_active(
     pool: &PgPool,
     id: TaskScheduleId,

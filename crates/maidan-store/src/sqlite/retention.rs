@@ -1,5 +1,5 @@
-//! SQLite data-retention pruning (Cluster 186). Batched deletes (subquery
-//! `LIMIT`) so a first sweep over a long-unpruned table doesn't lock it.
+//! SQLite data-retention pruning. Batched deletes (subquery `LIMIT`) so a first
+//! sweep over a long-unpruned table doesn't lock it.
 
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
@@ -21,8 +21,8 @@ pub async fn prune_events(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
-        // Cluster 366 (T6): held workspaces' events are exempt (system events with
-        // NULL workspace_id are never under a tenant hold, so they still prune).
+        // Held workspaces' events are exempt (system events with NULL
+        // workspace_id are never under a tenant hold, so they still prune).
         "DELETE FROM maidan_events
          WHERE id IN (
              SELECT id FROM maidan_events
@@ -47,8 +47,8 @@ pub async fn prune_audit(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
-        // Cluster 366 (T6): maidan_audit is not workspace-tagged, so a legal hold
-        // freezes audit pruning entirely while any hold is active.
+        // Maidan_audit is not workspace-tagged, so a legal hold freezes audit
+        // pruning entirely while any hold is active.
         "DELETE FROM maidan_audit
          WHERE id IN (
              SELECT id FROM maidan_audit

@@ -1,5 +1,5 @@
-//! Cluster 287: the A2A gRPC binding (§10). Spawns the tonic A2AService against
-//! an in-memory store and drives it with the generated gRPC client.
+//! The A2A gRPC binding (§10). Spawns the tonic A2AService against an in-memory
+//! store and drives it with the generated gRPC client.
 
 use std::sync::Arc;
 

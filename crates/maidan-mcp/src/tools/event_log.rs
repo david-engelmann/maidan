@@ -1,9 +1,9 @@
-//! Log snapshot + since-LSN catch-up + chain verify (Cluster 393).
+//! Log snapshot + since-LSN catch-up + chain verify.
 //!
-//! Twins of REST `GET /workspaces/:wid/snapshot`,
-//! `GET /workspaces/:wid/events/catch-up`, and
-//! `GET /workspaces/:wid/events/verify`. Header reads are `workspace:read`;
-//! `include_graph=true` needs `token:admin` (the graph is an export dump).
+//! Twins of REST `GET /workspaces/:wid/snapshot`, `GET
+//! /workspaces/:wid/events/catch-up`, and `GET /workspaces/:wid/events/verify`.
+//! Header reads are `workspace:read`; `include_graph=true` needs `token:admin`
+//! (the graph is an export dump).
 
 use std::sync::Arc;
 

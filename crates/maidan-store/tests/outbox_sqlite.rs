@@ -57,9 +57,9 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
 }
 
-/// Cluster 398.1: the SQLite twin of the claim. SQLite serializes writers, so a
-/// second claimer sees the first's committed `claimed_at` and skips the row —
-/// and an expired lease is reclaimable so a crashed relay strands nothing.
+/// The SQLite twin of the claim. SQLite serializes writers, so a second claimer
+/// sees the first's committed `claimed_at` and skips the row — and an expired
+/// lease is reclaimable so a crashed relay strands nothing.
 #[tokio::test]
 async fn a_claimed_row_is_excluded_until_its_lease_expires() {
     let pool = sqlite_pool().await;

@@ -1,11 +1,10 @@
-//! Required-reviewers management (Cluster 375.3, Wave 2 #22, G5/G-dev-5). A thread
-//! declares a review requirement (`k` approvals) from a named reviewer set; a
-//! reviewer submits an approve / request-changes decision. The FSM close-gate
-//! (Cluster 375.2) then refuses `closed` until `k` qualifying approvals exist and
-//! no `refutes` edge blocks the thread. Governance writes are `thread:transition`;
-//! reads are `workspace:read`.
+//! Required-reviewers management. A thread declares a review requirement (`k`
+//! approvals) from a named reviewer set; a reviewer submits an approve /
+//! request-changes decision. The FSM close-gate then refuses `closed` until `k`
+//! qualifying approvals exist and no `refutes` edge blocks the thread.
+//! Governance writes are `thread:transition`; reads are `workspace:read`.
 //!
-//! **A gate ratchets** (Cluster 397.2). Making the requirement *stricter* is
+//! **A gate ratchets**. Making the requirement *stricter* is
 //! `thread:transition`; making it looser is `channel:admin`, and audited.
 //! Loosening is exactly as powerful as closing — and `thread:transition` is
 //! what a close needs and what `maidan.agent.worker` carries, so guarding both

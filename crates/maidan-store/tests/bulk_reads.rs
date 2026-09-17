@@ -1,7 +1,6 @@
-//! Bulk context reads (Cluster 106.0.1): the batched thread / reference / edit
-//! accessors return the same rows as the per-row reads they replace, respect
-//! the per-message edit limit, and behave on empty input — identically on both
-//! backends.
+//! Bulk context reads: the batched thread / reference / edit accessors return
+//! the same rows as the per-row reads they replace, respect the per-message
+//! edit limit, and behave on empty input — identically on both backends.
 
 use std::time::Duration;
 
@@ -276,9 +275,9 @@ async fn assert_thread_pagination(store: &dyn Store) {
     );
 }
 
-/// `page_threads_for_channel` (Cluster 343): keyset walk reproduces the channel's
-/// thread order once, the cursor is exclusive, and another channel's threads
-/// never leak in.
+/// `page_threads_for_channel`: keyset walk reproduces the channel's thread
+/// order once, the cursor is exclusive, and another channel's threads never
+/// leak in.
 async fn assert_channel_thread_pagination(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {

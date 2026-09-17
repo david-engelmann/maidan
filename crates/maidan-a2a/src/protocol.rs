@@ -22,10 +22,10 @@ pub const METHOD_CANCEL_TASK: &str = "CancelTask";
 pub const METHOD_GET_EXTENDED_AGENT_CARD: &str = "GetExtendedAgentCard";
 
 pub const TASK_STATE_WORKING: &str = "TASK_STATE_WORKING";
-/// The task is paused waiting on human input — a held approval gate (Cluster 350)
-/// on the task's context thread (Cluster 352 / H12). The A2A spec's kebab form is
-/// `input-required`; this codebase uses the proto-enum string on the wire, so the
-/// REST/JSON-RPC `status` filter maps `input-required`/`INPUT_REQUIRED` onto this.
+/// The task is paused waiting on human input — a held approval gate on the
+/// task's context thread. The A2A spec's kebab form is `input-required`; this
+/// codebase uses the proto-enum string on the wire, so the REST/JSON-RPC
+/// `status` filter maps `input-required`/`INPUT_REQUIRED` onto this.
 /// Non-terminal: the run resumes when the gate is answered.
 pub const TASK_STATE_INPUT_REQUIRED: &str = "TASK_STATE_INPUT_REQUIRED";
 pub const TASK_STATE_COMPLETED: &str = "TASK_STATE_COMPLETED";
@@ -111,7 +111,7 @@ pub struct A2aMessage {
     pub parts: Vec<TextPart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
-    /// Content-addressed citations (Cluster 392). Empty is omitted.
+    /// Content-addressed citations. Empty is omitted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub citations: Vec<StrongRef>,
 }
@@ -128,8 +128,8 @@ pub struct SendMessageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetTaskRequest {
     pub id: String,
-    /// Accepted for A2A conformance (Cluster 352.3 / H12) but a no-op — Maidan
-    /// tasks carry no artifacts. See `ListTasksRequest::include_artifacts`.
+    /// Accepted for A2A conformance but a no-op — Maidan tasks carry no
+    /// artifacts. See `ListTasksRequest::include_artifacts`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_artifacts: Option<bool>,
 }
@@ -143,28 +143,28 @@ pub struct GetTaskRequest {
 pub struct ListTasksRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_id: Option<String>,
-    /// Filter by task state (Cluster 352.2 / H12). Accepts the kebab
-    /// (`input-required`), bare-enum (`INPUT_REQUIRED`), or full
-    /// (`TASK_STATE_INPUT_REQUIRED`) form — normalized via [`normalize_task_state`].
+    /// Filter by task state. Accepts the kebab (`input-required`), bare-enum
+    /// (`INPUT_REQUIRED`), or full (`TASK_STATE_INPUT_REQUIRED`) form —
+    /// normalized via [`normalize_task_state`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// Accepted for A2A conformance (Cluster 352.3 / H12) but a **no-op**: Maidan
-    /// tasks are message deliveries / held gates and carry no artifacts, so the
-    /// `artifacts` field is always absent — there is nothing to include or omit.
+    /// Accepted for A2A conformance but a **no-op**: Maidan tasks are message
+    /// deliveries / held gates and carry no artifacts, so the `artifacts` field
+    /// is always absent — there is nothing to include or omit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub include_artifacts: Option<bool>,
-    /// Keep only tasks whose status changed strictly after this RFC 3339 instant
-    /// (Cluster 352.4 / H12). A malformed value is rejected by the handler.
+    /// Keep only tasks whose status changed strictly after this RFC 3339
+    /// instant. A malformed value is rejected by the handler.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_timestamp_after: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i32>,
 }
 
-/// Normalize a caller-supplied task-state filter to the canonical `TASK_STATE_*`
-/// wire form (Cluster 352.2 / H12). Case-insensitive; accepts the A2A kebab form
-/// (`input-required`), the bare enum (`INPUT_REQUIRED`), or the full string. `None`
-/// for an unrecognized state (the caller should reject the filter).
+/// Normalize a caller-supplied task-state filter to the canonical
+/// `TASK_STATE_*` wire form. Case-insensitive; accepts the A2A kebab form
+/// (`input-required`), the bare enum (`INPUT_REQUIRED`), or the full string.
+/// `None` for an unrecognized state (the caller should reject the filter).
 pub fn normalize_task_state(s: &str) -> Option<&'static str> {
     let norm = s.trim().to_ascii_uppercase().replace('-', "_");
     let norm = norm.strip_prefix("TASK_STATE_").unwrap_or(&norm);
@@ -259,11 +259,11 @@ pub fn message_text(message: &A2aMessage) -> Option<String> {
     }
 }
 
-/// Structured content blocks from the message's text parts (Cluster 194): one
+/// Structured content blocks from the message's text parts: one
 /// [`ContentBlock::Text`] per text part, so an A2A message carries the same
-/// structured `content` as REST/MCP posts (Cluster 173) instead of dropping it.
-/// `None` when there are no text parts (mirrors [`message_text`]); `body` stays
-/// the joined searchable projection.
+/// structured `content` as REST/MCP posts instead of dropping it. `None` when
+/// there are no text parts (mirrors [`message_text`]); `body` stays the joined
+/// searchable projection.
 pub fn message_content(message: &A2aMessage) -> Option<Vec<ContentBlock>> {
     let blocks: Vec<ContentBlock> = message
         .parts
@@ -276,13 +276,13 @@ pub fn message_content(message: &A2aMessage) -> Option<Vec<ContentBlock>> {
     (!blocks.is_empty()).then_some(blocks)
 }
 
-/// Render structured content blocks back to A2A text parts (Cluster 267) — the
-/// egress inverse of [`message_content`]. A2A parts are text-only, so each block
-/// projects to its text form, mirroring `maidan_types::derive_body`'s per-block
-/// rendering: `Text` → its text, `Code` → a fenced block, `ToolResult` → its
-/// content, `ResourceLink` → its title or URI. A `ToolUse` block has no text
-/// projection and is skipped. The common case (Text blocks from an A2A-ingested
-/// message) round-trips faithfully back to the original parts.
+/// Render structured content blocks back to A2A text parts — the egress inverse
+/// of [`message_content`]. A2A parts are text-only, so each block projects to
+/// its text form, mirroring `maidan_types::derive_body`'s per-block rendering:
+/// `Text` → its text, `Code` → a fenced block, `ToolResult` → its content,
+/// `ResourceLink` → its title or URI. A `ToolUse` block has no text projection
+/// and is skipped. The common case (Text blocks from an A2A-ingested message)
+/// round-trips faithfully back to the original parts.
 pub fn message_parts_from_content(content: &[ContentBlock]) -> Vec<TextPart> {
     content
         .iter()

@@ -1,7 +1,7 @@
-//! Task-schedule management (Cluster 228): create / list / pause-resume / delete
-//! the schedules that the sweeper (Cluster 227) fires. A schedule materializes a
-//! task thread in its channel when due, so the write surfaces are gated on
-//! `workspace:write` + access to the target channel.
+//! Task-schedule management: create / list / pause-resume / delete the
+//! schedules that the sweeper fires. A schedule materializes a task thread in
+//! its channel when due, so the write surfaces are gated on `workspace:write` +
+//! access to the target channel.
 
 use axum::{
     extract::{Path, State},

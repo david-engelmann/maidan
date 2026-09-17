@@ -24,8 +24,8 @@ pub async fn create(pool: &PgPool, new: NewChannel) -> Result<Channel, StoreErro
     Ok(row_to_channel(&row))
 }
 
-/// Insert a channel and append its `ChannelCreated` event in one transaction
-/// (Cluster 205 transactional outbox) — see the SQLite twin.
+/// Insert a channel and append its `ChannelCreated` event in one transaction —
+/// see the SQLite twin.
 pub async fn create_with_event(
     pool: &PgPool,
     new: NewChannel,

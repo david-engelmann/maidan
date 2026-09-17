@@ -1,4 +1,4 @@
-//! Unified delivery operator API (Cluster 80.0).
+//! Unified delivery operator API.
 
 use std::sync::Arc;
 

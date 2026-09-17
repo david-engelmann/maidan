@@ -1,7 +1,7 @@
-//! Durable human-approval gates (Cluster 350, the held gate): create a pending
-//! gate, list it while outstanding, resolve it to accept/decline/cancel, and
-//! prove the resolve is a compare-and-set on `pending` (a double-answer is a
-//! no-op). Both backends. No routes/tool yet — the zero-blast-radius foundation.
+//! Durable human-approval gates: create a pending gate, list it while
+//! outstanding, resolve it to accept/decline/cancel, and prove the resolve is a
+//! compare-and-set on `pending` (a double-answer is a no-op). Both backends. No
+//! routes/tool yet — the zero-blast-radius foundation.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

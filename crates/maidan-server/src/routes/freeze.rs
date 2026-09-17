@@ -1,7 +1,7 @@
-//! Member-freeze kill-switch management (Cluster 372.3, Wave 2 #20, G17/B25). An
-//! operator freezes a member (`token:admin`) — which drops their leases and makes
-//! `claim_next` refuse them — and unfreezes to lift it. Freeze/unfreeze are
-//! audited (a security-sensitive mutation). Not G4 PAUSE.
+//! Member-freeze kill-switch management. An operator freezes a member
+//! (`token:admin`) — which drops their leases and makes `claim_next` refuse
+//! them — and unfreezes to lift it. Freeze/unfreeze are audited (a
+//! security-sensitive mutation). Not G4 PAUSE.
 
 use axum::{
     extract::{Path, State},

@@ -1,8 +1,8 @@
-//! Named-secret management over HTTP (Cluster 371.2, Wave 2 #19). Runs with auth
-//! ENABLED (the `created_by` FK + real cap checks) and an encryption key
-//! configured, so the encrypt-on-create / decrypt-on-resolve round-trip is
-//! exercised. The value crosses the wire only on create + resolve — a list
-//! returns metadata with no value.
+//! Named-secret management over HTTP. Runs with auth ENABLED (the `created_by`
+//! FK + real cap checks) and an encryption key configured, so the
+//! encrypt-on-create / decrypt-on-resolve round-trip is exercised. The value
+//! crosses the wire only on create + resolve — a list returns metadata with no
+//! value.
 
 use std::{
     net::SocketAddr,

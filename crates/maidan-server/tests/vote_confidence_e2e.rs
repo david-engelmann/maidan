@@ -1,6 +1,6 @@
-//! Cluster 324: optional confidence weight on a vote. `POST /messages/:id/votes`
-//! accepts a `confidence` in 0..=1 (out of range -> 400); `GET` returns it, and a
-//! vote cast without one omits the field. Re-casting updates the confidence.
+//! Optional confidence weight on a vote. `POST /messages/:id/votes` accepts a
+//! `confidence` in 0..=1 (out of range -> 400); `GET` returns it, and a vote
+//! cast without one omits the field. Re-casting updates the confidence.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

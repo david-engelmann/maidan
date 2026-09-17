@@ -18,18 +18,19 @@ use crate::subscribe_metrics::{
 
 pub const REPLAY_LIMIT: i64 = 500;
 
-/// Coalesce the optimistic-path delivery-cursor write (Cluster 169, H2): buffer
-/// the highest delivered `log_id` and persist it at most once per this many
-/// events or [`CURSOR_FLUSH_INTERVAL`], plus a final flush when the stream ends.
-/// The cursor is best-effort on this path (the authoritative at-least-once path
-/// is [`reconcile_deliver`], which already batches), and `advance_delivery_cursor`
-/// is monotonic, so a coalesced-away write only means an at-least-once reconnect
-/// re-delivers a few already-seen events — the contract already tolerates that.
+/// Coalesce the optimistic-path delivery-cursor write: buffer the highest
+/// delivered `log_id` and persist it at most once per this many events or
+/// [`CURSOR_FLUSH_INTERVAL`], plus a final flush when the stream ends. The
+/// cursor is best-effort on this path (the authoritative at-least-once path is
+/// [`reconcile_deliver`], which already batches), and `advance_delivery_cursor`
+/// is monotonic, so a coalesced-away write only means an at-least-once
+/// reconnect re-delivers a few already-seen events — the contract already
+/// tolerates that.
 const CURSOR_FLUSH_EVENTS: u32 = 64;
 const CURSOR_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Persist a buffered delivery cursor (Cluster 169, H2). No-op when nothing is
-/// buffered or no consumer/workspace resolved.
+/// Persist a buffered delivery cursor. No-op when nothing is buffered or no
+/// consumer/workspace resolved.
 async fn flush_delivery_cursor(
     store: &Arc<dyn Store>,
     writer: Option<(&str, maidan_types::WorkspaceId)>,
@@ -114,12 +115,12 @@ pub async fn emit_replay_truncated_if_needed(
     }
 }
 
-/// Replay persisted events matching `filter` with `id > after_id`.
-/// Lean domain-event frame (Cluster 178, token round 3): the top-level routing
-/// fields of a full frame (`log_id`, `kind`, and whatever ids apply) minus the
-/// heavy embedded event payload. A client that just tails for activity gets a
-/// "something happened, go fetch" pointer; the fields are a strict subset of the
-/// full frame's, so `log_id`/`kind`/`thread_id`-based client logic is unchanged.
+/// Replay persisted events matching `filter` with `id > after_id`. Lean
+/// domain-event frame: the top-level routing fields of a full frame (`log_id`,
+/// `kind`, and whatever ids apply) minus the heavy embedded event payload. A
+/// client that just tails for activity gets a "something happened, go fetch"
+/// pointer; the fields are a strict subset of the full frame's, so
+/// `log_id`/`kind`/`thread_id`-based client logic is unchanged.
 #[derive(Serialize)]
 struct LeanFrame<'a> {
     #[serde(rename = "$type")]
@@ -136,8 +137,8 @@ struct LeanFrame<'a> {
     member_id: Option<uuid::Uuid>,
 }
 
-/// Serialize an event frame for a subscriber — the full flattened envelope, or a
-/// [`LeanFrame`] pointer when `lean` (Cluster 178).
+/// Serialize an event frame for a subscriber — the full flattened envelope, or
+/// a [`LeanFrame`] pointer when `lean`.
 fn frame_payload(envelope: &BusEnvelope, lean: bool) -> Result<String, serde_json::Error> {
     if lean {
         let e = &envelope.event;
@@ -199,15 +200,15 @@ pub async fn replay_matching_events(
         }
         high_water = high_water.max(envelope.log_id);
     }
-    // Coalesce the per-row cursor writes into one advance to the batch high-water
-    // (Cluster 169, H2) — monotonic, so this is equivalent to the per-row writes.
+    // Coalesce the per-row cursor writes into one advance to the batch
+    // high-water — monotonic, so this is equivalent to the per-row writes.
     if high_water > after_id {
         if let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
         {
-            // Best-effort: a failed advance is safe for correctness (a stuck cursor
-            // re-delivers, never skips — at-least-once holds) but must be observable
-            // rather than silently discarded (Cluster 315; the reconcile + flush paths
-            // already log). Not fatal — the reconcile path advances authoritatively.
+            // Best-effort: a failed advance is safe for correctness (a stuck
+            // cursor re-delivers, never skips — at-least-once holds) but must
+            // be observable rather than silently discarded. Not fatal — the
+            // reconcile path advances authoritatively.
             if let Err(err) = store
                 .advance_delivery_cursor(consumer_id, workspace_id, high_water)
                 .await
@@ -226,7 +227,7 @@ pub async fn replay_matching_events(
     })
 }
 
-/// Wire protocol version for WebSocket / MCP SSE subscribe (Cluster 62).
+/// Wire protocol version for WebSocket / MCP SSE subscribe.
 pub const SUBSCRIBE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize)]
@@ -288,8 +289,8 @@ pub async fn forward_bus_items(
     delivery_consumer_id: Option<String>,
     lean: bool,
 ) {
-    // Best-effort cursor on the optimistic path, coalesced (Cluster 169, H2):
-    // buffer the highest delivered id and persist it on a count/time threshold
+    // Best-effort cursor on the optimistic path, coalesced: buffer the highest
+    // delivered id and persist it on a count/time threshold
     // + a final flush, instead of a DB write per event.
     let cursor_writer = delivery_consumer_id.as_deref().zip(filter.workspace_id);
     let mut pending_cursor: Option<i64> = None;
@@ -391,13 +392,13 @@ pub async fn forward_bus_items(
             }
         }
     }
-    // Persist whatever's buffered when the stream ends (Cluster 169, H2).
+    // Persist whatever's buffered when the stream ends.
     flush_delivery_cursor(&store, cursor_writer, &mut pending_cursor).await;
 }
 
-/// Stability window for at-least-once reconcile delivery (Cluster 125): a row is
-/// eligible only once its `inserted_at` is older than this. Must exceed the
-/// longest insert-transaction duration. Default 2s; `0` disables the gate.
+/// Stability window for at-least-once reconcile delivery: a row is eligible
+/// only once its `inserted_at` is older than this. Must exceed the longest
+/// insert-transaction duration. Default 2s; `0` disables the gate.
 pub fn reconcile_stability_window_from_env() -> std::time::Duration {
     std::env::var("MAIDAN_DELIVERY_STABILITY_SECS")
         .ok()
@@ -417,16 +418,17 @@ pub fn reconcile_interval_from_env() -> std::time::Duration {
         .unwrap_or_else(|| std::time::Duration::from_millis(1000))
 }
 
-/// Cursor-driven **at-least-once** delivery (Cluster 125).
+/// Cursor-driven **at-least-once** delivery.
 ///
 /// Polls stable rows (`inserted_at <= now - stability`) with `id > cursor` from
-/// the durable delivery cursor, in strict `id` order, delivers the matching ones
-/// and advances the cursor. `wake` is the bus subscription, used only as a
+/// the durable delivery cursor, in strict `id` order, delivers the matching
+/// ones and advances the cursor. `wake` is the bus subscription, used only as a
 /// low-latency hint (its contents are ignored). Because delivery reads from a
-/// contiguous cursor and only stable rows, no committed event is ever skipped by
-/// an out-of-order publish or a late-committing serial — the gap the optimistic
-/// [`forward_bus_items`] path can drop. The cost is a stability-window latency
-/// floor on fresh events; the backlog (already stable) is delivered immediately.
+/// contiguous cursor and only stable rows, no committed event is ever skipped
+/// by an out-of-order publish or a late-committing serial — the gap the
+/// optimistic [`forward_bus_items`] path can drop. The cost is a
+/// stability-window latency floor on fresh events; the backlog (already stable)
+/// is delivered immediately.
 #[allow(clippy::too_many_arguments)]
 pub async fn reconcile_deliver(
     mut wake: maidan_bus::EventStream,
@@ -513,11 +515,11 @@ pub async fn reconcile_deliver(
 }
 
 /// The log head to treat as "already accounted for" when this subscription
-/// starts (Cluster 397.3).
+/// starts.
 ///
 /// A bus subscriber is live-only: it is not owed anything that happened before
-/// it attached. The watermark therefore starts at the head *at attach time*, and
-/// a later `Lagged` resumes from there — the missed window, and only that.
+/// it attached. The watermark therefore starts at the head *at attach time*,
+/// and a later `Lagged` resumes from there — the missed window, and only that.
 ///
 /// It used to start at `0` in every consumer, which meant a `Lagged` arriving
 /// before the first event replayed the entire global log from id 1. That window

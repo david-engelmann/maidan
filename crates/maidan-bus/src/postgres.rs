@@ -36,9 +36,9 @@ use crate::traits::EventBus;
 const CHANNEL: &str = "maidan_events";
 const PAYLOAD_LIMIT: usize = 7990;
 const NOTIFY_POINTER_SCHEMA: &str = "log_id_v1";
-/// Page size for the self-healing back-fill (Cluster 258): a gap or reconnect
-/// drains the missed event range in batches of this size, so even a large gap
-/// (a long `LISTEN` disconnect) heals without loading it all at once.
+/// Page size for the self-healing back-fill: a gap or reconnect drains the
+/// missed event range in batches of this size, so even a large gap (a long
+/// `LISTEN` disconnect) heals without loading it all at once.
 const BACKFILL_BATCH: i64 = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,8 +83,8 @@ impl Default for PostgresBusOptions {
 #[derive(Clone)]
 pub struct PostgresBus {
     pool: PgPool,
-    // Cluster 201: workspace-sharded local fan-out. The LISTEN task and
-    // polled-mode publishes feed this; subscribers read their workspace's shard.
+    // Workspace-sharded local fan-out. The LISTEN task and polled-mode
+    // publishes feed this; subscribers read their workspace's shard.
     local: Arc<ShardedBroadcast>,
     notify_on_publish: bool,
     listener_health: Arc<ListenerHealth>,
@@ -210,9 +210,9 @@ impl PostgresBus {
     }
 
     /// Drain every event with `id > after_id` from the log onto the local
-    /// broadcast, returning the new high-water mark (Cluster 258). The listener
-    /// runs this automatically on a gap or reconnect; it is exposed so an operator
-    /// (or a test) can force a heal without waiting for the next NOTIFY.
+    /// broadcast, returning the new high-water mark. The listener runs this
+    /// automatically on a gap or reconnect; it is exposed so an operator (or a
+    /// test) can force a heal without waiting for the next NOTIFY.
     pub async fn backfill(&self, after_id: i64) -> i64 {
         drain_new_events(&self.pool, &self.local, after_id, None, &self.hydrate_stats).await
     }
@@ -269,11 +269,12 @@ fn envelope_from_stored(stored: maidan_types::StoredEvent) -> Result<BusEnvelope
 }
 
 /// Drain every event with `id > from_exclusive` from the log onto the local
-/// broadcast, in `id` order and in bounded batches, returning the new high-water
-/// mark. This is the self-healing floor (Cluster 258): it back-fills a gap the
+/// broadcast, in `id` order and in bounded batches, returning the new
+/// high-water mark. This is the self-healing floor: it back-fills a gap the
 /// live NOTIFY path missed (a coalesced/lost notification, or the range that
-/// accumulated while the `LISTEN` was disconnected). Best-effort — a store error
-/// stops the drain at the last id delivered, to be retried on the next NOTIFY.
+/// accumulated while the `LISTEN` was disconnected). Best-effort — a store
+/// error stops the drain at the last id delivered, to be retried on the next
+/// NOTIFY.
 async fn drain_new_events(
     pool: &PgPool,
     tx: &ShardedBroadcast,

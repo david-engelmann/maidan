@@ -1,15 +1,15 @@
-//! Read-replica causality token (Cluster 263, Program D).
+//! Read-replica causality token.
 //!
-//! After a successful mutating request, stamp the primary's current WAL LSN on the
-//! response as `Maidan-Consistency-Token`. A client echoes it on a later read, and
-//! the read router (Cluster 264) serves that read from a replica only once the
-//! replica has replayed past the token — otherwise the primary. This is what makes
-//! replica reads safe: a client never reads staler than its own writes.
+//! After a successful mutating request, stamp the primary's current WAL LSN on
+//! the response as `Maidan-Consistency-Token`. A client echoes it on a later
+//! read, and the read router serves that read from a replica only once the
+//! replica has replayed past the token — otherwise the primary. This is what
+//! makes replica reads safe: a client never reads staler than its own writes.
 //!
-//! The LSN is captured *after* the handler, so it may be a little *ahead* of the
-//! write's exact commit LSN (another write can advance it in between). That is
-//! safe — the token is never *behind* the write, so a read gated on it is never
-//! stale; at worst it waits slightly longer or falls back to the primary.
+//! The LSN is captured *after* the handler, so it may be a little *ahead* of
+//! the write's exact commit LSN (another write can advance it in between). That
+//! is safe — the token is never *behind* the write, so a read gated on it is
+//! never stale; at worst it waits slightly longer or falls back to the primary.
 
 use axum::{
     extract::{Request, State},
@@ -31,7 +31,7 @@ fn is_mutation(method: &Method) -> bool {
     )
 }
 
-/// Read-replica causality middleware (Clusters 263–264):
+/// Read-replica causality middleware:
 /// - **GET/HEAD** requests run inside a read-consistency scope so store reads can
 ///   route to the replica, honoring the client's `Maidan-Consistency-Token` (a
 ///   token routes to the replica only once it has replayed that far, else the
@@ -40,8 +40,9 @@ fn is_mutation(method: &Method) -> bool {
 /// - **mutations** stamp the primary's current WAL LSN on a 2xx response as
 ///   `Maidan-Consistency-Token`, the token a client echoes on its next read.
 ///
-/// All of this is gated on a configured read replica (`read_replica_enabled`); with
-/// no replica it is a pure pass-through (no header parse, no LSN round-trip).
+/// All of this is gated on a configured read replica (`read_replica_enabled`);
+/// with no replica it is a pure pass-through (no header parse, no LSN
+/// round-trip).
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
     if !state.read_replica_enabled {
         return next.run(req).await;

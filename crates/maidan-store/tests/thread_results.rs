@@ -1,5 +1,5 @@
-//! Task structured results (Cluster 234, Arc F): set (upsert) / get a thread's
-//! result. Both backends. No routes yet.
+//! Task structured results: set (upsert) / get a thread's result. Both
+//! backends. No routes yet.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

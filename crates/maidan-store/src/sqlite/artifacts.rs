@@ -34,9 +34,9 @@ pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, Sto
 
 /// Upsert an artifact, optionally record its per-workspace access ref (Cluster
 /// 204), and append its `ArtifactUpserted` event — all in one transaction
-/// (Cluster 214). `ref_workspace` is `Some` for a non-bypass upload (mirrors the
-/// route's `record_artifact_ref` call); the upsert → ref → event ordering is
-/// preserved atomically.
+/// `ref_workspace` is `Some` for a non-bypass upload (mirrors the route's
+/// `record_artifact_ref` call); the upsert → ref → event ordering is preserved
+/// atomically.
 pub async fn upsert_with_event(
     pool: &SqlitePool,
     new: NewArtifact,

@@ -1,8 +1,8 @@
-//! Workspace import (Cluster 269, Program: optional deferrals). Insert a whole
-//! `WorkspaceImport` content graph — with explicit ids, state, and timestamps
-//! preserved — in one transaction (all-or-nothing). The inverse of the server's
-//! Cluster-187 export. Id remapping (fresh-workspace vs same-id restore) and the
-//! "already exists" guard are the caller's job (Cluster 270); this just writes.
+//! Workspace import. Insert a whole `WorkspaceImport` content graph — with
+//! explicit ids, state, and timestamps preserved — in one transaction
+//! (all-or-nothing). The inverse of the server's export. Id remapping
+//! (fresh-workspace vs same-id restore) and the "already exists" guard are the
+//! caller's job; this just writes.
 
 use maidan_types::WorkspaceImport;
 use sqlx::PgPool;

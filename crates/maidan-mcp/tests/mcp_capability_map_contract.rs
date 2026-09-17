@@ -1,4 +1,4 @@
-//! Golden map: MCP tool name → required capability (Cluster 69).
+//! Golden map: MCP tool name → required capability.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

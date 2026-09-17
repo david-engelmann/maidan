@@ -1,7 +1,7 @@
-//! Web Push delivery (Cluster 366, Wave 1 #14, N1). VAPID (RFC 8292) + `aes128gcm`
-//! payload encryption (RFC 8291 over RFC 8188), all RustCrypto — no openssl. The
-//! notification router sends a Web Push message to a member's subscriptions when
-//! the member has no live WebSocket connection.
+//! Web Push delivery. VAPID (RFC 8292) + `aes128gcm` payload encryption (RFC
+//! 8291 over RFC 8188), all RustCrypto — no openssl. The notification router
+//! sends a Web Push message to a member's subscriptions when the member has no
+//! live WebSocket connection.
 
 use std::time::Duration;
 
@@ -213,7 +213,7 @@ fn encrypt_payload(
     Ok(body)
 }
 
-/// Sends an encrypted Web Push message to one subscription (Cluster 366).
+/// Sends an encrypted Web Push message to one subscription.
 #[async_trait::async_trait]
 pub trait WebPushSender: Send + Sync {
     async fn send(&self, sub: &PushSubscription, payload: &[u8]) -> Result<(), WebPushError>;

@@ -1,21 +1,21 @@
-//! Clusters 399.2 + 399.4: a WASI handler runs only over a module its own
+//! A WASI handler runs only over a module its own
 //! workspace owns — refused at registration, and still refused at dispatch.
 //!
 //! Auth is **enabled** here on purpose. Under `AUTH_DISABLED` the upload path
-//! records no Cluster-204 access links at all, so ownership is not a thing that
-//! exists to test — the sibling `wasi_slash_e2e` covers the run path in that
-//! mode, and this covers the boundary in the mode that has one.
+//! records no access links at all, so ownership is not a thing that exists to
+//! test — the sibling `wasi_slash_e2e` covers the run path in that mode, and
+//! this covers the boundary in the mode that has one.
 //!
-//! Without the check, a registration could name any sha on the instance and turn
-//! a slash command into a cross-tenant artifact reader — it executes the bytes,
-//! so it would also be a cross-tenant *code* reader.
+//! Without the check, a registration could name any sha on the instance and
+//! turn a slash command into a cross-tenant artifact reader — it executes the
+//! bytes, so it would also be a cross-tenant *code* reader.
 //!
 //! **Two gates, two questions.** Registration asks "can this ever run?" and
-//! refuses a configuration that could never be honoured. Dispatch asks "may this
-//! run *now*?" and has to keep asking, because a workspace can lose an artifact
-//! after the registration was accepted. Neither subsumes the other, and this
-//! file asserts both — the second by taking the access link away from a
-//! registration that was legitimately accepted.
+//! refuses a configuration that could never be honoured. Dispatch asks "may
+//! this run *now*?" and has to keep asking, because a workspace can lose an
+//! artifact after the registration was accepted. Neither subsumes the other,
+//! and this file asserts both — the second by taking the access link away from
+//! a registration that was legitimately accepted.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -148,7 +148,7 @@ async fn a_handler_cannot_run_another_tenants_module() {
     }
     let (owner, stranger) = (&tenants[0], &tenants[1]);
 
-    // The owner uploads the module — this is what records the Cluster-204 ref.
+    // The owner uploads the module — this is what records the ref.
     let upload: Value = client
         .post(format!("{base}/artifacts?kind=attachment"))
         .bearer_auth(&owner.token)
@@ -231,8 +231,8 @@ async fn a_handler_cannot_run_another_tenants_module() {
     );
 
     // Gate two: a registration that was legitimately accepted still has to pass
-    // at dispatch, because ownership can go away afterwards. Drop the
-    // Cluster-204 access link out from under the owner's own command.
+    // at dispatch, because ownership can go away afterwards. Drop the access
+    // link out from under the owner's own command.
     sqlx::query("DELETE FROM maidan_artifact_refs WHERE workspace_id = ? AND sha256 = ?")
         .bind(owner.ws.0)
         .bind(&sha)

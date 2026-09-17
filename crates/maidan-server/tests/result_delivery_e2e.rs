@@ -1,9 +1,9 @@
-//! Cluster 379.3: a `ThreadResultSet` fetches, parses, allowlist-checks, and
-//! enqueues (or records a skip) per `deliver_to` target.
+//! A `ThreadResultSet` fetches, parses, allowlist-checks, and enqueues (or
+//! records a skip) per `deliver_to` target.
 //!
 //! Direct `route_event` — no worker-loop timing. The assertions are the
-//! contract in `docs/Result Delivery.md`: empty `deliver_to` writes nothing;
-//! an unblessed or unknown target is a recorded skip, never an error; a
+//! contract in `docs/Result Delivery.md`: empty `deliver_to` writes nothing; an
+//! unblessed or unknown target is a recorded skip, never an error; a
 //! non-`reviewed` status delivers a Maidan-authored notice built from `status`
 //! alone; partial delivery is the model.
 

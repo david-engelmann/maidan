@@ -1,5 +1,4 @@
-//! Per-workspace WIP limit + a member's live-claim count (Cluster 362, G11).
-//! Both backends.
+//! Per-workspace WIP limit + a member's live-claim count. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

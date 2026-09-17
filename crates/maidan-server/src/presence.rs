@@ -1,12 +1,12 @@
 //! Workspace presence and typing fan-out for WebSocket subscribers.
 //!
-//! Single-process by default. When a [`maidan_bus::PresenceNotifier`] is wired
-//! (Cluster 103), presence/typing fan out **across replicas**: every local
-//! change is published as a [`PresenceEvent`], each replica's listener delivers
-//! it to its own WebSocket subscribers, and presence state is folded into a
-//! merged, TTL-expiring roster so `presence_snapshot` reflects members on any
-//! replica. A periodic heartbeat re-announces locally-connected members so a
-//! crashed replica's members expire elsewhere within the TTL.
+//! Single-process by default. When a [`maidan_bus::PresenceNotifier`] is wired,
+//! presence/typing fan out **across replicas**: every local change is published
+//! as a [`PresenceEvent`], each replica's listener delivers it to its own
+//! WebSocket subscribers, and presence state is folded into a merged,
+//! TTL-expiring roster so `presence_snapshot` reflects members on any replica.
+//! A periodic heartbeat re-announces locally-connected members so a crashed
+//! replica's members expire elsewhere within the TTL.
 
 use std::{
     collections::HashMap,
@@ -82,11 +82,11 @@ pub struct PresenceRegistration {
 }
 
 impl Drop for PresenceRegistration {
-    // Invariant (Cluster 354, H4): NO occupancy/store I/O in Drop. `unregister`
-    // mutates only the in-memory `PresenceHub` (it holds no `Store` handle), so
-    // this stays synchronous and non-blocking. Drop can't be async and runs on
-    // whatever task drops the guard; a durable write here would either block that
-    // task or be silently lost. Occupancy that must persist (the claim lease /
+    // Invariant: NO occupancy/store I/O in Drop. `unregister` mutates only the
+    // in-memory `PresenceHub` (it holds no `Store` handle), so this stays
+    // synchronous and non-blocking. Drop can't be async and runs on whatever
+    // task drops the guard; a durable write here would either block that task
+    // or be silently lost. Occupancy that must persist (the claim lease /
     // working clock) is written by explicit calls, never a destructor.
     fn drop(&mut self) {
         self.hub
@@ -163,8 +163,8 @@ impl PresenceHub {
         }
     }
 
-    /// Wire cross-replica presence fan-out (Cluster 103). Call
-    /// [`PresenceHub::spawn_tasks`] afterwards to start the listener + heartbeat.
+    /// Wire cross-replica presence fan-out. Call [`PresenceHub::spawn_tasks`]
+    /// afterwards to start the listener + heartbeat.
     pub fn with_presence_notifier(mut self, notifier: Arc<dyn PresenceNotifier>) -> Self {
         self.notifier = Some(notifier);
         self

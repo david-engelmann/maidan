@@ -1,5 +1,5 @@
-//! Cluster 388.2: subscribe / HTTP backfill fail loud on a pruned-gap cursor
-//! (409 `must_refetch`, never a silent clamp) and honour projector shapes.
+//! Subscribe / HTTP backfill fail loud on a pruned-gap cursor (409
+//! `must_refetch`, never a silent clamp) and honour projector shapes.
 
 use std::{sync::Arc, time::Duration};
 

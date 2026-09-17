@@ -1,7 +1,7 @@
-//! Cluster 397.1: a signed bundle proves integrity, never authority.
+//! A signed bundle proves integrity, never authority.
 //!
-//! `POST /workspaces/import` writes to the workspace id *inside the bundle*, and
-//! that id is caller-supplied. With the documented no-pin default
+//! `POST /workspaces/import` writes to the workspace id *inside the bundle*,
+//! and that id is caller-supplied. With the documented no-pin default
 //! (`MAIDAN_EXPORT_VERIFY_KEYS` unset) an attacker signs with their own key and
 //! the envelope verifies, so the signature cannot be the access check. These
 //! tests pin the two guards `restore` inherits from `erase_workspace`: the

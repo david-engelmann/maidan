@@ -1,7 +1,7 @@
-//! Required-reviewers store (Cluster 375, Wave 2 #22): the requirement + named
-//! reviewer set + decisions, and `review_status` — distinct qualifying approvals
-//! (decision=approve, reviewer != owner/assignee, in the named set when one
-//! exists). Both backends.
+//! Required-reviewers store: the requirement + named reviewer set + decisions,
+//! and `review_status` — distinct qualifying approvals (decision=approve,
+//! reviewer != owner/assignee, in the named set when one exists). Both
+//! backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision};

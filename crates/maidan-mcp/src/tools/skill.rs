@@ -1,7 +1,6 @@
-//! Capability-registry MCP tools (Cluster 233, Arc E): declare / list a member's
-//! skills and set / list a task's required skills. The MCP twin of the Cluster
-//! 232 REST endpoints, over the shared store. Skill routing (231) reads both to
-//! gate `claim_next`.
+//! Capability-registry MCP tools: declare / list a member's skills and set /
+//! list a task's required skills. The MCP twins of the REST endpoints, over the
+//! shared store. Skill routing reads both to gate `claim_next`.
 
 use std::sync::Arc;
 
@@ -21,7 +20,7 @@ struct MemberSkillArgs {
     skill: String,
 }
 
-/// Declare a skill for a member (Cluster 233). `workspace:write`.
+/// Declare a skill for a member. `workspace:write`.
 pub(super) async fn add_member_skill(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -31,11 +30,11 @@ pub(super) async fn add_member_skill(
     if a.skill.trim().is_empty() {
         return Err(McpError::InvalidParams("skill must not be empty".into()));
     }
-    // The REST twin's ratchet (Cluster 400.5), and it has to be here rather
-    // than in the static `required_capability` arm: whether this call widens
-    // who may approve depends on the *argument*, not the tool. A governance
-    // skill is what a gate reads as authority, so granting one needs
-    // `channel:admin` — which `maidan.agent.worker` does not carry.
+    // The REST twin's ratchet, and it has to be here rather than in the static
+    // `required_capability` arm: whether this call widens who may approve
+    // depends on the *argument*, not the tool. A governance skill is what a
+    // gate reads as authority, so granting one needs `channel:admin` — which
+    // `maidan.agent.worker` does not carry.
     if is_governance_skill(&a.skill) && !auth.bypass {
         auth.require_capability(CHANNEL_ADMIN)
             .map_err(McpError::from)?;
@@ -52,7 +51,7 @@ struct MemberIdArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's declared skills (Cluster 233). `workspace:read`.
+/// A member's declared skills. `workspace:read`.
 pub(super) async fn list_member_skills(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -69,8 +68,8 @@ struct ThreadSkillArgs {
     skill: String,
 }
 
-/// Add a required skill to a task (Cluster 233). `thread:transition`; channel
-/// access enforced pre-dispatch (the `thread_id` arg).
+/// Add a required skill to a task. `thread:transition`; channel access enforced
+/// pre-dispatch (the `thread_id` arg).
 pub(super) async fn add_thread_required_skill(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -91,8 +90,8 @@ struct ThreadIdArgs {
     thread_id: uuid::Uuid,
 }
 
-/// A task's required skills (Cluster 233). `workspace:read`; channel access
-/// enforced pre-dispatch (the `thread_id` arg).
+/// A task's required skills. `workspace:read`; channel access enforced
+/// pre-dispatch (the `thread_id` arg).
 pub(super) async fn list_thread_required_skills(
     store: &Arc<dyn Store>,
     args: &Value,

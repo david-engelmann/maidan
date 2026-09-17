@@ -1,5 +1,5 @@
-//! Assignment read-side over HTTP (Cluster 190): claim-next returns the thread
-//! then null; list-mine reflects the claim.
+//! Assignment read-side over HTTP: claim-next returns the thread then null;
+//! list-mine reflects the claim.
 
 use std::{
     net::SocketAddr,

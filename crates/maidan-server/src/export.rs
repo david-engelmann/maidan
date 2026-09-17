@@ -1,9 +1,9 @@
-//! Workspace export / portability (Cluster 187 + signed envelope, Cluster 391).
+//! Workspace export / portability.
 //!
 //! Assembles a workspace's collaboration graph into one JSON bundle so an
-//! operator can migrate or archive a tenant. **Tokens die on export.**
-//! Cluster 391 wraps the bundle in a signed `maidan.workspace.export/1`
-//! envelope so a blank instance can verify it without calling the origin.
+//! operator can migrate or archive a tenant. **Tokens die on export.** Cluster
+//! 391 wraps the bundle in a signed `maidan.workspace.export/1` envelope so a
+//! blank instance can verify it without calling the origin.
 
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ pub fn verify_bundle(envelope: &SignedExport, expected: &[[u8; 32]]) -> Result<(
     verify_export(envelope, pin).map_err(|e| ApiError::BadRequest(e.to_string()))
 }
 
-/// Decode the inner Cluster-187 graph after the signature has been checked.
+/// Decode the inner graph after the signature has been checked.
 pub fn inner_bundle(envelope: &SignedExport) -> Result<WorkspaceExport, ApiError> {
     serde_json::from_value(envelope.payload.clone())
         .map_err(|e| ApiError::BadRequest(format!("export payload is not a workspace bundle: {e}")))

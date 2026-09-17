@@ -1,6 +1,5 @@
-//! Spawn-budget store (Cluster 376, Wave 2 #23, SQLite twin of pg 0080): the
-//! per-workspace caps + the spawn-time counts the gate reads (children, depth,
-//! recorded tool-use).
+//! Spawn-budget store: the per-workspace caps + the spawn-time counts the gate
+//! reads (children, depth, recorded tool-use).
 
 use chrono::{DateTime, Utc};
 use maidan_types::{SpawnBudget, ThreadId, WorkspaceId};

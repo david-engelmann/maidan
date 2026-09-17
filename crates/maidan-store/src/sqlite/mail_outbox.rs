@@ -1,7 +1,8 @@
-//! Durable mail outbox store (Cluster 304). SQLite twin of the Postgres module —
-//! SQLite serializes writers (one connection, Cluster 277), so a select-then-update
-//! in a transaction claims atomically without `FOR UPDATE SKIP LOCKED`. All
-//! timestamps are store-bound rfc3339, so a plain `<=` comparison is consistent.
+//! Durable mail outbox store. SQLite twin of the Postgres module — SQLite
+//! serializes writers (one connection), so a select-then-update in a
+//! transaction claims atomically without `FOR UPDATE SKIP LOCKED`. All
+//! timestamps are store-bound rfc3339, so a plain `<=` comparison is
+//! consistent.
 
 use chrono::{DateTime, Utc};
 use sqlx::{Row, SqlitePool};
@@ -121,9 +122,9 @@ pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("c"))
 }
 
-/// Dead-lettered mail for the operator DLQ, scoped like the Postgres twin
-/// (Cluster 398.3). `None` is the `operator:global` view and the only way to see
-/// a row whose workspace is `NULL`.
+/// Dead-lettered mail for the operator DLQ, scoped like the Postgres twin.
+/// `None` is the `operator:global` view and the only way to see a row whose
+/// workspace is `NULL`.
 pub async fn list_dead(
     pool: &SqlitePool,
     scope: Option<WorkspaceId>,

@@ -1,10 +1,10 @@
-//! HNSW (pgvector) index/query tuning knobs (Cluster 109).
+//! HNSW (pgvector) index/query tuning knobs.
 //!
 //! All three are optional; `None` means "leave pgvector's default", so the
 //! defaults preserve current behavior. `m` and `ef_construction` apply at index
 //! build time (changing them only affects indexes built afterward — rebuild via
-//! the reindex job to apply); `ef_search` is a per-query GUC set with
-//! `SET LOCAL hnsw.ef_search`.
+//! the reindex job to apply); `ef_search` is a per-query GUC set with `SET
+//! LOCAL hnsw.ef_search`.
 
 /// pgvector HNSW parameters, sourced from `MAIDAN_HNSW_M`,
 /// `MAIDAN_HNSW_EF_CONSTRUCTION`, and `MAIDAN_HNSW_EF_SEARCH`.

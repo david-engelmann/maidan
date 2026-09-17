@@ -12,9 +12,9 @@ use crate::error::StoreError;
 const COLS: &str = "thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
      used_tokens, used_usd_micros, used_turns, created_at, updated_at";
 
-/// Set (upsert) a thread's budget maxima (Cluster 358, T1/T5). Accumulated usage
-/// is preserved. Timestamps are bound as rfc3339 (not the `datetime('now')`
-/// default) so they read back as `DateTime<Utc>` cleanly.
+/// Set (upsert) a thread's budget maxima. Accumulated usage is preserved.
+/// Timestamps are bound as rfc3339 (not the `datetime('now')` default) so they
+/// read back as `DateTime<Utc>` cleanly.
 pub async fn set_budget(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -58,8 +58,8 @@ pub async fn get_budget(
     Ok(row.as_ref().map(row_to_budget))
 }
 
-/// Accumulate reported usage onto a thread's budget (Cluster 358), creating the
-/// row (with no maxima) when the thread has no budget yet. Returns the new totals.
+/// Accumulate reported usage onto a thread's budget, creating the row (with no
+/// maxima) when the thread has no budget yet. Returns the new totals.
 pub async fn add_usage(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -89,8 +89,8 @@ pub async fn add_usage(
     Ok(row_to_budget(&row))
 }
 
-/// Accumulate usage on a caller-supplied tx (Cluster 358.3) — the in-tx core of
-/// [`add_usage`], used by [`report_usage`] so accumulate + enforce are atomic.
+/// Accumulate usage on a caller-supplied tx — the in-tx core of [`add_usage`],
+/// used by [`report_usage`] so accumulate + enforce are atomic.
 async fn add_usage_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
@@ -120,8 +120,8 @@ async fn add_usage_in_tx(
     Ok(row_to_budget(&row))
 }
 
-/// Report usage and enforce the budget (Cluster 358.3) — the "stop the run" path.
-/// See the Postgres twin. Accumulate + release + `ClaimFailed` + DLQ in one tx.
+/// Report usage and enforce the budget — the "stop the run" path. See the
+/// Postgres twin. Accumulate + release + `ClaimFailed` + DLQ in one tx.
 pub async fn report_usage(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -215,7 +215,7 @@ fn row_to_budget(row: &sqlx::sqlite::SqliteRow) -> ThreadBudget {
     }
 }
 
-/// Apply only the dimensions a patch names (Cluster 403).
+/// Apply only the dimensions a patch names.
 ///
 /// Read-and-write in one transaction: a read-modify-write in the caller would
 /// let two orchestrators adjusting different dimensions clobber each other, and

@@ -1,5 +1,5 @@
-//! Cluster 397.5: what leaves Maidan for an external surface cannot ping real
-//! humans from bytes an agent chose.
+//! What leaves Maidan for an external surface cannot ping real humans from
+//! bytes an agent chose.
 //!
 //! Each test here is a concrete escape that worked before. The defusal itself
 //! shipped in 378.3 — these are the four ways around it.

@@ -1,5 +1,5 @@
-//! Cluster 120: `maidan-scale-1.0` gate — the scale-out runtime surfaces and
-//! the metrics gauges that the scale gate is built on respond in-process.
+//! `maidan-scale-1.0` gate — the scale-out runtime surfaces and the metrics
+//! gauges that the scale gate is built on respond in-process.
 //!
 //! Multi-replica / cross-replica behavior (102–105) is covered by the
 //! `two_replica_*_e2e` tests and the `scale-out smoke` CI job; this checklist
@@ -78,8 +78,8 @@ async fn maidan_scale_gate_surfaces_respond() {
         );
     }
 
-    // Scale-specific telemetry: the indexer heartbeat (health/readiness) and the
-    // bounded-lag pipeline gauges (Cluster 116) the gate's perf story rests on.
+    // Scale-specific telemetry: the indexer heartbeat (health/readiness) and
+    // the bounded-lag pipeline gauges the gate's perf story rests on.
     let metrics = client
         .get(format!("{base}/metrics"))
         .send()

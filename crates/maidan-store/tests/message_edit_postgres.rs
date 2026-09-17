@@ -1,4 +1,4 @@
-//! Postgres message edit (Cluster 29).
+//! Postgres message edit.
 
 use std::time::Duration;
 
@@ -99,7 +99,7 @@ async fn postgres_edit_message_sets_edited_at() {
     assert_eq!(history[0].body_after, "after");
 }
 
-/// Cluster 173: typed content round-trips through the Postgres JSONB column.
+/// Typed content round-trips through the Postgres JSONB column.
 #[tokio::test]
 async fn postgres_message_content_round_trips_via_jsonb() {
     use maidan_types::ContentBlock;

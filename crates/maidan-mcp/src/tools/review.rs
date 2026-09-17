@@ -1,10 +1,9 @@
-//! Required-reviewers MCP tools (Cluster 375.4, Wave 2 #22, G5/G-dev-5). An
-//! orchestrator sets a thread's review requirement + names reviewers; a reviewer
-//! agent submits an approve / request-changes decision; anyone can read the
-//! review status. The FSM close-gate (Cluster 375.2) enforces it. The REST twin
-//! is Cluster 375.3. Governance writes = `thread:transition`; reads =
-//! `workspace:read`. Thread access is enforced by the pre-dispatch `thread_id`
-//! gate.
+//! Required-reviewers MCP tools. An orchestrator sets a thread's review
+//! requirement + names reviewers; a reviewer agent submits an approve /
+//! request-changes decision; anyone can read the review status. The FSM
+//! close-gate enforces it. Mirrors the REST surface. Governance writes =
+//! `thread:transition`; reads = `workspace:read`. Thread access is enforced by
+//! the pre-dispatch `thread_id` gate.
 
 use std::sync::Arc;
 
@@ -25,7 +24,7 @@ struct SetRequirementArgs {
 }
 
 /// Set (upsert) a thread's review requirement — `required_count` distinct
-/// qualifying approvals before it can `close` (Cluster 375.4).
+/// qualifying approvals before it can `close`.
 pub(super) async fn set_review_requirement(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -38,10 +37,10 @@ pub(super) async fn set_review_requirement(
         ));
     }
     let thread_id = ThreadId(a.thread_id);
-    // A gate ratchets (Cluster 397.2). Raising `k` is a tightening any
-    // transitioner may do; lowering it — `0` included, which disarms the gate —
-    // is the waiver, and answers to `channel:admin`. The dispatch capability is
-    // static per tool, so the direction has to be checked here.
+    // A gate ratchets. Raising `k` is a tightening any transitioner may do;
+    // lowering it — `0` included, which disarms the gate — is the waiver, and
+    // answers to `channel:admin`. The dispatch capability is static per tool,
+    // so the direction has to be checked here.
     let current = store
         .get_review_requirement(thread_id)
         .await?
@@ -68,7 +67,7 @@ struct AddReviewerArgs {
     member_id: uuid::Uuid,
 }
 
-/// Name a reviewer for a thread — the eligible set (Cluster 375.4). Idempotent.
+/// Name a reviewer for a thread — the eligible set. Idempotent.
 pub(super) async fn add_reviewer(
     store: &Arc<dyn Store>,
     _auth: &AuthContext,
@@ -90,8 +89,8 @@ struct SubmitReviewArgs {
     note: Option<String>,
 }
 
-/// Submit a review decision as the caller (Cluster 375.4). An owner/assignee may
-/// submit but it won't count toward the requirement (separation of duties).
+/// Submit a review decision as the caller. An owner/assignee may submit but it
+/// won't count toward the requirement (separation of duties).
 pub(super) async fn submit_review(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -110,9 +109,9 @@ struct ThreadArg {
     thread_id: uuid::Uuid,
 }
 
-/// The thread's review status — `{required_count, approvals, approvals_met}`
-/// (Cluster 375.4). The approval side of the close-gate; a `refutes` edge is
-/// checked separately at the gate.
+/// The thread's review status — `{required_count, approvals, approvals_met}`.
+/// The approval side of the close-gate; a `refutes` edge is checked separately
+/// at the gate.
 pub(super) async fn get_review_status(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -122,7 +121,7 @@ pub(super) async fn get_review_status(
     Ok(content_json(&status))
 }
 
-/// List a thread's review decisions (Cluster 375.4).
+/// List a thread's review decisions.
 pub(super) async fn list_reviews(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadArg = serde_json::from_value(args.clone())?;
     let reviews = store.list_reviews(ThreadId(a.thread_id)).await?;

@@ -1,5 +1,5 @@
-//! Task-dependency DAG management over HTTP (Cluster 219): add/list dependencies +
-//! dependents + remove, and the `ready` flag flipping as a dependency closes.
+//! Task-dependency DAG management over HTTP: add/list dependencies + dependents
+//! + remove, and the `ready` flag flipping as a dependency closes.
 
 use std::{
     net::SocketAddr,

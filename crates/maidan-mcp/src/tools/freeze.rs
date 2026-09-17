@@ -1,7 +1,7 @@
-//! Member-freeze kill-switch MCP tools (Cluster 372.4, Wave 2 #20). An
-//! orchestrator with `token:admin` can freeze a misbehaving member (dropping
-//! their leases; `claim_next` then refuses them), unfreeze, and list the frozen.
-//! The REST twin is Cluster 372.3.
+//! Member-freeze kill-switch MCP tools. An orchestrator with `token:admin` can
+//! freeze a misbehaving member (dropping their leases; `claim_next` then
+//! refuses them), unfreeze, and list the frozen. The REST twin is Cluster
+//! 372.3.
 
 use std::sync::Arc;
 
@@ -40,8 +40,8 @@ struct FreezeArgs {
     reason: Option<String>,
 }
 
-/// Freeze a member (Cluster 372.4): drops their active leases and makes
-/// `claim_next` refuse them. Returns the freeze + the count of claims released.
+/// Freeze a member: drops their active leases and makes `claim_next` refuse
+/// them. Returns the freeze + the count of claims released.
 pub(super) async fn freeze_member(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -77,7 +77,7 @@ pub(super) async fn unfreeze_member(
     Ok(content_json(&json!({ "unfrozen": unfrozen })))
 }
 
-/// List the frozen members in the caller's workspace (Cluster 372.4).
+/// List the frozen members in the caller's workspace.
 pub(super) async fn list_frozen_members(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

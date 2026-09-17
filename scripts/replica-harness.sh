@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local Postgres primary + streaming-replica harness (Cluster 261, Program D).
+# Local Postgres primary + streaming-replica harness.
 #
 # Stands up a real primary and a hot-standby (streaming replication) on the
 # pgvector/pgvector:pg17 image — the validation vehicle for LSN causality-token
@@ -8,7 +8,7 @@
 #
 # Usage:
 #   scripts/replica-harness.sh up      # bring up the pair, print the two URLs
-#   eval "$(scripts/replica-harness.sh up)"   # ...and export them into your shell
+#   eval "$(scripts/replica-harness.sh up)"   #...and export them into your shell
 #   scripts/replica-harness.sh down    # tear it all down
 #
 # Prints (on `up`):

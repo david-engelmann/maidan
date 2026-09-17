@@ -1,6 +1,6 @@
-//! Task-schedule management over HTTP (Cluster 228): create / list / pause-resume
-//! / delete. Runs with auth ENABLED so `created_by` is a real member and channel
-//! access is exercised.
+//! Task-schedule management over HTTP: create / list / pause-resume / delete.
+//! Runs with auth ENABLED so `created_by` is a real member and channel access
+//! is exercised.
 
 use std::{
     net::SocketAddr,

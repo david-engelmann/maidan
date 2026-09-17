@@ -1,4 +1,4 @@
-//! Cluster 95: static UI search panel markers.
+//! Static UI search panel markers.
 
 use std::time::Duration;
 

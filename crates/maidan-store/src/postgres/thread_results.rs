@@ -8,9 +8,9 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a task's structured result (Cluster 234) — see the SQLite twin.
-/// `result` binds directly to the JSONB column. `result_kind` is extracted from
-/// the payload (Cluster 381) — a namespaced string, not an enum.
+/// Set (upsert) a task's structured result — see the SQLite twin. `result`
+/// binds directly to the JSONB column. `result_kind` is extracted from the
+/// payload — a namespaced string, not an enum.
 pub async fn set(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -57,9 +57,9 @@ fn row_to_result(row: &sqlx::postgres::PgRow) -> ThreadResult {
     }
 }
 
-/// Workspace-scoped result list (Cluster 381). Exact-match on the extracted
-/// `result_kind` when `Some`; `None`/empty is unfiltered. Tombstoned threads
-/// are dropped. `limit` is clamped `1..=500`.
+/// Workspace-scoped result list. Exact-match on the extracted `result_kind`
+/// when `Some`; `None`/empty is unfiltered. Tombstoned threads are dropped.
+/// `limit` is clamped `1..=500`.
 pub async fn list(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -88,9 +88,9 @@ pub async fn list(
     Ok(rows.iter().map(row_to_result).collect())
 }
 
-/// Closed/archived results in a channel (Cluster 382, Wave 2 #24) — see the
-/// SQLite twin. `exclude_thread_id` is the claimer's own thread; `limit` is
-/// clamped `1..=50`.
+/// Closed/archived results in a channel — see the SQLite twin.
+/// `exclude_thread_id` is the claimer's own thread; `limit` is clamped
+/// `1..=50`.
 pub async fn list_closed_in_channel(
     pool: &PgPool,
     channel_id: ChannelId,

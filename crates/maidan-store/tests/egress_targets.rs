@@ -1,7 +1,6 @@
-//! The egress trust boundary (Cluster 378.1): a per-workspace allowlist of the
-//! destinations Maidan may deliver to. Bless (idempotent, selector-validated) /
-//! list / revoke (workspace-scoped) / the authorization check itself. Both
-//! backends.
+//! The egress trust boundary: a per-workspace allowlist of the destinations
+//! Maidan may deliver to. Bless (idempotent, selector-validated) / list /
+//! revoke (workspace-scoped) / the authorization check itself. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{

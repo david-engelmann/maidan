@@ -309,8 +309,8 @@ async fn mcp_search_messages_tool_works() {
     server.abort();
 }
 
-/// Cluster 175 (token round 3): the MCP `search_messages` tool honors
-/// `snippet_only`, dropping full bodies to save tokens — parity with REST.
+/// The MCP `search_messages` tool honors `snippet_only`, dropping full bodies
+/// to save tokens — parity with REST.
 #[tokio::test]
 async fn mcp_search_messages_snippet_only_drops_bodies() {
     let (addr, client, server, _dir) = spawn().await;

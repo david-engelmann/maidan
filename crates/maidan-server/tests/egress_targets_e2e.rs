@@ -1,6 +1,6 @@
-//! The egress trust boundary over HTTP (Cluster 378.1). Auth ENABLED — the whole
-//! surface is `token:admin`, and the point of an allowlist is who may change it,
-//! so a bypass run would prove nothing.
+//! The egress trust boundary over HTTP. Auth ENABLED — the whole surface is
+//! `token:admin`, and the point of an allowlist is who may change it, so a
+//! bypass run would prove nothing.
 //!
 //! Walks the operator's loop (empty ⇒ deliver nowhere → bless → the
 //! authorization check now passes → revoke) and the two refusals that matter: a
@@ -132,7 +132,7 @@ async fn an_operator_blesses_and_revokes_an_egress_target() {
     let id = entry["id"].as_str().unwrap().to_string();
 
     // The blessing authorizes a delivery to any issue in that repository — the
-    // grain a Cluster-379 delivery will check.
+    // grain a delivery will check.
     let delivery = EgressTarget::Github {
         repo: "acme/widgets".into(),
         issue_number: 42,

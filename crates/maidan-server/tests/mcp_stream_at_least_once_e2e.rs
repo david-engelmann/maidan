@@ -1,10 +1,11 @@
-//! MCP SSE (`GET /mcp/stream`) at-least-once parity (Cluster 126).
+//! MCP SSE (`GET /mcp/stream`) at-least-once parity.
 //!
-//! Proves the SSE wiring routes an `at_least_once` (`workspace_id + consumer_id`)
-//! stream through the reconcile loop: the stable backlog is delivered in order
-//! and the durable delivery cursor advances. The cross-reconnect floor / no-
-//! re-delivery property is shared `reconcile_deliver` logic, covered
-//! deterministically by the WebSocket e2e (`ws_subscribe_e2e`).
+//! Proves the SSE wiring routes an `at_least_once` (`workspace_id +
+//! consumer_id`) stream through the reconcile loop: the stable backlog is
+//! delivered in order and the durable delivery cursor advances. The
+//! cross-reconnect floor / no- re-delivery property is shared
+//! `reconcile_deliver` logic, covered deterministically by the WebSocket e2e
+//! (`ws_subscribe_e2e`).
 
 use std::{
     net::SocketAddr,
@@ -179,7 +180,7 @@ async fn mcp_stream_filters_by_event_kind() {
         .unwrap();
     let workspace_id = ws["id"].as_str().unwrap().to_string();
 
-    // Live subscription narrowed to channel_created only (Cluster 150).
+    // Live subscription narrowed to channel_created only.
     let resp = client
         .get(format!(
             "{base}/mcp/stream?workspace_id={workspace_id}&kinds=channel_created"
@@ -277,9 +278,9 @@ async fn first_event_frame(resp: reqwest::Response) -> Value {
         .expect("timeout waiting for an event frame")
 }
 
-/// Cluster 178 (token round 3): `lean=true` delivers `{log_id, kind, ...ids}`
-/// pointer frames — the heavy embedded event payload is dropped, but the
-/// top-level routing fields clients read stay put.
+/// `lean=true` delivers `{log_id, kind,...ids}` pointer frames — the heavy
+/// embedded event payload is dropped, but the top-level routing fields clients
+/// read stay put.
 #[tokio::test]
 async fn mcp_stream_lean_frames_omit_the_event_payload() {
     let (addr, client, _store, server, _dir) = spawn().await;

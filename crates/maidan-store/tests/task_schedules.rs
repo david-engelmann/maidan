@@ -1,5 +1,5 @@
-//! Scheduled / recurring task foundation (Cluster 226): schedule CRUD + the
-//! sweeper's due-scan. Exercised on both backends. No worker/routes yet.
+//! Scheduled / recurring task foundation: schedule CRUD + the sweeper's
+//! due-scan. Exercised on both backends. No worker/routes yet.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -117,7 +117,7 @@ async fn run_suite(store: &dyn Store) {
         Err(maidan_store::StoreError::NotFound)
     ));
 
-    // Pause / resume (Cluster 228).
+    // Pause / resume.
     let paused = store
         .set_task_schedule_active(due_sched.id, false)
         .await
@@ -129,18 +129,18 @@ async fn run_suite(store: &dyn Store) {
         .expect("resume");
     assert!(resumed.active);
 
-    // Clean up the remaining schedule: `claim_next_due` (Cluster 227) scans
-    // globally, not per-workspace, so an active leftover would pollute a later
-    // suite's claim ordering on the shared store.
+    // Clean up the remaining schedule: `claim_next_due` scans globally, not
+    // per-workspace, so an active leftover would pollute a later suite's claim
+    // ordering on the shared store.
     assert!(store
         .delete_task_schedule(due_sched.id)
         .await
         .expect("cleanup"));
 }
 
-/// Cluster 227: `claim_next_due_schedule` atomically fires the oldest due
-/// schedule — a recurring one re-arms to `now + interval` (stays active), a
-/// one-shot deactivates — and returns `None` once nothing is due.
+/// `claim_next_due_schedule` atomically fires the oldest due schedule — a
+/// recurring one re-arms to `now + interval` (stays active), a one-shot
+/// deactivates — and returns `None` once nothing is due.
 async fn run_claim_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {

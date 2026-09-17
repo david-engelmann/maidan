@@ -1,4 +1,4 @@
-//! Cluster 398.6: every MCP tool argument struct rejects unknown fields.
+//! Every MCP tool argument struct rejects unknown fields.
 //!
 //! A static check over `src/tools/*.rs`, in the shape of the repo's other
 //! grep-style contract guards (`ui_js_contract`). The property is worth pinning

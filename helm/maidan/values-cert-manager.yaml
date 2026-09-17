@@ -1,4 +1,4 @@
-# Production ingress with cert-manager (Cluster 55).
+# Production ingress with cert-manager.
 # Requires cert-manager + a ClusterIssuer named below.
 replicaCount: 2
 

@@ -1,9 +1,9 @@
-//! Cluster 379.5: delivery-status REST + replay + audit-per-attempt.
+//! Delivery-status REST + replay + audit-per-attempt.
 //!
 //! Auth ENABLED (real minted token) so `ensure_acting_member` is not in play
 //! and `workspace:write` is actually exercised. The router is seeded via
-//! `route_event` (no worker-loop timing); `sweep_once` is awaited directly
-//! for the send-attempt audit.
+//! `route_event` (no worker-loop timing); `sweep_once` is awaited directly for
+//! the send-attempt audit.
 
 use std::{
     net::SocketAddr,

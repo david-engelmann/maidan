@@ -42,10 +42,10 @@ pub use traits::EventBus;
 pub const DEFAULT_BROADCAST_CAP: usize = 1024;
 
 /// Resolve the broadcast-channel capacity from `MAIDAN_BUS_BROADCAST_CAP`,
-/// falling back to [`DEFAULT_BROADCAST_CAP`] (Cluster 168, R1). A larger cap
-/// lets a slow subscriber lag further before the broadcast channel drops the
-/// oldest frames (`RecvError::Lagged`), at the cost of more retained memory per
-/// channel. Non-positive or unparseable values fall back to the default.
+/// falling back to [`DEFAULT_BROADCAST_CAP`]. A larger cap lets a slow
+/// subscriber lag further before the broadcast channel drops the oldest frames
+/// (`RecvError::Lagged`), at the cost of more retained memory per channel.
+/// Non-positive or unparseable values fall back to the default.
 pub fn broadcast_cap_from_env() -> usize {
     std::env::var("MAIDAN_BUS_BROADCAST_CAP")
         .ok()

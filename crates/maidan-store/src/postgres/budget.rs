@@ -12,8 +12,8 @@ use crate::error::StoreError;
 const COLS: &str = "thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
      used_tokens, used_usd_micros, used_turns, created_at, updated_at";
 
-/// Set (upsert) a thread's budget maxima (Cluster 358, T1/T5). Accumulated usage
-/// is preserved — this touches only the `max_*` dimensions. See the SQLite twin.
+/// Set (upsert) a thread's budget maxima. Accumulated usage is preserved — this
+/// touches only the `max_*` dimensions. See the SQLite twin.
 pub async fn set_budget(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -54,9 +54,9 @@ pub async fn get_budget(
     Ok(row.as_ref().map(row_to_budget))
 }
 
-/// Accumulate reported usage onto a thread's budget (Cluster 358), creating the
-/// row (with no maxima) when the thread has no budget yet — so usage still
-/// accrues before a budget is set. Returns the new totals.
+/// Accumulate reported usage onto a thread's budget, creating the row (with no
+/// maxima) when the thread has no budget yet — so usage still accrues before a
+/// budget is set. Returns the new totals.
 pub async fn add_usage(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -83,8 +83,8 @@ pub async fn add_usage(
     Ok(row_to_budget(&row))
 }
 
-/// Accumulate usage on a caller-supplied tx (Cluster 358.3) — the in-tx core of
-/// [`add_usage`], used by [`report_usage`] so accumulate + enforce are atomic.
+/// Accumulate usage on a caller-supplied tx — the in-tx core of [`add_usage`],
+/// used by [`report_usage`] so accumulate + enforce are atomic.
 async fn add_usage_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
@@ -111,12 +111,12 @@ async fn add_usage_in_tx(
     Ok(row_to_budget(&row))
 }
 
-/// Report usage and enforce the budget (Cluster 358.3) — the "stop the run" path.
-/// Accumulates `delta`, and if the thread is now over budget AND has an active
-/// claim, atomically: releases the claim, appends a `ClaimFailed` event, and
-/// records a DLQ entry — all in one tx with the usage write. Returns the new
-/// totals + whether the run was stopped, plus the `ClaimFailed` event to publish
-/// (the route calls `publish_stored`). `NotFound` if the thread is gone.
+/// Report usage and enforce the budget — the "stop the run" path. Accumulates
+/// `delta`, and if the thread is now over budget AND has an active claim,
+/// atomically: releases the claim, appends a `ClaimFailed` event, and records a
+/// DLQ entry — all in one tx with the usage write. Returns the new totals +
+/// whether the run was stopped, plus the `ClaimFailed` event to publish (the
+/// route calls `publish_stored`). `NotFound` if the thread is gone.
 pub async fn report_usage(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -208,7 +208,7 @@ fn row_to_budget(row: &sqlx::postgres::PgRow) -> ThreadBudget {
     }
 }
 
-/// Apply only the dimensions a patch names (Cluster 403).
+/// Apply only the dimensions a patch names.
 ///
 /// Read-and-write in one transaction: a read-modify-write in the caller would
 /// let two orchestrators adjusting different dimensions clobber each other, and

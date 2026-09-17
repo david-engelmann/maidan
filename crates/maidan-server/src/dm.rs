@@ -71,11 +71,11 @@ pub async fn expand_event_filter(
         filter.workspace_id = Some(filter.workspace_id.unwrap_or(dm.workspace_id));
         filter.thread_id = Some(dm.thread_id);
     }
-    // Cluster 203: a subscriber must be able to access the thread it filters to.
-    // `ensure_thread_access` is DM-participant-aware (Cluster 180), so a
-    // non-participant can no longer tail a DM / group-DM by supplying its
-    // `dm_conversation_id` (expanded to `thread_id` above) or its `thread_id`
-    // directly — the events analog of the 180 read gap. Bypass is exempt.
+    // A subscriber must be able to access the thread it filters to.
+    // `ensure_thread_access` is DM-participant-aware, so a non-participant can
+    // no longer tail a DM / group-DM by supplying its `dm_conversation_id`
+    // (expanded to `thread_id` above) or its `thread_id` directly — the events
+    // analog of the 180 read gap. Bypass is exempt.
     if let Some(thread_id) = filter.thread_id {
         if !auth.bypass {
             maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
@@ -99,10 +99,10 @@ pub async fn open_dm_conversation(
     // a conversation between two arbitrary members.
     //
     // The ids stay caller-supplied on purpose. A Bearer is the orchestrator and
-    // may act for any member in its workspace (Cluster 202), which is how a bot
-    // opens a DM on someone's behalf; what was wrong was the capability, not the
-    // act-as-any model. Whether act-as-any should also narrow here is a separate,
-    // open question that spans fourteen other routes.
+    // may act for any member in its workspace, which is how a bot opens a DM on
+    // someone's behalf; what was wrong was the capability, not the act-as-any
+    // model. Whether act-as-any should also narrow here is a separate, open
+    // question that spans fourteen other routes.
     cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
@@ -127,9 +127,9 @@ pub async fn list_dm_conversations(
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_id = MemberId(q.member_id);
-    // Cluster 203: a **session** caller may only enumerate its OWN DM graph
-    // (otherwise a `/ui` user could list who any member messages). A bearer is
-    // the orchestrator model and may list on behalf of any member (unchanged);
+    // A **session** caller may only enumerate its OWN DM graph (otherwise a
+    // `/ui` user could list who any member messages). A bearer is the
+    // orchestrator model and may list on behalf of any member (unchanged);
     // bypass is unrestricted — same rule as member-attributed writes (202).
     crate::routes::ensure_acting_member(&auth, member_id)?;
     Ok(Json(
@@ -151,9 +151,9 @@ pub async fn get_dm_conversation(
         .get_dm_conversation(DmConversationId(id))
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
-    // Cluster 203: a **session** caller must be a participant to read a DM's
-    // metadata (roster + thread). Bearer = orchestrator (act-as-any); bypass
-    // exempt — consistent with the write anti-spoofing guard (202).
+    // A **session** caller must be a participant to read a DM's metadata
+    // (roster + thread). Bearer = orchestrator (act-as-any); bypass exempt —
+    // consistent with the write anti-spoofing guard (202).
     if !auth.bypass && auth.token_id.is_none() {
         ensure_dm_participant(&dm, auth.member_id)?;
     }

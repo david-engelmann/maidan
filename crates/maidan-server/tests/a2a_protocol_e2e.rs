@@ -228,7 +228,7 @@ async fn a2a_send_message_preserves_parts_as_structured_content() {
         .iter()
         .find(|m| m["body"].as_str() == Some("part one\npart two"))
         .expect("a2a message with joined body");
-    // The parts are preserved as structured content blocks (Cluster 194).
+    // The parts are preserved as structured content blocks.
     let content = msg["content"].as_array().expect("content array");
     assert_eq!(content.len(), 2);
     assert_eq!(content[0], json!({"type": "text", "text": "part one"}));
@@ -443,11 +443,11 @@ async fn a2a_get_task_loads_from_store_after_send_message() {
     assert_eq!(task.status.state, "TASK_STATE_COMPLETED");
 }
 
-/// Cluster 352 / H12: a pending held gate surfaces as an `input-required` A2A task
-/// (id = the gate id), so an external agent can discover it via `tasks/get` +
-/// `tasks/list`; resolving the gate makes the task disappear. Runs with auth
-/// ENABLED so the bearer's workspace scopes `tasks/list` (a bypass caller has no
-/// real workspace).
+/// A pending held gate surfaces as an `input-required` A2A task (id = the gate
+/// id), so an external agent can discover it via `tasks/get` + `tasks/list`;
+/// resolving the gate makes the task disappear. Runs with auth ENABLED so the
+/// bearer's workspace scopes `tasks/list` (a bypass caller has no real
+/// workspace).
 #[tokio::test]
 async fn a2a_pending_gate_surfaces_as_input_required_task() {
     let pool = SqlitePoolOptions::new()
@@ -612,8 +612,8 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "the real per-message task is still listed"
     );
 
-    // Cluster 352.2: `status=input-required` returns exactly the gate; a filter for
-    // another state excludes it. `pageSize` is clamped to the spec max of 100.
+    // `status=input-required` returns exactly the gate; a filter for another
+    // state excludes it. `pageSize` is clamped to the spec max of 100.
     let list_ir = |status: &str| {
         let (client, base, token) = (client.clone(), base.clone(), token.clone());
         let status = status.to_string();
@@ -655,7 +655,7 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "pageSize is clamped to 100"
     );
 
-    // Cluster 352.3: the REST §11 binding uses `application/a2a+json`, not `application/json`.
+    // The REST §11 binding uses `application/a2a+json`, not `application/json`.
     let ct_resp = client
         .get(format!("{base}/a2a/v1/tasks"))
         .bearer_auth(&token)
@@ -671,7 +671,7 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         "REST §11 responses carry the A2A media type"
     );
 
-    // Cluster 352.4: `statusTimestampAfter` filters by the task's status timestamp.
+    // `statusTimestampAfter` filters by the task's status timestamp.
     let list_after = |ts: &str| {
         let (client, base, token) = (client.clone(), base.clone(), token.clone());
         let ts = ts.to_string();
@@ -1026,8 +1026,8 @@ async fn a2a_subscribe_to_task_emits_progress_when_task_becomes_terminal() {
     assert!(buf.contains("TASK_STATE_COMPLETED"));
 }
 
-/// Cluster 284: per-task push notification configs — Create/Get/List/Delete over
-/// JSON-RPC against a real task created by SendMessage.
+/// Per-task push notification configs — Create/Get/List/Delete over JSON-RPC
+/// against a real task created by SendMessage.
 #[tokio::test]
 async fn a2a_task_push_config_create_get_list_delete() {
     let pool = SqlitePoolOptions::new()
@@ -1177,7 +1177,7 @@ async fn a2a_task_push_config_create_get_list_delete() {
     );
 }
 
-/// Cluster 285: the public Agent Card is A2A v1.0 spec-shaped (§4.4.1).
+/// The public Agent Card is A2A v1.0 spec-shaped (§4.4.1).
 #[tokio::test]
 async fn agent_card_is_spec_shaped() {
     let pool = SqlitePoolOptions::new()
@@ -1241,8 +1241,8 @@ async fn agent_card_is_spec_shaped() {
     assert!(card["skills"].as_array().is_some_and(|s| !s.is_empty()));
 }
 
-/// Cluster 286: the HTTP+JSON/REST binding (§11) maps the same operations as the
-/// JSON-RPC endpoint. Exercises message:send → get → list → push-config CRUD →
+/// The HTTP+JSON/REST binding (§11) maps the same operations as the JSON-RPC
+/// endpoint. Exercises message:send → get → list → push-config CRUD →
 /// extendedAgentCard, and confirms the tasks/{id}:cancel custom method routes.
 #[tokio::test]
 async fn a2a_rest_binding_maps_operations() {
@@ -1413,8 +1413,8 @@ async fn a2a_rest_binding_maps_operations() {
     );
 }
 
-/// Cluster 288: with a public origin + advertised gRPC address configured, the
-/// Agent Card advertises absolute HTTP interface URLs and a GRPC interface (§5.2).
+/// With a public origin + advertised gRPC address configured, the Agent Card
+/// advertises absolute HTTP interface URLs and a GRPC interface (§5.2).
 #[tokio::test]
 async fn agent_card_advertises_configured_transports() {
     let pool = SqlitePoolOptions::new()

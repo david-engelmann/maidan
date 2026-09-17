@@ -21,9 +21,8 @@ use crate::models::*;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct StoredEvent {
     pub id: i64,
-    /// Event-log position of this row. Equal to [`StoredEvent::id`] (the
-    /// Cluster 390 room head of this event). **Not** a Postgres WAL
-    /// [`crate::Lsn`] / `Maidan-Consistency-Token`.
+    /// Event-log position of this row. Equal to [`StoredEvent::id`]. **Not** a
+    /// Postgres WAL [`crate::Lsn`] / `Maidan-Consistency-Token`.
     #[serde(default)]
     pub lsn: i64,
     pub kind: EventKind,
@@ -53,7 +52,7 @@ impl StoredEvent {
 }
 
 /// OpenAPI / utoipa shape of [`StoredEvent`]: the durable columns plus the
-/// wire-only `$type` Cluster 390 deferred on this type.
+/// wire-only `$type` this type still defers.
 #[cfg(feature = "openapi")]
 #[allow(dead_code)]
 #[derive(utoipa::ToSchema)]
@@ -186,11 +185,11 @@ impl EventKind {
         }
     }
 
-    /// Observable `$type` for this kind (Cluster 390). Version `/1` is the
-    /// current generation. A breaking change is a **new type** (`/2`), not a
-    /// field rename — the string itself is the contract (Hyrum's Law home).
-    /// Stored `maidan_events.payload` still tags on `kind`; `$type` is injected
-    /// on wire envelopes.
+    /// Observable `$type` for this kind. Version `/1` is the current
+    /// generation. A breaking change is a **new type** (`/2`), not a field
+    /// rename — the string itself is the contract (Hyrum's Law home). Stored
+    /// `maidan_events.payload` still tags on `kind`; `$type` is injected on
+    /// wire envelopes.
     pub fn type_id(self) -> String {
         format!("maidan.event.{}/1", self.as_str())
     }
@@ -242,17 +241,17 @@ impl EventKind {
         Self::MemoryBlockUpdated,
     ];
 
-    /// Whether a federated peer may push this event kind on ingest (Cluster 215
-    /// federation ingest trust policy). **Allowlist-by-default via an exhaustive
-    /// match**: a new event kind fails to compile here until it is consciously
-    /// classified, so a peer can never inject an unreviewed kind into the local
-    /// event log.
+    /// Whether a federated peer may push this event kind on ingest.
+    /// **Allowlist-by-default via an exhaustive match**: a new event kind fails
+    /// to compile here until it is consciously classified, so a peer can never
+    /// inject an unreviewed kind into the local event log.
     ///
-    /// All collaboration-content kinds are federatable — federation replicates the
-    /// content event stream. **`ArtifactUpserted` is the exception**: federation
-    /// replicates *events*, not artifact *blobs*, so an ingested `ArtifactUpserted`
-    /// would announce a `sha256` whose bytes never arrive — a dangling reference.
-    /// We therefore do not accept artifact-existence claims from peers.
+    /// All collaboration-content kinds are federatable — federation replicates
+    /// the content event stream. **`ArtifactUpserted` is the exception**:
+    /// federation replicates *events*, not artifact *blobs*, so an ingested
+    /// `ArtifactUpserted` would announce a `sha256` whose bytes never arrive —
+    /// a dangling reference. We therefore do not accept artifact-existence
+    /// claims from peers.
     pub fn federatable(self) -> bool {
         match self {
             Self::WorkspaceCreated
@@ -278,8 +277,8 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
-            // An unblock is *this* deployment's dispatch decision (Cluster 386);
-            // a peer must not inject one.
+            // An unblock is *this* deployment's dispatch decision; a peer must
+            // not inject one.
             Self::BlockedResolved => false,
             // A lease expiry is detected locally (this deployment's clock + reclaim);
             // a peer must not inject a claim of one.
@@ -287,24 +286,24 @@ impl EventKind {
             // A budget-exhaustion / run failure is a locally-derived signal
             // (this deployment's budget accounting); a peer must not inject one.
             Self::ClaimFailed => false,
-            // A "landed" fact is derived from *this* deployment's GitHub projector
-            // webhook (Cluster 361); a peer must not inject one for our threads.
+            // A "landed" fact is derived from *this* deployment's GitHub
+            // projector webhook; a peer must not inject one for our threads.
             Self::ThreadLanded => false,
-            // A wait timeout is fired by *this* deployment's sweeper (this clock);
-            // a peer must not inject one (Cluster 364).
+            // A wait timeout is fired by *this* deployment's sweeper (this
+            // clock); a peer must not inject one.
             Self::WaitTimedOut => false,
             // A skipped firing is *this* deployment's scheduler decision (Cluster
             // 370); a peer must not inject one.
             Self::ScheduleSkipped => false,
-            // A refused spawn is *this* deployment's budget decision (Cluster 376);
-            // a peer must not inject one for our threads.
+            // A refused spawn is *this* deployment's budget decision; a peer
+            // must not inject one for our threads.
             Self::ThreadSpawnDenied => false,
-            // A broken projector link is *this* deployment's connector credentials
-            // and *this* deployment's link table (Cluster 377.3); a peer has no
+            // A broken projector link is *this* deployment's connector
+            // credentials and *this* deployment's link table; a peer has no
             // standing to declare our egress misconfigured.
             Self::ProjectorMisconfigured => false,
-            // A memory-block update is a locally-derived signal over local shared
-            // state (Cluster 373); a peer must not inject one.
+            // A memory-block update is a locally-derived signal over local
+            // shared state; a peer must not inject one.
             Self::MemoryBlockUpdated => false,
         }
     }
@@ -352,16 +351,16 @@ pub enum Event {
         previous_assignee_id: Option<MemberId>,
         assignee_id: Option<MemberId>,
         /// Optional handoff note the actor attached when assigning/handing off
-        /// (Cluster 195) — context for the assignee. Only carried by a deliberate
-        /// `assign`; a pull-claim or unassign has none.
+        /// — context for the assignee. Only carried by a deliberate `assign`; a
+        /// pull-claim or unassign has none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
         thread: Thread,
     },
-    /// A thread whose last blocking dependency just reached a terminal state, so
-    /// it is now ready to be claimed (Cluster 222). Derived, not stored — a
-    /// reactive push of the readiness that `dependencies_satisfied` computes on
-    /// demand, so a waiting agent needn't poll.
+    /// A thread whose last blocking dependency just reached a terminal state,
+    /// so it is now ready to be claimed. Derived, not stored — a reactive push
+    /// of the readiness that `dependencies_satisfied` computes on demand, so a
+    /// waiting agent needn't poll.
     ThreadReady {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -369,10 +368,9 @@ pub enum Event {
         thread_id: ThreadId,
         thread: Thread,
     },
-    /// A task produced (or revised) its structured result (Cluster 235). A small
-    /// "go fetch" pointer — a waiter reacts and reads the result via
-    /// `get_thread_result`, so the payload isn't carried inline. Derived + local:
-    /// not federatable.
+    /// A task produced (or revised) its structured result. A small "go fetch"
+    /// pointer — a waiter reacts and reads the result via `get_thread_result`,
+    /// so the payload isn't carried inline. Derived + local: not federatable.
     ThreadResultSet {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -380,11 +378,10 @@ pub enum Event {
         thread_id: ThreadId,
         produced_by: MemberId,
     },
-    /// An explicit dispatch block was cleared (Cluster 386, Wave 2 #27).
-    /// A waiter observing this can claim the thread (subject to DAG readiness
-    /// and the other `claim_next` clauses). Carries the reason that resolved,
-    /// not a payload — `get_thread_block` is now `None`. Locally derived: not
-    /// federatable.
+    /// An explicit dispatch block was cleared. A waiter observing this can
+    /// claim the thread (subject to DAG readiness and the other `claim_next`
+    /// clauses). Carries the reason that resolved, not a payload —
+    /// `get_thread_block` is now `None`. Locally derived: not federatable.
     BlockedResolved {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -393,13 +390,13 @@ pub enum Event {
         reason: BlockedReason,
         resolved_by: MemberId,
     },
-    /// A claim's lease lapsed and the thread was reclaimed by the next agent
-    /// (Cluster 351). Emitted lazily by `claim_next` when it takes over an
-    /// expired lease — `member_id` is the *previous* holder whose claim expired,
-    /// so a supervisor can react to a dead/stalled agent without polling. A
-    /// locally-derived signal (this deployment's clock): not federatable. A lease
-    /// that expires but is never reclaimed emits nothing (the occupancy view
-    /// still shows it).
+    /// A claim's lease lapsed and the thread was reclaimed by the next agent.
+    /// Emitted lazily by `claim_next` when it takes over an expired lease —
+    /// `member_id` is the *previous* holder whose claim expired, so a
+    /// supervisor can react to a dead/stalled agent without polling. A
+    /// locally-derived signal (this deployment's clock): not federatable. A
+    /// lease that expires but is never reclaimed emits nothing (the occupancy
+    /// view still shows it).
     ClaimExpired {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -409,10 +406,10 @@ pub enum Event {
         member_id: MemberId,
         thread: Thread,
     },
-    /// A claimed run was stopped because it exceeded its budget envelope
-    /// (Cluster 358, T1/T5) — a hard stop, distinct from a normal close (success).
-    /// The claim is released and the run is dead-lettered. A locally-derived
-    /// signal (this deployment's budget accounting): not federatable.
+    /// A claimed run was stopped because it exceeded its budget envelope — a
+    /// hard stop, distinct from a normal close (success). The claim is released
+    /// and the run is dead-lettered. A locally-derived signal (this
+    /// deployment's budget accounting): not federatable.
     ClaimFailed {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -425,12 +422,11 @@ pub enum Event {
         reason: String,
         thread: Thread,
     },
-    /// The GitHub PR linked to a thread was **merged** — the work landed
-    /// (Cluster 361, G-dev-7). A derived fact projected from an inbound
-    /// `pull_request` (`action=closed`, `merged=true`) webhook on a linked issue/PR;
-    /// the room "steals the landed fact" without becoming a CI/automation product —
-    /// the thread's FSM is not auto-transitioned. A locally-derived projector
-    /// signal: not federatable.
+    /// The GitHub PR linked to a thread was **merged** — the work landed. A
+    /// derived fact projected from an inbound `pull_request` (`action=closed`,
+    /// `merged=true`) webhook on a linked issue/PR; the room "steals the landed
+    /// fact" without becoming a CI/automation product — the thread's FSM is not
+    /// auto-transitioned. A locally-derived projector signal: not federatable.
     ThreadLanded {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -450,11 +446,11 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
     },
-    /// A thread's wait timer lapsed (Cluster 364, G2/G4). Fired by *this*
-    /// deployment's wait sweeper when a wait passed its deadline unsatisfied. The
-    /// escalation `policy` names what the sweeper did (`notify` reaches the owner;
-    /// `park` additionally marks the thread unclaimable) — **never a decision**.
-    /// A locally-derived timer signal: not federatable.
+    /// A thread's wait timer lapsed. Fired by *this* deployment's wait sweeper
+    /// when a wait passed its deadline unsatisfied. The escalation `policy`
+    /// names what the sweeper did (`notify` reaches the owner; `park`
+    /// additionally marks the thread unclaimable) — **never a decision**. A
+    /// locally-derived timer signal: not federatable.
     WaitTimedOut {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -466,13 +462,13 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
-    /// A spawn was refused by the workspace's spawn budget (Cluster 376.6,
-    /// G6/G-dev-3/W3) — a child thread past `max_children`/`max_depth`, or a tool
-    /// call past `max_tools`. **Observability only**: the refusal itself is the
-    /// `SpawnRejected` error the caller already received (REST 409 / MCP
-    /// InvalidParams); this event is how an operator sees *which* members keep
-    /// pushing a claim past its fan-out cap, instead of having to read logs. A
-    /// locally-derived governance signal: not federatable.
+    /// A spawn was refused by the workspace's spawn budget — a child thread
+    /// past `max_children`/`max_depth`, or a tool call past `max_tools`.
+    /// **Observability only**: the refusal itself is the `SpawnRejected` error
+    /// the caller already received (REST 409 / MCP InvalidParams); this event
+    /// is how an operator sees *which* members keep pushing a claim past its
+    /// fan-out cap, instead of having to read logs. A locally-derived
+    /// governance signal: not federatable.
     ThreadSpawnDenied {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -491,15 +487,16 @@ pub enum Event {
         /// What the thread already holds on that axis.
         observed: i64,
     },
-    /// A projector egress link is broken and has been disabled (Cluster 377.3):
-    /// a delivery failed with an auth/config-class error (GitHub 401/403/404,
-    /// Slack `invalid_auth`/`channel_not_found`/…) — a wrong token, a revoked
-    /// scope, a deleted channel. Retrying cannot fix any of those, so the link is
-    /// turned off, the delivery dead-letters, and this says so loudly instead of
-    /// the queue grinding through eight attempts per message forever.
+    /// A projector egress link is broken and has been disabled: a delivery
+    /// failed with an auth/config-class error (GitHub 401/403/404, Slack
+    /// `invalid_auth`/`channel_not_found`/…) — a wrong token, a revoked scope,
+    /// a deleted channel. Retrying cannot fix any of those, so the link is
+    /// turned off, the delivery dead-letters, and this says so loudly instead
+    /// of the queue grinding through eight attempts per message forever.
     ///
     /// Re-linking the channel/issue clears the disabled flag. A locally-derived
-    /// operations signal about this deployment's own credentials: not federatable.
+    /// operations signal about this deployment's own credentials: not
+    /// federatable.
     ProjectorMisconfigured {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -515,8 +512,8 @@ pub enum Event {
         /// What the surface said, verbatim — the operator's actual diagnostic.
         error: String,
     },
-    /// A recipe-backed schedule was due but its previous run is still in flight,
-    /// so the sweeper skipped this firing (Cluster 370.5) — no new run.
+    /// A recipe-backed schedule was due but its previous run is still in
+    /// flight, so the sweeper skipped this firing — no new run.
     ScheduleSkipped {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -609,9 +606,9 @@ pub enum Event {
         occurred_at: DateTime<Utc>,
         artifact: Artifact,
     },
-    /// A memory block's value was rewritten (Cluster 373). A small "go fetch"
-    /// pointer — a waiter reacts and reads the value via `get_memory_block`, so
-    /// the (possibly large) value isn't carried inline. Derived + local: not
+    /// A memory block's value was rewritten. A small "go fetch" pointer — a
+    /// waiter reacts and reads the value via `get_memory_block`, so the
+    /// (possibly large) value isn't carried inline. Derived + local: not
     /// federatable. `updated_by` is the member who rewrote it.
     MemoryBlockUpdated {
         occurred_at: DateTime<Utc>,
@@ -741,7 +738,7 @@ impl Event {
             | Self::MessageTombstoned { channel_id, .. }
             | Self::MessagePinned { channel_id, .. }
             | Self::MessageUnpinned { channel_id, .. } => Some(*channel_id),
-            // Already optional: resolved best-effort from the thread (Cluster 377.3).
+            // Already optional: resolved best-effort from the thread.
             Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
             _ => None,
         }
@@ -954,13 +951,14 @@ impl EventFilter {
     }
 }
 
-/// Reconstruct a thread's message set from its events (Cluster 326 as-of replay).
-/// `MessagePosted`/`MessageEdited` both carry the full `Message`, so folding them
-/// yields each message's body **as it stood** at the last event in `events`;
-/// `MessageTombstoned` removes it. First-posted order is preserved and non-message
-/// events are ignored. Pass the thread's events with `id <= as_of`
-/// ([`crate` consumers use `Store::list_thread_events_through`]) to get the
-/// as-of message set — deterministic over the immutable log, no current-row reads.
+/// Reconstruct a thread's message set from its events.
+/// `MessagePosted`/`MessageEdited` both carry the full `Message`, so folding
+/// them yields each message's body **as it stood** at the last event in
+/// `events`; `MessageTombstoned` removes it. First-posted order is preserved
+/// and non-message events are ignored. Pass the thread's events with `id <=
+/// as_of` ([`crate` consumers use `Store::list_thread_events_through`]) to get
+/// the as-of message set — deterministic over the immutable log, no current-row
+/// reads.
 pub fn reconstruct_messages_through(events: &[StoredEvent]) -> Vec<Message> {
     let mut order: Vec<MessageId> = Vec::new();
     let mut by_id: std::collections::HashMap<MessageId, Message> = std::collections::HashMap::new();
@@ -1045,9 +1043,9 @@ mod kind_tests {
     use super::*;
 
     /// The wire form is one source of truth: every variant's `as_str` must
-    /// round-trip back through `parse`. Before Cluster 181 the store kept its
-    /// own per-backend `parse_kind` copies, and Cluster 171 shipped a variant
-    /// (`thread_assignment_changed`) whose store parser was missing — the event
+    /// round-trip back through `parse`. The store once kept its own per-backend
+    /// `parse_kind` copies, and a variant (`thread_assignment_changed`) shipped
+    /// with its store parser missing — the event
     /// inserted but failed read-back and the transaction silently rolled back.
     /// The store now parses through `EventKind::parse`, so this single test
     /// guards the only remaining parser.
@@ -1133,9 +1131,9 @@ mod kind_tests {
         assert_eq!(EventKind::parse_type_id("message_posted"), None);
     }
 
-    /// Cluster 215: the federation ingest allowlist. Collaboration-content kinds
-    /// are federatable; `ArtifactUpserted` is not (blob bytes aren't federated),
-    /// and `ThreadReady` is not (a locally-derived signal, Cluster 222).
+    /// The federation ingest allowlist. Collaboration-content kinds are
+    /// federatable; `ArtifactUpserted` is not (blob bytes aren't federated),
+    /// and `ThreadReady` is not (a locally-derived signal).
     #[test]
     fn federatable_allowlist_excludes_only_artifacts() {
         let non_federatable = [

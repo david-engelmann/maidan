@@ -1,9 +1,9 @@
-//! Cluster 399.1: the guest cannot leave, cannot outrun its fuel, and cannot
-//! outgrow its memory.
+//! The guest cannot leave, cannot outrun its fuel, and cannot outgrow its
+//! memory.
 //!
-//! Modules are hand-written WAT so each test pins one property with nothing else
-//! moving. A sandbox whose bounds are only asserted by "a real guest behaved" is
-//! not tested — it is observed.
+//! Modules are hand-written WAT so each test pins one property with nothing
+//! else moving. A sandbox whose bounds are only asserted by "a real guest
+//! behaved" is not tested — it is observed.
 
 use maidan_types::{
     wasi::{WasiFailureKind, WasiInvoke, WasiLimits},

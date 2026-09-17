@@ -1,8 +1,8 @@
-//! Shared-glossary management (Cluster 322, fidelity arc): set / get / list /
-//! delete a workspace's canonical `term -> definition` (+ aliases). Workspace-
-//! scoped; the anti-drift pin and the target of 319's `defines` reference
-//! relation. `set` upserts (Cluster 321 store). Surfaces the 321 foundation over
-//! REST; MCP twins live in `maidan-mcp`.
+//! Shared-glossary management: set / get / list / delete a workspace's
+//! canonical `term -> definition` (+ aliases). Workspace- scoped; the
+//! anti-drift pin and the target of 319's `defines` reference relation. `set`
+//! upserts. Surfaces the 321 foundation over REST; MCP twins live in
+//! `maidan-mcp`.
 
 use axum::{
     extract::{Path, State},

@@ -109,7 +109,7 @@ pub struct AppState {
     /// When true, `publish` enqueues outbox only; [`crate::outbox_relay`] calls `bus.publish`.
     pub outbox_relay: bool,
     /// Capacity-1 nudge to the outbox relay: a freshly enqueued row wakes an
-    /// idle relay promptly (Cluster 108). `None` when relay/nudge isn't wired.
+    /// idle relay promptly. `None` when relay/nudge isn't wired.
     pub outbox_nudge: Option<tokio::sync::mpsc::Sender<()>>,
     /// Outbox backend for relay metrics; `None` when outbox relay is disabled.
     pub outbox_backend: Option<OutboxBackend>,
@@ -121,67 +121,73 @@ pub struct AppState {
     pub subscribe_resume_ttl_secs: u64,
     /// Ephemeral presence/typing fan-out for WebSocket subscribers.
     pub presence: Arc<PresenceHub>,
-    /// Optional Redis backend for global and per-token rate limits (Cluster 54).
+    /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
-    /// Apply a built-in global per-client rate limit when `MAIDAN_RATE_LIMIT_MAX`
-    /// is unset (Cluster 183). The server bootstrap turns this on so a deployment
-    /// that configures nothing still has a DoS floor; an explicit
-    /// `MAIDAN_RATE_LIMIT_MAX` (including `0` to disable) always overrides. Left
-    /// `false` in [`AppState::new`] so tests are unaffected unless they opt in.
+    /// Apply a built-in global per-client rate limit when
+    /// `MAIDAN_RATE_LIMIT_MAX` is unset. The server bootstrap turns this on so
+    /// a deployment that configures nothing still has a DoS floor; an explicit
+    /// `MAIDAN_RATE_LIMIT_MAX` (including `0` to disable) always overrides.
+    /// Left `false` in [`AppState::new`] so tests are unaffected unless they
+    /// opt in.
     pub rate_limit_default_on: bool,
-    /// Live embedding-indexer counters (queue depth, throughput) for metrics
-    /// (Cluster 116). Default-zeroed unless the batching indexer is wired.
+    /// Live embedding-indexer counters (queue depth, throughput) for metrics.
+    /// Default-zeroed unless the batching indexer is wired.
     pub indexer_metrics: Arc<maidan_search::IndexerMetrics>,
-    /// At-least-once delivery (Cluster 125): stability window + reconcile poll
-    /// cadence for `at_least_once` subscriptions. Read from env once at startup.
+    /// At-least-once delivery: stability window + reconcile poll cadence for
+    /// `at_least_once` subscriptions. Read from env once at startup.
     pub delivery_stability: std::time::Duration,
     pub delivery_reconcile_interval: std::time::Duration,
-    /// Off-platform email transport (Cluster 249), built from `MAIDAN_SMTP_*` at
-    /// startup. `None` when SMTP isn't configured — the config gate: no transport,
-    /// no email. Set only by the server binary via [`AppState::attach_mail`], so
+    /// Off-platform email transport, built from `MAIDAN_SMTP_*` at startup.
+    /// `None` when SMTP isn't configured — the config gate: no transport, no
+    /// email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
-    /// Web Push sender (Cluster 366, N1), built from `VAPID_*` at startup. `None`
-    /// when VAPID isn't configured — the config gate: no sender, no web push. Set
-    /// only by the server binary via [`AppState::attach_web_push`], so
-    /// tests/embedders (which build via [`AppState::new`]) never send.
+    /// Web Push sender, built from `VAPID_*` at startup. `None` when VAPID
+    /// isn't configured — the config gate: no sender, no web push. Set only by
+    /// the server binary via [`AppState::attach_web_push`], so tests/embedders
+    /// (which build via [`AppState::new`]) never send.
     pub web_push: Option<Arc<dyn crate::web_push::WebPushSender>>,
-    /// Slack projector config (Cluster 307), built from `MAIDAN_SLACK_*` at startup.
-    /// `None` when unset — the config gate: the `/integrations/slack/events` route
-    /// then returns `404`. Set only by the server binary via [`AppState::attach_slack`].
+    /// Slack projector config, built from `MAIDAN_SLACK_*` at startup. `None`
+    /// when unset — the config gate: the `/integrations/slack/events` route
+    /// then returns `404`. Set only by the server binary via
+    /// [`AppState::attach_slack`].
     pub slack: Option<Arc<crate::slack::SlackConfig>>,
-    /// Slack projector egress sender (Cluster 309), a `chat.postMessage` client set
-    /// when `MAIDAN_SLACK_BOT_TOKEN` is configured. `None` disables egress (inbound
-    /// still works). Set via [`AppState::attach_slack_sender`]; tests inject a mock.
+    /// Slack projector egress sender, a `chat.postMessage` client set when
+    /// `MAIDAN_SLACK_BOT_TOKEN` is configured. `None` disables egress (inbound
+    /// still works). Set via [`AppState::attach_slack_sender`]; tests inject a
+    /// mock.
     pub slack_sender: Option<Arc<dyn crate::slack::SlackSender>>,
-    /// Git/GitHub projector config (Cluster 310), built from `MAIDAN_GITHUB_*` at
-    /// startup. `None` when unset — the `/integrations/github/events` route then
-    /// returns `404`. Set via [`AppState::attach_github`].
+    /// Git/GitHub projector config, built from `MAIDAN_GITHUB_*` at startup.
+    /// `None` when unset — the `/integrations/github/events` route then returns
+    /// `404`. Set via [`AppState::attach_github`].
     pub github: Option<Arc<crate::github::GithubConfig>>,
-    /// GitHub projector egress sender (Cluster 312), an issue-comment client set
-    /// when `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
-    /// still works). Set via [`AppState::attach_github_sender`]; tests inject a mock.
+    /// GitHub projector egress sender, an issue-comment client set when
+    /// `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
+    /// still works). Set via [`AppState::attach_github_sender`]; tests inject a
+    /// mock.
     pub github_sender: Option<Arc<dyn crate::github::GithubSender>>,
-    /// A2A Agent Card transport advertisement config (Cluster 288): public origin
-    /// for absolute interface URLs + the advertised gRPC address. Default empty
-    /// (host-relative URLs, no gRPC interface); the server binary sets it from env.
+    /// A2A Agent Card transport advertisement config: public origin for
+    /// absolute interface URLs + the advertised gRPC address. Default empty
+    /// (host-relative URLs, no gRPC interface); the server binary sets it from
+    /// env.
     pub a2a_card: crate::a2a_agent::A2aCardConfig,
-    /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server should
-    /// stamp a `Maidan-Consistency-Token` on writes and route replica-eligible
-    /// reads (Cluster 263+). Left `false` in [`AppState::new`]; the server binary
-    /// sets it when it builds the store with a replica reader, so tests/embedders
-    /// (no replica) skip the token round-trip and behave exactly as before.
+    /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server
+    /// should stamp a `Maidan-Consistency-Token` on writes and route
+    /// replica-eligible reads. Left `false` in [`AppState::new`]; the server
+    /// binary sets it when it builds the store with a replica reader, so
+    /// tests/embedders (no replica) skip the token round-trip and behave
+    /// exactly as before.
     pub read_replica_enabled: bool,
-    /// Read-routing counters (Cluster 265) for `maidan_replica_reads_total`, captured
-    /// from the `PostgresStore` when a replica is configured. `None` otherwise (SQLite
-    /// / single-pool), so the metric simply isn't emitted.
+    /// Read-routing counters for `maidan_replica_reads_total`, captured from
+    /// the `PostgresStore` when a replica is configured. `None` otherwise
+    /// (SQLite / single-pool), so the metric simply isn't emitted.
     pub read_routing_metrics: Option<std::sync::Arc<maidan_store::postgres::ReadRoutingMetrics>>,
-    /// Search read-routing counters (Cluster 272) for `maidan_search_replica_reads_total`,
-    /// captured from the `PostgresSearch` when a replica is configured. `None` otherwise,
-    /// so the metric simply isn't emitted.
+    /// Search read-routing counters for `maidan_search_replica_reads_total`,
+    /// captured from the `PostgresSearch` when a replica is configured. `None`
+    /// otherwise, so the metric simply isn't emitted.
     pub search_read_routing_metrics: Option<std::sync::Arc<maidan_search::SearchReadMetrics>>,
-    /// Operator Ed25519 seed for signed workspace export (Cluster 391). `None`
-    /// in [`AppState::new`] — tests attach a fixture key; the binary loads
+    /// Operator Ed25519 seed for signed workspace export. `None` in
+    /// [`AppState::new`] — tests attach a fixture key; the binary loads
     /// `MAIDAN_EXPORT_SIGNING_KEY`. Export refuses when unset (fail closed;
     /// never emit an unsigned bundle).
     pub export_signing: Option<maidan_auth::ExportSigningKey>,
@@ -254,58 +260,61 @@ impl AppState {
         }
     }
 
-    /// Wire the operator export signing key (Cluster 391). Called by the server
-    /// binary when `MAIDAN_EXPORT_SIGNING_KEY` is set; tests attach a fixture.
+    /// Wire the operator export signing key. Called by the server binary when
+    /// `MAIDAN_EXPORT_SIGNING_KEY` is set; tests attach a fixture.
     pub fn attach_export_signing(&mut self, key: maidan_auth::ExportSigningKey) {
         self.export_signing = Some(key);
     }
 
-    /// Pin public keys that import/verify will accept (Cluster 391).
+    /// Pin public keys that import/verify will accept.
     pub fn attach_export_verify_keys(&mut self, keys: Vec<[u8; 32]>) {
         self.export_verify_keys = keys;
     }
 
-    /// Wire the Web Push sender (Cluster 366, N1). Called by the server binary when
-    /// `VAPID_*` is configured; left `None` (no web push) otherwise and in tests.
+    /// Wire the Web Push sender. Called by the server binary when `VAPID_*` is
+    /// configured; left `None` (no web push) otherwise and in tests.
     pub fn attach_web_push(&mut self, sender: Arc<dyn crate::web_push::WebPushSender>) {
         self.web_push = Some(sender);
     }
 
-    /// Wire the email transport (Cluster 249). Called by the server binary when
-    /// `MAIDAN_SMTP_*` is configured; left `None` (no email) otherwise and in tests.
+    /// Wire the email transport. Called by the server binary when
+    /// `MAIDAN_SMTP_*` is configured; left `None` (no email) otherwise and in
+    /// tests.
     pub fn attach_mail(&mut self, transport: Arc<dyn crate::mail::MailTransport>) {
         self.mail = Some(transport);
     }
 
-    /// Wire the Slack projector config (Cluster 307). Called by the server binary
-    /// when `MAIDAN_SLACK_SIGNING_SECRET` is set; left `None` (route disabled)
+    /// Wire the Slack projector config. Called by the server binary when
+    /// `MAIDAN_SLACK_SIGNING_SECRET` is set; left `None` (route disabled)
     /// otherwise and in tests.
     pub fn attach_slack(&mut self, cfg: Arc<crate::slack::SlackConfig>) {
         self.slack = Some(cfg);
     }
 
-    /// Wire the Slack egress sender (Cluster 309). Called by the server binary when
-    /// `MAIDAN_SLACK_BOT_TOKEN` is set; tests inject a mock. `None` disables egress.
+    /// Wire the Slack egress sender. Called by the server binary when
+    /// `MAIDAN_SLACK_BOT_TOKEN` is set; tests inject a mock. `None` disables
+    /// egress.
     pub fn attach_slack_sender(&mut self, sender: Arc<dyn crate::slack::SlackSender>) {
         self.slack_sender = Some(sender);
     }
 
-    /// Wire the Git/GitHub projector config (Cluster 310). Called by the server
-    /// binary when `MAIDAN_GITHUB_WEBHOOK_SECRET` is set; left `None` otherwise.
+    /// Wire the Git/GitHub projector config. Called by the server binary when
+    /// `MAIDAN_GITHUB_WEBHOOK_SECRET` is set; left `None` otherwise.
     pub fn attach_github(&mut self, cfg: Arc<crate::github::GithubConfig>) {
         self.github = Some(cfg);
     }
 
-    /// Wire the GitHub egress sender (Cluster 312). Called by the server binary
-    /// when `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables egress.
+    /// Wire the GitHub egress sender. Called by the server binary when
+    /// `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables
+    /// egress.
     pub fn attach_github_sender(&mut self, sender: Arc<dyn crate::github::GithubSender>) {
         self.github_sender = Some(sender);
     }
 
-    /// Wire cross-replica MCP resource-update notifications (Cluster 102).
+    /// Wire cross-replica MCP resource-update notifications.
     ///
-    /// Rebuilds the MCP dispatcher with `notifier` so `resources/subscribe`
-    /// SSE updates reach subscribers on any replica. The caller must then call
+    /// Rebuilds the MCP dispatcher with `notifier` so `resources/subscribe` SSE
+    /// updates reach subscribers on any replica. The caller must then call
     /// `state.mcp.spawn_resource_notify_listener()` (from an async context) so
     /// this process delivers cross-replica updates to its own SSE subscribers.
     pub fn attach_resource_notifier(&mut self, notifier: Arc<dyn ResourceNotifier>) {
@@ -320,7 +329,7 @@ impl AppState {
         );
     }
 
-    /// Wire cross-replica presence/typing fan-out (Cluster 103).
+    /// Wire cross-replica presence/typing fan-out.
     ///
     /// Rebuilds the presence hub with `notifier` so presence, typing, and the
     /// roster stay consistent across replicas. The caller must then call
@@ -331,7 +340,7 @@ impl AppState {
     }
 
     /// The key that signs subscribe-resume and approval-gate `requestState`
-    /// tokens, or `None` when none is configured (Cluster 398.2).
+    /// tokens, or `None` when none is configured.
     ///
     /// This used to `panic!` on the `None` arm, on the grounds that `main.rs`
     /// establishes the invariant — and it does: all four of its branches either

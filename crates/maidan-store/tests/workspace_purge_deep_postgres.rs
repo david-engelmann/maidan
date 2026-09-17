@@ -1,4 +1,4 @@
-//! Postgres deep workspace purge (Cluster 28).
+//! Postgres deep workspace purge.
 
 use std::time::Duration;
 

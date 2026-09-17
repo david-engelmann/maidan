@@ -1,5 +1,5 @@
-//! Unclaimable (Cluster 363, G3): park/un-park a thread over REST, the channel
-//! list, claim_next skip, and the explicit-claim 409.
+//! Unclaimable: park/un-park a thread over REST, the channel list, claim_next
+//! skip, and the explicit-claim 409.
 
 use std::{
     net::SocketAddr,

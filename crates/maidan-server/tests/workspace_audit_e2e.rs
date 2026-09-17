@@ -1,4 +1,4 @@
-//! Workspace audit list HTTP (Cluster 28).
+//! Workspace audit list HTTP.
 
 use std::{
     net::SocketAddr,

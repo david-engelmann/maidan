@@ -1,16 +1,16 @@
-//! Git / GitHub App projector — webhook ingress foundation (Cluster 310).
+//! Git / GitHub App projector — webhook ingress foundation.
 //!
-//! A *projector*, not a bot (no LLM in Maidan; Expansion Bets, Bet 6): it relays a
-//! GitHub issue/PR conversation to a Maidan thread and back. This cluster lands the
-//! ingress foundation — `X-Hub-Signature-256` verification + the `ping` setup event
-//! — so a GitHub App (or repo webhook) can be pointed at
-//! `POST /integrations/github/events`. Repo/issue link mapping + `issue_comment`
-//! routing is Cluster 311; egress (Maidan → issue/PR comment) is 312.
+//! A *projector*, not a bot (no LLM in Maidan; Expansion Bets, Bet 6): it
+//! relays a GitHub issue/PR conversation to a Maidan thread and back. This
+//! cluster lands the ingress foundation — `X-Hub-Signature-256` verification +
+//! the `ping` setup event — so a GitHub App (or repo webhook) can be pointed at
+//! `POST /integrations/github/events`. Repo/issue link mapping +
+//! `issue_comment` routing and egress (Maidan → issue/PR comment) build on it.
 //!
 //! **Config-gated:** inert unless `MAIDAN_GITHUB_WEBHOOK_SECRET` is set (the route
-//! then returns `404`). GitHub signs `sha256=hex(HMAC-SHA256(secret, body))` — the
-//! same scheme as Maidan's own outbound webhook signatures, so verification reuses
-//! [`crate::webhooks::verify_signature`].
+//! then returns `404`). GitHub signs `sha256=hex(HMAC-SHA256(secret, body))` —
+//! the same scheme as Maidan's own outbound webhook signatures, so verification
+//! reuses [`crate::webhooks::verify_signature`].
 
 use axum::{
     extract::{Path, Query, State},
@@ -55,11 +55,11 @@ impl GithubConfig {
     }
 }
 
-/// `POST /integrations/github/events` — the GitHub webhook ingress. Returns `404`
-/// when the projector isn't configured, `401` on a bad `X-Hub-Signature-256`,
-/// `200` for the `ping` setup event, an `issue_comment` (projected to the linked
-/// Maidan thread, Cluster 311), a merged `pull_request` (a `ThreadLanded` fact,
-/// Cluster 361), and (with no side effect) any other event.
+/// `POST /integrations/github/events` — the GitHub webhook ingress. Returns
+/// `404` when the projector isn't configured, `401` on a bad
+/// `X-Hub-Signature-256`, `200` for the `ping` setup event, an `issue_comment`
+/// (projected to the linked Maidan thread), a merged `pull_request` (a
+/// `ThreadLanded` fact), and (with no side effect) any other event.
 pub async fn github_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -88,7 +88,7 @@ pub async fn github_events(
             route_github_issue_comment(&state, &payload).await;
             StatusCode::OK.into_response()
         }
-        // A merged PR on a linked issue/PR → a `ThreadLanded` fact (Cluster 361).
+        // A merged PR on a linked issue/PR → a `ThreadLanded` fact.
         "pull_request" => {
             route_github_pull_request(&state, &payload).await;
             StatusCode::OK.into_response()
@@ -97,12 +97,13 @@ pub async fn github_events(
     }
 }
 
-/// Route an inbound GitHub `pull_request` event: when a PR **linked** to a Maidan
-/// thread is **merged** (`action == "closed"` with `pull_request.merged == true`),
-/// emit a `ThreadLanded` fact on that thread (Cluster 361, G-dev-7). This "steals
-/// the landed fact" — it records that the work landed; it does **not** transition
-/// the thread's FSM (not an automation product). Best-effort; the ingress always
-/// ACKs. A closed-but-unmerged PR, or a PR not linked to a thread, is ignored.
+/// Route an inbound GitHub `pull_request` event: when a PR **linked** to a
+/// Maidan thread is **merged** (`action == "closed"` with `pull_request.merged
+/// == true`), emit a `ThreadLanded` fact on that thread. This "steals the
+/// landed fact" — it records that the work landed; it does **not** transition
+/// the thread's FSM (not an automation product). Best-effort; the ingress
+/// always ACKs. A closed-but-unmerged PR, or a PR not linked to a thread, is
+/// ignored.
 async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("closed") {
         return; // only a close can be a merge
@@ -124,8 +125,8 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
     ) else {
         return;
     };
-    // A PR number lives in the shared issue/PR number namespace, so it links the
-    // same way an issue does (Cluster 346).
+    // A PR number lives in the shared issue/PR number namespace, so it links
+    // the same way an issue does.
     let link = match state.store.get_github_issue_link(repo, pr_number).await {
         Ok(Some(l)) => l,
         Ok(None) => return, // PR not linked to a thread — ignore
@@ -165,9 +166,9 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
 }
 
 /// Route an inbound GitHub `issue_comment` event: a new comment on a linked
-/// issue/PR is posted into the mapped Maidan thread (Cluster 311). Best-effort —
-/// the ingress always ACKs. Only `action == "created"` projects; a `Bot` comment
-/// (our own egress echo, Cluster 312) is skipped to avoid loops.
+/// issue/PR is posted into the mapped Maidan thread. Best-effort — the ingress
+/// always ACKs. Only `action == "created"` projects; a `Bot` comment (our own
+/// egress echo) is skipped to avoid loops.
 async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Value) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("created") {
         return;
@@ -211,8 +212,8 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
         thread_id: link.thread_id,
         author_id: link.member_id,
         body: format!("{author}: {text}"),
-        // Tag the origin so egress (Cluster 312) never echoes a GitHub-sourced
-        // message back to GitHub (loop prevention).
+        // Tag the origin so egress never echoes a GitHub-sourced message back
+        // to GitHub (loop prevention).
         metadata: serde_json::json!({ "github": { "user": author, "repo": repo, "issue": issue_number } }),
         content: None,
     };
@@ -231,22 +232,22 @@ pub enum GithubError {
     Api {
         status: u16,
         /// Whether GitHub said this was a rate limit rather than a permission
-        /// problem. GitHub answers a secondary rate limit with **403**, the same
-        /// status as a genuinely revoked token, so the status alone cannot tell
-        /// them apart — the response headers can (Cluster 377.3).
+        /// problem. GitHub answers a secondary rate limit with **403**, the
+        /// same status as a genuinely revoked token, so the status alone cannot
+        /// tell them apart — the response headers can.
         rate_limited: bool,
     },
 }
 
 impl GithubError {
-    /// Whether this failure is a misconfiguration rather than a transient fault
-    /// (Cluster 377.3): a wrong or revoked token (401), a missing permission
-    /// (403), a repo or issue that isn't there (404). Retrying cannot fix any of
-    /// them, so the link is disabled instead of grinding through its attempts.
+    /// Whether this failure is a misconfiguration rather than a transient
+    /// fault: a wrong or revoked token (401), a missing permission (403), a
+    /// repo or issue that isn't there (404). Retrying cannot fix any of them,
+    /// so the link is disabled instead of grinding through its attempts.
     ///
     /// A rate-limited 403 is explicitly **not** one: it is the most transient
-    /// failure GitHub has, and disabling a link over it would take an operator's
-    /// re-link to undo.
+    /// failure GitHub has, and disabling a link over it would take an
+    /// operator's re-link to undo.
     pub fn is_misconfiguration(&self) -> bool {
         match self {
             Self::Http(_) => false,
@@ -274,12 +275,12 @@ impl GithubError {
         matches!(self, Self::Api { status: 422, .. })
     }
 
-    /// Cluster 380.3: a 404 (the issue is not a pull) or 422 (the line is
-    /// not in the diff at `commit_id`) will not succeed on replay either, so
-    /// the worker records `maidan_github_review_total{skipped}` rather than
-    /// `failed`. A 5xx, rate-limited 403, or revoked-token 401/403 stays
-    /// `failed` so an operator replay retries the review after the surface
-    /// recovers. Neither class fails the 379 summary or calls `disable_link`.
+    /// A 404 (the issue is not a pull) or 422 (the line is not in the diff at
+    /// `commit_id`) will not succeed on replay either, so the worker records
+    /// `maidan_github_review_total{skipped}` rather than `failed`. A 5xx,
+    /// rate-limited 403, or revoked-token 401/403 stays `failed` so an operator
+    /// replay retries the review after the surface recovers. Neither class
+    /// fails the 379 summary or calls `disable_link`.
     pub fn is_inline_review_skip(&self) -> bool {
         self.is_not_found() || self.is_unprocessable()
     }
@@ -290,8 +291,8 @@ impl GithubError {
 /// split across reviews — a second review would look like a second verdict.
 pub const GITHUB_REVIEW_COMMENTS_MAX: usize = 100;
 
-/// `body` GitHub requires when `event` is [`GITHUB_REVIEW_EVENT_COMMENT`].
-/// The Cluster 379 summary lives on the issue comment, not on this review.
+/// `body` GitHub requires when `event` is [`GITHUB_REVIEW_EVENT_COMMENT`]. The
+/// result summary lives on the issue comment, not on this review.
 pub const GITHUB_INLINE_REVIEW_BODY: &str = "Maidan posted inline findings for this result.";
 
 /// Outbound GitHub sender — posts and edits an issue/PR comment in production, a
@@ -299,13 +300,13 @@ pub const GITHUB_INLINE_REVIEW_BODY: &str = "Maidan posted inline findings for t
 #[async_trait::async_trait]
 pub trait GithubSender: Send + Sync {
     /// Comment on an issue or PR, returning a handle on the comment so a later
-    /// delivery can edit it in place (Cluster 378.2).
+    /// delivery can edit it in place.
     ///
     /// **`Ok(None)` means "posted, but we cannot address it."** GitHub accepted
     /// the comment and answered without a readable `id`. The comment exists, so
     /// this is not a failure — reporting one would make the worker retry and
     /// leave two comments on the PR. The recovery path for a lost ref is the
-    /// hidden marker in the comment body (Cluster 379.4), not a re-post.
+    /// hidden marker in the comment body, not a re-post.
     async fn post_comment(
         &self,
         repo: &str,
@@ -322,22 +323,22 @@ pub trait GithubSender: Send + Sync {
         text: &str,
     ) -> Result<(), GithubError>;
 
-    /// List comments on an issue/PR, oldest first. Used by result delivery
-    /// (Cluster 379.4) to recover a lost `external_ref` via the hidden body
-    /// marker. Projector egress never lists.
+    /// List comments on an issue/PR, oldest first. Used by result delivery to
+    /// recover a lost `external_ref` via the hidden body marker. Projector
+    /// egress never lists.
     async fn list_issue_comments(
         &self,
         repo: &str,
         issue_number: i64,
     ) -> Result<Vec<GithubIssueComment>, GithubError>;
 
-    /// Post a pull-request review with inline comments (Cluster 380.2).
+    /// Post a pull-request review with inline comments.
     ///
     /// `commit_id` is the envelope `head_sha` the caller already resolved —
     /// **never** a live PR head fetched here. `comments` are already mapped
-    /// onto GitHub's RIGHT / `line` / `start_line` frame (Cluster 380.1).
-    /// `event` is always `COMMENT`; Maidan does not approve or
-    /// request-changes. Projector egress never calls this.
+    /// onto GitHub's RIGHT / `line` / `start_line` frame. `event` is always
+    /// `COMMENT`; Maidan does not approve or request-changes. Projector egress
+    /// never calls this.
     async fn create_review(
         &self,
         repo: &str,
@@ -359,8 +360,8 @@ pub struct GithubIssueComment {
 /// `POST /repos/{repo}/issues/{n}/comments`.
 pub struct GithubApiClient {
     token: String,
-    /// API base, `https://api.github.com` in production; overridable so the wire
-    /// path can be tested against a loopback server (Cluster 347).
+    /// API base, `https://api.github.com` in production; overridable so the
+    /// wire path can be tested against a loopback server.
     base_url: String,
     http: reqwest::Client,
 }
@@ -568,19 +569,19 @@ fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
         .is_some_and(|v| v.trim() == "0")
 }
 
-/// GitHub projector egress (Cluster 312, made durable in 377.2): relay a Maidan
-/// message posted in a linked thread out as a GitHub issue/PR comment — by
+/// GitHub projector egress: relay a Maidan message posted in a linked thread
+/// out as a GitHub issue/PR comment — by
 /// *enqueueing* it on the egress outbox, which [`egress_worker`](crate::egress_worker)
 /// drains with retry/backoff. Until 377.2 this posted inline and a transient
 /// failure dropped the comment.
 ///
 /// No-op unless a [`GithubSender`] is configured (the worker only runs then, so
-/// queueing without one would pile up rows nothing drains); **skips messages that
-/// originated in GitHub** (the `metadata.github` tag from 311's ingress) so a
-/// projected inbound comment is never echoed back — loop prevention.
+/// queueing without one would pile up rows nothing drains); **skips messages
+/// that originated in GitHub** (the `metadata.github` tag from 311's ingress)
+/// so a projected inbound comment is never echoed back — loop prevention.
 ///
-/// `log_id` is the `maidan_events` row being routed — the dedup key together with
-/// the target, so every replica enqueueing yields one comment.
+/// `log_id` is the `maidan_events` row being routed — the dedup key together
+/// with the target, so every replica enqueueing yields one comment.
 pub async fn route_message_to_github(
     state: &AppState,
     log_id: i64,
@@ -595,8 +596,8 @@ pub async fn route_message_to_github(
     }
     let link = match state.store.get_github_issue_link_by_thread(thread_id).await {
         Ok(Some(l)) if l.disabled_at.is_none() => l,
-        // Disabled by an auth/config-class failure (Cluster 377.3) — see the Slack
-        // twin. Re-linking the issue/PR turns it back on.
+        // Disabled by an auth/config-class failure — see the Slack twin.
+        // Re-linking the issue/PR turns it back on.
         Ok(Some(_)) => return,
         Ok(None) => return, // thread not linked to a GitHub issue/PR
         Err(err) => {
@@ -623,11 +624,11 @@ pub async fn route_message_to_github(
     }
 }
 
-/// `POST /workspaces/:wid/github-links` (Cluster 346) — link a GitHub issue/PR to a
-/// Maidan thread so the projector can bridge comments both ways. The link's
-/// `channel_id`/`workspace_id` are derived from resolving the thread; the caller
-/// supplies only `repo` (`owner/name`), `issue_number`, thread, and the attribution
-/// member. `workspace:write` + access to the thread. Upserts.
+/// `POST /workspaces/:wid/github-links` — link a GitHub issue/PR to a Maidan
+/// thread so the projector can bridge comments both ways. The link's
+/// `channel_id`/`workspace_id` are derived from resolving the thread; the
+/// caller supplies only `repo` (`owner/name`), `issue_number`, thread, and the
+/// attribution member. `workspace:write` + access to the thread. Upserts.
 pub async fn link_github_issue(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -658,8 +659,8 @@ pub async fn link_github_issue(
     Ok((StatusCode::CREATED, Json(link)))
 }
 
-/// `GET /workspaces/:wid/github-links` (Cluster 346) — the workspace's GitHub
-/// issue/PR links. `workspace:read`.
+/// `GET /workspaces/:wid/github-links` — the workspace's GitHub issue/PR links.
+/// `workspace:read`.
 pub async fn list_github_issue_links(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -675,8 +676,8 @@ pub async fn list_github_issue_links(
     ))
 }
 
-/// `DELETE /workspaces/:wid/github-links?repo=…&issue_number=…` (Cluster 346) —
-/// remove a GitHub link (`repo` carries a slash, so it's a query pair, not a path).
+/// `DELETE /workspaces/:wid/github-links?repo=…&issue_number=…` — remove a
+/// GitHub link (`repo` carries a slash, so it's a query pair, not a path).
 /// `workspace:write`. `404` if the link doesn't exist in this workspace.
 pub async fn unlink_github_issue(
     State(state): State<AppState>,

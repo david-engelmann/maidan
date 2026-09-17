@@ -1,7 +1,7 @@
-//! Cluster 377.2: the projector-egress worker. A queued delivery is posted by
+//! The projector-egress worker. A queued delivery is posted by
 //! `egress_worker::sweep_once` and not re-sent; a failed post is *rescheduled*
-//! (not dropped, not dead-lettered on the first failure), so a transient Slack or
-//! GitHub outage survives where the old inline post lost the message; an
+//! (not dropped, not dead-lettered on the first failure), so a transient Slack
+//! or GitHub outage survives where the old inline post lost the message; an
 //! undecodable destination dead-letters immediately instead of burning eight
 //! attempts; and a deployment with no projector sender leaves the queue alone.
 
@@ -60,7 +60,7 @@ impl SlackSender for CountingSlack {
         _ts: &str,
         _text: &str,
     ) -> Result<(), SlackError> {
-        unreachable!("the projector egress never updates; that is Cluster 379.4")
+        unreachable!("the projector egress never updates; that is result delivery")
     }
 }
 
@@ -221,9 +221,9 @@ async fn an_undecodable_destination_dead_letters_without_a_post() {
     assert_eq!(store.count_dead_egress().await.unwrap(), 1);
 }
 
-/// Cluster 377.3: retry-then-disable. An auth/config-class failure is not
-/// retried — the link is turned off, the delivery dead-letters, a
-/// `ProjectorMisconfigured` says so, and later messages stop queueing.
+/// Retry-then-disable. An auth/config-class failure is not retried — the link
+/// is turned off, the delivery dead-letters, a `ProjectorMisconfigured` says
+/// so, and later messages stop queueing.
 #[tokio::test]
 async fn a_misconfigured_link_is_disabled_announced_and_stops_queueing() {
     let sender = slack_sender(Some(SlackError::Api("channel_not_found".into())));

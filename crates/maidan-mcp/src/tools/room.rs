@@ -1,5 +1,5 @@
-//! Room URIs, named capability sets, handle aliases, and holder-side
-//! token attenuation (Cluster 395, Wave 3 #35).
+//! Room URIs, named capability sets, handle aliases, and holder-side token
+//! attenuation.
 
 use std::sync::Arc;
 
@@ -42,7 +42,7 @@ struct ParseUriArgs {
 }
 
 /// Parse a hierarchical `maidan://{workspace_id}/…` room URI. MCP
-/// `maidan://threads/{id}` and Cluster 392 `maidan:event/{id}` pins fail.
+/// `maidan://threads/{id}` and `maidan:event/{id}` pins fail.
 pub(super) async fn parse_maidan_uri(args: &Value) -> Result<Value, McpError> {
     let a: ParseUriArgs = serde_json::from_value(args.clone())?;
     let uri = RoomUri::parse(&a.uri).map_err(|e| McpError::InvalidParams(e.to_string()))?;
@@ -104,11 +104,11 @@ struct AttenuateArgs {
 /// Amplification is rejected. A derived expiry cannot outlive the parent.
 ///
 /// Inherits the parent's `app_installation_id` and per-token quotas, for the
-/// reason the REST twin does (Cluster 397.7): attenuation may be a no-op
-/// re-issue, so any bound the parent carried and the child did not was a way to
-/// shed it by asking. Also writes the `token.mint` audit row this path was
-/// missing entirely — minting a bearer is the audited mutation Cluster 182
-/// established, and the REST twin already recorded it.
+/// reason the REST twin does: attenuation may be a no-op re-issue, so any bound
+/// the parent carried and the child did not was a way to shed it by asking.
+/// Also writes the `token.mint` audit row this path was missing entirely —
+/// minting a bearer is an audited mutation everywhere else, and the REST twin
+/// already recorded it.
 pub(super) async fn attenuate_token(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -137,7 +137,7 @@ pub(super) async fn attenuate_token(
         capabilities: capabilities.clone(),
         expires_at,
     };
-    // Record the parent so revoking it reaches this token (Cluster 401.3).
+    // Record the parent so revoking it reaches this token.
     let record = match auth.token_id {
         Some(parent) => store.create_attenuated_api_token(derived, parent).await?,
         None => store.create_api_token(derived).await?,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Maidan restore (Cluster 260, Program D — disaster recovery). Inverse of backup.sh.
+# Maidan restore. Inverse of backup.sh.
 #
 # Restores a backup directory into a target Postgres (+ localfs artifact root).
 # GUARDRAIL: refuses to restore into a NON-EMPTY database unless --force is given,

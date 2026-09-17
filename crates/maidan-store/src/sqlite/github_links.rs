@@ -1,4 +1,4 @@
-//! GitHub projector issue/PR links (Cluster 311). SQLite twin of the Postgres module.
+//! GitHub projector issue/PR links. SQLite twin of the Postgres module.
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};
@@ -40,7 +40,7 @@ pub async fn link(
 }
 
 /// See the Postgres twin: the only uniqueness this upsert can violate is the
-/// one-link-per-thread index (Cluster 376.5).
+/// one-link-per-thread index.
 fn map_link_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {

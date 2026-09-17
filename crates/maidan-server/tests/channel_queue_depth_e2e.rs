@@ -1,5 +1,5 @@
-//! Cluster 224: `GET /channels/:cid/queue-depth` reports ready / assigned /
-//! blocked counts of a channel's open task threads over HTTP.
+//! `GET /channels/:cid/queue-depth` reports ready / assigned / blocked counts
+//! of a channel's open task threads over HTTP.
 
 use std::{sync::Arc, time::Duration};
 

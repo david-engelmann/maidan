@@ -1010,7 +1010,7 @@
         }
       }
 
-      // Cluster 153: live thread view. WS event frames whose thread matches the
+      // Live thread view. WS event frames whose thread matches the
       // open thread refresh the message list (debounced) instead of only
       // landing as Events-tab log lines. Requires the WebSocket connected with a
       // filter that includes this thread (workspace-wide subscribe covers it).
@@ -1903,14 +1903,14 @@
         await loadNotifications();
       }
 
-      // --- Work tab (Cluster 367, Wave 2 #15): the work-observability console. ---
+      // --- Work tab: the work-observability console. ---
       async function loadWork() {
         await loadWaiting();
         await loadWorkChannels();
         await loadWorkSchedules();
       }
 
-      // Waiting-on-you inbox (Cluster 368.3, Wave 2 #16).
+      // Waiting-on-you inbox.
       async function loadWaiting() {
         const list = document.getElementById("waiting-list");
         const summary = document.getElementById("waiting-summary");
@@ -2125,7 +2125,7 @@
         }
       }
 
-      // --- Prefs console (Cluster 367.2, Wave 2 #15): notification prefs, delivery,
+      // --- Prefs console: notification prefs, delivery,
       // email, and follows — all self-only (the acting session member). ---
       async function loadPrefs() {
         const el = document.getElementById("prefs-delivery");
@@ -2271,7 +2271,7 @@
         await loadPrefs();
       }
 
-      // --- Looking glass (Cluster 367.3, Wave 2 #15): kind / thread / sha / peer
+      // --- Looking glass: kind / thread / sha / peer
       // read-only explorer. Each section is button-driven. ---
       function loadGlass() {
         /* on-demand — each section loads on its own button */

@@ -60,9 +60,9 @@ pub fn encrypt_peer_secret(plaintext: &str, key: &[u8; 32]) -> Result<String, Pe
     Ok(STANDARD.encode(blob))
 }
 
-/// Decryption fallback keys for **key rotation** (Cluster 189): old keys kept
-/// available for decrypt after the primary (`FEDERATION_ENCRYPTION_KEY`) is
-/// rotated. Set once at startup; empty when no rotation is in progress.
+/// Decryption fallback keys for **key rotation**: old keys kept available for
+/// decrypt after the primary (`FEDERATION_ENCRYPTION_KEY`) is rotated. Set once
+/// at startup; empty when no rotation is in progress.
 static DECRYPT_FALLBACK_KEYS: std::sync::OnceLock<Vec<[u8; 32]>> = std::sync::OnceLock::new();
 
 /// Install the process-wide decrypt fallback keys (idempotent; first call wins).
@@ -107,8 +107,8 @@ pub fn decrypt_peer_secret_multi(
 }
 
 /// Decrypt with the runtime `primary` key first, then the process-wide rotation
-/// fallbacks (Cluster 189). New ciphertexts made with the primary decrypt on the
-/// first try; ciphertexts made with a pre-rotation key decrypt via a fallback.
+/// fallbacks. New ciphertexts made with the primary decrypt on the first try;
+/// ciphertexts made with a pre-rotation key decrypt via a fallback.
 pub fn decrypt_peer_secret_rotating(
     encoded: &str,
     primary: &[u8; 32],

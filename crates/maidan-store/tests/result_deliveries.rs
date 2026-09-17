@@ -1,4 +1,4 @@
-//! Result-delivery state (Cluster 379.1), both backends.
+//! Result-delivery state, both backends.
 //!
 //! The arming upsert is the whole point of this table, so most of this suite is
 //! that one predicate: **arm iff this revision is strictly newer than anything
@@ -409,9 +409,9 @@ async fn run_unroutable_suite(store: &dyn Store) {
     );
 }
 
-/// A delivery that landed without an addressable handle (Cluster 378.2's
-/// `Ok(None)`) is still a delivery — it just posts again next time rather than
-/// editing, because the alternative is PATCHing a guess.
+/// A delivery that landed without an addressable handle (the `Ok(None)`) is
+/// still a delivery — it just posts again next time rather than editing,
+/// because the alternative is PATCHing a guess.
 async fn run_unaddressable_suite(store: &dyn Store) {
     let tid = thread(store, "unaddressable").await;
     let rev = revision();
@@ -439,10 +439,9 @@ async fn run_unaddressable_suite(store: &dyn Store) {
     );
 }
 
-/// Cluster 379.5: operator replay reopens a row without bumping
-/// `armed_revision`, re-checks the allowlist, and enqueues a new outbox
-/// row (a fresh synthetic `source_log_id`) so the unique key cannot
-/// collide with the original event.
+/// Operator replay reopens a row without bumping `armed_revision`, re-checks
+/// the allowlist, and enqueues a new outbox row (a fresh synthetic
+/// `source_log_id`) so the unique key cannot collide with the original event.
 async fn run_replay_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {

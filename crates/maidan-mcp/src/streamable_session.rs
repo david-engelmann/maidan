@@ -1,4 +1,5 @@
-//! Active `POST /mcp/streamable` sessions (`Mcp-Session-Id`, Cluster 35; TTL Cluster 60).
+//! Active `POST /mcp/streamable` sessions, keyed by `Mcp-Session-Id` and
+//! expired on a TTL.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -6,13 +7,13 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
-/// Per-session SSE buffer bound (Cluster 129). A slow client that fills this is
-/// disconnected (push returns false) instead of growing server memory without
-/// limit — the channel was previously unbounded.
+/// Per-session SSE buffer bound. A slow client that fills this is disconnected
+/// (push returns false) instead of growing server memory without limit — the
+/// channel was previously unbounded.
 const SESSION_BUFFER: usize = 256;
 
 /// How many recently-sent events to retain per session for `Last-Event-ID`
-/// replay on reconnect (Cluster 147). Bounded like the live buffer.
+/// replay on reconnect. Bounded like the live buffer.
 const SESSION_LOG_CAP: usize = 256;
 
 struct SessionEntry {
@@ -120,8 +121,8 @@ impl StreamableSessionRegistry {
     }
 
     /// Frames retained for this session with an id greater than `after`, in
-    /// order — the `Last-Event-ID` replay set (Cluster 147). Empty for an
-    /// unknown session or when nothing newer was retained.
+    /// order — the `Last-Event-ID` replay set. Empty for an unknown session or
+    /// when nothing newer was retained.
     pub async fn replay_after(&self, id: &str, after: u64) -> Vec<(u64, String)> {
         let mut guard = self.sessions.lock().await;
         let Some(entry) = guard.get_mut(id) else {

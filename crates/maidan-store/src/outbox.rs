@@ -13,8 +13,8 @@ pub enum OutboxBackend {
 }
 
 impl OutboxBackend {
-    /// Atomically claim relayable rows for this relay (Cluster 398.1). Use this,
-    /// not [`Self::list_pending`], from the relay loop: the relay runs in every
+    /// Atomically claim relayable rows for this relay. Use this, not
+    /// [`Self::list_pending`], from the relay loop: the relay runs in every
     /// replica, so an unlocked read relays every row once per replica.
     pub async fn claim_pending(
         &self,

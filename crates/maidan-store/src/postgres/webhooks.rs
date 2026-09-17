@@ -80,7 +80,7 @@ pub async fn list_enabled_for_workspace(
     workspace_id: WorkspaceId,
 ) -> Result<Vec<WebhookSubscriptionRow>, StoreError> {
     // Uses idx_webhook_subs_workspace instead of scanning every workspace's
-    // enabled subscriptions on each event (Cluster 166, H1).
+    // enabled subscriptions on each event.
     let rows = sqlx::query(&format!(
         "SELECT {SUB_COLS}
          FROM maidan_webhook_subscriptions

@@ -6,10 +6,10 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
-/// Default request body-size cap: 2 MiB (Cluster 183). Matches axum 0.7's
-/// implicit extractor default, but now explicit + tunable via
-/// `MAIDAN_MAX_BODY_BYTES` — a deployment can tighten it (smaller JSON payloads)
-/// or widen it (larger single-shot artifacts) without a rebuild.
+/// Default request body-size cap: 2 MiB. Matches axum 0.7's implicit extractor
+/// default, but now explicit + tunable via `MAIDAN_MAX_BODY_BYTES` — a
+/// deployment can tighten it (smaller JSON payloads) or widen it (larger
+/// single-shot artifacts) without a rebuild.
 const DEFAULT_MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 fn parse_max_body_bytes(raw: Option<String>) -> usize {
@@ -110,8 +110,8 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::lift_legal_hold)
                 .get(routes::get_legal_hold),
         )
-        // SCIM 2.0 provisioning (Cluster 366) — outside OpenAPI/capability-map (like
-        // /mcp); each handler enforces token:admin inline and scopes to the token's
+        // SCIM 2.0 provisioning — outside OpenAPI/capability-map (like /mcp);
+        // each handler enforces token:admin inline and scopes to the token's
         // workspace.
         .route(
             "/scim/v2/ServiceProviderConfig",
@@ -827,8 +827,8 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_approval_gates),
         )
         .route("/ui/api/me", get(routes::get_me))
-        // Work tab (Cluster 367, Wave 2 #15): the human work-observability console —
-        // queue depth, occupancy, task results, DAG dependencies, and schedules.
+        // Work tab: the human work-observability console — queue depth,
+        // occupancy, task results, DAG dependencies, and schedules.
         .route(
             "/ui/api/channels/:cid/queue-depth",
             get(routes::get_channel_queue_depth),
@@ -849,8 +849,8 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/:wid/task-schedules",
             get(routes::list_task_schedules),
         )
-        // Prefs console (Cluster 367.2, Wave 2 #15): a member's notification
-        // preferences, delivery, and follows — self-only reads.
+        // Prefs console: a member's notification preferences, delivery, and
+        // follows — self-only reads.
         .route(
             "/ui/api/members/:id/notification-prefs",
             get(routes::list_member_notification_prefs),
@@ -868,13 +868,13 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/members/:id/thread-follows",
             get(routes::list_member_thread_follows),
         )
-        // Looking-glass explorer (Cluster 367.3, Wave 2 #15): artifact metadata by
-        // sha (events/threads/peers reuse the routes above).
+        // Looking-glass explorer: artifact metadata by sha
+        // (events/threads/peers reuse the routes above).
         .route(
             "/ui/api/artifacts/:sha/meta",
             get(routes::get_artifact_metadata),
         )
-        // Waiting-on-you inbox (Cluster 368.3, Wave 2 #16).
+        // Waiting-on-you inbox.
         .route(
             "/ui/api/members/:id/waiting",
             get(routes::get_member_waiting),
@@ -943,7 +943,7 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/approval-gates/:id/answer",
             post(routes::answer_approval_gate),
         )
-        // Prefs console (Cluster 367.2, Wave 2 #15): self-only writes.
+        // Prefs console: self-only writes.
         .route(
             "/ui/api/members/:id/notification-prefs",
             put(routes::set_member_notification_pref),
@@ -987,12 +987,12 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
-        // Slack projector ingress (Cluster 307): unauthed — Slack authenticates via
-        // its request signature (verified in-handler), not a Maidan bearer. Returns
+        // Slack projector ingress: unauthed — Slack authenticates via its
+        // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.
         .route("/integrations/slack/events", post(slack::slack_events))
-        // GitHub projector ingress (Cluster 310): unauthed — GitHub authenticates
-        // via its X-Hub-Signature-256, verified in-handler. 404 unless configured.
+        // GitHub projector ingress: unauthed — GitHub authenticates via its
+        // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
@@ -1014,10 +1014,10 @@ pub fn router(state: AppState) -> Router {
         .merge(a2a)
         .merge(protected)
         .layer(middleware::from_fn(metrics::middleware))
-        // Room-LSN sits *inside* the rate limiter (Cluster 397.9): a later
-        // `.layer` is the outer one, so this order makes the limiter outermost.
-        // It used to wrap the limiter, which meant a 429 — the response whose
-        // job is to stop work — still ran `MAX(id)` against the primary, and an
+        // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
+        // outer one, so this order makes the limiter outermost. It used to wrap
+        // the limiter, which meant a 429 — the response whose job is to stop
+        // work — still ran `MAX(id)` against the primary, and an
         // unauthenticated client could force one database round-trip per
         // request with nothing able to shed it.
         .layer(middleware::from_fn_with_state(
@@ -1029,7 +1029,7 @@ pub fn router(state: AppState) -> Router {
             rate_limit::middleware,
         ))
         .layer(middleware::from_fn(request_id::middleware))
-        // Cap request bodies before extractors buffer them (Cluster 183).
+        // Cap request bodies before extractors buffer them.
         .layer(DefaultBodyLimit::max(max_body_bytes_from_env()))
         .with_state(state)
 }

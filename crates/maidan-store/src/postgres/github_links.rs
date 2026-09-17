@@ -1,5 +1,5 @@
-//! GitHub projector issue/PR links (Cluster 311): map a GitHub issue/PR to the
-//! Maidan channel/thread it projects into. See the SQLite twin.
+//! GitHub projector issue/PR links: map a GitHub issue/PR to the Maidan
+//! channel/thread it projects into. See the SQLite twin.
 
 use sqlx::{PgPool, Row};
 
@@ -12,7 +12,7 @@ const COLS: &str =
     "repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at, disabled_at";
 
 /// Create or replace the link for a GitHub issue/PR (one per repo+number, and —
-/// since Cluster 376.5 — one per thread).
+/// — one per thread).
 pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueLink, StoreError> {
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_github_issue_links
@@ -37,8 +37,8 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
 }
 
 /// The only uniqueness this insert can violate is the one-link-per-thread index
-/// (Cluster 376.5) — `(repo, issue_number)` is absorbed by the `ON CONFLICT`
-/// upsert. Report it as a `Conflict` (SpawnRejected), not an opaque 500.
+/// — `(repo, issue_number)` is absorbed by the `ON CONFLICT` upsert. Report it
+/// as a `Conflict` (SpawnRejected), not an opaque 500.
 fn map_link_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {
@@ -65,7 +65,7 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_link))
 }
 
-/// The egress reverse lookup (Cluster 312): the link for a Maidan thread.
+/// The egress reverse lookup: the link for a Maidan thread.
 pub async fn get_by_thread(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -102,9 +102,8 @@ pub async fn unlink(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool
     Ok(res.rows_affected() > 0)
 }
 
-/// Turn egress to this issue/PR off (Cluster 377.3). Idempotent: an
-/// already-disabled link keeps its original timestamp. Returns whether this call
-/// did the disabling.
+/// Turn egress to this issue/PR off. Idempotent: an already-disabled link keeps
+/// its original timestamp. Returns whether this call did the disabling.
 pub async fn disable(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_github_issue_links SET disabled_at = now()

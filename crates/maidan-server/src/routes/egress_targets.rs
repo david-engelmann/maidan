@@ -1,17 +1,17 @@
-//! The egress trust boundary (Cluster 378.1): the per-workspace allowlist of
-//! external destinations Maidan may deliver a result to.
+//! The egress trust boundary: the per-workspace allowlist of external
+//! destinations Maidan may deliver a result to.
 //!
 //! **Why this surface is `token:admin` throughout, reads included.** The
 //! allowlist is policy, not status. A result's `deliver_to` is written by an
 //! agent holding `thread:transition`, so letting a workspace-scoped token
 //! *enumerate* the allowlist would hand an agent the list of destinations worth
 //! aiming at. A producer that wants to know where its result actually landed
-//! reads the per-thread delivery status instead (Cluster 379.5) — the
-//! disposition, not the policy.
+//! reads the per-thread delivery status instead — the disposition, not the
+//! policy.
 //!
 //! An operator's loop is list → bless → revoke-by-id. The id is a surrogate
-//! precisely so the revoke is routable: a GitHub selector is `owner/name`, and a
-//! `/` in a path segment is not.
+//! precisely so the revoke is routable: a GitHub selector is `owner/name`, and
+//! a `/` in a path segment is not.
 
 use axum::{
     extract::{Path, State},

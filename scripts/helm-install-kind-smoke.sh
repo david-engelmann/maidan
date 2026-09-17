@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Helm install smoke on kind (Cluster 55): build image, install chart, curl /health.
+# Helm install smoke on kind: build image, install chart, curl /health.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,4 +1,4 @@
-//! Cluster 397.7: a derived token inherits every limit the parent carried.
+//! A derived token inherits every limit the parent carried.
 //!
 //! `attenuate` deliberately permits an equal capability list — a no-op re-issue
 //! is a legitimate way to get a fresh secret. That makes any bound the parent
@@ -227,8 +227,8 @@ async fn a_derived_token_inherits_the_parents_quotas() {
     assert_eq!(derived["quotas"][0]["capability"], capability::MESSAGE_POST);
 }
 
-/// Cluster 401.3: revoking a token kills everything derived from it, and the
-/// derived credential actually stops working — not merely gets a column set.
+/// Revoking a token kills everything derived from it, and the derived
+/// credential actually stops working — not merely gets a column set.
 ///
 /// The parent link used to live only in audit metadata, so revocation could not
 /// traverse it and a child outlived the credential it was minted from. Cluster

@@ -180,15 +180,15 @@ async fn load_task(state: &AppState, task_id: &str) -> Result<Task, String> {
     serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
-/// A pending held gate (Cluster 350) rendered as a synthetic A2A **task** in
-/// `input-required` state (Cluster 352 / H12), so an external agent polling
-/// `tasks/list` (or `tasks/get`) can discover that a unit of work is waiting on a
-/// human decision. The task's id **is the gate id** (a distinct UUID namespace
-/// from real task ids), its `context_id` is the gate's thread, and it is always
-/// non-terminal while the gate is pending — a resolved gate stops appearing (no
-/// stale status). The prompt rides as the status message. Maidan A2A tasks are
-/// otherwise per-message deliveries that complete synchronously, so a gate cannot
-/// pause a real task — it is its own task.
+/// A pending held gate rendered as a synthetic A2A **task** in `input-required`
+/// state, so an external agent polling `tasks/list` (or `tasks/get`) can
+/// discover that a unit of work is waiting on a human decision. The task's id
+/// **is the gate id** (a distinct UUID namespace from real task ids), its
+/// `context_id` is the gate's thread, and it is always non-terminal while the
+/// gate is pending — a resolved gate stops appearing (no stale status). The
+/// prompt rides as the status message. Maidan A2A tasks are otherwise
+/// per-message deliveries that complete synchronously, so a gate cannot pause a
+/// real task — it is its own task.
 fn gate_as_task(gate: &ApprovalGate) -> Task {
     Task {
         id: gate.id.0.to_string(),
@@ -240,8 +240,8 @@ async fn ensure_task_workspace_access(
                 if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
                     return Err(JsonRpcResponse::error(id.clone(), -32001, e.to_string()));
                 }
-                // Cluster 179: per-channel access on the A2A read path too — a
-                // task's context thread may live in a private channel.
+                // Per-channel access on the A2A read path too — a task's
+                // context thread may live in a private channel.
                 if let Err(e) = maidan_auth::ensure_thread_access(
                     state.store.as_ref(),
                     auth,
@@ -287,8 +287,8 @@ async fn post_a2a_message(
     let body_text = message_text(&req.message).ok_or_else(|| {
         JsonRpcResponse::error(id.clone(), ERR_PARAMS, "message must include a text part")
     })?;
-    // Preserve the A2A message's parts as structured content (Cluster 194); A2A
-    // ingest previously dropped them (`content: None`), unlike REST/MCP posts.
+    // Preserve the A2A message's parts as structured content; A2A ingest
+    // previously dropped them (`content: None`), unlike REST/MCP posts.
     let content = message_content(&req.message);
     let mut metadata = serde_json::json!({ "a2a": true });
     if !req.message.citations.is_empty() {
@@ -310,8 +310,8 @@ async fn post_a2a_message(
     if let Err(e) = auth.ensure_workspace(thread_ctx.workspace_id) {
         return Err(JsonRpcResponse::error(id, -32001, e.to_string()));
     }
-    // Cluster 179: enforce per-channel access on the A2A ingress — the RBAC arc
-    // (160–165) gated REST/MCP/WS/references but not this external surface, so a
+    // Enforce per-channel access on the A2A ingress — the RBAC arc (160–165)
+    // gated REST/MCP/WS/references but not this external surface, so a
     // `message:post` token could post into a private channel it isn't a member
     // of. Mirror the REST thread-route check.
     if let Err(e) =
@@ -334,10 +334,11 @@ async fn post_a2a_message(
         .await
         .map_err(|e| JsonRpcResponse::error(id.clone(), ERR_INTERNAL, e.to_string()))?;
     crate::routes::publish_stored(state, stored).await;
-    // Egress (Cluster 267): render the outbound A2A message from the STORED message's
-    // canonical content (content → parts), not a raw echo of the request — so an A2A
-    // consumer sees Maidan's stored representation. Falls back to the body when there
-    // are no content blocks. Faithful round-trip for A2A-ingested (text) messages.
+    // Egress: render the outbound A2A message from the STORED message's
+    // canonical content (content → parts), not a raw echo of the request — so
+    // an A2A consumer sees Maidan's stored representation. Falls back to the
+    // body when there are no content blocks. Faithful round-trip for
+    // A2A-ingested (text) messages.
     let out_parts = message_parts_from_content(posted.content.as_deref().unwrap_or(&[]));
     let out_parts = if out_parts.is_empty() {
         vec![TextPart {
@@ -470,8 +471,8 @@ pub(crate) async fn dispatch_get_task(
             ensure_task_workspace_access(state, auth, &id, &req.id, &task).await?;
             task
         }
-        // H12: the id may be a pending held gate surfaced as an `input-required`
-        // task (Cluster 352) rather than a real per-message task.
+        // H12: the id may be a pending held gate surfaced as an
+        // `input-required` task rather than a real per-message task.
         Err(_) => {
             let Some(gate_id) = Uuid::parse_str(&req.id).ok().map(ApprovalGateId) else {
                 return Err(JsonRpcResponse::error(
@@ -509,12 +510,13 @@ pub(crate) async fn dispatch_get_task(
 }
 
 /// A2A `ListTasks`: the authenticated workspace's tasks, filtered by optional
-/// `contextId` + `status`, and by per-channel access (a task whose context thread
-/// the caller cannot read is dropped). Pending held gates lead the page as
-/// synthetic `input-required` tasks (Cluster 352 / H12), so a caller can query
-/// `status=input-required` to find exactly the gates. `pageSize` defaults to 50,
-/// clamped to 1..=100 (the A2A spec max). Single-page for now (`nextPageToken`
-/// always empty; `statusTimestampAfter` + real paging land in the H12 follow-ups).
+/// `contextId` + `status`, and by per-channel access (a task whose context
+/// thread the caller cannot read is dropped). Pending held gates lead the page
+/// as synthetic `input-required` tasks, so a caller can query
+/// `status=input-required` to find exactly the gates. `pageSize` defaults to
+/// 50, clamped to 1..=100 (the A2A spec max). Single-page for now
+/// (`nextPageToken` always empty; `statusTimestampAfter` + real paging land in
+/// the H12 follow-ups).
 pub(crate) async fn dispatch_list_tasks(
     state: &AppState,
     auth: &AuthContext,
@@ -536,7 +538,7 @@ pub(crate) async fn dispatch_list_tasks(
         })?
     };
     let page_size = req.page_size.unwrap_or(50).clamp(1, 100);
-    // Cluster 352.2 / H12: an optional `status` filter (kebab/enum/full form).
+    // An optional `status` filter (kebab/enum/full form).
     let status_filter = match req.status.as_deref() {
         None => None,
         Some(s) => match maidan_a2a::normalize_task_state(s) {
@@ -550,8 +552,8 @@ pub(crate) async fn dispatch_list_tasks(
             }
         },
     };
-    // Cluster 352.4: `statusTimestampAfter` — keep only tasks whose status changed
-    // strictly after this instant.
+    // `statusTimestampAfter` — keep only tasks whose status changed strictly
+    // after this instant.
     let updated_after = match req.status_timestamp_after.as_deref() {
         None => None,
         Some(s) => match chrono::DateTime::parse_from_rfc3339(s) {
@@ -985,10 +987,10 @@ pub(crate) fn rest_id() -> JsonRpcId {
 
 /// Map an operation result to a REST HTTP response. `result` → 200; error → an
 /// HTTP status for Maidan's JSON-RPC code. NOTE Maidan overloads `-32001` for
-/// auth/capability failures, so it maps to 403 (not the spec's 404 TaskNotFound).
-/// The A2A HTTP+JSON/REST binding (§11) media type. `Json(...)` would set
-/// `application/json` (what the JSON-RPC transport uses); the REST binding is
-/// distinguished by `application/a2a+json` (Cluster 352.3 / H12).
+/// auth/capability failures, so it maps to 403 (not the spec's 404
+/// TaskNotFound). The A2A HTTP+JSON/REST binding (§11) media type. `Json(...)`
+/// would set `application/json` (what the JSON-RPC transport uses); the REST
+/// binding is distinguished by `application/a2a+json`.
 const A2A_JSON_MEDIA_TYPE: &str = "application/a2a+json";
 
 /// Serialize a JSON body with the A2A REST media type instead of `application/json`.

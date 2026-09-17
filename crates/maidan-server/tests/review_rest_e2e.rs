@@ -1,7 +1,7 @@
-//! Required-reviewers over HTTP (Cluster 375.3, Wave 2 #22). Auth ENABLED
-//! (reviewer_id is a real member FK): set/get the requirement, name a reviewer,
-//! submit a review as that reviewer, and watch review-status flip to met. The
-//! close-gate itself is store-tested (Cluster 375.2 review_gate).
+//! Required-reviewers over HTTP. Auth ENABLED (reviewer_id is a real member
+//! FK): set/get the requirement, name a reviewer, submit a review as that
+//! reviewer, and watch review-status flip to met. The close-gate itself is
+//! store-tested.
 
 use std::{
     net::SocketAddr,

@@ -1,4 +1,4 @@
-# Search bench baseline (Cluster 109.0.2, Track U)
+# Search bench baseline
 
 Run:
 
@@ -11,7 +11,7 @@ query latency on an in-memory SQLite store seeded with 200 messages + embeddings
 SQLite keeps it self-contained (no testcontainer) and reproducible in CI.
 
 These numbers are **machine-specific** — treat them as a relative reference for
-the Cluster 120 perf budgets, not an absolute SLA. Re-run on the target hardware
+the perf budgets, not an absolute SLA. Re-run on the target hardware
 to establish the local floor.
 
 ## Reference run (Apple Silicon dev laptop, release profile, 20 samples)
@@ -24,8 +24,8 @@ to establish the local floor.
 ## Postgres / pgvector
 
 Postgres lexical (`tsvector` + GIN) and semantic (`pgvector` HNSW) latency
-depends on the Cluster 109.0.1 tuning knobs — `MAIDAN_HNSW_M`,
+depends on the HNSW tuning knobs — `MAIDAN_HNSW_M`,
 `MAIDAN_HNSW_EF_CONSTRUCTION` (build), and `MAIDAN_HNSW_EF_SEARCH` (query) — and
 must be measured against a real instance with representative data volume. This
-SQLite bench is the CI-friendly floor; the gate (Cluster 120) records the
+SQLite bench is the CI-friendly floor; the gate records the
 Postgres budget separately.

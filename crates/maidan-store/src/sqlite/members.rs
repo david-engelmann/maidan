@@ -27,8 +27,7 @@ pub async fn create(pool: &SqlitePool, new: NewMember) -> Result<Member, StoreEr
     row_to_member(&row)
 }
 
-/// Insert a member and append its `MemberJoined` event in one transaction
-/// (Cluster 213 transactional outbox).
+/// Insert a member and append its `MemberJoined` event in one transaction.
 pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewMember,

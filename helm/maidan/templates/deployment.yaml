@@ -42,7 +42,7 @@ spec:
           # readiness uses the DEEP /health/ready (dependencies OK). This keeps a
           # degraded dependency (DB blip) from failing liveness and triggering a
           # restart storm — the pod drains from Service endpoints instead, and
-          # recovers when the dependency does (Cluster 185).
+          # recovers when the dependency does.
           startupProbe:
             httpGet:
               path: /health/live

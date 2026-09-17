@@ -26,7 +26,7 @@ const SQLITE_ONLY_MIGRATIONS: &[&str] = &[];
 /// - `pragmas` (SQLite only): per-connection `PRAGMA` setup (foreign_keys,
 ///   busy_timeout). Postgres has no connection-pragma equivalent.
 /// - `replication` (Postgres only): WAL-LSN helpers for streaming-replica routing
-///   (`pg_current_wal_lsn`/`pg_last_wal_replay_lsn`, Cluster 261). SQLite has no
+///   (`pg_current_wal_lsn`/`pg_last_wal_replay_lsn`). SQLite has no
 ///   streaming replication, so there is no counterpart.
 const POSTGRES_ONLY_MODULES: &[&str] = &["replication"];
 const SQLITE_ONLY_MODULES: &[&str] = &["pragmas"];

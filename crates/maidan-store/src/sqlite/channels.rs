@@ -27,8 +27,8 @@ pub async fn create(pool: &SqlitePool, new: NewChannel) -> Result<Channel, Store
     Ok(row_to_channel(&row))
 }
 
-/// Insert a channel and append its `ChannelCreated` event in one transaction
-/// (Cluster 205 transactional outbox) — the row and the event commit atomically.
+/// Insert a channel and append its `ChannelCreated` event in one transaction —
+/// the row and the event commit atomically.
 pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewChannel,

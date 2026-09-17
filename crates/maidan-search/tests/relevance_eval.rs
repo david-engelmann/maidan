@@ -1,8 +1,8 @@
-//! Relevance eval harness (Cluster 118): a small labeled corpus + a controlled
-//! embedding so lexical / semantic / hybrid rankings are deterministic and
-//! comparable. Guards against ranking regressions — especially that hybrid
-//! never recalls *fewer* relevant docs than either single mode, and recovers
-//! synonym matches that pure lexical search misses.
+//! Relevance eval harness: a small labeled corpus + a controlled embedding so
+//! lexical / semantic / hybrid rankings are deterministic and comparable.
+//! Guards against ranking regressions — especially that hybrid never recalls
+//! *fewer* relevant docs than either single mode, and recovers synonym matches
+//! that pure lexical search misses.
 //!
 //! The `SynonymProvider` embeds text as an L2-normalized bag-of-concepts over a
 //! tiny vocabulary with synonym folding (car/automobile/sedan → one dim), so

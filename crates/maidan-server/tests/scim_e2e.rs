@@ -1,7 +1,7 @@
-//! SCIM 2.0 provisioning over HTTP (Cluster 366, SCIM-as-OIDC-P3): the full
-//! lifecycle — create, read, list-with-filter, duplicate 409, PATCH deactivate
-//! (revokes the member's tokens), delete — plus the token:admin gate. Auth-enabled
-//! with a minted token:admin bearer.
+//! SCIM 2.0 provisioning over HTTP: the full lifecycle — create, read,
+//! list-with-filter, duplicate 409, PATCH deactivate (revokes the member's
+//! tokens), delete — plus the token:admin gate. Auth-enabled with a minted
+//! token:admin bearer.
 
 use std::{
     net::SocketAddr,

@@ -1,8 +1,8 @@
-//! Cluster 253: presence-aware email routing. With
-//! `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS` set, `deliver_notification_email` skips a
-//! recipient who was seen within the window (they are active — the in-app
-//! notification suffices) and still emails one who was not. In its own test
-//! binary so the process-global env var can't race the other router tests.
+//! Presence-aware email routing. With `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS` set,
+//! `deliver_notification_email` skips a recipient who was seen within the
+//! window (they are active — the in-app notification suffices) and still emails
+//! one who was not. In its own test binary so the process-global env var can't
+//! race the other router tests.
 
 use std::sync::Arc;
 
@@ -33,7 +33,7 @@ impl maidan_server::mail::MailTransport for RecordingMailer {
 #[tokio::test]
 async fn presence_window_skips_email_for_recently_seen_member() {
     // Enable the guard for this test binary. A member seen within 300 s is
-    // treated as active; unset/0 would send unconditionally (Cluster 249).
+    // treated as active; unset/0 would send unconditionally.
     std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300");
 
     let pool = SqlitePoolOptions::new()
@@ -110,8 +110,8 @@ async fn presence_window_skips_email_for_recently_seen_member() {
     )
     .await;
 
-    // Delivery is durable now (Cluster 305): the present member was skipped before
-    // enqueue, so draining the outbox emails only the away member.
+    // Delivery is durable now: the present member was skipped before enqueue,
+    // so draining the outbox emails only the away member.
     maidan_server::mail_worker::sweep_once(&state).await;
 
     let sent = mailer.sent.lock().unwrap();

@@ -1,12 +1,12 @@
-//! Fetch and run a WASI slash handler (Cluster 399.2).
+//! Fetch and run a WASI slash handler.
 //!
 //! The module bytes live in the existing content-addressed artifact store —
 //! `handler_target` is a sha256, not a URL — so installing a handler is an
-//! artifact upload plus a registration, and the Cluster-204 access link is what
-//! makes a module belong to a workspace.
+//! artifact upload plus a registration, and the access link is what makes a
+//! module belong to a workspace.
 //!
-//! The sandbox itself is [`maidan_wasi`]; this module is only the loader and the
-//! envelope mapping.
+//! The sandbox itself is [`maidan_wasi`]; this module is only the loader and
+//! the envelope mapping.
 
 use maidan_artifacts::Sha256;
 use maidan_router::ParsedSlashCommand;
@@ -49,9 +49,9 @@ async fn load_module(
         .await
     {
         Ok(true) => {}
-        // Missing link and missing artifact are the same answer on purpose
-        // (Cluster 204): a registration must not be able to confirm that some
-        // other tenant's sha exists.
+        // Missing link and missing artifact are the same answer on purpose: a
+        // registration must not be able to confirm that some other tenant's sha
+        // exists.
         Ok(false) => {
             return Err(WasiResult::fail(
                 WasiFailureKind::InvalidModule,

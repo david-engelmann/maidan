@@ -1,5 +1,4 @@
-//! Workspace import (Cluster 270) — the write-side counterpart to the Cluster-187
-//! export. Two modes:
+//! Workspace import — the write-side counterpart to the export. Two modes:
 //!
 //! - **new** (default): every id in the bundle is remapped to a fresh one, so the
 //!   content lands as a brand-new workspace (a clone/fork). Never collides.

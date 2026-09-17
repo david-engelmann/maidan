@@ -1,7 +1,7 @@
-//! The waiting-on-you inbox over REST (Cluster 368, Wave 2 #16): the route composes
-//! a member's assigned non-terminal threads + the workspace's pending approval gates
-//! (mentions are covered by the pure `assemble_waiting_inbox` unit test).
-//! Auth-enabled + self-only, with a minted token that IS the acting member.
+//! The waiting-on-you inbox over REST: the route composes a member's assigned
+//! non-terminal threads + the workspace's pending approval gates (mentions are
+//! covered by the pure `assemble_waiting_inbox` unit test). Auth-enabled +
+//! self-only, with a minted token that IS the acting member.
 
 use std::{
     net::SocketAddr,

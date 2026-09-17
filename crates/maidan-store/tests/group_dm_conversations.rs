@@ -1,4 +1,4 @@
-//! Group DM store parity (Cluster 97).
+//! Group DM store parity.
 
 use std::sync::Arc;
 

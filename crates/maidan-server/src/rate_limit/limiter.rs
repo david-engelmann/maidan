@@ -17,8 +17,8 @@ struct MemoryCounter {
 }
 
 /// When the in-memory bucket map reaches this size, sweep entries whose window
-/// has fully elapsed (Cluster 167). Without this the map grows without bound as
-/// distinct keys — tokens/clients/routes × windows — accumulate: a memory leak.
+/// has fully elapsed. Without this the map grows without bound as distinct keys
+/// — tokens/clients/routes × windows — accumulate: a memory leak.
 const MEMORY_SWEEP_THRESHOLD: usize = 16_384;
 
 static MEMORY_BUCKETS: LazyLock<Mutex<HashMap<String, MemoryCounter>>> =
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn memory_map_evicts_expired_windows_when_large() {
         // A very short window so every key's window elapses immediately, then
-        // insert past the sweep threshold to trigger the retain (Cluster 167).
+        // insert past the sweep threshold to trigger the retain.
         let cfg = WindowConfig {
             max: 100,
             window: Duration::from_nanos(1),

@@ -1,7 +1,6 @@
-//! LandGate gate pointer (Cluster 385, Wave 2 #25 remainder): require
-//! arms the gate; a pass from a land-gate-skilled member ≠ the
-//! implementer is green/landable; amber (flags-then-still-engages) and
-//! fail are not a land. Both backends.
+//! LandGate gate pointer: require arms the gate; a pass from a
+//! land-gate-skilled member ≠ the implementer is green/landable; amber
+//! (flags-then-still-engages) and fail are not a land. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

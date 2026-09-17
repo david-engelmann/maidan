@@ -1,6 +1,6 @@
-//! Cluster 393: REST snapshot + since-LSN catch-up. Graph is admin-gated;
-//! pruned-prefix catch-up fails closed with a snapshot href; a tampered
-//! chain is 409 event-log-broken.
+//! REST snapshot + since-LSN catch-up. Graph is admin-gated; pruned-prefix
+//! catch-up fails closed with a snapshot href; a tampered chain is 409
+//! event-log-broken.
 
 use std::{
     net::SocketAddr,

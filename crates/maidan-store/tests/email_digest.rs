@@ -1,5 +1,5 @@
-//! Email digest data model (Cluster 254, Arc I): delivery-mode preference,
-//! digest watermark, and the "due for digest" enumeration. Both backends.
+//! Email digest data model: delivery-mode preference, digest watermark, and the
+//! "due for digest" enumeration. Both backends.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};

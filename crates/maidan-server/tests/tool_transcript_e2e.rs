@@ -1,4 +1,4 @@
-//! Cluster 197: thread tool-call transcript over REST + MCP.
+//! Thread tool-call transcript over REST + MCP.
 //!
 //! Auth ENABLED. Proves the transcript correlates `ToolUse`/`ToolResult` blocks
 //! across a thread's messages on both surfaces, and that a non-member of a

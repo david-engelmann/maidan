@@ -1,4 +1,4 @@
-//! Operator replay for a result-delivery row (Cluster 379.5).
+//! Operator replay for a result-delivery row.
 //!
 //! Arming (`arm_result_delivery`) is the "is this a new result?" predicate and
 //! only wins when `revision > armed_revision`. Replay of the *same* revision
@@ -8,10 +8,10 @@
 //! event's log id is a no-op if that row still exists (even `dead`).
 //!
 //! **`deliver_to` selects; the workspace allowlist authorizes** — the same
-//! check as the 379.3 trigger. A replay against a target the workspace has
-//! not blessed stays skipped (a recorded normal outcome). An unroutable row
-//! (unknown surface, unusable detail) cannot be enqueued; the caller maps
-//! that to 400 / InvalidParams.
+//! check as the 379.3 trigger. A replay against a target the workspace has not
+//! blessed stays skipped (a recorded normal outcome). An unroutable row
+//! (unknown surface, unusable detail) cannot be enqueued; the caller maps that
+//! to 400 / InvalidParams.
 
 use chrono::Utc;
 use maidan_types::{

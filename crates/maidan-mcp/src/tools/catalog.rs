@@ -2152,13 +2152,14 @@ pub fn catalog() -> Vec<Value> {
     ]
 }
 
-/// The property names a tool's `inputSchema` declares (Cluster 398.6).
+/// The property names a tool's `inputSchema` declares.
 ///
 /// The slash→MCP bridge uses this to inject only the context a tool actually
 /// accepts. It used to inject `workspace_id`, `channel_id`, `thread_id` and
 /// `author_id` into *every* call and rely on each tool silently discarding the
-/// ones it does not declare — which stopped being true once the argument structs
-/// began rejecting unknown fields, and was never a property worth depending on.
+/// ones it does not declare — which stopped being true once the argument
+/// structs began rejecting unknown fields, and was never a property worth
+/// depending on.
 pub fn declared_arguments(tool: &str) -> Option<std::collections::HashSet<String>> {
     catalog().into_iter().find_map(|t| {
         if t.get("name").and_then(|n| n.as_str()) != Some(tool) {

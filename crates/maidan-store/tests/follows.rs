@@ -1,5 +1,5 @@
-//! Subscription/follows (Cluster 244, Arc H): follow/unfollow a channel or thread,
-//! list a member's follows, and the router's follower-set queries. Both backends.
+//! Subscription/follows: follow/unfollow a channel or thread, list a member's
+//! follows, and the router's follower-set queries. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
@@ -138,7 +138,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("tf2")
         .is_empty());
 
-    // Leaf mute (Cluster 356, F7) — independent of follows.
+    // Leaf mute — independent of follows.
     assert!(!store
         .is_thread_muted(a.id, thread.id)
         .await
@@ -175,7 +175,7 @@ async fn run_suite(store: &dyn Store) {
         vec![b.id]
     );
 
-    // Per-channel mute (Cluster 357, N3) — independent of follows and thread mute.
+    // Per-channel mute — independent of follows and thread mute.
     assert!(!store
         .is_channel_muted(a.id, channel.id)
         .await

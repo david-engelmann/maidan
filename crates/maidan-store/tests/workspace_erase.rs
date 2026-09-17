@@ -1,4 +1,4 @@
-//! Workspace full erasure deletes the workspace row (Cluster 53).
+//! Workspace full erasure deletes the workspace row.
 
 use maidan_auth::hash_secret;
 use maidan_store::{prelude::*, run_sqlite_migrations};

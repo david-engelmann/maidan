@@ -1,6 +1,5 @@
-//! Land-gate pointer (Cluster 385, renamed Cluster 389). One row
-//! per thread: presence arms the close-gate; pointer columns stay NULL
-//! until a land-gate-skilled member records pass/fail + land.
+//! Land-gate pointer. One row per thread: presence arms the close-gate; pointer
+//! columns stay NULL until a land-gate-skilled member records pass/fail + land.
 //! See the SQLite twin.
 
 use chrono::{DateTime, Utc};
@@ -68,8 +67,8 @@ async fn standing_for(pool: &PgPool, thread_id: ThreadId) -> Result<LandGateStan
         Some(id) => recorder_has_skill(pool, id).await?,
         None => false,
     };
-    // Cluster 401.2: the durable half of "not the implementer". `assignee_id`
-    // above is the live holder, which a release clears.
+    // The durable half of "not the implementer". `assignee_id` above is the
+    // live holder, which a release clears.
     let worked = match recorded.as_ref().map(|r| r.recorded_by) {
         Some(id) => thread_workers::has_worked(pool, thread_id, id).await?,
         None => false,
@@ -145,9 +144,9 @@ pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreErro
     Ok(done.rows_affected() > 0)
 }
 
-/// Cluster 385.2: refuse `closed` when a LandGate row exists and is not a
-/// qualifying green pass. Runs on the transition's own tx so it cannot be
-/// raced. No row → additive (close as before).
+/// Refuse `closed` when a LandGate row exists and is not a qualifying green
+/// pass. Runs on the transition's own tx so it cannot be raced. No row →
+/// additive (close as before).
 pub async fn gate_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
@@ -194,11 +193,11 @@ pub async fn gate_in_tx(
     .bind(LAND_GATE_SKILL)
     .fetch_one(&mut **tx)
     .await?;
-    // Cluster 401.2: did the recorder ever hold this thread? `assignee_id` is
-    // the live holder and a release clears it, so without this an implementer
-    // could release the claim and then pass their own work through the gate.
-    // Read on the enforcing transaction so a concurrent release cannot land
-    // between the check and the close.
+    // Did the recorder ever hold this thread? `assignee_id` is the live holder
+    // and a release clears it, so without this an implementer could release the
+    // claim and then pass their own work through the gate. Read on the
+    // enforcing transaction so a concurrent release cannot land between the
+    // check and the close.
     let worked = thread_workers::has_worked_in_tx(tx, thread_id, recorded_by).await?;
     if is_qualifying_pass(
         status,

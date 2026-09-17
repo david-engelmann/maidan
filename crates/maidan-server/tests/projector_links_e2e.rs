@@ -1,7 +1,7 @@
-//! Cluster 346: projector link-management REST — link/list/unlink a Slack channel
-//! or GitHub issue to a Maidan thread. Without this surface the Slack/GitHub
-//! projector egress could never fire (the link table could not be populated). The
-//! test proves a created link is exactly what the egress reverse-lookup reads.
+//! Projector link-management REST — link/list/unlink a Slack channel or GitHub
+//! issue to a Maidan thread. Without this surface the Slack/GitHub projector
+//! egress could never fire (the link table could not be populated). The test
+//! proves a created link is exactly what the egress reverse-lookup reads.
 
 use std::{sync::Arc, time::Duration};
 

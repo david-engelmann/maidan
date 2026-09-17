@@ -1,4 +1,4 @@
-//! Cross-replica MCP resource notifications (Cluster 102.0.4).
+//! Cross-replica MCP resource notifications.
 //!
 //! Two `McpServer`s sharing one Postgres database stand in for two server
 //! replicas behind a load balancer, each with its own

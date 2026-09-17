@@ -23,8 +23,8 @@ pub async fn record(
     Ok(())
 }
 
-/// Record a mention and append its `MentionRecorded` event in one transaction
-/// (Cluster 207). `member_id` is the mentioned party.
+/// Record a mention and append its `MentionRecorded` event in one transaction.
+/// `member_id` is the mentioned party.
 pub async fn record_with_event(
     pool: &PgPool,
     message_id: MessageId,

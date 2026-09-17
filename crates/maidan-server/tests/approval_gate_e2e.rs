@@ -1,9 +1,9 @@
-//! The held gate over HTTP (Cluster 350.3): a human lists pending approval
-//! gates (each with a server-issued `request_state`) and answers one
-//! accept/decline/cancel. Runs with auth ENABLED so `resolved_by` is a real
-//! member and the HMAC `request_state` has a configured secret. Covers the CAS
-//! no-op on a double-answer (silence is not consent), a tampered `request_state`
-//! (403), and an unknown action (400).
+//! The held gate over HTTP: a human lists pending approval gates (each with a
+//! server-issued `request_state`) and answers one accept/decline/cancel. Runs
+//! with auth ENABLED so `resolved_by` is a real member and the HMAC
+//! `request_state` has a configured secret. Covers the CAS no-op on a
+//! double-answer (silence is not consent), a tampered `request_state` (403),
+//! and an unknown action (400).
 
 use std::{
     net::SocketAddr,

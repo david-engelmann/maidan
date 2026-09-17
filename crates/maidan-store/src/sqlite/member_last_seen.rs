@@ -4,7 +4,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
 
-/// Record that a member was just seen (Cluster 252). Upsert to `now()`.
+/// Record that a member was just seen. Upsert to `now()`.
 pub async fn touch(pool: &SqlitePool, member_id: MemberId) -> Result<(), StoreError> {
     let now = Utc::now().to_rfc3339();
     sqlx::query(
@@ -19,7 +19,7 @@ pub async fn touch(pool: &SqlitePool, member_id: MemberId) -> Result<(), StoreEr
     Ok(())
 }
 
-/// A member's last-seen instant, or `None` if never seen (Cluster 252).
+/// A member's last-seen instant, or `None` if never seen.
 pub async fn get(
     pool: &SqlitePool,
     member_id: MemberId,

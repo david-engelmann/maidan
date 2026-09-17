@@ -1,9 +1,9 @@
-//! Signed workspace-export envelope (Cluster 391, Wave 3 #31).
+//! Signed workspace-export envelope.
 //!
 //! The artifact a blank instance verifies without calling the origin. The
-//! Ed25519 signature covers every field except `content_sha256` and
-//! `signature` (see [`statement_value`]). Token policy is part of the
-//! signed statement so it cannot be rewritten after the fact.
+//! Ed25519 signature covers every field except `content_sha256` and `signature`
+//! (see [`statement_value`]). Token policy is part of the signed statement so
+//! it cannot be rewritten after the fact.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

@@ -9,8 +9,8 @@ use crate::error::StoreError;
 
 const COLS: &str = "id, workspace_id, channel_id, title, interval_secs, next_run_at, last_run_at, active, created_by, created_at, updated_at, recipe_id";
 
-/// Create a task schedule (Cluster 226). Starts active; `last_run_at` is NULL
-/// until the sweeper first fires it.
+/// Create a task schedule. Starts active; `last_run_at` is NULL until the
+/// sweeper first fires it.
 pub async fn create(pool: &SqlitePool, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError> {
     let id = TaskScheduleId::new();
     let now = Utc::now().to_rfc3339();
@@ -68,8 +68,8 @@ pub async fn delete(pool: &SqlitePool, id: TaskScheduleId) -> Result<bool, Store
     Ok(res.rows_affected() > 0)
 }
 
-/// Active schedules whose `next_run_at` has arrived, oldest first (Cluster 226).
-/// The sweeper's due-scan; `limit` bounds a batch.
+/// Active schedules whose `next_run_at` has arrived, oldest first. The
+/// sweeper's due-scan; `limit` bounds a batch.
 pub async fn due(
     pool: &SqlitePool,
     now: DateTime<Utc>,
@@ -88,9 +88,9 @@ pub async fn due(
     Ok(rows.iter().map(row_to_schedule).collect())
 }
 
-/// Atomically claim + advance the oldest due schedule (Cluster 227). SQLite
-/// serializes writers, so selecting the candidate then updating it inside one
-/// transaction cannot double-claim. Recurring → `next_run_at = now + interval`
+/// Atomically claim + advance the oldest due schedule. SQLite serializes
+/// writers, so selecting the candidate then updating it inside one transaction
+/// cannot double-claim. Recurring → `next_run_at = now + interval`
 /// (fire-once-per-tick); one-shot → `active = 0`.
 pub async fn claim_next_due(
     pool: &SqlitePool,
@@ -136,7 +136,7 @@ pub async fn claim_next_due(
     Ok(Some(row_to_schedule(&row)))
 }
 
-/// Pause / resume a schedule (Cluster 228).
+/// Pause / resume a schedule.
 pub async fn set_active(
     pool: &SqlitePool,
     id: TaskScheduleId,

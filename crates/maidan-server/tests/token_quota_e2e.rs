@@ -1,4 +1,4 @@
-//! Per-token capability quotas return 429 when exceeded (Cluster 54).
+//! Per-token capability quotas return 429 when exceeded.
 
 use std::sync::{atomic::AtomicI64, Arc};
 

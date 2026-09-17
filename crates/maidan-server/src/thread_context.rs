@@ -9,10 +9,10 @@ use maidan_types::*;
 
 use crate::error::ApiError;
 
-/// Max concurrent per-thread context builds inside a workspace-context pack
-/// (Cluster 199). Each build is ~7 store round-trips; bounding the fan-out keeps
-/// a single request from saturating the connection pool while still collapsing
-/// the sequential per-thread latency of a page.
+/// Max concurrent per-thread context builds inside a workspace-context pack.
+/// Each build is ~7 store round-trips; bounding the fan-out keeps a single
+/// request from saturating the connection pool while still collapsing the
+/// sequential per-thread latency of a page.
 const CONTEXT_THREAD_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
@@ -66,30 +66,29 @@ pub struct ThreadContext {
     pub references: Vec<Reference>,
     pub artifacts: Vec<Artifact>,
     pub fsm: ThreadFsmContext,
-    /// The workspace glossary (Cluster 323) — canonical term definitions grounding
-    /// the pack in shared vocabulary. Omitted when empty or when the caller opts
-    /// out (`include_glossary=false`). On a workspace-context pack this rides the
+    /// The workspace glossary — canonical term definitions grounding the pack
+    /// in shared vocabulary. Omitted when empty or when the caller opts out
+    /// (`include_glossary=false`). On a workspace-context pack this rides the
     /// top-level `WorkspaceContext.glossary` instead (not repeated per thread).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub glossary: Vec<GlossaryTerm>,
-    /// Set when a `token_budget` folded the message page (Cluster 360): an
-    /// auditable record of the elided middle. Absent when the pack fit its budget
-    /// or no budget was given. The kept `messages` keep the thread's opening
-    /// message and its most-recent tail.
+    /// Set when a `token_budget` folded the message page: an auditable record
+    /// of the elided middle. Absent when the pack fit its budget or no budget
+    /// was given. The kept `messages` keep the thread's opening message and its
+    /// most-recent tail.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elision: Option<PackElision>,
-    /// Grounding for a child thread (Cluster 360): a compact orientation to the
-    /// parent it was spawned from (the parent's opening ask + latest decision).
-    /// Present only for a thread whose parent shares its (non-DM) channel, and only
-    /// when requested (`include_parent_grounding`, default true; suppressed in a
+    /// Grounding for a child thread: a compact orientation to the parent it was
+    /// spawned from (the parent's opening ask + latest decision). Present only
+    /// for a thread whose parent shares its (non-DM) channel, and only when
+    /// requested (`include_parent_grounding`, default true; suppressed in a
     /// workspace pack). Absent for root threads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_grounding: Option<ParentGrounding>,
-    /// In-channel accepted/closed decisions (Cluster 382, Wave 2 #24): token-lean
-    /// teasers so a fresh `claim_next` claimer sees what the channel already
-    /// decided. Default on for a live single-thread pack; omitted when empty,
-    /// opted out, as-of, workspace-nested, or DM (`__dm__`). Does not inline
-    /// full result JSON.
+    /// In-channel accepted/closed decisions: token-lean teasers so a fresh
+    /// `claim_next` claimer sees what the channel already decided. Default on
+    /// for a live single-thread pack; omitted when empty, opted out, as-of,
+    /// workspace-nested, or DM (`__dm__`). Does not inline full result JSON.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub accepted_decisions: Vec<AcceptedDecision>,
     /// Present when more messages exist (`message_id` cursor for the next page).
@@ -102,8 +101,8 @@ pub struct WorkspaceContext {
     pub workspace: Workspace,
     pub channels: Vec<Channel>,
     pub threads: Vec<ThreadContext>,
-    /// The workspace glossary (Cluster 323), carried once here rather than on each
-    /// nested thread pack. Omitted when empty or when `include_glossary=false`.
+    /// The workspace glossary, carried once here rather than on each nested
+    /// thread pack. Omitted when empty or when `include_glossary=false`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub glossary: Vec<GlossaryTerm>,
     /// Present when more threads exist (`thread_id` cursor for the next page).
@@ -119,30 +118,30 @@ pub struct ThreadContextLimits {
     /// Include full `body_before`/`body_after` on each edit. Default `false`:
     /// edits carry metadata only. The single biggest token lever on a pack.
     pub include_edits: bool,
-    /// Attach the workspace glossary to the pack (Cluster 323). Default `true`.
-    /// A workspace-context build sets this `false` on its nested thread builds so
+    /// Attach the workspace glossary to the pack. Default `true`. A
+    /// workspace-context build sets this `false` on its nested thread builds so
     /// the glossary rides the top level once, not per thread.
     pub include_glossary: bool,
-    /// As-of context replay (Cluster 326): when set, reconstruct the thread as it
-    /// stood at this event-log id — deterministic over the immutable log, no fresh
+    /// As-of context replay: when set, reconstruct the thread as it stood at
+    /// this event-log id — deterministic over the immutable log, no fresh
     /// search. `None` = the live pack.
     pub as_of: Option<i64>,
-    /// Token budget for the message page (Cluster 360, G-dev-1). When set, a page
-    /// whose estimated tokens exceed it is folded to fit — the opening message and
-    /// the most-recent tail are kept, the middle is elided into
-    /// `ThreadContext.elision`. `None` = no fold (cap by rows only). Applies per
-    /// thread, so a workspace-context pack budgets each nested thread.
+    /// Token budget for the message page. When set, a page whose estimated
+    /// tokens exceed it is folded to fit — the opening message and the
+    /// most-recent tail are kept, the middle is elided into
+    /// `ThreadContext.elision`. `None` = no fold (cap by rows only). Applies
+    /// per thread, so a workspace-context pack budgets each nested thread.
     pub token_budget: Option<i64>,
-    /// Attach parent grounding to a child thread's pack (Cluster 360). Default
-    /// `true`; a workspace-context build sets this `false` on its nested threads
-    /// (grounding is the focused-claimer view, not the firehose). Absent for root
-    /// threads and withheld for a cross-channel or DM parent (see
+    /// Attach parent grounding to a child thread's pack. Default `true`; a
+    /// workspace-context build sets this `false` on its nested threads
+    /// (grounding is the focused-claimer view, not the firehose). Absent for
+    /// root threads and withheld for a cross-channel or DM parent (see
     /// [`maidan_types::ParentGrounding::assemble`]).
     pub include_parent_grounding: bool,
-    /// Attach in-channel accepted/closed decisions (Cluster 382). Default
-    /// `true` on a live single-thread pack; a workspace-context build sets this
-    /// `false` on nested threads (orientation for the focused claimer, not the
-    /// firehose). Withheld for DM channels.
+    /// Attach in-channel accepted/closed decisions. Default `true` on a live
+    /// single-thread pack; a workspace-context build sets this `false` on
+    /// nested threads (orientation for the focused claimer, not the firehose).
+    /// Withheld for DM channels.
     pub include_accepted_decisions: bool,
 }
 
@@ -189,9 +188,9 @@ pub async fn build_thread_context(
         None
     };
     let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold (Cluster 360): keep the opener + recent tail, elide the
-    // middle. Done before the refs/edits/artifacts reads below, so those cover only
-    // the kept messages — the whole pack shrinks, not just the message array.
+    // Token-budget fold: keep the opener + recent tail, elide the middle. Done
+    // before the refs/edits/artifacts reads below, so those cover only the kept
+    // messages — the whole pack shrinks, not just the message array.
     let (messages, elision) = apply_token_budget(messages, limits.token_budget);
     let transitions = store
         .list_thread_transitions(thread_id, limits.transition_limit)
@@ -291,8 +290,8 @@ pub async fn build_thread_context(
     })
 }
 
-/// Apply an optional token budget to a message page (Cluster 360). `None` leaves
-/// the page untouched (cap by rows only); `Some(n)` folds it via
+/// Apply an optional token budget to a message page. `None` leaves the page
+/// untouched (cap by rows only); `Some(n)` folds it via
 /// `maidan_types::fold_messages_to_budget` (clamped to at least 1 token).
 fn apply_token_budget(
     messages: Vec<Message>,
@@ -304,12 +303,12 @@ fn apply_token_budget(
     }
 }
 
-/// Build parent grounding for a child thread (Cluster 360, G-dev-1): the parent's
-/// opening (framing) message and latest decision, for a fresh claimer. Returns
-/// `None` for a root thread, or when the parent is not safely readable via the
-/// child's access — the same-channel + non-DM rule is enforced in
-/// [`maidan_types::ParentGrounding::assemble`], which this fetches the inputs for.
-/// The MCP twin lives in `crates/maidan-mcp/src/context.rs`.
+/// Build parent grounding for a child thread: the parent's opening (framing)
+/// message and latest decision, for a fresh claimer. Returns `None` for a root
+/// thread, or when the parent is not safely readable via the child's access —
+/// the same-channel + non-DM rule is enforced in
+/// [`maidan_types::ParentGrounding::assemble`], which this fetches the inputs
+/// for. The MCP twin lives in `crates/maidan-mcp/src/context.rs`.
 async fn build_parent_grounding(
     store: &dyn Store,
     thread: &Thread,
@@ -345,10 +344,10 @@ async fn build_parent_grounding(
     )
 }
 
-/// In-channel accepted decisions for a live claimer pack (Cluster 382). Skipped
-/// on DM channels: `__dm__` is shared across unrelated conversations, so
-/// same-channel is not same-audience. The claimer's own thread is excluded even
-/// if it already has a result. Store errors fail the pack (same as glossary).
+/// In-channel accepted decisions for a live claimer pack. Skipped on DM
+/// channels: `__dm__` is shared across unrelated conversations, so same-channel
+/// is not same-audience. The claimer's own thread is excluded even if it
+/// already has a result. Store errors fail the pack (same as glossary).
 async fn build_accepted_decisions(
     store: &dyn Store,
     thread: &Thread,
@@ -407,8 +406,8 @@ async fn build_thread_context_as_of(
         None
     };
     let messages: Vec<Message> = all_messages.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold (Cluster 360) — same as the live pack, applied to the
-    // reconstructed page before the additive components are read from it.
+    // Token-budget fold — same as the live pack, applied to the reconstructed
+    // page before the additive components are read from it.
     let (messages, elision) = apply_token_budget(messages, limits.token_budget);
 
     // Edits — immutable rows, cut by the anchor's time; ordered like the live pack.
@@ -540,9 +539,9 @@ pub async fn build_workspace_context(
     } else {
         None
     };
-    // Build each thread's context concurrently (bounded), preserving page order
-    // (Cluster 199). Each build is ~7 independent store round-trips; a page of up
-    // to 50 threads built sequentially stacked that latency linearly. `buffered`
+    // Build each thread's context concurrently (bounded), preserving page
+    // order. Each build is ~7 independent store round-trips; a page of up to 50
+    // threads built sequentially stacked that latency linearly. `buffered`
     // keeps the output in page order and short-circuits on the first error, so
     // the response contract (and the tombstone-mid-build 404) is unchanged.
     let thread_ids: Vec<ThreadId> = page.iter().map(|t| t.id).collect();
@@ -560,8 +559,8 @@ pub async fn build_workspace_context(
     })
 }
 
-// Cluster 335: `artifact_shas_from_metadata` moved to `maidan_types` (in scope via
-// the `use maidan_types::*` glob above) so REST + MCP share one sha extractor.
+// `artifact_shas_from_metadata` moved to `maidan_types` (in scope via the `use
+// maidan_types::*` glob above) so REST + MCP share one sha extractor.
 
 #[cfg(test)]
 mod tests {

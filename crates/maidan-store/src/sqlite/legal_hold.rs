@@ -1,6 +1,6 @@
-//! Legal-hold queries (Cluster 366, T6): the `maidan_legal_holds` table. A
-//! workspace with a row here is under hold; the retention prune SQL (`retention.rs`)
-//! reads this table directly to exempt held workspaces' events and to freeze audit
+//! Legal-hold queries: the `maidan_legal_holds` table. A workspace with a row
+//! here is under hold; the retention prune SQL (`retention.rs`) reads this
+//! table directly to exempt held workspaces' events and to freeze audit
 //! pruning.
 
 use chrono::{DateTime, Utc};

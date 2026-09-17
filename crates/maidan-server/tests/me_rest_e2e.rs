@@ -1,5 +1,5 @@
-//! Cluster 337: `GET /me` — the caller's own identity, the REST twin of the MCP
-//! `whoami` tool. Auth ENABLED with a minted bearer so the reflected member/
+//! `GET /me` — the caller's own identity, the REST twin of the MCP `whoami`
+//! tool. Auth ENABLED with a minted bearer so the reflected member/
 //! workspace/capabilities come from the real token, not a bypass shortcut.
 
 use std::{

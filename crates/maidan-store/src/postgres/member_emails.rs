@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a member's delivery email (Cluster 248) — see the SQLite twin.
+/// Set (upsert) a member's delivery email — see the SQLite twin.
 pub async fn set(
     pool: &PgPool,
     member_id: MemberId,

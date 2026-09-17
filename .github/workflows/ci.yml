@@ -283,7 +283,7 @@ jobs:
           docker compose -f compose.quickstart.yaml config -q
           docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml config -q
           bash -n scripts/quickstart-two-agents.sh
-          # Cluster 317 snippet pack: guard the demo scripts + MCP configs from bit-rot
+          # Guard the demo scripts + MCP configs from bit-rot
           # (the full two-language lease demo is verified locally via scripts/lease-demo.sh).
           bash -n scripts/lease-demo.sh
           node --check examples/lease_demo/claim.mjs
@@ -342,7 +342,7 @@ jobs:
         run: docker compose --profile federation down -v
 
   scale-out-smoke:
-    # Required check as of the Cluster 120 `maidan-scale-1.0` gate (v120.0.0).
+    # Required check as of the `maidan-scale-1.0` gate.
     # Two replicas behind an LB sharing one Postgres + object store, exercising
     # the REST cross-replica paths. WS/notify/presence/OAuth cross-replica are
     # covered by the in-process two_replica_*_e2e tests.
@@ -360,7 +360,7 @@ jobs:
     # and templates (`check rules`) and runs the unit tests (`test rules`). The
     # alert_templates_contract test only checks metric *names*; this catches
     # expression bugs (e.g. an `and` ordering that humanizes the wrong $value).
-    # Required check as of Cluster 124 (v124.0.0).
+    # Required check as (v124.0.0).
     name: promtool (alert rules)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -397,9 +397,9 @@ jobs:
   otlp-smoke:
     # End-to-end OTLP: maidan-server pushes traces + metrics to a real
     # OpenTelemetry Collector, and the smoke asserts the collector received both.
-    # Proves the Cluster 89 export wiring against a collector, not just the
+    # Proves the OTLP export wiring against a collector, not just the
     # in-process metrics_push unit test.
-    # Required check as of Cluster 124 (v124.0.0).
+    # Required check as (v124.0.0).
     name: otlp smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -423,13 +423,13 @@ jobs:
           docker compose --profile otlp logs maidan-otlp || true
 
   replica-routing:
-    # LSN causal read-replica routing (Clusters 261-266, 271) against REAL
+    # LSN causal read-replica routing against REAL
     # streaming replication. `scripts/replica-harness.sh` stands up a primary +
     # hot-standby pair on the host Docker daemon (its ports map to localhost, so
     # the cargo test process reaches them directly — no dind). The three routing
     # tests are `#[ignore]`d + env-gated, so they run only here with the two URLs
     # set; unset elsewhere they skip. Closes the "LSN routing is CI-untested"
-    # gap (Cluster 349 / Integration Reality §3.2). Not a required check yet.
+    # gap. Not a required check yet.
     name: replica routing (LSN)
     runs-on: ubuntu-latest
     timeout-minutes: 25

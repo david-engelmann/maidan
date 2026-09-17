@@ -1,4 +1,4 @@
-//! Product completion gate (Clusters 26 + 58): critical routes respond.
+//! Product completion gate: critical routes respond.
 
 use std::{
     net::SocketAddr,

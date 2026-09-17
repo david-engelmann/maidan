@@ -1,8 +1,8 @@
-//! OAuth-style authorization code flow for installed apps (Cluster 65).
+//! OAuth-style authorization code flow for installed apps.
 //!
-//! Codes are persisted in the store (Cluster 104), not held per-replica, so a
-//! code minted on one replica can be exchanged on any replica and survives
-//! restart. Only the SHA-256 hash of the plaintext code is stored.
+//! Codes are persisted in the store, not held per-replica, so a code minted on
+//! one replica can be exchanged on any replica and survives restart. Only the
+//! SHA-256 hash of the plaintext code is stored.
 
 use axum::{
     extract::{Path, State},

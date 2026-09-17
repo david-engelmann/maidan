@@ -1,11 +1,11 @@
-//! Cluster 398.8: `Maidan-Room-LSN` is **this room's** head, not the instance's.
+//! `Maidan-Room-LSN` is **this room's** head, not the instance's.
 //!
-//! The header answers "how far behind is my projector?", which only works if the
-//! number is comparable to a `log_id` the client has seen — and a client only
-//! ever sees its own workspace's events. Reporting the instance-wide head meant
-//! a fully caught-up projector could never reach it, because the remaining gap
-//! was other tenants' writes. It also told every tenant the instance's total
-//! event volume, and rode outbound webhooks to third parties.
+//! The header answers "how far behind is my projector?", which only works if
+//! the number is comparable to a `log_id` the client has seen — and a client
+//! only ever sees its own workspace's events. Reporting the instance-wide head
+//! meant a fully caught-up projector could never reach it, because the
+//! remaining gap was other tenants' writes. It also told every tenant the
+//! instance's total event volume, and rode outbound webhooks to third parties.
 
 use std::sync::{atomic::AtomicI64, Arc};
 

@@ -1,5 +1,5 @@
-//! Buried decisions (Cluster 359, N2): task results produced by *someone else*
-//! in a channel/thread the member follows, since a watermark. Both backends.
+//! Buried decisions: task results produced by *someone else* in a
+//! channel/thread the member follows, since a watermark. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

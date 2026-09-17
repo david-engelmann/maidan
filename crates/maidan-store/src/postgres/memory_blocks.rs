@@ -1,8 +1,8 @@
-//! Attachable labeled memory-block store (Cluster 373, Wave 2 #21, H11): the
-//! `maidan_memory_blocks` + `maidan_thread_memory_blocks` tables. A block is a
-//! Letta-shaped `{label, description, limit, read_only, value}` workspace object
-//! a thread attaches to; `set_value` is a full rewrite (last-writer-wins) that
-//! refuses a read-only block or an over-limit value. See the SQLite twin.
+//! Attachable labeled memory-block store: the `maidan_memory_blocks` +
+//! `maidan_thread_memory_blocks` tables. A block is a Letta-shaped `{label,
+//! description, limit, read_only, value}` workspace object a thread attaches
+//! to; `set_value` is a full rewrite (last-writer-wins) that refuses a
+//! read-only block or an over-limit value. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

@@ -53,8 +53,7 @@ pub async fn remove(
     Ok(result.rows_affected() > 0)
 }
 
-/// Add a reaction and append its `ReactionAdded` event in one transaction
-/// (Cluster 206).
+/// Add a reaction and append its `ReactionAdded` event in one transaction.
 pub async fn add_with_event(pool: &PgPool, new: NewReaction) -> Result<StoredEvent, StoreError> {
     let emoji = normalize_emoji(&new.emoji)?;
     let mut tx = pool.begin().await?;
@@ -83,8 +82,8 @@ pub async fn add_with_event(pool: &PgPool, new: NewReaction) -> Result<StoredEve
     Ok(stored)
 }
 
-/// Remove a reaction; append its `ReactionRemoved` event in the SAME transaction
-/// when a row was removed (Cluster 206). Returns `(removed, event)`.
+/// Remove a reaction; append its `ReactionRemoved` event in the SAME
+/// transaction when a row was removed. Returns `(removed, event)`.
 pub async fn remove_with_event(
     pool: &PgPool,
     message_id: MessageId,

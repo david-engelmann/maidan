@@ -1,5 +1,5 @@
-//! SCIM 2.0 provisioning-link queries (Cluster 366, SCIM-as-OIDC-P3): the
-//! `maidan_scim_users` table mapping a SCIM User to a Maidan member.
+//! SCIM 2.0 provisioning-link queries: the `maidan_scim_users` table mapping a
+//! SCIM User to a Maidan member.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberId, ScimUser, WorkspaceId};

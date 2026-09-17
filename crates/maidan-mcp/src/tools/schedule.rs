@@ -1,5 +1,5 @@
-//! Task-schedule MCP tools (Cluster 229): an agent creates + inspects its own
-//! recurring/one-shot schedules. The REST twin is Cluster 228. Writes are gated
+//! Task-schedule MCP tools: an agent creates + inspects its own
+//! recurring/one-shot schedules, mirroring the REST surface. Writes are gated
 //! `workspace:write` + target-channel access; the list is `workspace:read`,
 //! filtered to channels the caller can access.
 
@@ -28,10 +28,10 @@ struct CreateScheduleArgs {
     recipe_id: Option<uuid::Uuid>,
 }
 
-/// Create a task schedule (Cluster 229). When due, the sweeper materializes a
-/// thread titled `title` in `channel_id`. Channel access is enforced pre-dispatch
-/// (the `channel_id` arg); the schedule is owned by the caller
-/// (`created_by = auth.member_id`) and scoped to the caller's workspace.
+/// Create a task schedule. When due, the sweeper materializes a thread titled
+/// `title` in `channel_id`. Channel access is enforced pre-dispatch (the
+/// `channel_id` arg); the schedule is owned by the caller (`created_by =
+/// auth.member_id`) and scoped to the caller's workspace.
 pub(super) async fn create_task_schedule(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -83,9 +83,9 @@ pub(super) async fn create_task_schedule(
     Ok(content_json(&schedule))
 }
 
-/// List the caller's workspace's task schedules (Cluster 229), filtered to the
-/// channels the caller can access. A workspace-scoped aggregate read, so the
-/// pre-dispatch channel gate can't cover it — the handler filters like
+/// List the caller's workspace's task schedules, filtered to the channels the
+/// caller can access. A workspace-scoped aggregate read, so the pre-dispatch
+/// channel gate can't cover it — the handler filters like
 /// `list_assigned_threads`.
 pub(super) async fn list_task_schedules(
     store: &Arc<dyn Store>,

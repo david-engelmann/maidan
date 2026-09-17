@@ -1,8 +1,7 @@
-//! Cluster 383: a reviewed `example.review.result/1` with any `critical`
-//! finding, submitted by a review-skilled member, upserts Cluster 375
-//! `request_changes` and arms `k = 1` when no requirement exists. Wrong
-//! shape / no critical / no skill → no-op. A human approve unblocks close.
-//! Both backends.
+//! A reviewed `example.review.result/1` with any `critical` finding, submitted
+//! by a review-skilled member, upserts a `request_changes` decision and arms
+//! `k = 1` when no requirement exists. Wrong shape / no critical / no skill →
+//! no-op. A human approve unblocks close. Both backends.
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};

@@ -1,4 +1,4 @@
-//! Cluster 238: the notification router resolves a `MentionRecorded` event to a
+//! The notification router resolves a `MentionRecorded` event to a
 //! per-recipient notification row, and dedups replays / multi-replica delivery.
 
 use std::sync::Arc;
@@ -152,7 +152,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         "a non-mention event produces no notification (yet)"
     );
 
-    // Cluster 242: muting the kind makes the router skip the write.
+    // Muting the kind makes the router skip the write.
     store
         .set_notification_pref(mentioned.id, EventKind::MentionRecorded, true)
         .await
@@ -177,8 +177,8 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         "a muted kind is suppressed — no new notification"
     );
 
-    // Cluster 245: a channel follower gets a MessagePosted notification; the author
-    // and non-followers don't.
+    // A channel follower gets a MessagePosted notification; the author and
+    // non-followers don't.
     let author = store
         .create_member(maidan_types::NewMember {
             workspace_id: ws.id,
@@ -249,9 +249,8 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         "a non-follower gets no follow notification"
     );
 
-    // Cluster 356 (F7 leaf mute): the follower mutes this thread, so a further post
-    // in it produces no new notification for them even though they still follow the
-    // channel.
+    // The follower mutes this thread, so a further post in it produces no new
+    // notification for them even though they still follow the channel.
     store.mute_thread(follower.id, thread.id).await.unwrap();
     let msg2 = store
         .post_message(maidan_types::NewMessage {
@@ -285,7 +284,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
     );
 }
 
-/// Cluster 249: a recording transport that captures what would be emailed.
+/// A recording transport that captures what would be emailed.
 struct RecordingMailer {
     sent: std::sync::Mutex<Vec<(String, String)>>,
 }
@@ -375,9 +374,9 @@ async fn email_delivery_when_configured_and_address_present() {
     )
     .await;
 
-    // Delivery is durable now (Cluster 305): the router enqueues, the mail worker
-    // sends. The address-less member never enqueues, so draining emails only the
-    // member with an address.
+    // Delivery is durable now: the router enqueues, the mail worker sends. The
+    // address-less member never enqueues, so draining emails only the member
+    // with an address.
     maidan_server::mail_worker::sweep_once(&state).await;
 
     let sent = mailer.sent.lock().unwrap();
@@ -385,9 +384,9 @@ async fn email_delivery_when_configured_and_address_present() {
     assert_eq!(sent[0].0, "user@example.com");
 }
 
-/// Cluster 355 (W1): when an owned task's claim expires (it got stuck — the
-/// holder's lease lapsed and it was reclaimed), the router notifies the owner.
-/// An un-owned expiry notifies no one.
+/// When an owned task's claim expires (it got stuck — the holder's lease lapsed
+/// and it was reclaimed), the router notifies the owner. An un-owned expiry
+/// notifies no one.
 #[tokio::test]
 async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
     let pool = SqlitePoolOptions::new()
@@ -500,8 +499,8 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
     );
 }
 
-/// Cluster 361 (G-dev-7): when a thread lands (its linked PR merged), the router
-/// notifies the thread's owner and its followers; a non-follower gets nothing.
+/// When a thread lands (its linked PR merged), the router notifies the thread's
+/// owner and its followers; a non-follower gets nothing.
 #[tokio::test]
 async fn router_notifies_owner_and_followers_when_a_thread_lands() {
     let pool = SqlitePoolOptions::new()
@@ -588,10 +587,9 @@ async fn router_notifies_owner_and_followers_when_a_thread_lands() {
     );
 }
 
-/// Cluster 357 (N3): a member who mutes a channel is dropped from its
-/// `MessagePosted` firehose, but a `MentionRecorded` in that channel still
-/// notifies them (mention breakthrough). A thread mute is stronger — it
-/// suppresses even a mention.
+/// A member who mutes a channel is dropped from its `MessagePosted` firehose,
+/// but a `MentionRecorded` in that channel still notifies them (mention
+/// breakthrough). A thread mute is stronger — it suppresses even a mention.
 #[tokio::test]
 async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
     let pool = SqlitePoolOptions::new()

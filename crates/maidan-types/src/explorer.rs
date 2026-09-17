@@ -1,4 +1,4 @@
-//! Integrity explorer types (Cluster 394, Wave 3 #34).
+//! Integrity explorer types.
 //!
 //! Three read surfaces over existing rows — no new table:
 //!
@@ -60,10 +60,10 @@ pub struct TombstoneRecord {
 
 /// Incoming pointers at one message — the backlink index.
 ///
-/// `references` is Cluster 320 `list_references_to(Message, id)` (`RelationKind`
-/// reverse edges, including `seeded_from`). Pins, reactions, and votes are the
-/// other existing tables that point *at* the message. Mentions are outgoing
-/// (the message points at members) and are not included.
+/// `references` is `list_references_to(Message, id)`
+/// (`RelationKind` reverse edges, including `seeded_from`). Pins, reactions,
+/// and votes are the other existing tables that point *at* the message.
+/// Mentions are outgoing (the message points at members) and are not included.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageBacklinks {

@@ -50,9 +50,10 @@ pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> 
                     "artifact sha256 must be 64 hex chars".into(),
                 ));
             }
-            // Access is gated by the caller (server::resources_read → artifact_ref_exists,
-            // Cluster 204/332). `size_bytes` is authoritative metadata, so the blob is
-            // never loaded just to report its length.
+            // Access is gated by the caller (server::resources_read →
+            // artifact_ref_exists). `size_bytes` is
+            // authoritative metadata, so the blob is never loaded just to
+            // report its length.
             let meta = store.get_artifact_by_sha(id_str).await?;
             json!({
                 "artifact": meta,

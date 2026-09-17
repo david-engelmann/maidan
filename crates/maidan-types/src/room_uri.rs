@@ -1,4 +1,4 @@
-//! Stable `maidan://` room URIs (Cluster 395, Wave 3 #35 B22).
+//! Stable `maidan://` room URIs.
 //!
 //! Hierarchical address for a workspace (room) and the channel / thread /
 //! message path under it:
@@ -8,16 +8,15 @@
 //! ```
 //!
 //! **The authority is always the workspace UUID.** A renameable handle is
-//! an alias advertised on the room card and `/.well-known/maidan-room`;
-//! it is never stored in the URI. A handle rename therefore cannot break
-//! a stored id.
+//! an alias advertised on the room card and `/.well-known/maidan-room`; it is
+//! never stored in the URI. A handle rename therefore cannot break a stored id.
 //!
-//! This is **not** Cluster 392's `maidan:event/{id}` strong-ref pin, and
+//! This is **not** the `maidan:event/{id}` strong-ref pin, and
 //! **not** the MCP resource forms `maidan://threads/{id}` /
-//! `maidan://workspaces/{id}`. Those stay. A [`RoomUri`] parse rejects
-//! them (no UUID authority, or a non-hierarchical path).
+//! `maidan://workspaces/{id}`. Those stay. A [`RoomUri`] parse rejects them (no
+//! UUID authority, or a non-hierarchical path).
 //!
-//! The optional fragment is a Cluster 392 `sha256:<hex>` content hash.
+//! The optional fragment is a `sha256:<hex>` content hash.
 
 use std::fmt;
 use std::str::FromStr;
@@ -49,7 +48,7 @@ pub struct RoomUri {
     pub thread_id: Option<ThreadId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<MessageId>,
-    /// Optional Cluster 392 content hash (`sha256:<hex>`).
+    /// Optional content hash (`sha256:<hex>`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
 }

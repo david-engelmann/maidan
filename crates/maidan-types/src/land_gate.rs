@@ -1,30 +1,28 @@
-//! Land-gate pointer (Cluster 385, renamed Cluster 389).
+//! Land-gate pointer.
 //!
-//! A thread may hold a **land-gate pointer** — `{kind: "land_gate",
-//! status: pass|fail, artifact_sha?}` plus the green/amber/red land
-//! vocabulary. The room stores the pointer; an external verifier records
-//! pass/fail. This is not a CI product and not a judge panel in the room.
+//! A thread may hold a **land-gate pointer** — `{kind: "land_gate", status:
+//! pass|fail, artifact_sha?}` plus the green/amber/red land vocabulary. The
+//! room stores the pointer; an external verifier records pass/fail. This is not
+//! a CI product and not a judge panel in the room.
 //!
-//! The FSM close-gate (Cluster 385.2) refuses `closed` unless a **qualifying
-//! pass** exists: `status = pass`, `land = green`, recorded by a member who
-//! has declared [`LAND_GATE_SKILL`], and that member is neither the
-//! thread's owner nor its assignee (the implementer). **Amber** is
-//! flags-then-still-engages — not a land. **Red** is a fail or an
-//! unqualified pointer. No pointer and no requirement is additive (close
-//! as before), matching Cluster 375's opt-in review gate.
+//! The FSM close-gate refuses `closed` unless a **qualifying pass** exists:
+//! `status = pass`, `land = green`, recorded by a member who has declared
+//! [`LAND_GATE_SKILL`], and that member is neither the thread's owner nor its
+//! assignee (the implementer). **Amber** is flags-then-still-engages — not a
+//! land. **Red** is a fail or an unqualified pointer. No pointer and no
+//! requirement is additive (close as before), matching the opt-in review gate.
 //!
-//! Cluster 383's critical→`request_changes` adapter is a separate
-//! composition on the review gate; this module does not redo it.
+//! The Critical→`request_changes` adapter is a separate composition on the
+//! review gate; this module does not redo it.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::MemberId;
 
-/// The member-skill tag a gate-skilled verifier declares (Cluster 230
-/// free-form skills). The close-gate only counts a pass from a member who
-/// has this skill — an implementer who is not land-gate-skilled cannot
-/// land their own work by writing a pointer.
+/// The member-skill tag a gate-skilled verifier declares. The close-gate only
+/// counts a pass from a member who has this skill — an implementer who is not
+/// land-gate-skilled cannot land their own work by writing a pointer.
 pub const LAND_GATE_SKILL: &str = "land_gate";
 
 /// Wire `kind` on the pointer. Always `"land_gate"`.
@@ -155,14 +153,14 @@ pub fn resolve_land(status: LandGateStatus, requested: Option<LandColor>) -> Lan
     }
 }
 
-/// A pass that may land: green, from a land-gate-skilled member who is
-/// not the implementer.
+/// A pass that may land: green, from a land-gate-skilled member who is not the
+/// implementer.
 ///
 /// "Not the implementer" is three tests, not two. `assignee_id` is the thread's
 /// **live** holder, and a release sets it to NULL — so on its own it let an
-/// implementer release the claim and then pass their own work. `recorder_worked`
-/// is the durable Cluster-401.1 answer to "did this member ever hold it", and it
-/// is the one a release cannot clear.
+/// implementer release the claim and then pass their own work.
+/// `recorder_worked` is the durable answer to "did this member ever hold it",
+/// and it is the one a release cannot clear.
 #[allow(clippy::too_many_arguments)]
 pub fn is_qualifying_pass(
     status: LandGateStatus,

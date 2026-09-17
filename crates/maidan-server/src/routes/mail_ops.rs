@@ -1,7 +1,7 @@
-//! Operator DLQ for the durable mail outbox (Cluster 306): list dead-lettered
-//! notification emails and requeue one for another delivery attempt.
+//! Operator DLQ for the durable mail outbox: list dead-lettered notification
+//! emails and requeue one for another delivery attempt.
 //!
-//! **Per-workspace since Cluster 398.3.** These rows carry `to_address`,
+//! **Scoped per workspace.** These rows carry `to_address`,
 //! `subject` and the message body, and the query used to be global behind
 //! `token:admin` — which is minted per workspace — so any workspace admin could
 //! read every other tenant's outbound email. The caller now sees its own
@@ -34,7 +34,7 @@ pub struct ListDeadMailQuery {
     pub limit: i64,
 }
 
-/// The DLQ scope for this caller (Cluster 398.3).
+/// The DLQ scope for this caller.
 ///
 /// `token:admin` is minted per workspace, so the default view is the caller's
 /// own workspace. `operator:global` widens it to every row — including the ones
@@ -47,9 +47,9 @@ fn dlq_scope(auth: &AuthContext) -> Option<maidan_types::WorkspaceId> {
 /// `GET /operator/mail/dead` — dead-lettered outbox entries for the caller's
 /// workspace, newest first. `operator:global` sees every tenant's.
 ///
-/// Scoped in Cluster 398.3: these rows carry `to_address`, `subject` and the
-/// message body, and the query was global behind a per-workspace capability —
-/// so any workspace admin could read every other tenant's outbound email.
+/// Scoped: these rows carry `to_address`, `subject` and the message body, and
+/// the query was global behind a per-workspace capability — so any workspace
+/// admin could read every other tenant's outbound email.
 pub async fn list_dead_mail(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

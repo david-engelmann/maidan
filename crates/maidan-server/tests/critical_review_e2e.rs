@@ -1,7 +1,7 @@
-//! Cluster 383.3: a delivered `example.review.result/1` with any `critical`
-//! finding arms the Cluster-375 close-gate over HTTP. Auth ENABLED (real
-//! tokens): the review-skilled producer PUTs the result; close 409s until a
-//! human who is neither owner nor assignee approves.
+//! A delivered `example.review.result/1` with any `critical` finding arms the
+//! close-gate over HTTP. Auth ENABLED (real tokens): the review-skilled
+//! producer PUTs the result; close 409s until a human who is neither owner nor
+//! assignee approves.
 
 use std::{
     net::SocketAddr,

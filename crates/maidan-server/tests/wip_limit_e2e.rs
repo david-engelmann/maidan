@@ -1,5 +1,5 @@
-//! WIP limit (Cluster 362, G11): the admin/visibility API plus enforcement on the
-//! explicit claim (409) and `claim_next` (silent null).
+//! WIP limit: the admin/visibility API plus enforcement on the explicit claim
+//! (409) and `claim_next` (silent null).
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

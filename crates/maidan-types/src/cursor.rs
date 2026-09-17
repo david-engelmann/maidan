@@ -1,13 +1,13 @@
-//! Subscribe / projector cursor freshness (Cluster 388, Wave 3 #29).
+//! Subscribe / projector cursor freshness.
 //!
 //! A client that presents an `after_id` pointing into a gap the retention
 //! sweeper already deleted must **fail loud** (`CursorTooOld`, HTTP 409,
-//! `must_refetch: true`). Silently clamping to the oldest remaining row is
-//! the Postel anti-pattern: the client thinks it caught up and never learns
-//! it missed events.
+//! `must_refetch: true`). Silently clamping to the oldest remaining row is the
+//! Postel anti-pattern: the client thinks it caught up and never learns it
+//! missed events.
 //!
-//! `after_id == 0` means "start from whatever remains" — a fresh subscriber
-//! — and is never too old.
+//! `after_id == 0` means "start from whatever remains" — a fresh subscriber —
+//! and is never too old.
 
 use serde::{Deserialize, Serialize};
 
@@ -50,13 +50,12 @@ pub fn cursor_is_too_old(after_id: i64, oldest_retained_id: Option<i64>) -> bool
     }
 }
 
-/// Projector subscription shape (Cluster 388, Wave 3 #29): the filter a
-/// tap / Slack / GitHub projector (or any thick client) uses to backfill
-/// then cut over to live. `{workspace, channel?, thread?, types[]}`.
+/// Projector subscription shape: the filter a tap / Slack / GitHub projector
+/// (or any thick client) uses to backfill then cut over to live. `{workspace,
+/// channel?, thread?, types[]}`.
 ///
 /// Empty `types` means every kind. Converted to [`EventFilter`] for the
-/// existing matchers; a 409 [`CursorTooOld`] on this shape is a
-/// must-refetch.
+/// existing matchers; a 409 [`CursorTooOld`] on this shape is a must-refetch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProjectorShape {

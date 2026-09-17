@@ -1,7 +1,7 @@
-//! N6 (Cluster 350.6): a required-human approval gate is a *claim gate*. While a
-//! gate attached to a thread is `pending`, `claim_next` will not hand that thread
-//! to an agent; once a human resolves it, the thread becomes claimable again.
-//! Both backends.
+//! N6: a required-human approval gate is a *claim gate*. While a gate attached
+//! to a thread is `pending`, `claim_next` will not hand that thread to an
+//! agent; once a human resolves it, the thread becomes claimable again. Both
+//! backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

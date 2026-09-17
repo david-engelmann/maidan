@@ -1,8 +1,8 @@
-//! Context-snapshot MCP tool (Cluster 330) — the twin of the REST route
-//! (Cluster 329). Freezes the assembled context pack (live or `as_of`) into the
-//! content-addressed artifact store: a tamper-evident, deduped record of exactly
-//! what the agent was handed. Reuses the shared `context::get_thread_context`
-//! builder, then the modern `*_with_event` upsert + a bus-notify.
+//! Context-snapshot MCP tool — the twin of the REST route. Freezes the
+//! assembled context pack (live or `as_of`) into the content-addressed artifact
+//! store: a tamper-evident, deduped record of exactly what the agent was
+//! handed. Reuses the shared `context::get_thread_context` builder, then the
+//! modern `*_with_event` upsert + a bus-notify.
 
 use bytes::Bytes;
 use maidan_auth::AuthContext;

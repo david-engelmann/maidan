@@ -1,4 +1,4 @@
-//! Operator HTTP API for automation delivery queue (Cluster 68.0).
+//! Operator HTTP API for automation delivery queue.
 
 use axum::{
     extract::{Path, Query, State},

@@ -1,6 +1,6 @@
-//! Cross-process presence fan-out over Postgres LISTEN/NOTIFY (Cluster 103).
-//! Two `PostgresPresenceNotifier`s on one database stand in for two replicas:
-//! an event published on one must reach a subscriber on the other.
+//! Cross-process presence fan-out over Postgres LISTEN/NOTIFY. Two
+//! `PostgresPresenceNotifier`s on one database stand in for two replicas: an
+//! event published on one must reach a subscriber on the other.
 
 use std::time::Duration;
 

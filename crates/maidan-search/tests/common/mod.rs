@@ -267,9 +267,9 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
     assert_eq!(hits.len(), 1, "bot authored one deployment message");
 }
 
-/// Cluster 200: the RBAC `deny_channels` pre-filter excludes a channel's hits at
-/// the query level (exercised on both backends via `assert_faceted_search`'s
-/// callers is not enough — this is its own suite entry).
+/// The RBAC `deny_channels` pre-filter excludes a channel's hits at the query
+/// level (exercised on both backends via `assert_faceted_search`'s callers is
+/// not enough — this is its own suite entry).
 #[allow(dead_code)]
 pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
     // Baseline: "rust" matches messages in both channels.
@@ -309,10 +309,10 @@ pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
     assert!(hits.is_empty(), "denying every channel yields no hits");
 }
 
-/// Date-range facet (Cluster 359, N4): the `after`/`before` bounds on `posted_at`
-/// filter and compose. The fixture posts everything at ~now, so this asserts the
-/// bounds hold at the all-or-nothing extremes (far past/future) plus the full
-/// window — which validates both bounds without depending on per-message times.
+/// Date-range facet: the `after`/`before` bounds on `posted_at` filter and
+/// compose. The fixture posts everything at ~now, so this asserts the bounds
+/// hold at the all-or-nothing extremes (far past/future) plus the full window —
+/// which validates both bounds without depending on per-message times.
 #[allow(dead_code)]
 pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
     let far_past = chrono::DateTime::from_timestamp(946_684_800, 0).unwrap(); // 2000-01-01

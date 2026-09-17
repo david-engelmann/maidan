@@ -1,4 +1,4 @@
-//! Per-token capability quotas (Cluster 54).
+//! Per-token capability quotas.
 
 use std::time::Duration;
 
@@ -66,7 +66,7 @@ pub fn validate_token_quotas(quotas: &[TokenQuota], token_caps: &[String]) -> Re
     Ok(())
 }
 
-/// Enforce per-token quota for a capability (HTTP routes and MCP `tools/call`, Cluster 64).
+/// Enforce per-token quota for a capability (HTTP routes and MCP `tools/call`).
 pub async fn enforce_token_quota(
     state: &AppState,
     token_id: ApiTokenId,

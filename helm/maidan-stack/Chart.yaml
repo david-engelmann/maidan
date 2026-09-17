@@ -1,6 +1,6 @@
 apiVersion: v2
 name: maidan-stack
-description: Maidan server with optional Postgres and MinIO (Cluster 32)
+description: Maidan server with optional Postgres and MinIO
 type: application
 version: 0.1.0
 appVersion: "0.31.0"

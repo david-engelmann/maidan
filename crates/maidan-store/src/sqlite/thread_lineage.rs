@@ -1,4 +1,4 @@
-//! Run lineage (Cluster 387.1, Wave 2 #28) — see the Postgres twin.
+//! Run lineage — see the Postgres twin.
 //!
 //! `parent_run_id` is the producer's `run_id` as-is. Nested occupancy
 //! attributes every open workspace thread that shares it. F7 mute is a

@@ -1,6 +1,6 @@
-//! Cluster 204: artifacts are content-addressed + deduped across workspaces, so
-//! this proves a caller in workspace B cannot fetch a blob workspace A uploaded
-//! just by knowing its SHA — the `maidan_artifact_refs` per-tenant access gate.
+//! Artifacts are content-addressed + deduped across workspaces, so this proves
+//! a caller in workspace B cannot fetch a blob workspace A uploaded just by
+//! knowing its SHA — the `maidan_artifact_refs` per-tenant access gate.
 
 use std::{
     net::SocketAddr,

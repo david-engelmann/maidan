@@ -1,10 +1,10 @@
-//! Land-gate pointer (Cluster 385.3, renamed Cluster 389). The room
-//! holds `{kind:"land_gate", status:pass|fail, artifact_sha?}` plus the
-//! green/amber/red land vocabulary. An external verifier records
-//! pass/fail. Writes are `thread:transition`; reads are `workspace:read`.
-//! The FSM close-gate (385.2) enforces a qualifying green pass.
+//! Land-gate pointer. The room holds `{kind:"land_gate", status:pass|fail,
+//! artifact_sha?}` plus the green/amber/red land vocabulary. An external
+//! verifier records pass/fail. Writes are `thread:transition`; reads are
+//! `workspace:read`. The FSM close-gate (385.2) enforces a qualifying green
+//! pass.
 //!
-//! **A gate ratchets** (Cluster 397.2). Arming or recording against it is
+//! **A gate ratchets**. Arming or recording against it is
 //! `thread:transition`, but *removing* it is `channel:admin`. Clearing the row
 //! makes `gate_in_tx` vacuous, so a clear is exactly as powerful as a close —
 //! and `thread:transition` is the capability a close already needs, and is in

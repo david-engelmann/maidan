@@ -1,8 +1,7 @@
-//! Recipe MCP tools (Cluster 370.4, Wave 2 #18): an agent creates + inspects
-//! recipe blueprints and **instantiates** one into a parent thread + its DAG
-//! children. The REST twin is Cluster 370.3. Writes are `workspace:write` +
-//! target-channel access; the list is `workspace:read`, filtered to channels the
-//! caller can access.
+//! Recipe MCP tools: an agent creates + inspects recipe blueprints and
+//! **instantiates** one into a parent thread + its DAG children, mirroring the
+//! REST surface. Writes are `workspace:write` + target-channel access; the
+//! list is `workspace:read`, filtered to channels the caller can access.
 
 use std::sync::Arc;
 
@@ -24,9 +23,9 @@ struct CreateRecipeArgs {
     spec: RecipeSpec,
 }
 
-/// Create a recipe blueprint (Cluster 370.4). Channel access is enforced
-/// pre-dispatch (the `channel_id` arg); the recipe is owned by the caller
-/// (`created_by = auth.member_id`) and scoped to the caller's workspace.
+/// Create a recipe blueprint. Channel access is enforced pre-dispatch (the
+/// `channel_id` arg); the recipe is owned by the caller (`created_by =
+/// auth.member_id`) and scoped to the caller's workspace.
 pub(super) async fn create_recipe(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -58,9 +57,9 @@ pub(super) async fn create_recipe(
     Ok(content_json(&recipe))
 }
 
-/// List the caller's workspace's recipes (Cluster 370.4), filtered to the
-/// channels the caller can access — a workspace-scoped aggregate read the
-/// pre-dispatch gate can't cover (mirrors `list_task_schedules`).
+/// List the caller's workspace's recipes, filtered to the channels the caller
+/// can access — a workspace-scoped aggregate read the pre-dispatch gate can't
+/// cover (mirrors `list_task_schedules`).
 pub(super) async fn list_recipes(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -87,10 +86,10 @@ struct InstantiateArgs {
     params: Value,
 }
 
-/// Instantiate a recipe into a parent thread + its DAG children (Cluster 370.4)
-/// and publish each `ThreadCreated`. The `recipe_id` is not a channel, so the
-/// pre-dispatch gate can't cover it — the handler resolves the recipe's channel
-/// and enforces access inline (mirrors the REST route).
+/// Instantiate a recipe into a parent thread + its DAG children and publish
+/// each `ThreadCreated`. The `recipe_id` is not a channel, so the pre-dispatch
+/// gate can't cover it — the handler resolves the recipe's channel and enforces
+/// access inline (mirrors the REST route).
 pub(super) async fn instantiate_recipe(
     server: &crate::server::McpServer,
     auth: &AuthContext,

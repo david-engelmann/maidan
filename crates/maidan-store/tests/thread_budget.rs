@@ -1,6 +1,6 @@
-//! Per-thread budget envelope store (Cluster 358, T1/T5): set/get maxima,
-//! accumulate reported usage (creating the row on first report), and the pure
-//! `exceeded` check. Both backends.
+//! Per-thread budget envelope store: set/get maxima, accumulate reported usage
+//! (creating the row on first report), and the pure `exceeded` check. Both
+//! backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -183,7 +183,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("get missing");
     assert!(missing.is_none());
 
-    // Agent-work DLQ (Cluster 358.2): record a dead-lettered run + list it.
+    // Agent-work DLQ: record a dead-lettered run + list it.
     assert!(store
         .list_channel_dlq(channel.id, 10)
         .await
@@ -220,9 +220,9 @@ async fn run_suite(store: &dyn Store) {
         .is_empty());
 }
 
-/// Enforcement (Cluster 358.3): reporting usage that pushes a *claimed* thread
-/// over budget stops the run — the claim is released, a `ClaimFailed` event is
-/// returned, and a DLQ entry is recorded, all atomically.
+/// Enforcement: reporting usage that pushes a *claimed* thread over budget
+/// stops the run — the claim is released, a `ClaimFailed` event is returned,
+/// and a DLQ entry is recorded, all atomically.
 async fn run_enforce_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
@@ -396,12 +396,12 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_enforce_suite(&store).await;
 }
 
-/// Cluster 403: a patch changes only the dimensions it names.
+/// A patch changes only the dimensions it names.
 ///
-/// `set_thread_budget` is a total replace, so raising one cap through it cleared
-/// the others — and a cleared cap never binds, which means a run that should
-/// have been stopped is not. This is the merge path, end to end against the
-/// store rather than only against the pure `apply`.
+/// `set_thread_budget` is a total replace, so raising one cap through it
+/// cleared the others — and a cleared cap never binds, which means a run that
+/// should have been stopped is not. This is the merge path, end to end against
+/// the store rather than only against the pure `apply`.
 async fn run_patch_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {

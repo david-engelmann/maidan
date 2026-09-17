@@ -1,13 +1,13 @@
-//! Email/SMTP notification transport (Cluster 247, Program C — Arc I). The first
-//! off-platform delivery transport (beyond `deliver_http` for webhooks). It is
+//! Email/SMTP notification transport. The first off-platform delivery transport
+//! (beyond `deliver_http` for webhooks). It is
 //! **config-gated**: [`SmtpConfig::from_env`] returns `None` unless `MAIDAN_SMTP_HOST`
-//! and `MAIDAN_SMTP_FROM` are set, so a default deployment builds no mailer and sends
-//! nothing. **Wired into the notification router** (Cluster 249): when a per-recipient
+//! and `MAIDAN_SMTP_FROM` are set, so a default deployment builds no mailer and
+//! sends nothing. **Wired into the notification router**: when a per-recipient
 //! notification is written, a member with a delivery address on file is emailed
-//! best-effort (spawned so a slow SMTP server never blocks routing), with presence-skip
-//! (253) and digest-mode (255) gates applied before send, and durable retry/DLQ via the
-//! mail outbox (305–306). The [`MailTransport`] trait keeps room for future transports
-//! (SMS, push).
+//! best-effort (spawned so a slow SMTP server never blocks routing), with
+//! presence-skip (253) and digest-mode (255) gates applied before send, and
+//! durable retry/DLQ via the mail outbox (305–306). The [`MailTransport`] trait
+//! keeps room for future transports (SMS, push).
 
 use async_trait::async_trait;
 use lettre::transport::smtp::authentication::Credentials;

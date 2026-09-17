@@ -22,8 +22,8 @@ pub async fn create(pool: &PgPool, new: NewWorkspace) -> Result<Workspace, Store
     Ok(row_to_workspace(&row))
 }
 
-/// Insert a workspace and append its `WorkspaceCreated` event in one transaction
-/// (Cluster 213) — see the SQLite twin.
+/// Insert a workspace and append its `WorkspaceCreated` event in one
+/// transaction — see the SQLite twin.
 pub async fn create_with_event(
     pool: &PgPool,
     new: NewWorkspace,

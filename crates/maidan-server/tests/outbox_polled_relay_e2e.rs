@@ -1,4 +1,4 @@
-//! Polled outbox relay mode: relay delivers without `pg_notify` (Cluster 84).
+//! Polled outbox relay mode: relay delivers without `pg_notify`.
 
 use std::sync::Arc;
 use std::time::Duration;

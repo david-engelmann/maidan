@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a required skill to a task (Cluster 231). Idempotent; empty skill rejected.
+/// Add a required skill to a task. Idempotent; empty skill rejected.
 pub async fn add(pool: &SqlitePool, thread_id: ThreadId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
@@ -23,7 +23,7 @@ pub async fn add(pool: &SqlitePool, thread_id: ThreadId, skill: &str) -> Result<
     Ok(())
 }
 
-/// Remove a task's required skill; `true` when a row was deleted (Cluster 231).
+/// Remove a task's required skill; `true` when a row was deleted.
 pub async fn remove(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -38,7 +38,7 @@ pub async fn remove(
     Ok(res.rows_affected() > 0)
 }
 
-/// A task's required skills, ordered by skill (Cluster 231).
+/// A task's required skills, ordered by skill.
 pub async fn list(
     pool: &SqlitePool,
     thread_id: ThreadId,

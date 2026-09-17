@@ -1,7 +1,7 @@
-//! Cluster 402.3: the scheduled chain verifier.
+//! The scheduled chain verifier.
 //!
-//! Cluster 402.2 moved whole-chain verification out of the search tap's restart
-//! path, arguing that verification-by-restart is an accident rather than a
+//! Whole-chain verification was moved out of the search tap's restart path, on
+//! the argument that verification-by-restart is an accident rather than a
 //! control. That argument only holds if something schedules it — this is the
 //! test that it does, and that it reports a real break rather than passing
 //! vacuously.

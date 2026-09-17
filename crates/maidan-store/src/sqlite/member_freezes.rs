@@ -1,5 +1,5 @@
-//! Member-freeze kill-switch store (Cluster 372, SQLite twin of pg 0077).
-//! Freezing records the freeze AND drops the member's active leases in one tx.
+//! Member-freeze kill-switch store. Freezing records the freeze AND drops the
+//! member's active leases in one tx.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberFreeze, MemberId, WorkspaceId};

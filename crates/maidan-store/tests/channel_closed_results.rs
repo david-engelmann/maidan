@@ -1,6 +1,6 @@
-//! In-channel closed results (Cluster 382, Wave 2 #24): `claim_next`'s pack
-//! lists terminal-thread results so the next claimer sees decisions already
-//! made in the channel. Both backends. No routes yet — store foundation.
+//! In-channel closed results: `claim_next`'s pack lists terminal-thread results
+//! so the next claimer sees decisions already made in the channel. Both
+//! backends. No routes yet — store foundation.
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};

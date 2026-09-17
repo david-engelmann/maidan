@@ -29,8 +29,8 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     row_to_thread(&row)
 }
 
-/// Insert a thread and append its `ThreadCreated` event in one transaction
-/// (Cluster 205 transactional outbox) — see the SQLite twin.
+/// Insert a thread and append its `ThreadCreated` event in one transaction —
+/// see the SQLite twin.
 pub async fn create_with_event(
     pool: &PgPool,
     new: NewThread,
@@ -91,15 +91,15 @@ pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, S
 }
 
 /// Set the assignee unconditionally (assign / handoff). `NotFound` if absent or
-/// tombstoned — claiming dead work is a bug (Cluster 171).
+/// tombstoned — claiming dead work is a bug.
 pub async fn assign(
     pool: &PgPool,
     thread_id: ThreadId,
     assignee_id: MemberId,
 ) -> Result<Thread, StoreError> {
     let lease = ClaimLeaseId::new();
-    // In a transaction only so the Cluster-401.1 worker record commits with the
-    // assignment. This variant emits no event, so it does not pass through
+    // In a transaction only so the worker record commits with the assignment.
+    // This variant emits no event, so it does not pass through
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
@@ -119,7 +119,7 @@ pub async fn assign(
 }
 
 /// Assign a thread and append its `ThreadAssignmentChanged` event in one
-/// transaction (Cluster 209). The previous assignee is captured in the same tx.
+/// transaction. The previous assignee is captured in the same tx.
 pub async fn assign_with_event(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -155,8 +155,8 @@ pub async fn assign_with_event(
     Ok((thread, stored))
 }
 
-/// A parent thread's child threads, collapsed with a live message count each
-/// (Cluster 356, F2). Oldest first; tombstoned children excluded.
+/// A parent thread's child threads, collapsed with a live message count each.
+/// Oldest first; tombstoned children excluded.
 pub async fn child_summaries(
     pool: &PgPool,
     parent_id: ThreadId,
@@ -181,9 +181,9 @@ pub async fn child_summaries(
         .collect()
 }
 
-/// A channel's threads ordered by last activity (Cluster 356, F7): most-recently
-/// bumped first, tombstoned excluded, capped at `limit`. The bump-to-top read —
-/// a post touches `updated_at`, floating its thread here. Distinct from the
+/// A channel's threads ordered by last activity: most-recently bumped first,
+/// tombstoned excluded, capped at `limit`. The bump-to-top read — a post
+/// touches `updated_at`, floating its thread here. Distinct from the
 /// keyset-paginated, creation-ordered `page_for_channel` (whose stable sort key
 /// this mutable ordering would break).
 pub async fn list_recently_active(
@@ -205,8 +205,8 @@ pub async fn list_recently_active(
     rows.iter().map(row_to_thread).collect()
 }
 
-/// Set (or clear) the durable owner (Cluster 355, W1). `NotFound` if absent or
-/// tombstoned. Touches only `owner_id` — orthogonal to the claim axis.
+/// Set (or clear) the durable owner. `NotFound` if absent or tombstoned.
+/// Touches only `owner_id` — orthogonal to the claim axis.
 pub async fn set_owner(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -225,9 +225,9 @@ pub async fn set_owner(
     row_to_thread(&row)
 }
 
-/// Rename a thread (Cluster 356, F1). `NotFound` if absent or tombstoned.
-/// Touches only `title` — a rename is metadata, not activity, so it does not bump
-/// `updated_at` (the activity-sort key of Cluster 356.2).
+/// Rename a thread. `NotFound` if absent or tombstoned. Touches only `title` —
+/// a rename is metadata, not activity, so it does not bump `updated_at` (the
+/// activity-sort key).
 pub async fn set_title(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -246,7 +246,7 @@ pub async fn set_title(
     row_to_thread(&row)
 }
 
-/// Clear the assignee (Cluster 171). `NotFound` if absent.
+/// Clear the assignee. `NotFound` if absent.
 pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
@@ -261,7 +261,7 @@ pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, Stor
 }
 
 /// Clear the assignee and append its `ThreadAssignmentChanged` event in one
-/// transaction (Cluster 209). No handoff note.
+/// transaction. No handoff note.
 pub async fn unassign_with_event(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -290,8 +290,8 @@ pub async fn unassign_with_event(
     Ok((thread, stored))
 }
 
-/// Build + append a `ThreadAssignmentChanged` event on a caller-supplied tx
-/// (Cluster 209). Shared by the assignment `*_with_event` mutations.
+/// Build + append a `ThreadAssignmentChanged` event on a caller-supplied tx.
+/// Shared by the assignment `*_with_event` mutations.
 async fn append_assignment_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread: &Thread,
@@ -300,11 +300,11 @@ async fn append_assignment_event(
     note: Option<String>,
 ) -> Result<StoredEvent, StoreError> {
     // Every path that hands a thread to someone comes through here, so this is
-    // where the durable worker record is written (Cluster 401.1) — beside the
-    // event rather than at each of the three call sites, because a
-    // separation-of-duties control that one call site can forget is not a
-    // control. On the caller's tx: a ledger row lost while the assignment
-    // commits fails *open*, letting the worker approve their own work.
+    // where the durable worker record is written — beside the event rather than
+    // at each of the three call sites, because a separation-of-duties control
+    // that one call site can forget is not a control. On the caller's tx: a
+    // ledger row lost while the assignment commits fails *open*, letting the
+    // worker approve their own work.
     if let Some(assignee) = thread.assignee_id {
         thread_workers::record_in_tx(tx, thread.id, assignee).await?;
     }
@@ -323,9 +323,9 @@ async fn append_assignment_event(
     events::append_in_tx(tx, &event).await
 }
 
-/// Build + append a `ClaimExpired` event on a caller-supplied tx (Cluster 351):
-/// the previous holder `expired_member`'s lease lapsed and the thread was
-/// reclaimed. Emitted alongside the reclaim's `ThreadAssignmentChanged`.
+/// Build + append a `ClaimExpired` event on a caller-supplied tx: the previous
+/// holder `expired_member`'s lease lapsed and the thread was reclaimed. Emitted
+/// alongside the reclaim's `ThreadAssignmentChanged`.
 async fn append_claim_expired_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread: &Thread,
@@ -343,19 +343,18 @@ async fn append_claim_expired_event(
     events::append_in_tx(tx, &event).await
 }
 
-/// Atomic compare-and-set claim (Cluster 171): the `assignee_id IS NULL`
-/// predicate + row lock guarantees only one concurrent claimer wins. A `None`
-/// result means the row was already assigned (or absent) — disambiguate with a
-/// follow-up read.
+/// Atomic compare-and-set claim: the `assignee_id IS NULL` predicate + row lock
+/// guarantees only one concurrent claimer wins. A `None` result means the row
+/// was already assigned (or absent) — disambiguate with a follow-up read.
 pub async fn claim(
     pool: &PgPool,
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<ThreadClaimResult, StoreError> {
     let lease = ClaimLeaseId::new();
-    // See `assign`: the transaction exists so the Cluster-401.1 worker record
-    // commits with the claim. Only a *winning* claim records — a losing
-    // compare-and-set never held the thread.
+    // See `assign`: the transaction exists so the worker record commits with
+    // the claim. Only a *winning* claim records — a losing compare-and-set
+    // never held the thread.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
@@ -386,8 +385,8 @@ pub async fn claim(
     }
 }
 
-/// Atomic claim + its `ThreadAssignmentChanged` event in one tx (Cluster 209).
-/// Conditional: the event is appended **only** when the CAS actually claimed.
+/// Atomic claim + its `ThreadAssignmentChanged` event in one tx. Conditional:
+/// the event is appended **only** when the CAS actually claimed.
 /// `previous_assignee_id` is `None` (plain claim guards on unassigned).
 pub async fn claim_with_event(
     pool: &PgPool,
@@ -433,8 +432,8 @@ pub async fn claim_with_event(
     }
 }
 
-/// Threads in `workspace_id` currently assigned to `member_id` — an agent's work
-/// queue (Cluster 190). Live threads only, oldest first. Uses `idx_threads_assignee`.
+/// Threads in `workspace_id` currently assigned to `member_id` — an agent's
+/// work queue. Live threads only, oldest first. Uses `idx_threads_assignee`.
 pub async fn list_assigned(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -456,10 +455,9 @@ pub async fn list_assigned(
 }
 
 /// Atomically claim the oldest unassigned live thread in `channel_id` for
-/// `member_id` (Cluster 190). `FOR UPDATE SKIP LOCKED` is the canonical
-/// concurrent work-queue pattern: parallel claimers skip each other's locked
-/// candidate and each gets a distinct thread. `None` when there is no unassigned
-/// work.
+/// `member_id`. `FOR UPDATE SKIP LOCKED` is the canonical concurrent work-queue
+/// pattern: parallel claimers skip each other's locked candidate and each gets
+/// a distinct thread. `None` when there is no unassigned work.
 pub async fn claim_next(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -468,11 +466,11 @@ pub async fn claim_next(
 ) -> Result<Option<Thread>, StoreError> {
     let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
     let lease = ClaimLeaseId::new();
-    // Claimable = unassigned OR the lease has expired (dead-agent recovery;
-    // Cluster 192). FOR UPDATE SKIP LOCKED keeps concurrent claimers distinct.
-    // The explicit transaction exists so the Cluster-401.1 worker record
-    // commits with the claim — and it does not weaken SKIP LOCKED, which
-    // already ran inside an implicit transaction of its own.
+    // Claimable = unassigned OR the lease has expired (dead-agent recovery).
+    // FOR UPDATE SKIP LOCKED keeps concurrent claimers distinct. The explicit
+    // transaction exists so the worker record commits with the claim — and it
+    // does not weaken SKIP LOCKED, which already ran inside an implicit
+    // transaction of its own.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "WITH next AS (
@@ -528,9 +526,9 @@ pub async fn claim_next(
     row.as_ref().map(row_to_thread).transpose()
 }
 
-/// Task-queue depth for a channel (Cluster 224) — see the SQLite twin. Uses
-/// `NOW()` inline (as `claim_next` does) so `ready` matches its claimability
-/// predicate exactly.
+/// Task-queue depth for a channel — see the SQLite twin. Uses `NOW()` inline
+/// (as `claim_next` does) so `ready` matches its claimability predicate
+/// exactly.
 pub async fn channel_queue_depth(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -579,10 +577,10 @@ pub async fn channel_queue_depth(
     })
 }
 
-/// Channel occupancy (Cluster 351) — the two-clocks refinement of
-/// `channel_queue_depth`. Splits the held threads by the working clock: `claimed`
-/// (live lease, `work_started_at` unset) vs `working` (started). `queued` and
-/// `blocked` cover the available (unassigned or lease-expired) threads exactly as
+/// Channel occupancy — the two-clocks refinement of `channel_queue_depth`.
+/// Splits the held threads by the working clock: `claimed` (live lease,
+/// `work_started_at` unset) vs `working` (started). `queued` and `blocked`
+/// cover the available (unassigned or lease-expired) threads exactly as
 /// `queue_depth` does. `NOW()` inline so `queued` matches the claimability
 /// predicate. The four sub-counts partition `open`.
 pub async fn channel_occupancy(
@@ -739,13 +737,13 @@ pub async fn renew_claim(
     row_to_thread(&row)
 }
 
-/// Stamp the working clock (Cluster 351): the current holder acknowledges the
-/// claim and begins work. Fenced by `(assignee_id, claim_lease_id)` — only the
-/// live holder presenting the matching token can start the clock. `COALESCE`
-/// keeps the first start time, so a re-acknowledge within the same claim epoch
-/// is idempotent (a reclaim reset `work_started_at` to NULL, so the next holder
-/// stamps fresh). `NotFound` if the thread is gone, the caller isn't the holder,
-/// or the token is stale.
+/// Stamp the working clock: the current holder acknowledges the claim and
+/// begins work. Fenced by `(assignee_id, claim_lease_id)` — only the live
+/// holder presenting the matching token can start the clock. `COALESCE` keeps
+/// the first start time, so a re-acknowledge within the same claim epoch is
+/// idempotent (a reclaim reset `work_started_at` to NULL, so the next holder
+/// stamps fresh). `NotFound` if the thread is gone, the caller isn't the
+/// holder, or the token is stale.
 pub async fn acknowledge_claim(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -766,11 +764,11 @@ pub async fn acknowledge_claim(
     row_to_thread(&row)
 }
 
-/// Release a claim (graceful handoff, Cluster 351): the current holder returns
-/// the thread to the queue immediately instead of waiting for the lease to lapse
-/// — e.g. an agent shutting down on SIGTERM. Fenced by `(assignee_id,
-/// claim_lease_id)`; clears the assignee, lease, and working clock in one write.
-/// `NotFound` if the caller isn't the holder or the token is stale.
+/// Release a claim (graceful handoff): the current holder returns the thread to
+/// the queue immediately instead of waiting for the lease to lapse — e.g. an
+/// agent shutting down on SIGTERM. Fenced by `(assignee_id, claim_lease_id)`;
+/// clears the assignee, lease, and working clock in one write. `NotFound` if
+/// the caller isn't the holder or the token is stale.
 pub async fn release_claim(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -791,9 +789,9 @@ pub async fn release_claim(
     row_to_thread(&row)
 }
 
-/// Release a claim and append its `ThreadAssignmentChanged` event in one tx
-/// (Cluster 351, the outbox pattern). The previous assignee is the caller (the
-/// fence guarantees it). `NotFound` if the caller isn't the holder.
+/// Release a claim and append its `ThreadAssignmentChanged` event in one tx.
+/// The previous assignee is the caller (the fence guarantees it). `NotFound` if
+/// the caller isn't the holder.
 pub async fn release_claim_with_event(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -869,9 +867,10 @@ pub async fn page_for_workspace(
 }
 
 /// One keyset page of a channel's **live** threads, ordered `(created_at, id)`
-/// ascending (Cluster 343). `after` is an exclusive cursor (the prior page's last
-/// thread id); `None` starts from the beginning. The channel-scoped twin of
-/// [`page_for_workspace`] — bounds the previously-unbounded channel thread list.
+/// ascending. `after` is an exclusive cursor (the prior page's last thread id);
+/// `None` starts from the beginning. The channel-scoped twin of
+/// [`page_for_workspace`] — bounds the previously-unbounded channel thread
+/// list.
 pub async fn page_for_channel(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -923,13 +922,13 @@ async fn validate_parent(
     Ok(())
 }
 
-/// Enforce the workspace's spawn budget (Cluster 376.2) when creating a CHILD
-/// thread: refuse once the parent already holds `max_children` children, or once
-/// its nesting would exceed `max_depth`. Root threads (no parent) and workspaces
-/// with no budget are unrestricted. A refusal is a typed `SpawnRejected` (Cluster
+/// Enforce the workspace's spawn budget when creating a CHILD thread: refuse
+/// once the parent already holds `max_children` children, or once its nesting
+/// would exceed `max_depth`. Root threads (no parent) and workspaces with no
+/// budget are unrestricted. A refusal is a typed `SpawnRejected` (Cluster
 /// 376.6) → REST 409 / MCP InvalidParams, and it carries the payload the route
-/// publishes as `ThreadSpawnDenied`. Coordination cost is n(n-1)/2 — do not admit
-/// a further agent onto a late claim.
+/// publishes as `ThreadSpawnDenied`. Coordination cost is n(n-1)/2 — do not
+/// admit a further agent onto a late claim.
 async fn enforce_spawn_budget(
     pool: &PgPool,
     channel_id: ChannelId,

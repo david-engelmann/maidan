@@ -1,4 +1,4 @@
-//! `maidan-agent-1.0` gate: critical agent substrate surfaces respond (Cluster 76).
+//! `maidan-agent-1.0` gate: critical agent substrate surfaces respond.
 
 use std::{
     net::SocketAddr,

@@ -1,13 +1,14 @@
-//! Cluster 380.2 / 380.3: the egress worker posts inline GitHub review comments.
+//! The egress worker posts inline GitHub review comments.
 //!
-//! After a successful Cluster 379 summary comment, a `reviewed` envelope with
-//! `head_sha` and usable findings becomes `POST /repos/{repo}/pulls/{n}/reviews`
-//! with `commit_id = head_sha` (never the live PR head), `event: COMMENT`,
-//! `side: RIGHT`, and `line`/`start_line` from the 380.1 post-image mapping.
-//! Missing sha, unusable findings, a non-`reviewed` status, Slack, a vanished
-//! envelope, and GitHub 404/422 skip the review without sinking the summary.
-//! A 5xx is left for operator replay (which PATCHes the summary and POSTs
-//! another COMMENT review). Review errors never `disable_link`.
+//! After a successful summary comment, a `reviewed` envelope with
+//! `head_sha` and usable findings becomes `POST
+//! /repos/{repo}/pulls/{n}/reviews` with `commit_id = head_sha` (never the live
+//! PR head), `event: COMMENT`, `side: RIGHT`, and `line`/`start_line` from the
+//! 380.1 post-image mapping. Missing sha, unusable findings, a non-`reviewed`
+//! status, Slack, a vanished envelope, and GitHub 404/422 skip the review
+//! without sinking the summary. A 5xx is left for operator replay (which
+//! PATCHes the summary and POSTs another COMMENT review). Review errors never
+//! `disable_link`.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};

@@ -196,8 +196,8 @@ async fn get_stored_event_returns_row_and_missing_is_not_found() {
     assert!(matches!(err, maidan_store::StoreError::NotFound));
 }
 
-/// Cluster 205: `*_with_event` commits the domain row and its event atomically —
-/// after the single call, both the row and the durable event exist.
+/// `*_with_event` commits the domain row and its event atomically — after the
+/// single call, both the row and the durable event exist.
 #[tokio::test]
 async fn create_with_event_commits_row_and_event() {
     use maidan_types::NewThread;
@@ -258,8 +258,8 @@ async fn create_with_event_commits_row_and_event() {
         .any(|e| e.id == th_event.id && e.kind == EventKind::ThreadCreated));
 }
 
-/// Cluster 206: the social `*_with_event` mutations append their event in the
-/// same tx as the row — a cast vote / added reaction produces a durable event.
+/// The social `*_with_event` mutations append their event in the same tx as the
+/// row — a cast vote / added reaction produces a durable event.
 #[tokio::test]
 async fn social_with_event_appends_atomically() {
     use maidan_types::{MemberId, NewReaction, NewThread, NewVote};
@@ -359,9 +359,9 @@ async fn social_with_event_appends_atomically() {
     }
 }
 
-/// Cluster 207: pins + mentions migrated to the transactional-outbox pattern.
-/// A pin/mention appends its event in the same tx; an unpin miss produces no
-/// event, a real unpin does.
+/// Pins + mentions migrated to the transactional-outbox pattern. A pin/mention
+/// appends its event in the same tx; an unpin miss produces no event, a real
+/// unpin does.
 #[tokio::test]
 async fn pins_and_mentions_with_event_append_atomically() {
     use maidan_types::{MemberId, NewMessage, NewPin, NewThread};
@@ -469,8 +469,8 @@ async fn pins_and_mentions_with_event_append_atomically() {
     }
 }
 
-/// Cluster 208: thread transitions migrated to the transactional-outbox pattern.
-/// A transition appends its `ThreadStateChanged` event in the same tx as the
+/// Thread transitions migrated to the transactional-outbox pattern. A
+/// transition appends its `ThreadStateChanged` event in the same tx as the
 /// state change, over the new `thread_scope_in_tx` resolver.
 #[tokio::test]
 async fn transition_with_event_appends_atomically() {
@@ -542,7 +542,7 @@ async fn transition_with_event_appends_atomically() {
     );
 }
 
-/// Cluster 209: thread assignments migrated to the transactional-outbox pattern.
+/// Thread assignments migrated to the transactional-outbox pattern.
 /// assign/unassign always emit; claim/claim_next emit only when they claimed.
 #[tokio::test]
 async fn assignment_with_event_appends_atomically() {
@@ -620,7 +620,7 @@ async fn assignment_with_event_appends_atomically() {
         .expect("claim2");
     assert!(!claim_res2.claimed && claim_ev2.is_none());
 
-    // release the claim (Cluster 351) → event, thread back to unassigned.
+    // release the claim → event, thread back to unassigned.
     let lease = claim_res
         .thread
         .claim_lease_id
@@ -679,9 +679,10 @@ async fn assignment_with_event_appends_atomically() {
     }
 }
 
-/// Cluster 210: DM/group-DM posts migrated to the transactional-outbox pattern.
+/// DM/group-DM posts migrated to the transactional-outbox pattern.
 /// `post_message_with_event` inserts the message and appends `MessagePosted` in
-/// one tx, threading `dm_conversation_id` (Some for a 1:1 DM, None for a group).
+/// one tx, threading `dm_conversation_id` (Some for a 1:1 DM, None for a
+/// group).
 #[tokio::test]
 async fn dm_post_with_event_appends_atomically() {
     use maidan_types::{DmConversationId, NewMessage, NewThread};
@@ -770,10 +771,10 @@ async fn dm_post_with_event_appends_atomically() {
     }
 }
 
-/// Cluster 211: the regular message-post path's slash finalization —
-/// `edit_message_with_posted_event` commits the edit and a `MessagePosted` event
-/// reflecting the **edited** message in one tx, and records edit history when the
-/// body changes.
+/// The regular message-post path's slash finalization —
+/// `edit_message_with_posted_event` commits the edit and a `MessagePosted`
+/// event reflecting the **edited** message in one tx, and records edit history
+/// when the body changes.
 #[tokio::test]
 async fn message_post_finalize_with_event_appends_atomically() {
     use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
@@ -890,8 +891,8 @@ async fn message_post_finalize_with_event_appends_atomically() {
     }
 }
 
-/// Cluster 212: message edit + tombstone migrated to the transactional-outbox
-/// pattern. Each appends its event in the same tx; a re-tombstone is `NotFound`.
+/// Message edit + tombstone migrated to the transactional-outbox pattern. Each
+/// appends its event in the same tx; a re-tombstone is `NotFound`.
 #[tokio::test]
 async fn edit_and_tombstone_with_event_append_atomically() {
     use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
@@ -993,9 +994,9 @@ async fn edit_and_tombstone_with_event_append_atomically() {
     }
 }
 
-/// Cluster 213: workspace + member creation migrated to the transactional-outbox
-/// pattern — `create_workspace_with_event` / `create_member_with_event` commit the
-/// row and its `WorkspaceCreated` / `MemberJoined` event in one tx.
+/// Workspace + member creation migrated to the transactional-outbox pattern —
+/// `create_workspace_with_event` / `create_member_with_event` commit the row
+/// and its `WorkspaceCreated` / `MemberJoined` event in one tx.
 #[tokio::test]
 async fn create_workspace_and_member_with_event_append_atomically() {
     let pool = SqlitePoolOptions::new()
@@ -1043,10 +1044,10 @@ async fn create_workspace_and_member_with_event_append_atomically() {
     }
 }
 
-/// Cluster 214: references + artifacts migrated to the transactional-outbox
-/// pattern. `add_reference_with_event` appends `ReferenceAdded`;
-/// `upsert_artifact_with_event` appends `ArtifactUpserted` and — for a non-bypass
-/// caller (`ref_workspace = Some`) — records the Cluster-204 access ref in the
+/// References + artifacts migrated to the transactional-outbox pattern.
+/// `add_reference_with_event` appends `ReferenceAdded`;
+/// `upsert_artifact_with_event` appends `ArtifactUpserted` and — for a
+/// non-bypass caller (`ref_workspace = Some`) — records the access ref in the
 /// same tx.
 #[tokio::test]
 async fn reference_and_artifact_with_event_append_atomically() {

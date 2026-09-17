@@ -1,7 +1,7 @@
-//! Explicit dispatch-block REST (Cluster 386, Wave 2 #27, G14 + W2): set/get/
-//! list, claim_next skip, explicit-claim 409, and `BlockedResolved` on DELETE.
-//! Distinct from Cluster 363 unclaimable and Cluster 218 DAG readiness.
-//! Auth ENABLED (real token) so `set_by` / `resolved_by` are real members.
+//! Explicit dispatch-block REST: set/get/ list, claim_next skip, explicit-claim
+//! 409, and `BlockedResolved` on DELETE. Explicitly unclaimable and blocked on
+//! DAG readiness are distinct. Auth ENABLED (real token) so `set_by` / `resolved_by` are
+//! real members.
 
 use std::{
     net::SocketAddr,

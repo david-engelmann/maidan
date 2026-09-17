@@ -1,7 +1,7 @@
-//! Named-secret store (Cluster 371, Wave 2 #19): the `maidan_secrets` table. The
-//! value is stored AEAD-encrypted (the route layer holds the key); metadata reads
-//! never select the ciphertext, and `get_ciphertext` is the only path that does.
-//! See the SQLite twin.
+//! Named-secret store: the `maidan_secrets` table. The value is stored
+//! AEAD-encrypted (the route layer holds the key); metadata reads never select
+//! the ciphertext, and `get_ciphertext` is the only path that does. See the
+//! SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberId, NewSecret, Secret, SecretId, WorkspaceId};

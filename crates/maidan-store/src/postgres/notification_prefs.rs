@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a member's mute preference for an event kind (Cluster 241) — see the
-/// SQLite twin.
+/// Set (upsert) a member's mute preference for an event kind — see the SQLite
+/// twin.
 pub async fn set(
     pool: &PgPool,
     member_id: MemberId,
@@ -57,8 +57,8 @@ pub async fn is_muted(
     Ok(row.map(|r| r.get::<bool, _>("muted")).unwrap_or(false))
 }
 
-/// Which of `members` have muted `kind` (Cluster 348) — the batch form of
-/// [`is_muted`], so a fan-out checks mutes in one query instead of N.
+/// Which of `members` have muted `kind` — the batch form of [`is_muted`], so a
+/// fan-out checks mutes in one query instead of N.
 pub async fn filter_muted(
     pool: &PgPool,
     kind: EventKind,

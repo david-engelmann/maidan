@@ -1,4 +1,4 @@
-//! Thread dispatch priority (Cluster 365, G3 fair dispatch): set/get over REST.
+//! Thread dispatch priority: set/get over REST.
 
 use std::{
     net::SocketAddr,

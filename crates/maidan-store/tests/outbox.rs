@@ -242,7 +242,7 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
     assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
 }
 
-/// Cluster 398.1: two relays must not claim the same row.
+/// Two relays must not claim the same row.
 ///
 /// The relay is spawned in **every** replica and `validate_startup` refuses to
 /// disable it in production, so the old unlocked `list_pending` had every

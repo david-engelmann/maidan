@@ -1,4 +1,4 @@
-//! Inbox cursor and enriched member inbox (Cluster 40).
+//! Inbox cursor and enriched member inbox.
 
 use std::sync::Arc;
 

@@ -1,6 +1,6 @@
-//! Thread dispatch-priority store (Cluster 365, G3 fair dispatch): set/get + the
-//! default-0 (row-absent) contract. Both backends. The aged-rank `claim_next`
-//! ordering is exercised in `thread_priority_dispatch.rs` (Cluster 365.2).
+//! Thread dispatch-priority store: set/get + the default-0 (row-absent)
+//! contract. Both backends. The aged-rank `claim_next` ordering is exercised in
+//! `thread_priority_dispatch.rs`.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

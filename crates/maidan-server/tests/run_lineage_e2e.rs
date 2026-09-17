@@ -1,7 +1,7 @@
-//! Cluster 387.2: REST run lineage. A PUT result carrying the pi fixture
-//! `run_id` homes `parent_run_id` on the thread (no minted id). Nested
-//! occupancy attributes a child that shares the value. F7 mute is orthogonal.
-//! Auth ENABLED (real token).
+//! REST run lineage. A PUT result carrying the pi fixture `run_id` homes
+//! `parent_run_id` on the thread (no minted id). Nested occupancy attributes a
+//! child that shares the value. F7 mute is orthogonal. Auth ENABLED (real
+//! token).
 
 use std::{
     net::SocketAddr,

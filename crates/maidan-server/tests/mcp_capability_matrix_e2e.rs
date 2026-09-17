@@ -1,4 +1,4 @@
-//! Table-driven MCP tool capability denial + allow gate (Cluster 69).
+//! Table-driven MCP tool capability denial + allow gate.
 
 use std::{
     collections::BTreeMap,

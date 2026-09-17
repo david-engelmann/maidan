@@ -12,7 +12,7 @@ description = "OpenTelemetry + tracing setup for Maidan."
 [features]
 # OpenTelemetry (OTLP trace + metrics export) is a default-on feature so it can be
 # compiled out (`--no-default-features`) for a leaner build that keeps plain tracing
-# + Prometheus scrape (Cluster 366, H15). The crates stay pinned; the feature only
+# + Prometheus scrape. The crates stay pinned; the feature only
 # gates whether they are compiled and initialized.
 default = ["otel"]
 otel = [

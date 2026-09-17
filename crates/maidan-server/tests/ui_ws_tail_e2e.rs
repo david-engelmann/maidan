@@ -1,4 +1,4 @@
-//! Cluster 93: /ui WS subscribe with session cookie, filter presets, resume reconnect.
+//! /ui WS subscribe with session cookie, filter presets, resume reconnect.
 
 use std::{
     net::SocketAddr,

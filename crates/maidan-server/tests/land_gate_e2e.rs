@@ -1,7 +1,7 @@
-//! Cluster 385.4: LandGate pointer over HTTP. Auth ENABLED (recorded_by
-//! is a real member FK). Require arms the gate; close 409s on amber / fail /
-//! implementer pass; a land-gate-skilled third party green pass lands.
-//! MCP close uses the store FSM (P1.1d owns the MCP transition_thread twin).
+//! LandGate pointer over HTTP. Auth ENABLED (recorded_by is a real member FK).
+//! Require arms the gate; close 409s on amber / fail / implementer pass; a
+//! land-gate-skilled third party green pass lands. MCP close uses the store FSM
+//! (P1.1d owns the MCP transition_thread twin).
 
 use std::{
     net::SocketAddr,

@@ -172,7 +172,7 @@ async fn upsert_replaces_existing_embedding() {
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
     assert_eq!(hits[0].embedding_model.as_deref(), Some("v1"));
 
-    // A second model on the same message lands in its own table (Cluster 47).
+    // A second model on the same message lands in its own table.
     search
         .upsert_embedding(msg.id, "v2", &one_hot(1))
         .await

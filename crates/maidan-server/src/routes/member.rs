@@ -13,10 +13,10 @@ use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
-/// `GET /me` — the caller's own identity (Cluster 337; the REST twin of the MCP
-/// `whoami` tool). Reflects the request's auth (member/workspace/capabilities), so
-/// an agent handed only a base URL + token can discover the `member_id` every
-/// member-attributed write needs. `workspace:read`.
+/// `GET /me` — the caller's own identity. Reflects the request's auth
+/// (member/workspace/capabilities), so an agent handed only a base URL + token
+/// can discover the `member_id` every member-attributed write needs.
+/// `workspace:read`.
 pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<WhoAmI>> {
     cap(&auth, WORKSPACE_READ)?;
     Ok(Json(WhoAmI {
@@ -79,11 +79,11 @@ pub async fn list_mentions_for_member(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    // Defensive self-only (Cluster 315). These legacy inbox/mentions routes are mounted
-    // ONLY on the bearer-only `protected` router, and a bearer is the act-as-any
-    // orchestrator (Cluster-202/203 model), so this is a strict no-op for every current
-    // caller. It matches the sibling notification handlers and pins a session to self IF
-    // these are ever also session-mounted under `/ui/api` (the Cluster-251 pattern).
+    // Defensive self-only. These legacy inbox/mentions routes are mounted ONLY
+    // on the bearer-only `protected` router, and a bearer is the act-as-any
+    // orchestrator (model), so this is a strict no-op for every current caller.
+    // It matches the sibling notification handlers and pins a session to self
+    // IF these are ever also session-mounted under `/ui/api` (the pattern).
     ensure_acting_member(&auth, MemberId(id))?;
     Ok(Json(
         state
@@ -102,8 +102,7 @@ pub async fn get_member_inbox(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    // Defensive self-only (Cluster 315; bearer-only route today → no-op for current
-    // callers; guards a future `/ui/api` session mount). See list_mentions_for_member.
+    // Defensive self-only. See list_mentions_for_member.
     ensure_acting_member(&auth, MemberId(id))?;
     Ok(Json(
         state.store.list_member_inbox(MemberId(id), q.limit).await?,
@@ -119,8 +118,9 @@ pub async fn mark_member_inbox_read(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    // Defensive self-only (Cluster 315). `advance_inbox_last_read_at` is a per-member
-    // write; bearer-only route today (act-as-any → no-op), guards a future session mount.
+    // Defensive self-only. `advance_inbox_last_read_at` is a per-member write;
+    // bearer-only route today (act-as-any → no-op), guards a future session
+    // mount.
     ensure_acting_member(&auth, MemberId(id))?;
     state
         .store
@@ -129,9 +129,9 @@ pub async fn mark_member_inbox_read(
     Ok(Json(state.store.list_member_inbox(MemberId(id), 50).await?))
 }
 
-/// A member's per-recipient notifications, newest first (Cluster 239). Self-only for
-/// a session caller (a member reads their OWN inbox); a bearer is the act-as-any
-/// orchestrator (the Cluster-202/203 model).
+/// A member's per-recipient notifications, newest first. Self-only for a
+/// session caller (a member reads their OWN inbox); a bearer is the act-as-any
+/// orchestrator (the model).
 pub async fn list_member_notifications(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -152,10 +152,10 @@ pub async fn list_member_notifications(
 }
 
 /// A member's notifications collapsed into per-thread groups, newest-activity
-/// first (Cluster 359, N5) — so a busy thread shows as one row instead of
-/// flooding the flat inbox. `limit` bounds how many notifications are scanned
-/// (default 200, clamp 1..=500); `unread_only` groups only unread ones. Self-only
-/// for a session caller.
+/// first — so a busy thread shows as one row instead of flooding the flat
+/// inbox. `limit` bounds how many notifications are scanned (default 200, clamp
+/// 1..=500); `unread_only` groups only unread ones. Self-only for a session
+/// caller.
 pub async fn list_member_notifications_grouped(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -174,10 +174,10 @@ pub async fn list_member_notifications_grouped(
     Ok(Json(maidan_types::group_notifications_by_thread(&notes)))
 }
 
-/// A member's buried decisions (Cluster 359, N2) — task results produced by
-/// someone else in a channel/thread the member follows, since `since` (default
-/// 7 days ago), newest first. The queryable form of the buried-decisions digest.
-/// Self-only for a session caller; `workspace:read`.
+/// A member's buried decisions — task results produced by someone else in a
+/// channel/thread the member follows, since `since` (default 7 days ago),
+/// newest first. The queryable form of the buried-decisions digest. Self-only
+/// for a session caller; `workspace:read`.
 pub async fn list_member_decisions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -199,7 +199,7 @@ pub async fn list_member_decisions(
     Ok(Json(decisions))
 }
 
-/// A member's unread-notification badge count (Cluster 239). Self-only for sessions.
+/// A member's unread-notification badge count. Self-only for sessions.
 pub async fn member_unread_notification_count(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -213,9 +213,9 @@ pub async fn member_unread_notification_count(
     Ok(Json(UnreadCount { count }))
 }
 
-/// Mark one of a member's notifications read (Cluster 239). Self-only for sessions;
-/// the store scopes the write to `(member_id, id)`, so `404` when the notification
-/// isn't this member's. Returns the new unread count.
+/// Mark one of a member's notifications read. Self-only for sessions; the store
+/// scopes the write to `(member_id, id)`, so `404` when the notification isn't
+/// this member's. Returns the new unread count.
 pub async fn mark_member_notification_read(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -236,9 +236,9 @@ pub async fn mark_member_notification_read(
     Ok(Json(UnreadCount { count }))
 }
 
-/// Snooze one notification until `until` (Cluster 359, N5) — it drops out of the
-/// inbox + badge until then. Self-only for a session caller; `404` when the
-/// notification isn't this member's. Returns the new unread count.
+/// Snooze one notification until `until` — it drops out of the inbox + badge
+/// until then. Self-only for a session caller; `404` when the notification
+/// isn't this member's. Returns the new unread count.
 pub async fn snooze_member_notification(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -260,7 +260,7 @@ pub async fn snooze_member_notification(
     Ok(Json(UnreadCount { count }))
 }
 
-/// Mark all of a member's notifications read (Cluster 239). Self-only for sessions.
+/// Mark all of a member's notifications read. Self-only for sessions.
 pub async fn mark_all_member_notifications_read(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -277,8 +277,8 @@ pub async fn mark_all_member_notifications_read(
     Ok(Json(MarkAllRead { cleared }))
 }
 
-/// Set a member's mute preference for an event kind (Cluster 242). Self-only for a
-/// session caller (a member configures their OWN preferences); a bearer is the
+/// Set a member's mute preference for an event kind. Self-only for a session
+/// caller (a member configures their OWN preferences); a bearer is the
 /// act-as-any orchestrator.
 pub async fn set_member_notification_pref(
     State(state): State<AppState>,
@@ -298,7 +298,7 @@ pub async fn set_member_notification_pref(
     ))
 }
 
-/// A member's notification preferences (Cluster 242). Self-only for sessions.
+/// A member's notification preferences. Self-only for sessions.
 pub async fn list_member_notification_prefs(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -313,8 +313,8 @@ pub async fn list_member_notification_prefs(
     ))
 }
 
-/// Follow a channel to be notified of activity there (Cluster 245). Self-only for a
-/// session caller; requires access to the channel being followed.
+/// Follow a channel to be notified of activity there. Self-only for a session
+/// caller; requires access to the channel being followed.
 pub async fn follow_member_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -333,7 +333,7 @@ pub async fn follow_member_channel(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Unfollow a channel (Cluster 245). Self-only for sessions; `404` if not following.
+/// Unfollow a channel. Self-only for sessions; `404` if not following.
 pub async fn unfollow_member_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -354,7 +354,7 @@ pub async fn unfollow_member_channel(
     }
 }
 
-/// The channels a member follows (Cluster 245). Self-only for sessions.
+/// The channels a member follows. Self-only for sessions.
 pub async fn list_member_channel_follows(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -367,8 +367,8 @@ pub async fn list_member_channel_follows(
     Ok(Json(state.store.list_channel_follows(MemberId(id)).await?))
 }
 
-/// Follow a thread to be notified of activity there (Cluster 245). Self-only for a
-/// session caller; requires access to the thread being followed.
+/// Follow a thread to be notified of activity there. Self-only for a session
+/// caller; requires access to the thread being followed.
 pub async fn follow_member_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -387,7 +387,7 @@ pub async fn follow_member_thread(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Unfollow a thread (Cluster 245). Self-only for sessions; `404` if not following.
+/// Unfollow a thread. Self-only for sessions; `404` if not following.
 pub async fn unfollow_member_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -408,7 +408,7 @@ pub async fn unfollow_member_thread(
     }
 }
 
-/// The threads a member follows (Cluster 245). Self-only for sessions.
+/// The threads a member follows. Self-only for sessions.
 pub async fn list_member_thread_follows(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -421,9 +421,9 @@ pub async fn list_member_thread_follows(
     Ok(Json(state.store.list_thread_follows(MemberId(id)).await?))
 }
 
-/// Set a member's delivery email address (Cluster 250) — opting in to email
-/// notifications. Self-only for a session caller. A light `@` sanity check rejects
-/// obvious garbage; the transport validates fully on send.
+/// Set a member's delivery email address — opting in to email notifications.
+/// Self-only for a session caller. A light `@` sanity check rejects obvious
+/// garbage; the transport validates fully on send.
 pub async fn set_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -443,7 +443,7 @@ pub async fn set_member_email(
     ))
 }
 
-/// A member's delivery email, or `404` if unset (Cluster 250). Self-only for sessions.
+/// A member's delivery email, or `404` if unset. Self-only for sessions.
 pub async fn get_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -459,8 +459,8 @@ pub async fn get_member_email(
     }
 }
 
-/// Clear a member's delivery email (Cluster 250) — opting out. Self-only; `404` if
-/// none was set.
+/// Clear a member's delivery email — opting out. Self-only; `404` if none was
+/// set.
 pub async fn delete_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -477,9 +477,9 @@ pub async fn delete_member_email(
     }
 }
 
-/// Set a member's email delivery mode (Cluster 256) — `immediate` per-notification
-/// emails or a periodic `digest`. Self-only for a session caller. An unknown mode
-/// is a `400` (the enum fails deserialization at the extractor).
+/// Set a member's email delivery mode — `immediate` per-notification emails or
+/// a periodic `digest`. Self-only for a session caller. An unknown mode is a
+/// `400` (the enum fails deserialization at the extractor).
 pub async fn set_member_delivery_mode(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -497,8 +497,8 @@ pub async fn set_member_delivery_mode(
     Ok(Json(DeliveryModeView { mode: body.mode }))
 }
 
-/// A member's email delivery mode (Cluster 256) — `immediate` when never set.
-/// Self-only for a session caller.
+/// A member's email delivery mode — `immediate` when never set. Self-only for a
+/// session caller.
 pub async fn get_member_delivery_mode(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -512,11 +512,11 @@ pub async fn get_member_delivery_mode(
     Ok(Json(DeliveryModeView { mode }))
 }
 
-/// The waiting-on-you inbox (Cluster 368, Wave 2 #16 — G15/G9): everything that
-/// needs this member's attention — their assigned non-terminal threads, the
-/// workspace's pending approval gates, and their unread mentions — oldest-waiting
-/// first, each aged against `?sla_secs` (default 24h). `workspace:read` + self-only
-/// for a session (a bearer orchestrator may query any member).
+/// The waiting-on-you inbox: everything that needs this member's attention —
+/// their assigned non-terminal threads, the workspace's pending approval gates,
+/// and their unread mentions — oldest-waiting first, each aged against
+/// `?sla_secs` (default 24h). `workspace:read` + self-only for a session (a
+/// bearer orchestrator may query any member).
 pub async fn get_member_waiting(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -556,8 +556,8 @@ pub async fn get_member_waiting(
     )))
 }
 
-/// Register (upsert) a Web Push subscription for a member (Cluster 366, N1). Body
-/// is the browser's `PushSubscription` JSON (`{endpoint, keys:{p256dh, auth}}`).
+/// Register (upsert) a Web Push subscription for a member. Body is the
+/// browser's `PushSubscription` JSON (`{endpoint, keys:{p256dh, auth}}`).
 /// `workspace:read` + self-only for a session caller.
 pub async fn register_push_subscription(
     State(state): State<AppState>,
@@ -589,7 +589,7 @@ pub async fn register_push_subscription(
     Ok(Json(sub))
 }
 
-/// A member's Web Push subscriptions (Cluster 366, N1). Self-only for a session.
+/// A member's Web Push subscriptions. Self-only for a session.
 pub async fn list_push_subscriptions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -604,8 +604,8 @@ pub async fn list_push_subscriptions(
     ))
 }
 
-/// Remove one of a member's Web Push subscriptions (Cluster 366, N1) — recipient-
-/// scoped in the store (`404` when it isn't this member's). Self-only for a session.
+/// Remove one of a member's Web Push subscriptions — recipient- scoped in the
+/// store (`404` when it isn't this member's). Self-only for a session.
 pub async fn delete_push_subscription(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

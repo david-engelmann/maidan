@@ -1,10 +1,11 @@
-//! The egress trust boundary (Cluster 378.1): a per-workspace allowlist of the
-//! external destinations Maidan may deliver to. See the SQLite twin.
+//! The egress trust boundary: a per-workspace allowlist of the external
+//! destinations Maidan may deliver to. See the SQLite twin.
 //!
-//! A result's `deliver_to` list is agent-written; Maidan's connector credentials
-//! are operator-held and reach far more than one repository. So `deliver_to`
+//! A result's `deliver_to` list is agent-written; Maidan's connector
+//! credentials are operator-held and reach far more than one repository. So
+//! `deliver_to`
 //! *selects* and this allowlist *authorizes*, and an empty allowlist authorizes
-//! nothing — the Cluster-371 secret-broker fail-safe.
+//! nothing — the secret-broker fail-safe.
 
 use sqlx::{PgPool, Row};
 

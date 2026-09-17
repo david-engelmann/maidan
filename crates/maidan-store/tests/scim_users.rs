@@ -1,5 +1,5 @@
-//! SCIM provisioning-link store (Cluster 366, SCIM-as-OIDC-P3): create / get /
-//! list / update (active + externalId) / delete. Both backends.
+//! SCIM provisioning-link store: create / get / list / update (active +
+//! externalId) / delete. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};

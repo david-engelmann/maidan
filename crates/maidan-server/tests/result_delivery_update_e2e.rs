@@ -1,11 +1,11 @@
-//! Cluster 379.4: idempotent update-in-place for result delivery.
+//! Idempotent update-in-place for result delivery.
 //!
 //! A re-review of the same thread edits the object the first delivery created
 //! (a GitHub comment, a Slack message) rather than stacking a second one. The
-//! stored `external_ref` is the happy path; a hidden
-//! `<!-- maidan:result:<thread_id> -->` marker at byte 0 of the GitHub body is
-//! the recovery path if that handle is lost. Slack has no equivalent marker
-//! and re-posts. Projector rows never take this path — they keep posting.
+//! stored `external_ref` is the happy path; a hidden `<!--
+//! maidan:result:<thread_id> -->` marker at byte 0 of the GitHub body is the
+//! recovery path if that handle is lost. Slack has no equivalent marker and
+//! re-posts. Projector rows never take this path — they keep posting.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -129,7 +129,7 @@ impl GithubSender for RecordingGithub {
         _commit_id: &str,
         _comments: &[maidan_types::GithubReviewComment],
     ) -> Result<(), GithubError> {
-        // 379.4 envelopes have no findings; Cluster 380.2 e2e covers reviews.
+        // These envelopes have no findings; the inline-review e2e covers reviews.
         Ok(())
     }
 }

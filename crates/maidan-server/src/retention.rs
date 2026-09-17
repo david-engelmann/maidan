@@ -1,4 +1,4 @@
-//! Background data-retention pruning (Cluster 186).
+//! Background data-retention pruning.
 //!
 //! The event log, audit trail, and delivery tables grow without bound. This
 //! sweeper deletes rows past a per-table age, in batches (so a first sweep over
@@ -8,9 +8,9 @@
 //! **Event-log safety.** Events are pruned only up to `min_delivery_cursor` —
 //! the lowest watermark across all at-least-once consumers — so a lagging
 //! durable consumer never loses an undelivered event. The age cutoff (days) is
-//! always far older than the delivery stability horizon (seconds), so that floor
-//! needs no separate check. Optimistic reconnect replay beyond the retention
-//! window is out of scope by design (that's what retention *is*).
+//! always far older than the delivery stability horizon (seconds), so that
+//! floor needs no separate check. Optimistic reconnect replay beyond the
+//! retention window is out of scope by design (that's what retention *is*).
 
 use std::sync::Arc;
 use std::time::Duration;

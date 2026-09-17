@@ -25,8 +25,8 @@ pub async fn create(pool: &SqlitePool, new: NewWorkspace) -> Result<Workspace, S
     Ok(row_to_workspace(&row))
 }
 
-/// Insert a workspace and append its `WorkspaceCreated` event in one transaction
-/// (Cluster 213 transactional outbox).
+/// Insert a workspace and append its `WorkspaceCreated` event in one
+/// transaction.
 pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewWorkspace,

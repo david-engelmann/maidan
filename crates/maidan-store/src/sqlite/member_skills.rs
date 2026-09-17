@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Declare a skill for a member (Cluster 230). Idempotent; an empty skill is
-/// rejected. The FK requires the member to exist.
+/// Declare a skill for a member. Idempotent; an empty skill is rejected. The FK
+/// requires the member to exist.
 pub async fn add(pool: &SqlitePool, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
@@ -24,7 +24,7 @@ pub async fn add(pool: &SqlitePool, member_id: MemberId, skill: &str) -> Result<
     Ok(())
 }
 
-/// Remove a member's skill; `true` when a row was deleted (Cluster 230).
+/// Remove a member's skill; `true` when a row was deleted.
 pub async fn remove(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -38,7 +38,7 @@ pub async fn remove(
     Ok(res.rows_affected() > 0)
 }
 
-/// A member's declared skills, ordered by skill (Cluster 230).
+/// A member's declared skills, ordered by skill.
 pub async fn list(pool: &SqlitePool, member_id: MemberId) -> Result<Vec<MemberSkill>, StoreError> {
     let rows = sqlx::query(
         "SELECT member_id, skill, created_at

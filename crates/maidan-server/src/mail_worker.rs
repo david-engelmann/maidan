@@ -1,22 +1,22 @@
-//! Background mail-outbox worker (Cluster 305, durable mail retry queue).
+//! Background mail-outbox worker.
 //!
-//! Drains the [`maidan_mail_outbox`](crate::mcp) queue (Cluster 304): each tick
-//! claims due `pending` entries and sends them via the configured
+//! Drains the [`maidan_mail_outbox`](crate::mcp) queue: each tick claims due
+//! `pending` entries and sends them via the configured
 //! [`MailTransport`](crate::mail::MailTransport), marking each delivered, or —
 //! on failure — rescheduled with exponential backoff, or dead-lettered once it
 //! has exhausted [`MAX_ATTEMPTS`].
 //!
-//! Replaces the best-effort fire-and-forget send the notification router used to
-//! do inline (Cluster 249): the router now only *enqueues*, so a transient SMTP
-//! failure is retried instead of dropped.
+//! Replaces the best-effort fire-and-forget send the notification router used
+//! to do inline: the router now only *enqueues*, so a transient SMTP failure is
+//! retried instead of dropped.
 //!
 //! **Runs whenever a transport is configured** (spawned in `main.rs` only when
-//! `state.mail` is set — a queue with no sender would just pile up). Tick defaults
-//! to 5s, tunable via `MAIDAN_MAIL_WORKER_TICK_SECS`.
+//! `state.mail` is set — a queue with no sender would just pile up). Tick
+//! defaults to 5s, tunable via `MAIDAN_MAIL_WORKER_TICK_SECS`.
 //!
 //! **At-least-once:** [`Store::claim_next_due_mail`](maidan_store::Store) leases a
-//! row forward, so a worker that crashes mid-send releases it after the lease and
-//! another claim retries — a duplicate email is low-harm (the Cluster-255 digest
+//! row forward, so a worker that crashes mid-send releases it after the lease
+//! and another claim retries — a duplicate email is low-harm (the digest
 //! polarity). Multiple replicas can run the worker safely (`FOR UPDATE SKIP
 //! LOCKED` on Postgres hands each a distinct row).
 

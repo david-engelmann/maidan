@@ -1,4 +1,4 @@
-//! Workspace purge HTTP + audit (Cluster 25).
+//! Workspace purge HTTP + audit.
 
 use std::{
     net::SocketAddr,

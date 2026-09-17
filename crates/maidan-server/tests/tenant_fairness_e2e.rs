@@ -1,6 +1,7 @@
-//! Per-workspace fairness (Cluster 110): a workspace at its rate cap must not
-//! degrade another workspace's requests. Its own test binary so the
-//! `MAIDAN_WORKSPACE_RATE_LIMIT_*` env doesn't bleed into other rate-limit tests.
+//! Per-workspace fairness: a workspace at its rate cap must not degrade another
+//! workspace's requests. Its own test binary so the
+//! `MAIDAN_WORKSPACE_RATE_LIMIT_*` env doesn't bleed into other rate-limit
+//! tests.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

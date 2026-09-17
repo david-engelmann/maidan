@@ -1,10 +1,10 @@
-//! MCP projector link-management tools (Cluster 349) — the MCP twins of the
-//! Cluster-346 REST link routes. A projector link maps a Maidan thread to an
-//! external Slack channel or GitHub issue/PR so the projector can bridge messages
-//! both ways. The link's `workspace_id`/`channel_id` are resolved from the thread
-//! (via [`maidan_auth::authorize_thread`], which also authorizes access), so they
-//! can't disagree with it; the caller supplies the external id, the thread, and the
-//! member that relayed external messages are attributed to. Writes need
+//! MCP projector link-management tools — the MCP twins of the REST link routes.
+//! A projector link maps a Maidan thread to an external Slack channel or GitHub
+//! issue/PR so the projector can bridge messages both ways. The link's
+//! `workspace_id`/`channel_id` are resolved from the thread (via
+//! [`maidan_auth::authorize_thread`], which also authorizes access), so they
+//! can't disagree with it; the caller supplies the external id, the thread, and
+//! the member that relayed external messages are attributed to. Writes need
 //! `workspace:write` + thread access; lists/unlinks are workspace-scoped.
 
 use maidan_auth::AuthContext;

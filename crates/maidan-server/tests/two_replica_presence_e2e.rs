@@ -1,4 +1,4 @@
-//! Cross-replica presence over Postgres LISTEN/NOTIFY (Cluster 103.0.4).
+//! Cross-replica presence over Postgres LISTEN/NOTIFY.
 //!
 //! Two `PresenceHub`s sharing one Postgres database stand in for two server
 //! replicas, each with its own `PostgresPresenceNotifier` + tasks. A member

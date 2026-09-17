@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Two-language lease demo (Cluster 317) — the falsifiable hello-world. Boots a
+# Two-language lease demo — the falsifiable hello-world. Boots a
 # source-built Maidan on SQLite (auth disabled, dev-only, like sdk-test.sh), then runs
 # examples/lease_demo/lease_demo.py: a Python SDK worker and a TypeScript SDK worker
 # both claim tasks off one channel, and Maidan hands each task to exactly one worker.

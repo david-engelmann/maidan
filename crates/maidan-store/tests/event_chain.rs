@@ -1,4 +1,4 @@
-//! Cluster 392: hash chain on append; tamper is detected. Both backends.
+//! Hash chain on append; tamper is detected. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -256,18 +256,18 @@ async fn tamper_is_detected_postgres() {
     assert_eq!(report.reason, Some(ChainBreakReason::ContentHashMismatch));
 }
 
-/// Cluster 397.8: a blanked `content_hash` must not launder a tampered payload.
+/// A blanked `content_hash` must not launder a tampered payload.
 ///
-/// `backfill_chain` runs on every startup. Its guard used to be global — if *any*
-/// row had an empty `content_hash`, it re-linked **every row of every workspace**
-/// from genesis against the current payloads. So the attack against a
-/// tamper-evident log was: edit a payload, blank one row's hash, restart, and the
-/// chain is recomputed to agree with you. `verify_event_chain` then said
+/// `backfill_chain` runs on every startup. Its guard used to be global — if
+/// *any* row had an empty `content_hash`, it re-linked **every row of every
+/// workspace** from genesis against the current payloads. So the attack against
+/// a tamper-evident log was: edit a payload, blank one row's hash, restart, and
+/// the chain is recomputed to agree with you. `verify_event_chain` then said
 /// `ok: true, from_genesis: true`.
 ///
-/// Now backfill only fills rows that are actually empty and never rewrites a row
-/// that already has a hash, so the successor's `prev_hash` — still chaining from
-/// the original — no longer matches, and the break surfaces.
+/// Now backfill only fills rows that are actually empty and never rewrites a
+/// row that already has a hash, so the successor's `prev_hash` — still chaining
+/// from the original — no longer matches, and the break surfaces.
 #[tokio::test]
 async fn a_blanked_hash_cannot_launder_a_tampered_payload_sqlite() {
     let store = sqlite().await;
@@ -319,7 +319,7 @@ async fn a_blanked_hash_cannot_launder_a_tampered_payload_sqlite() {
     );
 }
 
-/// Cluster 400.3: a payload carrying exponent-notation numbers still verifies.
+/// A payload carrying exponent-notation numbers still verifies.
 ///
 /// Postgres `jsonb` parses each number into `numeric` and re-renders it, which
 /// **expands exponent notation** — `1E2` is stored as `100`. An in-memory `1e2`

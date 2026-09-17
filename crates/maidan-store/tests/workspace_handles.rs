@@ -1,5 +1,5 @@
-//! Workspace handle aliases (Cluster 395): set / get / rename / lookup.
-//! Both backends. A rename must not change the workspace id.
+//! Workspace handle aliases: set / get / rename / lookup. Both backends. A
+//! rename must not change the workspace id.
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{NewWorkspace, RoomCard};
@@ -52,8 +52,8 @@ async fn run_suite(store: &dyn Store) {
         .expect("some");
     assert_eq!(got.handle, "acme");
 
-    // Cluster 398.7: a handle is a display label, not an address — there is no
-    // reverse lookup, so the rename property is asserted from the workspace side.
+    // A handle is a display label, not an address — there is no reverse lookup,
+    // so the rename property is asserted from the workspace side.
     let renamed = store
         .set_workspace_handle(ws.id, "renamed")
         .await

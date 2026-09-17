@@ -1,4 +1,4 @@
-//! The AG-UI SSE door (`GET /agui/stream`, Cluster 369.2, Wave 2 #17, H1).
+//! The AG-UI SSE door (`GET /agui/stream`).
 //!
 //! Reuses the event bus + resume machinery behind [`crate::mcp_stream`], but
 //! emits [AG-UI](https://docs.ag-ui.com) protocol events (`RUN_STARTED`,

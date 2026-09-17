@@ -6,8 +6,7 @@
 //! only exists in the response body. So these writes are **best-effort**: on
 //! error we emit a loud `tracing::error!` (greppable `audit.write_failed`) and
 //! let the operation succeed. The audit trail is a security record, not a
-//! transactional participant; making it one is the dual-write concern tracked
-//! for Cluster 184.
+//! transactional participant; making it one is a tracked dual-write concern.
 //!
 //! Denied requests (401/403) are deliberately *not* written here — a rejected,
 //! attacker-controlled request stream would be an unbounded audit-table write

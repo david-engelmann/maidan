@@ -21,8 +21,8 @@ use crate::traits::EventBus;
 
 #[derive(Debug, Clone)]
 pub struct InMemoryBus {
-    // Cluster 201: workspace-sharded fan-out — a publish reaches only the
-    // subscribers that could match it, not every subscriber.
+    // Workspace-sharded fan-out — a publish reaches only the subscribers that
+    // could match it, not every subscriber.
     fanout: Arc<ShardedBroadcast>,
 }
 

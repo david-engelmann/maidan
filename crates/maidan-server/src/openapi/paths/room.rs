@@ -1,5 +1,5 @@
-//! OpenAPI stubs for room discovery, handles, named capability sets,
-//! and holder-side token attenuation (Cluster 395).
+//! OpenAPI stubs for room discovery, handles, named capability sets, and
+//! holder-side token attenuation.
 
 use crate::dto::{AttenuateToken, CapabilitySetView, MintApiTokenResponse, SetWorkspaceHandle};
 use maidan_types::{RoomCard, RoomDiscovery, WorkspaceHandle};

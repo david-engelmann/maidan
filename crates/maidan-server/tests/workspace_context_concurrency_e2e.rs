@@ -1,8 +1,7 @@
-//! Cluster 199 (Arc D): the workspace-context pack builds each thread's context
-//! concurrently (bounded). This guards the correctness invariants that
-//! parallelization must not break: every page thread is built, each context
-//! carries *its own* messages (no cross-contamination), and the output stays in
-//! page order.
+//! The workspace-context pack builds each thread's context concurrently
+//! (bounded). This guards the correctness invariants that parallelization must
+//! not break: every page thread is built, each context carries *its own*
+//! messages (no cross-contamination), and the output stays in page order.
 
 use std::{
     net::SocketAddr,

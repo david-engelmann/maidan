@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a member's delivery email (Cluster 248). A re-set overwrites.
+/// Set (upsert) a member's delivery email. A re-set overwrites.
 pub async fn set(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -26,7 +26,7 @@ pub async fn set(
     Ok(row_to_email(&row))
 }
 
-/// A member's delivery email, or `None` if unset (Cluster 248).
+/// A member's delivery email, or `None` if unset.
 pub async fn get(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -40,7 +40,7 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_email))
 }
 
-/// Remove a member's delivery email; `true` when a row was deleted (Cluster 248).
+/// Remove a member's delivery email; `true` when a row was deleted.
 pub async fn delete(pool: &SqlitePool, member_id: MemberId) -> Result<bool, StoreError> {
     let res = sqlx::query("DELETE FROM maidan_member_emails WHERE member_id = ?")
         .bind(member_id.0)

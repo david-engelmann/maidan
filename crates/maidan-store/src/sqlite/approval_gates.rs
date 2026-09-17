@@ -11,8 +11,8 @@ use crate::error::StoreError;
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, created_at, resolved_at";
 
-/// Open a new `Pending` approval gate (Cluster 350). JSON columns are stored as
-/// TEXT in SQLite.
+/// Open a new `Pending` approval gate. JSON columns are stored as TEXT in
+/// SQLite.
 pub async fn create(pool: &SqlitePool, gate: &NewApprovalGate) -> Result<ApprovalGate, StoreError> {
     let id = ApprovalGateId::new();
     let schema_text = gate

@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a required skill to a task (Cluster 231) — see the SQLite twin.
+/// Add a required skill to a task — see the SQLite twin.
 pub async fn add(pool: &PgPool, thread_id: ThreadId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));

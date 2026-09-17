@@ -1,5 +1,5 @@
-//! Per-workspace usage counts (Cluster 188): scoped to the workspace, exclude
-//! tombstoned rows.
+//! Per-workspace usage counts: scoped to the workspace, exclude tombstoned
+//! rows.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

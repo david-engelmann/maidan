@@ -1,6 +1,5 @@
-//! Cluster 388.1: CursorTooOld fails loud when a subscribe cursor points
-//! into a pruned gap. Both backends. No silent clamp to the oldest remaining
-//! row.
+//! CursorTooOld fails loud when a subscribe cursor points into a pruned gap.
+//! Both backends. No silent clamp to the oldest remaining row.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace};

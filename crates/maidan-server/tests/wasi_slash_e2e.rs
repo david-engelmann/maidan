@@ -1,5 +1,5 @@
-//! Cluster 399.2: a WASI slash handler runs end to end, and only over a module
-//! its own workspace owns.
+//! A WASI slash handler runs end to end, and only over a module its own
+//! workspace owns.
 //!
 //! Before this, `SlashHandlerKind::wasi` was registrable and every dispatch
 //! returned `wasi_runtime_unavailable` — a user could configure a handler that

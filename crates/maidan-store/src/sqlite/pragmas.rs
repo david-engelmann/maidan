@@ -10,7 +10,7 @@ pub async fn configure_pool(pool: &SqlitePool) -> Result<(), StoreError> {
     configure_pool_with(pool, 5000).await
 }
 
-/// As [`configure_pool`], with a configurable `busy_timeout` in ms (Cluster 107).
+/// As [`configure_pool`], with a configurable `busy_timeout` in ms.
 pub async fn configure_pool_with(
     pool: &SqlitePool,
     busy_timeout_ms: u64,

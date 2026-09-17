@@ -8,14 +8,14 @@ use crate::postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 
 const RELAYABLE: &str = "published_at IS NULL AND quarantined_at IS NULL";
 
-/// Atomically claim up to `limit` relayable rows (Cluster 398.1) — the SQLite
-/// twin of the Postgres `FOR UPDATE SKIP LOCKED` claim.
+/// Atomically claim up to `limit` relayable rows — the SQLite twin of the
+/// Postgres `FOR UPDATE SKIP LOCKED` claim.
 ///
 /// SQLite serializes writers, so a select-then-update inside one transaction is
 /// already exclusive; the pattern matches `claim_next_due_schedule`. The lease
-/// still matters: a relay that crashes between claim and publish must not strand
-/// the row, so an expired claim is reclaimable. **A claim is not a publish** —
-/// at-least-once is preserved.
+/// still matters: a relay that crashes between claim and publish must not
+/// strand the row, so an expired claim is reclaimable. **A claim is not a
+/// publish** — at-least-once is preserved.
 pub async fn claim_pending(
     pool: &SqlitePool,
     limit: i64,
@@ -116,9 +116,9 @@ pub async fn mark_published(pool: &SqlitePool, outbox_id: i64) -> Result<(), Sto
     Ok(())
 }
 
-/// Mark a batch of outbox rows published in one statement (Cluster 168, H4).
-/// Idempotent: the `IS NULL` guard skips already-published rows, so a partial
-/// match is not an error. A no-op for an empty slice.
+/// Mark a batch of outbox rows published in one statement. Idempotent: the `IS
+/// NULL` guard skips already-published rows, so a partial match is not an
+/// error. A no-op for an empty slice.
 pub async fn mark_published_batch(pool: &SqlitePool, outbox_ids: &[i64]) -> Result<(), StoreError> {
     if outbox_ids.is_empty() {
         return Ok(());
@@ -137,8 +137,7 @@ pub async fn mark_published_batch(pool: &SqlitePool, outbox_ids: &[i64]) -> Resu
     Ok(())
 }
 
-/// Count a failed relay attempt and release the claim (Cluster 398.1) — see the
-/// Postgres twin.
+/// Count a failed relay attempt and release the claim — see the Postgres twin.
 pub async fn record_attempt(pool: &SqlitePool, outbox_id: i64) -> Result<i32, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_outbox

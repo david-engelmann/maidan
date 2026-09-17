@@ -1,5 +1,5 @@
 {
-  "description": "Maidan lexicon catalogue (Cluster 390). Observable `$type` is the contract. Feeds a future SDK 0.2; this pack does not bump the SDK.",
+  "description": "Maidan lexicon catalogue. Observable `$type` is the contract. Feeds a future SDK 0.2; this pack does not bump the SDK.",
   "types": [
     "example.plan.result/1",
     "example.review.result/1",

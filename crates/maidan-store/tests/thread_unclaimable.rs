@@ -1,5 +1,4 @@
-//! Thread dispatch-park store (Cluster 363, G3): mark/clear/get + channel list.
-//! Both backends.
+//! Thread dispatch-park store: mark/clear/get + channel list. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

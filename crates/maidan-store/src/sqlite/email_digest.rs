@@ -1,13 +1,13 @@
-//! Email digest data model (Cluster 254, Program C — Arc I): a per-member
-//! delivery-mode preference and a per-member digest watermark, plus the sweeper's
-//! "due for digest" enumeration. Foundation only — no worker/routes wire it yet.
+//! Email digest data model: a per-member delivery-mode preference and a
+//! per-member digest watermark, plus the sweeper's "due for digest"
+//! enumeration. Foundation only — no worker/routes wire it yet.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{BuriedDecision, ChannelId, DigestDue, EmailDeliveryMode, MemberId, ThreadId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-/// Set a member's email delivery mode (Cluster 254). Upsert — one row per member.
+/// Set a member's email delivery mode. Upsert — one row per member.
 pub async fn set_delivery_mode(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -27,7 +27,7 @@ pub async fn set_delivery_mode(
     Ok(())
 }
 
-/// A member's delivery mode, defaulting to `Immediate` when unset (Cluster 254).
+/// A member's delivery mode, defaulting to `Immediate` when unset.
 pub async fn get_delivery_mode(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -42,8 +42,8 @@ pub async fn get_delivery_mode(
         .unwrap_or_default())
 }
 
-/// Advance a member's digest watermark to `now` (Cluster 254) — called after a
-/// digest is emailed, so the next run only counts notifications created since.
+/// Advance a member's digest watermark to `now` — called after a digest is
+/// emailed, so the next run only counts notifications created since.
 pub async fn set_last_digest_at(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -62,11 +62,11 @@ pub async fn set_last_digest_at(
     Ok(())
 }
 
-/// Members due for an email digest (Cluster 254): digest-mode members with an
-/// address who have unread notifications created since their last digest, most-
-/// unread irrelevant — ordered by member id, capped at `limit`. `datetime(...)`
-/// wraps both sides so the `datetime('now')`-formatted `created_at` and the
-/// rfc3339 `last_digest_at` compare correctly.
+/// Members due for an email digest: digest-mode members with an address who
+/// have unread notifications created since their last digest, most- unread
+/// irrelevant — ordered by member id, capped at `limit`. `datetime(...)` wraps
+/// both sides so the `datetime('now')`-formatted `created_at` and the rfc3339
+/// `last_digest_at` compare correctly.
 pub async fn members_due_for_digest(
     pool: &SqlitePool,
     limit: i64,
@@ -100,11 +100,11 @@ pub async fn members_due_for_digest(
         .collect())
 }
 
-/// Task results ("decisions", Cluster 359, N2) produced by someone else after
-/// `since`, in a channel or thread the member follows. Newest first. SQLite stores
+/// Task results ("decisions") produced by someone else after `since`, in a
+/// channel or thread the member follows. Newest first. SQLite stores
 /// `maidan_thread_results.result` as TEXT JSON — parse it back to `Value`; the
-/// timestamp comparison binds rfc3339 and wraps `datetime(...)` for a consistent
-/// compare against the stored value.
+/// timestamp comparison binds rfc3339 and wraps `datetime(...)` for a
+/// consistent compare against the stored value.
 pub async fn buried_decisions_for_member(
     pool: &SqlitePool,
     member_id: MemberId,

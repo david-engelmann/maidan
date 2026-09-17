@@ -1,5 +1,5 @@
-//! Capability-registry REST (Cluster 232): declare/list/remove member skills and
-//! thread required-skills. Auth ENABLED (real token) so RBAC is exercised.
+//! Capability-registry REST: declare/list/remove member skills and thread
+//! required-skills. Auth ENABLED (real token) so RBAC is exercised.
 
 use std::{
     net::SocketAddr,
@@ -208,16 +208,16 @@ async fn skills_crud_over_http() {
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
 }
 
-/// Cluster 400.5: a governance skill is not self-service.
+/// A governance skill is not self-service.
 ///
-/// The Cluster-385 close-gate counts a green pass only from a member who
-/// **declared** `land_gate`, and Cluster 383 arms `request_changes` only for a
+/// The close-gate counts a green pass only from a member who
+/// **declared** `land_gate`, and `request_changes` is armed only for a
 /// producer who declared `review`. Granting was plain `workspace:write` with no
 /// restriction on which skill — so an agent could grant *itself* the
 /// qualification the gate exists to check, leaving separation of duties as the
 /// only thing still standing.
 ///
-/// Granting now ratchets like the Cluster-397.2 gates: `channel:admin`, which
+/// Granting now ratchets like the gates: `channel:admin`, which
 /// `maidan.agent.worker` does not carry.
 #[tokio::test]
 async fn an_agent_cannot_grant_itself_a_governance_skill() {

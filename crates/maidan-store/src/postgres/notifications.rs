@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Insert one per-recipient notification (Cluster 237) — see the SQLite twin.
+/// Insert one per-recipient notification — see the SQLite twin.
 pub async fn create(pool: &PgPool, new: NewNotification) -> Result<Notification, StoreError> {
     let id = NotificationId::new();
     let row = sqlx::query(
@@ -33,8 +33,8 @@ pub async fn create(pool: &PgPool, new: NewNotification) -> Result<Notification,
     row_to_notification(&row)
 }
 
-/// Insert unless one already exists for `(member_id, source_log_id)` (Cluster 238) —
-/// see the SQLite twin. `None` = a row already existed (deduped).
+/// Insert unless one already exists for `(member_id, source_log_id)` — see the
+/// SQLite twin. `None` = a row already existed (deduped).
 pub async fn create_if_absent(
     pool: &PgPool,
     new: NewNotification,
@@ -63,12 +63,12 @@ pub async fn create_if_absent(
     row.as_ref().map(row_to_notification).transpose()
 }
 
-/// Insert many notifications in one round trip (Cluster 349) — the batch form of
-/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is
-/// `ON CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
+/// Insert many notifications in one round trip — the batch form of
+/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is `ON
+/// CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
 /// inserted rows (deduped rows omitted). The caller passes a set of distinct
-/// recipients (so no intra-batch key collision). Inserts via `UNNEST` arrays, so
-/// row count never affects the bound-parameter count (9 array params).
+/// recipients (so no intra-batch key collision). Inserts via `UNNEST` arrays,
+/// so row count never affects the bound-parameter count (9 array params).
 pub async fn create_batch(
     pool: &PgPool,
     rows: &[NewNotification],
@@ -116,7 +116,7 @@ pub async fn list_for_member(
     limit: i64,
 ) -> Result<Vec<Notification>, StoreError> {
     // Currently-snoozed notifications (snoozed_until in the future) are hidden
-    // from the default inbox and resurface when the snooze lapses (Cluster 359, N5).
+    // from the default inbox and resurface when the snooze lapses.
     let sql = if unread_only {
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
                 message_id, actor_id, created_at, read_at, snoozed_until
@@ -140,8 +140,8 @@ pub async fn list_for_member(
     rows.iter().map(row_to_notification).collect()
 }
 
-/// Idempotent + recipient-scoped (Cluster 237/239) — a re-mark preserves the original
-/// `read_at`; returns whether a `(member_id, id)` row exists (so a caller can't mark
+/// Idempotent + recipient-scoped — a re-mark preserves the original `read_at`;
+/// returns whether a `(member_id, id)` row exists (so a caller can't mark
 /// another member's notification).
 pub async fn mark_read(
     pool: &PgPool,
@@ -159,8 +159,8 @@ pub async fn mark_read(
     Ok(res.rows_affected() > 0)
 }
 
-/// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped
-/// like [`mark_read`]; returns whether the `(member_id, id)` row exists.
+/// Snooze one notification until `until` — recipient-scoped like [`mark_read`];
+/// returns whether the `(member_id, id)` row exists.
 pub async fn snooze(
     pool: &PgPool,
     member_id: MemberId,

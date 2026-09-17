@@ -61,9 +61,9 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     }
 }
 
-/// Attach the resolved room to the response for the Room-LSN layer
-/// (Cluster 398.8), which is applied outside every auth layer and so cannot
-/// resolve the caller's workspace itself.
+/// Attach the resolved room to the response for the Room-LSN layer, which is
+/// applied outside every auth layer and so cannot resolve the caller's
+/// workspace itself.
 fn tag_room(mut resp: Response, workspace_id: maidan_types::WorkspaceId) -> Response {
     resp.extensions_mut()
         .insert(crate::room_lsn::RoomScope(workspace_id));

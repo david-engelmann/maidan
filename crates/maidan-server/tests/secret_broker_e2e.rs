@@ -1,8 +1,8 @@
-//! The egress SecretBroker (Cluster 371.4, Wave 2 #19). Proves the security
-//! property: a `secret://<name>` ref in an outbound payload is substituted with
-//! the real value ONLY when the target host is allowlisted — otherwise it's left
-//! as the literal placeholder (never leaked). Exercises the async resolve +
-//! decrypt path directly (the webhook worker calls the same fn at send time).
+//! The egress SecretBroker. Proves the security property: a `secret://<name>`
+//! ref in an outbound payload is substituted with the real value ONLY when the
+//! target host is allowlisted — otherwise it's left as the literal placeholder
+//! (never leaked). Exercises the async resolve + decrypt path directly (the
+//! webhook worker calls the same fn at send time).
 
 use std::sync::{atomic::AtomicI64, Arc};
 

@@ -1,10 +1,10 @@
-//! Member freeze — the kill-switch record (Cluster 372, Wave 2 #20, G17/B25).
+//! Member freeze — the kill-switch record.
 //!
-//! The presence of a [`MemberFreeze`] row freezes a member: `claim_next` refuses
-//! them, and freezing drops their active leases (releases their claimed threads).
-//! A frozen member stays frozen until an operator explicitly unfreezes — the
-//! freeze *is* the gate. This is **not** G4 PAUSE (which pauses a thread or
-//! workspace); it stops one member's participation.
+//! The presence of a [`MemberFreeze`] row freezes a member: `claim_next`
+//! refuses them, and freezing drops their active leases (releases their claimed
+//! threads). A frozen member stays frozen until an operator explicitly
+//! unfreezes — the freeze *is* the gate. This is **not** G4 PAUSE (which pauses
+//! a thread or workspace); it stops one member's participation.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -4,16 +4,16 @@ use maidan_types::{
 };
 use sqlx::{Row, SqlitePool};
 
-/// Rows per batch when filling pre-Cluster-392 chain fields (Cluster 397.8).
+/// Rows per batch when filling pre-chain fields.
 const CHAIN_BACKFILL_BATCH: i64 = 256;
 
 use crate::error::StoreError;
 use crate::sqlite::outbox;
 
-/// Resolve a message's (workspace, channel, thread) inside a transaction
-/// (Cluster 206) — used by the message-scoped `*_with_event` mutations to build
-/// their event's context in the same tx as the mutation. `NotFound` if the
-/// message doesn't exist.
+/// Resolve a message's (workspace, channel, thread) inside a transaction — used
+/// by the message-scoped `*_with_event` mutations to build their event's
+/// context in the same tx as the mutation. `NotFound` if the message doesn't
+/// exist.
 pub async fn message_scope_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     message_id: MessageId,
@@ -36,10 +36,10 @@ pub async fn message_scope_in_tx(
     ))
 }
 
-/// Resolve a thread's (workspace, channel) inside a transaction (Cluster 208) —
-/// used by the thread-scoped `*_with_event` mutations (transitions, assignments)
-/// to build their event's context in the same tx. `NotFound` if the thread
-/// doesn't exist.
+/// Resolve a thread's (workspace, channel) inside a transaction — used by the
+/// thread-scoped `*_with_event` mutations (transitions, assignments) to build
+/// their event's context in the same tx. `NotFound` if the thread doesn't
+/// exist.
 pub async fn thread_scope_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
@@ -68,10 +68,9 @@ pub async fn append(pool: &SqlitePool, event: &Event) -> Result<StoredEvent, Sto
 }
 
 /// Append the event + its outbox row on a caller-supplied transaction, without
-/// committing (Cluster 205 transactional outbox). A `*_with_event` store method
-/// calls this in the SAME tx as its domain mutation so the domain row and the
-/// event are committed atomically — a crash can no longer leave one without the
-/// other.
+/// committing. A `*_with_event` store method calls this in the SAME tx as its
+/// domain mutation so the domain row and the event are committed atomically — a
+/// crash can no longer leave one without the other.
 pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     event: &Event,
@@ -88,8 +87,8 @@ pub async fn append_in_tx(
     let content =
         content_hash(&payload_value).map_err(|e| StoreError::InvalidInput(e.to_string()))?;
     let prev = next_prev_hash(previous.as_ref());
-    // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
-    // distinct from the caller-supplied `occurred_at`.
+    // `inserted_at` is the DB insert wall-clock, distinct from the
+    // caller-supplied `occurred_at`.
     let row = sqlx::query(
         "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -150,8 +149,8 @@ pub async fn list_after(
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
 /// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
 /// loop advance a durable cursor without stranding a lower `id` that is still
-/// in flight (Cluster 125 at-least-once delivery). `inserted_at` is stored as
-/// RFC3339, which sorts lexically in chronological order.
+/// in flight. `inserted_at` is stored as RFC3339, which sorts lexically in
+/// chronological order.
 pub async fn list_after_stable(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -176,8 +175,7 @@ pub async fn list_after_stable(
 }
 
 /// Cross-workspace events with `id > after_id`, in `id` order. SQLite twin of
-/// the Postgres helper the bus uses to back-fill a lagged listener (Cluster 258
-/// / 388 Lagged resume).
+/// the Postgres helper the bus uses to back-fill a lagged listener.
 pub async fn list_after_global(
     pool: &SqlitePool,
     after_id: i64,
@@ -197,8 +195,8 @@ pub async fn list_after_global(
     rows.iter().map(row_to_stored).collect()
 }
 
-/// Lowest retained `id` in `workspace_id` (`None` when empty). Cluster 388
-/// CursorTooOld check.
+/// Lowest retained `id` in `workspace_id` (`None` when empty). The
+/// `CursorTooOld` check.
 pub async fn min_event_id(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -211,7 +209,7 @@ pub async fn min_event_id(
     Ok(row.0)
 }
 
-/// Highest event-log id (`0` when empty). Cluster 390 `Maidan-Room-LSN` — the
+/// Highest event-log id (`0` when empty). The `Maidan-Room-LSN` value — the
 /// SQLite twin of [`crate::postgres::events::max_event_id`].
 pub async fn max_event_id(pool: &SqlitePool) -> Result<i64, StoreError> {
     let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM maidan_events")
@@ -220,8 +218,8 @@ pub async fn max_event_id(pool: &SqlitePool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("max_id"))
 }
 
-/// A thread's events with `id <= through_id`, in `id` order (Cluster 326) — the
-/// immutable substrate for as-of context replay. See the Postgres twin.
+/// A thread's events with `id <= through_id`, in `id` order — the immutable
+/// substrate for as-of context replay. See the Postgres twin.
 pub async fn list_through(
     pool: &SqlitePool,
     thread_id: maidan_types::ThreadId,
@@ -299,7 +297,7 @@ fn row_to_link(row: &sqlx::sqlite::SqliteRow) -> EventLink {
     }
 }
 
-/// Oldest retained link in `workspace_id` (Cluster 393 snapshot floor).
+/// Oldest retained link in `workspace_id`.
 pub async fn floor_link(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -316,7 +314,7 @@ pub async fn floor_link(
     Ok(row.as_ref().map(row_to_link))
 }
 
-/// Newest retained link in `workspace_id` (Cluster 393 snapshot head).
+/// Newest retained link in `workspace_id`.
 pub async fn head_link(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -357,10 +355,10 @@ pub async fn verify_chain(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
 ) -> Result<ChainVerifyReport, StoreError> {
-    // Verify as a fold, discarding each page (Cluster 397.8). Collecting every
-    // link *and* a clone of every payload first meant a large workspace was
-    // gigabytes of resident memory per request — on `workspace:read`, with no
-    // limit and no pagination, so repeated calls were a trivial OOM.
+    // Verify as a fold, discarding each page. Collecting every link *and* a
+    // clone of every payload first meant a large workspace was gigabytes of
+    // resident memory per request — on `workspace:read`, with no limit and no
+    // pagination, so repeated calls were a trivial OOM.
     const PAGE: i64 = 256;
     let mut after = 0i64;
     let mut verifier = maidan_types::ChainVerifier::new();
@@ -378,10 +376,10 @@ pub async fn verify_chain(
     }
 }
 
-/// Fill the chain fields of rows that predate Cluster 392, in batches. See the
+/// Fill the chain fields of rows written before the chain existed, in batches. See the
 /// Postgres twin — **a row that already carries a `content_hash` is never
-/// rewritten** (Cluster 397.8), which is what keeps a blanked row from
-/// laundering a tampered payload into a chain that verifies.
+/// rewritten**, which is what keeps a blanked row from laundering a tampered
+/// payload into a chain that verifies.
 pub async fn backfill_chain(pool: &SqlitePool) -> Result<(), StoreError> {
     loop {
         let rows = sqlx::query(
@@ -450,18 +448,16 @@ async fn previous_link(
 }
 
 /// Parse the persisted `kind` column back into an [`EventKind`]. Delegates to
-/// the single [`maidan_types::EventKind::parse`] so the wire-form mapping has no
-/// per-backend copy to drift (Cluster 181 — Cluster 171 lost an event because a
-/// store copy was missing a variant; the read-back failed and the insert rolled
-/// back silently). Round-trip is guarded in `maidan-types`.
+/// the single [`maidan_types::EventKind::parse`] so the wire-form mapping has
+/// no per-backend copy to drift. Round-trip is guarded in `maidan-types`.
 fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
     maidan_types::EventKind::parse(s)
         .ok_or_else(|| StoreError::InvalidInput(format!("unknown event kind: {s}")))
 }
 
-/// Every workspace with at least one event — the set a chain verifier walks
-/// (Cluster 402.3). Derived from the log, not the workspaces table: a workspace
-/// with no events has no chain, and a vacuous pass reads the same as a real one.
+/// Every workspace with at least one event — the set a chain verifier walks.
+/// Derived from the log, not the workspaces table: a workspace with no events
+/// has no chain, and a vacuous pass reads the same as a real one.
 pub async fn workspace_ids_with_events(pool: &SqlitePool) -> Result<Vec<WorkspaceId>, StoreError> {
     use sqlx::Row;
     let rows = sqlx::query(

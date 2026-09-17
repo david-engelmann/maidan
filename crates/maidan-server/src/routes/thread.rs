@@ -29,10 +29,10 @@ pub async fn create_thread(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
-    // Cluster 205: the thread row and its `ThreadCreated` event commit atomically
-    // (transactional outbox); `publish_stored` then notifies the bus.
-    // Cluster 376.6: a spawn the budget refuses is recorded as
-    // `ThreadSpawnDenied` on the way to the 409.
+    // The thread row and its `ThreadCreated` event commit atomically
+    // (transactional outbox); `publish_stored` then notifies the bus. A spawn
+    // the budget refuses is recorded as `ThreadSpawnDenied` on the way to the
+    // 409.
     let created = state
         .store
         .create_thread_with_event(NewThread {
@@ -57,7 +57,7 @@ pub async fn list_threads(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
-    // Cluster 343: keyset-paginated (was unbounded). Default 100, clamp 1..=500.
+    // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
     let after = q.cursor.map(ThreadId);
     Ok(Json(
@@ -68,9 +68,9 @@ pub async fn list_threads(
     ))
 }
 
-/// A channel's threads ordered by last activity — most-recently bumped first
-/// (Cluster 356, F7). A post bumps its thread's `updated_at`, floating it here.
-/// Not keyset-paginated (the sort key is mutable); a `limit` caps it.
+/// A channel's threads ordered by last activity — most-recently bumped first. A
+/// post bumps its thread's `updated_at`, floating it here. Not keyset-paginated
+/// (the sort key is mutable); a `limit` caps it.
 pub async fn list_recently_active_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -97,11 +97,11 @@ pub async fn get_thread(
 ) -> ApiResult<Json<Thread>> {
     let thread = state.store.get_thread(ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 180: thread-scoped access (DM-participant-aware for `__dm__`), not
+    // Thread-scoped access (DM-participant-aware for `__dm__`), not
     // channel-scoped — the generic route must not expose a DM thread to a
-    // non-participant. Cluster 339: `ensure_thread_access` resolves +
-    // workspace-checks the thread, so the prior `resolve_thread_context` +
-    // `ensure_workspace` was a redundant fetch.
+    // non-participant. `ensure_thread_access` resolves + workspace-checks the
+    // thread, so the prior `resolve_thread_context` + `ensure_workspace` was a
+    // redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(id)).await?;
     Ok(Json(thread))
 }
@@ -114,7 +114,7 @@ pub async fn get_thread_context(
 ) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
     // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let packed = crate::thread_context::build_thread_context(
@@ -144,11 +144,12 @@ pub async fn get_thread_context(
     Ok(Json(packed))
 }
 
-/// `POST /threads/:id/context/snapshot` — freeze the assembled context pack (live
-/// or `as_of`) into the content-addressed artifact store (Cluster 329): a
-/// tamper-evident record of exactly what the agent was handed. Deduped by sha256
-/// (identical packs share a blob) and ref-guarded per Cluster 204. Re-ask can
-/// later attach the snapshot by its sha. Gated `artifact:upload` + thread access.
+/// `POST /threads/:id/context/snapshot` — freeze the assembled context pack
+/// (live or `as_of`) into the content-addressed artifact store: a
+/// tamper-evident record of exactly what the agent was handed. Deduped by
+/// sha256 (identical packs share a blob) and guarded by a per-workspace ref.
+/// Re-ask can later attach the snapshot by its sha. Gated `artifact:upload` +
+/// thread access.
 pub async fn snapshot_thread_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -157,7 +158,7 @@ pub async fn snapshot_thread_context(
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     let thread_id = ThreadId(id);
     cap(&auth, ARTIFACT_UPLOAD)?;
-    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
     // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let packed = crate::thread_context::build_thread_context(
@@ -189,8 +190,9 @@ pub async fn snapshot_thread_context(
         .into();
     let size_bytes = body.len() as i64;
     let sha = state.artifacts.put(body).await?;
-    // Same atomic upsert + Cluster-204 per-workspace ref + `ArtifactUpserted` event
-    // as a normal upload; the ref/uploader are recorded only for a non-bypass caller.
+    // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
+    // normal upload; the ref/uploader are recorded only for a non-bypass
+    // caller.
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let uploaded_by = (!auth.bypass).then_some(auth.member_id);
     let (artifact, stored) = state
@@ -210,9 +212,9 @@ pub async fn snapshot_thread_context(
     Ok((StatusCode::CREATED, Json(artifact)))
 }
 
-/// `GET /threads/:id/tool-transcript` (Cluster 197) — the thread's tool-call
-/// transcript: every `ToolUse` block correlated with its `ToolResult` by id. A
-/// token-lean projection that drops text/code blocks and message bodies.
+/// `GET /threads/:id/tool-transcript` — the thread's tool-call transcript:
+/// every `ToolUse` block correlated with its `ToolResult` by id. A token-lean
+/// projection that drops text/code blocks and message bodies.
 pub async fn get_tool_transcript(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -221,7 +223,7 @@ pub async fn get_tool_transcript(
 ) -> ApiResult<Json<ToolTranscript>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`;
+    // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
     // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
@@ -243,7 +245,7 @@ pub async fn transition_thread(
         ))
     })?;
     let thread_id = ThreadId(id);
-    // Cluster 339: one fetch resolves scope + authorizes (was resolve + ws + access).
+    // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (result, stored) = state
@@ -251,11 +253,11 @@ pub async fn transition_thread(
         .transition_thread_with_event(thread_id, MemberId(body.actor_id), action)
         .await?;
     super::publish_stored(&state, stored).await;
-    // Cluster 222: entering a terminal state can unblock dependents. Push a
-    // `ThreadReady` for each task that just became ready, so an agent waiting on
-    // the DAG needn't poll `dependencies_satisfied`. Derived + best-effort: a
-    // failed emit doesn't undo the committed transition (readiness stays
-    // queryable), so a store error here is logged, not surfaced.
+    // Entering a terminal state can unblock dependents. Push a `ThreadReady`
+    // for each task that just became ready, so an agent waiting on the DAG
+    // needn't poll `dependencies_satisfied`. Derived + best-effort: a failed
+    // emit doesn't undo the committed transition (readiness stays queryable),
+    // so a store error here is logged, not surfaced.
     if !result.from_state.is_terminal() && result.to_state.is_terminal() {
         match state.store.newly_ready_dependents(thread_id).await {
             Ok(ready) => {
@@ -285,9 +287,9 @@ pub async fn transition_thread(
     Ok(Json(result.thread))
 }
 
-/// Set (upsert) a task's structured result (Cluster 235). `thread:transition` +
-/// thread access — producing a task's output is managing the task. Emits a
-/// `ThreadResultSet` event so waiters (a parent task, `wait_for_result`) can react.
+/// Set (upsert) a task's structured result. `thread:transition` + thread access
+/// — producing a task's output is managing the task. Emits a `ThreadResultSet`
+/// event so waiters (a parent task, `wait_for_result`) can react.
 pub async fn set_thread_result(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -296,15 +298,15 @@ pub async fn set_thread_result(
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: one fetch resolves scope + authorizes (was resolve + ws + access).
+    // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let result = state
         .store
         .set_thread_result(thread_id, auth.member_id, &body.result)
         .await?;
-    // Cluster 383.3: arm the close-gate on the write path so a PUT is
-    // immediately visible on review-status (the bus consumer in 383.2 is
-    // every-replica / replay; tests and a single replica must not race).
+    // Arm the close-gate on the write path so a PUT is immediately visible on
+    // review-status (the bus consumer in 383.2 is every-replica / replay; tests
+    // and a single replica must not race).
     if let Err(err) = state
         .store
         .apply_critical_review_decision(thread_id, auth.member_id, &body.result)
@@ -316,8 +318,8 @@ pub async fn set_thread_result(
             "critical review adapter failed; result is stored"
         );
     }
-    // Cluster 387.2: home the producer's `run_id` as `parent_run_id` when
-    // present. Best-effort — a lineage hiccup must not undo a stored result.
+    // Home the producer's `run_id` as `parent_run_id` when present. Best-effort
+    // — a lineage hiccup must not undo a stored result.
     if let Some(run_id) = run_id_from_payload(&body.result) {
         if let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await {
             tracing::warn!(
@@ -341,7 +343,7 @@ pub async fn set_thread_result(
     Ok(Json(result))
 }
 
-/// A task's structured result, or `404` if none has been produced (Cluster 235).
+/// A task's structured result, or `404` if none has been produced.
 /// `workspace:read` + thread access.
 pub async fn get_thread_result(
     State(state): State<AppState>,
@@ -350,8 +352,8 @@ pub async fn get_thread_result(
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     match state.store.get_thread_result(thread_id).await? {
@@ -360,9 +362,9 @@ pub async fn get_thread_result(
     }
 }
 
-/// Per-target delivery status for this thread's result (Cluster 379.5).
-/// `workspace:read` + thread access. Empty is 200 `[]` — delivered nowhere
-/// is a valid, supported outcome.
+/// Per-target delivery status for this thread's result. `workspace:read` +
+/// thread access. Empty is 200 `[]` — delivered nowhere is a valid, supported
+/// outcome.
 pub async fn list_thread_deliveries(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -374,9 +376,9 @@ pub async fn list_thread_deliveries(
     Ok(Json(state.store.list_result_deliveries(thread_id).await?))
 }
 
-/// Re-enqueue a delivery onto the outbox (Cluster 379.5). `workspace:write` +
-/// thread access. Re-checks the allowlist: an unblessed target stays skipped
-/// (status is not policy). An unroutable row is 400 — nothing to send to.
+/// Re-enqueue a delivery onto the outbox. `workspace:write` + thread access.
+/// Re-checks the allowlist: an unblessed target stays skipped (status is not
+/// policy). An unroutable row is 400 — nothing to send to.
 pub async fn replay_thread_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -421,10 +423,9 @@ pub async fn replay_thread_delivery(
     }
 }
 
-/// Set (upsert) a thread's persisted steer (Cluster 355, W1) — durable steering
-/// guidance from the owner/supervisor that survives claims and handoffs.
-/// Governance, so `thread:transition` + thread access. `steered_by` is the
-/// caller.
+/// Set (upsert) a thread's persisted steer — durable steering guidance from the
+/// owner/supervisor that survives claims and handoffs. Governance, so
+/// `thread:transition` + thread access. `steered_by` is the caller.
 pub async fn set_thread_steer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -441,9 +442,8 @@ pub async fn set_thread_steer(
     Ok(Json(steer))
 }
 
-/// A thread's current steer, or `404` if none is set (Cluster 355, W1). Any
-/// member with thread access reads it — a resuming/newly-assigned agent follows
-/// the current steer.
+/// A thread's current steer, or `404` if none is set. Any member with thread
+/// access reads it — a resuming/newly-assigned agent follows the current steer.
 pub async fn get_thread_steer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -458,7 +458,7 @@ pub async fn get_thread_steer(
     }
 }
 
-/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387.2).
+/// Home a producer's `run_id` on a thread as `parent_run_id`.
 /// `thread:transition` + thread access — lineage is task metadata. Empty /
 /// whitespace / over-long → 400. The value is the producer's string, not a
 /// minted id.
@@ -478,8 +478,8 @@ pub async fn set_thread_lineage(
     Ok(Json(lineage))
 }
 
-/// A thread's run lineage, or `404` until one is set (Cluster 387.2).
-/// `workspace:read` + thread access.
+/// A thread's run lineage, or `404` until one is set. `workspace:read` + thread
+/// access.
 pub async fn get_thread_lineage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -494,8 +494,8 @@ pub async fn get_thread_lineage(
     }
 }
 
-/// Clear a thread's run lineage (Cluster 387.2). `thread:transition` + thread
-/// access. `204` when a row existed; `404` when none.
+/// Clear a thread's run lineage. `thread:transition` + thread access. `204`
+/// when a row existed; `404` when none.
 pub async fn clear_thread_lineage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -511,9 +511,9 @@ pub async fn clear_thread_lineage(
     }
 }
 
-/// A parent thread's child threads, collapsed with a message count each
-/// (Cluster 356, F2). Lets a threaded view show "N replies" per child without
-/// loading each child's messages. `workspace:read` + thread access.
+/// A parent thread's child threads, collapsed with a message count each. Lets a
+/// threaded view show "N replies" per child without loading each child's
+/// messages. `workspace:read` + thread access.
 pub async fn list_child_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -525,9 +525,9 @@ pub async fn list_child_threads(
     Ok(Json(state.store.child_thread_summaries(thread_id).await?))
 }
 
-/// Mute a thread for the caller (Cluster 356, F7 leaf mute). The notification
-/// router then suppresses this thread's notifications for the caller. Personal to
-/// the caller (`auth.member_id`); `workspace:read` + thread access. Idempotent.
+/// Mute a thread for the caller. The notification router then suppresses this
+/// thread's notifications for the caller. Personal to the caller
+/// (`auth.member_id`); `workspace:read` + thread access. Idempotent.
 pub async fn mute_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -540,7 +540,7 @@ pub async fn mute_thread(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Unmute a thread for the caller (Cluster 356, F7). `404` if it was not muted.
+/// Unmute a thread for the caller. `404` if it was not muted.
 pub async fn unmute_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -590,7 +590,7 @@ pub async fn set_thread_budget(
     Ok(Json(budget))
 }
 
-/// Change only the budget dimensions the body names (Cluster 403).
+/// Change only the budget dimensions the body names.
 ///
 /// Absent leaves a dimension alone; an explicit `null` clears its cap. So
 /// widening the envelope always requires saying so, and raising one limit no
@@ -610,8 +610,8 @@ pub async fn patch_thread_budget(
     Ok(Json(budget))
 }
 
-/// A thread's budget, or `404` until one is set / usage is first reported
-/// (Cluster 358). `workspace:read` + thread access.
+/// A thread's budget, or `404` until one is set / usage is first reported.
+/// `workspace:read` + thread access.
 pub async fn get_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -626,11 +626,12 @@ pub async fn get_thread_budget(
     }
 }
 
-/// Report incremental resource usage against a thread's budget (Cluster 358) — the
-/// claim-holder's heartbeat. Accumulates the delta; if it pushes the thread over
-/// budget and a run is claimed, the run is STOPPED (claim released, `ClaimFailed`
-/// emitted, DLQ entry recorded) and the response's `stopped`/`reason` say so.
-/// Gated on `thread:transition` (the claim-lifecycle cap) plus thread access.
+/// Report incremental resource usage against a thread's budget — the
+/// claim-holder's heartbeat. Accumulates the delta; if it pushes the thread
+/// over budget and a run is claimed, the run is STOPPED (claim released,
+/// `ClaimFailed` emitted, DLQ entry recorded) and the response's
+/// `stopped`/`reason` say so. Gated on `thread:transition` (the claim-lifecycle
+/// cap) plus thread access.
 pub async fn report_thread_usage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -655,8 +656,8 @@ pub async fn assign_thread(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
@@ -681,8 +682,8 @@ pub async fn unassign_thread(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
@@ -694,10 +695,10 @@ pub async fn unassign_thread(
     Ok(Json(thread))
 }
 
-/// Set a thread's durable owner (Cluster 355, W1) — the accountable party,
-/// Rename a thread (Cluster 356, F1) — titled threads become editable so a
-/// post-derived thread can be given a real name. `thread:transition` + thread
-/// access. Rejects a blank title (a rename must name the thread).
+/// Set a thread's durable owner — the accountable party, Rename a thread —
+/// titled threads become editable so a post-derived thread can be given a real
+/// name. `thread:transition` + thread access. Rejects a blank title (a rename
+/// must name the thread).
 pub async fn rename_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -738,7 +739,7 @@ pub async fn set_thread_owner(
     Ok(Json(thread))
 }
 
-/// Clear a thread's owner (Cluster 355, W1) — lifts separation of duties.
+/// Clear a thread's owner — lifts separation of duties.
 pub async fn remove_thread_owner(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -759,32 +760,32 @@ pub async fn claim_thread(
 ) -> ApiResult<Json<ThreadClaimResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
-    // Unclaimable (Cluster 363, G3): a parked thread refuses an explicit claim,
-    // just as `claim_next` skips it. Un-park it (DELETE …/unclaimable) to work it.
+    // Unclaimable: a parked thread refuses an explicit claim, just as
+    // `claim_next` skips it. Un-park it (DELETE …/unclaimable) to work it.
     if let Some(u) = state.store.get_thread_unclaimable(thread_id).await? {
         return Err(ApiError::Conflict(format!(
             "thread is parked (unclaimable): {}",
             u.reason
         )));
     }
-    // Explicit block (Cluster 386, Wave 2 #27): same 409 as the 363 park —
-    // `claim_next` already skips the row; an explicit claim must not sneak past.
+    // Explicit block: same 409 as the 363 park — `claim_next` already skips the
+    // row; an explicit claim must not sneak past.
     if let Some(b) = state.store.get_thread_block(thread_id).await? {
         return Err(ApiError::Conflict(format!(
             "thread is blocked ({})",
             b.reason.as_str()
         )));
     }
-    // WIP limit (Cluster 362, G11): refuse an explicit claim that would push the
-    // member past their workspace cap — 409, distinct from `claim_next`'s silent
-    // null. Skipped when the member already holds this thread (a re-claim is not a
-    // new slot), so a heartbeat-style re-claim never 409s.
+    // WIP limit: refuse an explicit claim that would push the member past their
+    // workspace cap — 409, distinct from `claim_next`'s silent null. Skipped
+    // when the member already holds this thread (a re-claim is not a new slot),
+    // so a heartbeat-style re-claim never 409s.
     let thread = state.store.get_thread(thread_id).await?;
     if thread.assignee_id != Some(member_id) {
         let channel = state.store.get_channel(thread.channel_id).await?;
@@ -805,9 +806,9 @@ pub async fn claim_thread(
     Ok(Json(result))
 }
 
-/// `PUT /threads/:id/unclaimable` (Cluster 363, G3) — park a thread from dispatch
-/// with a reason: `claim_next` skips it and an explicit `claim` is refused, until
-/// cleared. `thread:transition` + thread access. Upserts (a re-mark updates the
+/// `PUT /threads/:id/unclaimable` — park a thread from dispatch with a reason:
+/// `claim_next` skips it and an explicit `claim` is refused, until cleared.
+/// `thread:transition` + thread access. Upserts (a re-mark updates the
 /// reason/actor).
 pub async fn mark_thread_unclaimable(
     State(state): State<AppState>,
@@ -830,9 +831,9 @@ pub async fn mark_thread_unclaimable(
     ))
 }
 
-/// `PUT /threads/:id/block` (Cluster 386, Wave 2 #27) — set (upsert) an explicit
-/// dispatch block. `claim_next` skips the thread and an explicit `claim` is
-/// 409 until cleared. `thread:transition` + thread access.
+/// `PUT /threads/:id/block` — set (upsert) an explicit dispatch block.
+/// `claim_next` skips the thread and an explicit `claim` is 409 until cleared.
+/// `thread:transition` + thread access.
 pub async fn set_thread_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -850,8 +851,8 @@ pub async fn set_thread_block(
     ))
 }
 
-/// `GET /threads/:id/block` (Cluster 386) — the thread's explicit block, or
-/// `404` when unblocked. `workspace:read` + thread access.
+/// `GET /threads/:id/block` — the thread's explicit block, or `404` when
+/// unblocked. `workspace:read` + thread access.
 pub async fn get_thread_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -866,8 +867,8 @@ pub async fn get_thread_block(
     }
 }
 
-/// `DELETE /threads/:id/block` (Cluster 386) — clear the explicit block and
-/// emit `BlockedResolved` (bus-notify via `publish_stored`). `204` when it was
+/// `DELETE /threads/:id/block` — clear the explicit block and emit
+/// `BlockedResolved` (bus-notify via `publish_stored`). `204` when it was
 /// blocked, `404` when it was not. `thread:transition` + thread access.
 pub async fn clear_thread_block(
     State(state): State<AppState>,
@@ -891,9 +892,9 @@ pub async fn clear_thread_block(
     }
 }
 
-/// `DELETE /threads/:id/unclaimable` (Cluster 363) — un-park a thread (it becomes
-/// claimable again). `204` when it was parked, `404` when it was not.
-/// `thread:transition` + thread access.
+/// `DELETE /threads/:id/unclaimable` — un-park a thread (it becomes claimable
+/// again). `204` when it was parked, `404` when it was not. `thread:transition`
+/// + thread access.
 pub async fn mark_thread_claimable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -909,9 +910,9 @@ pub async fn mark_thread_claimable(
     }
 }
 
-/// `PUT /threads/:id/wait` (Cluster 364, G2) — set (upsert) a wait timer on a
-/// thread: it is waiting until `wait_until`, and on timeout the sweeper escalates
-/// via `on_timeout` (default `notify`) — never a decision. `thread:transition` +
+/// `PUT /threads/:id/wait` — set (upsert) a wait timer on a thread: it is
+/// waiting until `wait_until`, and on timeout the sweeper escalates via
+/// `on_timeout` (default `notify`) — never a decision. `thread:transition` +
 /// thread access.
 pub async fn set_thread_wait(
     State(state): State<AppState>,
@@ -941,8 +942,8 @@ pub async fn set_thread_wait(
     ))
 }
 
-/// `DELETE /threads/:id/wait` (Cluster 364) — cancel a thread's wait (the awaited
-/// thing happened). `204` when a wait existed, `404` when not. `thread:transition`.
+/// `DELETE /threads/:id/wait` — cancel a thread's wait (the awaited thing
+/// happened). `204` when a wait existed, `404` when not. `thread:transition`.
 pub async fn cancel_thread_wait(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -958,8 +959,8 @@ pub async fn cancel_thread_wait(
     }
 }
 
-/// `GET /threads/:id/wait` (Cluster 364) — the thread's wait, or `404`.
-/// `workspace:read` + thread access.
+/// `GET /threads/:id/wait` — the thread's wait, or `404`. `workspace:read` +
+/// thread access.
 pub async fn get_thread_wait(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -974,10 +975,10 @@ pub async fn get_thread_wait(
     }
 }
 
-/// `PUT /threads/:id/priority` (Cluster 365, G3 fair dispatch) — set (upsert) a
-/// thread's dispatch priority. `claim_next` orders by an effective rank = this
-/// priority aged up the longer a thread waits, so priority jumps the queue without
-/// starving long-waiting tasks. `thread:transition` + thread access.
+/// `PUT /threads/:id/priority` — set (upsert) a thread's dispatch priority.
+/// `claim_next` orders by an effective rank = this priority aged up the longer
+/// a thread waits, so priority jumps the queue without starving long-waiting
+/// tasks. `thread:transition` + thread access.
 pub async fn set_thread_priority(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -995,9 +996,8 @@ pub async fn set_thread_priority(
     ))
 }
 
-/// `GET /threads/:id/priority` (Cluster 365) — the thread's dispatch-priority
-/// record, or `404` (absence = the default priority 0). `workspace:read` + thread
-/// access.
+/// `GET /threads/:id/priority` — the thread's dispatch-priority record, or
+/// `404` (absence = the default priority 0). `workspace:read` + thread access.
 pub async fn get_thread_priority(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1012,8 +1012,8 @@ pub async fn get_thread_priority(
     }
 }
 
-/// A member's work queue: threads assigned to them (Cluster 190). Filtered to
-/// threads the *caller* can access (RBAC-consistent with search / context).
+/// A member's work queue: threads assigned to them. Filtered to threads the
+/// *caller* can access (RBAC-consistent with search / context).
 pub async fn list_assigned_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1039,8 +1039,8 @@ pub async fn list_assigned_threads(
     Ok(Json(visible))
 }
 
-/// `GET /members/:id/wip` (Cluster 362, G11) — a member's live-claim count against
-/// their workspace's WIP limit, for occupancy/backpressure decisions.
+/// `GET /members/:id/wip` — a member's live-claim count against their
+/// workspace's WIP limit, for occupancy/backpressure decisions.
 /// `workspace:read`, same-workspace.
 pub async fn get_member_wip(
     State(state): State<AppState>,
@@ -1057,10 +1057,10 @@ pub async fn get_member_wip(
     }))
 }
 
-/// Atomically claim the oldest unassigned thread in a channel (Cluster 190) —
-/// the "pull the next task" primitive. Returns the claimed thread, or `null`
-/// when the channel has no unassigned work. A successful claim includes a
-/// content-addressed `pin` `{uri, content_hash}` (the assignment event).
+/// Atomically claim the oldest unassigned thread in a channel — the "pull the
+/// next task" primitive. Returns the claimed thread, or `null` when the channel
+/// has no unassigned work. A successful claim includes a content-addressed
+/// `pin` `{uri, content_hash}` (the assignment event).
 pub async fn claim_next_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1073,10 +1073,10 @@ pub async fn claim_next_thread(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
-    // WIP limit (Cluster 362, G11): a member already at their workspace cap is
-    // handed no further work — `claim_next` returns null (nothing dispatched),
-    // the same shape as an empty queue. `wait_for_ready` / the occupancy view show
-    // whether there is work waiting vs. the caller being capped.
+    // WIP limit: a member already at their workspace cap is handed no further
+    // work — `claim_next` returns null (nothing dispatched), the same shape as
+    // an empty queue. `wait_for_ready` / the occupancy view show whether there
+    // is work waiting vs. the caller being capped.
     if super::at_wip_limit(state.store.as_ref(), channel.workspace_id, member_id).await? {
         return Ok(Json(None));
     }
@@ -1099,8 +1099,8 @@ pub async fn claim_next_thread(
     }
 }
 
-/// Extend a claimed thread's lease (heartbeat), for the current assignee only
-/// (Cluster 192). `NotFound` if the caller isn't the holder.
+/// Extend a claimed thread's lease (heartbeat), for the current assignee only.
+/// `NotFound` if the caller isn't the holder.
 pub async fn renew_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1109,8 +1109,8 @@ pub async fn renew_claim(
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
@@ -1126,9 +1126,9 @@ pub async fn renew_claim(
     Ok(Json(thread))
 }
 
-/// Acknowledge a claim and start the working clock (Cluster 351), for the current
-/// holder presenting the matching fencing token. `NotFound` if the caller isn't
-/// the holder or the token is stale. Idempotent: the first start time is kept.
+/// Acknowledge a claim and start the working clock, for the current holder
+/// presenting the matching fencing token. `NotFound` if the caller isn't the
+/// holder or the token is stale. Idempotent: the first start time is kept.
 pub async fn acknowledge_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1150,10 +1150,10 @@ pub async fn acknowledge_claim(
     Ok(Json(thread))
 }
 
-/// Release a claim (graceful handoff, Cluster 351): the current holder returns
-/// the thread to the queue immediately by presenting its fencing token, instead
-/// of waiting for the lease to lapse. `NotFound` if the caller isn't the holder
-/// or the token is stale. Emits `ThreadAssignmentChanged`.
+/// Release a claim (graceful handoff): the current holder returns the thread to
+/// the queue immediately by presenting its fencing token, instead of waiting
+/// for the lease to lapse. `NotFound` if the caller isn't the holder or the
+/// token is stale. Emits `ThreadAssignmentChanged`.
 pub async fn release_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1176,9 +1176,10 @@ pub async fn release_claim(
     Ok(Json(thread))
 }
 
-/// Add a task-dependency edge (Cluster 219): the path thread depends on
-/// `depends_on_thread_id`. Both threads must be in the same workspace and visible
-/// to the caller. `thread:transition` — dependency wiring is a workflow op.
+/// Add a task-dependency edge: the path thread depends on
+/// `depends_on_thread_id`. Both threads must be in the same workspace and
+/// visible to the caller. `thread:transition` — dependency wiring is a workflow
+/// op.
 pub async fn add_thread_dependency(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1188,7 +1189,7 @@ pub async fn add_thread_dependency(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     let depends_on = ThreadId(body.depends_on_thread_id);
-    // Cluster 339: authorize + resolve each thread in a single fetch.
+    // Authorize + resolve each thread in a single fetch.
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     // The dependency must be in the same workspace and visible to the caller too.
     let dep_ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, depends_on).await?;
@@ -1204,7 +1205,8 @@ pub async fn add_thread_dependency(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// A task's dependencies + whether it is ready (all deps terminal) — Cluster 219.
+/// A task's dependencies + whether it is ready (all deps terminal) — Cluster
+/// 219.
 pub async fn list_thread_dependencies(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1212,8 +1214,8 @@ pub async fn list_thread_dependencies(
 ) -> ApiResult<Json<ThreadDependenciesView>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let dependencies = state.store.list_thread_dependencies(thread_id).await?;
@@ -1224,7 +1226,7 @@ pub async fn list_thread_dependencies(
     }))
 }
 
-/// Remove a dependency edge (Cluster 219). `NotFound` if the edge doesn't exist.
+/// Remove a dependency edge. `NotFound` if the edge doesn't exist.
 pub async fn remove_thread_dependency(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1232,8 +1234,8 @@ pub async fn remove_thread_dependency(
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if state
@@ -1247,7 +1249,7 @@ pub async fn remove_thread_dependency(
     }
 }
 
-/// The tasks blocked by this thread — its dependents (Cluster 219).
+/// The tasks blocked by this thread — its dependents.
 pub async fn list_thread_dependents(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1255,8 +1257,8 @@ pub async fn list_thread_dependents(
 ) -> ApiResult<Json<Vec<ThreadDependency>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread; the prior `resolve_thread_context` + `ensure_workspace` was a redundant
+    // `ensure_thread_access` already resolves + workspace-checks the thread;
+    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     Ok(Json(state.store.list_thread_dependents(thread_id).await?))

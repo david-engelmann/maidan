@@ -1,6 +1,6 @@
-//! Workspace import (Cluster 270): export a workspace, then import the bundle
-//! back — `mode=new` remaps to a fresh workspace; `mode=restore` preserves ids
-//! (409 if it already exists, unless `force` erases it first). `token:admin` gated.
+//! Workspace import: export a workspace, then import the bundle back —
+//! `mode=new` remaps to a fresh workspace; `mode=restore` preserves ids (409 if
+//! it already exists, unless `force` erases it first). `token:admin` gated.
 
 use std::{
     net::SocketAddr,

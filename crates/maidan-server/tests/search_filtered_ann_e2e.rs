@@ -1,6 +1,6 @@
-//! Cluster 200 (Arc D): the search route pushes an RBAC channel-deny into the
-//! query, so a non-member's private-channel hits are excluded *at the source* —
-//! they neither leak nor crowd out the requested `limit` with accessible results.
+//! The search route pushes an RBAC channel-deny into the query, so a
+//! non-member's private-channel hits are excluded *at the source* — they
+//! neither leak nor crowd out the requested `limit` with accessible results.
 
 use std::{
     net::SocketAddr,

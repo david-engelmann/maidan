@@ -1,5 +1,5 @@
-//! Cluster 239: the REST unified inbox — list / unread-count / mark-read / read-all
-//! over `/members/:id/notifications`. Auth ENABLED with a minted bearer token (the
+//! The REST unified inbox — list / unread-count / mark-read / read-all over
+//! `/members/:id/notifications`. Auth ENABLED with a minted bearer token (the
 //! act-as-any orchestrator model; the self-only session guard is unit-tested in
 //! routes::ensure_acting_member).
 
@@ -213,8 +213,8 @@ async fn inbox_list_count_mark_and_read_all() {
         .unwrap();
     assert_eq!(after["count"], 0);
 
-    // Snooze (Cluster 359, N5): a fresh unread notification snoozed into the future
-    // leaves the badge; an unknown id is a 404.
+    // Snooze: a fresh unread notification snoozed into the future leaves the
+    // badge; an unknown id is a 404.
     let fresh = store
         .create_notification(NewNotification {
             workspace_id: ws.id,
@@ -257,9 +257,9 @@ async fn inbox_list_count_mark_and_read_all() {
         .unwrap();
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
 
-    // Grouped inbox (Cluster 359, N5b): the three seeded notifications share one
-    // thread, so the grouped view collapses them into a single group (the snoozed
-    // fresh one is hidden).
+    // Grouped inbox: the three seeded notifications share one thread, so the
+    // grouped view collapses them into a single group (the snoozed fresh one is
+    // hidden).
     let grouped: Value = client
         .get(format!("{base}/members/{mid}/notifications/grouped"))
         .header("Authorization", &bearer)

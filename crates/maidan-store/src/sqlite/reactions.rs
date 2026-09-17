@@ -55,8 +55,7 @@ pub async fn remove(
     Ok(result.rows_affected() > 0)
 }
 
-/// Add a reaction and append its `ReactionAdded` event in one transaction
-/// (Cluster 206).
+/// Add a reaction and append its `ReactionAdded` event in one transaction.
 pub async fn add_with_event(
     pool: &SqlitePool,
     new: NewReaction,
@@ -90,8 +89,8 @@ pub async fn add_with_event(
 }
 
 /// Remove a reaction; when a row was actually removed, append its
-/// `ReactionRemoved` event in the SAME transaction (Cluster 206). Returns
-/// `(removed, event)` — no event when nothing was removed (idempotent no-op).
+/// `ReactionRemoved` event in the SAME transaction. Returns `(removed, event)`
+/// — no event when nothing was removed (idempotent no-op).
 pub async fn remove_with_event(
     pool: &SqlitePool,
     message_id: MessageId,

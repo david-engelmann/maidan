@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Declare a skill for a member (Cluster 230) — see the SQLite twin.
+/// Declare a skill for a member — see the SQLite twin.
 pub async fn add(pool: &PgPool, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));

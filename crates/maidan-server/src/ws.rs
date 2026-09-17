@@ -69,15 +69,15 @@ pub struct SubscribeFrame {
     /// When set with `filter.workspace_id`, enables presence/typing fan-out.
     #[serde(default)]
     pub member_id: Option<Uuid>,
-    /// Opt into gap-free at-least-once delivery (Cluster 125): cursor-driven
-    /// reconcile instead of the optimistic live path. Requires `filter.workspace_id`
-    /// and `consumer_id`; adds a stability-window latency floor on fresh events.
+    /// Opt into gap-free at-least-once delivery: cursor-driven reconcile
+    /// instead of the optimistic live path. Requires `filter.workspace_id` and
+    /// `consumer_id`; adds a stability-window latency floor on fresh events.
     #[serde(default)]
     pub at_least_once: bool,
-    /// Opt into lean event frames (Cluster 178, token round 3): domain-event
-    /// frames carry only `{log_id, kind, ...ids}` — a "something happened, go
-    /// fetch" pointer — instead of the full serialized event, saving tokens for
-    /// an agent that tails for activity and reads on demand.
+    /// Opt into lean event frames: domain-event frames carry only `{log_id,
+    /// kind,...ids}` — a "something happened, go fetch" pointer — instead of
+    /// the full serialized event, saving tokens for an agent that tails for
+    /// activity and reads on demand.
     #[serde(default)]
     pub lean: bool,
 }
@@ -304,11 +304,11 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
 
     let _presence_reg = match (request.filter.workspace_id, request.member_id) {
         (Some(workspace_id), Some(member_id)) => {
-            // Durable last-seen (Cluster 253): record that this member is
-            // connected right now, so presence-aware email routing can tell
-            // whether they are active — a signal that survives a restart and is
-            // visible across replicas, unlike the in-memory `PresenceHub`.
-            // Best-effort + spawned so a store hiccup never blocks the connect.
+            // Durable last-seen: record that this member is connected right
+            // now, so presence-aware email routing can tell whether they are
+            // active — a signal that survives a restart and is visible across
+            // replicas, unlike the in-memory `PresenceHub`. Best-effort +
+            // spawned so a store hiccup never blocks the connect.
             {
                 let store = state.store.clone();
                 tokio::spawn(async move {
@@ -447,8 +447,8 @@ async fn read_subscribe(
 
     let (mut filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
     // Resolve the caller's identity *before* expanding the filter / applying
-    // channel grants, so the DM-participant check (Cluster 203) and the grant
-    // verification (Cluster 163) can both check real membership.
+    // channel grants, so the DM-participant check and the grant verification
+    // can both check real membership.
     let ctx = if state.auth_disabled {
         AuthContext::bypass()
     } else if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {

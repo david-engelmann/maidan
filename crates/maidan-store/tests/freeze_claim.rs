@@ -1,6 +1,6 @@
-//! Freeze enforcement in `claim_next` (Cluster 372.2, Wave 2 #20): a frozen
-//! member is refused a claim (the freeze `NOT EXISTS` clause), and unfreezing
-//! restores it. Both backends, both claim variants (base + `_with_event`).
+//! Freeze enforcement in `claim_next`: a frozen member is refused a claim (the
+//! freeze `NOT EXISTS` clause), and unfreezing restores it. Both backends, both
+//! claim variants (base + `_with_event`).
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

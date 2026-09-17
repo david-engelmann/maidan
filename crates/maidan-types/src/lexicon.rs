@@ -1,4 +1,4 @@
-//! EventKind JSON-Schema pack (Cluster 390, Wave 3 #30).
+//! EventKind JSON-Schema pack.
 //!
 //! ATProto-lexicon analogue. The observable `$type` string **is** the contract
 //! (Hyrum's Law home):
@@ -12,8 +12,8 @@
 //! still tags on `kind` (`#[serde(tag = "kind")]`). `Event` does not
 //! `deny_unknown_fields`, so extra JSON is ignored on read.
 //!
-//! The committed pack under `contracts/lexicon/` is the input for a future
-//! SDK 0.2 typed model — this crate does not bump the SDK.
+//! The committed pack under `contracts/lexicon/` is the input for a future SDK
+//! 0.2 typed model — this crate does not bump the SDK.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -287,7 +287,7 @@ pub fn catalog() -> Value {
         .collect();
     types.sort();
     json!({
-        "description": "Maidan lexicon catalogue (Cluster 390). Observable `$type` is the contract. Feeds a future SDK 0.2; this pack does not bump the SDK.",
+        "description": "Maidan lexicon catalogue. Observable `$type` is the contract. Feeds a future SDK 0.2; this pack does not bump the SDK.",
         "types": types,
     })
 }

@@ -1,6 +1,6 @@
-//! Cluster 325: the agent conventions (decision records, supersession, grounding
-//! acks) are expressible over the EXISTING API with no new server object — this
-//! proves the "room supports the pattern". Auth ENABLED (real token): thread
+//! The agent conventions (decision records, supersession, grounding acks) are
+//! expressible over the EXISTING API with no new server object — this proves
+//! the "room supports the pattern". Auth ENABLED (real token): thread
 //! results/votes persist `produced_by`/actor as NOT-NULL FKs.
 
 use std::{

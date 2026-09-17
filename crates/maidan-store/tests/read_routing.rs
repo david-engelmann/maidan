@@ -1,7 +1,7 @@
-//! Token-aware read routing validated against REAL streaming replication
-//! (Cluster 264). `#[ignore]`d — needs the primary+replica pair from
-//! `scripts/replica-harness.sh` (MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL); skips
-//! when they're unset. The pure routing decision is unit-tested in CI
+//! Token-aware read routing validated against REAL streaming replication.
+//! `#[ignore]`d — needs the primary+replica pair from
+//! `scripts/replica-harness.sh` (MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL);
+//! skips when they're unset. The pure routing decision is unit-tested in CI
 //! (`route_decision`); this proves the end-to-end machinery (scope task-local +
 //! read_pool + background replay-LSN poller) against an actual standby.
 
@@ -85,10 +85,11 @@ async fn token_read_is_never_stale_and_replica_serves_reads() {
         .expect("count on replica");
     assert_eq!(n, 1, "the write is present on the standby");
 
-    // Routing counters register both outcomes deterministically (Cluster 265 metric).
-    // An unreachably-high token can never be satisfied by the replica → forced to the
-    // primary; a no-token read → the replica. (The earlier read-your-write read races
-    // the poller on localhost, so assert on these two controlled reads instead.)
+    // Routing counters register both outcomes deterministically. An
+    // unreachably-high token can never be satisfied by the replica → forced to
+    // the primary; a no-token read → the replica. (The earlier read-your-write
+    // read races the poller on localhost, so assert on these two controlled
+    // reads instead.)
     let (p0, r0) = store.read_routing_metrics().snapshot();
     let _ = with_read_consistency(
         Some(maidan_types::Lsn(u64::MAX)),
@@ -103,8 +104,8 @@ async fn token_read_is_never_stale_and_replica_serves_reads() {
     assert!(p1 > p0, "the high-token read was routed to the primary");
     assert!(r1 > r0, "the no-token read was routed to the replica");
 
-    // The lag gauge (Cluster 266) is populated by the poller; having caught up, it
-    // reports a sane byte count (not garbage).
+    // The lag gauge is populated by the poller; having caught up, it reports a
+    // sane byte count (not garbage).
     let lag = store.read_routing_metrics().lag_bytes();
     assert!(
         lag < 10_000_000,

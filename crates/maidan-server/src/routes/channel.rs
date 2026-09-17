@@ -25,8 +25,8 @@ pub async fn create_channel(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    // Cluster 205: the channel row and its `ChannelCreated` event commit
-    // atomically (transactional outbox); `publish_stored` then notifies the bus.
+    // The channel row and its `ChannelCreated` event commit atomically
+    // (transactional outbox); `publish_stored` then notifies the bus.
     let (c, stored) = state
         .store
         .create_channel_with_event(NewChannel {
@@ -37,7 +37,7 @@ pub async fn create_channel(
         })
         .await?;
     // Auto-add the creator as an admin of a new private channel so they don't
-    // lock themselves out (Cluster 160). Bypass callers have no real member.
+    // lock themselves out. Bypass callers have no real member.
     if c.private && !auth.bypass {
         state
             .store
@@ -60,8 +60,8 @@ pub async fn list_channels(
     if auth.bypass {
         return Ok(Json(all));
     }
-    // Hide private channels the caller is not a member of (Cluster 160). Public
-    // and the DM system channel are always listed.
+    // Hide private channels the caller is not a member of. Public and the DM
+    // system channel are always listed.
     let mut visible = Vec::with_capacity(all.len());
     for ch in all {
         if !ch.private
@@ -86,9 +86,9 @@ pub async fn get_channel(
     Ok(Json(channel))
 }
 
-/// Task-queue depth for a channel (Cluster 224): ready / assigned / blocked
-/// counts of its open task threads, for an orchestrator deciding whether to scale
-/// workers. `workspace:read` + channel access.
+/// Task-queue depth for a channel: ready / assigned / blocked counts of its
+/// open task threads, for an orchestrator deciding whether to scale workers.
+/// `workspace:read` + channel access.
 pub async fn get_channel_queue_depth(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -102,9 +102,8 @@ pub async fn get_channel_queue_depth(
     Ok(Json(depth))
 }
 
-/// `GET /channels/:cid/unclaimable` (Cluster 363, G3) — the parked (unclaimable)
-/// threads in a channel, newest first, for triage. `workspace:read` + channel
-/// access.
+/// `GET /channels/:cid/unclaimable` — the parked (unclaimable) threads in a
+/// channel, newest first, for triage. `workspace:read` + channel access.
 pub async fn list_channel_unclaimable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -119,9 +118,9 @@ pub async fn list_channel_unclaimable(
     ))
 }
 
-/// `GET /channels/:cid/blocked` (Cluster 386, Wave 2 #27) — explicitly blocked
-/// threads in a channel, newest first. Distinct from queue-depth's `blocked`
-/// bucket (DAG deps not terminal). `workspace:read` + channel access.
+/// `GET /channels/:cid/blocked` — explicitly blocked threads in a channel,
+/// newest first. Distinct from queue-depth's `blocked` bucket (DAG deps not
+/// terminal). `workspace:read` + channel access.
 pub async fn list_channel_blocked(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -134,10 +133,9 @@ pub async fn list_channel_blocked(
     Ok(Json(state.store.list_blocked_threads(channel.id).await?))
 }
 
-/// Channel occupancy (Cluster 351): the two-clocks view — queued / claimed /
-/// working / blocked counts of the channel's open task threads, so an
-/// orchestrator sees how much held work is actually underway. `workspace:read` +
-/// channel access.
+/// Channel occupancy: the two-clocks view — queued / claimed / working /
+/// blocked counts of the channel's open task threads, so an orchestrator sees
+/// how much held work is actually underway. `workspace:read` + channel access.
 pub async fn get_channel_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -151,9 +149,9 @@ pub async fn get_channel_occupancy(
     Ok(Json(occupancy))
 }
 
-/// Mute a channel for the caller (Cluster 357, N3). The notification router then
-/// suppresses this channel's firehose (`MessagePosted` follow notifications) for
-/// the caller — but a mention still breaks through. Personal to the caller
+/// Mute a channel for the caller. The notification router then suppresses this
+/// channel's firehose (`MessagePosted` follow notifications) for the caller —
+/// but a mention still breaks through. Personal to the caller
 /// (`auth.member_id`); `workspace:read` + channel access. Idempotent.
 pub async fn mute_channel(
     State(state): State<AppState>,
@@ -168,7 +166,7 @@ pub async fn mute_channel(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Unmute a channel for the caller (Cluster 357, N3). `404` if it was not muted.
+/// Unmute a channel for the caller. `404` if it was not muted.
 pub async fn unmute_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -189,10 +187,10 @@ pub async fn unmute_channel(
     }
 }
 
-/// A channel's agent-work dead-letter queue (Cluster 358, T1/T5) — runs stopped
-/// for exceeding their budget, newest first. An orchestrator triages these
-/// (retry / raise the budget / give up). `workspace:read` + channel access;
-/// `limit` clamps 1..=200 (default 50).
+/// A channel's agent-work dead-letter queue — runs stopped for exceeding their
+/// budget, newest first. An orchestrator triages these (retry / raise the
+/// budget / give up). `workspace:read` + channel access; `limit` clamps 1..=200
+/// (default 50).
 pub async fn list_channel_dlq(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
