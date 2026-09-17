@@ -1,5 +1,4 @@
-//! Canon snapshot tests over normalized `$type` wire shapes (Cluster 390,
-//! Wave 3 #30 `NEW-snapshot-tests`).
+//! Canon snapshot tests over normalized `$type` wire shapes.
 //!
 //! A new [`EventKind`] fails the exhaustive `sample_event` match until a
 //! fixture is produced. The committed JSON is the review surface for SDK 0.2.

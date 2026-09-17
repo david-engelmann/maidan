@@ -1,4 +1,4 @@
-//! Attachable labeled memory as room objects (Cluster 373, Wave 2 #21, H11).
+//! Attachable labeled memory as room objects.
 //!
 //! A [`MemoryBlock`] is a Letta-shaped unit of shared, mutable memory —
 //! `{label, description, limit, read_only, value}` — that lives in a workspace
@@ -7,10 +7,10 @@
 //! runtime**: they share the block, and the child's write is the parent's read.
 //!
 //! It is deliberately **not a transcript** (no append log — `value` is replaced
-//! whole, last-writer-wins) and **not RAG** (no embedding or similarity search —
-//! a block is addressed by its `label`). `char_limit` mirrors Letta's block
-//! limit; `read_only` freezes a block against further writes; `owner_id` records
-//! who owns it.
+//! whole, last-writer-wins) and **not RAG** (no embedding or similarity search
+//! — a block is addressed by its `label`). `char_limit` mirrors Letta's block
+//! limit; `read_only` freezes a block against further writes; `owner_id`
+//! records who owns it.
 //!
 //! The validation helpers here are pure so the store and route layers share one
 //! definition of "does this value fit" / "is this a valid label".

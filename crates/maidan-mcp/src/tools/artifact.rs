@@ -14,9 +14,9 @@ use serde_json::{json, Value};
 use super::content_json;
 use crate::error::McpError;
 
-/// Record the per-workspace access ref for an artifact so the caller's workspace
-/// can later fetch the deduped blob (Cluster 204 / 332). Skipped for a bypass
-/// caller (auth disabled). Mirrors the REST upload path (`ref_workspace`).
+/// Record the per-workspace access ref for an artifact so the caller's
+/// workspace can later fetch the deduped blob. Skipped for a bypass caller
+/// (auth disabled). Mirrors the REST upload path (`ref_workspace`).
 async fn record_ref(store: &Arc<dyn Store>, auth: &AuthContext, sha: &str) -> Result<(), McpError> {
     if !auth.bypass {
         store.record_artifact_ref(auth.workspace_id, sha).await?;
@@ -207,10 +207,10 @@ pub(super) async fn get_artifact_metadata(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
-    // Cluster 204/332: a blob is deduped across tenants, so gate on the caller's
-    // per-workspace access ref. A missing ref returns NotFound (indistinguishable
-    // from a genuinely-absent artifact — no cross-tenant existence oracle), exactly
-    // as the REST `get_artifact` does.
+    // A blob is deduped across tenants, so gate on the caller's per-workspace
+    // access ref. A missing ref returns NotFound (indistinguishable from a
+    // genuinely-absent artifact — no cross-tenant existence oracle), exactly as
+    // the REST `get_artifact` does.
     if !auth.bypass
         && !store
             .artifact_ref_exists(auth.workspace_id, &a.sha256)

@@ -1,4 +1,4 @@
-//! Deep workspace purge: references, tokens, events, embeddings (Cluster 28).
+//! Deep workspace purge: references, tokens, events, embeddings.
 
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_search::{EmbeddingProvider, HashV1Provider, Search, SqliteSearch};

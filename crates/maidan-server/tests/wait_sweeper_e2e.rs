@@ -1,6 +1,6 @@
-//! Wait sweeper (Cluster 364, G2/G4): a due wait fires — the sweeper emits
-//! `WaitTimedOut`, parks the thread (Park policy), and the notification router
-//! notifies the owner. Never a decision.
+//! Wait sweeper: a due wait fires — the sweeper emits `WaitTimedOut`, parks the
+//! thread (Park policy), and the notification router notifies the owner. Never
+//! a decision.
 
 use std::sync::Arc;
 

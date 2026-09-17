@@ -1,5 +1,5 @@
-//! Workspace export (Cluster 187): `token:admin` gets the whole content
-//! bundle; a plain reader is denied.
+//! Workspace export: `token:admin` gets the whole content bundle; a plain
+//! reader is denied.
 
 use std::{
     net::SocketAddr,

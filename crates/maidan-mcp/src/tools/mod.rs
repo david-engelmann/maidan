@@ -49,12 +49,12 @@ mod whoami;
 
 pub use catalog::{catalog, declared_arguments};
 
-/// The tool catalog filtered to the tools the caller may invoke (Cluster 176,
-/// token round 3). Bypass callers (auth disabled) see everything; otherwise a
-/// tool whose required capability the caller lacks is omitted, so a
-/// capability-scoped agent gets a smaller, relevant `tools/list` — fewer tokens
-/// and no tools it would only get 403s from. The unfiltered [`catalog`] is
-/// unchanged (contract tests + full-capability callers rely on it).
+/// The tool catalog filtered to the tools the caller may invoke. Bypass callers
+/// (auth disabled) see everything; otherwise a tool whose required capability
+/// the caller lacks is omitted, so a capability-scoped agent gets a smaller,
+/// relevant `tools/list` — fewer tokens and no tools it would only get 403s
+/// from. The unfiltered [`catalog`] is unchanged (contract tests +
+/// full-capability callers rely on it).
 pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
     catalog()
         .into_iter()
@@ -247,21 +247,21 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "transition_thread"
         | "set_land_gate"
         | "require_land_gate" => Ok(maidan_auth::capability::THREAD_TRANSITION),
-        // A gate ratchets (Cluster 397.2): arming is `thread:transition`,
-        // removing it is `channel:admin`. Clearing the row makes the close-gate
-        // vacuous, so a clear is as powerful as a close — and `thread:transition`
-        // is what a close needs and what `maidan.agent.worker` carries.
+        // A gate ratchets: arming is `thread:transition`, removing it is
+        // `channel:admin`. Clearing the row makes the close-gate vacuous, so a
+        // clear is as powerful as a close — and `thread:transition` is what a
+        // close needs and what `maidan.agent.worker` carries.
         "clear_land_gate" => Ok(maidan_auth::capability::CHANNEL_ADMIN),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
 
-/// Pre-dispatch per-channel authorization for point-access content tools
-/// (Cluster 161). Bypass callers pass through; DM tools rely on their own
-/// participant checks (the `__dm__` channel is exempt in `ensure_*`); aggregate
-/// reads (`list_channels` / `get_workspace_context` / `search_messages`) filter
-/// their result sets separately. A tool whose id arg is absent/malformed is left
-/// to its handler's own decode error.
+/// Pre-dispatch per-channel authorization for point-access content tools.
+/// Bypass callers pass through; DM tools rely on their own participant checks
+/// (the `__dm__` channel is exempt in `ensure_*`); aggregate reads
+/// (`list_channels` / `get_workspace_context` / `search_messages`) filter their
+/// result sets separately. A tool whose id arg is absent/malformed is left to
+/// its handler's own decode error.
 async fn enforce_channel_access(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -613,10 +613,9 @@ pub async fn dispatch(
         "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
         "get_workspace_context" => {
             let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
-            // Drop packed threads in private channels the caller can't access
-            // (Cluster 162), caching the per-channel decision.
-            // Thread-keyed + DM-participant-aware (Cluster 180; channel-keyed
-            // exempted `__dm__` and leaked DM threads into the context pack).
+            // Drop packed threads in private channels the caller can't access,
+            // caching the per-channel decision. Thread-keyed +
+            // DM-participant-aware.
             if !auth.bypass {
                 if let Some(threads) = v.get("threads").and_then(|t| t.as_array()) {
                     let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =

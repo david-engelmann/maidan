@@ -1,4 +1,4 @@
-//! Cluster 401.2: releasing a claim no longer launders a self-approval.
+//! Releasing a claim no longer launders a self-approval.
 //!
 //! Both governance gates tested the thread's **live** `assignee_id`. A release
 //! sets that to NULL, so the exclusion went vacuous at exactly the moment

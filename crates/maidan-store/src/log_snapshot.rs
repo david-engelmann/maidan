@@ -1,9 +1,9 @@
-//! Snapshot assemble + since-LSN catch-up (Cluster 393).
+//! Snapshot assemble + since-LSN catch-up.
 //!
-//! Shared by REST and MCP so both surfaces hash the same graph and walk
-//! the same chain. Complements Cluster 392: the retained suffix is still
-//! `verify_event_chain`; this covers a pruned prefix with a hashed
-//! domain-graph checkpoint plus catch-up pages.
+//! Shared by REST and MCP so both surfaces hash the same graph and walk the
+//! same chain. Complements the hash chain: the retained suffix is still
+//! `verify_event_chain`; this covers a pruned prefix with a hashed domain-graph
+//! checkpoint plus catch-up pages.
 
 use crate::workspace_export::build_workspace_export;
 use crate::{Store, StoreError};

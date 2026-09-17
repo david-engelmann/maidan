@@ -1,6 +1,6 @@
-//! Spawn-budget store (Cluster 376, Wave 2 #23): the per-workspace caps + the
-//! spawn-time counts the gate reads — children, nesting depth, recorded tool-use.
-//! Both backends. (Enforcement is Cluster 376.2+.)
+//! Spawn-budget store: the per-workspace caps + the spawn-time counts the gate
+//! reads — children, nesting depth, recorded tool-use. Both backends.
+//! (Enforcement lives in the server's spawn gate.)
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

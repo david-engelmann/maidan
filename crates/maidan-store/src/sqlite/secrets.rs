@@ -1,5 +1,5 @@
-//! Named-secret store (Cluster 371, SQLite twin of pg 0076). The value is stored
-//! AEAD-encrypted; metadata reads never select the ciphertext.
+//! Named-secret store. The value is stored AEAD-encrypted; metadata reads never
+//! select the ciphertext.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberId, NewSecret, Secret, SecretId, WorkspaceId};

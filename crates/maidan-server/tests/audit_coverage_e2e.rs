@@ -1,6 +1,6 @@
-//! Security-audit coverage (Cluster 182): token mint/revoke and channel
-//! membership grants land in the audit trail, written through the real HTTP
-//! handlers with auth enabled.
+//! Security-audit coverage: token mint/revoke and channel membership grants
+//! land in the audit trail, written through the real HTTP handlers with auth
+//! enabled.
 
 use std::{
     net::SocketAddr,

@@ -1,6 +1,6 @@
-//! Cluster 222: closing the last blocking dependency of a task publishes a
-//! `ThreadReady` for that task over the event bus — the reactive counterpart to
-//! the pull-only `dependencies_satisfied` readiness query.
+//! Closing the last blocking dependency of a task publishes a `ThreadReady` for
+//! that task over the event bus — the reactive counterpart to the pull-only
+//! `dependencies_satisfied` readiness query.
 
 use std::{sync::Arc, time::Duration};
 

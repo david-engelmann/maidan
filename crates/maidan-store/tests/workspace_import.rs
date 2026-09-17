@@ -1,5 +1,5 @@
-//! Workspace import (Cluster 269): a `WorkspaceImport` graph inserts with its ids,
-//! state, and timestamps preserved, and reads back faithfully. Both backends.
+//! Workspace import: a `WorkspaceImport` graph inserts with its ids, state, and
+//! timestamps preserved, and reads back faithfully. Both backends.
 
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};

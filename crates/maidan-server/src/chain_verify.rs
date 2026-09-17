@@ -1,14 +1,15 @@
-//! Scheduled event-log chain verification (Cluster 402.3).
+//! Scheduled event-log chain verification.
 //!
-//! Cluster 402.2 moved whole-chain verification out of the search tap's restart
-//! path, on the argument that verification-by-restart is an accident rather than
-//! a control — you cannot schedule it, alert on it, or say when it last ran.
-//! That argument only holds if something *does* schedule it. This is that thing.
+//! Whole-chain verification was moved out of the search tap's restart path, on
+//! the argument that verification-by-restart is an accident rather
+//! than a control — you cannot schedule it, alert on it, or say when it last
+//! ran. That argument only holds if something *does* schedule it. This is that
+//! thing.
 //!
 //! Opt-in, like the retention and scheduler sweepers: with
-//! `MAIDAN_CHAIN_VERIFY_SECS` unset, nothing runs and an unconfigured deployment
-//! is byte-unchanged. Cluster 397.8 made `verify_event_chain` stream rather than
-//! materialize the whole log, which is what makes running it on a timer
+//! `MAIDAN_CHAIN_VERIFY_SECS` unset, nothing runs and an unconfigured
+//! deployment is byte-unchanged. `verify_event_chain` streams rather than
+//! materializing the whole log, which is what makes running it on a timer
 //! affordable at all.
 
 use std::sync::Arc;
@@ -33,7 +34,7 @@ pub fn interval_from_env() -> Option<Duration> {
 ///
 /// A break is reported per workspace and the sweep continues — one tenant's
 /// broken chain must not stop the instance from learning about the others,
-/// which is the same lesson Cluster 402.1 applied to the search tap.
+/// which is the same rule the search tap follows.
 pub async fn sweep_once(store: &Arc<dyn Store>) -> (usize, usize) {
     let workspaces = match store.workspace_ids_with_events().await {
         Ok(v) => v,

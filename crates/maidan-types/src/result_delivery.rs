@@ -1,18 +1,18 @@
-//! Result-delivery state (Cluster 379.1) — one row per `(thread, target)`.
+//! Result-delivery state — one row per `(thread, target)`.
 //!
-//! Cluster 377's `maidan_egress_outbox` is *transport*: claim, retry, backoff,
+//! The `maidan_egress_outbox` is *transport*: claim, retry, backoff,
 //! dead-letter. This is *intent and identity*, and it is a separate table
 //! because it answers three questions the queue cannot:
 //!
 //! 1. **Who delivers?** The notification router runs on every replica, so one
 //!    `ThreadResultSet` reaches all of them. [`ResultDelivery`] is the shared row
-//!    they contend for, so exactly one wins — the Cluster-238 lesson, which cost
+//!    they contend for, so exactly one wins — the lesson, which cost
 //!    a 3× duplicate delivery when it was learned the first time.
 //! 2. **Is this new?** [`ResultDelivery::armed_revision`] is the newest
 //!    `ThreadResult::produced_at` this row has ever accepted. A *newer* result
 //!    re-arms it; one already seen is a no-op. That is what makes a re-review an
 //!    update and a replayed event a nothing.
-//! 3. **Update what?** [`ResultDelivery::external_ref`] is the Cluster-378.2
+//! 3. **Update what?** [`ResultDelivery::external_ref`] is the
 //!    [`ExternalRef::handle`](crate::ExternalRef::handle) — a Slack `ts`, a
 //!    GitHub comment id.
 //!
@@ -20,10 +20,11 @@
 //! `delivered_revision` (landed) look redundant until you try to arm with one.
 //! Comparing only against `delivered_revision` cannot tell a second replica
 //! reporting the *same* revision — where both read `NULL` and one must lose —
-//! from a genuinely *newer* result arriving while a delivery is still in flight,
-//! which must win or that result is silently dropped. Arming is therefore a
-//! single monotonic test against `armed_revision`, and `delivered_revision`
-//! stays a truthful record of what actually reached the surface.
+//! from a genuinely *newer* result arriving while a delivery is still in
+//! flight, which must win or that result is silently dropped. Arming is
+//! therefore a single monotonic test against `armed_revision`, and
+//! `delivered_revision` stays a truthful record of what actually reached the
+//! surface.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -8,8 +8,8 @@ pub enum HydrateResult {
     NotFound,
     Failed,
     InvalidPayload,
-    /// An event delivered via the self-healing back-fill (Cluster 258) — a gap or
-    /// a reconnect drained the missed range from the log rather than a live NOTIFY.
+    /// An event delivered via the self-healing back-fill — a gap or a reconnect
+    /// drained the missed range from the log rather than a live NOTIFY.
     Backfilled,
 }
 

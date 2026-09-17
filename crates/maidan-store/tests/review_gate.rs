@@ -1,6 +1,6 @@
-//! Review close-gate (Cluster 375.2, Wave 2 #22): a `closed` transition is
-//! refused until `k` qualifying approvals exist AND no `refutes` edge targets the
-//! thread. The gate lives in the FSM transition (both backends).
+//! Review close-gate: a `closed` transition is refused until `k` qualifying
+//! approvals exist AND no `refutes` edge targets the thread. The gate lives in
+//! the FSM transition (both backends).
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};

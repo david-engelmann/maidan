@@ -1,5 +1,5 @@
-//! Cluster 381.2: `GET /workspaces/:id/results?result_kind=` — exact-match
-//! facet on the namespaced string. Auth ENABLED with a minted bearer.
+//! `GET /workspaces/:id/results?result_kind=` — exact-match facet on the
+//! namespaced string. Auth ENABLED with a minted bearer.
 
 use std::{
     net::SocketAddr,

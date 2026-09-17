@@ -1,4 +1,4 @@
-//! Slack projector channel links (Cluster 308): map a Slack channel to the Maidan
+//! Slack projector channel links: map a Slack channel to the Maidan
 //! channel/thread it projects into. See the SQLite twin.
 
 use sqlx::{PgPool, Row};
@@ -46,8 +46,8 @@ pub async fn get(
     Ok(row.as_ref().map(row_to_link))
 }
 
-/// Resolve the link for a Maidan thread (the egress reverse lookup, Cluster 309).
-/// One Slack channel per thread, so `LIMIT 1`.
+/// Resolve the link for a Maidan thread (the egress reverse lookup). One Slack
+/// channel per thread, so `LIMIT 1`.
 pub async fn get_by_thread(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -82,9 +82,9 @@ pub async fn unlink(pool: &PgPool, slack_channel_id: &str) -> Result<bool, Store
     Ok(res.rows_affected() > 0)
 }
 
-/// Turn egress to this Slack channel off (Cluster 377.3). Idempotent: an
-/// already-disabled link keeps its original timestamp, so a second failure does
-/// not reset when the link broke. Returns whether this call did the disabling.
+/// Turn egress to this Slack channel off. Idempotent: an already-disabled link
+/// keeps its original timestamp, so a second failure does not reset when the
+/// link broke. Returns whether this call did the disabling.
 pub async fn disable(pool: &PgPool, slack_channel_id: &str) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_slack_channel_links SET disabled_at = now()

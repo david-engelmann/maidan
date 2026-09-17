@@ -1,12 +1,12 @@
-//! Durable record of who has held a thread (Cluster 401.1).
+//! Durable record of who has held a thread.
 //!
 //! Separation of duties on both governance gates tests the thread's **live**
 //! `assignee_id`, and releasing a claim sets that to NULL — so the exclusion
 //! became vacuous exactly when someone wanted it not to be. This table
 //! remembers instead: append-only, never cleared by release or unassign.
 //!
-//! The event log already records assignment changes, but Cluster-186 retention
-//! prunes it, and a gate cannot depend on evidence that ages out.
+//! The event log already records assignment changes, but retention prunes it,
+//! and a gate cannot depend on evidence that ages out.
 
 use sqlx::{PgPool, Row};
 

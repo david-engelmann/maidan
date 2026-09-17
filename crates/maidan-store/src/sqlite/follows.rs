@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Follow a channel (Cluster 244). Idempotent.
+/// Follow a channel. Idempotent.
 pub async fn follow_channel(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -23,7 +23,7 @@ pub async fn follow_channel(
     Ok(())
 }
 
-/// Unfollow a channel; `true` when a row was deleted (Cluster 244).
+/// Unfollow a channel; `true` when a row was deleted.
 pub async fn unfollow_channel(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -38,7 +38,7 @@ pub async fn unfollow_channel(
     Ok(res.rows_affected() > 0)
 }
 
-/// The channels a member follows, newest first (Cluster 244).
+/// The channels a member follows, newest first.
 pub async fn list_channel_follows(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -60,7 +60,7 @@ pub async fn list_channel_follows(
         .collect())
 }
 
-/// The members following a channel — the router's fan-out set (Cluster 244).
+/// The members following a channel — the router's fan-out set.
 pub async fn channel_followers(
     pool: &SqlitePool,
     channel_id: ChannelId,
@@ -75,7 +75,7 @@ pub async fn channel_followers(
         .collect())
 }
 
-/// Follow a thread (Cluster 244). Idempotent.
+/// Follow a thread. Idempotent.
 pub async fn follow_thread(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -93,7 +93,7 @@ pub async fn follow_thread(
     Ok(())
 }
 
-/// Unfollow a thread; `true` when a row was deleted (Cluster 244).
+/// Unfollow a thread; `true` when a row was deleted.
 pub async fn unfollow_thread(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -108,7 +108,7 @@ pub async fn unfollow_thread(
     Ok(res.rows_affected() > 0)
 }
 
-/// The threads a member follows, newest first (Cluster 244).
+/// The threads a member follows, newest first.
 pub async fn list_thread_follows(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -130,7 +130,7 @@ pub async fn list_thread_follows(
         .collect())
 }
 
-/// The members following a thread — the router's fan-out set (Cluster 244).
+/// The members following a thread — the router's fan-out set.
 pub async fn thread_followers(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -145,7 +145,7 @@ pub async fn thread_followers(
         .collect())
 }
 
-/// Mute a specific thread for a member (Cluster 356, F7 leaf mute). Idempotent.
+/// Mute a specific thread for a member. Idempotent.
 pub async fn mute_thread(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -203,7 +203,7 @@ pub async fn thread_muters(
         .collect())
 }
 
-/// Mute a whole channel for a member (Cluster 357, N3). Idempotent.
+/// Mute a whole channel for a member. Idempotent.
 pub async fn mute_channel(
     pool: &SqlitePool,
     member_id: MemberId,

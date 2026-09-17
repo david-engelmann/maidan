@@ -1,12 +1,12 @@
-//! Spawn budget (Cluster 376, Wave 2 #23, G6/G-dev-3/W3).
+//! Spawn budget.
 //!
 //! A per-workspace cap on how far an agent family may fan out: `max_children`
 //! (direct child threads per parent), `max_depth` (thread nesting), and
 //! `max_tools` (tool calls recorded on a thread). Coordination cost grows as
 //! n(n-1)/2 (Brooks/Amdahl/Two-Pizza), so a runaway that keeps spawning helpers
 //! is refused past the cap — a `SpawnRejected` error + a `ThreadSpawnDenied`
-//! event. Each axis is opt-in: a `None` (absent row or NULL column) is unlimited
-//! on that axis, like the WIP limit (Cluster 362).
+//! event. Each axis is opt-in: a `None` (absent row or NULL column) is
+//! unlimited on that axis, like the WIP limit.
 
 use std::fmt;
 
@@ -33,9 +33,9 @@ pub struct SpawnBudget {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Which spawn-budget axis refused a spawn (Cluster 376.6) — a small controlled
-/// vocabulary, carried on the `ThreadSpawnDenied` event in its `as_str` form
-/// (like [`BudgetReason`] on `ClaimFailed`).
+/// Which spawn-budget axis refused a spawn — a small controlled vocabulary,
+/// carried on the `ThreadSpawnDenied` event in its `as_str` form (like
+/// [`BudgetReason`] on `ClaimFailed`).
 ///
 /// [`BudgetReason`]: crate::models::BudgetReason
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,10 +55,10 @@ impl SpawnAxis {
     }
 }
 
-/// A spawn the budget refused (Cluster 376.6) — the scope, the axis, the numbers.
-/// Carried by `StoreError::SpawnRejected` so one refusal serves both purposes:
-/// its `Display` is the client-facing message (unchanged from 376.2/376.3), and
-/// its fields are the `ThreadSpawnDenied` payload. The **actor** is deliberately
+/// A spawn the budget refused — the scope, the axis, the numbers. Carried by
+/// `StoreError::SpawnRejected` so one refusal serves both purposes: its
+/// `Display` is the client-facing message (unchanged from 376.2/376.3), and its
+/// fields are the `ThreadSpawnDenied` payload. The **actor** is deliberately
 /// not part of it — the store's thread-create path has no author, so the route
 /// supplies who tried.
 #[derive(Debug, Clone, PartialEq, Eq)]

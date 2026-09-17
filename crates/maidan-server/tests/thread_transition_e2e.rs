@@ -128,8 +128,7 @@ async fn transition_thread_publishes_thread_state_changed() {
     assert_eq!(conflict.status(), 409);
 }
 
-/// Cluster 356 (F1): `PUT /threads/:id/title` renames a thread; a blank title is
-/// a `400`.
+/// `PUT /threads/:id/title` renames a thread; a blank title is a `400`.
 #[tokio::test]
 async fn rename_thread_via_rest_updates_title() {
     let pool = SqlitePoolOptions::new()

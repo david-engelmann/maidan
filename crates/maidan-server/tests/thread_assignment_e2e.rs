@@ -1,4 +1,4 @@
-//! Cluster 171: thread task assignment / handoff over REST.
+//! Thread task assignment / handoff over REST.
 //!
 //! Runs with auth ENABLED. Proves assign/handoff, the atomic compare-and-set
 //! claim (including a concurrent race → exactly one winner), unassign, event

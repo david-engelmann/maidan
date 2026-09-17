@@ -1,6 +1,6 @@
-//! Member-freeze kill-switch over HTTP (Cluster 372.3, Wave 2 #20). Auth ENABLED
-//! (the `frozen_by` FK + real `token:admin` checks): freeze drops the member's
-//! lease, list/get surface it, unfreeze lifts it, and a non-admin token is denied.
+//! Member-freeze kill-switch over HTTP. Auth ENABLED (the `frozen_by` FK + real
+//! `token:admin` checks): freeze drops the member's lease, list/get surface it,
+//! unfreeze lifts it, and a non-admin token is denied.
 
 use std::{
     net::SocketAddr,

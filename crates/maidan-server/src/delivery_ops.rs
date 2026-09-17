@@ -1,4 +1,4 @@
-//! Unified operator HTTP API for webhook + automation deliveries (Cluster 80.0).
+//! Unified operator HTTP API for webhook + automation deliveries.
 
 use axum::{
     extract::{Path, Query, State},

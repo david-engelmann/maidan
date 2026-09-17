@@ -188,7 +188,7 @@ services:
     profiles:
       - federation
 
-  # --- scale-out smoke (Cluster 105): two replicas behind a round-robin LB ---
+  # --- scale-out smoke: two replicas behind a round-robin LB ---
   # Both share one Postgres (NOTIFY fabric + durable state) and one object store
   # (S3/MinIO), so any request can land on either replica. Identical
   # MAIDAN_SESSION_SECRET so subscribe-resume tokens validate cross-replica.
@@ -324,7 +324,7 @@ services:
     profiles:
       - scale
 
-  # --- OTLP end-to-end smoke (Cluster 123): server pushes traces + metrics to
+  # --- OTLP end-to-end smoke: server pushes traces + metrics to
   # a real OpenTelemetry Collector. The collector's debug exporter logs received
   # telemetry to stdout so scripts/otlp-smoke.sh can assert delivery. localfs +
   # AUTH_DISABLED keep the profile lean (no MinIO); postgres is the shared base.

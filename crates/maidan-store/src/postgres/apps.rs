@@ -1,4 +1,4 @@
-//! Workspace-scoped installed apps and installations (Cluster 57.0).
+//! Workspace-scoped installed apps and installations.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

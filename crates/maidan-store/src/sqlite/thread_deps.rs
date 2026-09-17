@@ -5,10 +5,10 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a task-dependency edge: `thread_id` depends on `depends_on` (Cluster 217).
-/// Idempotent (`ON CONFLICT DO NOTHING`); a self-dependency is rejected. The FKs
-/// require both threads to exist. A dependency that would close a cycle is
-/// rejected (Cluster 221) — such a loop could never become ready.
+/// Add a task-dependency edge: `thread_id` depends on `depends_on`. Idempotent
+/// (`ON CONFLICT DO NOTHING`); a self-dependency is rejected. The FKs require
+/// both threads to exist. A dependency that would close a cycle is rejected —
+/// such a loop could never become ready.
 pub async fn add(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -58,7 +58,7 @@ pub async fn add(
     Ok(())
 }
 
-/// Remove a dependency edge; `true` when a row was deleted (Cluster 217).
+/// Remove a dependency edge; `true` when a row was deleted.
 pub async fn remove(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -75,7 +75,7 @@ pub async fn remove(
     Ok(res.rows_affected() > 0)
 }
 
-/// Edges `thread_id` depends on — what this task is blocked by (Cluster 217).
+/// Edges `thread_id` depends on — what this task is blocked by.
 pub async fn list_dependencies(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -92,7 +92,7 @@ pub async fn list_dependencies(
     rows.iter().map(row_to_dep).collect()
 }
 
-/// Edges that depend on `thread_id` — what this task blocks (Cluster 217).
+/// Edges that depend on `thread_id` — what this task blocks.
 pub async fn list_dependents(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -110,8 +110,8 @@ pub async fn list_dependents(
 }
 
 /// Whether every dependency of `thread_id` is terminal (closed/archived) — i.e.
-/// the task is ready (Cluster 217). A task with no dependencies is ready. A
-/// hard-deleted dependency thread cascades its edge away, so it can't block; a
+/// the task is ready. A task with no dependencies is ready. A hard-deleted
+/// dependency thread cascades its edge away, so it can't block; a
 /// soft-tombstoned dependency keeps its last state and blocks unless that state
 /// was terminal.
 pub async fn dependencies_satisfied(
@@ -131,9 +131,9 @@ pub async fn dependencies_satisfied(
     Ok(row.get::<i64, _>("pending") == 0)
 }
 
-/// Non-terminal dependents of `thread_id` whose dependencies are all terminal now
-/// (Cluster 222). Called right after `thread_id` transitions to terminal: each row
-/// is a task that just became ready. A dependent is included when it is itself
+/// Non-terminal dependents of `thread_id` whose dependencies are all terminal
+/// now. Called right after `thread_id` transitions to terminal: each row is a
+/// task that just became ready. A dependent is included when it is itself
 /// non-terminal AND has no non-terminal dependency remaining.
 pub async fn newly_ready_dependents(
     pool: &SqlitePool,

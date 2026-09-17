@@ -5,8 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a task-dependency edge (Cluster 217; cycle guard Cluster 221) — see the
-/// SQLite twin.
+/// Add a task-dependency edge — see the SQLite twin.
 pub async fn add(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -115,8 +114,8 @@ pub async fn dependencies_satisfied(
     Ok(row.get::<i64, _>("pending") == 0)
 }
 
-/// Non-terminal dependents of `thread_id` now fully unblocked (Cluster 222) — see
-/// the SQLite twin.
+/// Non-terminal dependents of `thread_id` now fully unblocked — see the SQLite
+/// twin.
 pub async fn newly_ready_dependents(
     pool: &PgPool,
     thread_id: ThreadId,

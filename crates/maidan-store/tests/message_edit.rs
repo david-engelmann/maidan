@@ -1,4 +1,4 @@
-//! Message body/metadata edit with `edited_at` (Cluster 29).
+//! Message body/metadata edit with `edited_at`.
 
 use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{

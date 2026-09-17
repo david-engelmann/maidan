@@ -38,9 +38,9 @@ pub struct McpStreamQuery {
     pub dm_conversation_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub channel_grants: Vec<uuid::Uuid>,
-    /// Narrow live delivery to a single channel / thread / member (Cluster 150),
-    /// so an MCP agent can subscribe to just one thread or "just my mentions"
-    /// server-side instead of filtering the whole workspace client-side.
+    /// Narrow live delivery to a single channel / thread / member, so an MCP
+    /// agent can subscribe to just one thread or "just my mentions" server-side
+    /// instead of filtering the whole workspace client-side.
     #[serde(default)]
     pub channel_id: Option<uuid::Uuid>,
     #[serde(default)]
@@ -50,13 +50,13 @@ pub struct McpStreamQuery {
     /// Comma-separated event kinds (snake_case), e.g. `message_posted,mention_recorded`.
     #[serde(default)]
     pub kinds: Option<String>,
-    /// Opt into gap-free at-least-once delivery (Cluster 126): cursor-driven
-    /// reconcile instead of the optimistic live path. Requires `workspace_id`
-    /// and `consumer_id`; adds a stability-window latency floor on fresh events.
+    /// Opt into gap-free at-least-once delivery: cursor-driven reconcile
+    /// instead of the optimistic live path. Requires `workspace_id` and
+    /// `consumer_id`; adds a stability-window latency floor on fresh events.
     #[serde(default)]
     pub at_least_once: bool,
-    /// Opt into lean event frames (Cluster 178, token round 3): `{log_id, kind,
-    /// ...ids}` pointers instead of full serialized events.
+    /// Opt into lean event frames: `{log_id, kind,...ids}` pointers instead of
+    /// full serialized events.
     #[serde(default)]
     pub lean: bool,
 }

@@ -1,5 +1,5 @@
-//! Cluster 388.3: Lagged resume drains the durable log after a watermark
-//! instead of dropping events.
+//! Lagged resume drains the durable log after a watermark instead of dropping
+//! events.
 
 use maidan_store::{prelude::*, resume_from_log, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewMember, NewWorkspace};

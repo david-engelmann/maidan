@@ -153,10 +153,10 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("search: postgres tsvector");
             outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
             outbox_relay = outbox_relay_enabled;
-            // Read-replica pool (Cluster 262): when MAIDAN_DB_REPLICA_URL is set,
-            // connect a separate reader pool (validating replica reachability at
-            // boot) so LSN-token read routing (Cluster 264) can send eligible reads
-            // there. Unset → reads stay on the primary (unchanged).
+            // Read-replica pool: when MAIDAN_DB_REPLICA_URL is set, connect a
+            // separate reader pool (validating replica reachability at boot) so
+            // LSN-token read routing can send eligible reads there. Unset →
+            // reads stay on the primary (unchanged).
             let pg_store = if let Some(replica_url) = config.replica_url.as_deref() {
                 let reader = make_pg_opts()
                     .connect(replica_url)
@@ -193,9 +193,10 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 None
             };
-            // Search gets its own replica reader pool (Cluster 271) so search reads
-            // honor the same per-request consistency token as store reads. A separate
-            // pool from the store's reader (pools are not shared across the Arc).
+            // Search gets its own replica reader pool so search reads honor the
+            // same per-request consistency token as store reads. A separate
+            // pool from the store's reader (pools are not shared across the
+            // Arc).
             let pg_search = match config.replica_url.as_deref() {
                 Some(replica_url) => {
                     let search_reader = make_pg_opts().connect(replica_url).await.context(
@@ -205,8 +206,9 @@ async fn main() -> anyhow::Result<()> {
                 }
                 None => PostgresSearch::new(pool),
             };
-            // Capture the search routing counters for `maidan_search_replica_reads_total`
-            // when a replica is configured (Cluster 272); `None` otherwise.
+            // Capture the search routing counters for
+            // `maidan_search_replica_reads_total` when a replica is configured;
+            // `None` otherwise.
             search_read_routing_metrics = config
                 .replica_url
                 .is_some()
@@ -215,13 +217,13 @@ async fn main() -> anyhow::Result<()> {
             use_embedding_indexer = true;
         }
         Dialect::Sqlite => {
-            // Per-connection PRAGMAs (foreign_keys, busy_timeout, WAL) are applied
-            // in the pool's after_connect (Cluster 166) so every pooled connection
+            // Per-connection PRAGMAs (foreign_keys, busy_timeout, WAL) are
+            // applied in the pool's after_connect so every pooled connection
             // enforces them — not just the first.
             let pool = maidan_search::sqlite_pool_options_with(config.db.busy_timeout_ms)
-                // Serialize through one connection by default: a multi-connection SQLite
-                // pool deadlocks concurrent read-modify-write transactions (Cluster 277,
-                // see maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS). Overridable via
+                // Serialize through one connection by default: a
+                // multi-connection SQLite pool deadlocks concurrent
+                // read-modify-write transactions. Overridable via
                 // MAIDAN_DB_MAX_CONNECTIONS.
                 .max_connections(
                     config
@@ -288,9 +290,10 @@ async fn main() -> anyhow::Result<()> {
         dim = embedding_provider.dimension(),
         "embedding provider configured"
     );
-    // `hash-v1` is a deterministic hash, not a real embedding — semantic search over it
-    // returns near-random results. Warn loudly at boot so a stranger who leaves the
-    // provider unset isn't silently served meaningless "semantic" hits (Cluster 315).
+    // `hash-v1` is a deterministic hash, not a real embedding — semantic search
+    // over it returns near-random results. Warn loudly at boot so a stranger
+    // who leaves the provider unset isn't silently served meaningless
+    // "semantic" hits.
     if embedding_provider.model_name() == "hash-v1" {
         tracing::warn!(
             "embedding provider is `hash-v1`: a deterministic hash, NOT semantically \
@@ -375,9 +378,9 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
-    // Key rotation (Cluster 189): old keys from FEDERATION_DECRYPT_KEYS stay
-    // available for decrypt after the primary is rotated. A malformed entry is a
-    // hard error — silently dropping an old key would strand its ciphertexts.
+    // Key rotation: old keys from FEDERATION_DECRYPT_KEYS stay available for
+    // decrypt after the primary is rotated. A malformed entry is a hard error —
+    // silently dropping an old key would strand its ciphertexts.
     let decrypt_fallback_keys =
         maidan_auth::decrypt_fallback_keys_from_env().context("FEDERATION_DECRYPT_KEYS")?;
     if !decrypt_fallback_keys.is_empty() {
@@ -438,10 +441,10 @@ async fn main() -> anyhow::Result<()> {
         indexer_heartbeat.clone(),
         bus_listener_health,
     );
-    // Cluster 102: MCP resource-update notifications fan out across replicas.
+    // MCP resource-update notifications fan out across replicas.
     state.attach_resource_notifier(resource_notifier);
     state.mcp.spawn_resource_notify_listener();
-    // Cluster 103: presence/typing/roster fan out across replicas (Postgres NOTIFY).
+    // Presence/typing/roster fan out across replicas (Postgres NOTIFY).
     if let Some(presence_notifier) = presence_notifier {
         state.attach_presence_notifier(presence_notifier);
     }
@@ -452,7 +455,7 @@ async fn main() -> anyhow::Result<()> {
     state.outbox_relay = outbox_relay;
     state.outbox_backend = outbox_backend.clone();
     // Capacity-1 enqueue nudge: `publish` pings the relay so it wakes from idle
-    // backoff promptly (Cluster 108.0.2). Only wired when the relay runs.
+    // backoff promptly. Only wired when the relay runs.
     let outbox_nudge_rx = if outbox_relay {
         let (tx, rx) = tokio::sync::mpsc::channel::<()>(1);
         state.outbox_nudge = Some(tx);
@@ -467,14 +470,14 @@ async fn main() -> anyhow::Result<()> {
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
     state.rate_limit_redis = maidan_server::rate_limit::connect_redis_from_env().await;
-    // Default-on global rate limit (Cluster 183): a deployment that configures
-    // nothing still gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
+    // Default-on global rate limit: a deployment that configures nothing still
+    // gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
     state.rate_limit_default_on = true;
-    // A2A Agent Card transport advertisement (Cluster 288): public origin for
-    // absolute interface URLs + the advertised gRPC address (§5.2 negotiation).
+    // A2A Agent Card transport advertisement: public origin for absolute
+    // interface URLs + the advertised gRPC address (§5.2 negotiation).
     state.a2a_card = maidan_server::a2a_agent::A2aCardConfig::from_env();
-    // Read-replica routing (Cluster 263+): when a replica is configured, stamp the
-    // consistency token on writes and route replica-eligible reads.
+    // Read-replica routing: when a replica is configured, stamp the consistency
+    // token on writes and route replica-eligible reads.
     state.read_replica_enabled = config.replica_url.is_some();
     state.read_routing_metrics = read_routing_metrics;
     state.search_read_routing_metrics = search_read_routing_metrics;
@@ -498,8 +501,8 @@ async fn main() -> anyhow::Result<()> {
         state.attach_export_verify_keys(export_verify_keys);
     }
 
-    // Email transport (Cluster 249): wire it only when `MAIDAN_SMTP_*` is
-    // configured — otherwise the notification router sends no email.
+    // Email transport: wire it only when `MAIDAN_SMTP_*` is configured —
+    // otherwise the notification router sends no email.
     if let Some(smtp) = maidan_server::mail::SmtpConfig::from_env() {
         match maidan_server::mail::SmtpTransport::from_config(&smtp) {
             Ok(transport) => {
@@ -512,8 +515,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Web Push sender (Cluster 366, N1): built from VAPID_* when configured. The
-    // router delivers to a member's subscriptions when they have no live WS.
+    // Web Push sender: built from VAPID_* when configured. The router delivers
+    // to a member's subscriptions when they have no live WS.
     if let Some(config) = maidan_server::web_push::WebPushConfig::from_env() {
         state.attach_web_push(std::sync::Arc::new(
             maidan_server::web_push::VapidWebPushSender::new(config),
@@ -521,10 +524,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("web push (VAPID) configured");
     }
 
-    // Background mail-outbox worker (Cluster 305): drains the durable mail queue
-    // with retry/backoff + dead-lettering. Runs whenever a transport is
-    // configured (the router enqueues only then). Tick via
-    // `MAIDAN_MAIL_WORKER_TICK_SECS` (default 5s).
+    // Background mail-outbox worker: drains the durable mail queue with
+    // retry/backoff + dead-lettering. Runs whenever a transport is configured
+    // (the router enqueues only then). Tick via `MAIDAN_MAIL_WORKER_TICK_SECS`
+    // (default 5s).
     if state.mail.is_some() {
         let mail_state = state.clone();
         let mail_cfg = maidan_server::mail_worker::config_from_env();
@@ -533,12 +536,13 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Slack projector (Cluster 307): wire the ingress config when
-    // `MAIDAN_SLACK_SIGNING_SECRET` is set — otherwise `/integrations/slack/events`
-    // stays disabled (404). A projector, not a bot: no LLM in Maidan.
+    // Slack projector: wire the ingress config when
+    // `MAIDAN_SLACK_SIGNING_SECRET` is set — otherwise
+    // `/integrations/slack/events` stays disabled (404). A projector, not a
+    // bot: no LLM in Maidan.
     if let Some(slack_cfg) = maidan_server::slack::SlackConfig::from_env() {
-        // Egress (Cluster 309) needs a bot token for chat.postMessage; ingress works
-        // without one. The egress runs on the notification-router bus consumer.
+        // Egress needs a bot token for chat.postMessage; ingress works without
+        // one. The egress runs on the notification-router bus consumer.
         if let Some(bot_token) = slack_cfg.bot_token.clone() {
             state.attach_slack_sender(std::sync::Arc::new(
                 maidan_server::slack::SlackWebClient::new(bot_token),
@@ -549,12 +553,13 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("slack projector ingress configured");
     }
 
-    // Git/GitHub projector (Cluster 310): wire the ingress config when
+    // Git/GitHub projector: wire the ingress config when
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
-    // `/integrations/github/events` stays disabled (404). A projector, not a bot.
+    // `/integrations/github/events` stays disabled (404). A projector, not a
+    // bot.
     if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
-        // Egress (Cluster 312) needs a token for issue-comment posts; ingress works
-        // without one. The egress runs on the notification-router bus consumer.
+        // Egress needs a token for issue-comment posts; ingress works without
+        // one. The egress runs on the notification-router bus consumer.
         if let Some(token) = github_cfg.api_token.clone() {
             state.attach_github_sender(std::sync::Arc::new(
                 maidan_server::github::GithubApiClient::new(token),
@@ -565,9 +570,9 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("github projector ingress configured");
     }
 
-    // Background projector-egress worker (Cluster 377.2): drains the durable
-    // egress queue with retry/backoff + dead-lettering. Runs whenever a projector
-    // sender is configured — which is exactly when the projectors enqueue, so a
+    // Background projector-egress worker: drains the durable egress queue with
+    // retry/backoff + dead-lettering. Runs whenever a projector sender is
+    // configured — which is exactly when the projectors enqueue, so a
     // deployment without one neither queues nor drains. Tick via
     // `MAIDAN_EGRESS_WORKER_TICK_SECS` (default 5s).
     if state.slack_sender.is_some() || state.github_sender.is_some() {
@@ -578,19 +583,19 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Cluster 345: give the MCP server the slash-command dispatcher so an MCP
-    // `post_message` runs registered slash commands like a REST post. Attached
-    // last (after every other `attach_*`) so the dispatcher's `AppState` clone is
-    // fully configured; server-binary only, so tests/embedders skip slash dispatch.
+    // Give the MCP server the slash-command dispatcher so an MCP `post_message`
+    // runs registered slash commands like a REST post. Attached last (after
+    // every other `attach_*`) so the dispatcher's `AppState` clone is fully
+    // configured; server-binary only, so tests/embedders skip slash dispatch.
     state.mcp.set_slash_dispatcher(std::sync::Arc::new(
         maidan_server::slash_commands::ServerSlashDispatcher::new(state.clone()),
     ));
-    // The at-rest encryption key powers `resolve_secret` over MCP (Cluster 371),
-    // mirroring the REST resolve; unset means the tool reports it's unavailable.
+    // The at-rest encryption key powers `resolve_secret` over MCP, mirroring
+    // the REST resolve; unset means the tool reports it's unavailable.
     if let Some(key) = state.federation.encryption_key.clone() {
         state.mcp.set_encryption_key(key);
     }
-    // Cluster 391: MCP export/verify/import share the REST operator keyring.
+    // MCP export/verify/import share the REST operator keyring.
     if let Some(key) = state.export_signing.clone() {
         state.mcp.set_export_signing(key);
     }
@@ -600,9 +605,9 @@ async fn main() -> anyhow::Result<()> {
             .set_export_verify_keys(state.export_verify_keys.clone());
     }
 
-    // Background data-retention sweeper (Cluster 186): opt-in via
-    // `MAIDAN_RETENTION_*_DAYS`. Prunes the event log (floored at the durable
-    // delivery watermark), audit trail, and delivery tables past their age.
+    // Background data-retention sweeper: opt-in via `MAIDAN_RETENTION_*_DAYS`.
+    // Prunes the event log (floored at the durable delivery watermark), audit
+    // trail, and delivery tables past their age.
     if let Some(retention_cfg) = maidan_server::retention::config_from_env() {
         let retention_store = state.store.clone();
         tokio::spawn(async move {
@@ -610,9 +615,9 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Cluster 402.3: the scheduled half of the Cluster-402.2 decision. The tap
-    // verifies what it projects; this verifies the chain. Opt-in — unset means
-    // an unconfigured deployment is unchanged.
+    // The scheduled half of the decision. The tap verifies what it projects;
+    // this verifies the chain. Opt-in — unset means an unconfigured deployment
+    // is unchanged.
     if let Some(interval) = maidan_server::chain_verify::interval_from_env() {
         let verify_store = state.store.clone();
         tokio::spawn(async move {
@@ -620,9 +625,9 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Background scheduled/recurring-task sweeper (Cluster 227): opt-in via
-    // `MAIDAN_SCHEDULER_TICK_SECS`. Materializes a task thread for each schedule
-    // that comes due.
+    // Background scheduled/recurring-task sweeper: opt-in via
+    // `MAIDAN_SCHEDULER_TICK_SECS`. Materializes a task thread for each
+    // schedule that comes due.
     if let Some(scheduler_cfg) = maidan_server::scheduler::config_from_env() {
         let scheduler_state = state.clone();
         tokio::spawn(async move {
@@ -630,9 +635,9 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Background wait-timer sweeper (Cluster 364, G2/G4): opt-in via
-    // `MAIDAN_WAIT_SWEEP_TICK_SECS`. Fires each thread wait past its deadline —
-    // emitting `WaitTimedOut` and (per policy) parking the thread.
+    // Background wait-timer sweeper: opt-in via `MAIDAN_WAIT_SWEEP_TICK_SECS`.
+    // Fires each thread wait past its deadline — emitting `WaitTimedOut` and
+    // (per policy) parking the thread.
     if let Some(wait_cfg) = maidan_server::wait_sweeper::config_from_env() {
         let wait_state = state.clone();
         tokio::spawn(async move {
@@ -640,8 +645,8 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Background email-digest sweeper (Cluster 255): opt-in via
-    // `MAIDAN_DIGEST_TICK_SECS`. Emails digest-mode members an unread rollup.
+    // Background email-digest sweeper: opt-in via `MAIDAN_DIGEST_TICK_SECS`.
+    // Emails digest-mode members an unread rollup.
     if let Some(digest_cfg) = maidan_server::digest::config_from_env() {
         let digest_state = state.clone();
         tokio::spawn(async move {
@@ -649,8 +654,8 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // A2A gRPC binding (Cluster 287, §10): opt-in via `MAIDAN_A2A_GRPC_ADDR`
-    // (e.g. `0.0.0.0:50051`). Serves the tonic A2AService on a separate port; the
+    // A2A gRPC binding: opt-in via `MAIDAN_A2A_GRPC_ADDR` (e.g.
+    // `0.0.0.0:50051`). Serves the tonic A2AService on a separate port; the
     // HTTP surface (REST + JSON-RPC) is unaffected.
     if let Ok(grpc_addr) = std::env::var("MAIDAN_A2A_GRPC_ADDR") {
         match grpc_addr.parse::<std::net::SocketAddr>() {

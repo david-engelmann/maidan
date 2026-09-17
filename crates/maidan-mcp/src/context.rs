@@ -1,4 +1,4 @@
-//! MCP context export (Cluster 74) — mirrors HTTP context packs; pagination Cluster 82.
+//! MCP context export — mirrors the HTTP context packs, pagination included.
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use crate::error::McpError;
 
-/// Thread + message references for a context pack, batched (Cluster 335): one
-/// thread read + one `src_id = ANY` read across all messages, replacing the
-/// per-message N+1. Ordered by `created_at`, deduped — mirrors the REST assembler.
+/// Thread + message references for a context pack, batched: one thread read +
+/// one `src_id = ANY` read across all messages, replacing the per-message N+1.
+/// Ordered by `created_at`, deduped — mirrors the REST assembler.
 async fn collect_references(
     store: &dyn Store,
     thread_id: ThreadId,
@@ -31,8 +31,8 @@ async fn collect_references(
     Ok(refs)
 }
 
-/// Edit records for a context pack, batched across all messages then re-ordered by
-/// (message position, edited_at, id) (Cluster 335). Lean by default (id/editor/
+/// Edit records for a context pack, batched across all messages then re-ordered
+/// by (message position, edited_at, id). Lean by default (id/editor/
 /// timestamp); `include_edits` adds the heavy before/after bodies.
 async fn collect_edit_views(
     store: &dyn Store,
@@ -106,28 +106,28 @@ struct ThreadContextArgs {
     /// bodies are the single largest token cost of a context pack.
     #[serde(default)]
     include_edits: bool,
-    /// Include the workspace glossary (canonical term definitions) so the pack is
-    /// grounded in shared vocabulary (Cluster 323). Default `true`; omitted from
-    /// the response when the glossary is empty. `false` drops it.
+    /// Include the workspace glossary (canonical term definitions) so the pack
+    /// is grounded in shared vocabulary. Default `true`; omitted from the
+    /// response when the glossary is empty. `false` drops it.
     #[serde(default = "default_true")]
     include_glossary: bool,
-    /// As-of context replay (Cluster 326): reconstruct the thread as it stood at
-    /// this event-log id, deterministic over the immutable log. Omit for the live
+    /// As-of context replay: reconstruct the thread as it stood at this
+    /// event-log id, deterministic over the immutable log. Omit for the live
     /// pack.
     as_of: Option<i64>,
-    /// Token budget for the message page (Cluster 360, G-dev-1). When set, an
-    /// over-budget page is folded — the opening message and the recent tail are
-    /// kept, the middle is elided into an auditable `elision` marker on the
-    /// response. Omit to cap by rows only.
+    /// Token budget for the message page. When set, an over-budget page is
+    /// folded — the opening message and the recent tail are kept, the middle is
+    /// elided into an auditable `elision` marker on the response. Omit to cap
+    /// by rows only.
     token_budget: Option<i64>,
-    /// Attach parent grounding to a child thread's pack (Cluster 360): the parent's
-    /// opening ask + latest decision, orienting a fresh claimer. Default `true`;
-    /// absent for root threads and withheld for a cross-channel or DM parent.
+    /// Attach parent grounding to a child thread's pack: the parent's opening
+    /// ask + latest decision, orienting a fresh claimer. Default `true`; absent
+    /// for root threads and withheld for a cross-channel or DM parent.
     #[serde(default = "default_true")]
     include_parent_grounding: bool,
-    /// Attach in-channel accepted/closed decisions (Cluster 382). Default
-    /// `true` on a live single-thread pack; a workspace-context build sets this
-    /// `false` on nested threads. Withheld on DM channels.
+    /// Attach in-channel accepted/closed decisions. Default `true` on a live
+    /// single-thread pack; a workspace-context build sets this `false` on
+    /// nested threads. Withheld on DM channels.
     #[serde(default = "default_true")]
     include_accepted_decisions: bool,
 }
@@ -146,13 +146,13 @@ struct WorkspaceContextArgs {
     /// 323). Default `true`; omitted when empty. `false` drops it.
     #[serde(default = "default_true")]
     include_glossary: bool,
-    /// Token budget applied to **each** nested thread's message page (Cluster 360).
-    /// Omit for row-only caps.
+    /// Token budget applied to **each** nested thread's message page. Omit for
+    /// row-only caps.
     token_budget: Option<i64>,
 }
 
-/// Apply an optional token budget to a message page (Cluster 360), the MCP twin of
-/// the REST assembler's `apply_token_budget`. `None` leaves the page untouched.
+/// Apply an optional token budget to a message page, the MCP twin of the REST
+/// assembler's `apply_token_budget`. `None` leaves the page untouched.
 fn apply_token_budget(
     messages: Vec<Message>,
     token_budget: Option<i64>,
@@ -163,9 +163,9 @@ fn apply_token_budget(
     }
 }
 
-/// Parent grounding for a child thread (Cluster 360) — the MCP twin of the REST
-/// assembler's `build_parent_grounding`. The same-channel + non-DM safety rule
-/// lives in `maidan_types::ParentGrounding::assemble`; this fetches its inputs.
+/// Parent grounding for a child thread — the MCP twin of the REST assembler's
+/// `build_parent_grounding`. The same-channel + non-DM safety rule lives in
+/// `maidan_types::ParentGrounding::assemble`; this fetches its inputs.
 async fn build_parent_grounding(
     store: &dyn Store,
     thread: &Thread,
@@ -199,8 +199,8 @@ async fn build_parent_grounding(
     )
 }
 
-/// In-channel accepted decisions for a live MCP pack (Cluster 382) — twin of the
-/// REST assembler's `build_accepted_decisions`. Skipped on DM: `__dm__` is shared
+/// In-channel accepted decisions for a live MCP pack — twin of the REST
+/// assembler's `build_accepted_decisions`. Skipped on DM: `__dm__` is shared
 /// across unrelated conversations.
 async fn build_accepted_decisions(
     store: &dyn Store,
@@ -253,14 +253,14 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
         None
     };
     let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold (Cluster 360): keep the opener + recent tail, elide the
-    // middle — before the refs/edits/artifacts reads, so the whole pack shrinks.
+    // Token-budget fold: keep the opener + recent tail, elide the middle —
+    // before the refs/edits/artifacts reads, so the whole pack shrinks.
     let (messages, elision) = apply_token_budget(messages, a.token_budget);
     let transitions = store
         .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
         .await?;
-    // Cluster 335: batched refs/edits (no per-message N+1) + artifacts (previously
-    // omitted from MCP packs) — shared with the REST assembler's behavior.
+    // Batched refs/edits (no per-message N+1) + artifacts (previously omitted
+    // from MCP packs) — shared with the REST assembler's behavior.
     let references = collect_references(store, thread_id, &messages).await?;
     let message_edits = collect_edit_views(store, &messages, a.include_edits, None).await?;
     let artifacts = collect_artifacts(store, &messages).await;
@@ -282,8 +282,8 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     if let Some(elision) = elision {
         out["elision"] = serde_json::to_value(&elision)?;
     }
-    // Parent grounding for a child thread (Cluster 360): the parent's opening ask +
-    // latest decision. Absent for root threads / cross-channel / DM parents.
+    // Parent grounding for a child thread: the parent's opening ask + latest
+    // decision. Absent for root threads / cross-channel / DM parents.
     if a.include_parent_grounding {
         if let Some(grounding) = build_parent_grounding(store, &thread, &channel).await {
             out["parent_grounding"] = serde_json::to_value(&grounding)?;
@@ -308,11 +308,11 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     Ok(out)
 }
 
-/// As-of context replay (Cluster 326): the MCP twin of the REST assembler's
+/// As-of context replay: the MCP twin of the REST assembler's
 /// `build_thread_context_as_of`. The message set is folded from the immutable
 /// event log via `maidan_types::reconstruct_messages_through`; the additive
-/// components are cut by the anchor event's time. Deterministic; no fresh search;
-/// glossary omitted (current vocabulary, not thread history).
+/// components are cut by the anchor event's time. Deterministic; no fresh
+/// search; glossary omitted (current vocabulary, not thread history).
 async fn get_thread_context_as_of(
     store: &dyn Store,
     a: &ThreadContextArgs,
@@ -339,12 +339,12 @@ async fn get_thread_context_as_of(
         None
     };
     let messages: Vec<Message> = all.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold (Cluster 360) — same as the live pack, on the reconstructed
-    // page before the additive components are read from it.
+    // Token-budget fold — same as the live pack, on the reconstructed page
+    // before the additive components are read from it.
     let (messages, elision) = apply_token_budget(messages, a.token_budget);
 
-    // Cluster 335: batched refs/edits + artifacts (shared with the live path), then
-    // cut to the anchor's time — the additive components as they stood at `as_of`.
+    // Batched refs/edits + artifacts (shared with the live path), then cut to
+    // the anchor's time — the additive components as they stood at `as_of`.
     let message_edits = collect_edit_views(store, &messages, a.include_edits, Some(cutoff)).await?;
     let mut references = collect_references(store, thread_id, &messages).await?;
     references.retain(|r| r.created_at <= cutoff);
@@ -433,7 +433,7 @@ pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Va
                 // The glossary rides the workspace level once (below); suppress it
                 // per nested thread so it is not repeated N times.
                 "include_glossary": false,
-                // The token budget applies per nested thread (Cluster 360).
+                // The token budget applies per nested thread.
                 "token_budget": a.token_budget,
                 // Grounding is the focused single-thread view, not the firehose.
                 "include_parent_grounding": false,
@@ -801,8 +801,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Cluster 335: the MCP context pack now surfaces referenced artifacts
-        // (previously omitted — REST included them, MCP did not).
+        // The MCP context pack now surfaces referenced artifacts (previously
+        // omitted — REST included them, MCP did not).
         let ctx = get_thread_context(store.as_ref(), &json!({ "thread_id": thread.id.0 }))
             .await
             .unwrap();

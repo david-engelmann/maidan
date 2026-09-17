@@ -1,9 +1,9 @@
-//! Shared-glossary MCP tools (Cluster 322): an agent defines and looks up a
-//! workspace's canonical `term -> definition` (+ aliases) — the anti-drift pin.
-//! The REST twins are also Cluster 322; `delete` stays REST-only (the 220/229
-//! precedent). Workspace-scoped: `set` is `workspace:write` + `created_by` is the
-//! caller; `get`/`list` are `workspace:read`. No channel/thread arg, so no
-//! pre-dispatch access gate — the workspace cap is the control.
+//! Shared-glossary MCP tools: an agent defines and looks up a workspace's
+//! canonical `term -> definition` (+ aliases) — the anti-drift pin. `delete`
+//! stays REST-only (the 220/229 precedent). Workspace-scoped: `set` is
+//! `workspace:write` + `created_by` is the caller; `get`/`list` are
+//! `workspace:read`. No channel/thread arg, so no pre-dispatch access gate —
+//! the workspace cap is the control.
 
 use std::sync::Arc;
 
@@ -25,8 +25,8 @@ struct SetGlossaryArgs {
     aliases: Option<Vec<String>>,
 }
 
-/// Define (or redefine) a term in the caller's workspace glossary (Cluster 322).
-/// Upserts on `(workspace, term)`; owned by the caller.
+/// Define (or redefine) a term in the caller's workspace glossary. Upserts on
+/// `(workspace, term)`; owned by the caller.
 pub(super) async fn set_glossary_term(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -73,8 +73,7 @@ pub(super) async fn get_glossary_term(
     Ok(content_json(&term))
 }
 
-/// All defined terms in the caller's workspace glossary, ordered by term
-/// (Cluster 322).
+/// All defined terms in the caller's workspace glossary, ordered by term.
 pub(super) async fn list_glossary_terms(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

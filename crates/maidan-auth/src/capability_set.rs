@@ -1,4 +1,4 @@
-//! Named capability sets + Levy/Madden attenuation (Cluster 395, Wave 3 #35 B20).
+//! Named capability sets + Levy/Madden attenuation.
 //!
 //! A named set (`maidan.agent.worker`, `maidan.human.admin`) is a **mint-time
 //! recipe**, not a stored capability string. Tokens still hold atomic
@@ -6,10 +6,10 @@
 //! dropping rights is progressive grant; the holder of a token may derive a
 //! weaker one without `token:admin` (holder-side attenuation).
 //!
-//! This is object-capability attenuation (Levy/Madden), **not** a Cedar
-//! policy rewrite. You can only drop rights you already hold. You cannot
-//! amplify. Federation peer caps stay out of both named sets — those are
-//! minted on peer tokens, not member tokens.
+//! This is object-capability attenuation (Levy/Madden), **not** a Cedar policy
+//! rewrite. You can only drop rights you already hold. You cannot amplify.
+//! Federation peer caps stay out of both named sets — those are minted on peer
+//! tokens, not member tokens.
 
 use chrono::{DateTime, Utc};
 

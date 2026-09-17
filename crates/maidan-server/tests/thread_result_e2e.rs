@@ -1,6 +1,6 @@
-//! Task structured-results REST (Cluster 235): set/get a thread's result over
-//! HTTP, and the `ThreadResultSet` event on set. Auth ENABLED (real token) so
-//! `produced_by` is a real member.
+//! Task structured-results REST: set/get a thread's result over HTTP, and the
+//! `ThreadResultSet` event on set. Auth ENABLED (real token) so `produced_by`
+//! is a real member.
 
 use std::{
     net::SocketAddr,

@@ -1,6 +1,6 @@
-//! Shared-glossary foundation (Cluster 321, fidelity arc): a workspace's canonical
-//! `term -> definition` (+ aliases) — set (upsert) / get / list / delete. Both
-//! backends. No routes/tools yet — a zero-blast-radius foundation.
+//! Shared-glossary foundation: a workspace's canonical `term -> definition` (+
+//! aliases) — set (upsert) / get / list / delete. Both backends. No
+//! routes/tools yet — a zero-blast-radius foundation.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewGlossaryTerm, NewMember, NewWorkspace};

@@ -1,11 +1,11 @@
-//! Slack projector — ingress foundation (Cluster 307).
+//! Slack projector — ingress foundation.
 //!
 //! A *projector*, not a bot: it relays between a Slack channel and a Maidan
-//! channel with **no LLM in Maidan** (Expansion Bets, Bet 1). This cluster lands
-//! the ingress foundation — request-signature verification and the Slack Events
-//! API `url_verification` handshake — so a Slack app can be pointed at
+//! channel with **no LLM in Maidan** (Expansion Bets, Bet 1). This cluster
+//! lands the ingress foundation — request-signature verification and the Slack
+//! Events API `url_verification` handshake — so a Slack app can be pointed at
 //! `POST /integrations/slack/events`. Channel-link mapping + message → thread
-//! posting is Cluster 308; egress (Maidan → Slack) is 309.
+//! posting, and egress (Maidan → Slack), build on it.
 //!
 //! **Config-gated:** inert unless `MAIDAN_SLACK_SIGNING_SECRET` is set (the route
 //! then returns `404`), so an unconfigured deployment is unchanged.
@@ -91,10 +91,10 @@ pub fn verify_slack_signature(
     subtle::ConstantTimeEq::ct_eq(expected.as_bytes(), signature.as_bytes()).into()
 }
 
-/// `POST /integrations/slack/events` — the Slack Events API ingress. Returns `404`
-/// when the projector is not configured, `401` on a bad signature, echoes the
-/// `url_verification` challenge during app setup, and ACKs `event_callback`s
-/// (message routing to a Maidan thread lands in Cluster 308).
+/// `POST /integrations/slack/events` — the Slack Events API ingress. Returns
+/// `404` when the projector is not configured, `401` on a bad signature, echoes
+/// the `url_verification` challenge during app setup, and ACKs
+/// `event_callback`s (message routing to a Maidan thread lands).
 pub async fn slack_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -142,10 +142,10 @@ pub async fn slack_events(
 }
 
 /// Route an inbound Slack event: a plain user `message` in a linked channel is
-/// posted into the mapped Maidan thread (Cluster 308). Best-effort — the ingress
-/// always ACKs. Bot messages and subtype events (edits/deletes/joins) are skipped:
-/// only plain user messages project, and skipping `bot_id` avoids echoing our own
-/// egress (Cluster 309) back into Maidan.
+/// posted into the mapped Maidan thread. Best-effort — the ingress always ACKs.
+/// Bot messages and subtype events (edits/deletes/joins) are skipped: only
+/// plain user messages project, and skipping `bot_id` avoids echoing our own
+/// egress back into Maidan.
 async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
     if event.get("type").and_then(|v| v.as_str()) != Some("message") {
         return;
@@ -175,8 +175,8 @@ async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
         thread_id: link.thread_id,
         author_id: link.member_id,
         body: format!("{user}: {text}"),
-        // Tag the origin so egress (Cluster 309) never echoes a Slack-sourced
-        // message back to Slack (loop prevention).
+        // Tag the origin so egress never echoes a Slack-sourced message back to
+        // Slack (loop prevention).
         metadata: serde_json::json!({ "slack": { "user": user, "channel": slack_channel } }),
         content: None,
     };
@@ -196,8 +196,8 @@ pub enum SlackError {
 }
 
 /// Slack's config-class `chat.postMessage` errors — the analogue of GitHub's
-/// 401/403/404 (Cluster 377.3). Slack answers logically, not by status code, so
-/// the discriminator is the error string. Notably **absent**: `ratelimited`,
+/// 401/403/404. Slack answers logically, not by status code, so the
+/// discriminator is the error string. Notably **absent**: `ratelimited`,
 /// `fatal_error` and `service_unavailable`, which are transient and must retry.
 const SLACK_MISCONFIGURATION_ERRORS: &[&str] = &[
     // Credentials.
@@ -218,8 +218,8 @@ const SLACK_MISCONFIGURATION_ERRORS: &[&str] = &[
 
 impl SlackError {
     /// Whether this failure is a misconfiguration rather than a transient fault
-    /// (Cluster 377.3) — a revoked token, a missing scope, a channel the bot was
-    /// removed from or that no longer exists. Retrying cannot fix any of them.
+    /// — a revoked token, a missing scope, a channel the bot was removed from
+    /// or that no longer exists. Retrying cannot fix any of them.
     pub fn is_misconfiguration(&self) -> bool {
         match self {
             Self::Http(_) => false,
@@ -239,8 +239,8 @@ impl SlackError {
 #[async_trait::async_trait]
 pub trait SlackSender: Send + Sync {
     /// Post a message, returning a handle on it so a later delivery can edit it
-    /// in place (Cluster 378.2). `thread_ts` replies inside an existing Slack
-    /// thread instead of posting top-level.
+    /// in place. `thread_ts` replies inside an existing Slack thread instead of
+    /// posting top-level.
     ///
     /// **`Ok(None)` means "posted, but we cannot address it."** Slack answered
     /// `ok: true` without a usable `ts`. That is not a failure — the message
@@ -260,8 +260,8 @@ pub trait SlackSender: Send + Sync {
 /// The production [`SlackSender`]: posts via the Slack Web API `chat.postMessage`.
 pub struct SlackWebClient {
     bot_token: String,
-    /// API base, `https://slack.com` in production; overridable so the wire path
-    /// can be tested against a loopback server (Cluster 347).
+    /// API base, `https://slack.com` in production; overridable so the wire
+    /// path can be tested against a loopback server.
     base_url: String,
     http: reqwest::Client,
 }
@@ -350,20 +350,19 @@ impl SlackSender for SlackWebClient {
     }
 }
 
-/// Slack projector egress (Cluster 309, made durable in 377.2): relay a Maidan
-/// message posted in a linked thread out to its Slack channel — by *enqueueing* it
-/// on the egress outbox, which [`egress_worker`](crate::egress_worker) drains with
-/// retry/backoff. Until 377.2 this posted inline and a transient failure dropped
-/// the message.
+/// Slack projector egress: relay a Maidan message posted in a linked thread out
+/// to its Slack channel — by *enqueueing* it on the egress outbox, which
+/// [`egress_worker`](crate::egress_worker) drains with retry/backoff. Until
+/// 377.2 this posted inline and a transient failure dropped the message.
 ///
 /// No-op unless a [`SlackSender`] is configured (the worker only runs then, so
-/// queueing without one would pile up rows nothing drains); **skips messages that
-/// originated in Slack** (the `metadata.slack` tag from the ingress, Cluster 308)
-/// so a projected inbound message is never echoed back — loop prevention.
+/// queueing without one would pile up rows nothing drains); **skips messages
+/// that originated in Slack** (the `metadata.slack` tag from the ingress) so a
+/// projected inbound message is never echoed back — loop prevention.
 ///
-/// `log_id` is the `maidan_events` row being routed. It is the dedup key together
-/// with the target: every replica runs the notification router, so all of them
-/// enqueue and exactly one row survives.
+/// `log_id` is the `maidan_events` row being routed. It is the dedup key
+/// together with the target: every replica runs the notification router, so all
+/// of them enqueue and exactly one row survives.
 pub async fn route_message_to_slack(
     state: &AppState,
     log_id: i64,
@@ -382,9 +381,9 @@ pub async fn route_message_to_slack(
         .await
     {
         Ok(Some(l)) if l.disabled_at.is_none() => l,
-        // Disabled by an auth/config-class failure (Cluster 377.3): queueing into
-        // a link a retry cannot fix only grows the dead-letter queue. Re-linking
-        // turns it back on.
+        // Disabled by an auth/config-class failure: queueing into a link a
+        // retry cannot fix only grows the dead-letter queue. Re-linking turns
+        // it back on.
         Ok(Some(_)) => return,
         Ok(None) => return, // thread not linked to a Slack channel
         Err(err) => {
@@ -410,12 +409,13 @@ pub async fn route_message_to_slack(
     }
 }
 
-/// `POST /workspaces/:wid/slack-links` (Cluster 346) — link a Slack channel to a
-/// Maidan thread so the projector can bridge messages both ways. The link's
+/// `POST /workspaces/:wid/slack-links` — link a Slack channel to a Maidan
+/// thread so the projector can bridge messages both ways. The link's
 /// `channel_id`/`workspace_id` come from resolving the thread (so they can't
-/// disagree with it); the caller supplies only the Slack channel id, thread, and
-/// the member that relayed Slack messages are attributed to. `workspace:write` +
-/// access to the thread. Upserts (re-linking a Slack channel replaces its link).
+/// disagree with it); the caller supplies only the Slack channel id, thread,
+/// and the member that relayed Slack messages are attributed to.
+/// `workspace:write` + access to the thread. Upserts (re-linking a Slack
+/// channel replaces its link).
 pub async fn link_slack_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -445,8 +445,8 @@ pub async fn link_slack_channel(
     Ok((StatusCode::CREATED, Json(link)))
 }
 
-/// `GET /workspaces/:wid/slack-links` (Cluster 346) — the workspace's Slack
-/// channel links. `workspace:read`.
+/// `GET /workspaces/:wid/slack-links` — the workspace's Slack channel links.
+/// `workspace:read`.
 pub async fn list_slack_channel_links(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -462,8 +462,8 @@ pub async fn list_slack_channel_links(
     ))
 }
 
-/// `DELETE /workspaces/:wid/slack-links/:slack_channel_id` (Cluster 346) — remove
-/// a Slack channel link. `workspace:write`. `404` if the link doesn't exist.
+/// `DELETE /workspaces/:wid/slack-links/:slack_channel_id` — remove a Slack
+/// channel link. `workspace:write`. `404` if the link doesn't exist.
 pub async fn unlink_slack_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

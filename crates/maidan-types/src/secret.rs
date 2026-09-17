@@ -1,10 +1,10 @@
-//! Named secrets + secret-references (Cluster 371, Wave 2 #19, G19/T3).
+//! Named secrets + secret-references.
 //!
 //! A workspace stores a named secret; the value is AEAD-encrypted at rest and
 //! **never enters the event log**. Instead the log — a message, a webhook
 //! payload, a tool argument — carries a `secret://<name>` *reference*, and the
-//! value is resolved only at the moment it's needed: a consumer fetches it at exec, or a
-//! `SecretBroker` substitutes it on egress to an allowlisted host (Cluster 371.4).
+//! value is resolved only at the moment it's needed: a consumer fetches it at
+//! exec, or a `SecretBroker` substitutes it on egress to an allowlisted host.
 //!
 //! [`Secret`] is metadata only — it never carries the value. The ref-parsing
 //! helpers here are pure so the broker's substitution logic is unit-tested

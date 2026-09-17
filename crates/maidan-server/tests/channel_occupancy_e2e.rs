@@ -1,6 +1,6 @@
-//! Cluster 351: `GET /channels/:cid/occupancy` reports the two-clocks view —
-//! queued / claimed / working / blocked — over HTTP, splitting held work by the
-//! working clock (whether the holder has acknowledged via `acknowledge_claim`).
+//! `GET /channels/:cid/occupancy` reports the two-clocks view — queued /
+//! claimed / working / blocked — over HTTP, splitting held work by the working
+//! clock (whether the holder has acknowledged via `acknowledge_claim`).
 
 use std::{sync::Arc, time::Duration};
 

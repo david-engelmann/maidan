@@ -1,5 +1,5 @@
-//! Collapsed child threads (Cluster 356, F2): a parent thread's child threads
-//! with a live per-child message count, tombstoned children/messages excluded.
+//! Collapsed child threads: a parent thread's child threads with a live
+//! per-child message count, tombstoned children/messages excluded.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -90,8 +90,8 @@ async fn run_child_suite(store: &dyn Store) {
         .is_empty());
 }
 
-/// Activity bump (Cluster 356, F7): a post bumps its thread to the top of the
-/// recently-active list.
+/// Activity bump: a post bumps its thread to the top of the recently-active
+/// list.
 async fn run_bump_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {

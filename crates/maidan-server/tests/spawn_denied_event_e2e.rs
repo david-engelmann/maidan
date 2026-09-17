@@ -1,7 +1,7 @@
-//! Cluster 376.6: a spawn the budget refuses is observable. The caller still gets
-//! a 409, and the room records a `ThreadSpawnDenied` naming the axis, the cap,
-//! what the claim already held, and **who** tried — the fact the store's gate
-//! can't know on the thread-create path.
+//! A spawn the budget refuses is observable. The caller still gets a 409, and
+//! the room records a `ThreadSpawnDenied` naming the axis, the cap, what the
+//! claim already held, and **who** tried — the fact the store's gate can't know
+//! on the thread-create path.
 //!
 //! Auth is ENABLED with a real minted token: under bypass auth `auth.member_id`
 //! is the nil member, so attribution is exactly what a bypass run cannot prove.
@@ -126,7 +126,7 @@ async fn a_refused_spawn_publishes_thread_spawn_denied() {
     let token = mint(store.as_ref(), ws.id, member.id).await;
 
     // One child per parent. Set through the store, not the config route — the
-    // subject here is the denial event, not the Cluster-376.4 REST surface.
+    // subject here is the denial event, not the REST surface.
     store
         .set_spawn_budget(ws.id, Some(1), None, None)
         .await

@@ -1,5 +1,4 @@
-//! Read-replica LSN helpers validated against REAL streaming replication
-//! (Cluster 261, Program D).
+//! Read-replica LSN helpers validated against REAL streaming replication.
 //!
 //! `#[ignore]`d — it needs a live primary + hot-standby pair, which
 //! `scripts/replica-harness.sh` stands up (Docker; the pgvector image with
@@ -9,8 +8,9 @@
 //!   cargo test -p maidan-store --test replication -- --ignored --nocapture
 //!   scripts/replica-harness.sh down
 //!
-//! The test connects via MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL and skips (does
-//! not fail) when they are unset — so a normal `cargo test` run is unaffected.
+//! The test connects via MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL and skips
+//! (does not fail) when they are unset — so a normal `cargo test` run is
+//! unaffected.
 
 use std::time::Duration;
 

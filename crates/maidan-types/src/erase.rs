@@ -1,4 +1,4 @@
-//! Workspace full erasure result (Cluster 53).
+//! Workspace full erasure result.
 
 use serde::{Deserialize, Serialize};
 

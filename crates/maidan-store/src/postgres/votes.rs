@@ -22,7 +22,7 @@ pub async fn cast(pool: &PgPool, new: NewVote) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Cast a vote and append its `VoteCast` event in one transaction (Cluster 206).
+/// Cast a vote and append its `VoteCast` event in one transaction.
 pub async fn cast_with_event(pool: &PgPool, new: NewVote) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
     sqlx::query(

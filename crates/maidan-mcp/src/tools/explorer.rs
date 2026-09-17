@@ -1,11 +1,11 @@
-//! Tombstone explorer, message backlinks, and EventKind census (Cluster 394.3).
+//! Tombstone explorer, message backlinks, and EventKind census.
 //!
-//! Twins of REST `GET /workspaces/:id/tombstones`, `GET /messages/:id/backlinks`,
-//! and `GET /workspaces/:id/kind-census`. All three are `workspace:read`.
-//! Optional `channel_id` / `thread_id` on the workspace-scoped tools are gated
-//! pre-dispatch; the tombstone list still post-filters by `can_access_thread`
-//! because the store cannot see DM participation. Census applies
-//! `private_channel_deny_set` in the query.
+//! Twins of REST `GET /workspaces/:id/tombstones`, `GET
+//! /messages/:id/backlinks`, and `GET /workspaces/:id/kind-census`. All three
+//! are `workspace:read`. Optional `channel_id` / `thread_id` on the
+//! workspace-scoped tools are gated pre-dispatch; the tombstone list still
+//! post-filters by `can_access_thread` because the store cannot see DM
+//! participation. Census applies `private_channel_deny_set` in the query.
 
 use std::sync::Arc;
 

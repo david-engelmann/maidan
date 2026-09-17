@@ -31,9 +31,10 @@ where
             Json::<T>::from_request(req, state)
                 .await
                 .map_err(|e: JsonRejection| {
-                    // Preserve a body-size-limit rejection as 413 (Cluster 183); the
-                    // `DefaultBodyLimit` layer surfaces it as a `PAYLOAD_TOO_LARGE`
-                    // status on the rejection. Everything else is a 400.
+                    // Preserve a body-size-limit rejection as 413; the
+                    // `DefaultBodyLimit` layer surfaces it as a
+                    // `PAYLOAD_TOO_LARGE` status on the rejection. Everything
+                    // else is a 400.
                     if e.status() == StatusCode::PAYLOAD_TOO_LARGE {
                         ApiError::PayloadTooLarge(e.body_text())
                     } else {
@@ -54,15 +55,15 @@ pub enum ApiError {
     PayloadTooLarge(String),
     TooManyRequests(String),
     Internal(String),
-    /// Subscribe / backfill cursor is behind the retained log (Cluster 388).
-    /// 409 + `must_refetch: true` — fail loud, never clamp. Cluster 393
-    /// stamps `snapshot` so the client can refetch the pruned prefix.
+    /// Subscribe / backfill cursor is behind the retained log. 409 +
+    /// `must_refetch: true` — fail loud, never clamp. Carries a `snapshot` so
+    /// the client can refetch the pruned prefix.
     CursorTooOld {
         after_id: i64,
         oldest_id: i64,
         snapshot: Option<String>,
     },
-    /// Hash-chained event log is broken (Cluster 392). 409 fail-closed.
+    /// Hash-chained event log is broken. 409 fail-closed.
     EventLogBroken {
         break_at: Option<i64>,
         reason: maidan_types::ChainBreakReason,
@@ -145,8 +146,8 @@ impl ApiError {
         }
     }
 
-    /// Point a CursorTooOld 409 at the workspace snapshot a peer must
-    /// refetch (Cluster 393). Other errors are unchanged.
+    /// Point a CursorTooOld 409 at the workspace snapshot a peer must refetch.
+    /// Other errors are unchanged.
     pub fn with_snapshot(self, workspace_id: WorkspaceId) -> Self {
         match self {
             Self::CursorTooOld {
@@ -190,11 +191,11 @@ pub struct ProblemDetails {
     pub title: String,
     pub status: u16,
     pub detail: String,
-    /// Cluster 388: a CursorTooOld 409 is a must-refetch, never a silent clamp.
+    /// A CursorTooOld 409 is a must-refetch, never a silent clamp.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub must_refetch: bool,
-    /// Cluster 393: GET this path for a hashed snapshot covering the
-    /// pruned prefix, then catch up from `as_of_lsn`.
+    /// GET this path for a hashed snapshot covering the pruned prefix, then
+    /// catch up from `as_of_lsn`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<String>,
 }
@@ -236,9 +237,9 @@ impl From<StoreError> for ApiError {
         match err {
             StoreError::NotFound => Self::NotFound,
             StoreError::Conflict(msg) => Self::Conflict(msg),
-            // A refused spawn is a state conflict like any other (Cluster 376.6):
-            // the typing exists so the route can publish `ThreadSpawnDenied`, not
-            // to change the wire status.
+            // A refused spawn is a state conflict like any other: the typing
+            // exists so the route can publish `ThreadSpawnDenied`, not to
+            // change the wire status.
             StoreError::SpawnRejected(denial) => Self::Conflict(denial.to_string()),
             StoreError::CursorTooOld {
                 after_id,

@@ -12,8 +12,8 @@ use pgvector::Vector;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-/// How often the replica-replay-LSN cache is refreshed (Cluster 271). Matches the
-/// store's poller cadence so search and store see the replica advance in lockstep.
+/// How often the replica-replay-LSN cache is refreshed. Matches the store's
+/// poller cadence so search and store see the replica advance in lockstep.
 const REPLICA_LSN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 use crate::embedding_provider::EmbeddingProvider;
@@ -32,9 +32,9 @@ pub use crate::embedding_tables::DEFAULT_EMBEDDING_DIM as EMBEDDING_DIM;
 #[derive(Debug, Clone)]
 pub struct PostgresSearch {
     pool: PgPool,
-    /// Read-replica pool for search reads (Cluster 271). Equals `pool` (and
-    /// `has_replica` is false) unless a replica is configured, so single-primary
-    /// deployments and tests are byte-unchanged.
+    /// Read-replica pool for search reads. Equals `pool` (and `has_replica` is
+    /// false) unless a replica is configured, so single-primary deployments and
+    /// tests are byte-unchanged.
     reader: PgPool,
     has_replica: bool,
     /// Cached replica `pg_last_wal_replay_lsn()`, refreshed by a background poller,
@@ -42,22 +42,22 @@ pub struct PostgresSearch {
     /// per-read query. Only meaningful when `has_replica`.
     replica_replay: Arc<AtomicU64>,
     hnsw: crate::hnsw::HnswParams,
-    /// Cache of resolved `model → table_name` so a steady-state embedding upsert
-    /// skips the `maidan_embedding_models` SELECT + `CREATE TABLE IF NOT EXISTS`
-    /// checks on every call (Cluster 167, H6). A model's table never changes once
+    /// Cache of resolved `model → table_name` so a steady-state embedding
+    /// upsert skips the `maidan_embedding_models` SELECT + `CREATE TABLE IF NOT
+    /// EXISTS` checks on every call. A model's table never changes once
     /// registered.
     model_tables: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
-    /// How many search reads went to the replica vs the primary (Cluster 272), for
-    /// `maidan_search_replica_reads_total`. Counted only when a replica is configured
-    /// (a single-pool search leaves it at zero). The store's metrics-agnostic
-    /// `ReadRoutingMetrics` pattern.
+    /// How many search reads went to the replica vs the primary, for
+    /// `maidan_search_replica_reads_total`. Counted only when a replica is
+    /// configured (a single-pool search leaves it at zero). The store's
+    /// metrics-agnostic `ReadRoutingMetrics` pattern.
     read_routing: Arc<SearchReadMetrics>,
 }
 
-/// Cumulative search read-routing outcomes (Cluster 272). The server snapshots this
-/// into `maidan_search_replica_reads_total{outcome}`; search stays metrics-agnostic
-/// (no lag gauge here — the store's poller already emits `maidan_replica_lag_bytes`
-/// for the same replica).
+/// Cumulative search read-routing outcomes. The server snapshots this into
+/// `maidan_search_replica_reads_total{outcome}`; search stays metrics-agnostic
+/// (no lag gauge here — the store's poller already emits
+/// `maidan_replica_lag_bytes` for the same replica).
 #[derive(Debug, Default)]
 pub struct SearchReadMetrics {
     primary: AtomicU64,
@@ -88,10 +88,10 @@ impl PostgresSearch {
     }
 
     /// Route search reads to `reader` once it has caught up to the request's
-    /// `Maidan-Consistency-Token` (Cluster 271) — the search-side twin of the
-    /// store's replica routing, sharing the same task-local + decision via
-    /// [`maidan_store::postgres::replica_route`]. Writes (embedding upserts, DDL,
-    /// reindex) always stay on the primary. Spawns the replica-LSN poller.
+    /// `Maidan-Consistency-Token` — the search-side twin of the store's replica
+    /// routing, sharing the same task-local + decision via
+    /// [`maidan_store::postgres::replica_route`]. Writes (embedding upserts,
+    /// DDL, reindex) always stay on the primary. Spawns the replica-LSN poller.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
         spawn_replica_lsn_poller(reader.clone(), replica_replay.clone());
@@ -112,15 +112,15 @@ impl PostgresSearch {
         self
     }
 
-    /// Read-routing counters for the `maidan_search_replica_reads_total` metric
-    /// (Cluster 272). The server snapshots this on its metrics tick.
+    /// Read-routing counters for the `maidan_search_replica_reads_total`
+    /// metric. The server snapshots this on its metrics tick.
     pub fn read_routing_metrics(&self) -> Arc<SearchReadMetrics> {
         self.read_routing.clone()
     }
 
     /// The pool a search read should use, honoring the current request's
-    /// read-consistency scope (Cluster 271): the replica once its cached replay LSN
-    /// has reached the request's token (or when there is no causality requirement),
+    /// read-consistency scope: the replica once its cached replay LSN has
+    /// reached the request's token (or when there is no causality requirement),
     /// otherwise the primary. Mirrors `PostgresStore::read_pool`.
     fn read_pool(&self) -> &PgPool {
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
@@ -142,10 +142,10 @@ impl PostgresSearch {
 }
 
 /// Poll the replica's `pg_last_wal_replay_lsn()` into `replay_cache` on a fixed
-/// cadence (Cluster 271), reusing the store's replication helper. A poll error /
-/// non-standby result leaves the cache unchanged low → reads route to the primary
-/// until the next good poll (fail-safe). The replica-lag gauge is already emitted by
-/// the store's poller against the same replica, so this one does not duplicate it.
+/// cadence, reusing the store's replication helper. A poll error / non-standby
+/// result leaves the cache unchanged low → reads route to the primary until the
+/// next good poll (fail-safe). The replica-lag gauge is already emitted by the
+/// store's poller against the same replica, so this one does not duplicate it.
 fn spawn_replica_lsn_poller(reader: PgPool, replay_cache: Arc<AtomicU64>) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
@@ -177,8 +177,8 @@ impl Search for PostgresSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
         let websearch = use_websearch_to_tsquery(query);
-        // RBAC pre-filter (Cluster 200): exclude denied channels. An empty array
-        // makes `<> ALL($8)` vacuously true, so no dynamic SQL is needed.
+        // RBAC pre-filter: exclude denied channels. An empty array makes `<>
+        // ALL($8)` vacuously true, so no dynamic SQL is needed.
         let deny = deny_channel_uuids(filters);
 
         let rows = sqlx::query(
@@ -400,8 +400,8 @@ impl Search for PostgresSearch {
     }
 }
 
-/// The RBAC deny-channel set as raw UUIDs for a `<> ALL($n)` array bind
-/// (Cluster 200). An empty vec makes the clause vacuously true.
+/// The RBAC deny-channel set as raw UUIDs for a `<> ALL($n)` array bind. An
+/// empty vec makes the clause vacuously true.
 fn deny_channel_uuids(filters: &SearchFilters) -> Vec<Uuid> {
     filters.deny_channels.iter().map(|c| c.0).collect()
 }

@@ -23,8 +23,8 @@ pub async fn cast_vote(
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: one message→thread→channel fetch authorizes (was
-    // resolve_message_chain + ensure_workspace + ensure_thread_access).
+    // One message→thread→channel fetch authorizes (was resolve_message_chain +
+    // ensure_workspace + ensure_thread_access).
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     if let Some(c) = body.confidence {
@@ -34,8 +34,8 @@ pub async fn cast_vote(
             ));
         }
     }
-    // Cluster 206: vote row + `VoteCast` event commit atomically (transactional
-    // outbox); `publish_stored` then notifies the bus.
+    // Vote row + `VoteCast` event commit atomically (transactional outbox);
+    // `publish_stored` then notifies the bus.
     let stored = state
         .store
         .cast_vote_with_event(NewVote {
@@ -59,7 +59,7 @@ pub async fn list_votes(
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Vote>>> {
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     Ok(Json(
@@ -78,13 +78,13 @@ pub async fn add_reaction(
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
-    // Cluster 206: reaction row + `ReactionAdded` event commit atomically.
+    // Reaction row + `ReactionAdded` event commit atomically.
     let stored = state
         .store
         .add_reaction_with_event(NewReaction {
@@ -108,14 +108,14 @@ pub async fn remove_reaction(
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let member_id = MemberId(body.member_id);
     super::ensure_acting_member(&auth, member_id)?;
     let emoji = body.emoji.clone();
-    // Cluster 206: the DELETE + `ReactionRemoved` event commit atomically; the
-    // event is only produced when a row was actually removed.
+    // The DELETE + `ReactionRemoved` event commit atomically; the event is only
+    // produced when a row was actually removed.
     let (_removed, stored) = state
         .store
         .remove_reaction_with_event(message_id, member_id, &emoji)
@@ -135,7 +135,7 @@ pub async fn list_reactions(
     Path(message_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Reaction>>> {
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; ensure_message_access
+    // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     Ok(Json(
@@ -154,8 +154,8 @@ pub async fn pin_message(
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
-    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
+    // `ensure_thread_access` resolves + workspace-checks the thread; the prior
+    // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
@@ -184,8 +184,8 @@ pub async fn unpin_message(
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 339: `ensure_thread_access` resolves + workspace-checks the thread;
-    // the prior `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
+    // `ensure_thread_access` resolves + workspace-checks the thread; the prior
+    // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
     let member_id = MemberId(body.member_id);
@@ -214,7 +214,7 @@ pub async fn list_pins(
     Path(thread_id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Pin>>> {
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 339: drop the redundant `resolve_thread_context` + `ensure_workspace`.
+    // Drop the redundant `resolve_thread_context` + `ensure_workspace`.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     Ok(Json(
         state

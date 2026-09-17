@@ -30,8 +30,8 @@ pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreEr
     row_to_artifact(&row)
 }
 
-/// Upsert an artifact, optionally record its per-workspace access ref, and append
-/// its `ArtifactUpserted` event — all in one transaction (Cluster 214) — see the
+/// Upsert an artifact, optionally record its per-workspace access ref, and
+/// append its `ArtifactUpserted` event — all in one transaction — see the
 /// SQLite twin.
 pub async fn upsert_with_event(
     pool: &PgPool,

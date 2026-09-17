@@ -962,7 +962,7 @@ pub fn set_task_schedule_active() {}
     responses((status = 204)))]
 pub fn delete_task_schedule() {}
 
-// --- recipes (Cluster 370) ---
+// --- recipes ---
 
 #[utoipa::path(post, path = "/workspaces/{wid}/recipes", tag = "recipes",
     params(("wid" = Uuid, Path, description = "Workspace id")),
@@ -999,7 +999,7 @@ pub fn delete_recipe() {}
     responses((status = 201, body = RecipeRun)))]
 pub fn instantiate_recipe() {}
 
-// --- secrets (Cluster 371) ---
+// --- secrets ---
 
 #[utoipa::path(post, path = "/workspaces/{wid}/secrets", tag = "secrets",
     params(("wid" = Uuid, Path, description = "Workspace id")),
@@ -1028,7 +1028,7 @@ pub fn resolve_secret() {}
     responses((status = 204)))]
 pub fn delete_secret() {}
 
-// --- member freeze kill-switch (Cluster 372) ---
+// --- member freeze kill-switch ---
 
 #[utoipa::path(post, path = "/members/{id}/freeze", tag = "freeze",
     params(("id" = Uuid, Path, description = "Member id")),
@@ -1055,7 +1055,7 @@ pub fn get_member_freeze() {}
     responses((status = 200, body = Vec<MemberFreeze>)))]
 pub fn list_frozen_members() {}
 
-// --- memory blocks (attachable labeled memory, Cluster 373) ---
+// --- memory blocks (attachable labeled memory) ---
 
 #[utoipa::path(post, path = "/workspaces/{wid}/memory-blocks", tag = "memory",
     params(("wid" = Uuid, Path, description = "Workspace id")),
@@ -1112,7 +1112,7 @@ pub fn attach_memory_block() {}
     responses((status = 204)))]
 pub fn detach_memory_block() {}
 
-// --- required reviewers (Cluster 375) ---
+// --- required reviewers ---
 
 #[utoipa::path(put, path = "/threads/{id}/review-requirement", tag = "review",
     params(("id" = Uuid, Path, description = "Thread id")),
@@ -1172,7 +1172,7 @@ pub fn list_reviews() {}
     responses((status = 200, body = ReviewStatus)))]
 pub fn get_review_status() {}
 
-// --- land_gate gate pointer (Cluster 385) ---
+// --- land_gate gate pointer ---
 
 #[utoipa::path(put, path = "/threads/{id}/land-gate", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
@@ -1199,7 +1199,7 @@ pub fn clear_land_gate() {}
     responses((status = 200, body = LandGateStanding)))]
 pub fn require_land_gate() {}
 
-// --- spawn budget (Cluster 376) ---
+// --- spawn budget ---
 
 #[utoipa::path(put, path = "/workspaces/{id}/spawn-budget", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
@@ -1340,7 +1340,7 @@ pub fn mute_thread() {}
     responses((status = 204, description = "Thread unmuted"), (status = 404, description = "Was not muted")))]
 pub fn unmute_thread() {}
 
-// --- approval gates (the held gate, Cluster 350) ---
+// --- approval gates (the held gate) ---
 
 #[utoipa::path(get, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
     params(("wid" = Uuid, Path, description = "Workspace id")),

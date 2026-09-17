@@ -1,8 +1,8 @@
-//! Tap projector contract (Cluster 393, Wave 3 #33 B19).
+//! Tap projector contract.
 //!
-//! A tap is any consumer of the event log that is **not** the log:
-//! webhook delivery, WebSocket / MCP-SSE subscribe, AG-UI, and search.
-//! Search is a projector. It must not diverge from the log silently.
+//! A tap is any consumer of the event log that is **not** the log: webhook
+//! delivery, WebSocket / MCP-SSE subscribe, AG-UI, and search. Search is a
+//! projector. It must not diverge from the log silently.
 //!
 //! Contract, fail closed:
 //!
@@ -15,9 +15,9 @@
 //!    history high-water is at the workspace (or shape) head observed
 //!    at subscribe. Compare to that head, **not** the global Room-LSN
 //!    (other tenants move the global watermark).
-//! 5. **webhook / WS** — same rules as SSE. Cluster 388 already
+//! 5. **webhook / WS** — same rules as SSE. Those paths already do
 //!    HTTP-then-WS and `Lagged`→log resume; this module names the
-//!    contract those paths must keep.
+//!    contract they must keep.
 //!
 //! Missing or broken history: [`crate::CursorTooOld`] (refetch
 //! [`crate::LogSnapshot`]) or a chain-break report. Never clamp.

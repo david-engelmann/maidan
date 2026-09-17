@@ -1,6 +1,6 @@
-//! What a delivery body actually says on each surface (Cluster 378.3). Pure — no
-//! state, no I/O, no types from the result envelope, so every rule here is
-//! unit-testable and the Cluster-379 delivery step composes rather than decides.
+//! What a delivery body actually says on each surface. Pure — no state, no I/O,
+//! no types from the result envelope, so every rule here is unit-testable and
+//! the delivery step composes rather than decides.
 //!
 //! Three problems, one per function group:
 //!
@@ -23,24 +23,24 @@
 //! not a Markdown engine; it converts the two constructs that are outright
 //! *broken* rather than merely plain on Slack (links and headings), plus bold.
 //! Everything else is left alone, because the rule that Slack gets a short
-//! producer-written `summary` — never `rendered` — is what keeps the job small. A
-//! half-correct full converter applied to 4 KB of GFM would be worse than an
+//! producer-written `summary` — never `rendered` — is what keeps the job small.
+//! A half-correct full converter applied to 4 KB of GFM would be worse than an
 //! honest narrow one applied to one line.
 
 /// GitHub's hard ceiling on an issue/PR comment body, in characters.
 pub const GITHUB_BODY_MAX_CHARS: usize = 65536;
 
-/// A safe ceiling for a Slack `chat.postMessage` text, in characters
-/// (Cluster 397.5). Slack's own limit is ~40k; under it, because the Slack path
-/// had no ceiling at all and an over-long body comes back as `msg_too_long` —
-/// which is not in the misconfiguration set, so it was retried eight times over
-/// an hour before dead-lettering.
+/// A safe ceiling for a Slack `chat.postMessage` text, in characters. Slack's
+/// own limit is ~40k; under it, because the Slack path had no ceiling at all
+/// and an over-long body comes back as `msg_too_long` — which is not in the
+/// misconfiguration set, so it was retried eight times over an hour before
+/// dead-lettering.
 pub const SLACK_BODY_MAX_CHARS: usize = 39_000;
 
-/// Hidden HTML comment at byte 0 of a result-delivery GitHub body (Cluster 379.4).
-/// The recovery path if the stored `external_ref` is lost: list the issue's
-/// comments and PATCH the one whose body starts with this marker. Matches the
-/// land_gate renderer bytes.
+/// Hidden HTML comment at byte 0 of a result-delivery GitHub body. The recovery
+/// path if the stored `external_ref` is lost: list the issue's comments and
+/// PATCH the one whose body starts with this marker. Matches the land_gate
+/// renderer bytes.
 pub fn result_delivery_marker(thread_id: maidan_types::ThreadId) -> String {
     format!("<!-- maidan:result:{thread_id} -->")
 }
@@ -68,14 +68,14 @@ struct Segment<'a> {
 /// Split Markdown into alternating prose and code segments.
 ///
 /// Handles fenced blocks (a line-leading run of 3+ backticks or tildes, closed
-/// by a run at least as long) and inline code spans (a run of N backticks closed
-/// by a run of exactly N).
+/// by a run at least as long) and inline code spans (a run of N backticks
+/// closed by a run of exactly N).
 ///
 /// An unclosed **fence** does run to end of input, per CommonMark. An unclosed
 /// **inline** run does not: CommonMark renders a lone backtick literally, so the
-/// text after it is ordinary prose. Treating it as code-to-EOF (Cluster 397.5)
-/// meant a single stray backtick anywhere in `rendered` — trivially plantable in
-/// a quoted diff — switched off mention defusal for everything that followed.
+/// text after it is ordinary prose. Treating it as code-to-EOF meant a single
+/// stray backtick anywhere in `rendered` — trivially plantable in a quoted diff
+/// — switched off mention defusal for everything that followed.
 fn segments(md: &str) -> Vec<Segment<'_>> {
     let bytes = md.as_bytes();
     let mut out: Vec<Segment<'_>> = Vec::new();
@@ -256,17 +256,16 @@ pub fn neutralize_github_mentions(md: &str) -> String {
 ///
 /// Slack unescapes `&lt;` back to a literal `<` when rendering, so the reader
 /// still sees `<!channel>` — it simply does not broadcast. Covers channel-wide
-/// broadcasts (`<!channel>`, `<!here>`, `<!everyone>`), user pings (`<@U…>`) and
-/// user-group pings (`<!subteam^S…>`), because all of them share the `<!` / `<@`
-/// opener. A plain `<https://…>` autolink is left alone.
+/// broadcasts (`<!channel>`, `<!here>`, `<!everyone>`), user pings (`<@U…>`)
+/// and user-group pings (`<!subteam^S…>`), because all of them share the `<!` /
+/// `<@` opener. A plain `<https://…>` autolink is left alone.
 ///
 /// **Unlike the GitHub twin, this deliberately does not skip code spans**
-/// (Cluster 397.5). `<!channel>` is not Markdown: it is Slack's own escape
-/// sequence, expanded when the message is parsed, and wrapping it in backticks
-/// does not stop it notifying. The shared `map_prose` justification — "a mention
-/// inside code already does not notify on either surface" — holds for GitHub and
-/// is false here, so a `` `<!channel>` `` in a producer's `summary` used to
-/// broadcast.
+/// `<!channel>` is not Markdown: it is Slack's own escape sequence, expanded
+/// when the message is parsed, and wrapping it in backticks does not stop it
+/// notifying. The shared `map_prose` justification — "a mention inside code
+/// already does not notify on either surface" — holds for GitHub and is false
+/// here, so a `` `<!channel>` `` in a producer's `summary` used to broadcast.
 pub fn neutralize_slack_mentions(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -280,8 +279,7 @@ pub fn neutralize_slack_mentions(text: &str) -> String {
     out
 }
 
-/// Byte offset of an inline backtick run in `s` that is never closed, if any
-/// (Cluster 397.5).
+/// Byte offset of an inline backtick run in `s` that is never closed, if any.
 ///
 /// Mention defusal wraps `@x` as `` `@x` ``, so a cut landing between the two
 /// backticks leaves the opener dangling — and per CommonMark an unmatched
@@ -496,14 +494,15 @@ fn collapse_bold(line: &str) -> String {
 }
 
 /// A producer-supplied `view_url` that is safe to put inside a Markdown link
-/// destination, or `None` (Cluster 397.5).
+/// destination, or `None`.
 ///
 /// The backlink tail is appended *after* mention defusal, so whatever is in it
-/// reaches GitHub unexamined. `[View](…)` ends at the first `)`, so a `view_url`
-/// of `https://x.test) @acme/platform (` closes the link and everything after it
-/// renders as live Markdown — including the team mention. Rather than try to
-/// escape a URL into safety, this refuses anything that is not a plain absolute
-/// http(s) URL; a dropped backlink is a cosmetic loss, a working one is a ping.
+/// reaches GitHub unexamined. `[View](…)` ends at the first `)`, so a
+/// `view_url` of `https://x.test) @acme/platform (` closes the link and
+/// everything after it renders as live Markdown — including the team mention.
+/// Rather than try to escape a URL into safety, this refuses anything that is
+/// not a plain absolute http(s) URL; a dropped backlink is a cosmetic loss, a
+/// working one is a ping.
 fn safe_backlink(url: &str) -> Option<&str> {
     let ok_scheme = url.starts_with("https://") || url.starts_with("http://");
     let clean = !url
@@ -544,8 +543,8 @@ pub fn github_result_comment_body(
 }
 
 /// An inline pull-review comment body: mentions defused, truncated to GitHub's
-/// ceiling. **No** result-delivery marker — that marker is the Cluster 379
-/// summary comment's recovery handle, and putting it on a diff comment would
+/// ceiling. **No** result-delivery marker — that marker is the summary
+/// comment's recovery handle, and putting it on a diff comment would
 /// make marker recovery match the wrong object.
 pub fn github_review_comment_body(finding_body: &str) -> String {
     let safe = neutralize_github_mentions(finding_body);
@@ -632,9 +631,9 @@ mod tests {
             neutralize_slack_mentions("see <https://x.test/a>"),
             "see <https://x.test/a>"
         );
-        // Cluster 397.5: this used to assert the opposite, on the grounds that
-        // "code already does not broadcast". That is true on GitHub and false
-        // here — `<!channel>` is Slack's own escape sequence, expanded when the
+        // This used to assert the opposite, on the grounds that "code already
+        // does not broadcast". That is true on GitHub and false here —
+        // `<!channel>` is Slack's own escape sequence, expanded when the
         // message is parsed, so backticks never defused it.
         assert_eq!(
             neutralize_slack_mentions("`<!channel>`"),
@@ -823,11 +822,11 @@ mod tests {
             neutralize_github_mentions("before\n```\n@octocat"),
             "before\n```\n@octocat"
         );
-        // An unclosed *inline* run does not (Cluster 397.5). CommonMark renders a
-        // lone backtick literally, so what follows is prose and its mentions are
-        // live. This asserted the opposite, which meant one stray backtick —
-        // trivially plantable in a quoted diff — switched defusal off for the
-        // rest of the body.
+        // An unclosed *inline* run does not. CommonMark renders a lone backtick
+        // literally, so what follows is prose and its mentions are live. This
+        // asserted the opposite, which meant one stray backtick — trivially
+        // plantable in a quoted diff — switched defusal off for the rest of the
+        // body.
         assert_eq!(
             neutralize_github_mentions("an `unclosed span @octocat"),
             "an `unclosed span `@octocat`"

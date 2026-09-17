@@ -1,9 +1,8 @@
-//! WASI slash-handler ABI (Cluster 396, Wave 3 #36).
+//! WASI slash-handler ABI.
 //!
-//! A workspace installs a **no-network guest** as a slash-command handler.
-//! The guest **is the tool** — not an agent runtime. Maidan stores the
-//! module (content-addressed artifact SHA) and invokes it with fuel and
-//! memory caps.
+//! A workspace installs a **no-network guest** as a slash-command handler. The
+//! guest **is the tool** — not an agent runtime. Maidan stores the module
+//! (content-addressed artifact SHA) and invokes it with fuel and memory caps.
 //!
 //! `$type` is the contract. Breaking changes are `/2`.
 

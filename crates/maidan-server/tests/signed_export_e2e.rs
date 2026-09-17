@@ -1,5 +1,5 @@
-//! Cluster 391: signed workspace export a blank instance can verify
-//! without the origin host. Tokens die on export.
+//! Signed workspace export a blank instance can verify without the origin host.
+//! Tokens die on export.
 
 use std::{
     net::SocketAddr,

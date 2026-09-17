@@ -1,4 +1,4 @@
-//! Workspace full erasure HTTP (Cluster 53).
+//! Workspace full erasure HTTP.
 
 use std::sync::{atomic::AtomicI64, Arc};
 

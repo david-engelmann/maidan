@@ -1,10 +1,10 @@
 //! Criterion benches for search hot paths — lexical (FTS5) and semantic
-//! (brute-force cosine) latency on SQLite (Cluster 109.0.2, Track U).
+//! (brute-force cosine) latency on SQLite.
 //!
 //! SQLite keeps the bench self-contained (no testcontainer), so it is a
 //! reproducible baseline. Postgres `pgvector`/HNSW latency is tuned via the
-//! Cluster 109.0.1 knobs and measured separately against a real instance.
-//! Run with `cargo bench -p maidan-search`.
+//! index knobs and measured separately against a real instance. Run
+//! with `cargo bench -p maidan-search`.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use maidan_search::{hash_embedding, model_name, Search, SearchFilters, SqliteSearch};

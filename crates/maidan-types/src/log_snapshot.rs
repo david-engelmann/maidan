@@ -1,15 +1,14 @@
-//! Snapshot + since-LSN catch-up (Cluster 393, Wave 3 #33 B18).
+//! Snapshot + since-LSN catch-up.
 //!
 //! ATProto `getRepo`-shaped, **not** MST/CAR. A peer that missed a pruned
-//! prefix takes a verified domain-graph checkpoint at the retained floor
-//! (or current head) and catches up by walking the Cluster 392 hash chain
-//! from that checkpoint's [`EventLink`].
+//! prefix takes a verified domain-graph checkpoint at the retained floor (or
+//! current head) and catches up by walking the hash chain from that
+//! checkpoint's [`EventLink`].
 //!
-//! Cluster 392 verifies the **retained suffix**. This module covers the
+//! This module covers the
 //! **pruned prefix**: the graph *is* the history the log no longer holds.
-//! Authorship of a fabricated-but-consistent snapshot is Cluster 391's
-//! signed export, not this hash. `$type` is the contract; breaking
-//! changes are `/2`.
+//! Authorship of a fabricated-but-consistent snapshot is the signed export, not
+//! this hash. `$type` is the contract; breaking changes are `/2`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,9 +30,9 @@ pub const LOG_SNAPSHOT_TYPE: &str = "maidan.event-log.snapshot/1";
 /// Observable `$type` for a since-LSN catch-up page.
 pub const CATCH_UP_TYPE: &str = "maidan.event-log.catch-up/1";
 
-/// Domain graph committed by a snapshot. Cluster 187/391 export minus
-/// `format_version` / `exported_at` so two snapshots of the same tables
-/// hash the same.
+/// Domain graph committed by a snapshot. The workspace export minus
+/// `format_version` / `exported_at` so two snapshots of the same tables hash
+/// the same.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotGraph {
     pub workspace: Workspace,
@@ -217,8 +216,7 @@ pub struct CatchUpPage {
     /// Workspace head at page build (`0` if empty). Live waits until
     /// `events.last.id` (or `after_lsn` when empty) >= this.
     pub head_lsn: i64,
-    /// Global room head (Cluster 390 `Maidan-Room-LSN`). Not a catch-up
-    /// cursor — other tenants move it.
+    /// Global room head. Not a catch-up cursor — other tenants move it.
     pub room_lsn: i64,
     pub events: Vec<StoredEvent>,
     pub chain: ChainVerifyReport,
@@ -254,7 +252,7 @@ impl CatchUpPage {
 }
 
 /// Whether `after_lsn` can catch up from the retained floor. Same rule as
-/// Cluster 388 — a pruned-gap cursor must refetch a snapshot, never clamp.
+/// the subscribe cursor: a pruned-gap cursor must refetch a snapshot, never clamp.
 pub fn catch_up_allowed(after_lsn: i64, floor_lsn: Option<i64>) -> bool {
     !cursor_is_too_old(after_lsn, floor_lsn)
 }
@@ -268,9 +266,8 @@ pub fn verify_catch_up(previous: Option<&EventLink>, events: &[StoredEvent]) -> 
     verify_chain_from(previous, &links, &payloads)
 }
 
-/// Walk `links` chained from an optional predecessor. Used by catch-up;
-/// Cluster 392 `verify_chain` stays the retained-suffix walker (no
-/// predecessor).
+/// Walk `links` chained from an optional predecessor. Used by catch-up; Cluster
+/// 392 `verify_chain` stays the retained-suffix walker (no predecessor).
 pub fn verify_chain_from(
     previous: Option<&EventLink>,
     links: &[EventLink],

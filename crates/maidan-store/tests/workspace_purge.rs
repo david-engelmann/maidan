@@ -1,4 +1,4 @@
-//! Workspace-wide message tombstone + hard-delete (Cluster 25).
+//! Workspace-wide message tombstone + hard-delete.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;

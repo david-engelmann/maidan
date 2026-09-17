@@ -1,6 +1,6 @@
-//! Legal hold over REST (Cluster 366, T6): place/get/lift + purge is refused
-//! (409) while held. Auth-enabled with a minted `token:admin` bearer (place
-//! persists `placed_by` and records audit).
+//! Legal hold over REST: place/get/lift + purge is refused (409) while held.
+//! Auth-enabled with a minted `token:admin` bearer (place persists `placed_by`
+//! and records audit).
 
 use std::{
     net::SocketAddr,
@@ -88,9 +88,9 @@ async fn legal_hold_blocks_purge_over_rest() {
         .await
         .unwrap();
     let auth = format!("Bearer {}", secret.as_str());
-    // Cluster 398.3: `GET /operator/legal-holds` is a genuinely instance-wide
-    // read and now needs `operator:global`; the per-workspace `token:admin`
-    // above is deliberately not enough.
+    // `GET /operator/legal-holds` is a genuinely instance-wide read and now
+    // needs `operator:global`; the per-workspace `token:admin` above is
+    // deliberately not enough.
     let op_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -150,7 +150,7 @@ async fn legal_hold_blocks_purge_over_rest() {
         StatusCode::OK
     );
 
-    // A per-workspace admin cannot read every workspace's holds (Cluster 398.3).
+    // A per-workspace admin cannot read every workspace's holds.
     assert_eq!(
         client
             .get(format!("{base}/operator/legal-holds"))

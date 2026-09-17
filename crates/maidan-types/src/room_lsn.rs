@@ -1,11 +1,10 @@
-//! Event-log high-water (`maidan_events.id`) — projector / broadcast lag
-//! (Cluster 390, Wave 3 #30).
+//! Event-log high-water (`maidan_events.id`) — projector / broadcast lag.
 //!
 //! This is **not** the Postgres WAL [`crate::Lsn`] used by
-//! `Maidan-Consistency-Token` (Cluster 263). Different name, value space
-//! (decimal i64 vs `high/low` hex WAL), gating (always on, including SQLite),
-//! and purpose (clients compare last-seen `log_id` to the room head). Do not
-//! parse one as the other.
+//! `Maidan-Consistency-Token`. Different name, value space (decimal i64 vs
+//! `high/low` hex WAL), gating (always on, including SQLite), and purpose
+//! (clients compare last-seen `log_id` to the room head). Do not parse one as
+//! the other.
 
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,4 @@
-//! Per-model embedding table registry and DDL helpers (Cluster 47).
+//! Per-model embedding table registry and DDL helpers.
 
 use sqlx::{PgPool, SqlitePool};
 use thiserror::Error;

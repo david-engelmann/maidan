@@ -1,14 +1,14 @@
-//! Chaos / fault-injection harness (Cluster 259, Program D).
+//! Chaos / fault-injection harness.
 //!
-//! Exercises the Cluster-258 self-healing NOTIFY floor under adversarial
-//! conditions: it drives a stream of publishes at a `PostgresBus` while
-//! periodically killing the `LISTEN` backend connection, then asserts that every
-//! published event still reached the local broadcast — i.e. the floor back-filled
-//! whatever the dropped notifications would have delivered.
+//! Exercises the self-healing NOTIFY floor under adversarial conditions: it
+//! drives a stream of publishes at a `PostgresBus` while periodically killing
+//! the `LISTEN` backend connection, then asserts that every published event
+//! still reached the local broadcast — i.e. the floor back-filled whatever the
+//! dropped notifications would have delivered.
 //!
-//! Like the Cluster-198 load harness, the end-to-end scenario is `#[ignore]`d — it
-//! is a measurement / resilience tool that needs Docker and is timing-sensitive,
-//! not a pass/fail CI gate. Run it explicitly:
+//! Like the load harness, the end-to-end scenario is `#[ignore]`d — it is a
+//! measurement / resilience tool that needs Docker and is timing-sensitive, not
+//! a pass/fail CI gate. Run it explicitly:
 //!
 //!   cargo test -p maidan-bus --test chaos -- --ignored --nocapture
 //!   MAIDAN_CHAOS_OPS=200 MAIDAN_CHAOS_KILL_EVERY=25 \

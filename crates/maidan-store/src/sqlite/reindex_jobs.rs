@@ -1,4 +1,4 @@
-//! SQLite-backed embedding reindex jobs (Cluster 104.0.3).
+//! SQLite-backed embedding reindex jobs.
 //!
 //! UUID and `DateTime<Utc>` bind through sqlx's own SQLite text encoding (the
 //! columns are TEXT), matching the OAuth-code module.

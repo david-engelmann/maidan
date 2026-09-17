@@ -1,4 +1,4 @@
-//! Cluster 173: structured message content over REST.
+//! Structured message content over REST.
 //!
 //! Proves: posting typed `content` derives the searchable `body`; GET returns
 //! the blocks; a plain body-only post has `content: null`; editing content

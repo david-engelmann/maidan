@@ -42,8 +42,8 @@ fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
     });
 }
 
-/// Install the global metrics recorder, fanning out to OTLP push when configured
-/// (Cluster 366, H15 — the `otel` build).
+/// Install the global metrics recorder, fanning out to OTLP push when
+/// configured.
 #[cfg(feature = "otel")]
 fn install_global_recorder(prom_recorder: metrics_exporter_prometheus::PrometheusRecorder) {
     if let Some(endpoint) = otlp_metrics_endpoint_from_env() {
@@ -234,77 +234,76 @@ pub fn record_automation_delivery_duration(elapsed: std::time::Duration) {
 /// A domain event failed to append to the log after retries — the domain row
 /// committed but no event was persisted, so downstream consumers (WS/MCP
 /// notifications, at-least-once delivery, the indexer) will never see it. Alert
-/// on any non-zero rate (Cluster 184).
+/// on any non-zero rate.
 pub fn record_event_append_failure() {
     counter!("maidan_event_append_failures_total").increment(1);
 }
 
-/// Rows deleted by the retention sweeper for `table` (Cluster 186).
+/// Rows deleted by the retention sweeper for `table`.
 pub fn record_retention_pruned(table: &str, count: u64) {
     counter!("maidan_retention_pruned_total", "table" => table.to_string()).increment(count);
 }
 
-/// One workspace's chain verified by the Cluster-402.3 sweeper.
+/// One workspace's chain verified by the sweeper.
 ///
 /// `outcome` is `ok` | `broken` | `error`. **`broken` and `error` are distinct
-/// on purpose**: verified-and-broken is a tamper, could-not-verify is a database
-/// problem, and an alert that cannot tell them apart will be ignored.
+/// on purpose**: verified-and-broken is a tamper, could-not-verify is a
+/// database problem, and an alert that cannot tell them apart will be ignored.
 pub fn record_chain_verify(outcome: &str) {
     counter!("maidan_chain_verify_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// A per-recipient notification written by the router (Cluster 238), by the source
-/// event `kind`. Deduped writes (a replay / a second replica) do not increment.
+/// A per-recipient notification written by the router, by the source event
+/// `kind`. Deduped writes (a replay / a second replica) do not increment.
 pub fn record_notification_created(kind: &str) {
     counter!("maidan_notifications_created_total", "kind" => kind.to_string()).increment(1);
 }
 
-/// A notification the router chose NOT to write (Cluster 242), by `reason` — e.g.
-/// `muted` when the recipient has muted the kind.
+/// A notification the router chose NOT to write, by `reason` — e.g. `muted`
+/// when the recipient has muted the kind.
 pub fn record_notification_suppressed(reason: &str) {
     counter!("maidan_notifications_suppressed_total", "reason" => reason.to_string()).increment(1);
 }
 
 /// A notification-email delivery attempt, by `outcome`:
-/// - `sent` / `failed` — an immediate per-notification email (Cluster 249).
+/// - `sent` / `failed` — an immediate per-notification email.
 /// - `skipped_present` — suppressed because the recipient was seen within the
-///   presence window (Cluster 253).
-/// - `skipped_digest` — suppressed because the recipient is in digest mode
-///   (Cluster 255); the digest sweeper emails them instead.
-/// - `digest` / `digest_failed` — a periodic digest rollup send (Cluster 255).
+///   presence window.
+/// - `skipped_digest` — suppressed because the recipient is in digest mode;
+///   the digest sweeper emails them instead.
+/// - `digest` / `digest_failed` — a periodic digest rollup send.
 ///
-/// Best-effort: a `failed` send is logged + counted, not retried (a `digest_failed`
-/// leaves the watermark so the next sweep retries).
+/// Best-effort: a `failed` send is logged + counted, not retried (a
+/// `digest_failed` leaves the watermark so the next sweep retries).
 pub fn record_email_delivered(outcome: &str) {
     counter!("maidan_email_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// Web Push delivery outcomes (Cluster 366, N1): `sent` / `failed` / `pruned`
-/// (subscription gone) / `skipped_present` (member has a live WS).
+/// Web Push delivery outcomes: `sent` / `failed` / `pruned` (subscription gone)
+/// / `skipped_present` (member has a live WS).
 pub fn record_web_push_delivered(outcome: &str) {
     counter!("maidan_web_push_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// Slack projector egress outcomes (Cluster 309): `sent` / `failed`.
+/// Slack projector egress outcomes: `sent` / `failed`.
 pub fn record_slack_egress(outcome: &str) {
     counter!("maidan_slack_egress_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// GitHub projector egress outcomes (Cluster 312): `sent` / `failed`.
+/// GitHub projector egress outcomes: `sent` / `failed`.
 pub fn record_github_egress(outcome: &str) {
     counter!("maidan_github_egress_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// Inline pull-request review posts (Cluster 380.2): `sent` (GitHub accepted
-/// the review), `skipped` (no `head_sha`, no usable findings, or not
-/// `reviewed`), `failed` (GitHub rejected; the 379 summary comment still
-/// landed).
+/// Inline pull-request review posts: `sent` (GitHub accepted the review),
+/// `skipped` (no `head_sha`, no usable findings, or not `reviewed`), `failed`
+/// (GitHub rejected; the 379 summary comment still landed).
 pub fn record_github_review(outcome: &str) {
     counter!("maidan_github_review_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// A projector-egress delivery leaving the durable queue (Cluster 377), by
-/// `surface` (`slack` | `github`) and `outcome`:
+/// A projector-egress delivery leaving the durable queue, by `surface` (`slack`
+/// | `github`) and `outcome`:
 /// - `sent` — posted to the external surface.
 /// - `retry` — failed transiently; rescheduled with backoff (377.2).
 /// - `dead` — dead-lettered after exhausting its attempts (377.2).
@@ -313,8 +312,8 @@ pub fn record_github_review(outcome: &str) {
 /// - `unroutable` — the stored destination does not decode, so no sender can
 ///   address it; dead-lettered on sight (377.2).
 ///
-/// The queue-level companion to `maidan_{slack,github}_egress_total`, which stay
-/// a count of *post attempts* against each surface.
+/// The queue-level companion to `maidan_{slack,github}_egress_total`, which
+/// stay a count of *post attempts* against each surface.
 pub fn record_egress_delivery(surface: &str, outcome: &str) {
     counter!(
         "maidan_egress_deliveries_total",
@@ -324,10 +323,9 @@ pub fn record_egress_delivery(surface: &str, outcome: &str) {
     .increment(1);
 }
 
-/// Result-delivery trigger outcomes (Cluster 379.3): `enqueued` (blessed,
-/// armed, sitting on the egress outbox) or `skipped` (unknown surface, unusable
-/// target, or not on the workspace allowlist). A skip is a recorded normal
-/// outcome, not an error.
+/// Result-delivery trigger outcomes: `enqueued` (blessed, armed, sitting on the
+/// egress outbox) or `skipped` (unknown surface, unusable target, or not on the
+/// workspace allowlist). A skip is a recorded normal outcome, not an error.
 pub fn record_result_delivery(outcome: &str) {
     counter!(
         "maidan_result_deliveries_total",
@@ -336,14 +334,14 @@ pub fn record_result_delivery(outcome: &str) {
     .increment(1);
 }
 
-/// A task schedule fired by the scheduler sweeper (Cluster 227). `outcome` is
-/// `created` when the task thread was created, `failed` when creation errored.
+/// A task schedule fired by the scheduler sweeper. `outcome` is `created` when
+/// the task thread was created, `failed` when creation errored.
 pub fn record_task_schedule_fired(outcome: &str) {
     counter!("maidan_task_schedules_fired_total", "outcome" => outcome.to_string()).increment(1);
 }
 
-/// A thread wait timed out and the sweeper escalated (Cluster 364), labeled by the
-/// escalation policy applied (`notify` | `park`).
+/// A thread wait timed out and the sweeper escalated, labeled by the escalation
+/// policy applied (`notify` | `park`).
 pub fn record_wait_timed_out(policy: &str) {
     counter!("maidan_wait_timed_out_total", "policy" => policy.to_string()).increment(1);
 }
@@ -417,8 +415,8 @@ async fn refresh_runtime_gauges(state: &AppState) {
     };
     gauge!("maidan_indexer_last_event_age_seconds").set(age_secs);
 
-    // Live embedding pipeline (Cluster 116): queue depth is hard-capped by
-    // capacity, so the lag this gauge reports is bounded.
+    // Live embedding pipeline: queue depth is hard-capped by capacity, so the
+    // lag this gauge reports is bounded.
     let im = &state.indexer_metrics;
     gauge!("maidan_indexer_queue_depth").set(im.queue_depth.load(Ordering::Relaxed) as f64);
     gauge!("maidan_indexer_queue_capacity").set(im.queue_capacity as f64);
@@ -460,12 +458,12 @@ async fn refresh_runtime_gauges(state: &AppState) {
         }
     }
 
-    // The other two dead-letter queues (Cluster 398.2). Both had a
-    // `count_dead_*` store method on each backend and no gauge, so the only way
-    // to notice a filling DLQ was to call the operator route and look — a
-    // projector delivery that has given up on a tenant's Slack channel, or a
-    // notification email that will never arrive, was invisible to alerting.
-    // The outbox has had `maidan_outbox_pending` / `_quarantined` since 84.
+    // The other two dead-letter queues. Both had a `count_dead_*` store method
+    // on each backend and no gauge, so the only way to notice a filling DLQ was
+    // to call the operator route and look — a projector delivery that has given
+    // up on a tenant's Slack channel, or a notification email that will never
+    // arrive, was invisible to alerting. The outbox has had
+    // `maidan_outbox_pending` / `_quarantined` since 84.
     if let Ok(dead) = state.store.count_dead_egress().await {
         gauge!("maidan_egress_dead").set(dead as f64);
     }

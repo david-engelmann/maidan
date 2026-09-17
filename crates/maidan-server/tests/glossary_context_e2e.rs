@@ -1,7 +1,7 @@
-//! Cluster 323: the workspace glossary rides the context pack. A thread's
-//! `GET /threads/:id/context` carries the workspace's definitions by default
-//! (opt out with `include_glossary=false`); a `GET /workspaces/:wid/context`
-//! carries it once at the top level, not repeated per nested thread.
+//! The workspace glossary rides the context pack. A thread's `GET
+//! /threads/:id/context` carries the workspace's definitions by default (opt
+//! out with `include_glossary=false`); a `GET /workspaces/:wid/context` carries
+//! it once at the top level, not repeated per nested thread.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

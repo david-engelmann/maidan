@@ -1,4 +1,4 @@
-//! Cluster 96: static UI token list panel markers.
+//! Static UI token list panel markers.
 
 use std::time::Duration;
 

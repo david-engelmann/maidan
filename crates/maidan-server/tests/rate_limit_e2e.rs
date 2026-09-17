@@ -100,9 +100,9 @@ async fn burst_over_limit_returns_429_problem_json() {
 
 #[tokio::test]
 async fn mcp_rate_limit_returns_jsonrpc_backpressure_envelope() {
-    // Cluster 172: a rate-limited POST /mcp must return a JSON-RPC error
-    // envelope (code -32029 + data.retry_after_ms), not the plain problem+json,
-    // so an agent's JSON-RPC layer gets a typed backpressure signal.
+    // A rate-limited POST /mcp must return a JSON-RPC error envelope (code
+    // -32029 + data.retry_after_ms), not the plain problem+json, so an agent's
+    // JSON-RPC layer gets a typed backpressure signal.
     let (addr, handle, _dir) = spawn().await;
     let base = format!("http://{addr}");
     let client = reqwest::Client::builder()

@@ -1,8 +1,8 @@
-//! Cluster 338: `post_message` still routes `@handle` mentions after the
-//! round-trip reduction (the redundant `resolve_message_chain` was dropped and a
+//! `post_message` still routes `@handle` mentions after the round-trip
+//! reduction (the redundant `resolve_message_chain` was dropped and a
 //! no-`@handle` post now short-circuits before any store work). A post that
-//! mentions a member emits exactly one `MentionRecorded` for that member; a plain
-//! post emits `MessagePosted` and no `MentionRecorded`.
+//! mentions a member emits exactly one `MentionRecorded` for that member; a
+//! plain post emits `MessagePosted` and no `MentionRecorded`.
 
 use std::{sync::Arc, time::Duration};
 

@@ -274,14 +274,14 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
     h.shutdown().await;
 }
 
-/// Cluster 215: the federation ingest allowlist refuses a non-federatable event
-/// kind. `ArtifactUpserted` is not federatable (blob bytes aren't transferred),
-/// so it is never ingested.
+/// The federation ingest allowlist refuses a non-federatable event kind.
+/// `ArtifactUpserted` is not federatable (blob bytes aren't transferred), so it
+/// is never ingested.
 ///
-/// Cluster 397.6 changed the *reporting*, not the rule: it is counted as
-/// `refused` in the summary rather than `403`ing the batch. A peer's chain
-/// necessarily contains kinds we do not accept, so refusing the whole batch made
-/// a mixed batch unreplicable. The event is still not ingested.
+/// It is counted as `refused` in the summary rather than `403`ing the batch. A
+/// peer's chain necessarily contains kinds we do not accept, so refusing the
+/// whole batch made a mixed batch unreplicable. The event is still not
+/// ingested.
 #[tokio::test]
 async fn federation_ingest_rejects_non_federatable_artifact_event() {
     let h = spawn().await;
@@ -698,7 +698,7 @@ async fn federation_ingest_rejects_prev_hash_break() {
     h.shutdown().await;
 }
 
-/// Cluster 397.6: a refused event must not wedge the chain.
+/// A refused event must not wedge the chain.
 ///
 /// The origin chain covers **every** event in the peer's workspace, but
 /// federation only accepts the `federatable()` allowlist. The origin link used

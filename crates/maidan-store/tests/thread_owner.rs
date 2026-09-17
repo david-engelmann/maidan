@@ -1,6 +1,6 @@
-//! Thread owner axis (Cluster 355, W1): a durable owner distinct from the
-//! assignee/claimer. `set_thread_owner` sets or clears it, orthogonal to the
-//! claim state; a missing/tombstoned thread is `NotFound`.
+//! Thread owner axis: a durable owner distinct from the assignee/claimer.
+//! `set_thread_owner` sets or clears it, orthogonal to the claim state; a
+//! missing/tombstoned thread is `NotFound`.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId};
@@ -104,8 +104,8 @@ async fn run_owner_suite(store: &dyn Store) {
     assert!(matches!(missing, Err(StoreError::NotFound)));
 }
 
-/// Separation of duties (Cluster 355, W1): on an owner-governed thread the
-/// claimer cannot land its own work; the owner or another member must.
+/// Separation of duties: on an owner-governed thread the claimer cannot land
+/// its own work; the owner or another member must.
 async fn run_sod_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "sod".into() })
@@ -174,8 +174,8 @@ async fn run_sod_suite(store: &dyn Store) {
     assert_eq!(landed.to_state, maidan_types::ThreadState::Closed);
 }
 
-/// Persisted steer (Cluster 355, W1): set upserts (latest wins), get is None
-/// until set. A durable per-thread instruction.
+/// Persisted steer: set upserts (latest wins), get is None until set. A durable
+/// per-thread instruction.
 async fn run_steer_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
@@ -248,8 +248,8 @@ async fn run_steer_suite(store: &dyn Store) {
     );
 }
 
-/// Rename (Cluster 356, F1): `set_thread_title` updates the title, is readable
-/// back, does NOT bump the activity clock (`updated_at`), and is `NotFound` on a
+/// Rename: `set_thread_title` updates the title, is readable back, does NOT
+/// bump the activity clock (`updated_at`), and is `NotFound` on a
 /// missing/tombstoned thread.
 async fn run_rename_suite(store: &dyn Store) {
     let ws = store

@@ -1,5 +1,5 @@
-//! Skill routing (Cluster 231): a task's required skills gate `claim_next` — a
-//! member only claims a task whose required skills it holds. Plus the
+//! Skill routing: a task's required skills gate `claim_next` — a member only
+//! claims a task whose required skills it holds. Plus the
 //! `thread_required_skills` CRUD. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};

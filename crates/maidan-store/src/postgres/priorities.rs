@@ -1,6 +1,6 @@
-//! Thread dispatch-priority queries (Cluster 365, G3 fair dispatch): the
-//! `maidan_thread_priorities` side table. `claim_next`'s aged-rank ordering
-//! (`threads.rs`) LEFT JOINs this; a missing row means the default priority 0.
+//! Thread dispatch-priority queries: the `maidan_thread_priorities` side table.
+//! `claim_next`'s aged-rank ordering (`threads.rs`) LEFT JOINs this; a missing
+//! row means the default priority 0.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberId, ThreadId, ThreadPriority};

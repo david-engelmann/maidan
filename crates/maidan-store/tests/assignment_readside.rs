@@ -1,5 +1,5 @@
-//! Assignment read-side (Cluster 190): list-mine is scoped to the member;
-//! claim-next atomically takes the oldest unassigned thread.
+//! Assignment read-side: list-mine is scoped to the member; claim-next
+//! atomically takes the oldest unassigned thread.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
@@ -105,7 +105,7 @@ async fn run_readside_suite(store: &dyn Store) {
         .expect("list-other")
         .is_empty());
 
-    // --- leases (Cluster 192): an expired lease is reclaimable; the holder can
+    // --- leases: an expired lease is reclaimable; the holder can
     // renew; a non-holder cannot ---
     let lease_ch = store
         .create_channel(NewChannel {
@@ -173,8 +173,8 @@ async fn run_readside_suite(store: &dyn Store) {
         .await
         .expect("claim none")
         .is_none());
-    // Fencing (Cluster 351): reclaiming the expired lease rotates the token, so
-    // the dead holder's token is stale.
+    // Fencing: reclaiming the expired lease rotates the token, so the dead
+    // holder's token is stale.
     let lease1 = c1
         .claim_lease_id
         .expect("m1's claim minted a fencing token");
@@ -199,7 +199,7 @@ async fn run_readside_suite(store: &dyn Store) {
         Err(maidan_store::StoreError::NotFound)
     ));
 
-    // --- working clock (Cluster 351): acknowledge starts it, fenced + idempotent ---
+    // --- working clock: acknowledge starts it, fenced + idempotent ---
     let acked = store
         .acknowledge_claim(leased.id, m2.id, lease2)
         .await
@@ -225,7 +225,7 @@ async fn run_readside_suite(store: &dyn Store) {
         Err(maidan_store::StoreError::NotFound)
     ));
 
-    // --- release (Cluster 351): the holder hands the work back, fenced ---
+    // --- release: the holder hands the work back, fenced ---
     // A non-holder presenting a stale token cannot release.
     assert!(matches!(
         store.release_claim(leased.id, m1.id, lease1).await,
@@ -249,8 +249,8 @@ async fn run_readside_suite(store: &dyn Store) {
     ));
 }
 
-/// Cluster 351: `claim_next_with_event` emits `ClaimExpired` for the dead holder
-/// when it reclaims an expired lease — a fresh claim emits only the assignment.
+/// `claim_next_with_event` emits `ClaimExpired` for the dead holder when it
+/// reclaims an expired lease — a fresh claim emits only the assignment.
 async fn run_claim_expired_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "ce".into() })

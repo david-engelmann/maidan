@@ -1,8 +1,8 @@
-//! Required-reviewers store (Cluster 375, Wave 2 #22): the review requirement
-//! (`k`), the named reviewer set (`n`), and reviewers' decisions. `review_status`
-//! counts the distinct **qualifying** approvals the FSM close-gate (375.2) reads
-//! — decision = approve, reviewer is neither owner nor assignee (SoD), and, when
-//! a named set exists, is in it. See the SQLite twin.
+//! Required-reviewers store: the review requirement (`k`), the named reviewer
+//! set (`n`), and reviewers' decisions. `review_status` counts the distinct
+//! **qualifying** approvals the FSM close-gate (375.2) reads — decision =
+//! approve, reviewer is neither owner nor assignee (SoD), and, when a named set
+//! exists, is in it. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
@@ -182,7 +182,7 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
            AND r.decision = 'approve'
            AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
            AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
-           -- Cluster 401.2: and never worked it. The live `assignee_id` above
+           -- And never worked it. The live `assignee_id` above
            -- is cleared by a release, so on its own it let an implementer
            -- release the claim and then approve their own work.
            AND NOT EXISTS (
@@ -208,11 +208,11 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
     })
 }
 
-/// Cluster 383: persist the waiter→review map and arm the Cluster-375
-/// close-gate. A review-skilled member plus a reviewed `example.review.result/1`
-/// with any `critical` finding writes `request_changes`. If the thread has
-/// no requirement yet, this sets `k = 1` so `closed` refuses until a
-/// qualifying human approve. An existing `k` is left alone.
+/// Persist the waiter→review map and arm the close-gate. A review-skilled
+/// member plus a reviewed `example.review.result/1` with any `critical` finding
+/// writes `request_changes`. If the thread has no requirement yet, this sets `k
+/// = 1` so `closed` refuses until a qualifying human approve. An existing `k`
+/// is left alone.
 pub async fn apply_critical_review_decision(
     pool: &PgPool,
     thread_id: ThreadId,

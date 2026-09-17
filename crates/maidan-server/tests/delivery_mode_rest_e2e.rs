@@ -1,5 +1,5 @@
-//! Cluster 256: REST management of a member's email delivery mode —
-//! `PUT`/`GET /members/:id/delivery-mode`. Auth ENABLED with a minted bearer.
+//! REST management of a member's email delivery mode — `PUT`/`GET
+//! /members/:id/delivery-mode`. Auth ENABLED with a minted bearer.
 
 use std::{
     net::SocketAddr,

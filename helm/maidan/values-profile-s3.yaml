@@ -1,4 +1,4 @@
-# Overlay: S3-compatible artifact backend (Cluster 88).
+# Overlay: S3-compatible artifact backend.
 # For in-cluster MinIO use maidan-stack/values-prod.yaml instead of external endpoints.
 config:
   ARTIFACT_BACKEND: s3

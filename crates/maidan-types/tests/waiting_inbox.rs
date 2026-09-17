@@ -1,6 +1,6 @@
-//! The pure waiting-on-you-inbox aggregate (Cluster 368, Wave 2 #16): excludes
-//! terminal/tombstoned assigned threads, merges gates + mentions, sorts
-//! oldest-waiting first, and flags SLA breaches.
+//! The pure waiting-on-you-inbox aggregate: excludes terminal/tombstoned
+//! assigned threads, merges gates + mentions, sorts oldest-waiting first, and
+//! flags SLA breaches.
 
 use chrono::{Duration, Utc};
 use maidan_types::*;

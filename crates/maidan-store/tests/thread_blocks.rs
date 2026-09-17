@@ -1,6 +1,6 @@
-//! Explicit dispatch-block store (Cluster 386, Wave 2 #27): set/clear/get +
-//! channel list over the closed `BlockedReason` enum, `claim_next` skip
-//! (386.2), and `BlockedResolved` on clear (386.3). Both backends.
+//! Explicit dispatch-block store: set/clear/get + channel list over the closed
+//! `BlockedReason` enum, `claim_next` skip (386.2), and `BlockedResolved` on
+//! clear (386.3). Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -143,8 +143,8 @@ async fn run_suite(store: &dyn Store) {
 }
 
 /// claim_next skips an older explicitly-blocked thread; queue-depth `blocked`
-/// counts it (alongside DAG-blocked); clearing restores claimability.
-/// Distinct from Cluster 218: a `child` reason is not "deps must be terminal".
+/// counts it (alongside DAG-blocked); clearing restores claimability. Distinct:
+/// a `child` reason is not "deps must be terminal".
 async fn run_claim_skip_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "bs".into() })

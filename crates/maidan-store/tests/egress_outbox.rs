@@ -1,6 +1,6 @@
-//! Durable projector egress outbox (Cluster 377.1): enqueue (deduped on the source
-//! event + target) / atomic-lease-claim / mark delivered / reschedule-or-dead-letter
-//! / DLQ count. Both backends.
+//! Durable projector egress outbox: enqueue (deduped on the source event +
+//! target) / atomic-lease-claim / mark delivered / reschedule-or-dead-letter /
+//! DLQ count. Both backends.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -156,8 +156,8 @@ async fn run_suite(store: &dyn Store) {
         .is_none());
     assert_eq!(store.count_dead_egress().await.expect("count2"), 1);
 
-    // DLQ ops (Cluster 377.4): the dead entry is listed with its destination and
-    // last error, then requeued -> pending + due, no longer dead + claimable.
+    // DLQ ops: the dead entry is listed with its destination and last error,
+    // then requeued -> pending + due, no longer dead + claimable.
     let dead = store.list_dead_egress(ws.id, 10).await.expect("list dead");
     assert_eq!(dead.len(), 1);
     assert_eq!(dead[0].id, id);
@@ -266,8 +266,8 @@ async fn run_dedup_suite(store: &dyn Store) {
         .expect("claim3")
         .is_some());
 
-    // Kind round-trips through claim so the worker can tell a result row from
-    // a projector row (Cluster 379.4).
+    // Kind round-trips through claim so the worker can tell a result row from a
+    // projector row.
     store
         .enqueue_egress(NewEgressOutbox {
             workspace_id: ws.id,
@@ -336,10 +336,10 @@ async fn egress_outbox_enqueue_claim_retry_deadletter_postgres() {
     run_dlq_scope_suite(&store).await;
 }
 
-/// Cluster 397.4: the DLQ is per-workspace. `token:admin` is minted per
-/// workspace, but the DLQ query used to be global — so one tenant's admin could
-/// read every other tenant's Slack channel ids, GitHub repositories and
-/// delivery errors, and requeue a delivery into them.
+/// The DLQ is per-workspace. `token:admin` is minted per workspace, but the DLQ
+/// query used to be global — so one tenant's admin could read every other
+/// tenant's Slack channel ids, GitHub repositories and delivery errors, and
+/// requeue a delivery into them.
 async fn run_dlq_scope_suite(store: &dyn Store) {
     async fn room(store: &dyn Store, name: &str) -> (WorkspaceId, ThreadId) {
         let ws = store

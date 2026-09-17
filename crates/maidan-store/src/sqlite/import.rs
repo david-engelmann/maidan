@@ -1,5 +1,5 @@
-//! Workspace import (Cluster 269) — the SQLite twin of the Postgres import. Same
-//! shape (one transaction, explicit ids/state/timestamps preserved); SQLite stores
+//! Workspace import — the SQLite twin of the Postgres import. Same shape (one
+//! transaction, explicit ids/state/timestamps preserved); SQLite stores
 //! `metadata`/`content` as JSON TEXT and uses `?` placeholders.
 
 use maidan_types::WorkspaceImport;

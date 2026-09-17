@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chaos / fault-injection harness runner (Cluster 259, Program D).
+# Chaos / fault-injection harness runner.
 #
 # Drives a stream of publishes at a PostgresBus while periodically killing the
 # LISTEN backend connection, then asserts every published event still reached the

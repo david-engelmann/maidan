@@ -1,11 +1,12 @@
-//! Search token-aware read routing validated against REAL streaming replication
-//! (Cluster 271). `#[ignore]`d — needs the primary+replica pair from
-//! `scripts/replica-harness.sh` (MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL); skips
-//! when they're unset. The routing decision itself is unit-tested in CI
+//! Search token-aware read routing validated against REAL streaming
+//! replication. `#[ignore]`d — needs the primary+replica pair from
+//! `scripts/replica-harness.sh` (MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL);
+//! skips when they're unset. The routing decision itself is unit-tested in CI
 //! (maidan-store `route_decision`, shared via `replica_route`); this proves the
 //! search-side end-to-end machinery (the shared read-consistency task-local +
-//! `PostgresSearch::read_pool` + the background replay-LSN poller) against an actual
-//! standby, and that search honors the same `Maidan-Consistency-Token` as the store.
+//! `PostgresSearch::read_pool` + the background replay-LSN poller) against an
+//! actual standby, and that search honors the same `Maidan-Consistency-Token`
+//! as the store.
 
 use std::time::Duration;
 
@@ -137,10 +138,11 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
     .expect("count on replica");
     assert_eq!(n, 1, "the posted message is present on the standby");
 
-    // The routing counters (Cluster 272) register both outcomes deterministically: an
-    // unreachably-high token can never be satisfied by the replica → forced to the
-    // primary; a no-token search → the replica. (Assert on these two controlled reads
-    // rather than the earlier ones, which race the poller on localhost.)
+    // The routing counters register both outcomes deterministically: an
+    // unreachably-high token can never be satisfied by the replica → forced to
+    // the primary; a no-token search → the replica. (Assert on these two
+    // controlled reads rather than the earlier ones, which race the poller on
+    // localhost.)
     let (p0, r0) = search.read_routing_metrics().snapshot();
     let _ = with_read_consistency(
         Some(maidan_types::Lsn(u64::MAX)),

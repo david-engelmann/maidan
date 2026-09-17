@@ -1,4 +1,4 @@
-//! Query-count regression for context assembly (Cluster 106.0.3).
+//! Query-count regression for context assembly.
 //!
 //! Asserts that `build_thread_context` issues the same number of store queries
 //! whether the thread has a few messages or many — i.e. the per-message N+1s

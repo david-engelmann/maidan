@@ -1,4 +1,4 @@
-//! Postgres-backed embedding reindex jobs (Cluster 104.0.3).
+//! Postgres-backed embedding reindex jobs.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{ReindexJob, ReindexJobStatus};

@@ -1,9 +1,9 @@
-//! Cluster 309: Slack projector egress. A Maidan message in a linked thread is
-//! relayed to its Slack channel; a Slack-sourced message (metadata tag) is not
-//! echoed back (loop prevention); an unlinked thread is ignored.
+//! Slack projector egress. A Maidan message in a linked thread is relayed to
+//! its Slack channel; a Slack-sourced message (metadata tag) is not echoed back
+//! (loop prevention); an unlinked thread is ignored.
 //!
-//! Since Cluster 377.2 the relay is durable: `route_message_to_slack` enqueues and
-//! the egress worker posts, so each case sweeps the queue before asserting.
+//! The relay is durable: `route_message_to_slack` enqueues
+//! and the egress worker posts, so each case sweeps the queue before asserting.
 
 use std::sync::{Arc, Mutex};
 
@@ -34,10 +34,7 @@ impl SlackSender for MockSender {
         text: &str,
         thread_ts: Option<&str>,
     ) -> Result<Option<ExternalRef>, SlackError> {
-        assert_eq!(
-            thread_ts, None,
-            "the projector egress posts top-level (Cluster 309 behaviour)"
-        );
+        assert_eq!(thread_ts, None, "the projector egress posts top-level");
         let mut sent = self.sent.lock().unwrap();
         sent.push((channel.into(), text.into()));
         Ok(Some(ExternalRef::Slack {
@@ -52,7 +49,7 @@ impl SlackSender for MockSender {
         _ts: &str,
         _text: &str,
     ) -> Result<(), SlackError> {
-        unreachable!("the projector egress never updates; that is Cluster 379.4")
+        unreachable!("the projector egress never updates; that is result delivery")
     }
 }
 

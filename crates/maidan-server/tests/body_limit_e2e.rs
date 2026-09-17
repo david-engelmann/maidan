@@ -1,5 +1,5 @@
-//! Request body-size cap (Cluster 183): a body over `MAIDAN_MAX_BODY_BYTES` is
-//! rejected with 413 before the handler buffers it.
+//! Request body-size cap: a body over `MAIDAN_MAX_BODY_BYTES` is rejected with
+//! 413 before the handler buffers it.
 
 use std::{
     net::SocketAddr,

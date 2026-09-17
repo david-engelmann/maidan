@@ -1,4 +1,4 @@
-//! A2A push config and task persistence (Cluster 72).
+//! A2A push config and task persistence.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewWorkspace, WorkspaceId};

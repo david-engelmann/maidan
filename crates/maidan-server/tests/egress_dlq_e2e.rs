@@ -1,8 +1,8 @@
-//! Operator DLQ for the durable projector egress (Cluster 377.4). Auth ENABLED —
-//! `token:admin` is the whole point of the surface, so a bypass run would prove
-//! nothing. Covers the loop an operator actually walks: a delivery dead-letters,
-//! it shows up with the surface's own error, a requeue makes it deliverable
-//! again, and a workspace-scoped token cannot see any of it.
+//! Operator DLQ for the durable projector egress. Auth ENABLED — `token:admin`
+//! is the whole point of the surface, so a bypass run would prove nothing.
+//! Covers the loop an operator actually walks: a delivery dead-letters, it
+//! shows up with the surface's own error, a requeue makes it deliverable again,
+//! and a workspace-scoped token cannot see any of it.
 
 use std::{
     net::SocketAddr,

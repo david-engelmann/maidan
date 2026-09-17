@@ -1,6 +1,5 @@
-//! Reindex job store (Cluster 104.0.3): upsert is keyed by job_id so a Running
-//! record and its later terminal update collapse to one row; both backends
-//! behave identically.
+//! Reindex job store: upsert is keyed by job_id so a Running record and its
+//! later terminal update collapse to one row; both backends behave identically.
 
 use std::time::Duration;
 

@@ -1,6 +1,7 @@
-//! Shared-glossary REST (Cluster 322): set/get/list/delete a workspace's canonical
-//! term -> definition. Auth ENABLED (real token) because `created_by` is a NOT-NULL
-//! FK to members — the nil-member bypass would FK-fail on set (the 228/232 pattern).
+//! Shared-glossary REST: set/get/list/delete a workspace's canonical term ->
+//! definition. Auth ENABLED (real token) because `created_by` is a NOT-NULL FK
+//! to members — the nil-member bypass would FK-fail on set (the 228/232
+//! pattern).
 
 use std::{
     net::SocketAddr,

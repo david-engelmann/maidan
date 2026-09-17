@@ -1,5 +1,5 @@
-//! Thread dispatch-park queries (Cluster 363, G3): the `maidan_thread_unclaimable`
-//! side table. Presence = parked from dispatch; absence = claimable.
+//! Thread dispatch-park queries: the `maidan_thread_unclaimable` side table.
+//! Presence = parked from dispatch; absence = claimable.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{ChannelId, MemberId, ThreadId, ThreadUnclaimable};

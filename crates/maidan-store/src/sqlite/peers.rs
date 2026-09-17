@@ -219,13 +219,13 @@ fn row_to_peer(row: &sqlx::sqlite::SqliteRow) -> Result<Peer, StoreError> {
 }
 
 /// Record the last origin [`EventLink`] **verified** from this peer, whether or
-/// not the event was then kept (Cluster 397.6).
+/// not the event was then kept.
 ///
 /// The origin chain covers every event in the peer's workspace, but federation
 /// only accepts the `federatable()` allowlist. Recording the link only on the
-/// ingest path meant a policy-refused event left the pointer behind it, so every
-/// later envelope failed `PrevHashMismatch` — permanently. Monotonic: a replayed
-/// or out-of-order envelope never moves it backwards.
+/// ingest path meant a policy-refused event left the pointer behind it, so
+/// every later envelope failed `PrevHashMismatch` — permanently. Monotonic: a
+/// replayed or out-of-order envelope never moves it backwards.
 pub async fn record_verified_link(
     pool: &SqlitePool,
     peer_id: PeerId,
@@ -255,7 +255,7 @@ pub async fn record_verified_link(
 }
 
 /// The last verified origin link, falling back to the last *ingested* one for a
-/// peer that predates Cluster 397.6 and so has no verified-link row yet.
+/// peer old enough to have no verified-link row yet.
 pub async fn last_verified_link(
     pool: &SqlitePool,
     peer_id: PeerId,

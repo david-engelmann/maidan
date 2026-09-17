@@ -1,7 +1,7 @@
-//! Durable projector egress outbox (Cluster 377.1). SQLite twin of the Postgres
-//! module — SQLite serializes writers (one connection, Cluster 277), so a
-//! select-then-update in a transaction claims atomically without `FOR UPDATE SKIP
-//! LOCKED`. All timestamps are store-bound rfc3339, so a plain `<=` comparison is
+//! Durable projector egress outbox. SQLite twin of the Postgres module — SQLite
+//! serializes writers (one connection), so a select-then-update in a
+//! transaction claims atomically without `FOR UPDATE SKIP LOCKED`. All
+//! timestamps are store-bound rfc3339, so a plain `<=` comparison is
 //! consistent.
 
 use chrono::{DateTime, Utc};

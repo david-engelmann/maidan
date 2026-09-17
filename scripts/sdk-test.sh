@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SDK black-box test harness (Cluster 294+). Boots a source-built Maidan on
+# SDK black-box test harness. Boots a source-built Maidan on
 # SQLite (auth disabled, dev-only), waits for health, runs the chosen language's
 # SDK test suite against it, then tears the server down.
 #
@@ -7,7 +7,7 @@
 # Env:    MAIDAN_SDK_PORT (default 8080).
 #
 # Build first, then run the binary, so the health-wait covers only boot (a cold
-# `cargo run` compile would otherwise outlast it — see Cluster 290).
+# `cargo run` compile would otherwise outlast it).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

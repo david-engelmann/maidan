@@ -97,8 +97,8 @@ pub async fn complete_multipart_artifact(
         .complete_multipart_upload(&upload, &parts)
         .await?;
     let bytes = state.artifacts.get(&sha).await?;
-    // Cluster 214: upsert + the Cluster-204 per-workspace ref + the ArtifactUpserted
-    // event commit atomically (ref only for a non-bypass caller, as before).
+    // Upsert + the per-workspace ref + the ArtifactUpserted event commit
+    // atomically (ref only for a non-bypass caller, as before).
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let (artifact, stored) = state
         .store
@@ -141,9 +141,9 @@ pub async fn upload_artifact(
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
     let sha = state.artifacts.put(body.clone()).await?;
-    // Cluster 214: upsert + the Cluster-204 per-workspace ref (so only the
-    // uploader's workspace can fetch the deduped blob) + the ArtifactUpserted event
-    // commit atomically; the ref is recorded only for a non-bypass caller.
+    // Upsert + the per-workspace ref (so only the uploader's workspace can
+    // fetch the deduped blob) + the ArtifactUpserted event commit atomically;
+    // the ref is recorded only for a non-bypass caller.
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let (artifact, stored) = state
         .store
@@ -162,9 +162,9 @@ pub async fn upload_artifact(
     Ok((StatusCode::CREATED, Json(artifact)))
 }
 
-/// Cluster 204: 404 (not 403) when the caller's workspace has no access link to
-/// `sha` — a missing link and a missing artifact are indistinguishable to the
-/// caller, so a cross-tenant SHA can't be confirmed to exist.
+/// 404 (not 403) when the caller's workspace has no access link to `sha` — a
+/// missing link and a missing artifact are indistinguishable to the caller, so
+/// a cross-tenant SHA can't be confirmed to exist.
 async fn ensure_artifact_ref(state: &AppState, auth: &AuthContext, sha256: &str) -> ApiResult<()> {
     if auth.bypass {
         return Ok(());

@@ -8,9 +8,9 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a task's structured result (Cluster 234). A re-set overwrites the
-/// prior result. JSON is stored as TEXT in SQLite. `result_kind` is extracted
-/// from the payload (Cluster 381) — a namespaced string, not an enum.
+/// Set (upsert) a task's structured result. A re-set overwrites the prior
+/// result. JSON is stored as TEXT in SQLite. `result_kind` is extracted from
+/// the payload — a namespaced string, not an enum.
 pub async fn set(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -40,7 +40,7 @@ pub async fn set(
     row_to_result(&row)
 }
 
-/// A task's result, or `None` if none has been produced (Cluster 234).
+/// A task's result, or `None` if none has been produced.
 pub async fn get(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -65,9 +65,9 @@ fn row_to_result(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadResult, StoreErr
     })
 }
 
-/// Workspace-scoped result list (Cluster 381). Exact-match on the extracted
-/// `result_kind` when `Some`; `None`/empty is unfiltered. Tombstoned threads
-/// are dropped. `limit` is clamped `1..=500`.
+/// Workspace-scoped result list. Exact-match on the extracted `result_kind`
+/// when `Some`; `None`/empty is unfiltered. Tombstoned threads are dropped.
+/// `limit` is clamped `1..=500`.
 pub async fn list(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -96,8 +96,8 @@ pub async fn list(
     rows.iter().map(row_to_result).collect()
 }
 
-/// Closed/archived results in a channel (Cluster 382, Wave 2 #24) — see the
-/// Postgres twin. `result` is TEXT JSON. `limit` is clamped `1..=50`.
+/// Closed/archived results in a channel — see the Postgres twin. `result` is
+/// TEXT JSON. `limit` is clamped `1..=50`.
 pub async fn list_closed_in_channel(
     pool: &SqlitePool,
     channel_id: ChannelId,

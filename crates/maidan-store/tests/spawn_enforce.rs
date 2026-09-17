@@ -1,11 +1,11 @@
-//! Spawn-budget enforcement (Cluster 376.2/376.3, Wave 2 #23): creating a child
-//! thread is refused once the parent holds `max_children` or nesting would exceed
-//! `max_depth`, and a post is refused once its tool-use blocks would pass
-//! `max_tools`. Root threads + no-budget workspaces are unrestricted. Both
-//! backends, via the FSM create path.
+//! Spawn-budget enforcement: creating a child thread is refused once the parent
+//! holds `max_children` or nesting would exceed `max_depth`, and a post is
+//! refused once its tool-use blocks would pass `max_tools`. Root threads +
+//! no-budget workspaces are unrestricted. Both backends, via the FSM create
+//! path.
 //!
-//! The refusal is a typed `SpawnRejected` carrying the denial (Cluster 376.6), so
-//! these assertions check the axis, the cap, and what was already observed — the
+//! The refusal is a typed `SpawnRejected` carrying the denial, so these
+//! assertions check the axis, the cap, and what was already observed — the
 //! exact payload the route publishes as `ThreadSpawnDenied`.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -167,8 +167,8 @@ async fn run_suite(store: &dyn Store) {
     );
 }
 
-/// Unwrap a refusal as the typed denial (Cluster 376.6) — a `Conflict` or an `Ok`
-/// here would mean the gate stopped carrying the `ThreadSpawnDenied` payload.
+/// Unwrap a refusal as the typed denial — a `Conflict` or an `Ok` here would
+/// mean the gate stopped carrying the `ThreadSpawnDenied` payload.
 fn expect_denial<T: std::fmt::Debug>(result: Result<T, StoreError>) -> SpawnDenial {
     match result {
         Err(StoreError::SpawnRejected(denial)) => *denial,

@@ -1,11 +1,12 @@
-//! Postgres WAL log-sequence number (`pg_lsn`) — the read-replica causality token
-//! (Cluster 261, Program D).
+//! Postgres WAL log-sequence number (`pg_lsn`) — the read-replica causality
+//! token.
 //!
 //! A write returns the primary's LSN at commit; a later read echoes it, and the
-//! router serves the read from a replica only once the replica's replay position
-//! has reached that LSN (else it falls back to the primary). Storing the LSN as a
-//! `u64` (not its `X/Y` text) is load-bearing: the text form does **not** order
-//! correctly as a string (`0/9` vs `0/10`), but the numeric form does.
+//! router serves the read from a replica only once the replica's replay
+//! position has reached that LSN (else it falls back to the primary). Storing
+//! the LSN as a `u64` (not its `X/Y` text) is load-bearing: the text form does
+//! **not** order correctly as a string (`0/9` vs `0/10`), but the numeric form
+//! does.
 
 use std::fmt;
 

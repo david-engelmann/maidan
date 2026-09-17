@@ -1,5 +1,5 @@
-//! Per-recipient notifications (Cluster 237, Program C): create / list / mark-read
-//! / unread-count. Both backends. Zero-blast-radius foundation — no router yet.
+//! Per-recipient notifications: create / list / mark-read / unread-count. Both
+//! backends. Zero-blast-radius foundation — no router yet.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -184,9 +184,9 @@ async fn run_suite(store: &dyn Store) {
         .expect("actor list")
         .is_empty());
 
-    // Snooze (Cluster 359, N5): a snoozed-into-the-future notification drops out of
-    // the list + badge; snoozing into the past leaves it visible. (Prior
-    // notifications from this suite are already read, so the badge starts at 0.)
+    // Snooze: a snoozed-into-the-future notification drops out of the list +
+    // badge; snoozing into the past leaves it visible. (Prior notifications
+    // from this suite are already read, so the badge starts at 0.)
     let fresh = store.create_notification(mk(50)).await.expect("create n50");
     let visible = |list: &[Notification]| list.iter().any(|n| n.id == fresh.id);
     assert!(
@@ -254,8 +254,8 @@ async fn run_suite(store: &dyn Store) {
         .expect("snooze as non-recipient"));
 }
 
-/// Batch fan-out insert (Cluster 349): `create_notifications_batch` inserts a
-/// distinct recipient set in one round trip, is idempotent on `(member_id,
+/// Batch fan-out insert: `create_notifications_batch` inserts a distinct
+/// recipient set in one round trip, is idempotent on `(member_id,
 /// source_log_id)`, returns only the rows actually inserted, and short-circuits
 /// on empty input.
 async fn run_batch_suite(store: &dyn Store) {

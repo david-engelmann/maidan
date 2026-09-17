@@ -1,6 +1,6 @@
-//! Member-freeze kill-switch store (Cluster 372, Wave 2 #20): freeze drops the
-//! member's active leases + records the freeze; unfreeze clears it. Both backends.
-//! `claim_next` refusal is exercised in Cluster 372.2.
+//! Member-freeze kill-switch store: freeze drops the member's active leases +
+//! records the freeze; unfreeze clears it. Both backends. `claim_next` refusal
+//! is exercised by the server's claim tests.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};

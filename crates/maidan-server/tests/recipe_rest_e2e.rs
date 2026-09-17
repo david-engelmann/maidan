@@ -1,6 +1,6 @@
-//! Recipe management over HTTP (Cluster 370.3, Wave 2 #18): create / list / get /
-//! delete + instantiate. Runs with auth ENABLED so `created_by` is a real member
-//! and channel access is exercised (the created_by FK gotcha).
+//! Recipe management over HTTP: create / list / get / delete + instantiate.
+//! Runs with auth ENABLED so `created_by` is a real member and channel access
+//! is exercised (the created_by FK gotcha).
 
 use std::{
     net::SocketAddr,

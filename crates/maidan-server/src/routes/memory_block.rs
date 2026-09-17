@@ -1,9 +1,9 @@
-//! Attachable labeled memory-block management (Cluster 373.2, Wave 2 #21, H11).
-//! A memory block is a Letta-shaped `{label, description, limit, read_only,
-//! value}` workspace object a thread attaches to (a "room object"), letting a
-//! parent watch a child's result block without a nested runtime. Blocks are
-//! workspace content, so CRUD is gated on `workspace:read`/`workspace:write`;
-//! attach/detach additionally require access to the target thread.
+//! Attachable labeled memory-block management. A memory block is a Letta-shaped
+//! `{label, description, limit, read_only, value}` workspace object a thread
+//! attaches to (a "room object"), letting a parent watch a child's result block
+//! without a nested runtime. Blocks are workspace content, so CRUD is gated on
+//! `workspace:read`/`workspace:write`; attach/detach additionally require
+//! access to the target thread.
 
 use axum::{
     extract::{Path, State},
@@ -112,8 +112,8 @@ pub async fn set_memory_block_value(
         .store
         .set_memory_block_value(block_id, &body.value)
         .await?;
-    // A "go fetch" pointer so a parent watching the block reacts without polling
-    // (Cluster 373.4). Best-effort — a bus hiccup never fails the write.
+    // A "go fetch" pointer so a parent watching the block reacts without
+    // polling. Best-effort — a bus hiccup never fails the write.
     super::publish(
         &state,
         Event::MemoryBlockUpdated {

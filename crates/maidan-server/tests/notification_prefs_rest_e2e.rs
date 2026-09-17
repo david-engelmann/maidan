@@ -1,5 +1,5 @@
-//! Cluster 242: REST management of notification mute-preferences —
-//! `PUT`/`GET /members/:id/notification-prefs`. Auth ENABLED with a minted bearer.
+//! REST management of notification mute-preferences — `PUT`/`GET
+//! /members/:id/notification-prefs`. Auth ENABLED with a minted bearer.
 
 use std::{
     net::SocketAddr,

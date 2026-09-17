@@ -1,7 +1,7 @@
-//! Concurrent boot-time migrations (Cluster 105): several replicas starting
-//! against one fresh Postgres database must all succeed. Without the advisory
-//! lock around `run_postgres_migrations`, they race on non-transactional DDL
-//! (concurrent `CREATE EXTENSION` → `pg_extension` unique violation).
+//! Concurrent boot-time migrations: several replicas starting against one fresh
+//! Postgres database must all succeed. Without the advisory lock around
+//! `run_postgres_migrations`, they race on non-transactional DDL (concurrent
+//! `CREATE EXTENSION` → `pg_extension` unique violation).
 
 use std::time::Duration;
 

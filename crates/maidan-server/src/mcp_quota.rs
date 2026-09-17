@@ -1,4 +1,4 @@
-//! MCP JSON-RPC quota hooks (Cluster 64).
+//! MCP JSON-RPC quota hooks.
 
 use maidan_auth::AuthContext;
 use maidan_mcp::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};

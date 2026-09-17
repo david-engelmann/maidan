@@ -66,7 +66,7 @@ hmac = "0.12"
 sha2.workspace = true
 subtle = "2"
 hex = "0.4"
-# Web Push (Cluster 366, N1): VAPID ES256 (p256/ecdsa) + RFC 8291 payload
+# Web Push: VAPID ES256 (p256/ecdsa) + RFC 8291 payload
 # encryption (p256/ecdh + HKDF-SHA256 + AES-128-GCM). RustCrypto — no openssl.
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
 hkdf = "0.12"
@@ -77,14 +77,14 @@ redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 [features]
 default = ["bootstrap", "otel"]
 bootstrap = []
-# OpenTelemetry OTLP export (Cluster 366, H15). Default-on; `--no-default-features`
+# OpenTelemetry OTLP export. Default-on; `--no-default-features`
 # builds a leaner server without the OTLP/tonic stack (plain tracing + Prometheus
 # scrape stay). Forwards to the maidan-observability `otel` feature.
 otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
-# Hand-written WAT for the WASI slash e2e (Cluster 399.2).
+# Hand-written WAT for the WASI slash e2e.
 wat = "1"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

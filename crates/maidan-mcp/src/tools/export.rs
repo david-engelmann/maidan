@@ -1,9 +1,10 @@
-//! Signed workspace export / verify / import (Cluster 391).
+//! Signed workspace export / verify / import.
 //!
-//! Twins of REST `GET /workspaces/:id/export`, `POST /workspaces/export/verify`,
-//! and `POST /workspaces/import`. All three are `token:admin`. Signing and
-//! verify-key pins live on [`crate::server::McpServer`], set from `main.rs`
-//! the same way `set_encryption_key` is.
+//! Twins of REST `GET /workspaces/:id/export`, `POST
+//! /workspaces/export/verify`, and `POST /workspaces/import`. All three are
+//! `token:admin`. Signing and verify-key pins live on
+//! [`crate::server::McpServer`], set from `main.rs` the same way
+//! `set_encryption_key` is.
 
 use maidan_auth::AuthContext;
 use maidan_store::{build_workspace_export, StoreError};
@@ -99,13 +100,13 @@ pub(super) fn verify_workspace_export(server: &McpServer, args: &Value) -> Resul
     })))
 }
 
-/// Verify then import a signed envelope. `mode=new` remaps ids; `restore`
-/// keeps them (conflict unless `force`).
+/// Verify then import a signed envelope. `mode=new` remaps ids; `restore` keeps
+/// them (conflict unless `force`).
 ///
-/// Takes `auth` for the reason the REST twin does (Cluster 397.1): the
-/// signature proves integrity, never authority, so a `restore` names a
-/// caller-supplied workspace that has to be scoped. This handler previously
-/// took no [`AuthContext`] at all, which made scoping structurally impossible.
+/// Takes `auth` for the reason the REST twin does: the signature proves
+/// integrity, never authority, so a `restore` names a caller-supplied workspace
+/// that has to be scoped. This handler previously took no [`AuthContext`] at
+/// all, which made scoping structurally impossible.
 pub(super) async fn import_workspace(
     server: &McpServer,
     auth: &AuthContext,
@@ -115,11 +116,11 @@ pub(super) async fn import_workspace(
     // carry `mode`/`force`), or the bare envelope as the whole argument object.
     //
     // Which one the caller meant is decided by the presence of the `envelope`
-    // key, NOT by whether the nested shape happens to parse (Cluster 398.6).
-    // The old `Err(_) => defaults` swallowed the reason: a nested envelope with
-    // a malformed `mode`, or a typo'd key now that the struct is strict, fell
-    // through to the bare path and silently ran with `mode: "new"` — the caller
-    // asked for a restore and got a detached workspace, with no error.
+    // key, NOT by whether the nested shape happens to parse. The old `Err(_) =>
+    // defaults` swallowed the reason: a nested envelope with a malformed
+    // `mode`, or a typo'd key now that the struct is strict, fell through to
+    // the bare path and silently ran with `mode: "new"` — the caller asked for
+    // a restore and got a detached workspace, with no error.
     let a = if args.get("envelope").is_some() {
         serde_json::from_value::<ImportArgs>(args.clone())
             .map_err(|e| McpError::InvalidParams(format!("import arguments: {e}")))?

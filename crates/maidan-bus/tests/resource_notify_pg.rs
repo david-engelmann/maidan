@@ -1,7 +1,6 @@
-//! Cross-process resource-notification fan-out over Postgres LISTEN/NOTIFY
-//! (Cluster 102). Two `PostgresResourceNotifier`s on the same database stand
-//! in for two server replicas: a `publish_uris` on one must reach a subscriber
-//! on the other.
+//! Cross-process resource-notification fan-out over Postgres LISTEN/NOTIFY. Two
+//! `PostgresResourceNotifier`s on the same database stand in for two server
+//! replicas: a `publish_uris` on one must reach a subscriber on the other.
 
 use std::time::Duration;
 

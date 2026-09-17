@@ -1,4 +1,4 @@
-//! Durable resume point for a tap projector (Cluster 402.2).
+//! Durable resume point for a tap projector.
 //!
 //! The search tap re-walked the whole log from id 0 on every start, resubscribe
 //! and `Lagged`. This is where it remembers instead.

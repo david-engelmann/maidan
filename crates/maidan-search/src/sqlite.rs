@@ -46,8 +46,8 @@ impl Search for SqliteSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
-        // RBAC pre-filter (Cluster 200): drop hits in denied channels at the
-        // query level. SQLite has no array binding — expand `NOT IN (?, …)`.
+        // RBAC pre-filter: drop hits in denied channels at the query level.
+        // SQLite has no array binding — expand `NOT IN (?, …)`.
         let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
         let sql = format!(
             r#"
@@ -346,8 +346,8 @@ fn embedding_bytes(embedding: &[f32]) -> Vec<u8> {
 }
 
 /// `AND t.channel_id NOT IN (?, …)` for the RBAC deny pre-filter, or empty when
-/// there is nothing to deny (Cluster 200). SQLite has no array binding, so the
-/// caller binds each `ChannelId` in `deny` after the fixed facet binds.
+/// there is nothing to deny. SQLite has no array binding, so the caller binds
+/// each `ChannelId` in `deny` after the fixed facet binds.
 fn deny_channels_clause_sqlite(deny: &[ChannelId]) -> String {
     if deny.is_empty() {
         String::new()

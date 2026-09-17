@@ -1,20 +1,20 @@
-//! The contract lock (Cluster 379.2, extended 380.1).
+//! The contract lock.
 //!
-//! These assertions run against the **authoritative** producer fixture, committed
-//! at `tests/fixtures/waiter_result_v1.json` and embedded here at compile time.
-//! That is the whole point: if the producer changes the grammar Maidan routes on,
-//! this test fails in this repo — loudly, in CI, before a delivery goes to the
-//! wrong place in production. It is not a test of the parser so much as a
-//! tripwire on somebody else's wire format.
+//! These assertions run against the **authoritative** producer fixture,
+//! committed at `tests/fixtures/waiter_result_v1.json` and embedded here at
+//! compile time. That is the whole point: if the producer changes the grammar
+//! Maidan routes on, this test fails in this repo — loudly, in CI, before a
+//! delivery goes to the wrong place in production. It is not a test of the
+//! parser so much as a tripwire on somebody else's wire format.
 //!
-//! It asserts the fields Maidan routes on **and** the Cluster 380.1 inline
-//! comment pin (`head_sha`, `findings[].line_range`). Pinning `corroboration`,
+//! It asserts the fields Maidan routes on **and** the inline comment pin
+//! (`head_sha`, `findings[].line_range`). Pinning `corroboration`,
 //! `cost_usd` or `per_seat` would make the lock fire on changes that cannot
 //! affect delivery, and a tripwire that cries wolf gets deleted.
 //!
 //! `run_id` is still **not** a delivery-routing field — `parse_waiter_result`
-//! ignores it. Cluster 387 homes it as lineage via [`run_id_from_payload`]
-//! (a separate extractor); see
+//! ignores it. It is lineage, read via [`run_id_from_payload`] (a
+//! separate extractor); see
 //! `the_authoritative_fixture_run_id_is_accepted_as_parent_run_id`.
 
 use maidan_types::{
@@ -127,8 +127,8 @@ fn the_authoritative_fixture_routes_to_both_surfaces() {
 
 /// Every target the fixture names has to survive the projection onto the egress
 /// queue's vocabulary, or delivery stops at the type boundary. This is the seam
-/// between the producer's grammar (Cluster 379) and the transport (377/378), and
-/// it is the one most likely to drift silently.
+/// between the producer's grammar and the transport (377/378), and it is the
+/// one most likely to drift silently.
 #[test]
 fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
     let r = parsed();
@@ -179,10 +179,10 @@ fn the_fixtures_slack_channel_is_an_id_not_a_name() {
     assert!(!channel.starts_with('#'), "a #name is not addressable");
 }
 
-/// Cluster 380.1: `head_sha` is GitHub `commit_id`, and `line_range` is
-/// file-absolute post-image / RIGHT, 1-indexed inclusive. A producer-side
-/// change to either breaks this lock before 380.2 posts a comment on the
-/// wrong line of the wrong commit.
+/// `head_sha` is GitHub `commit_id`, and `line_range` is file-absolute
+/// post-image / RIGHT, 1-indexed inclusive. A producer-side change to either
+/// breaks this lock before 380.2 posts a comment on the wrong line of the wrong
+/// commit.
 #[test]
 fn the_authoritative_fixture_pins_head_sha_and_post_image_findings() {
     let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
@@ -230,10 +230,10 @@ fn the_authoritative_fixture_pins_head_sha_and_post_image_findings() {
     assert_eq!(comments[1].start_line, Some(1));
 }
 
-/// Cluster 383.1: the fixture's first finding is `critical`, so the
-/// producer→reviewer adapter maps it to Cluster 375 `request_changes`.
-/// Severity stays a free string (the second finding is `warning`); we do
-/// not close an enum of severities any more than we close `result_kind`.
+/// The fixture's first finding is `critical`, so the producer→reviewer adapter
+/// maps it to a `request_changes` decision. Severity stays a free string (the
+/// second finding is `warning`); we do not close an enum of severities any more
+/// than we close `result_kind`.
 #[test]
 fn the_authoritative_fixture_is_a_critical_request_changes() {
     let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
@@ -258,9 +258,9 @@ fn the_authoritative_fixture_is_a_critical_request_changes() {
 
 /// Maidan carries the rest of the envelope through untouched and does not
 /// interpret it. This asserts the *parser's* indifference, not the fields'
-/// values, so the producer stays free to evolve them. `head_sha` and
-/// `findings` are Cluster 380.1 routing fields — removing them still parses
-/// the 379 summary path, but those fields go empty.
+/// values, so the producer stays free to evolve them. `head_sha` and `findings`
+/// are inline-comment routing fields — removing them still parses the summary
+/// path, but those fields go empty.
 #[test]
 fn fields_maidan_does_not_route_on_are_ignored_rather_than_required() {
     let mut value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");
@@ -306,9 +306,9 @@ fn fields_maidan_does_not_route_on_are_ignored_rather_than_required() {
     assert_eq!(summary_only.rendered, before.rendered);
 }
 
-/// Cluster 387: the fixture's `run_id` is the first real producer value.
-/// Lineage accepts that string as `parent_run_id` — it does not mint a
-/// parallel id. Delivery still ignores it (`parse_waiter_result`).
+/// The fixture's `run_id` is the first real producer value. Lineage accepts
+/// that string as `parent_run_id` — it does not mint a parallel id. Delivery
+/// still ignores it (`parse_waiter_result`).
 #[test]
 fn the_authoritative_fixture_run_id_is_accepted_as_parent_run_id() {
     let value: serde_json::Value = serde_json::from_str(FIXTURE).expect("valid JSON");

@@ -31,8 +31,8 @@ pub enum ArtifactBackend {
     },
 }
 
-/// Database connection-pool and timeout tuning (Cluster 107). All fields are
-/// env-driven with defaults that reproduce the previous hardcoded behavior.
+/// Database connection-pool and timeout tuning. All fields are env-driven with
+/// defaults that reproduce the previous hardcoded behavior.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbConfig {
     /// Pool max connections. `None` keeps the dialect default (Postgres 16,

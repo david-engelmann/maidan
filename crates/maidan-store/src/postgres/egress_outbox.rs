@@ -1,6 +1,6 @@
-//! Durable projector egress outbox (Cluster 377.1): enqueue a message bound for an
-//! external surface and let a retry/backoff worker claim + deliver it, instead of
-//! the projectors' best-effort inline post. See the SQLite twin.
+//! Durable projector egress outbox: enqueue a message bound for an external
+//! surface and let a retry/backoff worker claim + deliver it, instead of the
+//! projectors' best-effort inline post. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};

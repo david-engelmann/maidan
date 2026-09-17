@@ -1,7 +1,7 @@
-//! Member inbox + mention tool handlers (Cluster 149). Lets an MCP-only agent
-//! discover it was @mentioned — the read side previously reachable over HTTP
-//! only (`/members/:id/mentions`, `/members/:id/inbox`). Cluster 196 adds
-//! `wait_for_mention`, a blocking long-poll over the event bus.
+//! Member inbox + mention tool handlers. Lets an MCP-only agent discover it was
+//! @mentioned — the read side previously reachable over HTTP only
+//! (`/members/:id/mentions`, `/members/:id/inbox`), plus `wait_for_mention`, a
+//! blocking long-poll over the event bus.
 
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
@@ -20,7 +20,7 @@ use crate::error::McpError;
 /// Default long-poll window, and the ceiling a caller may request.
 const DEFAULT_WAIT_MS: i64 = 30_000;
 const MAX_WAIT_MS: i64 = 300_000;
-/// Page size for the lookback replay over the durable event log (Cluster 354).
+/// Page size for the lookback replay over the durable event log.
 const LOOKBACK_BATCH: i64 = 256;
 
 /// Default + max list size, mirroring the context tools' clamp.
@@ -79,9 +79,9 @@ struct WaitForMentionArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped to 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
-    /// Lookback anchor (Cluster 354): the caller's high-water `log_id` from its
-    /// last drain. When set, the wait first replays the durable log for a matching
-    /// event with `log_id > since_log_id` before parking on the live stream — so a
+    /// Lookback anchor: the caller's high-water `log_id` from its last drain.
+    /// When set, the wait first replays the durable log for a matching event
+    /// with `log_id > since_log_id` before parking on the live stream — so a
     /// signal that fired in the gap between the drain and this subscribe is not
     /// missed. Omit for the pure-live behaviour.
     #[serde(default)]
@@ -114,11 +114,10 @@ pub(super) async fn wait_for_mention(
 }
 
 /// Shared member-addressed long-poll: block until an event of one of `kinds`
-/// addressed to `member_id` arrives, or the timeout lapses. Returns the triggering
-/// event (unless it lives in a thread the caller can't access — then keep waiting),
-/// or `null` on timeout. Backs `wait_for_mention` (Cluster 196) and
-/// `wait_for_notification` (Cluster 240). **Live** — only sees events after
-/// subscribe.
+/// addressed to `member_id` arrives, or the timeout lapses. Returns the
+/// triggering event (unless it lives in a thread the caller can't access — then
+/// keep waiting), or `null` on timeout. Backs `wait_for_mention` and
+/// `wait_for_notification`. **Live** — only sees events after subscribe.
 async fn wait_for_member_event(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -182,10 +181,10 @@ async fn wait_for_member_event(
 }
 
 /// Replay the durable event log for the earliest event of one of `kinds`
-/// addressed to `member_id` with `log_id > since` (Cluster 354 lookback). Returns
-/// the deserialized `Event`, RBAC-filtered like the live path (a match in a thread
-/// the caller can't access is skipped, not revealed), or `None` if the log has no
-/// such event. Scoped to `auth.workspace_id` — member-addressed events live there.
+/// addressed to `member_id` with `log_id > since`. Returns the deserialized
+/// `Event`, RBAC-filtered like the live path (a match in a thread the caller
+/// can't access is skipped, not revealed), or `None` if the log has no such
+/// event. Scoped to `auth.workspace_id` — member-addressed events live there.
 async fn lookback_member_event(
     store: &dyn Store,
     auth: &AuthContext,
@@ -224,9 +223,9 @@ async fn lookback_member_event(
     }
 }
 
-/// The event kinds the notification router (Cluster 238) turns into per-recipient
-/// notifications — the set `wait_for_notification` waits on. Grows as Arc H routes
-/// more kinds; keep in step with `notification_router::route_event`.
+/// The event kinds the notification router turns into per-recipient
+/// notifications — the set `wait_for_notification` waits on. Grows as Arc H
+/// routes more kinds; keep in step with `notification_router::route_event`.
 fn notifiable_kinds() -> HashSet<EventKind> {
     HashSet::from([EventKind::MentionRecorded])
 }
@@ -241,9 +240,9 @@ struct ListNotificationsArgs {
     limit: Option<i64>,
 }
 
-/// A member's per-recipient notifications (Cluster 240), newest first, optionally
-/// unread-only — the MCP twin of `GET /members/:id/notifications`. Mirrors the
-/// sibling inbox tools (`get_inbox`/`list_mentions`): a member-scoped read, no
+/// A member's per-recipient notifications, newest first, optionally unread-only
+/// — the MCP twin of `GET /members/:id/notifications`. Mirrors the sibling
+/// inbox tools (`get_inbox`/`list_mentions`): a member-scoped read, no
 /// per-channel filter.
 pub(super) async fn list_notifications(
     store: &Arc<dyn Store>,
@@ -265,8 +264,7 @@ struct WaitingArgs {
     sla_secs: Option<i64>,
 }
 
-/// The waiting-on-you inbox (Cluster 368, Wave 2 #16, the MCP twin of
-/// `GET /members/:id/waiting`): a member's assigned non-terminal threads + the
+/// The waiting-on-you inbox: a member's assigned non-terminal threads + the
 /// workspace's pending approval gates + their unread mentions, oldest-waiting
 /// first, each aged against `sla_secs`. `workspace:read`.
 pub(super) async fn get_waiting_inbox(
@@ -305,10 +303,9 @@ struct BuriedDecisionsArgs {
     limit: Option<i64>,
 }
 
-/// A member's buried decisions (Cluster 359, N2, the MCP twin of
-/// `GET /members/:id/decisions`) — task results produced by someone else in a
-/// channel/thread the member follows, since `since` (default 7 days ago), newest
-/// first. The decisions the digest surfaces, queryable directly.
+/// A member's buried decisions — task results produced by someone else in a
+/// channel/thread the member follows, since `since` (default 7 days ago),
+/// newest first. The decisions the digest surfaces, queryable directly.
 pub(super) async fn list_buried_decisions(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -325,8 +322,8 @@ pub(super) async fn list_buried_decisions(
 }
 
 /// A member's notifications collapsed into per-thread groups, newest-activity
-/// first (Cluster 359, N5) — the MCP twin of `GET /members/:id/notifications/grouped`.
-/// A busy thread shows as one group instead of flooding the flat list.
+/// first — the MCP twin of `GET /members/:id/notifications/grouped`. A busy
+/// thread shows as one group instead of flooding the flat list.
 pub(super) async fn list_notifications_grouped(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -345,7 +342,7 @@ struct MemberIdArg {
     member_id: uuid::Uuid,
 }
 
-/// A member's unread-notification badge count (Cluster 240).
+/// A member's unread-notification badge count.
 pub(super) async fn get_unread_count(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -364,8 +361,8 @@ struct MarkNotificationReadArgs {
     notification_id: uuid::Uuid,
 }
 
-/// Mark one of a member's notifications read (Cluster 240). Recipient-scoped in the
-/// store, so `{marked: false}` when the id isn't this member's.
+/// Mark one of a member's notifications read. Recipient-scoped in the store, so
+/// `{marked: false}` when the id isn't this member's.
 pub(super) async fn mark_notification_read(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -386,9 +383,9 @@ struct SnoozeNotificationArgs {
     until: chrono::DateTime<chrono::Utc>,
 }
 
-/// Snooze one of a member's notifications until `until` (Cluster 359, N5) — it
-/// drops out of the inbox + badge until then. Recipient-scoped, so
-/// `{snoozed: false}` when the id isn't this member's.
+/// Snooze one of a member's notifications until `until` — it drops out of the
+/// inbox + badge until then. Recipient-scoped, so `{snoozed: false}` when the
+/// id isn't this member's.
 pub(super) async fn snooze_notification(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -405,10 +402,10 @@ pub(super) async fn snooze_notification(
 }
 
 /// Block until `member_id` gets a new notification-worthy event, or the timeout
-/// lapses (Cluster 240). The general form of `wait_for_mention`: it waits on the
-/// event kinds the notification router acts on (today: mentions), filtered to this
-/// member, and returns the triggering event (RBAC-checked) or `null`. **Live** —
-/// drain existing notifications with `list_notifications`/`get_unread_count` first
+/// lapses. The general form of `wait_for_mention`: it waits on the event kinds
+/// the notification router acts on (today: mentions), filtered to this member,
+/// and returns the triggering event (RBAC-checked) or `null`. **Live** — drain
+/// existing notifications with `list_notifications`/`get_unread_count` first
 /// (the durable ledger + `GET /mcp/stream` are the at-least-once alternatives).
 pub(super) async fn wait_for_notification(
     server: &crate::server::McpServer,
@@ -436,9 +433,9 @@ struct SetNotificationPrefArgs {
     muted: bool,
 }
 
-/// Set a member's mute preference for an event kind (Cluster 243) — the MCP twin of
-/// `PUT /members/:id/notification-prefs`. The router skips writing notifications of a
-/// muted kind for this member.
+/// Set a member's mute preference for an event kind — the MCP twin of `PUT
+/// /members/:id/notification-prefs`. The router skips writing notifications of
+/// a muted kind for this member.
 pub(super) async fn set_notification_pref(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -458,7 +455,7 @@ struct ListNotificationPrefsArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's notification preferences (Cluster 243).
+/// A member's notification preferences.
 pub(super) async fn list_notification_prefs(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -476,9 +473,9 @@ struct SetDeliveryModeArgs {
     mode: String,
 }
 
-/// Set a member's email delivery mode (Cluster 257) — the MCP twin of
-/// `PUT /members/:id/delivery-mode`. `digest` opts out of per-notification emails
-/// in favour of the sweeper's periodic rollup.
+/// Set a member's email delivery mode — the MCP twin of `PUT
+/// /members/:id/delivery-mode`. `digest` opts out of per-notification emails in
+/// favour of the sweeper's periodic rollup.
 pub(super) async fn set_delivery_mode(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -496,7 +493,7 @@ struct GetDeliveryModeArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's email delivery mode (Cluster 257) — `immediate` when never set.
+/// A member's email delivery mode — `immediate` when never set.
 pub(super) async fn get_delivery_mode(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -513,8 +510,8 @@ struct SetMemberEmailArgs {
     email: String,
 }
 
-/// Set a member's delivery email (Cluster 268) — the MCP twin of
-/// `PUT /members/:id/email`. Light `@` sanity check; full validation at the transport.
+/// Set a member's delivery email — the MCP twin of `PUT /members/:id/email`.
+/// Light `@` sanity check; full validation at the transport.
 pub(super) async fn set_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -536,7 +533,7 @@ struct MemberEmailArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's delivery email, or `null` if unset (Cluster 268).
+/// A member's delivery email, or `null` if unset.
 pub(super) async fn get_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -546,7 +543,7 @@ pub(super) async fn get_member_email(
     Ok(content_json(&email))
 }
 
-/// Clear a member's delivery email (Cluster 268) — opting out. Returns `{deleted}`.
+/// Clear a member's delivery email — opting out. Returns `{deleted}`.
 pub(super) async fn delete_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -563,8 +560,8 @@ struct FollowChannelArgs {
     channel_id: uuid::Uuid,
 }
 
-/// Follow a channel to be notified of activity there (Cluster 246). Channel access
-/// is enforced pre-dispatch (the `channel_id` arg). Idempotent.
+/// Follow a channel to be notified of activity there. Channel access is
+/// enforced pre-dispatch (the `channel_id` arg). Idempotent.
 pub(super) async fn follow_channel(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -576,7 +573,7 @@ pub(super) async fn follow_channel(
     Ok(content_json(&serde_json::json!({ "following": true })))
 }
 
-/// Unfollow a channel (Cluster 246). `removed` is false if not following.
+/// Unfollow a channel. `removed` is false if not following.
 pub(super) async fn unfollow_channel(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -588,7 +585,7 @@ pub(super) async fn unfollow_channel(
     Ok(content_json(&serde_json::json!({ "removed": removed })))
 }
 
-/// The channels a member follows (Cluster 246).
+/// The channels a member follows.
 pub(super) async fn list_channel_follows(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -606,8 +603,8 @@ struct FollowThreadArgs {
     thread_id: uuid::Uuid,
 }
 
-/// Follow a thread to be notified of activity there (Cluster 246). Thread access is
-/// enforced pre-dispatch (the `thread_id` arg). Idempotent.
+/// Follow a thread to be notified of activity there. Thread access is enforced
+/// pre-dispatch (the `thread_id` arg). Idempotent.
 pub(super) async fn follow_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: FollowThreadArgs = serde_json::from_value(args.clone())?;
     store
@@ -616,7 +613,7 @@ pub(super) async fn follow_thread(store: &Arc<dyn Store>, args: &Value) -> Resul
     Ok(content_json(&serde_json::json!({ "following": true })))
 }
 
-/// Unfollow a thread (Cluster 246). `removed` is false if not following.
+/// Unfollow a thread. `removed` is false if not following.
 pub(super) async fn unfollow_thread(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -628,7 +625,7 @@ pub(super) async fn unfollow_thread(
     Ok(content_json(&serde_json::json!({ "removed": removed })))
 }
 
-/// The threads a member follows (Cluster 246).
+/// The threads a member follows.
 pub(super) async fn list_thread_follows(
     store: &Arc<dyn Store>,
     args: &Value,

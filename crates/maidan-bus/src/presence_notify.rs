@@ -1,4 +1,4 @@
-//! Cross-process presence/typing fan-out (Cluster 103).
+//! Cross-process presence/typing fan-out.
 //!
 //! Sibling of [`crate::resource_notify`]: where that channel carries resource
 //! URIs, this one carries typed [`PresenceEvent`]s so presence, typing, and the
@@ -14,8 +14,8 @@
 //!
 //! Two implementations mirror [`crate::EventBus`]: [`InMemoryPresenceNotifier`]
 //! (single process / SQLite / tests) and [`PostgresPresenceNotifier`]
-//! (`LISTEN`/`NOTIFY` on `maidan_presence`). Delivery is at-most-once; a dropped
-//! event is reconciled by the next heartbeat (or the TTL sweep).
+//! (`LISTEN`/`NOTIFY` on `maidan_presence`). Delivery is at-most-once; a
+//! dropped event is reconciled by the next heartbeat (or the TTL sweep).
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

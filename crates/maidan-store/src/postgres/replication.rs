@@ -1,5 +1,5 @@
-//! Read-replica LSN helpers (Cluster 261, Program D). Called directly by the bus /
-//! router (like `events::get_by_id`), not via the `Store` trait — they are a
+//! Read-replica LSN helpers. Called directly by the bus / router (like
+//! `events::get_by_id`), not via the `Store` trait — they are a
 //! Postgres-streaming-replication concern with no SQLite analogue.
 
 use maidan_types::Lsn;

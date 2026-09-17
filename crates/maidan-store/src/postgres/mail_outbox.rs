@@ -1,6 +1,6 @@
-//! Durable mail outbox store (Cluster 304): enqueue notification emails and let a
-//! retry/backoff worker claim + deliver them, instead of a best-effort send with
-//! no retry. See the SQLite twin.
+//! Durable mail outbox store: enqueue notification emails and let a
+//! retry/backoff worker claim + deliver them, instead of a best-effort send
+//! with no retry. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
@@ -116,7 +116,7 @@ pub async fn count_dead(pool: &PgPool) -> Result<i64, StoreError> {
 }
 
 /// List dead-lettered entries, newest-updated first (the operator DLQ view).
-/// Dead-lettered mail for the operator DLQ (Cluster 398.3).
+/// Dead-lettered mail for the operator DLQ.
 ///
 /// `scope = Some(ws)` returns that workspace's rows only — the default, because
 /// `token:admin` is per-workspace and these rows carry recipient addresses,

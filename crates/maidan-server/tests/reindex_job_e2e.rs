@@ -1,4 +1,4 @@
-//! Operator reindex embeddings job API (Cluster 87.0).
+//! Operator reindex embeddings job API.
 
 use std::sync::Arc;
 use std::time::Duration;

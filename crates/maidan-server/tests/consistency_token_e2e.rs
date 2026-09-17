@@ -1,6 +1,6 @@
-//! Cluster 263: the `Maidan-Consistency-Token` response header. On a successful
-//! mutation, when a read replica is configured, the server stamps the primary's
-//! WAL LSN so a client can echo it on a later read. Postgres-backed (SQLite has no
+//! The `Maidan-Consistency-Token` response header. On a successful mutation,
+//! when a read replica is configured, the server stamps the primary's WAL LSN
+//! so a client can echo it on a later read. Postgres-backed (SQLite has no
 //! LSN); skips when Docker is unavailable.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};

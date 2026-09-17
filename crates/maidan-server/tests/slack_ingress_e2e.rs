@@ -1,6 +1,6 @@
-//! Cluster 307: the Slack projector ingress. A correctly-signed `url_verification`
-//! is echoed back its challenge; the route is `404` when the projector is not
-//! configured and `401` on a bad signature.
+//! The Slack projector ingress. A correctly-signed `url_verification` is echoed
+//! back its challenge; the route is `404` when the projector is not configured
+//! and `401` on a bad signature.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

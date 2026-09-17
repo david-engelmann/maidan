@@ -1,8 +1,7 @@
-//! Spawn-budget config over HTTP (Cluster 376.4, Wave 2 #23). Auth ENABLED so
-//! the capability gate is exercised: set/get the three axes, prove the *set*
-//! budget is what the Cluster-376.2 gate enforces (a child past `max_children`
-//! is 409), prove clearing it re-opens spawning, and prove a token without
-//! `workspace:write` cannot change it.
+//! Spawn-budget config over HTTP. Auth ENABLED so the capability gate is
+//! exercised: set/get the three axes, prove the *set* budget is what the gate
+//! enforces (a child past `max_children` is 409), prove clearing it re-opens
+//! spawning, and prove a token without `workspace:write` cannot change it.
 
 use std::{
     net::SocketAddr,

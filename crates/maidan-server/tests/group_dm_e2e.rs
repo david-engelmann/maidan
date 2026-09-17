@@ -1,4 +1,4 @@
-//! Cluster 97: multi-member group DM threads.
+//! Multi-member group DM threads.
 
 use std::{
     net::SocketAddr,

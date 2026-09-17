@@ -1,7 +1,7 @@
-//! Reader-pool split (Cluster 262): a `PostgresStore` built with a distinct read
-//! pool still reads and writes correctly. Uses the same pool for both roles (no
-//! real replica needed) — the point is the two-pool constructor, not routing
-//! (which arrives in Cluster 264).
+//! Reader-pool split: a `PostgresStore` built with a distinct read pool still
+//! reads and writes correctly. Uses the same pool for both roles (no real
+//! replica needed) — the point is the two-pool constructor, not routing (which
+//! arrives).
 
 use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::NewWorkspace;

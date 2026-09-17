@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Load / soak harness runner (Cluster 198, Arc D).
+# Load / soak harness runner.
 #
 # Drives concurrent REST traffic (post message / read thread / search) at the
 # server and prints per-op latency percentiles + throughput — the baseline the

@@ -2,11 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Cluster 71: HTTP mutations fan out via publish_resource_uris; MCP tools/call via
+# HTTP mutations fan out via publish_resource_uris; MCP tools/call via
 # queue_resource_updates on McpServer (grep parity checklist).
 
 # routes.rs and tools.rs were split into domain module directories
-# (Cluster 115); grep the directories recursively.
+#; grep the directories recursively.
 ROUTES="crates/maidan-server/src/routes"
 TOOLS="crates/maidan-mcp/src/tools"
 SERVER="crates/maidan-mcp/src/server.rs"

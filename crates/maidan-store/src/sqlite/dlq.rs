@@ -8,9 +8,9 @@ use crate::error::StoreError;
 const COLS: &str = "id, workspace_id, channel_id, thread_id, member_id, reason, \
      used_tokens, used_usd_micros, used_turns, failed_at";
 
-/// Record a dead-lettered agent run (Cluster 358, T1/T5). `id`/`failed_at` are
-/// assigned here; `failed_at` is bound rfc3339 (not the `datetime('now')` default)
-/// so it reads back as `DateTime<Utc>` cleanly.
+/// Record a dead-lettered agent run. `id`/`failed_at` are assigned here;
+/// `failed_at` is bound rfc3339 (not the `datetime('now')` default) so it reads
+/// back as `DateTime<Utc>` cleanly.
 pub async fn record(pool: &SqlitePool, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
     let mut tx = pool.begin().await?;
     let entry = record_in_tx(&mut tx, new).await?;
@@ -18,8 +18,8 @@ pub async fn record(pool: &SqlitePool, new: &NewDlqEntry) -> Result<DlqEntry, St
     Ok(entry)
 }
 
-/// Record a dead-lettered run on a caller-supplied tx (Cluster 358.3) — so the
-/// DLQ write is atomic with the claim release + `ClaimFailed` append.
+/// Record a dead-lettered run on a caller-supplied tx — so the DLQ write is
+/// atomic with the claim release + `ClaimFailed` append.
 pub async fn record_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     new: &NewDlqEntry,
@@ -49,7 +49,7 @@ pub async fn record_in_tx(
     Ok(row_to_dlq(&row))
 }
 
-/// A channel's dead-lettered runs, newest first (Cluster 358).
+/// A channel's dead-lettered runs, newest first.
 pub async fn list_for_channel(
     pool: &SqlitePool,
     channel_id: ChannelId,

@@ -1,5 +1,5 @@
-//! `maidan init` (Cluster 279): a one-time first-admin bootstrap that creates the
-//! initial workspace + admin member + an all-capabilities token, and refuses on an
+//! `maidan init`: a one-time first-admin bootstrap that creates the initial
+//! workspace + admin member + an all-capabilities token, and refuses on an
 //! already-initialized database.
 
 use std::process::Command;

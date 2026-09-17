@@ -1,6 +1,5 @@
-//! Recipe blueprint store (Cluster 370, Wave 2 #18): create/get/list/delete +
-//! the JSON `spec` round-trip. Both backends. Instantiation (`recipe_runs`) is
-//! Cluster 370.2.
+//! Recipe blueprint store: create/get/list/delete + the JSON `spec` round-trip.
+//! Both backends. Instantiation (`recipe_runs`) has its own suite.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -104,7 +103,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(list.len(), 2);
     assert_eq!(list[0].id, second.id, "newest first");
 
-    // --- Instantiation (Cluster 370.2): build + review(←build), build needs "rust".
+    // --- Instantiation: build + review(←build), build needs "rust".
     let (run, evs) = store
         .instantiate_recipe(recipe.id, serde_json::json!({ "repo": "x/y" }), member.id)
         .await

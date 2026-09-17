@@ -1,4 +1,4 @@
-//! Cluster 90: alert templates reference metrics the server exports.
+//! Alert templates reference metrics the server exports.
 
 use std::path::PathBuf;
 
@@ -17,15 +17,15 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_bus_listener_ok",
         "maidan_indexer_last_event_age_seconds",
         "maidan_subscribe_replay_total",
-        // Cluster 116 batched-embed indexer gauges (Cluster 121 coverage uplift).
+        // Batched-embed indexer gauges.
         "maidan_indexer_queue_depth",
         "maidan_indexer_queue_capacity",
         "maidan_indexer_embed_failed_total",
-        // Cluster 398.2: the other two dead-letter queues. Both had a
-        // `count_dead_*` store method and no gauge, so a projector delivery that
-        // had given up on a tenant's Slack channel — or a notification email
-        // that would never arrive — was invisible to alerting, while the outbox
-        // has been alertable since Cluster 90.
+        // The other two dead-letter queues. Both had a `count_dead_*` store
+        // method and no gauge, so a projector delivery that had given up on a
+        // tenant's Slack channel — or a notification email that would never
+        // arrive — was invisible to alerting, while the outbox has been
+        // alertable for far longer.
         "maidan_egress_dead",
         "maidan_mail_dead",
     ];

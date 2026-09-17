@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Maidan backup (Cluster 260, Program D — disaster recovery).
+# Maidan backup.
 #
 # Captures the two pieces of durable state:
 #   1. Postgres  — the system of record (all workspaces/messages/events/audit/
@@ -17,7 +17,7 @@
 #   DATABASE_URL=postgres://…  scripts/backup.sh [BACKUP_DIR]
 #   ARTIFACT_LOCALFS_ROOT=/var/lib/maidan/artifacts  DATABASE_URL=…  scripts/backup.sh
 #
-# BACKUP_DIR defaults to ./backups/<UTC-timestamp>. Prints the directory it wrote.
+# BACKUP_DIR defaults to./backups/<UTC-timestamp>. Prints the directory it wrote.
 set -euo pipefail
 
 : "${DATABASE_URL:?set DATABASE_URL to the Postgres connection string}"

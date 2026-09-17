@@ -32,8 +32,8 @@ pub(super) async fn cast_vote(
             ));
         }
     }
-    // Cluster 334: emit the domain event (atomic) + bus-notify, like REST — so
-    // MCP votes/reactions/pins reach WS/SSE, at-least-once, and federation.
+    // Emit the domain event (atomic) + bus-notify, like REST — so MCP
+    // votes/reactions/pins reach WS/SSE, at-least-once, and federation.
     let stored = server
         .store
         .cast_vote_with_event(NewVote {

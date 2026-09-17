@@ -1,5 +1,5 @@
-//! OAuth authorization code store (Cluster 104.0.1): single-use + TTL, both
-//! backends behave identically.
+//! OAuth authorization code store: single-use + TTL, both backends behave
+//! identically.
 
 use std::time::Duration;
 

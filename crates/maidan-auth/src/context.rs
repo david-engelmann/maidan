@@ -75,8 +75,8 @@ impl AuthContext {
         self.bypass || self.capabilities.iter().any(|c| c == cap)
     }
 
-    /// The capabilities granted to this caller (Cluster 336 — `whoami` / `GET /me`
-    /// self-discovery). Empty for a bypass caller (auth disabled).
+    /// The capabilities granted to this caller. Empty for a bypass caller (auth
+    /// disabled).
     pub fn capabilities(&self) -> &[String] {
         &self.capabilities
     }

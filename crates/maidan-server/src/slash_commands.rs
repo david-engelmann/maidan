@@ -446,15 +446,16 @@ async fn dispatch_mcp_tool(
 }
 
 /// Build a tool call from a slash invocation, injecting **only the context the
-/// tool declares** (Cluster 398.6).
+/// tool declares**.
 ///
-/// This used to inject `workspace_id`, `channel_id`, `thread_id` and `author_id`
-/// into every call regardless, and relied on each tool silently discarding what
-/// it did not declare. That stopped being true when the argument structs began
-/// rejecting unknown fields — `/channels` → `list_channels` started failing
-/// because it was handed three ids it never asked for — and it was a poor thing
-/// to depend on in the first place: a bridge that sprays arguments at a callee
-/// is indistinguishable from one that is passing the wrong ones.
+/// This used to inject `workspace_id`, `channel_id`, `thread_id` and
+/// `author_id` into every call regardless, and relied on each tool silently
+/// discarding what it did not declare. That stopped being true when the
+/// argument structs began rejecting unknown fields — `/channels` →
+/// `list_channels` started failing because it was handed three ids it never
+/// asked for — and it was a poor thing to depend on in the first place: a
+/// bridge that sprays arguments at a callee is indistinguishable from one that
+/// is passing the wrong ones.
 ///
 /// The catalog already publishes each tool's `inputSchema`, so the declared
 /// property set is the honest filter. A tool with no schema entry (or an empty
@@ -524,9 +525,9 @@ pub struct SlashInvocationSummary {
     pub ok: bool,
 }
 
-/// The server-side [`maidan_mcp::SlashDispatcher`] (Cluster 345): lets the MCP
-/// `post_message` handler (in `maidan-mcp`) run registered slash commands, which
-/// live here. Attached to the `McpServer` once at startup from `main.rs`, so the
+/// The server-side [`maidan_mcp::SlashDispatcher`]: lets the MCP `post_message`
+/// handler (in `maidan-mcp`) run registered slash commands, which live here.
+/// Attached to the `McpServer` once at startup from `main.rs`, so the
 /// `AppState` it holds and the `Arc<McpServer>` inside it form a deliberate
 /// process-lifetime shared-state graph (never built in tests, which leave the
 /// dispatcher unset).
@@ -587,7 +588,7 @@ mod mcp_argument_tests {
         )
     }
 
-    /// Cluster 398.6: the bridge injects only what the tool declares.
+    /// The bridge injects only what the tool declares.
     ///
     /// It used to add all four context ids to every call and rely on the tool
     /// discarding the ones it did not want. `list_channels` takes a

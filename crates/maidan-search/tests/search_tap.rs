@@ -1,4 +1,4 @@
-//! Search indexer as a tap projector (Cluster 393.4).
+//! Search indexer as a tap projector.
 
 use std::{
     sync::{atomic::Ordering, Arc, Mutex},
@@ -123,11 +123,11 @@ async fn broken_chain_fails_closed_and_does_not_project_later_messages() {
 
     let mut tap = SearchTap::new();
     let kinds = Arc::new(Mutex::new(Vec::new()));
-    // Cluster 402.1: the backfill completes rather than aborting the whole tap,
-    // but the tampered workspace is faulted and **nothing from it is
-    // projected**. The safety property is unchanged — a diverged chain is never
-    // served — what changed is that one tenant's break no longer stops indexing
-    // for every other tenant.
+    // The backfill completes rather than aborting the whole tap, but the
+    // tampered workspace is faulted and **nothing from it is projected**. The
+    // safety property is unchanged — a diverged chain is never served — what
+    // changed is that one tenant's break no longer stops indexing for every
+    // other tenant.
     backfill_search(&store, &mut tap, {
         let kinds = kinds.clone();
         move |row| {
@@ -176,11 +176,11 @@ async fn indexer_with_log_backfills_before_live() {
     indexer.shutdown().await;
 }
 
-/// Cluster 402.2: a resumed backfill projects only what is new, and still
-/// verifies it.
+/// A resumed backfill projects only what is new, and still verifies it.
 ///
 /// `backfill_search` walked from id 0 on every start, resubscribe and `Lagged`,
-/// re-projecting all history each time — on Postgres that means re-embedding it.
+/// re-projecting all history each time — on Postgres that means re-embedding
+/// it.
 #[tokio::test]
 async fn a_resumed_backfill_projects_only_new_events() {
     let (store, _pool) = sqlite().await;

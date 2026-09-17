@@ -71,8 +71,7 @@ pub(super) async fn remove_channel_member(
     Ok(content_json(&serde_json::json!({"ok": true})))
 }
 
-/// Mute a channel for the caller (Cluster 357, N3, the MCP twin of
-/// `POST /channels/:cid/mute`). The notification router then suppresses the
+/// Mute a channel for the caller. The notification router then suppresses the
 /// channel's firehose for the caller — a mention still breaks through. Channel
 /// access is enforced pre-dispatch.
 pub(super) async fn mute_channel(
@@ -87,8 +86,8 @@ pub(super) async fn mute_channel(
     Ok(content_json(&serde_json::json!({ "muted": true })))
 }
 
-/// Unmute a channel for the caller (Cluster 357, N3, the MCP twin of
-/// `DELETE /channels/:cid/mute`). `{unmuted}` is `false` when it was not muted.
+/// Unmute a channel for the caller. `{unmuted}` is `false` when it was not
+/// muted.
 pub(super) async fn unmute_channel(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -111,7 +110,7 @@ pub(super) async fn list_channels(
     if auth.bypass {
         return Ok(content_json(&channels));
     }
-    // Hide private channels the caller is not a member of (Cluster 162).
+    // Hide private channels the caller is not a member of.
     let mut visible = Vec::with_capacity(channels.len());
     for ch in channels {
         if !ch.private

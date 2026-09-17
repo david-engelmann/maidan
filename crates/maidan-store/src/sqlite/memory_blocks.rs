@@ -1,7 +1,7 @@
-//! Attachable labeled memory-block store (Cluster 373, Wave 2 #21, SQLite twin of
-//! pg 0078). A block is a Letta-shaped `{label, description, limit, read_only,
-//! value}` workspace object a thread attaches to; `set_value` is a full rewrite
-//! (last-writer-wins) refusing a read-only block or an over-limit value.
+//! Attachable labeled memory-block store. A block is a Letta-shaped `{label,
+//! description, limit, read_only, value}` workspace object a thread attaches
+//! to; `set_value` is a full rewrite (last-writer-wins) refusing a read-only
+//! block or an over-limit value.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

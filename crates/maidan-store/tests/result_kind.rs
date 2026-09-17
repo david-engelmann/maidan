@@ -1,7 +1,7 @@
-//! `result_kind` search facet (Cluster 381): exact match on the namespaced
-//! string extracted from a thread result. Both backends. Not a closed enum —
+//! `result_kind` search facet: exact match on the namespaced string extracted
+//! from a thread result. Both backends. Not a closed enum —
 //! `example.review.result/1` is just a string, and a different producer kind is
-//! equally first-class. Does not touch Cluster 382's in-channel closed list.
+//! equally first-class. Does not touch the in-channel closed list.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{

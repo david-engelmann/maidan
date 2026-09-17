@@ -1,8 +1,8 @@
-//! Cluster 312: GitHub projector egress. A Maidan message in a linked thread is
-//! relayed as a GitHub issue/PR comment; a GitHub-sourced message (metadata tag)
-//! is not echoed back (loop prevention); an unlinked thread is ignored.
+//! GitHub projector egress. A Maidan message in a linked thread is relayed as a
+//! GitHub issue/PR comment; a GitHub-sourced message (metadata tag) is not
+//! echoed back (loop prevention); an unlinked thread is ignored.
 //!
-//! Since Cluster 377.2 the relay is durable: `route_message_to_github` enqueues
+//! The relay is durable: `route_message_to_github` enqueues
 //! and the egress worker posts, so each case sweeps the queue before asserting.
 
 use std::sync::{Arc, Mutex};
@@ -48,7 +48,7 @@ impl GithubSender for MockSender {
         _comment_id: i64,
         _text: &str,
     ) -> Result<(), GithubError> {
-        unreachable!("the projector egress never updates; that is Cluster 379.4")
+        unreachable!("the projector egress never updates; that is result delivery")
     }
 
     async fn list_issue_comments(
@@ -56,7 +56,7 @@ impl GithubSender for MockSender {
         _repo: &str,
         _issue_number: i64,
     ) -> Result<Vec<maidan_server::github::GithubIssueComment>, GithubError> {
-        unreachable!("the projector egress never lists comments; that is Cluster 379.4")
+        unreachable!("the projector egress never lists comments; that is result delivery")
     }
 
     async fn create_review(
@@ -66,7 +66,7 @@ impl GithubSender for MockSender {
         _commit_id: &str,
         _comments: &[maidan_types::GithubReviewComment],
     ) -> Result<(), GithubError> {
-        unreachable!("the projector egress never creates a review; that is Cluster 380.2")
+        unreachable!("the projector egress never creates a review; that is result delivery")
     }
 }
 

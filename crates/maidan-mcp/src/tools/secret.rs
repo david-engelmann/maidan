@@ -1,8 +1,8 @@
-//! Named-secret MCP tools (Cluster 371.3, Wave 2 #19): an agent lists a
-//! workspace's secrets (metadata) and **resolves** one by name — the
-//! "consumer fetches at exec" path. The REST twin is Cluster 371.2. Both are `secret:read`; the
-//! value crosses the wire only on resolve (decrypted with the server's key),
-//! never in the event log. Minting/rotating/deleting stay REST-only (`secret:admin`).
+//! Named-secret MCP tools: an agent lists a workspace's secrets (metadata) and
+//! **resolves** one by name — the "consumer fetches at exec" path, mirroring
+//! the REST surface. Both are `secret:read`; the value crosses the wire
+//! only on resolve (decrypted with the server's key), never in the event log.
+//! Minting/rotating/deleting stay REST-only (`secret:admin`).
 
 use std::sync::Arc;
 
@@ -30,8 +30,8 @@ struct ResolveArgs {
     name: String,
 }
 
-/// Resolve a named secret to its value (Cluster 371.3) — "a consumer fetches at exec".
-/// Needs the server's at-rest key to decrypt; `NotFound` when the name is unknown.
+/// Resolve a named secret to its value — "a consumer fetches at exec". Needs
+/// the server's at-rest key to decrypt; `NotFound` when the name is unknown.
 pub(super) async fn resolve_secret(
     server: &crate::server::McpServer,
     auth: &AuthContext,

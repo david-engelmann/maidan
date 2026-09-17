@@ -1,4 +1,4 @@
-//! Per-workspace usage snapshot for metering / quota visibility (Cluster 188).
+//! Per-workspace usage snapshot for metering / quota visibility.
 
 use serde::{Deserialize, Serialize};
 

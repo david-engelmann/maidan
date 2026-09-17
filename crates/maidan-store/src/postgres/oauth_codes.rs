@@ -1,4 +1,4 @@
-//! Postgres-backed one-time OAuth authorization codes (Cluster 104).
+//! Postgres-backed one-time OAuth authorization codes.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{AppId, NewOAuthCode, OAuthCode, WorkspaceId};

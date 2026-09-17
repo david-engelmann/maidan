@@ -78,13 +78,13 @@ pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) ->
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
-/// Anti-spoofing guard (Cluster 202): a **session** caller (browser/OIDC login,
-/// no API token) may only act as its *own* member. `claimed` is the
-/// caller-supplied acting member — the `author_id`/`actor_id`/`editor_id`/voter
-/// on a member-attributed write. A **bearer token** is the orchestrator model
-/// and may legitimately act as any member in its workspace (unchanged);
-/// `bypass` (auth disabled / tests) is unrestricted. This centralizes the guard
-/// that previously lived only on `post_message`.
+/// Anti-spoofing guard: a **session** caller (browser/OIDC login, no API token)
+/// may only act as its *own* member. `claimed` is the caller-supplied acting
+/// member — the `author_id`/`actor_id`/`editor_id`/voter on a member-attributed
+/// write. A **bearer token** is the orchestrator model and may legitimately act
+/// as any member in its workspace (unchanged); `bypass` (auth disabled / tests)
+/// is unrestricted. This centralizes the guard that previously lived only on
+/// `post_message`.
 pub(crate) fn ensure_acting_member(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
     if !auth.bypass && auth.token_id.is_none() && claimed != auth.member_id {
         return Err(ApiError::Forbidden(
@@ -94,12 +94,12 @@ pub(crate) fn ensure_acting_member(auth: &AuthContext, claimed: MemberId) -> Api
     Ok(())
 }
 
-/// Whether `member` is at (or over) their workspace's WIP limit (Cluster 362,
-/// G11): they already hold ≥ the cap in concurrent live claims, so `claim`/
-/// `claim_next` must not hand them more. `false` when the workspace has no limit
-/// set (unlimited). A soft limit — the count and the limit are read on the primary
-/// but not in the claim's transaction, so a member self-racing two concurrent
-/// claims could momentarily reach limit+1; the occupancy view shows the truth.
+/// Whether `member` is at (or over) their workspace's WIP limit: they already
+/// hold ≥ the cap in concurrent live claims, so `claim`/ `claim_next` must not
+/// hand them more. `false` when the workspace has no limit set (unlimited). A
+/// soft limit — the count and the limit are read on the primary but not in the
+/// claim's transaction, so a member self-racing two concurrent claims could
+/// momentarily reach limit+1; the occupancy view shows the truth.
 pub(crate) async fn at_wip_limit(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,
@@ -132,10 +132,11 @@ pub(crate) async fn publish_routed_mentions(
     workspace_id: WorkspaceId,
     message: &Message,
 ) {
-    // Cluster 338: the common case is a post with no `@handles` — short-circuit
-    // before any store work. Otherwise route with the workspace the caller already
+    // The common case is a post with no `@handles` — short-circuit before any
+    // store work. Otherwise route with the workspace the caller already
     // resolved, so we skip the per-post `resolve_message_chain` round-trip that
-    // `route_mentions_for_message` did only to re-derive that same workspace id.
+    // `route_mentions_for_message` did only to re-derive that same workspace
+    // id.
     if parse_at_handles(&message.body).is_empty() {
         return;
     }
@@ -170,8 +171,8 @@ pub(crate) async fn publish_routed_mentions(
 }
 
 /// Extra attempts to re-append a domain event after the first fails, before
-/// conceding a lost event (Cluster 184). Transient store errors (pool timeout,
-/// brief lock contention) are the common failure and usually clear on retry.
+/// conceding a lost event. Transient store errors (pool timeout, brief lock
+/// contention) are the common failure and usually clear on retry.
 const EVENT_APPEND_ATTEMPTS: u32 = 3;
 const EVENT_APPEND_BACKOFF: std::time::Duration = std::time::Duration::from_millis(50);
 
@@ -203,13 +204,13 @@ where
 /// Publish a domain event after the mutation's store call succeeded.
 ///
 /// The **durable append** and the **bus notify** are treated differently. A bus
-/// failure is benign — the event is already logged (and in relay mode the outbox
-/// will deliver it), so it should never turn a successful mutation into a 5xx.
-/// A durable **append** failure is not benign: the domain row committed but the
-/// event would be lost (no notifications, no delivery, no indexing). So the
-/// append is retried on transient errors (Cluster 184); a hard failure after
-/// retries is logged loudly and counted (`maidan_event_append_failures_total`)
-/// for alerting. True single-transaction atomicity of the domain write and the
+/// failure is benign — the event is already logged (and in relay mode the
+/// outbox will deliver it), so it should never turn a successful mutation into
+/// a 5xx. A durable **append** failure is not benign: the domain row committed
+/// but the event would be lost (no notifications, no delivery, no indexing). So
+/// the append is retried on transient errors; a hard failure after retries is
+/// logged loudly and counted (`maidan_event_append_failures_total`) for
+/// alerting. True single-transaction atomicity of the domain write and the
 /// event append is a larger refactor tracked in Open Work.
 ///
 /// Returns the new `log_id` when the append succeeded.
@@ -246,8 +247,8 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
         }
     };
     if state.outbox_relay {
-        // Wake an idle relay promptly (Cluster 108). Capacity-1 channel: a
-        // `Full` error means a nudge is already queued, which is enough.
+        // Wake an idle relay promptly. Capacity-1 channel: a `Full` error means
+        // a nudge is already queued, which is enough.
         if let Some(nudge) = &state.outbox_nudge {
             let _ = nudge.try_send(());
         }
@@ -263,15 +264,16 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     Some(stored.id)
 }
 
-/// Pass a mutation's result through, first recording a `ThreadSpawnDenied` event
-/// (Cluster 376.6) when the store refused the spawn.
+/// Pass a mutation's result through, first recording a `ThreadSpawnDenied`
+/// event when the store refused the spawn.
 ///
 /// The refusal already reaches the caller as a 409 — this is the *operator's*
 /// view: which member keeps pushing a claim past its fan-out cap, on the same
-/// event stream as everything else in the room. The store owns the gate (Cluster
+/// event stream as everything else in the room. The store owns the gate
+/// (Cluster
 /// 376.2/376.3) but has no author on the thread-create path, so the route
-/// supplies `actor`. Best-effort by construction: [`publish`] already swallows a
-/// bus hiccup, and a lost append cannot make the refusal any less refused.
+/// supplies `actor`. Best-effort by construction: [`publish`] already swallows
+/// a bus hiccup, and a lost append cannot make the refusal any less refused.
 pub(crate) async fn observe_spawn_denial<T>(
     state: &AppState,
     actor: Option<MemberId>,
@@ -288,11 +290,10 @@ pub(crate) async fn observe_spawn_denial<T>(
 }
 
 /// Notify the bus for an event that was **already appended durably** inside the
-/// mutation's transaction (Cluster 205 transactional outbox). Unlike [`publish`],
-/// there is no durable append here — the domain row and the event were committed
-/// atomically by the `*_with_event` store method — so this is purely the
-/// best-effort live notification, and a bus/relay hiccup can never undo a
-/// committed mutation.
+/// mutation's transaction. Unlike [`publish`], there is no durable append here
+/// — the domain row and the event were committed atomically by the
+/// `*_with_event` store method — so this is purely the best-effort live
+/// notification, and a bus/relay hiccup can never undo a committed mutation.
 pub(crate) async fn publish_stored(state: &AppState, stored: StoredEvent) {
     if state.outbox_relay {
         if let Some(nudge) = &state.outbox_nudge {

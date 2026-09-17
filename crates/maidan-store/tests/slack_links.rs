@@ -1,5 +1,5 @@
-//! Slack projector channel links (Cluster 308): link (upsert) / get / list /
-//! unlink a Slack channel → Maidan channel/thread/member mapping. Both backends.
+//! Slack projector channel links: link (upsert) / get / list / unlink a Slack
+//! channel → Maidan channel/thread/member mapping. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -127,8 +127,8 @@ async fn run_suite(store: &dyn Store) {
         1
     );
 
-    // Retry-then-disable (Cluster 377.3): a broken link is turned off, and only
-    // the first failure gets to announce it. Re-linking is the re-enable path.
+    // Retry-then-disable: a broken link is turned off, and only the first
+    // failure gets to announce it. Re-linking is the re-enable path.
     assert!(store
         .get_slack_channel_link("C123")
         .await

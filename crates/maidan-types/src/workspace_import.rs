@@ -1,5 +1,5 @@
-//! Pure flatten / remap over a workspace export graph (Cluster 270 / 391).
-//! Shared by REST and MCP so both import paths rewrite ids the same way.
+//! Pure flatten / remap over a workspace export graph. Shared by REST and MCP
+//! so both import paths rewrite ids the same way.
 
 use std::collections::HashMap;
 

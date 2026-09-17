@@ -1,4 +1,4 @@
-//! Result-delivery state (Cluster 379.1). See the SQLite twin and
+//! Result-delivery state. See the SQLite twin and
 //! `migrations/postgres/0085_result_deliveries.sql`.
 
 use chrono::{DateTime, Utc};
@@ -73,12 +73,12 @@ pub async fn arm_at(
     Ok(row.as_ref().map(row_to_delivery))
 }
 
-/// Record a delivery that landed: `delivered`, the handle to edit next time, and
-/// the revision that actually reached the surface.
+/// Record a delivery that landed: `delivered`, the handle to edit next time,
+/// and the revision that actually reached the surface.
 ///
-/// `external_ref` is `None` when the surface accepted the message but handed back
-/// no usable handle (Cluster 378.2) — still a delivery, just not an addressable
-/// one, so the next revision posts instead of editing.
+/// `external_ref` is `None` when the surface accepted the message but handed
+/// back no usable handle — still a delivery, just not an addressable one, so
+/// the next revision posts instead of editing.
 pub async fn mark_delivered(
     pool: &PgPool,
     id: ResultDeliveryId,

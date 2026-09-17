@@ -29,8 +29,8 @@ pub enum McpError {
     RateLimited { retry_after_ms: u64 },
 }
 
-/// JSON-RPC error code for backpressure (Cluster 172). In the server-defined
-/// range (-32000..=-32099); a client that recognizes it should back off for
+/// JSON-RPC error code for backpressure. In the server-defined range
+/// (-32000..=-32099); a client that recognizes it should back off for
 /// `data.retry_after_ms` before retrying.
 pub const RATE_LIMITED_CODE: i32 = -32029;
 
@@ -92,11 +92,11 @@ impl From<maidan_store::StoreError> for McpError {
         match err {
             maidan_store::StoreError::NotFound => Self::NotFound,
             maidan_store::StoreError::InvalidInput(m) => Self::InvalidParams(m),
-            // A uniqueness/state conflict is a client error, not an internal one
-            // (Cluster 374) — surface it as invalid params, not -32603 Internal.
+            // A uniqueness/state conflict is a client error, not an internal
+            // one — surface it as invalid params, not -32603 Internal.
             maidan_store::StoreError::Conflict(m) => Self::InvalidParams(m),
-            // Same for a refused spawn (Cluster 376.6) — the typed variant must
-            // not fall through to the `other => Internal` arm below.
+            // Same for a refused spawn — the typed variant must not fall
+            // through to the `other => Internal` arm below.
             maidan_store::StoreError::SpawnRejected(d) => Self::InvalidParams(d.to_string()),
             maidan_store::StoreError::CursorTooOld {
                 after_id,
@@ -205,7 +205,7 @@ mod tests {
             McpError::from(maidan_store::StoreError::InvalidInput("bad".into())),
             McpError::InvalidParams(_)
         ));
-        // A conflict is a client error (Cluster 374) — invalid params, not internal.
+        // A conflict is a client error — invalid params, not internal.
         assert!(matches!(
             McpError::from(maidan_store::StoreError::Conflict("dup".into())),
             McpError::InvalidParams(_)

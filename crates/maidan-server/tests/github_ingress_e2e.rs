@@ -1,5 +1,5 @@
-//! Cluster 310: the GitHub projector ingress. A correctly-signed `ping` is ACKed;
-//! the route is `404` when the projector is not configured and `401` on a bad
+//! The GitHub projector ingress. A correctly-signed `ping` is ACKed; the route
+//! is `404` when the projector is not configured and `401` on a bad
 //! `X-Hub-Signature-256`.
 
 use std::net::SocketAddr;
@@ -183,8 +183,8 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
     server.abort();
 }
 
-/// Cluster 361 (G-dev-7): a merged PR linked to a thread emits a `ThreadLanded`
-/// fact; a closed-but-unmerged PR, and an unlinked PR, emit nothing.
+/// A merged PR linked to a thread emits a `ThreadLanded` fact; a
+/// closed-but-unmerged PR, and an unlinked PR, emit nothing.
 #[tokio::test]
 async fn github_pull_request_merged_emits_thread_landed() {
     let (addr, client, store, server) = spawn(true).await;

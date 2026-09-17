@@ -1,4 +1,4 @@
-# Store bench baseline (Cluster 120.0, gate `maidan-scale-1.0`)
+# Store bench baseline (gate `maidan-scale-1.0`)
 
 Run:
 
@@ -11,7 +11,7 @@ in-memory SQLite store. SQLite keeps it self-contained (no testcontainer) and
 reproducible in CI.
 
 These numbers are **machine-specific** — treat them as a relative reference for
-the Cluster 120 perf budgets, not an absolute SLA. Re-run on the target
+the perf budgets, not an absolute SLA. Re-run on the target
 hardware to establish the local floor.
 
 ## Reference run (Apple Silicon dev laptop, release profile, criterion 100 samples)
@@ -22,7 +22,7 @@ hardware to establish the local floor.
 
 ## Postgres
 
-Postgres store latency depends on connection-pool sizing (Cluster 107) and the
+Postgres store latency depends on connection-pool sizing and the
 statement-timeout cap, and must be measured against a real instance with
 representative data volume. This SQLite bench is the CI-friendly floor; see the
 gate doc ([`docs/Gates/maidan-scale-1.0.md`](../../../docs/Gates/maidan-scale-1.0.md))

@@ -1,8 +1,9 @@
-//! `GET /operator/audit` — global cross-workspace audit query (Cluster 132).
+//! `GET /operator/audit` — global cross-workspace audit query.
 //!
-//! The capability *denial* path (no `audit:read-global` → 403) is covered by the
-//! table-driven `http_capability_matrix_e2e`. This asserts the *allow* path: a
-//! token holding the capability gets every audit event back, across workspaces.
+//! The capability *denial* path (no `audit:read-global` → 403) is covered by
+//! the table-driven `http_capability_matrix_e2e`. This asserts the *allow*
+//! path: a token holding the capability gets every audit event back, across
+//! workspaces.
 
 use std::{
     net::SocketAddr,

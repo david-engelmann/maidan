@@ -1,7 +1,7 @@
-//! Attachable labeled memory-block store (Cluster 373, Wave 2 #21, H11): create
-//! (concurrent-safe on label), get/list, full-rewrite set_value (last-writer-
-//! wins), read-only + over-limit refusal, attach/detach (idempotent), and the
-//! thread-attached list. Both backends.
+//! Attachable labeled memory-block store: create (concurrent-safe on label),
+//! get/list, full-rewrite set_value (last-writer- wins), read-only + over-limit
+//! refusal, attach/detach (idempotent), and the thread-attached list. Both
+//! backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMemoryBlock, NewThread, NewWorkspace};

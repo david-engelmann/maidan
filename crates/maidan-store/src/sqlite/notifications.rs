@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Insert one per-recipient notification (Cluster 237).
+/// Insert one per-recipient notification.
 pub async fn create(pool: &SqlitePool, new: NewNotification) -> Result<Notification, StoreError> {
     let id = NotificationId::new();
     let now = Utc::now().to_rfc3339();
@@ -35,8 +35,8 @@ pub async fn create(pool: &SqlitePool, new: NewNotification) -> Result<Notificat
     row_to_notification(&row)
 }
 
-/// Insert unless one already exists for `(member_id, source_log_id)` (Cluster 238).
-/// `None` = a row already existed (deduped — a replay or a second replica).
+/// Insert unless one already exists for `(member_id, source_log_id)`. `None` =
+/// a row already existed (deduped — a replay or a second replica).
 pub async fn create_if_absent(
     pool: &SqlitePool,
     new: NewNotification,
@@ -67,9 +67,9 @@ pub async fn create_if_absent(
     row.as_ref().map(row_to_notification).transpose()
 }
 
-/// Insert many notifications in one round trip (Cluster 349) — the batch form of
-/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is
-/// `ON CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
+/// Insert many notifications in one round trip — the batch form of
+/// [`create_if_absent`] for the `MessagePosted` fan-out. Each row is `ON
+/// CONFLICT (member_id, source_log_id) DO NOTHING`; returns the actually-
 /// inserted rows (deduped rows omitted). The caller passes a set of distinct
 /// recipients (so no intra-batch key collision). Chunked under SQLite's
 /// 999-parameter limit (10 bound params per row → 90 rows/chunk).
@@ -115,7 +115,7 @@ pub async fn create_batch(
     Ok(out)
 }
 
-/// A member's notifications, newest first, optionally unread-only (Cluster 237).
+/// A member's notifications, newest first, optionally unread-only.
 pub async fn list_for_member(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -148,9 +148,9 @@ pub async fn list_for_member(
     rows.iter().map(row_to_notification).collect()
 }
 
-/// Mark one notification read, scoped to its recipient (Cluster 237/239). Idempotent
-/// — a re-mark preserves the original `read_at`. Returns whether a `(member_id, id)`
-/// row exists (so a caller can't mark another member's notification).
+/// Mark one notification read, scoped to its recipient. Idempotent — a re-mark
+/// preserves the original `read_at`. Returns whether a `(member_id, id)` row
+/// exists (so a caller can't mark another member's notification).
 pub async fn mark_read(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -169,8 +169,8 @@ pub async fn mark_read(
     Ok(res.rows_affected() > 0)
 }
 
-/// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped;
-/// returns whether the `(member_id, id)` row exists.
+/// Snooze one notification until `until` — recipient-scoped; returns whether
+/// the `(member_id, id)` row exists.
 pub async fn snooze(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -188,8 +188,8 @@ pub async fn snooze(
     Ok(res.rows_affected() > 0)
 }
 
-/// Mark all of a member's unread notifications read (Cluster 237). Returns the
-/// number cleared.
+/// Mark all of a member's unread notifications read. Returns the number
+/// cleared.
 pub async fn mark_all_read(pool: &SqlitePool, member_id: MemberId) -> Result<u64, StoreError> {
     let now = Utc::now().to_rfc3339();
     let res = sqlx::query(
@@ -202,7 +202,7 @@ pub async fn mark_all_read(pool: &SqlitePool, member_id: MemberId) -> Result<u64
     Ok(res.rows_affected())
 }
 
-/// The unread-notification badge count for a member (Cluster 237).
+/// The unread-notification badge count for a member.
 pub async fn unread_count(pool: &SqlitePool, member_id: MemberId) -> Result<i64, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(

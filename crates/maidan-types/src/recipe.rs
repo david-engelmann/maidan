@@ -1,12 +1,12 @@
-//! Recipes — reusable thread-type blueprints (Cluster 370, Wave 2 #18).
+//! Recipes — reusable thread-type blueprints.
 //!
 //! A recipe is the Goose-recipe *shape*: named params (with a required flag), a
 //! definition of done, a retry policy, and inline child sub-tasks that form a
-//! DAG. Instantiating one (Cluster 370.2) creates a parent thread + its DAG
-//! children + attaches each child's required skills, and freezes the recipe
-//! bytes into a run snapshot (copy-on-fire). It is **not a recipe VM** — a
-//! blueprint the room instantiates, not an execution engine: `retry` and
-//! `definition_of_done` are captured in the snapshot, not enforced here.
+//! DAG. Instantiating one creates a parent thread + its DAG children + attaches
+//! each child's required skills, and freezes the recipe bytes into a run
+//! snapshot (copy-on-fire). It is **not a recipe VM** — a blueprint the room
+//! instantiates, not an execution engine: `retry` and `definition_of_done` are
+//! captured in the snapshot, not enforced here.
 //!
 //! [`RecipeSpec::validate`] and [`RecipeSpec::validate_params`] are pure so the
 //! interesting rules (unique child keys, acyclic child DAG, required params

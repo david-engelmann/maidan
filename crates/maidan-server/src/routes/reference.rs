@@ -17,8 +17,7 @@ use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
 /// Ensure the caller may access a referenced entity — and, via the `ensure_*`
-/// helpers, that it belongs to their workspace (Cluster 165; this path had no
-/// workspace/access check before).
+/// helpers, that it belongs to their workspace.
 async fn ensure_ref_access(
     store: &dyn maidan_store::Store,
     auth: &AuthContext,
@@ -54,10 +53,9 @@ pub async fn create_reference(
     Ok((StatusCode::CREATED, Json(r)))
 }
 
-/// List references by source (forward) OR target (reverse), optionally filtered by
-/// relation (Cluster 320). Exactly one of the `src_*` / `dst_*` pairs is required;
-/// access is gated on that anchor entity (the Cluster-165 model), symmetric to
-/// `create_reference`.
+/// List references by source (forward) OR target (reverse), optionally filtered
+/// by relation. Exactly one of the `src_*` / `dst_*` pairs is required; access
+/// is gated on that anchor entity (the model), symmetric to `create_reference`.
 pub async fn list_references(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

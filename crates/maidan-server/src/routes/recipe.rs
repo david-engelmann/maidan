@@ -1,7 +1,7 @@
-//! Recipe management (Cluster 370.3, Wave 2 #18): create / list / get / delete a
-//! recipe blueprint, and **instantiate** one into a parent thread + its DAG
-//! children. A recipe spawns threads into its target channel, so the write
-//! surfaces are gated on `workspace:write` + access to that channel.
+//! Recipe management: create / list / get / delete a recipe blueprint, and
+//! **instantiate** one into a parent thread + its DAG children. A recipe spawns
+//! threads into its target channel, so the write surfaces are gated on
+//! `workspace:write` + access to that channel.
 
 use axum::{
     extract::{Path, State},

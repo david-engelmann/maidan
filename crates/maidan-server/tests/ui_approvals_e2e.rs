@@ -1,8 +1,8 @@
-//! The `/ui/api` approval-gate twins (Cluster 350.8): the `/ui` Approvals tab
-//! lists pending gates and answers one over the session-proxy routes, which
-//! reuse the Cluster-350.3 handlers under the `/ui` auth middleware. Driven here
-//! with a bearer (the middleware accepts session OR bearer); the DOM + accept
-//! flow is covered by the Playwright spec `ui-tests/tests/approvals.spec.ts`.
+//! The `/ui/api` approval-gate twins: the `/ui` Approvals tab lists pending
+//! gates and answers one over the session-proxy routes, which reuse the
+//! handlers under the `/ui` auth middleware. Driven here with a bearer (the
+//! middleware accepts session OR bearer); the DOM + accept flow is covered by
+//! the Playwright spec `ui-tests/tests/approvals.spec.ts`.
 
 use std::{
     net::SocketAddr,

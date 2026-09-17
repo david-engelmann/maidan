@@ -1,5 +1,5 @@
-//! Thread wait-timer store (Cluster 364, G2/G4): set/get/cancel + the atomic
-//! fire-once `claim_next_due_wait`. Both backends.
+//! Thread wait-timer store: set/get/cancel + the atomic fire-once
+//! `claim_next_due_wait`. Both backends.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};

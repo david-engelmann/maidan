@@ -1,5 +1,5 @@
-//! Web Push subscription store (Cluster 366, N1): add (upsert on endpoint) / list
-//! / recipient-scoped delete. Both backends.
+//! Web Push subscription store: add (upsert on endpoint) / list /
+//! recipient-scoped delete. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewPushSubscription, NewWorkspace};

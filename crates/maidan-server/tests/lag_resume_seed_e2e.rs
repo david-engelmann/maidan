@@ -1,4 +1,4 @@
-//! Cluster 397.3: a bus consumer resumes from where it attached, not from id 1.
+//! A bus consumer resumes from where it attached, not from id 1.
 //!
 //! Every always-on consumer declared `let mut watermark: i64 = 0;` *inside* its
 //! consume loop, and the loop is re-entered on every resubscribe. A
@@ -150,7 +150,7 @@ async fn a_consumer_attaching_to_a_populated_log_replays_nothing_on_lag() {
 }
 
 /// The seed only suppresses history — a genuine gap after attaching still
-/// resumes, which is the whole point of Cluster 388's lag resume.
+/// resumes, which is the whole point's lag resume.
 #[tokio::test]
 async fn events_appended_after_attach_are_still_replayed() {
     let Fixture {

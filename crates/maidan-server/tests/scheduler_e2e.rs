@@ -1,5 +1,5 @@
-//! Cluster 227: the scheduler sweeper materializes a task thread when a schedule
-//! comes due, and advances/deactivates the schedule.
+//! The scheduler sweeper materializes a task thread when a schedule comes due,
+//! and advances/deactivates the schedule.
 
 use std::sync::Arc;
 

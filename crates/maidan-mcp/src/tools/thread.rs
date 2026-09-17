@@ -14,19 +14,19 @@ use serde_json::{json, Value};
 use super::content_json;
 use crate::error::McpError;
 
-/// `wait_for_ready` long-poll window default + ceiling (Cluster 223), mirroring
+/// `wait_for_ready` long-poll window default + ceiling, mirroring
 /// `wait_for_mention`.
 const DEFAULT_WAIT_MS: i64 = 30_000;
 const MAX_WAIT_MS: i64 = 300_000;
-/// Page size for the lookback replay over the durable event log (Cluster 354).
+/// Page size for the lookback replay over the durable event log.
 const LOOKBACK_BATCH: i64 = 256;
 
 /// Replay the durable event log for the earliest event of one of `kinds` with
-/// `log_id > since` (Cluster 354 lookback), optionally pinned to `channel_id`
-/// and/or `thread_id`, in the caller's workspace. When `rbac_thread` is set, an
-/// event in a thread the caller can't access is skipped (not revealed) — the
-/// live path's rule. Returns the deserialized `Event`, or `None` if the log has
-/// no such event. Filters on the `StoredEvent` columns before deserializing.
+/// `log_id > since`, optionally pinned to `channel_id` and/or `thread_id`, in
+/// the caller's workspace. When `rbac_thread` is set, an event in a thread the
+/// caller can't access is skipped (not revealed) — the live path's rule.
+/// Returns the deserialized `Event`, or `None` if the log has no such event.
+/// Filters on the `StoredEvent` columns before deserializing.
 async fn lookback_event(
     store: &dyn Store,
     auth: &AuthContext,
@@ -78,7 +78,7 @@ async fn lookback_event(
 #[serde(deny_unknown_fields)]
 struct ListThreadsArgs {
     channel_id: uuid::Uuid,
-    /// Max threads to return (default 100, clamped 1..=500) — Cluster 343.
+    /// Max threads to return (default 100, clamped 1..=500).
     #[serde(default)]
     limit: Option<i64>,
     /// Exclusive keyset cursor: the prior page's last thread id.
@@ -88,7 +88,7 @@ struct ListThreadsArgs {
 
 pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ListThreadsArgs = serde_json::from_value(args.clone())?;
-    // Cluster 343: keyset-paginated (was unbounded). Default 100, clamp 1..=500.
+    // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = a.limit.unwrap_or(100).clamp(1, 500);
     let after = a.cursor.map(ThreadId);
     let threads = store
@@ -102,9 +102,8 @@ struct ThreadIdArg {
     thread_id: uuid::Uuid,
 }
 
-/// A parent thread's child threads, collapsed with a message count each
-/// (Cluster 356, F2, the MCP twin of `GET /threads/:id/children`). Thread access
-/// is enforced pre-dispatch.
+/// A parent thread's child threads, collapsed with a message count each. Thread
+/// access is enforced pre-dispatch.
 pub(super) async fn list_child_threads(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -123,8 +122,7 @@ struct RecentThreadsArgs {
     limit: Option<i64>,
 }
 
-/// A channel's threads ordered by last activity — most-recently bumped first
-/// (Cluster 356, F7, the MCP twin of `GET /channels/:cid/recent-threads`).
+/// A channel's threads ordered by last activity — most-recently bumped first.
 /// Channel access is enforced pre-dispatch.
 pub(super) async fn list_recently_active_threads(
     store: &Arc<dyn Store>,
@@ -138,9 +136,9 @@ pub(super) async fn list_recently_active_threads(
     Ok(content_json(&threads))
 }
 
-/// Mute a thread for the caller (Cluster 356, F7, the MCP twin of
-/// `POST /threads/:id/mute`). The notification router then suppresses this
-/// thread's notifications for the caller. Thread access is enforced pre-dispatch.
+/// Mute a thread for the caller. The notification router then suppresses this
+/// thread's notifications for the caller. Thread access is enforced
+/// pre-dispatch.
 pub(super) async fn mute_thread(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -153,8 +151,8 @@ pub(super) async fn mute_thread(
     Ok(content_json(&json!({ "muted": true })))
 }
 
-/// Unmute a thread for the caller (Cluster 356, F7, the MCP twin of
-/// `DELETE /threads/:id/mute`). `{unmuted}` is `false` when it was not muted.
+/// Unmute a thread for the caller. `{unmuted}` is `false` when it was not
+/// muted.
 pub(super) async fn unmute_thread(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -176,10 +174,10 @@ struct ToolTranscriptArgs {
     limit: Option<i64>,
 }
 
-/// A thread's tool-call transcript (Cluster 197): every `ToolUse` block across
-/// the thread's messages, each correlated with its `ToolResult` by id. A
-/// token-lean projection — `Text`/`Code` blocks and `body` are dropped. Channel
-/// access is enforced pre-dispatch (the `thread_id` arg).
+/// A thread's tool-call transcript: every `ToolUse` block across the thread's
+/// messages, each correlated with its `ToolResult` by id. A token-lean
+/// projection — `Text`/`Code` blocks and `body` are dropped. Channel access is
+/// enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn get_tool_transcript(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -197,7 +195,7 @@ struct AssignThreadArgs {
     thread_id: uuid::Uuid,
     actor_id: uuid::Uuid,
     assignee_id: uuid::Uuid,
-    /// Optional handoff note for the assignee (Cluster 195).
+    /// Optional handoff note for the assignee.
     #[serde(default)]
     note: Option<String>,
 }
@@ -222,9 +220,9 @@ pub(super) async fn assign_thread(
 ) -> Result<Value, McpError> {
     let a: AssignThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
-    // Atomic domain-write + event (Cluster 374, P1.1c): the store captures the
-    // previous assignee in-tx and appends ThreadAssignmentChanged with it, so the
-    // agent-driven assignment matches REST's crash-consistency (no dual-write).
+    // Atomic domain-write + event: the store captures the previous assignee
+    // in-tx and appends ThreadAssignmentChanged with it, so the agent-driven
+    // assignment matches REST's crash-consistency (no dual-write).
     let (thread, stored) = server
         .store
         .assign_thread_with_event(
@@ -238,8 +236,8 @@ pub(super) async fn assign_thread(
     Ok(content_json(&thread))
 }
 
-/// Whether `member` is at (or over) their workspace's WIP limit (Cluster 362,
-/// G11) — the MCP twin of `routes::at_wip_limit`. `false` when unset (unlimited).
+/// Whether `member` is at (or over) their workspace's WIP limit — the MCP twin
+/// of `routes::at_wip_limit`. `false` when unset (unlimited).
 async fn at_wip_limit(
     store: &dyn Store,
     workspace_id: WorkspaceId,
@@ -258,23 +256,23 @@ pub(super) async fn claim_thread(
     let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
     let member_id = MemberId(a.member_id);
-    // Unclaimable (Cluster 363, G3): a parked thread refuses an explicit claim,
-    // just as `claim_next` skips it (the REST 409 analogue).
+    // Unclaimable: a parked thread refuses an explicit claim, just as
+    // `claim_next` skips it (the REST 409 analogue).
     if let Some(u) = server.store.get_thread_unclaimable(thread_id).await? {
         return Err(McpError::InvalidParams(format!(
             "thread is parked (unclaimable): {}",
             u.reason
         )));
     }
-    // Explicit block (Cluster 386, Wave 2 #27): refuse, matching REST 409.
+    // Explicit block: refuse, matching REST 409.
     if let Some(b) = server.store.get_thread_block(thread_id).await? {
         return Err(McpError::InvalidParams(format!(
             "thread is blocked ({})",
             b.reason.as_str()
         )));
     }
-    // WIP limit (Cluster 362, G11): refuse a NEW claim past the cap (the REST
-    // 409 analogue); a re-claim of a thread the member already holds is exempt.
+    // WIP limit: refuse a NEW claim past the cap (the REST 409 analogue); a
+    // re-claim of a thread the member already holds is exempt.
     let thread = server.store.get_thread(thread_id).await?;
     if thread.assignee_id != Some(member_id) {
         let channel = server.store.get_channel(thread.channel_id).await?;
@@ -284,8 +282,8 @@ pub(super) async fn claim_thread(
             ));
         }
     }
-    // Atomic (Cluster 374, P1.1c): the event is appended in the claim's tx and
-    // returned only when the CAS actually claimed.
+    // Atomic: the event is appended in the claim's tx and returned only when
+    // the CAS actually claimed.
     let (result, stored) = server
         .store
         .claim_thread_with_event(thread_id, member_id)
@@ -302,8 +300,8 @@ pub(super) async fn unassign_thread(
 ) -> Result<Value, McpError> {
     let a: UnassignThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
-    // Atomic (Cluster 374, P1.1c): the store captures the previous assignee in-tx
-    // and appends ThreadAssignmentChanged with it.
+    // Atomic: the store captures the previous assignee in-tx and appends
+    // ThreadAssignmentChanged with it.
     let (thread, stored) = server
         .store
         .unassign_thread_with_event(thread_id, MemberId(a.actor_id))
@@ -320,11 +318,10 @@ struct TransitionThreadArgs {
     action: String,
 }
 
-/// Advance a thread's FSM state (Cluster 384, P1.1d — the MCP twin of REST
-/// `POST /threads/:id`). Same store path: `transition_thread_with_event`
-/// (SoD, close-gate, required reviewers, and the Cluster-383 critical
-/// composition all live in `transition_in_tx`). Unknown actions and gate
-/// refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
+/// Advance a thread's FSM state. Same store path:
+/// `transition_thread_with_event` (SoD, close-gate, required reviewers, and the
+/// critical composition all live in `transition_in_tx`). Unknown actions and
+/// gate refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
 pub(super) async fn transition_thread(
     server: &crate::server::McpServer,
     args: &Value,
@@ -342,9 +339,9 @@ pub(super) async fn transition_thread(
         .transition_thread_with_event(thread_id, MemberId(a.actor_id), action)
         .await?;
     server.publish_stored(&stored).await;
-    // Cluster 222: entering a terminal state can unblock dependents. Same
-    // derived `ThreadReady` emit as REST — best-effort, never undoes the
-    // committed transition.
+    // Entering a terminal state can unblock dependents. Same derived
+    // `ThreadReady` emit as REST — best-effort, never undoes the committed
+    // transition.
     if !result.from_state.is_terminal() && result.to_state.is_terminal() {
         match server.store.newly_ready_dependents(thread_id).await {
             Ok(ready) => {
@@ -391,9 +388,9 @@ struct SetWaitArgs {
     reason: Option<String>,
 }
 
-/// Set (upsert) a wait timer on a thread (Cluster 364, G2): it is waiting until
-/// `wait_until`, and on timeout the sweeper escalates via `on_timeout` (default
-/// `notify`) — never a decision. `thread:transition`; thread access enforced.
+/// Set (upsert) a wait timer on a thread: it is waiting until `wait_until`, and
+/// on timeout the sweeper escalates via `on_timeout` (default `notify`) — never
+/// a decision. `thread:transition`; thread access enforced.
 pub(super) async fn set_wait(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -413,16 +410,15 @@ pub(super) async fn set_wait(
     Ok(content_json(&wait))
 }
 
-/// Cancel a thread's wait — the awaited thing happened (Cluster 364). `{cancelled}`
-/// is `false` when no wait was set. `thread:transition`; thread access enforced.
+/// Cancel a thread's wait — the awaited thing happened. `{cancelled}` is
+/// `false` when no wait was set. `thread:transition`; thread access enforced.
 pub(super) async fn cancel_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadIdArg = serde_json::from_value(args.clone())?;
     let cancelled = store.cancel_thread_wait(ThreadId(a.thread_id)).await?;
     Ok(content_json(&json!({ "cancelled": cancelled })))
 }
 
-/// The thread's wait, or null (Cluster 364). `workspace:read`; thread access
-/// enforced.
+/// The thread's wait, or null. `workspace:read`; thread access enforced.
 pub(super) async fn get_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadIdArg = serde_json::from_value(args.clone())?;
     let wait = store.get_thread_wait(ThreadId(a.thread_id)).await?;
@@ -436,10 +432,10 @@ struct SetPriorityArgs {
     priority: i64,
 }
 
-/// Set (upsert) a thread's dispatch priority (Cluster 365, G3 fair dispatch).
-/// Higher = more urgent; `claim_next` orders by an effective rank that ages this
-/// priority up the longer a thread waits, so priority jumps the queue without
-/// starving long-waiting tasks. `thread:transition`; thread access enforced.
+/// Set (upsert) a thread's dispatch priority. Higher = more urgent;
+/// `claim_next` orders by an effective rank that ages this priority up the
+/// longer a thread waits, so priority jumps the queue without starving
+/// long-waiting tasks. `thread:transition`; thread access enforced.
 pub(super) async fn set_priority(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -452,8 +448,8 @@ pub(super) async fn set_priority(
     Ok(content_json(&priority))
 }
 
-/// The thread's dispatch-priority record, or null (= the default priority 0)
-/// (Cluster 365). `workspace:read`; thread access enforced.
+/// The thread's dispatch-priority record, or null (= the default priority 0).
+/// `workspace:read`; thread access enforced.
 pub(super) async fn get_priority(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadIdArg = serde_json::from_value(args.clone())?;
     let priority = store.get_thread_priority(ThreadId(a.thread_id)).await?;
@@ -467,9 +463,9 @@ struct MarkUnclaimableArgs {
     reason: String,
 }
 
-/// Park a thread from dispatch (Cluster 363, G3): `claim_next` skips it and an
-/// explicit `claim` is refused, until cleared. `thread:transition`; thread access
-/// is enforced pre-dispatch. Empty reason → InvalidParams.
+/// Park a thread from dispatch: `claim_next` skips it and an explicit `claim`
+/// is refused, until cleared. `thread:transition`; thread access is enforced
+/// pre-dispatch. Empty reason → InvalidParams.
 pub(super) async fn mark_unclaimable(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -486,8 +482,8 @@ pub(super) async fn mark_unclaimable(
     Ok(content_json(&marked))
 }
 
-/// Un-park a thread (Cluster 363) — it becomes claimable again. `{cleared}` is
-/// `false` when it was not parked. `thread:transition`; thread access enforced.
+/// Un-park a thread — it becomes claimable again. `{cleared}` is `false` when
+/// it was not parked. `thread:transition`; thread access enforced.
 pub(super) async fn mark_claimable(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -502,7 +498,7 @@ struct ChannelIdArg {
     channel_id: uuid::Uuid,
 }
 
-/// The parked (unclaimable) threads in a channel (Cluster 363), newest first.
+/// The parked (unclaimable) threads in a channel, newest first.
 /// `workspace:read`; channel access enforced pre-dispatch.
 pub(super) async fn list_unclaimable(
     store: &Arc<dyn Store>,
@@ -522,10 +518,9 @@ struct SetThreadBlockArgs {
     reason: BlockedReason,
 }
 
-/// Set (upsert) an explicit dispatch block (Cluster 386, Wave 2 #27).
-/// `claim_next` skips the thread and an explicit `claim` is refused, until
-/// cleared. `reason` is the closed enum. `thread:transition`; thread access
-/// enforced pre-dispatch.
+/// Set (upsert) an explicit dispatch block. `claim_next` skips the thread and
+/// an explicit `claim` is refused, until cleared. `reason` is the closed enum.
+/// `thread:transition`; thread access enforced pre-dispatch.
 pub(super) async fn set_thread_block(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -538,8 +533,8 @@ pub(super) async fn set_thread_block(
     Ok(content_json(&block))
 }
 
-/// The thread's explicit block, or null (Cluster 386). `workspace:read`;
-/// thread access enforced.
+/// The thread's explicit block, or null. `workspace:read`; thread access
+/// enforced.
 pub(super) async fn get_thread_block(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -549,8 +544,8 @@ pub(super) async fn get_thread_block(
     Ok(content_json(&block))
 }
 
-/// Clear an explicit dispatch block and emit `BlockedResolved` (Cluster 386.3).
-/// `{cleared}` is `false` when it was not blocked. `thread:transition`.
+/// Clear an explicit dispatch block and emit `BlockedResolved`. `{cleared}` is
+/// `false` when it was not blocked. `thread:transition`.
 pub(super) async fn clear_thread_block(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -567,8 +562,8 @@ pub(super) async fn clear_thread_block(
     Ok(content_json(&json!({ "cleared": cleared.is_some() })))
 }
 
-/// Explicitly blocked threads in a channel (Cluster 386), newest first.
-/// `workspace:read`; channel access enforced pre-dispatch.
+/// Explicitly blocked threads in a channel, newest first. `workspace:read`;
+/// channel access enforced pre-dispatch.
 pub(super) async fn list_blocked_threads(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -585,9 +580,9 @@ struct SetWipLimitArgs {
     limit: Option<i64>,
 }
 
-/// Set (or clear) the caller's workspace WIP limit (Cluster 362, G11): the max
-/// concurrent live claims per member. `limit >= 0` caps (0 freezes); omit/null
-/// clears it (unlimited). `workspace:write`.
+/// Set (or clear) the caller's workspace WIP limit: the max concurrent live
+/// claims per member. `limit >= 0` caps (0 freezes); omit/null clears it
+/// (unlimited). `workspace:write`.
 pub(super) async fn set_wip_limit(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -603,8 +598,7 @@ pub(super) async fn set_wip_limit(
     Ok(content_json(&json!({ "limit": a.limit })))
 }
 
-/// The caller's workspace WIP limit, or null (unlimited) (Cluster 362).
-/// `workspace:read`.
+/// The caller's workspace WIP limit, or null (unlimited). `workspace:read`.
 pub(super) async fn get_wip_limit(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -620,8 +614,8 @@ struct MemberWipArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's live-claim count vs the workspace WIP limit (Cluster 362).
-/// Member-scoped (the member's own workspace). `workspace:read`.
+/// A member's live-claim count vs the workspace WIP limit. Member-scoped (the
+/// member's own workspace). `workspace:read`.
 pub(super) async fn get_member_wip(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -642,9 +636,9 @@ struct ListAssignedThreadsArgs {
     member_id: uuid::Uuid,
 }
 
-/// A member's assigned-thread queue (Cluster 191). A member-scoped aggregate
-/// read: the pre-dispatch channel gate can't cover a `member_id` arg, so this
-/// filters the result to threads the caller can access (like `search_messages`).
+/// A member's assigned-thread queue. A member-scoped aggregate read: the
+/// pre-dispatch channel gate can't cover a `member_id` arg, so this filters the
+/// result to threads the caller can access (like `search_messages`).
 pub(super) async fn list_assigned_threads(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -674,30 +668,30 @@ struct ClaimNextThreadArgs {
     channel_id: uuid::Uuid,
     member_id: uuid::Uuid,
     /// Optional lease deadline in seconds; the claim is reclaimable after it
-    /// lapses (Cluster 192). Omit for a durable claim.
+    /// lapses. Omit for a durable claim.
     #[serde(default)]
     lease_secs: Option<i64>,
 }
 
-/// Atomically claim the oldest claimable thread in a channel (Cluster 191/192).
-/// Channel access is enforced pre-dispatch (the `channel_id` arg). Returns the
-/// claimed thread plus a content-addressed pin, or `null` when there is no claimable work.
+/// Atomically claim the oldest claimable thread in a channel. Channel access is
+/// enforced pre-dispatch (the `channel_id` arg). Returns the claimed thread
+/// plus a content-addressed pin, or `null` when there is no claimable work.
 pub(super) async fn claim_next_thread(
     server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    // WIP limit (Cluster 362, G11): a capped member is dispatched nothing (null),
-    // the same shape as an empty queue.
+    // WIP limit: a capped member is dispatched nothing (null), the same shape
+    // as an empty queue.
     let channel = server.store.get_channel(ChannelId(a.channel_id)).await?;
     if at_wip_limit(server.store.as_ref(), channel.workspace_id, member_id).await? {
         return Ok(content_json(&Value::Null));
     }
-    // Atomic (Cluster 374, P1.1c): `_with_event` appends the events in the claim's
-    // tx and returns them — the reclaim's ThreadAssignmentChanged, PRECEDED by a
-    // ClaimExpired when the claim took over an expired lease (the dead holder).
-    // The old non-event path dropped ClaimExpired entirely on the agent surface.
+    // Atomic: `_with_event` appends the events in the claim's tx and returns
+    // them — the reclaim's ThreadAssignmentChanged, PRECEDED by a ClaimExpired
+    // when the claim took over an expired lease (the dead holder). The old
+    // non-event path dropped ClaimExpired entirely on the agent surface.
     let (claimed, events) = server
         .store
         .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, a.lease_secs)
@@ -725,10 +719,10 @@ struct RenewClaimArgs {
 }
 
 /// Extend a claimed thread's lease (heartbeat), only for the current assignee
-/// holding the matching fencing token (Cluster 192 / 351). `claim_lease_id` is
-/// the value from the claiming response's `Thread.claim_lease_id`; a stale
-/// holder presents an outdated token and is rejected. Thread access is enforced
-/// pre-dispatch (the `thread_id` arg).
+/// holding the matching fencing token. `claim_lease_id` is the value from the
+/// claiming response's `Thread.claim_lease_id`; a stale holder presents an
+/// outdated token and is rejected. Thread access is enforced pre-dispatch (the
+/// `thread_id` arg).
 pub(super) async fn renew_claim(
     server: &crate::server::McpServer,
     args: &Value,
@@ -754,8 +748,8 @@ struct AcknowledgeClaimArgs {
     claim_lease_id: uuid::Uuid,
 }
 
-/// Acknowledge a claim and start the working clock (Cluster 351), for the current
-/// holder presenting the matching fencing token. Idempotent (the first start time
+/// Acknowledge a claim and start the working clock, for the current holder
+/// presenting the matching fencing token. Idempotent (the first start time
 /// wins). Thread access is enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn acknowledge_claim(
     server: &crate::server::McpServer,
@@ -781,9 +775,9 @@ struct ReleaseClaimArgs {
     claim_lease_id: uuid::Uuid,
 }
 
-/// Release a claim (graceful handoff, Cluster 351): the current holder returns the
-/// thread to the queue by presenting its fencing token, instead of waiting for the
-/// lease to lapse. Thread access is enforced pre-dispatch. Emits
+/// Release a claim (graceful handoff): the current holder returns the thread to
+/// the queue by presenting its fencing token, instead of waiting for the lease
+/// to lapse. Thread access is enforced pre-dispatch. Emits
 /// `ThreadAssignmentChanged`.
 pub(super) async fn release_claim(
     server: &crate::server::McpServer,
@@ -791,7 +785,7 @@ pub(super) async fn release_claim(
 ) -> Result<Value, McpError> {
     let a: ReleaseClaimArgs = serde_json::from_value(args.clone())?;
     let member = MemberId(a.member_id);
-    // Atomic (Cluster 374, P1.1c): release + ThreadAssignmentChanged in one tx.
+    // Atomic: release + ThreadAssignmentChanged in one tx.
     let (thread, stored) = server
         .store
         .release_claim_with_event(
@@ -811,10 +805,11 @@ struct AddThreadDependencyArgs {
     depends_on_thread_id: uuid::Uuid,
 }
 
-/// Add a task-dependency edge (Cluster 220): the path/`thread_id` task depends on
+/// Add a task-dependency edge: the path/`thread_id` task depends on
 /// `depends_on_thread_id`. The primary `thread_id`'s channel access is enforced
-/// pre-dispatch; the `depends_on` thread is checked here (the gate covers only one
-/// id), plus a same-workspace guard. Idempotent; a self-dependency is rejected.
+/// pre-dispatch; the `depends_on` thread is checked here (the gate covers only
+/// one id), plus a same-workspace guard. Idempotent; a self-dependency is
+/// rejected.
 pub(super) async fn add_thread_dependency(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -847,8 +842,8 @@ struct ThreadDepsArgs {
     thread_id: uuid::Uuid,
 }
 
-/// A task's dependencies + whether it is ready (all deps terminal) — Cluster 220.
-/// Channel access is enforced pre-dispatch (the `thread_id` arg).
+/// A task's dependencies + whether it is ready (all deps terminal) — Cluster
+/// 220. Channel access is enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn list_thread_dependencies(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -868,9 +863,9 @@ struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
 
-/// A channel's task-queue depth (Cluster 225): `{open, ready, assigned, blocked}`
-/// counts of its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`
-/// (Cluster 224). Channel access is enforced pre-dispatch (the `channel_id` arg).
+/// A channel's task-queue depth: `{open, ready, assigned, blocked}` counts of
+/// its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`.
+/// Channel access is enforced pre-dispatch (the `channel_id` arg).
 pub(super) async fn get_queue_depth(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -880,10 +875,10 @@ pub(super) async fn get_queue_depth(
     Ok(content_json(&depth))
 }
 
-/// A channel's occupancy (Cluster 351): `{open, queued, claimed, working, blocked}`
-/// — the two-clocks refinement of `get_queue_depth`, splitting held work into
-/// `claimed` (not yet acknowledged) and `working`. The MCP twin of
-/// `GET /channels/:cid/occupancy`. Channel access is enforced pre-dispatch.
+/// A channel's occupancy: `{open, queued, claimed, working, blocked}` — the
+/// two-clocks refinement of `get_queue_depth`, splitting held work into
+/// `claimed` (not yet acknowledged) and `working`. The MCP twin of `GET
+/// /channels/:cid/occupancy`. Channel access is enforced pre-dispatch.
 pub(super) async fn get_channel_occupancy(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -900,10 +895,9 @@ struct SetThreadLineageArgs {
     parent_run_id: String,
 }
 
-/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387.3,
-/// the MCP twin of `PUT /threads/:id/lineage`). The value is the producer's
-/// string — Maidan does not mint a parallel id. Thread access is enforced
-/// pre-dispatch. Empty / whitespace / over-long → `InvalidParams`.
+/// Home a producer's `run_id` on a thread as `parent_run_id`. The value is the
+/// producer's string — Maidan does not mint a parallel id. Thread access is
+/// enforced pre-dispatch. Empty / whitespace / over-long → `InvalidParams`.
 pub(super) async fn set_thread_lineage(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -921,8 +915,8 @@ struct GetThreadLineageArgs {
     thread_id: uuid::Uuid,
 }
 
-/// A thread's run lineage, or `null` until one is set (Cluster 387.3).
-/// Thread access is enforced pre-dispatch.
+/// A thread's run lineage, or `null` until one is set. Thread access is
+/// enforced pre-dispatch.
 pub(super) async fn get_thread_lineage(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -946,9 +940,9 @@ fn require_parent_run_id(raw: &str) -> Result<&str, McpError> {
     })
 }
 
-/// Threads in the caller's workspace that share a producer `parent_run_id`
-/// (Cluster 387.3). Private-channel rows the caller cannot access are
-/// dropped. F7 mute is not consulted.
+/// Threads in the caller's workspace that share a producer `parent_run_id`.
+/// Private-channel rows the caller cannot access are dropped. F7 mute is not
+/// consulted.
 pub(super) async fn list_run_threads(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -971,9 +965,9 @@ pub(super) async fn list_run_threads(
     Ok(content_json(&visible))
 }
 
-/// Nested occupancy for a producer run (Cluster 387.3): queued / claimed /
-/// working / blocked across every **open** thread that shares `parent_run_id`.
-/// F7 mute stays orthogonal. Empty / unknown run → zeros, not an error.
+/// Nested occupancy for a producer run: queued / claimed / working / blocked
+/// across every **open** thread that shares `parent_run_id`. F7 mute stays
+/// orthogonal. Empty / unknown run → zeros, not an error.
 pub(super) async fn get_run_occupancy(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -994,11 +988,10 @@ struct SetThreadResultArgs {
     result: Value,
 }
 
-/// Attach a task's structured result (Cluster 236, the MCP twin of
-/// `PUT /threads/:id/result`). Upserts one result per thread (`produced_by` is
-/// the caller) and publishes a `ThreadResultSet` event so waiters
-/// (`wait_for_result`) wake. Thread access is enforced pre-dispatch (the
-/// `thread_id` arg).
+/// Attach a task's structured result. Upserts one result per thread
+/// (`produced_by` is the caller) and publishes a `ThreadResultSet` event so
+/// waiters (`wait_for_result`) wake. Thread access is enforced pre-dispatch
+/// (the `thread_id` arg).
 pub(super) async fn set_thread_result(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1010,8 +1003,8 @@ pub(super) async fn set_thread_result(
         .store
         .set_thread_result(thread_id, auth.member_id, &a.result)
         .await?;
-    // Cluster 383.3: same write-path arm as REST. The bus consumer (383.2)
-    // is every-replica / replay; the tool itself must not race a close.
+    // Same write-path arm as REST. The bus consumer (383.2) is every-replica /
+    // replay; the tool itself must not race a close.
     if let Err(err) = server
         .store
         .apply_critical_review_decision(thread_id, auth.member_id, &a.result)
@@ -1023,8 +1016,8 @@ pub(super) async fn set_thread_result(
             "critical review adapter failed; result is stored"
         );
     }
-    // Cluster 387.3: same write-path arm as REST 387.2. Best-effort — a
-    // lineage hiccup must not undo a stored result.
+    // Same write-path arm as REST 387.2. Best-effort — a lineage hiccup must
+    // not undo a stored result.
     if let Some(run_id) = run_id_from_payload(&a.result) {
         if let Err(err) = server.store.set_thread_lineage(thread_id, run_id).await {
             tracing::warn!(
@@ -1057,9 +1050,8 @@ struct GetThreadResultArgs {
     thread_id: uuid::Uuid,
 }
 
-/// Read a task's structured result, or `null` if none has been produced
-/// (Cluster 236, the MCP twin of `GET /threads/:id/result`). Thread access is
-/// enforced pre-dispatch.
+/// Read a task's structured result, or `null` if none has been produced. Thread
+/// access is enforced pre-dispatch.
 pub(super) async fn get_thread_result(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -1080,10 +1072,10 @@ struct ListThreadResultsArgs {
     limit: Option<i64>,
 }
 
-/// Workspace-scoped thread-result list (Cluster 381.3). Optional exact-match
-/// `result_kind` facet on the namespaced string — not a closed enum. Workspace
-/// comes from `auth.workspace_id`. Private-channel rows the caller cannot
-/// access are dropped (the pre-dispatch gate cannot cover an aggregate read).
+/// Workspace-scoped thread-result list. Optional exact-match `result_kind`
+/// facet on the namespaced string — not a closed enum. Workspace comes from
+/// `auth.workspace_id`. Private-channel rows the caller cannot access are
+/// dropped (the pre-dispatch gate cannot cover an aggregate read).
 pub(super) async fn list_thread_results(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -1110,15 +1102,15 @@ pub(super) async fn list_thread_results(
 #[serde(deny_unknown_fields)]
 struct SetThreadOwnerArgs {
     thread_id: uuid::Uuid,
-    /// The owner to set; omit (or null) to clear the owner (Cluster 355, W1).
+    /// The owner to set; omit (or null) to clear the owner.
     #[serde(default)]
     owner_id: Option<uuid::Uuid>,
 }
 
-/// Set (or clear, by omitting `owner_id`) a thread's durable owner (Cluster 355,
-/// W1, the MCP twin of `PUT`/`DELETE /threads/:id/owner`). Thread access is
-/// enforced pre-dispatch. Once an owner is set, the claimer can no longer land
-/// its own work (separation of duties, enforced in the FSM transition).
+/// Set (or clear, by omitting `owner_id`) a thread's durable owner. Thread
+/// access is enforced pre-dispatch. Once an owner is set, the claimer can no
+/// longer land its own work (separation of duties, enforced in the FSM
+/// transition).
 pub(super) async fn set_thread_owner(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -1137,8 +1129,8 @@ struct RenameThreadArgs {
     title: String,
 }
 
-/// Rename a thread (Cluster 356, F1, the MCP twin of `PUT /threads/:id/title`).
-/// Rejects a blank title. Thread access is enforced pre-dispatch.
+/// Rename a thread. Rejects a blank title. Thread access is enforced
+/// pre-dispatch.
 pub(super) async fn rename_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: RenameThreadArgs = serde_json::from_value(args.clone())?;
     let title = a.title.trim();
@@ -1158,9 +1150,8 @@ struct SetThreadSteerArgs {
     steer: String,
 }
 
-/// Set (upsert) a thread's persisted steer (Cluster 355, W1, the MCP twin of
-/// `PUT /threads/:id/steer`). `steered_by` is the caller. Thread access is
-/// enforced pre-dispatch.
+/// Set (upsert) a thread's persisted steer. `steered_by` is the caller. Thread
+/// access is enforced pre-dispatch.
 pub(super) async fn set_thread_steer(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1180,9 +1171,9 @@ struct GetThreadSteerArgs {
     thread_id: uuid::Uuid,
 }
 
-/// Read a thread's current steer, or `null` if none is set (Cluster 355, W1, the
-/// MCP twin of `GET /threads/:id/steer`). A resuming/newly-assigned agent reads
-/// this to follow the current steer. Thread access is enforced pre-dispatch.
+/// Read a thread's current steer, or `null` if none is set. A
+/// resuming/newly-assigned agent reads this to follow the current steer. Thread
+/// access is enforced pre-dispatch.
 pub(super) async fn get_thread_steer(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -1199,23 +1190,23 @@ struct WaitForResultArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
-    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
-    /// replay the log for a `ThreadResultSet` on this thread with `log_id >
-    /// since_log_id` before parking live — so a result produced in the gap before
-    /// this call subscribes is not missed.
+    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
+    /// log for a `ThreadResultSet` on this thread with `log_id > since_log_id`
+    /// before parking live — so a result produced in the gap before this call
+    /// subscribes is not missed.
     #[serde(default)]
     since_log_id: Option<i64>,
 }
 
 /// Block until a task's structured result is produced — a `ThreadResultSet`
-/// event (Cluster 235) for `thread_id` — or the timeout lapses (Cluster 236).
-/// Returns the `ThreadResult` (the payload, fetched after the signal) or `null`
-/// on timeout. The coordination wait for the "spawn sub-tasks, wait, aggregate"
-/// pattern; the `wait_for_ready` analogue. Thread access is enforced
-/// pre-dispatch. **Live** primitive: it only sees results produced *after* it
-/// subscribes, so read the current result with `get_thread_result` first (the
-/// `GET /mcp/stream` SSE transport, `kinds=thread_result_set`, is the resumable
-/// alternative when a missed signal is unacceptable).
+/// event for `thread_id` — or the timeout lapses. Returns the `ThreadResult`
+/// (the payload, fetched after the signal) or `null` on timeout. The
+/// coordination wait for the "spawn sub-tasks, wait, aggregate" pattern; the
+/// `wait_for_ready` analogue. Thread access is enforced pre-dispatch. **Live**
+/// primitive: it only sees results produced *after* it subscribes, so read the
+/// current result with `get_thread_result` first (the `GET /mcp/stream` SSE
+/// transport, `kinds=thread_result_set`, is the resumable alternative when a
+/// missed signal is unacceptable).
 pub(super) async fn wait_for_result(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1250,9 +1241,9 @@ pub(super) async fn wait_for_result(
     // the thread, so any event that arrives is the one we're waiting on.
     let store = server.store.as_ref();
 
-    // Lookback (Cluster 354): a result set in the gap before this subscribe is
-    // still caught. No RBAC re-check — the pre-dispatch gate already cleared the
-    // thread. Subscribe-before-lookback keeps it gapless.
+    // Lookback: a result set in the gap before this subscribe is still caught.
+    // No RBAC re-check — the pre-dispatch gate already cleared the thread.
+    // Subscribe-before-lookback keeps it gapless.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
         if lookback_event(store, auth, &kinds, None, Some(thread_id), since, false)
@@ -1286,13 +1277,13 @@ struct DependencyResultsArgs {
     thread_id: uuid::Uuid,
 }
 
-/// Gather the structured results of a parent task's dependencies (Cluster 236) —
-/// the "spawn sub-tasks, wait, aggregate their outputs" read. For each
-/// dependency edge of `thread_id`, returns `{thread_id, result}` (result `null`
-/// if that dependency hasn't produced one yet), skipping dependencies in
-/// channels the caller can't access. The parent's access is enforced
-/// pre-dispatch; the dependencies (which may live in other channels) are
-/// filtered here, like `list_assigned_threads`.
+/// Gather the structured results of a parent task's dependencies — the "spawn
+/// sub-tasks, wait, aggregate their outputs" read. For each dependency edge of
+/// `thread_id`, returns `{thread_id, result}` (result `null` if that dependency
+/// hasn't produced one yet), skipping dependencies in channels the caller can't
+/// access. The parent's access is enforced pre-dispatch; the dependencies
+/// (which may live in other channels) are filtered here, like
+/// `list_assigned_threads`.
 pub(super) async fn get_dependency_results(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -1327,21 +1318,21 @@ struct WaitForReadyArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
-    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
-    /// replay the log for a `ThreadReady` with `log_id > since_log_id` (in scope,
+    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
+    /// log for a `ThreadReady` with `log_id > since_log_id` (in scope,
     /// RBAC-filtered) before parking live.
     #[serde(default)]
     since_log_id: Option<i64>,
 }
 
 /// Block until a task becomes ready — its last blocking dependency reached a
-/// terminal state, emitting `ThreadReady` (Cluster 222) — or the timeout lapses
-/// (Cluster 223). Scoped to `channel_id` when given, else any thread in the
-/// caller's workspace they can access; returns the `ThreadReady` event or `null`
-/// on timeout. This is the `wait_for_mention` analogue for the DAG. **Live**
-/// primitive: it only sees readiness signalled *after* it subscribes, so pick up
-/// already-ready work first with `claim_next_thread` / `list_assigned_threads`
-/// (the `GET /mcp/stream` SSE transport, `kinds=thread_ready`, is the resumable
+/// terminal state, emitting `ThreadReady` — or the timeout lapses. Scoped to
+/// `channel_id` when given, else any thread in the caller's workspace they can
+/// access; returns the `ThreadReady` event or `null` on timeout. This is the
+/// `wait_for_mention` analogue for the DAG. **Live** primitive: it only sees
+/// readiness signalled *after* it subscribes, so pick up already-ready work
+/// first with `claim_next_thread` / `list_assigned_threads` (the `GET
+/// /mcp/stream` SSE transport, `kinds=thread_ready`, is the resumable
 /// alternative when a missed signal is unacceptable).
 pub(super) async fn wait_for_ready(
     server: &crate::server::McpServer,
@@ -1372,8 +1363,8 @@ pub(super) async fn wait_for_ready(
 
     let store = server.store.as_ref();
 
-    // Lookback (Cluster 354): a readiness signalled in the gap before this
-    // subscribe is still caught, RBAC-filtered like the live path.
+    // Lookback: a readiness signalled in the gap before this subscribe is still
+    // caught, RBAC-filtered like the live path.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ThreadReady]);
         if let Some(event) = lookback_event(
@@ -1424,20 +1415,20 @@ struct WaitForClaimExpiredArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
-    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
-    /// replay the log for a `ClaimExpired` with `log_id > since_log_id` (in scope,
+    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
+    /// log for a `ClaimExpired` with `log_id > since_log_id` (in scope,
     /// RBAC-filtered) before parking live.
     #[serde(default)]
     since_log_id: Option<i64>,
 }
 
 /// Block until a claim's lease lapses and its thread is reclaimed, emitting
-/// `ClaimExpired` (Cluster 351) — a supervisor's "an agent died" signal, so it
-/// needn't poll the occupancy view. Scoped to `channel_id` when given, else any
-/// thread in the caller's workspace they can access; returns the `ClaimExpired`
-/// event (its `member_id` is the dead holder) or `null` on timeout. **Live**
-/// primitive (only sees expiries reclaimed *after* it subscribes); the
-/// `GET /mcp/stream` SSE transport, `kinds=claim_expired`, is the resumable
+/// `ClaimExpired` — a supervisor's "an agent died" signal, so it needn't poll
+/// the occupancy view. Scoped to `channel_id` when given, else any thread in
+/// the caller's workspace they can access; returns the `ClaimExpired` event
+/// (its `member_id` is the dead holder) or `null` on timeout. **Live**
+/// primitive (only sees expiries reclaimed *after* it subscribes); the `GET
+/// /mcp/stream` SSE transport, `kinds=claim_expired`, is the resumable
 /// alternative. A lease that expires but is never reclaimed emits nothing.
 pub(super) async fn wait_for_claim_expired(
     server: &crate::server::McpServer,
@@ -1468,8 +1459,8 @@ pub(super) async fn wait_for_claim_expired(
 
     let store = server.store.as_ref();
 
-    // Lookback (Cluster 354): an expiry reclaimed in the gap before this
-    // subscribe is still caught, RBAC-filtered like the live path.
+    // Lookback: an expiry reclaimed in the gap before this subscribe is still
+    // caught, RBAC-filtered like the live path.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ClaimExpired]);
         if let Some(event) = lookback_event(
@@ -1522,19 +1513,19 @@ struct WaitForLandedArgs {
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
-    /// Lookback anchor (Cluster 354): the caller's high-water `log_id`. When set,
-    /// replay the log for a `ThreadLanded` with `log_id > since_log_id` (in scope,
+    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
+    /// log for a `ThreadLanded` with `log_id > since_log_id` (in scope,
     /// RBAC-filtered) before parking live.
     #[serde(default)]
     since_log_id: Option<i64>,
 }
 
-/// `wait_for_landed` — block until a thread's linked GitHub PR lands (Cluster 361,
-/// G-dev-7): subscribe to `ThreadLanded` and return the fact, so an agent (or a
-/// reviewer awaiting a merge) needn't poll. Scoped to `thread_id` and/or
-/// `channel_id` when given, else any accessible land in the caller's workspace;
-/// returns the `ThreadLanded` event or `null` on timeout. **Live** primitive (only
-/// sees lands emitted *after* it subscribes); the `GET /mcp/stream` SSE transport,
+/// `wait_for_landed` — block until a thread's linked GitHub PR lands: subscribe
+/// to `ThreadLanded` and return the fact, so an agent (or a reviewer awaiting a
+/// merge) needn't poll. Scoped to `thread_id` and/or `channel_id` when given,
+/// else any accessible land in the caller's workspace; returns the
+/// `ThreadLanded` event or `null` on timeout. **Live** primitive (only sees
+/// lands emitted *after* it subscribes); the `GET /mcp/stream` SSE transport,
 /// `kinds=thread_landed`, is the resumable alternative. The `wait_for_ready`
 /// analogue.
 pub(super) async fn wait_for_landed(
@@ -1567,8 +1558,8 @@ pub(super) async fn wait_for_landed(
 
     let store = server.store.as_ref();
 
-    // Lookback (Cluster 354): a land emitted in the gap before this subscribe is
-    // still caught, RBAC-filtered like the live path.
+    // Lookback: a land emitted in the gap before this subscribe is still
+    // caught, RBAC-filtered like the live path.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ThreadLanded]);
         if let Some(event) = lookback_event(

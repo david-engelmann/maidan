@@ -81,10 +81,8 @@ pub async fn search_messages(
                 .await?
         }
     };
-    // Drop hits the caller can't access — thread-keyed + DM-participant-aware
-    // (Cluster 180; the earlier channel-keyed filter exempted `__dm__` and so
-    // leaked DM message content into search results). Cache per-thread so a
-    // result page hits each thread once.
+    // Drop hits the caller can't access — thread-keyed + DM-participant-aware.
+    // Cache per-thread so a result page hits each thread once.
     if !auth.bypass {
         let mut decision: std::collections::HashMap<ThreadId, bool> =
             std::collections::HashMap::new();

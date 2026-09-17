@@ -1,5 +1,4 @@
-//! Land-gate pointer (Cluster 385, renamed Cluster 389). SQLite twin
-//! of pg 0088.
+//! Land-gate pointer. SQLite twin of pg 0088.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
@@ -69,8 +68,8 @@ async fn standing_for(
         Some(id) => recorder_has_skill(pool, id).await?,
         None => false,
     };
-    // Cluster 401.2: the durable half of "not the implementer". `assignee_id`
-    // above is the live holder, which a release clears.
+    // The durable half of "not the implementer". `assignee_id` above is the
+    // live holder, which a release clears.
     let worked = match recorded.as_ref().map(|r| r.recorded_by) {
         Some(id) => thread_workers::has_worked(pool, thread_id, id).await?,
         None => false,
@@ -159,8 +158,8 @@ pub async fn clear(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, Store
     Ok(done.rows_affected() > 0)
 }
 
-/// Cluster 385.2: refuse `closed` when a LandGate row exists and is not a
-/// qualifying green pass. SQLite twin of the Postgres gate.
+/// Refuse `closed` when a LandGate row exists and is not a qualifying green
+/// pass. SQLite twin of the Postgres gate.
 pub async fn gate_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
@@ -208,11 +207,11 @@ pub async fn gate_in_tx(
     .fetch_one(&mut **tx)
     .await?;
     let skilled = skilled != 0;
-    // Cluster 401.2: did the recorder ever hold this thread? `assignee_id` is
-    // the live holder and a release clears it, so without this an implementer
-    // could release the claim and then pass their own work through the gate.
-    // Read on the enforcing transaction so a concurrent release cannot land
-    // between the check and the close.
+    // Did the recorder ever hold this thread? `assignee_id` is the live holder
+    // and a release clears it, so without this an implementer could release the
+    // claim and then pass their own work through the gate. Read on the
+    // enforcing transaction so a concurrent release cannot land between the
+    // check and the close.
     let worked = thread_workers::has_worked_in_tx(tx, thread_id, recorded_by).await?;
     if is_qualifying_pass(
         status,

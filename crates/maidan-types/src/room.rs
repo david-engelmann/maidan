@@ -1,13 +1,13 @@
-//! Room handle + discovery document (Cluster 395, Wave 3 #35 B22).
+//! Room handle + discovery document.
 //!
-//! A workspace is a **room**. Its stored id is the workspace UUID. A
-//! handle is an optional, renameable alias — never an id. Stored
-//! [`crate::RoomUri`] values use the UUID, so a handle rename cannot
-//! break a citation, pin, or export.
+//! A workspace is a **room**. Its stored id is the workspace UUID. A handle is
+//! an optional, renameable alias — never an id. Stored [`crate::RoomUri`]
+//! values use the UUID, so a handle rename cannot break a citation, pin, or
+//! export.
 //!
 //! The handle lives on a separate table (not a `Workspace` column) so
-//! `row_to_workspace` does not ripple. Syntax is validated here; uniqueness
-//! is the store's job.
+//! `row_to_workspace` does not ripple. Syntax is validated here; uniqueness is
+//! the store's job.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

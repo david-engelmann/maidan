@@ -1,7 +1,7 @@
-//! Result-delivery state (Cluster 379.1). SQLite twin of the Postgres module —
-//! timestamps are store-bound rfc3339 text, so the `armed_revision` comparison
-//! is a string comparison. That is sound because both sides of it are written by
-//! this module in one format; it is never compared against a `datetime('now')`
+//! Result-delivery state. SQLite twin of the Postgres module — timestamps are
+//! store-bound rfc3339 text, so the `armed_revision` comparison is a string
+//! comparison. That is sound because both sides of it are written by this
+//! module in one format; it is never compared against a `datetime('now')`
 //! column.
 
 use chrono::{DateTime, Utc};

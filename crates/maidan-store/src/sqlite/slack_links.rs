@@ -1,4 +1,4 @@
-//! Slack projector channel links (Cluster 308). SQLite twin of the Postgres module.
+//! Slack projector channel links. SQLite twin of the Postgres module.
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};

@@ -1,4 +1,4 @@
-//! WS subscribe channel grants (Cluster 81.0).
+//! WS subscribe channel grants.
 
 use std::{sync::Arc, time::Duration};
 

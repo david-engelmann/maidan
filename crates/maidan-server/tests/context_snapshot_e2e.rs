@@ -1,6 +1,6 @@
-//! Cluster 329: immutable context snapshot artifact. `POST /threads/:id/context/
-//! snapshot` freezes the assembled pack into the content-addressed artifact store;
-//! it is fetchable, tamper-evident (sha256), and deduped (identical packs share a
+//! Immutable context snapshot artifact. `POST /threads/:id/context/ snapshot`
+//! freezes the assembled pack into the content-addressed artifact store; it is
+//! fetchable, tamper-evident (sha256), and deduped (identical packs share a
 //! blob). Auth ENABLED (`uploaded_by` is the caller — a NOT-NULL FK).
 
 use std::{

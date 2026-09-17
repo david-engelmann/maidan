@@ -1,5 +1,5 @@
-//! Cluster 250: REST management of a member's delivery email —
-//! `PUT`/`GET`/`DELETE /members/:id/email`. Auth ENABLED with a minted bearer.
+//! REST management of a member's delivery email — `PUT`/`GET`/`DELETE
+//! /members/:id/email`. Auth ENABLED with a minted bearer.
 
 use std::{
     net::SocketAddr,

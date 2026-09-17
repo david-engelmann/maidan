@@ -1,6 +1,6 @@
-//! GitHub projector issue/PR links (Cluster 311): link (upsert) / get / by-thread /
-//! list / unlink a (repo, issue) → Maidan channel/thread/member mapping. Both backends.
-//! Also the Cluster-376.5 cap: at most one GitHub link per claim, so one thread
+//! GitHub projector issue/PR links: link (upsert) / get / by-thread / list /
+//! unlink a (repo, issue) → Maidan channel/thread/member mapping. Both
+//! backends. Also the cap: at most one GitHub link per claim, so one thread
 //! cannot fan out to N GitHub issues.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -125,8 +125,8 @@ async fn run_suite(store: &dyn Store) {
         2
     );
 
-    // Retry-then-disable (Cluster 377.3): a broken link is turned off, and only
-    // the first failure gets to announce it. Re-linking is the re-enable path.
+    // Retry-then-disable: a broken link is turned off, and only the first
+    // failure gets to announce it. Re-linking is the re-enable path.
     assert!(got.disabled_at.is_none());
     assert!(store
         .disable_github_issue_link("o/r", 42)
@@ -201,7 +201,7 @@ async fn run_suite(store: &dyn Store) {
         1
     );
 
-    // --- at most one GitHub link per claim (Cluster 376.5) ---
+    // --- at most one GitHub link per claim ---
     // thread2 holds o/r#43; thread's link was just unlinked.
     let link_to = |repo: &str, issue: i64, target: maidan_types::ThreadId| {
         let new = NewGithubIssueLink {

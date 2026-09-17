@@ -1,28 +1,27 @@
-//! Hash-chained event log + strong refs (Cluster 392, Wave 3 #32).
+//! Hash-chained event log + strong refs.
 //!
-//! Every event is accompanied by `{id, lsn, prev_hash, content_hash}`.
-//! `lsn` **is** the event-log id (the Cluster 390 room head of this row),
-//! not a Postgres WAL [`crate::Lsn`] / `Maidan-Consistency-Token`.
+//! Every event is accompanied by `{id, lsn, prev_hash, content_hash}`. `lsn`
+//! **is** the event-log id, not a Postgres WAL [`crate::Lsn`] /
+//! `Maidan-Consistency-Token`.
 //!
-//! **Hashed, not signed.** SHA-256 over Cluster 391 canonical JSON. A
-//! federated peer that has seen a prefix (or pulls a workspace page)
-//! detects a splice, deletion, or payload rewrite without trusting the
-//! host. Authorship of a *wholly fabricated* but internally consistent
-//! chain is Cluster 391's signed export, not this module. Not MST/CAR.
+//! **Hashed, not signed.** SHA-256 over the canonical JSON form. A
+//! federated peer that has seen a prefix (or pulls a workspace page) detects a
+//! splice, deletion, or payload rewrite without trusting the host. Authorship
+//! of a *wholly fabricated* but internally consistent chain is the signed
+//! export, not this module. Not MST/CAR.
 //!
 //! **Per-workspace.** `maidan_events` is globally sequenced; federation
-//! is workspace-scoped, so `prev_hash` links the previous event **in
-//! the same workspace** (`ORDER BY id`). Global id gaps (rolled-back
-//! inserts, other tenants) are expected.
+//! is workspace-scoped, so `prev_hash` links the previous event **in the same
+//! workspace** (`ORDER BY id`). Global id gaps (rolled-back inserts, other
+//! tenants) are expected.
 //!
 //! **Retention.** After prune, verify the retained suffix. The oldest
 //! remaining row is the floor; it need not chain from genesis. Snapshot
 //! catch-up of a pruned prefix is Open Work #33 — out of scope.
 //!
-//! Strong-ref URIs are `maidan:{event|thread|message}/{id}` pins, **not**
-//! Cluster 395's hierarchical `maidan://{workspace_id}/channels/…`
-//! room scheme ([`crate::RoomUri`]). A handle is an alias, never the
-//! authority.
+//! Strong-ref URIs are `maidan:{event|thread|message}/{id}` pins, **not** the
+//! hierarchical `maidan://{workspace_id}/channels/…` room scheme
+//! ([`crate::RoomUri`]). A handle is an alias, never the authority.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -234,9 +233,8 @@ pub fn genesis_hash() -> String {
 ///
 /// This normalizes the *payload*, not [`canonical_json`]. Changing the
 /// canonicaliser would invalidate every stored chain hash and every signed
-/// export, with no rebuild path (Cluster 397.8 removed it deliberately).
-/// Normalizing the payload changes the hash only of payloads that are
-/// currently unverifiable anyway.
+/// export, with no rebuild path. Normalizing the payload changes the hash only
+/// of payloads that are currently unverifiable anyway.
 pub fn normalize_payload_numbers(payload: &mut Value) {
     match payload {
         Value::Number(n) => {
@@ -345,9 +343,8 @@ pub fn verify_link(
     }
 }
 
-/// Walk `links` with matching `payloads`. Empty is ok.
-/// Verify a chain one row at a time, holding only the previous link
-/// (Cluster 397.8).
+/// Walk `links` with matching `payloads`. Empty is ok. Verify a chain one row
+/// at a time, holding only the previous link.
 ///
 /// [`verify_chain`] takes whole slices, so the store collected every link *and*
 /// a clone of every payload before checking any of them — on a large workspace,

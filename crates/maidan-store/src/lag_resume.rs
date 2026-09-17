@@ -1,7 +1,7 @@
-//! Resume a lagged bus consumer from the durable event log (Cluster 388).
+//! Resume a lagged bus consumer from the durable event log.
 //!
-//! `RecvError::Lagged` / `BusItem::Lagged` must never silently drop: drain
-//! `id > after_id` globally (the bus is not workspace-scoped) and re-handle.
+//! `RecvError::Lagged` / `BusItem::Lagged` must never silently drop: drain `id
+//! > after_id` globally (the bus is not workspace-scoped) and re-handle.
 
 use crate::error::StoreError;
 use crate::store::Store;

@@ -1,6 +1,6 @@
-//! Named-secret store (Cluster 371, Wave 2 #19): create/rotate/list/get/delete.
-//! The store holds ciphertext (encryption is the route layer's job); this checks
-//! the CRUD + the upsert-rotates contract. Both backends.
+//! Named-secret store: create/rotate/list/get/delete. The store holds
+//! ciphertext (encryption is the route layer's job); this checks the CRUD + the
+//! upsert-rotates contract. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewSecret, NewWorkspace};

@@ -1,28 +1,28 @@
-//! Required reviewers (Cluster 375, Wave 2 #22, G5/G-dev-5).
+//! Required reviewers.
 //!
 //! A thread declares a **review requirement** — `required_count` (`k`) distinct
-//! approvals — optionally from a **named reviewer set** (`n`). A reviewer submits
-//! an [`ReviewDecision`] (approve / request-changes). The FSM close-gate
-//! (Cluster 375.2) then refuses `closed` until `k` distinct **qualifying**
-//! approvals exist — an approval qualifies when the reviewer is neither the
-//! thread's `owner` nor its `assignee` (separation of duties, Cluster 355) and,
-//! when a named set exists, is in it — **and** no unresolved `refutes` edge
-//! blocks the thread. This is a **gate**, not a poll/closer.
+//! approvals — optionally from a **named reviewer set** (`n`). A reviewer
+//! submits an [`ReviewDecision`] (approve / request-changes). The FSM
+//! close-gate then refuses `closed` until `k` distinct **qualifying** approvals
+//! exist — an approval qualifies when the reviewer is neither the thread's
+//! `owner` nor its `assignee` (separation of duties) and, when a named set
+//! exists, is in it — **and** no unresolved `refutes` edge blocks the thread.
+//! This is a **gate**, not a poll/closer.
 //!
-//! Cluster 383 feeds a delivered `example.review.result/1` with any `critical`
-//! finding in as [`ReviewDecision::RequestChanges`] from a member who has
-//! declared [`REVIEW_SKILL`]. That is a producer→reviewer adapter, not a
-//! new gate: the close-gate still reads this table.
+//! A delivered `example.review.result/1` with any `critical` finding is fed in
+//! as [`ReviewDecision::RequestChanges`] from a member who has
+//! declared [`REVIEW_SKILL`]. That is a producer→reviewer adapter, not a new
+//! gate: the close-gate still reads this table.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{MemberId, ThreadId};
 
-/// The member-skill tag a review agent declares (Cluster 230 free-form skills).
-/// Cluster 383's adapter only writes [`ReviewDecision::RequestChanges`] when
-/// the reviewer has this skill — so a result from an implementer who is not
-/// review-skilled never arms the close-gate.
+/// The member-skill tag a review agent declares. the adapter only writes
+/// [`ReviewDecision::RequestChanges`] when the reviewer has this skill — so a
+/// result from an implementer who is not review-skilled never arms the
+/// close-gate.
 pub const REVIEW_SKILL: &str = "review";
 
 /// A reviewer's decision on a thread.

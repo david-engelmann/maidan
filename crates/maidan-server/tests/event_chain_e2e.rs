@@ -1,5 +1,5 @@
-//! Cluster 392: REST `GET /workspaces/:wid/events/verify` reports chain
-//! integrity and fails closed (409) on a break.
+//! REST `GET /workspaces/:wid/events/verify` reports chain integrity and fails
+//! closed (409) on a break.
 
 use std::{
     net::SocketAddr,

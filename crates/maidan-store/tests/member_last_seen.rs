@@ -1,5 +1,5 @@
-//! Durable member last-seen (Cluster 252, Arc I): touch (upsert) / get. Both
-//! backends. No wiring yet.
+//! Durable member last-seen: touch (upsert) / get. Both backends. No wiring
+//! yet.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};

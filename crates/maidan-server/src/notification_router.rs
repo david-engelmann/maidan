@@ -1,21 +1,20 @@
-//! Subscribes to the event bus and writes per-recipient notification rows
-//! (Cluster 238, Program C — Arc G/H). Where the webhook worker fans events to
-//! per-workspace HTTP sinks, this resolves an event to the *members* it concerns
-//! and writes one `maidan_notifications` row each — the per-recipient delivery
-//! layer the unified inbox reads. Routes @mentions (Cluster 238) and, for
-//! followers, new messages in a followed channel/thread (Cluster 245), honoring
-//! each recipient's mute preferences (Cluster 242).
+//! Subscribes to the event bus and writes per-recipient notification rows.
+//! Where the webhook worker fans events to per-workspace HTTP sinks, this
+//! resolves an event to the *members* it concerns and writes one
+//! `maidan_notifications` row each — the per-recipient delivery layer the
+//! unified inbox reads. Routes @mentions and, for followers, new messages in a
+//! followed channel/thread, honoring each recipient's mute preferences.
 //!
 //! Every server replica runs this consumer, so the same event reaches each; the
-//! write goes through `create_notification_if_absent` (unique on
-//! `(member_id, source_log_id)`), so a replay or a second replica cannot
-//! double-notify. A `MentionRecorded` and a `MessagePosted` are distinct events
-//! (distinct `log_id`s), so a member mentioned in a channel they *also* follow
-//! gets both a mention notification and a message-posted one — per-kind mute
+//! write goes through `create_notification_if_absent` (unique on `(member_id,
+//! source_log_id)`), so a replay or a second replica cannot double-notify. A
+//! `MentionRecorded` and a `MessagePosted` are distinct events (distinct
+//! `log_id`s), so a member mentioned in a channel they *also* follow gets both
+//! a mention notification and a message-posted one — per-kind mute
 //! (`message_posted`) is the control for follow-noise. A `ThreadResultSet` is
-//! not a per-recipient notification: it delegates to [`crate::result_delivery`]
-//! (Cluster 379.3), which arms one delivery row per `deliver_to` target, and
-//! to the Cluster 383 critical→`request_changes` adapter (the close-gate).
+//! not a per-recipient notification: it delegates to
+//! [`crate::result_delivery`], which arms one delivery row per `deliver_to`
+//! target, and to the critical→`request_changes` adapter (the close-gate).
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -159,11 +158,12 @@ async fn consume_bus(
 }
 
 /// Resolve an event to the members it concerns and write a per-recipient
-/// notification row for each — `MentionRecorded` → the mentioned member (Cluster
+/// notification row for each — `MentionRecorded` → the mentioned member
+/// (Cluster
 /// 238); `MessagePosted` → the followers of its channel/thread minus the author
-/// (Cluster 245). Each write is mute-checked (Cluster 242) and deduped on
-/// `(member_id, source_log_id)`, so event replays and multiple replicas don't
-/// double-notify. A `ThreadResultSet` is the result-delivery trigger (Cluster
+/// Each write is mute-checked and deduped on `(member_id, source_log_id)`, so
+/// event replays and multiple replicas don't double-notify. A `ThreadResultSet`
+/// is the result-delivery trigger (Cluster
 /// 379.3), not an inbox row.
 pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result<(), String> {
     match event {
@@ -207,12 +207,12 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             if dm_conversation_id.is_some() {
                 return Ok(());
             }
-            // Slack projector egress (Cluster 309, durable since 377.2): if this
-            // thread is linked to a Slack channel and the message didn't originate
-            // in Slack, queue it for the egress worker. A no-op unless a Slack
-            // sender is configured; `log_id` dedups the every-replica enqueue.
+            // Slack projector egress: if this thread is linked to a Slack
+            // channel and the message didn't originate in Slack, queue it for
+            // the egress worker. A no-op unless a Slack sender is configured;
+            // `log_id` dedups the every-replica enqueue.
             crate::slack::route_message_to_slack(state, log_id, *thread_id, message).await;
-            // GitHub projector egress (Cluster 312): same, for a linked issue/PR.
+            // GitHub projector egress: same, for a linked issue/PR.
             crate::github::route_message_to_github(state, log_id, *thread_id, message).await;
             // Followers of the channel and/or the thread, minus the author (you
             // don't get notified of your own message). The set dedups a member who
@@ -255,11 +255,11 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             thread,
             ..
         } => {
-            // W1 (Cluster 355): an expired claim means the task is stuck — its
-            // holder's lease lapsed and it was reclaimed. If the thread has a
-            // durable owner, notify them so they can re-steer or reassign. The
-            // dead holder is the actor. Un-owned threads notify no one (the
-            // occupancy view / `wait_for_claim_expired` already surface expiry).
+            // W1: an expired claim means the task is stuck — its holder's lease
+            // lapsed and it was reclaimed. If the thread has a durable owner,
+            // notify them so they can re-steer or reassign. The dead holder is
+            // the actor. Un-owned threads notify no one (the occupancy view /
+            // `wait_for_claim_expired` already surface expiry).
             if let Some(owner_id) = thread.owner_id {
                 notify(
                     state,
@@ -281,12 +281,13 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             thread_id,
             ..
         } => {
-            // G-dev-7 (Cluster 361): the work landed (its linked PR merged). Reach
-            // the people accountable for or watching the thread — its durable owner
-            // (if any) plus its followers. Per-recipient mutes are honored by
-            // `notify`. No member actor: the merger is a GitHub login, not a member.
-            // A PR merge is infrequent (not a hot path like MessagePosted), so a
-            // per-recipient loop over the small union is fine.
+            // G-dev-7: the work landed (its linked PR merged). Reach the people
+            // accountable for or watching the thread — its durable owner (if
+            // any) plus its followers. Per-recipient mutes are honored by
+            // `notify`. No member actor: the merger is a GitHub login, not a
+            // member. A PR merge is infrequent (not a hot path like
+            // MessagePosted), so a per-recipient loop over the small union is
+            // fine.
             let mut recipients: HashSet<MemberId> = HashSet::new();
             if let Ok(thread) = state.store.get_thread(*thread_id).await {
                 if let Some(owner_id) = thread.owner_id {
@@ -317,14 +318,14 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             thread_id,
             ..
         } => {
-            // Cluster 379.3: a structured result may be aimed at an external
-            // surface. Fetch → parse → per target, allowlist-check then enqueue
-            // (or record a skip). Empty `deliver_to` is valid and writes nothing.
+            // A structured result may be aimed at an external surface. Fetch →
+            // parse → per target, allowlist-check then enqueue (or record a
+            // skip). Empty `deliver_to` is valid and writes nothing.
             crate::result_delivery::route_thread_result(state, log_id, *workspace_id, *thread_id)
                 .await?;
-            // Cluster 383.2: a critical finding is a request_changes from the
-            // result producer. Independent of deliver_to — thread-only results
-            // still block close. A store hiccup must not undo delivery.
+            // A critical finding is a request_changes from the result producer.
+            // Independent of deliver_to — thread-only results still block
+            // close. A store hiccup must not undo delivery.
             if let Err(err) = crate::result_delivery::arm_critical_review(state, *thread_id).await {
                 warn!(
                     error = %err,
@@ -339,10 +340,10 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             thread_id,
             ..
         } => {
-            // G2/G4 (Cluster 364): a thread's wait timed out unsatisfied — the room
-            // must reach a human (never invent a decision). Notify the thread's
-            // durable owner (the accountable party) if one is set. Mute-honoring via
-            // `notify`; no member actor (the timer fired).
+            // G2/G4: a thread's wait timed out unsatisfied — the room must
+            // reach a human (never invent a decision). Notify the thread's
+            // durable owner (the accountable party) if one is set.
+            // Mute-honoring via `notify`; no member actor (the timer fired).
             if let Ok(thread) = state.store.get_thread(*thread_id).await {
                 if let Some(owner_id) = thread.owner_id {
                     notify(
@@ -365,12 +366,12 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
     Ok(())
 }
 
-/// Fan a `MessagePosted` out to its followers (Cluster 344 de-serialized this off
-/// the router; Cluster 349 collapsed it to a batch). The router is a serial bus
-/// consumer, so a widely followed message must not head-of-line-block the pipeline:
-/// mutes resolve in one query (Cluster 348) and the unmuted set is written in one
-/// batch insert, so a fan-out to N followers is ~2 store round trips regardless of
-/// N. A store error short-circuits (matching the prior `?`-in-loop behaviour).
+/// Fan a `MessagePosted` out to its followers. The router is a serial bus
+/// consumer, so a widely followed message must not head-of-line-block the
+/// pipeline: mutes resolve in one query and the unmuted set is written in one
+/// batch insert, so a fan-out to N followers is ~2 store round trips regardless
+/// of N. A store error short-circuits (matching the prior `?`-in-loop
+/// behaviour).
 #[allow(clippy::too_many_arguments)]
 async fn fan_out_message_posted(
     state: &AppState,
@@ -382,13 +383,14 @@ async fn fan_out_message_posted(
     message_id: MessageId,
     author_id: MemberId,
 ) -> Result<(), String> {
-    // Cluster 348: resolve mutes for the whole recipient set in ONE query (was one
-    // `is_notification_muted` per recipient). Cluster 349: write the unmuted set in
-    // ONE `INSERT … ON CONFLICT DO NOTHING RETURNING` (was one insert per recipient,
-    // concurrently). Together this collapses the fan-out to ~2 store round trips
-    // (mute filter + batch insert) regardless of follower count. `create_notifications_batch`
-    // returns only the rows it actually inserted, so we meter + email exactly the new
-    // notifications (a dedup collision from a replay / second replica is skipped).
+    // Resolve mutes for the whole recipient set in ONE query (was one
+    // `is_notification_muted` per recipient). Write the unmuted set in ONE
+    // `INSERT … ON CONFLICT DO NOTHING RETURNING` (was one insert per
+    // recipient, concurrently). Together this collapses the fan-out to ~2 store
+    // round trips (mute filter + batch insert) regardless of follower count.
+    // `create_notifications_batch` returns only the rows it actually inserted,
+    // so we meter + email exactly the new notifications (a dedup collision from
+    // a replay / second replica is skipped).
     let recipients: Vec<MemberId> = recipients.into_iter().collect();
     let muted: HashSet<MemberId> = state
         .store
@@ -400,8 +402,8 @@ async fn fan_out_message_posted(
     for _ in &muted {
         crate::metrics::record_notification_suppressed("muted");
     }
-    // Leaf mute (Cluster 356, F7): members who muted this thread are dropped from the
-    // fan-out in one batch query, alongside the kind-mute filter above.
+    // Leaf mute: members who muted this thread are dropped from the fan-out in
+    // one batch query, alongside the kind-mute filter above.
     let thread_muted: HashSet<MemberId> = state
         .store
         .thread_muters(thread_id)
@@ -414,9 +416,10 @@ async fn fan_out_message_posted(
             crate::metrics::record_notification_suppressed("thread_muted");
         }
     }
-    // Per-channel mute (Cluster 357, N3): members who muted this channel are dropped
-    // too — a `MessagePosted` is the firehose that channel mute silences (a mention,
-    // which breaks through, is a distinct `MentionRecorded` event, not this path).
+    // Per-channel mute: members who muted this channel are dropped too — a
+    // `MessagePosted` is the firehose that channel mute silences (a mention,
+    // which breaks through, is a distinct `MentionRecorded` event, not this
+    // path).
     let channel_muted: HashSet<MemberId> = state
         .store
         .channel_muters(channel_id)
@@ -453,8 +456,8 @@ async fn fan_out_message_posted(
         .map_err(|e| e.to_string())?;
     for n in &created {
         crate::metrics::record_notification_created(n.kind.as_str());
-        // Off-platform email (Cluster 249), only when a transport is configured —
-        // spawned so a slow SMTP send never blocks routing (best-effort, not retried).
+        // Off-platform email, only when a transport is configured — spawned so
+        // a slow SMTP send never blocks routing (best-effort, not retried).
         if state.mail.is_some() {
             let st = state.clone();
             let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
@@ -462,8 +465,8 @@ async fn fan_out_message_posted(
                 deliver_notification_email(&st, workspace_id, member_id, kind, log_id).await;
             });
         }
-        // Web Push (Cluster 366, N1), only when a sender is configured. Spawned +
-        // presence-gated inside (notify iff no live WS); best-effort.
+        // Web Push, only when a sender is configured. Spawned + presence-gated
+        // inside (notify iff no live WS); best-effort.
         if state.web_push.is_some() {
             let st = state.clone();
             let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
@@ -475,9 +478,9 @@ async fn fan_out_message_posted(
     Ok(())
 }
 
-/// Write one per-recipient notification unless the recipient has muted `kind`
-/// (Cluster 242). Returns whether a row was written (a mute or a dedup collision
-/// returns `false`).
+/// Write one per-recipient notification unless the recipient has muted `kind`.
+/// Returns whether a row was written (a mute or a dedup collision returns
+/// `false`).
 #[allow(clippy::too_many_arguments)]
 async fn notify(
     state: &AppState,
@@ -499,9 +502,9 @@ async fn notify(
         crate::metrics::record_notification_suppressed("muted");
         return Ok(false);
     }
-    // Leaf mute (Cluster 356, F7): a member who muted this specific thread is not
-    // notified about it, even for an otherwise-unmuted kind. A thread mute is the
-    // strongest scope — it suppresses even a mention (you're done with this thread).
+    // Leaf mute: a member who muted this specific thread is not notified about
+    // it, even for an otherwise-unmuted kind. A thread mute is the strongest
+    // scope — it suppresses even a mention (you're done with this thread).
     if let Some(tid) = thread_id {
         if state
             .store
@@ -513,10 +516,10 @@ async fn notify(
             return Ok(false);
         }
     }
-    // Per-channel mute (Cluster 357, N3): a member who muted this channel is not
-    // notified about its firehose — EXCEPT a `MentionRecorded` breaks through (you
-    // muted the noise but still want to be named). The thread mute above already
-    // covered the "even mentions" case; an explicit kind mute (top) always wins.
+    // Per-channel mute: a member who muted this channel is not notified about
+    // its firehose — EXCEPT a `MentionRecorded` breaks through (you muted the
+    // noise but still want to be named). The thread mute above already covered
+    // the "even mentions" case; an explicit kind mute (top) always wins.
     if kind != EventKind::MentionRecorded {
         if let Some(cid) = channel_id {
             if state
@@ -544,11 +547,11 @@ async fn notify(
     .await
 }
 
-/// Write one per-recipient notification for an **already-unmuted** recipient
-/// (Cluster 348) — the tail of [`notify`], split out so the `MessagePosted`
-/// fan-out can batch the mute check once and then write concurrently. Returns
-/// whether a row was written (a dedup collision returns `false`); on a new row,
-/// meters it and best-effort-spawns the off-platform email (Cluster 249).
+/// Write one per-recipient notification for an **already-unmuted** recipient —
+/// the tail of [`notify`], split out so the `MessagePosted` fan-out can batch
+/// the mute check once and then write concurrently. Returns whether a row was
+/// written (a dedup collision returns `false`); on a new row, meters it and
+/// best-effort-spawns the off-platform email.
 #[allow(clippy::too_many_arguments)]
 async fn write_notification(
     state: &AppState,
@@ -577,16 +580,16 @@ async fn write_notification(
         .map_err(|e| e.to_string())?;
     if created.is_some() {
         crate::metrics::record_notification_created(kind.as_str());
-        // Off-platform email (Cluster 249), only when a transport is configured.
-        // Spawned so a slow/failing SMTP send never blocks event routing —
-        // best-effort (a failure is logged + metered, not retried).
+        // Off-platform email, only when a transport is configured. Spawned so a
+        // slow/failing SMTP send never blocks event routing — best-effort (a
+        // failure is logged + metered, not retried).
         if state.mail.is_some() {
             let st = state.clone();
             tokio::spawn(async move {
                 deliver_notification_email(&st, workspace_id, member_id, kind, source_log_id).await;
             });
         }
-        // Web Push (Cluster 366, N1): notify iff no live WS (gated inside).
+        // Web Push: notify iff no live WS (gated inside).
         if state.web_push.is_some() {
             let st = state.clone();
             tokio::spawn(async move {
@@ -597,12 +600,12 @@ async fn write_notification(
     Ok(created.is_some())
 }
 
-/// The "recently active" window for presence-aware email routing (Cluster 253),
-/// in seconds, from `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS`. When a positive value is
-/// set, a notification email is skipped if the recipient was last seen within the
+/// The "recently active" window for presence-aware email routing, in seconds,
+/// from `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS`. When a positive value is set, a
+/// notification email is skipped if the recipient was last seen within the
 /// window — they are online and will see the in-app notification, so the email
-/// would be redundant. Unset or `0` disables the guard: every opted-in recipient
-/// is emailed, the Cluster-249 behaviour (so this is a zero-change opt-in). Read
+/// would be redundant. Unset or `0` disables the guard: every opted-in
+/// recipient is emailed, the behaviour (so this is a zero-change opt-in). Read
 /// per call — cheap, and the send is already off the event-routing hot path.
 fn presence_skip_window_secs() -> Option<i64> {
     std::env::var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS")
@@ -611,9 +614,9 @@ fn presence_skip_window_secs() -> Option<i64> {
         .filter(|&s| s > 0)
 }
 
-/// Deliver one notification to a member by email, if a transport is configured and
-/// the member has a delivery address on file (Cluster 249). Best-effort: a send
-/// failure is logged + metered, never retried (a durable retrying queue is a
+/// Deliver one notification to a member by email, if a transport is configured
+/// and the member has a delivery address on file. Best-effort: a send failure
+/// is logged + metered, never retried (a durable retrying queue is a
 /// follow-up). Extracted so a test can await it directly rather than racing the
 /// spawned task in [`notify`].
 pub async fn deliver_notification_email(
@@ -623,8 +626,8 @@ pub async fn deliver_notification_email(
     kind: EventKind,
     source_log_id: i64,
 ) {
-    // Only enqueue when a transport is configured — the mail_worker (Cluster 305)
-    // does the actual send, so a queue with no sender would just pile up.
+    // Only enqueue when a transport is configured — the mail_worker does the
+    // actual send, so a queue with no sender would just pile up.
     if state.mail.is_none() {
         return;
     }
@@ -636,10 +639,11 @@ pub async fn deliver_notification_email(
             return;
         }
     };
-    // Digest mode (Cluster 255): a member in digest mode gets a periodic rollup
-    // from the sweeper instead of a per-notification email — the two are mutually
-    // exclusive, so suppress the immediate send here. A lookup error falls through
-    // and sends (the immediate email is the safer default on an uncertain mode).
+    // Digest mode: a member in digest mode gets a periodic rollup from the
+    // sweeper instead of a per-notification email — the two are mutually
+    // exclusive, so suppress the immediate send here. A lookup error falls
+    // through and sends (the immediate email is the safer default on an
+    // uncertain mode).
     match state.store.get_delivery_mode(member_id).await {
         Ok(maidan_types::EmailDeliveryMode::Digest) => {
             crate::metrics::record_email_delivered("skipped_digest");
@@ -650,11 +654,11 @@ pub async fn deliver_notification_email(
             warn!(error = %err, "notification email: delivery-mode lookup failed");
         }
     }
-    // Presence-aware routing (Cluster 253): if the recipient was seen within the
-    // configured window, skip the email — they are active and will see the in-app
-    // notification. A negative idle (clock skew, last-seen in the future) counts
-    // as active too. A lookup error falls through and sends (never drop an email
-    // over a transient read). Opt-in: unset/0 window sends as before.
+    // Presence-aware routing: if the recipient was seen within the configured
+    // window, skip the email — they are active and will see the in-app
+    // notification. A negative idle (clock skew, last-seen in the future)
+    // counts as active too. A lookup error falls through and sends (never drop
+    // an email over a transient read). Opt-in: unset/0 window sends as before.
     if let Some(window_secs) = presence_skip_window_secs() {
         match state.store.get_member_last_seen(member_id).await {
             Ok(Some(last_seen)) => {
@@ -677,15 +681,14 @@ pub async fn deliver_notification_email(
         kind.as_str(),
         source_log_id
     );
-    // Durable delivery (Cluster 305): enqueue to the mail outbox and let the
-    // mail_worker send with retry/backoff + dead-lettering, instead of a
-    // best-effort send that drops the email on a transient SMTP failure.
+    // Durable delivery: enqueue to the mail outbox and let the mail_worker send
+    // with retry/backoff + dead-lettering, instead of a best-effort send that
+    // drops the email on a transient SMTP failure.
     match state
         .store
         .enqueue_mail(maidan_types::NewMailOutbox {
-            // Cluster 398.3: the row is attributable, so the operator DLQ can be
-            // scoped to a tenant instead of showing everyone's mail to any
-            // workspace admin.
+            // The row is attributable, so the operator DLQ can be scoped to a
+            // tenant instead of showing everyone's mail to any workspace admin.
             workspace_id: Some(workspace_id),
             to_address: address,
             subject,
@@ -701,12 +704,12 @@ pub async fn deliver_notification_email(
     }
 }
 
-/// The "live" window (seconds) for the Web Push presence gate (Cluster 366, N1):
-/// a member seen within this window is treated as connected (they got the
-/// realtime WS event) so a Web Push message is skipped. Default 60s;
+/// The "live" window (seconds) for the Web Push presence gate: a member seen
+/// within this window is treated as connected (they got the realtime WS event)
+/// so a Web Push message is skipped. Default 60s;
 /// `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` overrides. Web Push is "notify iff no live
-/// WS", so unlike the email gate this window is always active (a sensible default,
-/// not opt-in).
+/// WS", so unlike the email gate this window is always active (a sensible
+/// default, not opt-in).
 fn web_push_live_window_secs() -> i64 {
     std::env::var("MAIDAN_WEBPUSH_LIVE_WINDOW_SECS")
         .ok()
@@ -715,10 +718,10 @@ fn web_push_live_window_secs() -> i64 {
         .unwrap_or(60)
 }
 
-/// Deliver one notification to a member over Web Push (Cluster 366, N1) — but only
-/// when the member has **no live WebSocket** (they were not seen within the live
-/// window), so an online member isn't double-notified. Best-effort + spawned so a
-/// slow push service never blocks routing; a `410 Gone`/`404` prunes the dead
+/// Deliver one notification to a member over Web Push — but only when the
+/// member has **no live WebSocket** (they were not seen within the live
+/// window), so an online member isn't double-notified. Best-effort + spawned so
+/// a slow push service never blocks routing; a `410 Gone`/`404` prunes the dead
 /// subscription. Extracted so a test can await it directly. `pub` for the e2e.
 pub async fn deliver_notification_web_push(
     state: &AppState,

@@ -1,5 +1,5 @@
-//! Durable mail outbox (Cluster 304): enqueue / atomic-lease-claim / mark
-//! delivered / reschedule-or-dead-letter / DLQ count. Both backends.
+//! Durable mail outbox: enqueue / atomic-lease-claim / mark delivered /
+//! reschedule-or-dead-letter / DLQ count. Both backends.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -100,8 +100,8 @@ async fn run_suite(store: &dyn Store) {
         .is_none());
     assert_eq!(store.count_dead_mail().await.expect("count2"), 1);
 
-    // DLQ ops (Cluster 306): the dead entry (`id`, "gave up") is listed, then
-    // requeued -> pending + due, no longer dead + claimable again.
+    // DLQ ops: the dead entry (`id`, "gave up") is listed, then requeued ->
+    // pending + due, no longer dead + claimable again.
     let dead = store.list_dead_mail(None, 10).await.expect("list dead");
     assert_eq!(dead.len(), 1);
     assert_eq!(dead[0].id, id);
@@ -163,7 +163,7 @@ async fn mail_outbox_enqueue_claim_retry_deadletter_postgres() {
     run_dlq_scope_suite(&store).await;
 }
 
-/// Cluster 398.3: the mail DLQ is per-workspace.
+/// The mail DLQ is per-workspace.
 ///
 /// `token:admin` is minted per workspace, but this query used to be global —
 /// and the rows carry `to_address`, `subject` and the message body, so any

@@ -1,4 +1,4 @@
-//! Cluster 393: snapshot + since-LSN catch-up. Both backends.
+//! Snapshot + since-LSN catch-up. Both backends.
 
 use maidan_store::{
     build_log_snapshot, catch_up_since, prelude::*, run_sqlite_migrations, StoreError,
@@ -279,8 +279,7 @@ async fn pruned_prefix_requires_snapshot_postgres() {
     assert_pruned_prefix(&store, ws, events[0].id, events[2].id).await;
 }
 
-/// Cluster 400.2: a snapshot and its catch-up leave no gap under concurrent
-/// writes.
+/// A snapshot and its catch-up leave no gap under concurrent writes.
 ///
 /// A consumer reads this pair as "here is the world, now tail from `head`", so
 /// between them they must cover everything. `build_workspace_export` is many

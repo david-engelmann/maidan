@@ -1,11 +1,11 @@
-//! Cross-replica durable ephemeral state (Cluster 104.0.4).
+//! Cross-replica durable ephemeral state.
 //!
 //! Two HTTP servers sharing one Postgres database stand in for two server
 //! replicas behind a load balancer. Because OAuth authorization codes and
-//! reindex job status now live in the store (Clusters 104.0.1–.3) rather than
-//! per-replica memory, an authorization code minted on replica A can be
-//! exchanged on replica B, and a reindex job started on replica A is visible
-//! from replica B — neither of which the old in-memory maps could do.
+//! reindex job status now live in the store rather than per-replica memory, an
+//! authorization code minted on replica A can be exchanged on replica B, and a
+//! reindex job started on replica A is visible from replica B — neither of
+//! which the old in-memory maps could do.
 
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;

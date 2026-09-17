@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Follow a channel (Cluster 244). Idempotent.
+/// Follow a channel. Idempotent.
 pub async fn follow_channel(
     pool: &PgPool,
     member_id: MemberId,
@@ -136,8 +136,8 @@ pub async fn thread_followers(
         .collect())
 }
 
-/// Mute a specific thread for a member (Cluster 356, F7 leaf mute). Idempotent —
-/// the notification router suppresses notifications about a muted thread.
+/// Mute a specific thread for a member. Idempotent — the notification router
+/// suppresses notifications about a muted thread.
 pub async fn mute_thread(
     pool: &PgPool,
     member_id: MemberId,
@@ -196,9 +196,8 @@ pub async fn thread_muters(
         .collect())
 }
 
-/// Mute a whole channel for a member (Cluster 357, N3). Idempotent — the
-/// notification router suppresses the channel's firehose, but a mention breaks
-/// through (357.2).
+/// Mute a whole channel for a member. Idempotent — the notification router
+/// suppresses the channel's firehose, but a mention breaks through (357.2).
 pub async fn mute_channel(
     pool: &PgPool,
     member_id: MemberId,

@@ -11,8 +11,8 @@ use crate::error::StoreError;
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, created_at, resolved_at";
 
-/// Open a new `Pending` approval gate (Cluster 350, the held gate). See the
-/// SQLite twin. `schema` binds directly to the JSONB column.
+/// Open a new `Pending` approval gate. See the SQLite twin. `schema` binds
+/// directly to the JSONB column.
 pub async fn create(pool: &PgPool, gate: &NewApprovalGate) -> Result<ApprovalGate, StoreError> {
     let id = ApprovalGateId::new();
     let row = sqlx::query(&format!(

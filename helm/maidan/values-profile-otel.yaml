@@ -1,4 +1,4 @@
-# Overlay: export traces + metrics to an external OTLP collector (Cluster 88–89).
+# Overlay: export traces + metrics to an external OTLP collector.
 # Requires a reachable gRPC endpoint (e.g. in-cluster collector or vendor agent).
 config:
   MAIDAN_LOG_FORMAT: json

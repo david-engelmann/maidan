@@ -24,8 +24,8 @@ pub async fn create(pool: &PgPool, new: NewMember) -> Result<Member, StoreError>
     row_to_member(&row)
 }
 
-/// Insert a member and append its `MemberJoined` event in one transaction
-/// (Cluster 213) — see the SQLite twin.
+/// Insert a member and append its `MemberJoined` event in one transaction — see
+/// the SQLite twin.
 pub async fn create_with_event(
     pool: &PgPool,
     new: NewMember,

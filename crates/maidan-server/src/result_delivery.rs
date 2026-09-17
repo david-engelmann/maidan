@@ -1,7 +1,7 @@
-//! Result delivery trigger (Cluster 379.3).
+//! Result delivery trigger.
 //!
-//! A `ThreadResultSet` is a "go fetch" pointer (Cluster 235): the envelope lives
-//! on the thread, not on the event. This module is the arm of
+//! A `ThreadResultSet` is a "go fetch" pointer: the envelope lives on the
+//! thread, not on the event. This module is the arm of
 //! [`crate::notification_router::route_event`] that fetches, parses, and — per
 //! `deliver_to` target — allowlist-checks then enqueues. It is the exact shape
 //! `MessagePosted → route_message_to_slack` already has, pointed at a result
@@ -13,20 +13,19 @@
 //! *skip with a recorded warning* — never silence, never an error that sinks
 //! the other targets. Partial delivery is the model.
 //!
-//! The every-replica router is safe because `arm_result_delivery` is
-//! the contended write: exactly one replica wins the right to enqueue. The
-//! egress outbox is *transport* (retry/backoff); this module only arms intent
-//! and, for a blessed target, puts an [`EgressKind::Result`] row on that queue.
-//! The worker (Cluster 379.4) updates in place via the stored `external_ref`,
-//! recovering a GitHub comment through the hidden body marker if the handle
-//! is lost.
+//! The every-replica router is safe because `arm_result_delivery` is the
+//! contended write: exactly one replica wins the right to enqueue. The egress
+//! outbox is *transport* (retry/backoff); this module only arms intent and, for
+//! a blessed target, puts an [`EgressKind::Result`] row on that queue. The
+//! worker updates in place via the stored `external_ref`, recovering a GitHub
+//! comment through the hidden body marker if the handle is lost.
 //!
-//! Cluster 380.2 / 380.3: after a successful GitHub summary comment, the
-//! worker POSTs a `COMMENT` review whose `commit_id` is envelope `head_sha`
-//! and whose inline comments are the usable findings (RIGHT, post-image
-//! `line_range`). A missing sha, empty findings, a non-`reviewed` status, a
-//! vanished envelope, or a GitHub 404/422 skips the review; a 5xx is left
-//! for operator replay. The 379 summary path is unchanged.
+//! After a successful GitHub summary comment, the worker
+//! POSTs a `COMMENT` review whose `commit_id` is envelope `head_sha` and whose
+//! inline comments are the usable findings (RIGHT, post-image `line_range`). A
+//! missing sha, empty findings, a non-`reviewed` status, a vanished envelope,
+//! or a GitHub 404/422 skips the review; a 5xx is left for operator replay. The
+//! 379 summary path is unchanged.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
@@ -53,18 +52,19 @@ pub fn failure_notice(status: &str) -> String {
 /// The body that will actually leave Maidan for this target.
 ///
 /// GitHub gets `rendered` (GFM, mentions defused, truncated to the comment
-/// ceiling) with a hidden `<!-- maidan:result:<thread_id> -->` marker at byte
-/// 0 — the Cluster 379.4 recovery path if the stored `external_ref` is lost.
-/// Slack gets `summary` plus a compact digest — **never** `rendered`, which
-/// is GFM and would arrive visibly broken. A non-`reviewed` status replaces
-/// both with [`failure_notice`].
+/// ceiling) with a hidden `<!-- maidan:result:<thread_id> -->` marker at byte 0
+/// — the recovery path if the stored `external_ref` is lost.
+/// Slack gets `summary` plus a compact digest — **never** `rendered`, which is
+/// GFM and would arrive visibly broken. A non-`reviewed` status replaces both
+/// with [`failure_notice`].
 ///
-/// **Every Slack body is escaped on the way out** (Cluster 397.5), including the
+/// **Every Slack body is escaped on the way out**, including the
 /// failure notice. The notice interpolates the producer's `status`, which is an
-/// arbitrary agent-written string, and it used to be returned raw: a result with
-/// `status: "<!channel>"` aimed at a blessed channel was a real broadcast under
-/// Maidan's identity. Escaping is idempotent, so the reviewed path — already
-/// escaped inside `slack_message_body` — is unchanged by passing through again.
+/// arbitrary agent-written string, and it used to be returned raw: a result
+/// with `status: "<!channel>"` aimed at a blessed channel was a real broadcast
+/// under Maidan's identity. Escaping is idempotent, so the reviewed path —
+/// already escaped inside `slack_message_body` — is unchanged by passing
+/// through again.
 pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &WaiterResult) -> String {
     let inner = if waiter.is_reviewed() {
         reviewed_body(target, waiter)
@@ -180,12 +180,12 @@ pub async fn route_thread_result(
     Ok(())
 }
 
-/// Cluster 383.2: feed a delivered (or thread-only) `example.review.result/1`
-/// with any `critical` finding into the Cluster-375 close-gate. Uses the
-/// result's `produced_by` as the reviewer — they must have declared the
-/// `review` skill. Empty `deliver_to` still arms: the room blocks the land
-/// even when nothing is posted externally. Idempotent (upsert + `k` only
-/// when unset) so every replica of the router can call it.
+/// Feed a delivered (or thread-only) `example.review.result/1` with any
+/// `critical` finding into the close-gate. Uses the result's `produced_by` as
+/// the reviewer — they must have declared the `review` skill. Empty
+/// `deliver_to` still arms: the room blocks the land even when nothing is
+/// posted externally. Idempotent (upsert + `k` only when unset) so every
+/// replica of the router can call it.
 pub async fn arm_critical_review(state: &AppState, thread_id: ThreadId) -> Result<(), String> {
     let stored = match state.store.get_thread_result(thread_id).await {
         Ok(Some(stored)) => stored,
@@ -361,8 +361,8 @@ pub async fn current_waiter(state: &AppState, thread_id: ThreadId) -> Option<Wai
     parse_waiter_result(&stored.result)
 }
 
-/// Coordinates for one `POST /repos/{repo}/pulls/{n}/reviews` (Cluster 380.2).
-/// `None` means skip the inline review: the 379 summary comment still posts.
+/// Coordinates for one `POST /repos/{repo}/pulls/{n}/reviews`. `None` means
+/// skip the inline review: the 379 summary comment still posts.
 pub struct PreparedInlineReview {
     pub commit_id: String,
     pub comments: Vec<GithubReviewComment>,

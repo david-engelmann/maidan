@@ -1,11 +1,11 @@
-//! Per-channel authorization (Cluster 160).
+//! Per-channel authorization.
 //!
 //! Public channels are open to the whole workspace (no `channel_members` rows
 //! required); private channels are gated to explicit members. The DM system
 //! channel (`__dm__`) is exempt — DM and group-DM membership is enforced
 //! per-conversation by the `dm` / `group_dm` participant checks, which remain
-//! authoritative. `bypass` callers (auth disabled / tests) always pass, matching
-//! `has_capability` / `ensure_workspace`.
+//! authoritative. `bypass` callers (auth disabled / tests) always pass,
+//! matching `has_capability` / `ensure_workspace`.
 
 use maidan_store::Store;
 use maidan_types::{ChannelId, MessageId, ThreadId, WorkspaceId, DM_CHANNEL_NAME};
@@ -52,12 +52,13 @@ pub async fn can_access_channel(
     }
 }
 
-/// The private (non-DM) channels in `workspace_id` the caller is **not** a member
-/// of (Cluster 200) — the set to exclude at the query level so inaccessible hits
-/// don't crowd out a search's requested `limit`. `bypass` callers get an empty
-/// set (they see everything). DM threads are intentionally excluded: DM access is
-/// participant-based, not channel-membership, so it stays with the authoritative
-/// thread-level post-filter. This is a *pre-filter*, never the sole check.
+/// The private (non-DM) channels in `workspace_id` the caller is **not** a
+/// member of — the set to exclude at the query level so inaccessible hits don't
+/// crowd out a search's requested `limit`. `bypass` callers get an empty set
+/// (they see everything). DM threads are intentionally excluded: DM access is
+/// participant-based, not channel-membership, so it stays with the
+/// authoritative thread-level post-filter. This is a *pre-filter*, never the
+/// sole check.
 pub async fn private_channel_deny_set(
     store: &dyn Store,
     auth: &AuthContext,
@@ -80,10 +81,10 @@ pub async fn private_channel_deny_set(
 }
 
 /// Ensure the caller participates in the DM / group-DM conversation backing
-/// `thread_id` (Cluster 180). DM threads all live in the one `__dm__` system
-/// channel, so `ensure_channel_access` can't gate them per-conversation — this
-/// resolves the specific conversation and checks membership. A `__dm__` thread
-/// with no resolvable conversation is treated as inaccessible (defensive).
+/// `thread_id`. DM threads all live in the one `__dm__` system channel, so
+/// `ensure_channel_access` can't gate them per-conversation — this resolves the
+/// specific conversation and checks membership. A `__dm__` thread with no
+/// resolvable conversation is treated as inaccessible (defensive).
 pub async fn ensure_dm_participant(
     store: &dyn Store,
     auth: &AuthContext,
@@ -115,14 +116,13 @@ pub struct ThreadScope {
 }
 
 /// Resolve a thread's workspace + channel **and** authorize the caller in a
-/// single pass (Cluster 339). Most write handlers used to call
-/// `resolve_thread_context` (get_thread + get_channel) and then
-/// [`ensure_thread_access`] (the same two fetches again); this does the fetch
-/// once and returns the [`ThreadScope`] the handler needs. The access rule is
-/// identical to [`ensure_thread_access`] — workspace isolation, then
-/// DM-conversation participation for a `__dm__` thread or `channel_members` for a
-/// private channel. `bypass` skips the checks but still returns the scope (the
-/// handler needs the location regardless).
+/// single pass. Most write handlers used to call `resolve_thread_context`
+/// (get_thread + get_channel) and then [`ensure_thread_access`] (the same two
+/// fetches again); this does the fetch once and returns the [`ThreadScope`] the
+/// handler needs. The access rule is identical to [`ensure_thread_access`] —
+/// workspace isolation, then DM-conversation participation for a `__dm__`
+/// thread or `channel_members` for a private channel. `bypass` skips the checks
+/// but still returns the scope (the handler needs the location regardless).
 pub async fn authorize_thread(
     store: &dyn Store,
     auth: &AuthContext,
@@ -150,10 +150,10 @@ pub async fn authorize_thread(
 }
 
 /// Ensure the caller may access `thread_id`. For a normal channel this is
-/// channel access; for a `__dm__` thread it is DM-conversation participation
-/// (Cluster 180) — closing the gap where a DM thread was readable via the
-/// generic thread route by any workspace member. Delegates to
-/// [`authorize_thread`] so the rule stays single-sourced (Cluster 339).
+/// channel access; for a `__dm__` thread it is DM-conversation participation —
+/// closing the gap where a DM thread was readable via the generic thread route
+/// by any workspace member. Delegates to [`authorize_thread`] so the rule stays
+/// single-sourced.
 pub async fn ensure_thread_access(
     store: &dyn Store,
     auth: &AuthContext,
@@ -166,10 +166,10 @@ pub async fn ensure_thread_access(
 }
 
 /// The bool form of [`ensure_thread_access`], for filtering aggregate result
-/// sets (search hits, workspace-context threads) per-thread (Cluster 180) — this
-/// is DM-participant-aware, unlike the channel-keyed [`can_access_channel`],
-/// which exempts the shared `__dm__` channel and so leaked DM content into
-/// aggregate reads. `Forbidden` becomes `false`; store errors propagate.
+/// sets (search hits, workspace-context threads) per-thread — this is
+/// DM-participant-aware, unlike the channel-keyed [`can_access_channel`], which
+/// exempts the shared `__dm__` channel and so leaked DM content into aggregate
+/// reads. `Forbidden` becomes `false`; store errors propagate.
 pub async fn can_access_thread(
     store: &dyn Store,
     auth: &AuthContext,
@@ -194,10 +194,10 @@ pub struct MessageScope {
 }
 
 /// Resolve a message's workspace/channel/thread **and** authorize the caller in
-/// one pass (Cluster 340) — the message-keyed twin of [`authorize_thread`], for
-/// handlers that used `resolve_message_chain` (get_message + thread + channel)
-/// and then `ensure_thread_access` (thread + channel again). `bypass` skips the
-/// checks but still returns the scope.
+/// one pass — the message-keyed twin of [`authorize_thread`], for handlers that
+/// used `resolve_message_chain` (get_message + thread + channel) and then
+/// `ensure_thread_access` (thread + channel again). `bypass` skips the checks
+/// but still returns the scope.
 pub async fn authorize_message(
     store: &dyn Store,
     auth: &AuthContext,
@@ -213,8 +213,8 @@ pub async fn authorize_message(
     })
 }
 
-/// Ensure the caller may access the channel that owns `message_id`. Delegates to
-/// [`authorize_message`] so the rule stays single-sourced (Cluster 340).
+/// Ensure the caller may access the channel that owns `message_id`. Delegates
+/// to [`authorize_message`] so the rule stays single-sourced.
 pub async fn ensure_message_access(
     store: &dyn Store,
     auth: &AuthContext,
@@ -227,24 +227,24 @@ pub async fn ensure_message_access(
 }
 
 /// Resolve a WASI slash handler's `handler_target` to the sha the workspace may
-/// actually run (Cluster 399.4).
+/// actually run.
 ///
 /// `handler_target` is a content hash, not a URL, so a registration names bytes
 /// in the shared artifact store. Artifacts are deduplicated across tenants and
-/// carry no `workspace_id` of their own — the Cluster-204 access link is what
-/// makes them belong to anyone — so an unchecked registration could name any
-/// sha on the instance and have Maidan **execute** it.
+/// carry no `workspace_id` of their own — the access link is what makes them
+/// belong to anyone — so an unchecked registration could name any sha on the
+/// instance and have Maidan **execute** it.
 ///
 /// Checked at registration as well as at dispatch, because the two answer
 /// different questions. Dispatch asks "may this run now?" and must keep asking,
-/// since a workspace can lose an artifact after the fact. Registration asks "can
-/// this ever run?" — and accepting a configuration that can never be honoured is
-/// worse than refusing it, because the failure surfaces later, to a different
-/// person, as a broken command rather than a rejected form.
+/// since a workspace can lose an artifact after the fact. Registration asks
+/// "can this ever run?" — and accepting a configuration that can never be
+/// honoured is worse than refusing it, because the failure surfaces later, to a
+/// different person, as a broken command rather than a rejected form.
 ///
-/// Both failures return the same message on purpose: "this sha is not yours" and
-/// "this sha does not exist" must be indistinguishable, or registration becomes
-/// an oracle for which artifacts exist on the instance.
+/// Both failures return the same message on purpose: "this sha is not yours"
+/// and "this sha does not exist" must be indistinguishable, or registration
+/// becomes an oracle for which artifacts exist on the instance.
 ///
 /// `bypass` skips the check. Under `AUTH_DISABLED` the upload path records no
 /// access links at all, so a ref check would reject every module — the same

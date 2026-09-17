@@ -31,12 +31,12 @@ pub async fn create(pool: &SqlitePool, new: NewApiToken) -> Result<ApiToken, Sto
     row_to_token(&row)
 }
 
-/// Mint a token that records the token it was derived from (Cluster 401.3).
+/// Mint a token that records the token it was derived from.
 ///
-/// Separate from [`create`] rather than a field on `NewApiToken`: that struct is
-/// built at 109 sites, 100 of them tests, and only the attenuation path has a
-/// parent. Adding a field there would have been a hundred mechanical edits for
-/// one caller.
+/// Separate from [`create`] rather than a field on `NewApiToken`: that struct
+/// is built at 109 sites, 100 of them tests, and only the attenuation path has
+/// a parent. Adding a field there would have been a hundred mechanical edits
+/// for one caller.
 pub async fn create_attenuated(
     pool: &SqlitePool,
     new: NewApiToken,
@@ -149,15 +149,14 @@ pub async fn list_for_member(
     rows.iter().map(row_to_token).collect()
 }
 
-/// Revoke a token **and every token derived from it** (Cluster 401.3).
+/// Revoke a token **and every token derived from it**.
 ///
-/// Cluster 397.7 established that a derived token inherits every limit the
-/// parent carried — app installation, per-token quotas — because re-issuing was
-/// otherwise a way to shed a bound. Revocation is the ultimate limit, and it was
-/// the one dimension still leaking: the parent link existed only in audit
-/// metadata, so a child outlived the credential it was minted from. You revoke a
-/// parent because it leaked, and whoever held it could have minted children from
-/// it; those are equally compromised.
+/// A derived token inherits every limit the parent carried — app installation, per-token quotas — because re-issuing was
+/// otherwise a way to shed a bound. Revocation is the ultimate limit, and it
+/// was the one dimension still leaking: the parent link existed only in audit
+/// metadata, so a child outlived the credential it was minted from. You revoke
+/// a parent because it leaked, and whoever held it could have minted children
+/// from it; those are equally compromised.
 ///
 /// **Cascade at revoke time, not at auth time.** Writing `revoked_at` across the
 /// subtree is one traversal; checking the chain on every request would put a

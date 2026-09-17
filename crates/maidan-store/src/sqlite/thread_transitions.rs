@@ -10,11 +10,10 @@ use super::threads::row_to_thread;
 use crate::error::StoreError;
 use crate::sqlite::events;
 
-/// Cluster 375 (Wave 2 #22): gate a `closed` transition (SQLite twin). Refuses
-/// close until the review requirement is met — `k` distinct **qualifying**
-/// approvals (decision = approve, reviewer is neither owner nor assignee nor a
-/// past holder, and,
-/// when a named reviewer set exists, is in it) — and no unresolved `refutes`
+/// Gate a `closed` transition (SQLite twin). Refuses close until the review
+/// requirement is met — `k` distinct **qualifying** approvals (decision =
+/// approve, reviewer is neither owner nor assignee nor a past holder, and, when
+/// a named reviewer set exists, is in it) — and no unresolved `refutes`
 /// reference targets the thread. Runs on the transition's own tx.
 async fn review_gate_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -30,7 +29,7 @@ async fn review_gate_in_tx(
               WHERE r.thread_id = ? AND r.decision = 'approve'
                 AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
                 AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
-                -- Cluster 401.2: and never held it. `assignee_id` is the live
+                -- And never held it. `assignee_id` is the live
                 -- holder, which a release clears — so on its own it let an
                 -- implementer release the claim and approve their own work.
                 AND NOT EXISTS (
@@ -71,8 +70,8 @@ async fn review_gate_in_tx(
     Ok(())
 }
 
-/// The FSM transition on a caller-supplied tx, without committing (Cluster 208).
-/// Shared by `transition` (commit only) and `transition_with_event` (append the
+/// The FSM transition on a caller-supplied tx, without committing. Shared by
+/// `transition` (commit only) and `transition_with_event` (append the
 /// `ThreadStateChanged` event in the same tx, then commit).
 async fn transition_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -103,20 +102,20 @@ async fn transition_in_tx(
         ))
     })?;
 
-    // Separation of duties (Cluster 355, W1): on an owner-governed thread the
-    // claimer cannot land its own work — a terminal transition (the "merge") must
-    // be performed by the owner or another member. Un-owned threads are
-    // unrestricted, so this is inert until an owner is set.
+    // Separation of duties: on an owner-governed thread the claimer cannot land
+    // its own work — a terminal transition (the "merge") must be performed by
+    // the owner or another member. Un-owned threads are unrestricted, so this
+    // is inert until an owner is set.
     if thread.owner_id.is_some() && to_state.is_terminal() && thread.assignee_id == Some(actor_id) {
         return Err(StoreError::Conflict(
             "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
         ));
     }
 
-    // Required reviewers (Cluster 375, Wave 2 #22): a `closed` transition is gated
-    // on k qualifying approvals + no unresolved `refutes` edge.
-    // LandGate pointer (Cluster 385.2, Wave 2 #25): a `closed` transition is
-    // also gated on a qualifying green pass when a pointer/requirement exists.
+    // Required reviewers: a `closed` transition is gated on k qualifying
+    // approvals + no unresolved `refutes` edge. LandGate pointer: a `closed`
+    // transition is also gated on a qualifying green pass when a
+    // pointer/requirement exists.
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;
         super::land_gate::gate_in_tx(tx, thread_id).await?;
@@ -185,7 +184,7 @@ pub async fn transition(
 }
 
 /// Transition a thread's state and append its `ThreadStateChanged` event in one
-/// transaction (Cluster 208 transactional outbox).
+/// transaction.
 pub async fn transition_with_event(
     pool: &SqlitePool,
     thread_id: ThreadId,

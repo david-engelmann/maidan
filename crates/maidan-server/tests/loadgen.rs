@@ -1,9 +1,9 @@
-//! Cluster 198 (Arc D, part 1): an on-demand load / soak harness.
+//! An on-demand load / soak harness.
 //!
 //! Arc D optimizes performance & scale — sharded fan-out, filtered-ANN search,
 //! batched context assembly. Those need a *baseline*: a repeatable way to drive
-//! concurrent traffic at the server and report latency percentiles + throughput,
-//! so an optimization can be shown to move the number.
+//! concurrent traffic at the server and report latency percentiles +
+//! throughput, so an optimization can be shown to move the number.
 //!
 //! `load_baseline` is `#[ignore]`d — it is a measurement tool, not a pass/fail
 //! CI gate (a hard latency floor would flake across runner hardware). Run it
@@ -108,11 +108,11 @@ struct InProcess {
 /// channel, thread, and a full-capability token — the default target when
 /// `MAIDAN_LOADGEN_URL` is unset.
 async fn spawn_in_process() -> (InProcess, String) {
-    // Match the shipped SQLite default (Cluster 277): one connection. A
-    // multi-connection SQLite pool deadlocks under write contention, so
-    // benchmarking 16 connections would measure a configuration Maidan does not
-    // ship. `min_connections(1)` keeps the single `sqlite::memory:` connection
-    // (and its in-memory database) alive for the whole run.
+    // Match the shipped SQLite default: one connection. A multi-connection
+    // SQLite pool deadlocks under write contention, so benchmarking 16
+    // connections would measure a configuration Maidan does not ship.
+    // `min_connections(1)` keeps the single `sqlite::memory:` connection (and
+    // its in-memory database) alive for the whole run.
     let pool = SqlitePoolOptions::new()
         .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
         .min_connections(1)

@@ -18,10 +18,10 @@ use super::content_json;
 use crate::error::McpError;
 
 /// Pass a post's result through, first recording a `ThreadSpawnDenied` event
-/// (Cluster 376.6) when the `max_tools` spawn-budget axis refused it — the MCP
-/// twin of the REST `routes::observe_spawn_denial`. `actor` is the post's author:
-/// the store's gate reports the thread and the numbers, not who pushed past the
-/// cap. Best-effort, like every other MCP-published event.
+/// when the `max_tools` spawn-budget axis refused it — the MCP twin of the REST
+/// `routes::observe_spawn_denial`. `actor` is the post's author: the store's
+/// gate reports the thread and the numbers, not who pushed past the cap.
+/// Best-effort, like every other MCP-published event.
 async fn observe_spawn_denial<T>(
     server: &crate::server::McpServer,
     actor: Option<MemberId>,
@@ -98,24 +98,24 @@ pub(super) async fn post_dm_message(
             })
             .await;
     }
-    // Cluster 334: record + publish MentionRecorded per @mention so the
-    // notification router / wait_for_mention fire (was recorded but never published).
+    // Record + publish MentionRecorded per @mention so the notification router
+    // / wait_for_mention fire (was recorded but never published).
     publish_routed_mentions(server, dm.thread_id, dm.workspace_id, &msg).await;
     Ok(content_json(&msg))
 }
 
 /// Route + record @mentions in a just-posted message and publish a
 /// `MentionRecorded` event per mentioned member — the MCP analogue of the REST
-/// `publish_routed_mentions` (Cluster 334). Best-effort: a routing error is logged
-/// and skipped, never failing the post.
+/// `publish_routed_mentions`. Best-effort: a routing error is logged and
+/// skipped, never failing the post.
 async fn publish_routed_mentions(
     server: &crate::server::McpServer,
     thread_id: ThreadId,
     workspace_id: WorkspaceId,
     message: &Message,
 ) {
-    // Cluster 338: skip all store work when the body has no `@handles`, and route
-    // with the workspace the caller already resolved (no per-post
+    // Skip all store work when the body has no `@handles`, and route with the
+    // workspace the caller already resolved (no per-post
     // `resolve_message_chain` round-trip) — the parity of the REST change.
     if parse_at_handles(&message.body).is_empty() {
         return;
@@ -181,9 +181,9 @@ struct PostMessageArgs {
     content: Option<Vec<ContentBlock>>,
 }
 
-/// Merge a slash-command's response metadata (`{slash_command, slash_response}`)
-/// into the posted message's metadata — the maidan-mcp copy of the REST
-/// `merge_metadata` (Cluster 345), so an MCP slash post carries the same shape.
+/// Merge a slash-command's response metadata (`{slash_command,
+/// slash_response}`) into the posted message's metadata — the maidan-mcp copy
+/// of the REST `merge_metadata`, so an MCP slash post carries the same shape.
 fn merge_slash_metadata(mut base: Value, extra: Value) -> Value {
     if !base.is_object() {
         base = json!({});
@@ -231,9 +231,9 @@ pub(super) async fn post_message(
         .flatten()
         .map(|d| d.id);
 
-    // Cluster 345: MCP posts now run registered slash commands, matching the REST
-    // post path. The dispatcher is server-injected (attached only in the server
-    // binary); without one — tests / embedders — this is the plain atomic post.
+    // MCP posts now run registered slash commands, matching the REST post path.
+    // The dispatcher is server-injected (attached only in the server binary);
+    // without one — tests / embedders — this is the plain atomic post.
     let slash = match (
         parse_slash_command(&new_message.body),
         server.slash_dispatcher(),
@@ -249,12 +249,12 @@ pub(super) async fn post_message(
         _ => None,
     };
 
-    // Cluster 376.6: a post the `max_tools` axis refuses is recorded as
-    // `ThreadSpawnDenied` on the way to the InvalidParams, on both branches.
+    // A post the `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on
+    // the way to the InvalidParams, on both branches.
     let author = Some(MemberId(a.author_id));
     let msg = if let Some((parsed, dispatcher)) = slash {
-        // Provisional insert → run the (possibly external) dispatch → finalizing
-        // edit + `MessagePosted` of the edited message in one tx (Cluster 211 shape).
+        // Provisional insert → run the (possibly external) dispatch →
+        // finalizing edit + `MessagePosted` of the edited message in one tx.
         let provisional = store.post_message(new_message).await;
         let m = observe_spawn_denial(server, author, provisional).await?;
         let slash_meta = dispatcher
@@ -284,16 +284,17 @@ pub(super) async fn post_message(
         server.publish_stored(&stored).await;
         message
     } else {
-        // Cluster 345: the no-slash path is now the atomic outbox post
-        // (`post_message_with_event` + `publish_stored`), matching REST — the event
-        // is durably appended in the same tx (was a separate, bus-gated append).
+        // The no-slash path is now the atomic outbox post
+        // (`post_message_with_event` + `publish_stored`), matching REST — the
+        // event is durably appended in the same tx (was a separate, bus-gated
+        // append).
         let posted = store.post_message_with_event(new_message, dm_id).await;
         let (message, stored) = observe_spawn_denial(server, author, posted).await?;
         server.publish_stored(&stored).await;
         message
     };
-    // Cluster 334: record + publish MentionRecorded per @mention (was recorded but
-    // never published, so agent @mentions never fired the notification router /
+    // Record + publish MentionRecorded per @mention (was recorded but never
+    // published, so agent @mentions never fired the notification router /
     // wait_for_mention).
     publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
     Ok(content_json(&msg))
@@ -338,18 +339,19 @@ pub(super) async fn edit_message(
         Some(v) if !v.is_null() => v,
         _ => existing.metadata,
     };
-    // Cluster 173: omitted content keeps existing; an empty body with content
-    // re-derives the searchable body.
+    // Omitted content keeps existing; an empty body with content re-derives the
+    // searchable body.
     let content = a.content.or(existing.content);
     let edit_body = if a.body.is_empty() {
         content.as_deref().map(derive_body).unwrap_or_default()
     } else {
         a.body
     };
-    // Cluster 333: the edit + its `MessageEdited` event commit atomically, then
-    // the bus is notified — so an MCP edit (like a REST edit) triggers embedding
-    // reindex, feeds as-of context replay, and reaches WS/SSE subscribers. (MCP
-    // previously called the event-less `edit_message`, silently breaking all three.)
+    // The edit + its `MessageEdited` event commit atomically, then the bus is
+    // notified — so an MCP edit (like a REST edit) triggers embedding reindex,
+    // feeds as-of context replay, and reaches WS/SSE subscribers. (MCP
+    // previously called the event-less `edit_message`, silently breaking all
+    // three.)
     let dm_conversation_id = store
         .dm_conversation_for_thread(existing.thread_id)
         .await
@@ -384,8 +386,8 @@ pub(super) async fn record_mention(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RecordMentionArgs = serde_json::from_value(args.clone())?;
-    // Cluster 334: the explicit-mention API now emits MentionRecorded (atomic) +
-    // bus-notify, so it reaches the notification router / wait_for_mention like REST.
+    // The explicit-mention API now emits MentionRecorded (atomic) + bus-notify,
+    // so it reaches the notification router / wait_for_mention like REST.
     let stored = server
         .store
         .record_mention_with_event(MessageId(a.message_id), MemberId(a.member_id))

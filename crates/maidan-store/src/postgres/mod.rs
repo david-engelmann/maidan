@@ -95,18 +95,18 @@ use crate::error::StoreError;
 use crate::store::*;
 
 tokio::task_local! {
-    /// The read-consistency scope for the current request (Cluster 264). Present
-    /// only inside a [`with_read_consistency`] scope (set by the server for GET/HEAD
-    /// requests); `Some(lsn)` carries the client's causality token, `None` means the
-    /// request has no causality requirement. Absent (not in scope — mutation
-    /// handlers, background workers) routes reads to the primary.
+    /// The read-consistency scope for the current request. Present only inside
+    /// a [`with_read_consistency`] scope (set by the server for GET/HEAD
+    /// requests); `Some(lsn)` carries the client's causality token, `None`
+    /// means the request has no causality requirement. Absent (not in scope —
+    /// mutation handlers, background workers) routes reads to the primary.
     static READ_CONSISTENCY: Option<Lsn>;
 }
 
-/// Run `fut` with the request's read-consistency scope so `PostgresStore`'s reads
-/// can route to a replica (Cluster 264). The server wraps GET/HEAD handling in this
-/// (with the parsed `Maidan-Consistency-Token`, or `None`); everything outside a
-/// scope reads from the primary.
+/// Run `fut` with the request's read-consistency scope so `PostgresStore`'s
+/// reads can route to a replica. The server wraps GET/HEAD handling in this
+/// (with the parsed `Maidan-Consistency-Token`, or `None`); everything outside
+/// a scope reads from the primary.
 pub async fn with_read_consistency<F>(token: Option<Lsn>, fut: F) -> F::Output
 where
     F: std::future::Future,
@@ -117,34 +117,34 @@ where
 #[derive(Debug, Clone)]
 pub struct PostgresStore {
     pool: PgPool,
-    /// Read pool for LSN-token read routing (Cluster 262). Defaults to a clone of
-    /// the writer `pool`; a real read-replica is supplied via
+    /// Read pool for LSN-token read routing. Defaults to a clone of the writer
+    /// `pool`; a real read-replica is supplied via
     /// [`PostgresStore::with_replica_reader`].
     reader: PgPool,
     /// Whether `reader` is a genuine replica (else it aliases `pool`). When false,
     /// [`PostgresStore::read_pool`] always returns the primary.
     has_replica: bool,
-    /// The replica's last-known replay LSN as a raw `u64`, refreshed by a background
-    /// poller (Cluster 264). `read_pool` compares a request's causality token
-    /// against this — a cheap atomic load, no per-read query. A stale value is only
-    /// ever *behind* the true replay position, so it can only route to the primary
-    /// unnecessarily, never serve a stale read.
+    /// The replica's last-known replay LSN as a raw `u64`, refreshed by a
+    /// background poller. `read_pool` compares a request's causality token
+    /// against this — a cheap atomic load, no per-read query. A stale value is
+    /// only ever *behind* the true replay position, so it can only route to the
+    /// primary unnecessarily, never serve a stale read.
     replica_replay: Arc<AtomicU64>,
-    /// How many reads `read_pool` sent to the replica vs the primary (Cluster 265),
-    /// for the `maidan_replica_reads_total` metric. Counted only when a replica is
+    /// How many reads `read_pool` sent to the replica vs the primary, for the
+    /// `maidan_replica_reads_total` metric. Counted only when a replica is
     /// configured (a single-pool store leaves it at zero).
     read_routing: Arc<ReadRoutingMetrics>,
 }
 
-/// Cumulative read-routing outcomes (Cluster 265). The server snapshots this into
+/// Cumulative read-routing outcomes. The server snapshots this into
 /// `maidan_replica_reads_total{outcome}`; the store stays metrics-agnostic (the
 /// `HydrateStats` pattern).
 #[derive(Debug, Default)]
 pub struct ReadRoutingMetrics {
     primary: AtomicU64,
     replica: AtomicU64,
-    /// Replica lag in WAL bytes (primary write LSN − replica replay LSN), refreshed
-    /// by the poller (Cluster 266). `0` when caught up / not yet sampled.
+    /// Replica lag in WAL bytes (primary write LSN − replica replay LSN),
+    /// refreshed by the poller. `0` when caught up / not yet sampled.
     replica_lag_bytes: AtomicU64,
 }
 
@@ -157,7 +157,7 @@ impl ReadRoutingMetrics {
         )
     }
 
-    /// Current replica lag in WAL bytes (Cluster 266), for `maidan_replica_lag_bytes`.
+    /// Current replica lag in WAL bytes, for `maidan_replica_lag_bytes`.
     pub fn lag_bytes(&self) -> u64 {
         self.replica_lag_bytes.load(Ordering::Relaxed)
     }
@@ -178,9 +178,10 @@ impl PostgresStore {
         }
     }
 
-    /// Store with a distinct read-replica pool (Cluster 262/264). Writes use `pool`;
-    /// token-eligible reads route to `reader`. Spawns a background poller that keeps
-    /// the replica's replay LSN cached for cheap per-read routing decisions.
+    /// Store with a distinct read-replica pool. Writes use `pool`;
+    /// token-eligible reads route to `reader`. Spawns a background poller that
+    /// keeps the replica's replay LSN cached for cheap per-read routing
+    /// decisions.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
         let read_routing = Arc::new(ReadRoutingMetrics::default());
@@ -207,13 +208,13 @@ impl PostgresStore {
         &self.reader
     }
 
-    /// Read-routing counters for the `maidan_replica_reads_total` metric (Cluster 265).
+    /// Read-routing counters for the `maidan_replica_reads_total` metric.
     pub fn read_routing_metrics(&self) -> Arc<ReadRoutingMetrics> {
         self.read_routing.clone()
     }
 
-    /// The pool a read should use, honoring the current request's read-consistency
-    /// scope (Cluster 264):
+    /// The pool a read should use, honoring the current request's
+    /// read-consistency scope:
     /// - no replica, or not inside a [`with_read_consistency`] scope (mutation
     ///   handlers, background workers) → the **primary** (safe default);
     /// - in scope with no token → the **replica** (no causality requirement);
@@ -250,12 +251,13 @@ fn route_now(has_replica: bool, cached_replay: Lsn) -> RouteDecision {
     route_decision(has_replica, scope, cached_replay)
 }
 
-/// Whether a read keyed on the **current request's** consistency scope should go to
-/// a replica (`true`) or the primary (`false`) — the same task-local + routing logic
-/// [`PostgresStore::read_pool`] uses, exposed so another read pool (maidan-search's
-/// `PostgresSearch`, Cluster 271) can honor the same `Maidan-Consistency-Token`
-/// without duplicating the decision or re-reading the task-local. `cached_replay` is
-/// that pool's own cached replica replay LSN.
+/// Whether a read keyed on the **current request's** consistency scope should
+/// go to a replica (`true`) or the primary (`false`) — the same task-local +
+/// routing logic [`PostgresStore::read_pool`] uses, exposed so another read
+/// pool (maidan-search's `PostgresSearch`) can honor the same
+/// `Maidan-Consistency-Token` without duplicating the decision or re-reading
+/// the task-local. `cached_replay` is that pool's own cached replica replay
+/// LSN.
 pub fn replica_route(has_replica: bool, cached_replay: Lsn) -> bool {
     matches!(
         route_now(has_replica, cached_replay),
@@ -263,7 +265,7 @@ pub fn replica_route(has_replica: bool, cached_replay: Lsn) -> bool {
     )
 }
 
-/// Pure read-routing decision (Cluster 264), factored out for unit testing:
+/// Pure read-routing decision, factored out for unit testing:
 /// - no replica, or not inside a read-consistency scope (`scope == None`) → primary;
 /// - in scope with no token (`Some(None)`) → replica (no causality need);
 /// - in scope with a token (`Some(Some(t))`) → replica iff the cached replay LSN has
@@ -291,11 +293,11 @@ fn route_decision(
 }
 
 /// Poll the replica's `pg_last_wal_replay_lsn()` into `replay_cache` on a fixed
-/// cadence, so [`PostgresStore::read_pool`] can decide primary-vs-replica without a
-/// per-read query, and refresh the replica-lag gauge (Cluster 266) from the primary's
-/// current write LSN minus the replay position. A poll error / non-standby result
-/// leaves the cache unchanged low → reads route to the primary until the next good
-/// poll (fail-safe).
+/// cadence, so [`PostgresStore::read_pool`] can decide primary-vs-replica
+/// without a per-read query, and refresh the replica-lag gauge from the
+/// primary's current write LSN minus the replay position. A poll error /
+/// non-standby result leaves the cache unchanged low → reads route to the
+/// primary until the next good poll (fail-safe).
 fn spawn_replica_lsn_poller(
     primary: PgPool,
     reader: PgPool,
@@ -1013,8 +1015,8 @@ impl EgressStore for PostgresStore {
     ) -> Result<AllowedEgressTarget, StoreError> {
         egress_targets::allow(&self.pool, new).await
     }
-    // The allowlist reads stay on the primary rather than `read_pool()`: this is
-    // control-plane config (the Cluster-265 carve-out), and `is_egress_target_allowed`
+    // The allowlist reads stay on the primary rather than `read_pool()`: this
+    // is control-plane config (the carve-out), and `is_egress_target_allowed`
     // is an authorization check — a lagging replica could deny a blessing an
     // operator just granted.
     async fn list_egress_targets(
@@ -1077,9 +1079,9 @@ impl EgressStore for PostgresStore {
     ) -> Result<(), StoreError> {
         result_deliveries::mark_skipped(&self.pool, id, reason).await
     }
-    // Delivery state is read on the write path (arm -> deliver -> record), and the
-    // Cluster-265 carve-out keeps that on the primary: a lagging replica could
-    // report a delivery as un-attempted and hand a caller a stale `external_ref`.
+    // Delivery state is read on the write path (arm -> deliver -> record), and
+    // the carve-out keeps that on the primary: a lagging replica could report a
+    // delivery as un-attempted and hand a caller a stale `external_ref`.
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,

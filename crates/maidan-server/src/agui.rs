@@ -1,10 +1,10 @@
-//! An AG-UI door on Maidan's event stream (Cluster 369, Wave 2 #17, H1). AG-UI
-//! (the Agent-User Interaction protocol) is the human-UI/IDE-facing event
-//! protocol: a run emits `RUN_STARTED` → `TEXT_MESSAGE_*` / `TOOL_CALL_*` /
-//! `STEP_*` → `RUN_FINISHED | RUN_ERROR`. This module maps Maidan's domain events
-//! (a **thread is a run**) to AG-UI events so an AG-UI-compatible frontend can
-//! render agent activity off the existing WS/SSE bus — no CopilotKit, no new
-//! runtime. F3 (agent↔tool) stays MCP; this is the human-facing door.
+//! An AG-UI door on Maidan's event stream. AG-UI (the Agent-User Interaction
+//! protocol) is the human-UI/IDE-facing event protocol: a run emits
+//! `RUN_STARTED` → `TEXT_MESSAGE_*` / `TOOL_CALL_*` / `STEP_*` → `RUN_FINISHED
+//! | RUN_ERROR`. This module maps Maidan's domain events (a **thread is a
+//! run**) to AG-UI events so an AG-UI-compatible frontend can render agent
+//! activity off the existing WS/SSE bus — no CopilotKit, no new runtime. F3
+//! (agent↔tool) stays MCP; this is the human-facing door.
 //!
 //! Output-direction only for now: Maidan `Event` → AG-UI events. The input
 //! direction (a UI sending `RunAgentInput`, interrupts, `editedArgs` = full
@@ -64,9 +64,9 @@ pub enum AgUiEvent {
     },
 }
 
-/// A Maidan message → its AG-UI text + tool-call events. The text message is one
-/// START / CONTENT / END triple (Maidan messages are complete, not streamed);
-/// each Cluster-173 `ToolUse` block becomes a `TOOL_CALL_*` triple and each
+/// A Maidan message → its AG-UI text + tool-call events. The text message is
+/// one START / CONTENT / END triple (Maidan messages are complete, not
+/// streamed); each `ToolUse` block becomes a `TOOL_CALL_*` triple and each
 /// `ToolResult` a `TOOL_CALL_RESULT`.
 fn message_events(message: &Message) -> Vec<AgUiEvent> {
     let mid = message.id.0.to_string();
@@ -118,11 +118,11 @@ fn message_events(message: &Message) -> Vec<AgUiEvent> {
     events
 }
 
-/// Map one Maidan domain [`Event`] to zero or more AG-UI events (Cluster 369). A
-/// thread **is** a run: `ThreadCreated` → `RUN_STARTED`, a terminal
+/// Map one Maidan domain [`Event`] to zero or more AG-UI events. A thread
+/// **is** a run: `ThreadCreated` → `RUN_STARTED`, a terminal
 /// `ThreadStateChanged` → `RUN_FINISHED`, a non-terminal one → `STEP_STARTED`,
-/// `ClaimFailed` → `RUN_ERROR`, `MessagePosted` → the text + tool-call events. A
-/// few Maidan-specific facts ride `CUSTOM`; the rest map to nothing.
+/// `ClaimFailed` → `RUN_ERROR`, `MessagePosted` → the text + tool-call events.
+/// A few Maidan-specific facts ride `CUSTOM`; the rest map to nothing.
 pub fn agui_events_for(event: &Event) -> Vec<AgUiEvent> {
     match event {
         Event::ThreadCreated { thread, .. } => {

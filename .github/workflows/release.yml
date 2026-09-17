@@ -122,7 +122,7 @@ jobs:
 
   docker-server:
     name: docker push maidan-server (${{ matrix.arch }})
-    # Each arch builds on its OWN native runner (Cluster 170) — the arm64 image
+    # Each arch builds on its OWN native runner — the arm64 image
     # previously cross-built under QEMU emulation, which turned the Rust release
     # compile into a ~2 h job and dominated the release wall-clock. Public repos
     # get free `ubuntu-24.04-arm` runners, so no emulation is needed.
@@ -236,7 +236,7 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-      # Report-only on introduction (Cluster 170): surfaces fixable OS/library
+      # Report-only on introduction: surfaces fixable OS/library
       # CVEs in the release logs without gating the release. Promote `exit-code`
       # to '1' once the baseline is clean and reviewed.
       - name: trivy vulnerability scan

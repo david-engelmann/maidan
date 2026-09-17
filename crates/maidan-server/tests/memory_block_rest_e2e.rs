@@ -1,7 +1,7 @@
-//! Attachable labeled memory blocks over HTTP (Cluster 373.2, Wave 2 #21, H11).
-//! Auth ENABLED (owner_id is a real member FK): create/get/list, full-rewrite
-//! set_value, read-only + over-limit → 400, attach/detach on a thread, delete,
-//! and a read-only token denied on a write (403).
+//! Attachable labeled memory blocks over HTTP. Auth ENABLED (owner_id is a real
+//! member FK): create/get/list, full-rewrite set_value, read-only + over-limit
+//! → 400, attach/detach on a thread, delete, and a read-only token denied on a
+//! write (403).
 
 use std::{
     net::SocketAddr,

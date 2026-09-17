@@ -1,10 +1,10 @@
-//! Guard against "function called but never defined" in the `/ui` console JS
-//! (Cluster 133). The `/ui` is vanilla HTML/JS with no browser in CI, so a
+//! Guard against "function called but never defined" in the `/ui` console JS.
+//! The `/ui` is vanilla HTML/JS with no browser in CI, so a
 //! reference-to-undefined-function bug (which is exactly what broke the write
 //! path — `apiWritePath`/`requireAuthForWrite` were called but never defined)
-//! otherwise sails through `cargo test`. This is a dependency-free static check:
-//! every *bare* call `ident(` must resolve to a local definition, a function
-//! parameter, or a known JS/DOM global.
+//! otherwise sails through `cargo test`. This is a dependency-free static
+//! check: every *bare* call `ident(` must resolve to a local definition, a
+//! function parameter, or a known JS/DOM global.
 
 const HTML: &str = include_str!("../static/index.html");
 
@@ -199,10 +199,10 @@ fn ui_js_has_no_undefined_bare_function_calls() {
     );
 }
 
-/// Cluster 153: the live thread view wires WS event frames into the message
-/// list. No browser in CI, so guard the wiring statically — the helper must be
-/// defined, invoked, and driven by the thread-content kind set + the open-thread
-/// predicate in the WS handler.
+/// The live thread view wires WS event frames into the message list. No browser
+/// in CI, so guard the wiring statically — the helper must be defined, invoked,
+/// and driven by the thread-content kind set + the open-thread predicate in the
+/// WS handler.
 #[test]
 fn ui_js_wires_live_thread_refresh() {
     let s = script(HTML);
@@ -228,9 +228,9 @@ fn ui_js_wires_live_thread_refresh() {
     }
 }
 
-/// Cluster 353.1: the Session tab's capability card. No browser in the required
-/// jobs, so guard the wiring statically — the loader must be defined, wired to the
-/// tab switch, and read the real grant from `/me`.
+/// The Session tab's capability card. No browser in the required jobs, so guard
+/// the wiring statically — the loader must be defined, wired to the tab switch,
+/// and read the real grant from `/me`.
 #[test]
 fn ui_js_wires_session_capability_card() {
     let s = script(HTML);
@@ -260,9 +260,9 @@ fn ui_js_wires_session_capability_card() {
     );
 }
 
-/// Cluster 353.2: session-chrome badges on the thread list. Guard the mapping's
-/// wiring statically — the pure classifier must be defined, invoked by
-/// loadThreads, and cover all five chrome states.
+/// Session-chrome badges on the thread list. Guard the mapping's wiring
+/// statically — the pure classifier must be defined, invoked by loadThreads,
+/// and cover all five chrome states.
 #[test]
 fn ui_js_wires_session_chrome_badges() {
     let s = script(HTML);
@@ -292,10 +292,9 @@ fn ui_js_wires_session_chrome_badges() {
     }
 }
 
-/// Cluster 353.3: attenuation chrome — a minted token cannot widen the caller's
-/// grant. Guard the wiring: the ceiling loader + the widening classifier are
-/// defined, the classifier gates the mint handler, and the ceiling loads on the
-/// Tokens tab.
+/// Attenuation chrome — a minted token cannot widen the caller's grant. Guard
+/// the wiring: the ceiling loader + the widening classifier are defined, the
+/// classifier gates the mint handler, and the ceiling loads on the Tokens tab.
 #[test]
 fn ui_js_wires_attenuation_chrome() {
     let s = script(HTML);
@@ -321,9 +320,9 @@ fn ui_js_wires_attenuation_chrome() {
     );
 }
 
-/// Cluster 353.4: WCAG-AA keyboard operability. Guard the ARIA tablist wiring +
-/// the skip link statically — the browser behaviour is covered by the Playwright
-/// spec, but these must be present for the a11y contract to hold.
+/// WCAG-AA keyboard operability. Guard the ARIA tablist wiring + the skip link
+/// statically — the browser behaviour is covered by the Playwright spec, but
+/// these must be present for the a11y contract to hold.
 #[test]
 fn ui_js_wires_wcag_tablist_and_skip_link() {
     let s = script(HTML);
@@ -347,9 +346,9 @@ fn ui_js_wires_wcag_tablist_and_skip_link() {
     }
 }
 
-/// Cluster 367.1 (Wave 2 #15): the Work tab. No browser in the required jobs, so
-/// guard the wiring statically — the loaders are defined + invoked, the tab switch
-/// calls `loadWork`, and the panel + channel selector exist.
+/// The Work tab. No browser in the required jobs, so guard the wiring
+/// statically — the loaders are defined + invoked, the tab switch calls
+/// `loadWork`, and the panel + channel selector exist.
 #[test]
 fn ui_js_wires_work_tab() {
     let s = script(HTML);
@@ -381,8 +380,8 @@ fn ui_js_wires_work_tab() {
     );
 }
 
-/// Cluster 367.2 (Wave 2 #15): the Prefs console. Static guard — the loaders +
-/// mutators are defined, the tab switch calls `loadPrefs`, and the panel exists.
+/// The Prefs console. Static guard — the loaders + mutators are defined, the
+/// tab switch calls `loadPrefs`, and the panel exists.
 #[test]
 fn ui_js_wires_prefs_tab() {
     let s = script(HTML);
@@ -406,8 +405,8 @@ fn ui_js_wires_prefs_tab() {
     );
 }
 
-/// Cluster 367.3 (Wave 2 #15): the looking-glass explorer. Static guard — the
-/// explorers are defined, the tab switch calls `loadGlass`, and the panel exists.
+/// The looking-glass explorer. Static guard — the explorers are defined, the
+/// tab switch calls `loadGlass`, and the panel exists.
 #[test]
 fn ui_js_wires_looking_glass_tab() {
     let s = script(HTML);
@@ -430,8 +429,8 @@ fn ui_js_wires_looking_glass_tab() {
     );
 }
 
-/// Cluster 368.3 (Wave 2 #16): the waiting-on-you inbox in the Work tab. Static
-/// guard — the loader is defined + invoked from loadWork, and the section exists.
+/// The waiting-on-you inbox in the Work tab. Static guard — the loader is
+/// defined + invoked from loadWork, and the section exists.
 #[test]
 fn ui_js_wires_waiting_inbox() {
     let s = script(HTML);

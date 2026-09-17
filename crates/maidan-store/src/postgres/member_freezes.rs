@@ -1,8 +1,7 @@
-//! Member-freeze kill-switch store (Cluster 372, Wave 2 #20): the
-//! `maidan_member_freezes` table. Freezing a member records the freeze AND drops
-//! their active leases (releases their claimed threads) in one transaction;
-//! `claim_next` refuses a frozen member (enforced in `threads.rs`, Cluster 372.2).
-//! See the SQLite twin.
+//! Member-freeze kill-switch store: the `maidan_member_freezes` table. Freezing
+//! a member records the freeze AND drops their active leases (releases their
+//! claimed threads) in one transaction; `claim_next` refuses a frozen member
+//! (enforced in `threads.rs`). See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberFreeze, MemberId, WorkspaceId};

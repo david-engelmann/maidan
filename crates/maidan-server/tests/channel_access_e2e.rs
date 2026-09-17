@@ -1,4 +1,4 @@
-//! Cluster 160: per-channel authorization enforcement over REST.
+//! Per-channel authorization enforcement over REST.
 //!
 //! Runs with auth ENABLED (real tokens) so `ensure_channel_access` is
 //! exercised: a non-member is denied read/write in a private channel; the
@@ -219,7 +219,7 @@ async fn private_channel_denies_non_members_over_rest() {
             .unwrap(),
         "get channel",
     );
-    // Cluster 165: references into the private thread are gated too.
+    // References into the private thread are gated too.
     denied(
         ctx.client
             .get(format!("{base}/references?src_kind=thread&src_id={tid}"))
@@ -488,9 +488,9 @@ async fn channel_admin_api_manages_membership_end_to_end() {
     ctx.server.abort();
 }
 
-/// Cluster 179: the A2A JSON-RPC ingress (`POST /a2a/v1/rpc`) enforces per-channel
-/// access. A non-member holding `message:post` is denied posting into a private
-/// channel's thread — the surface the 160–165 RBAC arc had missed.
+/// The A2A JSON-RPC ingress (`POST /a2a/v1/rpc`) enforces per-channel access. A
+/// non-member holding `message:post` is denied posting into a private channel's
+/// thread — the surface the 160–165 RBAC arc had missed.
 #[tokio::test]
 async fn a2a_ingress_denies_non_members_in_private_channels() {
     let ctx = spawn().await;
@@ -597,8 +597,8 @@ async fn a2a_ingress_denies_non_members_in_private_channels() {
     ctx.server.abort();
 }
 
-/// Cluster 180: a DM thread is NOT readable via the generic `/threads/:id` route
-/// by a non-participant (the `__dm__` exemption previously left this open);
+/// A DM thread is NOT readable via the generic `/threads/:id` route by a
+/// non-participant (the `__dm__` exemption previously left this open);
 /// participants still read it.
 #[tokio::test]
 async fn dm_thread_not_readable_via_generic_route_by_non_participant() {
@@ -678,8 +678,8 @@ async fn dm_thread_not_readable_via_generic_route_by_non_participant() {
     ctx.server.abort();
 }
 
-/// Cluster 283: `ListTasks` lists the workspace's A2A tasks and drops those whose
-/// context thread the caller cannot read (per-channel RBAC filter), and
+/// `ListTasks` lists the workspace's A2A tasks and drops those whose context
+/// thread the caller cannot read (per-channel RBAC filter), and
 /// `GetExtendedAgentCard` returns the card to an authenticated client.
 #[tokio::test]
 async fn a2a_list_tasks_filters_private_and_extended_card() {

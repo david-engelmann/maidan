@@ -1,5 +1,5 @@
-//! Cluster 320: reverse-edge + by-type reference queries. `GET /references` now
-//! lists FROM a source or TO a target, optionally filtered by relation.
+//! Reverse-edge + by-type reference queries. `GET /references` now lists FROM a
+//! source or TO a target, optionally filtered by relation.
 
 use std::{
     net::SocketAddr,

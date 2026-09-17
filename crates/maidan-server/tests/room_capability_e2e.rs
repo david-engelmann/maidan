@@ -1,5 +1,5 @@
-//! Cluster 395: named capability sets, holder-side attenuation, room URIs,
-//! well-known discovery, and handle aliases that cannot break stored ids.
+//! Named capability sets, holder-side attenuation, room URIs, well-known
+//! discovery, and handle aliases that cannot break stored ids.
 
 use std::{
     net::SocketAddr,

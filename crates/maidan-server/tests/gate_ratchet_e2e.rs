@@ -1,4 +1,4 @@
-//! Cluster 397.2: a governance gate ratchets.
+//! A governance gate ratchets.
 //!
 //! Both close-gates were guarded by `thread:transition` on *both* sides — the
 //! capability a close already needs, and one `maidan.agent.worker` carries. So

@@ -1,6 +1,6 @@
-//! Web Push subscription queries (Cluster 366, N1): the `maidan_push_subscriptions`
-//! table. The notification router lists a member's subscriptions to deliver a Web
-//! Push message when the member has no live WebSocket.
+//! Web Push subscription queries: the `maidan_push_subscriptions` table. The
+//! notification router lists a member's subscriptions to deliver a Web Push
+//! message when the member has no live WebSocket.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MemberId, NewPushSubscription, PushSubscription, PushSubscriptionId};

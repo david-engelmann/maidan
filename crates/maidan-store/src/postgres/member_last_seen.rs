@@ -4,7 +4,7 @@ use sqlx::{PgPool, Row};
 
 use crate::error::StoreError;
 
-/// Record that a member was just seen (Cluster 252) — see the SQLite twin.
+/// Record that a member was just seen — see the SQLite twin.
 pub async fn touch(pool: &PgPool, member_id: MemberId) -> Result<(), StoreError> {
     sqlx::query(
         "INSERT INTO maidan_member_last_seen (member_id, last_seen_at)

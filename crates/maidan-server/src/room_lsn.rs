@@ -1,13 +1,13 @@
-//! Projector / broadcast lag token (Cluster 390, Wave 3 #30).
+//! Projector / broadcast lag token.
 //!
-//! Stamps `Maidan-Room-LSN` with **the caller's room** high-water so a client can
-//! compare its last-seen `log_id` to the head it is actually chasing.
+//! Stamps `Maidan-Room-LSN` with **the caller's room** high-water so a client
+//! can compare its last-seen `log_id` to the head it is actually chasing.
 //!
-//! Scoped in Cluster 398.8. It previously reported the instance-wide `MAX(id)`,
+//! Scoped per room. It previously reported the instance-wide `MAX(id)`,
 //! which made the number incomparable to anything a client had seen: a fully
-//! caught-up projector could never reach it, because the remaining gap was other
-//! tenants' writes. It also handed every tenant the instance's total event
-//! volume, and rode outbound webhooks to third parties.
+//! caught-up projector could never reach it, because the remaining gap was
+//! other tenants' writes. It also handed every tenant the instance's total
+//! event volume, and rode outbound webhooks to third parties.
 //!
 //! **Not** [`crate::consistency`]: that header is a Postgres WAL LSN, replica-
 //! gated, and answers read-your-writes. This header is always on (SQLite too),
@@ -28,7 +28,7 @@ use crate::state::AppState;
 pub use maidan_types::ROOM_LSN_HEADER as HEADER;
 
 /// The room a response belongs to, handed from an auth middleware to this one
-/// through the **response** extensions (Cluster 398.8).
+/// through the **response** extensions.
 ///
 /// The Room-LSN layer is outside every auth layer — auth is applied per-router,
 /// this is applied to the whole API — so it has no `AuthContext` on the way in
@@ -69,14 +69,14 @@ pub async fn current(store: &dyn Store) -> Option<i64> {
     }
 }
 
-/// The head of **one room's** log (Cluster 398.8).
+/// The head of **one room's** log.
 ///
-/// The header answers "how far behind is my projector?", which only works if the
-/// number is comparable to a `log_id` the client has actually seen — and a client
-/// only ever sees its own workspace's events. Reporting the instance-wide head
-/// meant a fully caught-up projector could never reach it, because the gap was
-/// other tenants' writes; it also told every tenant the instance's total event
-/// volume, and rode outbound webhooks to third parties.
+/// The header answers "how far behind is my projector?", which only works if
+/// the number is comparable to a `log_id` the client has actually seen — and a
+/// client only ever sees its own workspace's events. Reporting the
+/// instance-wide head meant a fully caught-up projector could never reach it,
+/// because the gap was other tenants' writes; it also told every tenant the
+/// instance's total event volume, and rode outbound webhooks to third parties.
 ///
 /// An empty room is `0`, matching `RoomLsn::from_max_id`.
 pub async fn current_for_room(
@@ -104,8 +104,7 @@ pub fn stamp(headers: &mut axum::http::HeaderMap, room_lsn: i64) {
     insert_header(headers, room_lsn);
 }
 
-/// Whether a response is one we should not spend an event-log read on
-/// (Cluster 397.9).
+/// Whether a response is one we should not spend an event-log read on.
 ///
 /// A rejected request has no room head to report, and querying for one hands an
 /// unauthenticated caller a database round-trip per attempt. This layer also
@@ -133,9 +132,9 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     if skip || skip_status(resp.status()) {
         return resp;
     }
-    // Scoped to the caller's room (Cluster 398.8). No scope means the response
-    // was not produced for an authenticated room, so there is no head to report
-    // — which also keeps the header off pre-auth responses.
+    // Scoped to the caller's room. No scope means the response was not produced
+    // for an authenticated room, so there is no head to report — which also
+    // keeps the header off pre-auth responses.
     let scope = resp.extensions().get::<RoomScope>().copied();
     let lsn = match scope {
         Some(RoomScope(workspace_id)) => current_for_room(state.store.as_ref(), workspace_id).await,

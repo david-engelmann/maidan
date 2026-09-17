@@ -1,4 +1,4 @@
-//! Slash command registration and dispatch (Cluster 51.0).
+//! Slash command registration and dispatch.
 
 use std::{
     net::SocketAddr,

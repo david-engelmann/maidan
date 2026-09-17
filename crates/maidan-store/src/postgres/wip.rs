@@ -1,5 +1,5 @@
-//! WIP-limit queries (Cluster 362, G11): the per-workspace claim cap
-//! (`maidan_wip_limits`) plus a member's live-claim count over `maidan_threads`.
+//! WIP-limit queries: the per-workspace claim cap (`maidan_wip_limits`) plus a
+//! member's live-claim count over `maidan_threads`.
 
 use maidan_types::{MemberId, WorkspaceId};
 use sqlx::{PgPool, Row};

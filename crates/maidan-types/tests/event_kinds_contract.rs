@@ -1,4 +1,4 @@
-//! Golden file for agent-facing event taxonomy (Cluster 59).
+//! Golden file for agent-facing event taxonomy.
 
 use std::path::PathBuf;
 

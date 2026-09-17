@@ -57,10 +57,9 @@ pub async fn get_workspace(
 }
 
 /// Export the whole workspace content graph as a signed
-/// `maidan.workspace.export/1` envelope (Cluster 187 + 391). Gated on
-/// `token:admin`. Tokens die on export — secrets are omitted and the
-/// envelope records `token_policy`. Refuses if the operator signing key
-/// is not configured.
+/// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
+/// export — secrets are omitted and the envelope records `token_policy`.
+/// Refuses if the operator signing key is not configured.
 pub async fn export_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -112,12 +111,12 @@ pub async fn export_public_key(
     }))
 }
 
-/// Import a **signed** workspace bundle (Cluster 270 + 391). Verification
-/// is fail-closed (tamper / bad sig / secret fields / wrong pin). Gated on
-/// `token:admin`. `mode=new` remaps ids; `mode=restore` preserves them
-/// (409 if that workspace exists unless `force=true`).
+/// Import a **signed** workspace bundle. Verification is fail-closed (tamper /
+/// bad sig / secret fields / wrong pin). Gated on `token:admin`. `mode=new`
+/// remaps ids; `mode=restore` preserves them (409 if that workspace exists
+/// unless `force=true`).
 ///
-/// **The signature authorizes nothing** (Cluster 397.1). It proves the bundle
+/// **The signature authorizes nothing**. It proves the bundle
 /// is internally consistent with its own embedded key — and with the documented
 /// no-pin default (`MAIDAN_EXPORT_VERIFY_KEYS` unset) that key can be the
 /// caller's. So the workspace a `restore` names is a caller-supplied id and is
@@ -215,10 +214,10 @@ pub async fn get_workspace_usage(
     Ok(Json(state.store.workspace_usage(workspace_id).await?))
 }
 
-/// Tombstone / deletion explorer (Cluster 394.2). Soft-deleted messages in
-/// this workspace (body already cleared); `include_purged` reconstructs
-/// hard-deleted rows from `MessageTombstoned`. `workspace:read`; inaccessible
-/// private-channel / DM rows are dropped.
+/// Tombstone / deletion explorer. Soft-deleted messages in this workspace (body
+/// already cleared); `include_purged` reconstructs hard-deleted rows from
+/// `MessageTombstoned`. `workspace:read`; inaccessible private-channel / DM
+/// rows are dropped.
 pub async fn list_workspace_tombstones(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -258,9 +257,9 @@ pub async fn list_workspace_tombstones(
     Ok(Json(visible))
 }
 
-/// EventKind census for a workspace (Cluster 394.2). Optional channel/thread
-/// narrowing. `workspace:read`; private channels the caller cannot access are
-/// excluded in the query (`private_channel_deny_set`).
+/// EventKind census for a workspace. Optional channel/thread narrowing.
+/// `workspace:read`; private channels the caller cannot access are excluded in
+/// the query (`private_channel_deny_set`).
 pub async fn get_workspace_kind_census(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -292,8 +291,8 @@ pub async fn get_workspace_kind_census(
     ))
 }
 
-/// Workspace-scoped thread-result list (Cluster 381.2). Optional exact-match
-/// `result_kind` facet on the namespaced string (e.g. `example.review.result/1`).
+/// Workspace-scoped thread-result list. Optional exact-match `result_kind`
+/// facet on the namespaced string (e.g. `example.review.result/1`).
 /// `workspace:read`; private-channel rows the caller cannot access are dropped.
 pub async fn list_workspace_results(
     State(state): State<AppState>,
@@ -322,9 +321,9 @@ pub async fn list_workspace_results(
     Ok(Json(visible))
 }
 
-/// Threads in this workspace that share a producer `parent_run_id`
-/// (Cluster 387.2). `workspace:read`; private-channel rows the caller cannot
-/// access are dropped. F7 mute is not consulted.
+/// Threads in this workspace that share a producer `parent_run_id`.
+/// `workspace:read`; private-channel rows the caller cannot access are dropped.
+/// F7 mute is not consulted.
 pub async fn list_run_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -356,10 +355,10 @@ pub async fn list_run_threads(
     Ok(Json(visible))
 }
 
-/// Nested occupancy for a producer run (Cluster 387.2): queued / claimed /
-/// working / blocked across every **open** thread that shares `parent_run_id`.
-/// `workspace:read`. F7 mute stays orthogonal (a muted nested thread still
-/// counts). Empty / unknown run → zeros, not 404.
+/// Nested occupancy for a producer run: queued / claimed / working / blocked
+/// across every **open** thread that shares `parent_run_id`. `workspace:read`.
+/// F7 mute stays orthogonal (a muted nested thread still counts). Empty /
+/// unknown run → zeros, not 404.
 pub async fn get_run_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -383,9 +382,9 @@ pub async fn get_run_occupancy(
     ))
 }
 
-/// `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11) — set or clear the
-/// workspace's WIP limit (max concurrent live claims per member). `{limit: n}`
-/// caps (0 freezes); `{limit: null}` removes the cap. `workspace:write`.
+/// `PUT /workspaces/:wid/wip-limit` — set or clear the workspace's WIP limit
+/// (max concurrent live claims per member). `{limit: n}` caps (0 freezes);
+/// `{limit: null}` removes the cap. `workspace:write`.
 pub async fn set_wip_limit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -404,8 +403,8 @@ pub async fn set_wip_limit(
     Ok(Json(WipLimitView { limit: body.limit }))
 }
 
-/// `GET /workspaces/:wid/wip-limit` (Cluster 362) — the workspace's WIP limit, or
-/// `null` when unset (unlimited). `workspace:read`.
+/// `GET /workspaces/:wid/wip-limit` — the workspace's WIP limit, or `null` when
+/// unset (unlimited). `workspace:read`.
 pub async fn get_wip_limit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -419,13 +418,12 @@ pub async fn get_wip_limit(
     }))
 }
 
-/// `PUT /workspaces/:id/spawn-budget` (Cluster 376, G6/G-dev-3/W3) — set the
-/// workspace's spawn budget: max direct child threads per parent, max thread
-/// nesting depth, max tool calls per thread. A full replace — an omitted or
-/// `null` axis is unlimited, so `{}` clears the budget; `0` freezes an axis.
-/// Enforced on thread create (Cluster 376.2) and message post (376.3). Set the
-/// caps well below the fan-out a hosted agent platform allows: coordination
-/// cost grows as n(n−1)/2. `workspace:write`.
+/// `PUT /workspaces/:id/spawn-budget` — set the workspace's spawn budget: max
+/// direct child threads per parent, max thread nesting depth, max tool calls
+/// per thread. A full replace — an omitted or `null` axis is unlimited, so `{}`
+/// clears the budget; `0` freezes an axis. Enforced on thread create and
+/// message post (376.3). Set the caps well below the fan-out a hosted agent
+/// platform allows: coordination cost grows as n(n−1)/2. `workspace:write`.
 pub async fn set_spawn_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -460,8 +458,8 @@ pub async fn set_spawn_budget(
     }))
 }
 
-/// `GET /workspaces/:id/spawn-budget` (Cluster 376) — the workspace's spawn
-/// budget; every axis is `null` when unset (unlimited). `workspace:read`.
+/// `GET /workspaces/:id/spawn-budget` — the workspace's spawn budget; every
+/// axis is `null` when unset (unlimited). `workspace:read`.
 pub async fn get_spawn_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -563,7 +561,7 @@ pub async fn get_workspace_context(
         message_cursor: None,
         include_edits: q.include_edits,
         include_glossary: q.include_glossary,
-        as_of: None, // as-of replay is thread-scoped (Cluster 326)
+        as_of: None, // as-of replay is thread-scoped
         token_budget: q.token_budget,
         // Overridden to false per nested thread inside build_workspace_context
         // (grounding / accepted decisions are the focused single-thread view).
@@ -578,11 +576,10 @@ pub async fn get_workspace_context(
         limits,
     )
     .await?;
-    // Drop packed threads in private channels the caller can't access
-    // (Cluster 160). Cache the per-channel decision.
+    // Drop packed threads in private channels the caller can't access. Cache
+    // the per-channel decision.
     if !auth.bypass {
-        // Thread-keyed + DM-participant-aware (Cluster 180; channel-keyed leaked
-        // DM threads into the workspace-context pack).
+        // Thread-keyed + DM-participant-aware.
         let mut decision: std::collections::HashMap<ThreadId, bool> =
             std::collections::HashMap::new();
         let mut visible = Vec::with_capacity(packed.threads.len());
@@ -694,9 +691,10 @@ pub async fn erase_workspace(
     Ok(Json(result))
 }
 
-/// Refuse a destructive workspace operation while the workspace is under a legal
-/// hold (Cluster 366, T6) — 409 Conflict. Read on the primary (the pg store routes
-/// `get_legal_hold` there) so a lagged replica can never let evidence be destroyed.
+/// Refuse a destructive workspace operation while the workspace is under a
+/// legal hold — 409 Conflict. Read on the primary (the pg store routes
+/// `get_legal_hold` there) so a lagged replica can never let evidence be
+/// destroyed.
 async fn ensure_not_under_legal_hold(state: &AppState, workspace_id: WorkspaceId) -> ApiResult<()> {
     if state.store.get_legal_hold(workspace_id).await?.is_some() {
         return Err(ApiError::Conflict(
@@ -706,8 +704,8 @@ async fn ensure_not_under_legal_hold(state: &AppState, workspace_id: WorkspaceId
     Ok(())
 }
 
-/// `PUT /workspaces/:id/legal-hold` (Cluster 366, T6) — place (or update) a legal
-/// hold. `token:admin` (a higher bar than the `workspace:write` that purges, so a
+/// `PUT /workspaces/:id/legal-hold` — place (or update) a legal hold.
+/// `token:admin` (a higher bar than the `workspace:write` that purges, so a
 /// workspace admin can't lift-then-destroy). Body `{reason}`.
 pub async fn place_legal_hold(
     State(state): State<AppState>,
@@ -741,8 +739,8 @@ pub async fn place_legal_hold(
     Ok(Json(hold))
 }
 
-/// `DELETE /workspaces/:id/legal-hold` (Cluster 366) — lift the hold. `204` when a
-/// hold existed, `404` when not. `token:admin`.
+/// `DELETE /workspaces/:id/legal-hold` — lift the hold. `204` when a hold
+/// existed, `404` when not. `token:admin`.
 pub async fn lift_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -769,8 +767,7 @@ pub async fn lift_legal_hold(
     }
 }
 
-/// `GET /workspaces/:id/legal-hold` (Cluster 366) — the hold, or `404`.
-/// `workspace:read`.
+/// `GET /workspaces/:id/legal-hold` — the hold, or `404`. `workspace:read`.
 pub async fn get_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -785,14 +782,14 @@ pub async fn get_legal_hold(
     }
 }
 
-/// `GET /operator/legal-holds` (Cluster 366) — every active hold across all
-/// workspaces, newest first. `token:admin` — the operator/compliance view.
-/// `GET /operator/legal-holds` — every workspace's hold.
+/// `GET /operator/legal-holds` — every active hold across all workspaces,
+/// newest first. `token:admin` — the operator/compliance view. `GET
+/// /operator/legal-holds` — every workspace's hold.
 ///
-/// `operator:global` since Cluster 398.3, not the per-workspace `token:admin`
-/// this used to take: the query is instance-wide and deliberately stays that
-/// way, because scoping it to the caller would make it a duplicate of
-/// `GET /workspaces/:id/legal-hold`. A genuinely global read needs a genuinely
+/// `operator:global`, not the per-workspace `token:admin` this used to take:
+/// the query is instance-wide and deliberately stays that way, because scoping
+/// it to the caller would make it a duplicate of `GET
+/// /workspaces/:id/legal-hold`. A genuinely global read needs a genuinely
 /// global capability.
 pub async fn list_legal_holds(
     State(state): State<AppState>,
@@ -820,8 +817,8 @@ pub async fn list_workspace_audit(
     ))
 }
 
-/// `GET /operator/audit` — audit events across **all** workspaces (Cluster 132).
-/// Gated by the global `audit:read-global` capability; intentionally **not**
+/// `GET /operator/audit` — audit events across **all** workspaces. Gated by the
+/// global `audit:read-global` capability; intentionally **not**
 /// `ensure_workspace`-scoped (it spans workspaces).
 pub async fn list_global_audit(
     State(state): State<AppState>,
@@ -898,10 +895,10 @@ pub async fn list_events(
     ))
 }
 
-/// Verify the retained hash chain for this workspace (Cluster 392).
-/// 200 when intact; 409 `event-log-broken` when a splice or rewrite is
-/// detected. Same auth as [`list_events`] so a federated peer can check
-/// without trusting the host process.
+/// Verify the retained hash chain for this workspace. 200 when intact; 409
+/// `event-log-broken` when a splice or rewrite is detected. Same auth as
+/// [`list_events`] so a federated peer can check without trusting the host
+/// process.
 pub async fn verify_event_chain(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,
@@ -920,9 +917,9 @@ pub async fn verify_event_chain(
     Ok(Json(report))
 }
 
-/// Hashed domain-graph checkpoint (Cluster 393). Header + `graph_hash`
-/// is `workspace:read` / federation peer. `include_graph=true` is the
-/// full dump — `token:admin` or a registered peer (same bar as export).
+/// Hashed domain-graph checkpoint. Header + `graph_hash` is `workspace:read` /
+/// federation peer. `include_graph=true` is the full dump — `token:admin` or a
+/// registered peer (same bar as export).
 pub async fn get_log_snapshot(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,
@@ -955,9 +952,9 @@ pub async fn get_log_snapshot(
     Ok(Json(snap))
 }
 
-/// Since-LSN catch-up page (Cluster 393). Same auth as [`list_events`].
-/// A pruned-gap cursor is 409 `must_refetch` with a `snapshot` href; a
-/// broken chain is 409 `event-log-broken`.
+/// Since-LSN catch-up page. Same auth as [`list_events`]. A pruned-gap cursor
+/// is 409 `must_refetch` with a `snapshot` href; a broken chain is 409
+/// `event-log-broken`.
 pub async fn catch_up_events(
     State(state): State<AppState>,
     Path(workspace_id): Path<uuid::Uuid>,

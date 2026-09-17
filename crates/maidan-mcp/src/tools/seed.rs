@@ -1,8 +1,8 @@
-//! Seed-from-message MCP tool (Cluster 328) — the twin of the REST route
-//! (Cluster 327). Spawns a titled child thread from a source message + a
-//! `seeded_from` reference edge; `inclusion=quote` also posts a first message
-//! quoting the source. The source message's access is enforced by the
-//! pre-dispatch gate (`message_id` arm); the target channel is checked here.
+//! Seed-from-message MCP tool — the twin of the REST route. Spawns a titled
+//! child thread from a source message + a `seeded_from` reference edge;
+//! `inclusion=quote` also posts a first message quoting the source. The source
+//! message's access is enforced by the pre-dispatch gate (`message_id` arm);
+//! the target channel is checked here.
 
 use maidan_auth::AuthContext;
 use maidan_router::resolve_message_chain;

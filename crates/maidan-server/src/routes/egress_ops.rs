@@ -1,7 +1,6 @@
-//! Operator DLQ for the durable projector egress (Cluster 377.4): list
-//! dead-lettered Slack/GitHub deliveries and requeue one for another attempt.
-//! Global + system-level, so gated on `token:admin` — the mail DLQ shape
-//! (Cluster 306).
+//! Operator DLQ for the durable projector egress: list dead-lettered
+//! Slack/GitHub deliveries and requeue one for another attempt. Global +
+//! system-level, so gated on `token:admin` — the mail DLQ shape.
 
 use axum::{
     extract::{Path, Query, State},
@@ -30,7 +29,7 @@ pub struct ListDeadEgressQuery {
 /// caller's workspace**, newest first: what failed, where it was going, and the
 /// surface's own last error.
 ///
-/// Scoped in Cluster 397.4. `token:admin` is minted per workspace, but this
+/// Scoped per workspace. `token:admin` is minted per workspace, but this
 /// query was global, so one tenant's admin could read every other tenant's
 /// Slack channel ids, GitHub repositories and delivery errors — and then
 /// requeue into them.

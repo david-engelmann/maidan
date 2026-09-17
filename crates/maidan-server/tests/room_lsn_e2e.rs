@@ -1,6 +1,6 @@
-//! Cluster 390.3: `Maidan-Room-LSN` is the event-log high-water (decimal),
-//! always stamped on REST / WS / MCP / A2A. Distinct from
-//! `Maidan-Consistency-Token` (WAL LSN, replica-gated). SQLite in-process.
+//! `Maidan-Room-LSN` is the event-log high-water (decimal), always stamped on
+//! REST / WS / MCP / A2A. Distinct from `Maidan-Consistency-Token` (WAL LSN,
+//! replica-gated). SQLite in-process.
 
 use std::{sync::Arc, time::Duration};
 

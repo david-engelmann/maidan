@@ -5,8 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a thread's persisted steer (Cluster 355, W1). Latest wins; one
-/// steer per thread.
+/// Set (upsert) a thread's persisted steer. Latest wins; one steer per thread.
 pub async fn set(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -32,7 +31,7 @@ pub async fn set(
     Ok(row_to_steer(&row))
 }
 
-/// A thread's steer, or `None` if none has been set (Cluster 355).
+/// A thread's steer, or `None` if none has been set.
 pub async fn get(
     pool: &SqlitePool,
     thread_id: ThreadId,

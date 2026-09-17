@@ -5,11 +5,12 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a workspace's canonical definition of a term (Cluster 321) — see
-/// the Postgres twin. `aliases` is stored as a JSON array in a TEXT column, so the
-/// bind serializes and `row_to_term` parses (fallible, unlike the JSONB Postgres
+/// Set (upsert) a workspace's canonical definition of a term — see the Postgres
+/// twin. `aliases` is stored as a JSON array in a TEXT column, so the bind
+/// serializes and `row_to_term` parses (fallible, unlike the JSONB Postgres
 /// side). Re-setting the same `(workspace_id, term)` overwrites the
-/// definition/aliases and bumps `updated_at`, keeping `created_by`/`created_at`.
+/// definition/aliases and bumps `updated_at`, keeping
+/// `created_by`/`created_at`.
 pub async fn set(pool: &SqlitePool, new: &NewGlossaryTerm) -> Result<GlossaryTerm, StoreError> {
     let aliases = serde_json::to_string(&new.aliases)?;
     let now = Utc::now().to_rfc3339();

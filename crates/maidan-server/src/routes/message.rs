@@ -24,13 +24,13 @@ pub async fn post_message(
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
-    // Cluster 339: one fetch resolves the thread's scope AND authorizes the caller
-    // (was `resolve_thread_context` + `ensure_workspace` + `ensure_thread_access`).
+    // One fetch resolves the thread's scope AND authorizes the caller (was
+    // `resolve_thread_context` + `ensure_workspace` + `ensure_thread_access`).
     let ctx =
         maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     super::ensure_acting_member(&auth, MemberId(body.author_id))?;
-    // Cluster 173: a content-only post derives its searchable `body` from the
-    // blocks; an explicit `body` is respected verbatim.
+    // A content-only post derives its searchable `body` from the blocks; an
+    // explicit `body` is respected verbatim.
     let content = body.content.clone();
     let post_body = if body.body.is_empty() {
         content
@@ -67,12 +67,12 @@ pub async fn post_message(
         content,
     };
 
-    // Cluster 211: both paths commit the message and its `MessagePosted` event in
-    // one transaction. No slash → insert + event atomically. Slash → provisional
-    // insert, run the (possibly external) dispatch, then edit + event atomically
-    // so the event carries the post-slash message.
-    // Cluster 376.6: a post the `max_tools` axis refuses is recorded as
-    // `ThreadSpawnDenied` on the way to the 409, on both branches.
+    // Both paths commit the message and its `MessagePosted` event in one
+    // transaction. No slash → insert + event atomically. Slash → provisional
+    // insert, run the (possibly external) dispatch, then edit + event
+    // atomically so the event carries the post-slash message. A post the
+    // `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on the way to
+    // the 409, on both branches.
     let author = Some(MemberId(body.author_id));
     let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
         let provisional = state.store.post_message(new_message).await;
@@ -120,13 +120,12 @@ pub async fn post_message(
     Ok((StatusCode::CREATED, Json(message)))
 }
 
-/// `POST /messages/:id/seed` — seed a new work thread from a source message
-/// (Cluster 327, the write side of "re-ask"). Creates a titled thread (in the
-/// source's channel, or `channel_id`), links it to the source with a `seeded_from`
-/// reference edge, and — for `inclusion: "quote"` — posts a first message quoting
-/// the source. The source is untouched; N seeds per source are allowed. Gated on
-/// `workspace:write` + read-access to the source + write-access to the target
-/// channel.
+/// `POST /messages/:id/seed` — seed a new work thread from a source message.
+/// Creates a titled thread (in the source's channel, or `channel_id`), links it
+/// to the source with a `seeded_from` reference edge, and — for `inclusion:
+/// "quote"` — posts a first message quoting the source. The source is
+/// untouched; N seeds per source are allowed. Gated on `workspace:write` +
+/// read-access to the source + write-access to the target channel.
 pub async fn seed_from_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -135,7 +134,7 @@ pub async fn seed_from_message(
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
     let source_id = MessageId(message_id);
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, source_id).await?;
     if body.title.trim().is_empty() {
         return Err(ApiError::BadRequest("title must not be empty".into()));
@@ -212,7 +211,7 @@ pub async fn edit_message(
     ApiJson(body): ApiJson<EditMessageRequest>,
 ) -> ApiResult<Json<Message>> {
     let message_id = MessageId(message_id);
-    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, message_id).await?;
     let existing = state.store.get_message(message_id).await?;
     if existing.tombstoned_at.is_some() {
@@ -222,8 +221,8 @@ pub async fn edit_message(
     super::ensure_acting_member(&auth, editor_id)?;
     ensure_message_edit(&auth, editor_id, existing.author_id)?;
     let metadata = body.metadata.unwrap_or(existing.metadata);
-    // Cluster 173: omitted content keeps the existing blocks; a content edit
-    // with an empty body re-derives the searchable body.
+    // Omitted content keeps the existing blocks; a content edit with an empty
+    // body re-derives the searchable body.
     let content = body.content.or(existing.content);
     let edit_body = if body.body.is_empty() {
         content
@@ -262,9 +261,9 @@ pub async fn list_messages(
     Query(q): Query<ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 339: `ensure_thread_access` already resolves + workspace-checks the
-    // thread, so the prior `resolve_thread_context` + `ensure_workspace` were a
-    // redundant second fetch — this handler never used the resolved context.
+    // `ensure_thread_access` already resolves + workspace-checks the thread, so
+    // the prior `resolve_thread_context` + `ensure_workspace` were a redundant
+    // second fetch — this handler never used the resolved context.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     Ok(Json(
         state
@@ -280,14 +279,14 @@ pub async fn get_message(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<Message>> {
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    // Drop resolve_message_chain + ensure_workspace; one fetch authorizes.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
     Ok(Json(state.store.get_message(MessageId(id)).await?))
 }
 
-/// Incoming pointers at a message (Cluster 394.2): `RelationKind` reverse
-/// edges plus pins, reactions, and votes. `workspace:read` + message access.
-/// Works on a retained tombstone (the row is still there).
+/// Incoming pointers at a message: `RelationKind` reverse edges plus pins,
+/// reactions, and votes. `workspace:read` + message access. Works on a retained
+/// tombstone (the row is still there).
 pub async fn list_message_backlinks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -308,7 +307,7 @@ pub async fn list_message_edits(
 ) -> ApiResult<Json<Vec<MessageEdit>>> {
     let message_id = MessageId(id);
     cap(&auth, WORKSPACE_READ)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    // Drop resolve_message_chain + ensure_workspace; one fetch authorizes.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let limit = q.limit.clamp(1, 500);
     Ok(Json(
@@ -322,7 +321,7 @@ pub async fn tombstone_message(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
     let dm_conversation_id =
         crate::dm::dm_conversation_id_for_thread(state.store.as_ref(), chain.thread_id).await;
@@ -346,7 +345,7 @@ pub async fn purge_message(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: one message→thread→channel fetch resolves the scope + authorizes.
+    // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
     state.store.purge_message(MessageId(id)).await?;
     crate::audit::record(
@@ -374,7 +373,7 @@ pub async fn create_mention(
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
-    // Cluster 340: drop resolve_message_chain + ensure_workspace; one fetch authorizes.
+    // Drop resolve_message_chain + ensure_workspace; one fetch authorizes.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
     let stored = state
         .store

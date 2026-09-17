@@ -1,9 +1,9 @@
-//! Cluster 347: real-client wire-path tests for the projector egress. The
-//! `SlackWebClient` / `GithubApiClient` (the production HTTP clients that build the
-//! actual outbound request) were never exercised — the projector egress tests use
-//! mock `SlackSender`/`GithubSender` traits. These point the real clients at a
-//! loopback server (via the new `with_base_url`) and assert the exact request they
-//! send, plus the success/error decoding.
+//! Real-client wire-path tests for the projector egress. The `SlackWebClient` /
+//! `GithubApiClient` (the production HTTP clients that build the actual
+//! outbound request) were never exercised — the projector egress tests use mock
+//! `SlackSender`/`GithubSender` traits. These point the real clients at a
+//! loopback server (via the new `with_base_url`) and assert the exact request
+//! they send, plus the success/error decoding.
 
 use std::{
     net::SocketAddr,
@@ -39,7 +39,7 @@ struct TestSrv {
     status: StatusCode,
     response: Value,
     /// Response headers to echo back — how GitHub distinguishes a rate-limited
-    /// 403 from a permission-denied one (Cluster 377.3).
+    /// 403 from a permission-denied one.
     response_headers: Vec<(String, String)>,
 }
 
@@ -153,8 +153,8 @@ async fn slack_client_reports_a_ts_less_success_as_delivered_without_a_ref() {
     );
 }
 
-/// Cluster 378.2: a re-delivery can reply *inside* the Slack thread it first
-/// posted in, rather than starting a new top-level message.
+/// A re-delivery can reply *inside* the Slack thread it first posted in, rather
+/// than starting a new top-level message.
 #[tokio::test]
 async fn slack_client_threads_a_reply_under_a_parent_ts() {
     let (base, rec) = spawn(
@@ -200,7 +200,7 @@ async fn slack_client_updates_a_message_via_chat_update() {
 }
 
 /// An update against a message that is gone is a config-class error, so it
-/// disables the link exactly as a failed post would (Cluster 377.3).
+/// disables the link exactly as a failed post would.
 #[tokio::test]
 async fn slack_client_maps_an_update_error_to_a_misconfiguration() {
     let (base, _rec) = spawn(
@@ -261,8 +261,8 @@ async fn github_client_posts_issue_comment_and_returns_the_comment_ref() {
 }
 
 /// The comment was created, so an unreadable `id` must not be reported as a
-/// failure — a retry would leave two comments on the PR. The recovery path for a
-/// lost ref is the hidden marker in the body (Cluster 379.4), never a re-post.
+/// failure — a retry would leave two comments on the PR. The recovery path for
+/// a lost ref is the hidden marker in the body, never a re-post.
 #[tokio::test]
 async fn github_client_reports_an_idless_success_as_delivered_without_a_ref() {
     for response in [json!({}), json!({ "id": 0 }), json!({ "id": "998877" })] {
@@ -302,8 +302,8 @@ async fn github_client_updates_a_comment_by_id_without_the_issue_number() {
 }
 
 /// A deleted comment answers 404, which is a misconfiguration — the same
-/// classification a failed post gets (Cluster 377.3), so an update cannot retry
-/// forever against something that no longer exists.
+/// classification a failed post gets, so an update cannot retry forever against
+/// something that no longer exists.
 #[tokio::test]
 async fn github_client_maps_an_update_404_to_a_misconfiguration() {
     let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
@@ -354,7 +354,7 @@ async fn github_client_maps_non_success_to_api_error() {
 
 /// GitHub answers a secondary rate limit with **403** — the same status as a
 /// revoked token — so the classification that decides whether to disable a link
-/// (Cluster 377.3) has to read the headers, not the status.
+/// has to read the headers, not the status.
 #[tokio::test]
 async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
     let (base, _rec) = spawn_with_headers(
@@ -384,7 +384,7 @@ async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
     }
 }
 
-/// `GET /repos/{repo}/issues/{n}/comments` — the Cluster 379.4 recovery scan.
+/// `GET /repos/{repo}/issues/{n}/comments` — the marker recovery scan.
 #[tokio::test]
 async fn github_client_lists_issue_comments() {
     let (base, rec) = spawn(
@@ -413,9 +413,9 @@ async fn github_client_lists_issue_comments() {
     assert_eq!(r.user_agent, "maidan-projector");
 }
 
-/// Cluster 380.2: `POST /repos/{repo}/pulls/{n}/reviews` with envelope
-/// `commit_id`, `event: COMMENT`, RIGHT-side post-image `line`/`start_line`.
-/// The client does not fetch the live PR head — `commit_id` is caller-supplied.
+/// `POST /repos/{repo}/pulls/{n}/reviews` with envelope `commit_id`, `event:
+/// COMMENT`, RIGHT-side post-image `line`/`start_line`. The client does not
+/// fetch the live PR head — `commit_id` is caller-supplied.
 #[tokio::test]
 async fn github_client_creates_a_pull_review_with_right_side_and_envelope_commit_id() {
     let (base, rec) = spawn(StatusCode::OK, json!({ "id": 77, "state": "COMMENTED" })).await;

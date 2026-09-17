@@ -62,20 +62,20 @@ pub trait Search: Send + Sync {
     }
 
     /// Ensure the per-model embedding table + registry row for the active
-    /// `provider` model exist (Cluster 117). Called at startup so a newly
-    /// configured model is registered before the first write and a dimension
-    /// mismatch surfaces immediately. Backends without vectors no-op.
+    /// `provider` model exist. Called at startup so a newly configured model is
+    /// registered before the first write and a dimension mismatch surfaces
+    /// immediately. Backends without vectors no-op.
     async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {
         let _ = provider;
         Ok(())
     }
 
-    /// Hybrid lexical+semantic ranking (Cluster 118): run both surfaces and fuse
-    /// their normalized `[0, 1]` scores via [`crate::score::fuse_hybrid`].
-    /// `weight` is the semantic weight in `[0, 1]`; the caller supplies the
-    /// query's `embedding` (the provider does the embedding). The default
-    /// composes the existing `search_messages` + `semantic_search`, so both
-    /// backends inherit it.
+    /// Hybrid lexical+semantic ranking: run both surfaces and fuse their
+    /// normalized `[0, 1]` scores via [`crate::score::fuse_hybrid`]. `weight`
+    /// is the semantic weight in `[0, 1]`; the caller supplies the query's
+    /// `embedding` (the provider does the embedding). The default composes the
+    /// existing `search_messages` + `semantic_search`, so both backends inherit
+    /// it.
     async fn hybrid_search(
         &self,
         workspace_id: WorkspaceId,

@@ -1,4 +1,4 @@
-//! Cluster 101: `maidan-operator-1.0` gate — UI, HTTP map, metrics, checklist surfaces.
+//! `maidan-operator-1.0` gate — UI, HTTP map, metrics, checklist surfaces.
 
 use std::{
     net::SocketAddr,

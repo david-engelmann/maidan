@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A2A v1.0 interop / conformance harness (Cluster 289).
+# A2A v1.0 interop / conformance harness.
 #
 # Boots a source-built Maidan on SQLite (auth disabled, dev-only), waits for
 # health, runs the A2A conformance client (examples/a2a_interop.py) against it,

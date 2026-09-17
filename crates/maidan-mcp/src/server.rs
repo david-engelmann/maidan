@@ -76,16 +76,16 @@ pub struct McpServer {
     streamable_sessions: Arc<StreamableSessionRegistry>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
     resource_notifier: Option<Arc<dyn ResourceNotifier>>,
-    /// Server-injected slash-command dispatcher (Cluster 345). Set once at
-    /// startup via [`Self::set_slash_dispatcher`]; `None` (never set) means MCP
-    /// posts skip slash dispatch (the pre-345 behaviour, and how tests run).
+    /// Server-injected slash-command dispatcher. Set once at startup via
+    /// [`Self::set_slash_dispatcher`]; `None` (never set) means MCP posts skip
+    /// slash dispatch (the pre-345 behaviour, and how tests run).
     slash_dispatcher: std::sync::OnceLock<Arc<dyn crate::slash_dispatch::SlashDispatcher>>,
-    /// The at-rest encryption key for resolving named secrets (Cluster 371). Set
-    /// once at startup from the server's keyring; unset in tests/embedders that
-    /// don't configure one, in which case `resolve_secret` reports it's unavailable.
+    /// The at-rest encryption key for resolving named secrets. Set once at
+    /// startup from the server's keyring; unset in tests/embedders that don't
+    /// configure one, in which case `resolve_secret` reports it's unavailable.
     encryption_key: std::sync::OnceLock<Arc<[u8; 32]>>,
-    /// Operator Ed25519 key for signed workspace export (Cluster 391). Unset
-    /// means `export_workspace` refuses — never emit an unsigned bundle.
+    /// Operator Ed25519 key for signed workspace export. Unset means
+    /// `export_workspace` refuses — never emit an unsigned bundle.
     export_signing: std::sync::OnceLock<maidan_auth::ExportSigningKey>,
     /// Optional public-key pin for `verify_workspace_export` / import.
     /// Empty = integrity against the embedded key only (blank-instance default).
@@ -120,9 +120,9 @@ impl McpServer {
         }
     }
 
-    /// Set the at-rest encryption key for `resolve_secret` (Cluster 371). Called
-    /// once at startup; unset in tests/embedders. Works through `&self` (the
-    /// server is `Arc`-shared).
+    /// Set the at-rest encryption key for `resolve_secret`. Called once at
+    /// startup; unset in tests/embedders. Works through `&self` (the server is
+    /// `Arc`-shared).
     pub fn set_encryption_key(&self, key: Arc<[u8; 32]>) {
         let _ = self.encryption_key.set(key);
     }
@@ -131,8 +131,8 @@ impl McpServer {
         self.encryption_key.get()
     }
 
-    /// Install the operator signing key for `export_workspace` (Cluster 391).
-    /// Called once at startup; unset means the tool refuses.
+    /// Install the operator signing key for `export_workspace`. Called once at
+    /// startup; unset means the tool refuses.
     pub fn set_export_signing(&self, key: maidan_auth::ExportSigningKey) {
         let _ = self.export_signing.set(key);
     }
@@ -154,11 +154,12 @@ impl McpServer {
             .unwrap_or(&[])
     }
 
-    /// Attach the server-side slash-command dispatcher (Cluster 345). Called once
-    /// at startup from the server binary (only `main.rs`), so the resulting
-    /// `AppState`↔`McpServer` reference is a process-lifetime shared-state graph,
-    /// never created in tests/embedders (which leave it unset → MCP posts skip
-    /// slash dispatch). Works through `&self` (the server is already `Arc`-shared).
+    /// Attach the server-side slash-command dispatcher. Called once at startup
+    /// from the server binary (only `main.rs`), so the resulting
+    /// `AppState`↔`McpServer` reference is a process-lifetime shared-state
+    /// graph, never created in tests/embedders (which leave it unset → MCP
+    /// posts skip slash dispatch). Works through `&self` (the server is already
+    /// `Arc`-shared).
     pub fn set_slash_dispatcher(
         &self,
         dispatcher: Arc<dyn crate::slash_dispatch::SlashDispatcher>,
@@ -179,9 +180,9 @@ impl McpServer {
     }
 
     /// When set, MCP resource-update notifications fan out to every server
-    /// replica (Cluster 102). Call [`McpServer::spawn_resource_notify_listener`]
-    /// after wrapping the server in an `Arc` so this process delivers
-    /// cross-replica updates to its own SSE subscribers.
+    /// replica. Call [`McpServer::spawn_resource_notify_listener`] after
+    /// wrapping the server in an `Arc` so this process delivers cross-replica
+    /// updates to its own SSE subscribers.
     pub fn with_resource_notifier(mut self, notifier: Arc<dyn ResourceNotifier>) -> Self {
         self.resource_notifier = Some(notifier);
         self
@@ -294,9 +295,10 @@ impl McpServer {
                 "name": self.server_name,
                 "version": self.server_version
             },
-            // Cluster 336: the spec `instructions` field — an agent's cold-start guide.
-            // Call `whoami` first for your member_id, then the full claim lifecycle
-            // (the "waiter loop" in Integration.md), not just the read/write pair.
+            // The spec `instructions` field — an agent's cold-start guide. Call
+            // `whoami` first for your member_id, then the full claim lifecycle
+            // (the "waiter loop" in Integration.md), not just the read/write
+            // pair.
             "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
                 member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
                 the next ready task in a channel — null means there is nothing to take, so sleep and \
@@ -378,9 +380,9 @@ impl McpServer {
                             .await?;
                         }
                     }
-                    // Cluster 204/332: artifacts are deduped across tenants, so gate
-                    // the read on the caller's per-workspace access ref. A missing ref
-                    // is NotFound (no cross-tenant existence oracle), like REST.
+                    // Artifacts are deduped across tenants, so gate the read on
+                    // the caller's per-workspace access ref. A missing ref is
+                    // NotFound (no cross-tenant existence oracle), like REST.
                     (Some("artifacts"), Some(sha)) => {
                         if !self
                             .store
@@ -458,7 +460,7 @@ impl McpServer {
     /// Two delivery surfaces:
     /// 1. **Inline** — matching URIs are queued for the current request's caller
     ///    ([`McpServer::take_pending_notifications`]); local and synchronous.
-    /// 2. **Live SSE** — when a [`ResourceNotifier`] is wired (Cluster 102), the
+    /// 2. **Live SSE** — when a [`ResourceNotifier`] is wired, the
     ///    *unfiltered* URI set is published cluster-wide and each replica's
     ///    listener ([`McpServer::spawn_resource_notify_listener`]) delivers to
     ///    its own SSE subscribers. Without a notifier, SSE delivery happens
@@ -716,8 +718,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Aggregate reads (Cluster 162): the private channel is filtered out of
-        // list_channels + get_workspace_context for Bob, present for Alice.
+        // Aggregate reads: the private channel is filtered out of list_channels
+        // + get_workspace_context for Bob, present for Alice.
         let unwrap_content = |v: Value| -> Value {
             let text = v["content"][0]["text"].as_str().unwrap().to_string();
             serde_json::from_str(&text).unwrap()
@@ -1026,9 +1028,9 @@ mod tests {
             "a mention in an inaccessible private channel is filtered → timeout"
         );
 
-        // Cluster 354 lookback: a mention that lands BEFORE the waiter subscribes
-        // is still caught when the caller passes its last-drain high-water as
-        // since_log_id — no concurrent publish, the durable log replay finds it.
+        // A mention that lands BEFORE the waiter subscribes is still caught
+        // when the caller passes its last-drain high-water as since_log_id — no
+        // concurrent publish, the durable log replay finds it.
         let id = server.publish_event(mention(pub_thread.id)).await.unwrap();
         let lookback_args =
             json!({ "member_id": agent.id.0, "timeout_ms": 300, "since_log_id": id - 1 });
@@ -1179,8 +1181,8 @@ mod tests {
             "a ready task in an inaccessible private channel is filtered → timeout"
         );
 
-        // Cluster 354 lookback: readiness signalled BEFORE the waiter subscribes is
-        // caught when the caller passes since_log_id — no concurrent publish.
+        // Readiness signalled BEFORE the waiter subscribes is caught when the
+        // caller passes since_log_id — no concurrent publish.
         let id = server
             .publish_event(ready(pub_thread.clone()))
             .await
@@ -1324,8 +1326,8 @@ mod tests {
             "a land in an inaccessible private channel is filtered → timeout"
         );
 
-        // Cluster 354 lookback: a land emitted BEFORE the waiter subscribes is caught
-        // with since_log_id — scoped to the specific thread.
+        // A land emitted BEFORE the waiter subscribes is caught with
+        // since_log_id — scoped to the specific thread.
         let id = server
             .publish_event(landed(pub_thread.clone()))
             .await
@@ -1453,8 +1455,8 @@ mod tests {
             "an expiry in an inaccessible private channel is filtered → timeout"
         );
 
-        // Cluster 354 lookback: an expiry reclaimed BEFORE the waiter subscribes is
-        // caught via since_log_id, and RBAC still filters a private one.
+        // An expiry reclaimed BEFORE the waiter subscribes is caught via
+        // since_log_id, and RBAC still filters a private one.
         let id = server
             .publish_event(expired(pub_thread.clone()))
             .await
@@ -1594,10 +1596,10 @@ mod tests {
         );
         assert_eq!(got["result"], payload);
 
-        // Cluster 354 lookback: wait_for_result with since_log_id catches a result
-        // SET before the call subscribes. dep1's result was just set, so a lookback
-        // from the head of the log finds its thread_result_set and returns the
-        // payload without waiting on a live event.
+        // Wait_for_result with since_log_id catches a result SET before the
+        // call subscribes. dep1's result was just set, so a lookback from the
+        // head of the log finds its thread_result_set and returns the payload
+        // without waiting on a live event.
         let looked = unwrap_content(
             server
                 .call_tool(
@@ -2124,8 +2126,7 @@ mod tests {
         assert_eq!(got["steer"], json!("focus on the failing test"));
         assert_eq!(got["steered_by"], json!(caller.id.0));
 
-        // Rename (Cluster 356, F1): the new title round-trips; a blank title is
-        // rejected.
+        // Rename: the new title round-trips; a blank title is rejected.
         let renamed = unwrap_content(
             server
                 .call_tool(
@@ -2206,7 +2207,7 @@ mod tests {
         assert_eq!(depth["assigned"], json!(0));
     }
 
-    /// Cluster 364 (G2): the wait tools — set/get/cancel on the MCP path.
+    /// The wait tools — set/get/cancel on the MCP path.
     #[tokio::test]
     async fn wait_tools_set_get_cancel() {
         use chrono::{Duration, Utc};
@@ -2323,7 +2324,7 @@ mod tests {
         );
     }
 
-    /// Cluster 365 (G3 fair dispatch): the priority tools — set/get on the MCP path.
+    /// The priority tools — set/get on the MCP path.
     #[tokio::test]
     async fn priority_tools_set_and_get() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
@@ -2418,8 +2419,8 @@ mod tests {
         assert_eq!(got["priority"], json!(8));
     }
 
-    /// Cluster 363 (G3): the unclaimable tools — park/un-park/list + the explicit
-    /// claim refusal + claim_next skip on the MCP path.
+    /// The unclaimable tools — park/un-park/list + the explicit claim refusal +
+    /// claim_next skip on the MCP path.
     #[tokio::test]
     async fn unclaimable_tools_park_a_thread_from_dispatch() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
@@ -2550,8 +2551,8 @@ mod tests {
         assert_eq!(claimed["claimed"], json!(true));
     }
 
-    /// Cluster 386 (Wave 2 #27, G14 + W2): the block tools — set/get/list +
-    /// explicit-claim refusal + claim_next skip + BlockedResolved on clear.
+    /// The block tools — set/get/list + explicit-claim refusal + claim_next
+    /// skip + BlockedResolved on clear.
     #[tokio::test]
     async fn block_tools_park_a_thread_from_dispatch() {
         use std::time::Duration;
@@ -2732,8 +2733,8 @@ mod tests {
         assert_eq!(claimed["claimed"], json!(true));
     }
 
-    /// Cluster 362 (G11): the WIP admin/visibility tools + enforcement on the MCP
-    /// claim path (explicit claim errors at the cap; claim_next returns null).
+    /// The WIP admin/visibility tools + enforcement on the MCP claim path
+    /// (explicit claim errors at the cap; claim_next returns null).
     #[tokio::test]
     async fn wip_limit_tools_enforce_the_cap() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE};
@@ -2872,8 +2873,8 @@ mod tests {
         assert_eq!(claimed["claimed"], json!(true));
     }
 
-    /// Cluster 356.5: the threading MCP parity tools — collapsed children, recent
-    /// activity, and self leaf mute/unmute.
+    /// The threading MCP parity tools — collapsed children, recent activity,
+    /// and self leaf mute/unmute.
     #[tokio::test]
     async fn threading_tools_children_recent_and_mute() {
         use maidan_auth::capability::WORKSPACE_READ;
@@ -3013,7 +3014,7 @@ mod tests {
         assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
     }
 
-    /// Cluster 357.3 (N3): the per-channel mute MCP tools (self-scoped).
+    /// The per-channel mute MCP tools (self-scoped).
     #[tokio::test]
     async fn channel_mute_tools_mute_and_unmute() {
         use maidan_auth::capability::WORKSPACE_READ;
@@ -3097,8 +3098,7 @@ mod tests {
         assert_eq!(again["unmuted"], json!(false), "second unmute is a no-op");
     }
 
-    /// Cluster 358.4 (T1/T5): the budget MCP tools — set, report (stop on
-    /// exceed), and read the DLQ.
+    /// The budget MCP tools — set, report (stop on exceed), and read the DLQ.
     #[tokio::test]
     async fn budget_tools_set_report_and_dlq() {
         let pool = SqlitePoolOptions::new()
@@ -3160,8 +3160,8 @@ mod tests {
                 .call_tool(
                     &auth,
                     "set_thread_budget",
-                    // A replace states every dimension (Cluster 403); null is
-                    // how you say "no cap here".
+                    // A replace states every dimension; null is how you say "no
+                    // cap here".
                     &json!({
                         "thread_id": thread.id.0,
                         "max_tokens": 100,
@@ -3175,8 +3175,8 @@ mod tests {
         );
         assert_eq!(set["max_tokens"], json!(100));
 
-        // Cluster 403: raising one dimension leaves the others alone. Through a
-        // replace this would have cleared them, which is the defect.
+        // Raising one dimension leaves the others alone. Through a replace this
+        // would have cleared them, which is the defect.
         let raised = unwrap_content(
             server
                 .call_tool(
@@ -3257,8 +3257,8 @@ mod tests {
         assert_eq!(got["used_tokens"], json!(110));
     }
 
-    /// Cluster 368 (Wave 2 #16): the get_waiting_inbox tool composes a member's
-    /// assigned non-terminal threads + the workspace's pending gates.
+    /// The get_waiting_inbox tool composes a member's assigned non-terminal
+    /// threads + the workspace's pending gates.
     #[tokio::test]
     async fn waiting_inbox_tool_composes_assigned_and_gates() {
         let pool = SqlitePoolOptions::new()
@@ -3471,8 +3471,8 @@ mod tests {
         );
         assert_eq!(unread.as_array().unwrap().len(), 1);
 
-        // Snooze (Cluster 359, N5): snoozing the remaining unread notification into
-        // the future clears the badge.
+        // Snooze: snoozing the remaining unread notification into the future
+        // clears the badge.
         let snoozed = unwrap_content(
             server
                 .call_tool(
@@ -4765,11 +4765,11 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_claim_next_reclaim_emits_claim_expired_then_assignment() {
-        // Cluster 374 (P1.1c): the MCP claim_next path now goes through the atomic
-        // `claim_next_thread_with_event` + `publish_stored`, so reclaiming a dead
-        // holder's expired lease emits ClaimExpired (for the holder) THEN
-        // ThreadAssignmentChanged — parity with REST. The old non-event path
-        // dropped ClaimExpired on the agent surface entirely.
+        // The MCP claim_next path goes through the
+        // atomic `claim_next_thread_with_event` + `publish_stored`, so
+        // reclaiming a dead holder's expired lease emits ClaimExpired (for the
+        // holder) THEN ThreadAssignmentChanged — parity with REST. The old
+        // non-event path dropped ClaimExpired on the agent surface entirely.
         use futures::StreamExt;
         use maidan_auth::capability::THREAD_TRANSITION;
         use maidan_bus::{BusItem, EventBus, InMemoryBus};
@@ -5029,9 +5029,9 @@ mod tests {
         assert_eq!(reviews.as_array().unwrap().len(), 1);
     }
 
-    /// Cluster 384 (P1.1d): MCP `transition_thread` is the twin of REST
-    /// `POST /threads/:id`. Same store path → same SoD + close-gate; the
-    /// transition publishes `ThreadStateChanged` via `publish_stored`.
+    /// MCP `transition_thread` is the twin of REST `POST
+    /// /threads/:id`. Same store path → same SoD + close-gate; the transition
+    /// publishes `ThreadStateChanged` via `publish_stored`.
     #[tokio::test]
     async fn transition_thread_tool_advances_fsm_and_honors_gates() {
         use std::collections::HashSet;
@@ -5339,9 +5339,9 @@ mod tests {
         );
         assert_eq!(got["landable"], json!(true));
 
-        // Cluster 397.2: the gate ratchets. `op` holds `thread:transition` — the
-        // capability a close needs — so it must not be able to delete the gate
-        // that constrains the close.
+        // The gate ratchets. `op` holds `thread:transition` — the capability a
+        // close needs — so it must not be able to delete the gate that
+        // constrains the close.
         assert!(
             server
                 .call_tool(&op, "clear_land_gate", &json!({ "thread_id": tid }))
@@ -5545,8 +5545,8 @@ mod tests {
         assert_eq!(closed["state"], "closed");
     }
 
-    /// Cluster 376.6: a post the `max_tools` axis refuses comes back as a client
-    /// error AND is recorded as `ThreadSpawnDenied` naming the author.
+    /// A post the `max_tools` axis refuses comes back as a client error AND is
+    /// recorded as `ThreadSpawnDenied` naming the author.
     #[tokio::test]
     async fn a_refused_tool_post_publishes_thread_spawn_denied() {
         use std::time::Duration;
@@ -5777,7 +5777,7 @@ mod tests {
         );
         assert_eq!(read_back, set, "get must read back what set stored");
 
-        // The configured cap is the one the gate enforces (Cluster 376.2).
+        // The configured cap is the one the gate enforces.
         child()
             .await
             .expect("the first child is within max_children");
@@ -6031,8 +6031,8 @@ mod tests {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
         use maidan_bus::InMemoryBus;
 
-        // Stands in for the server-side slash runtime (Cluster 345): returns the
-        // slash metadata the real `ServerSlashDispatcher` would produce.
+        // Stands in for the server-side slash runtime: returns the slash
+        // metadata the real `ServerSlashDispatcher` would produce.
         struct MockSlash;
         #[async_trait::async_trait]
         impl crate::slash_dispatch::SlashDispatcher for MockSlash {
@@ -6511,7 +6511,7 @@ mod tests {
         let sha = artifact["sha256"].as_str().unwrap().to_string();
         assert!(artifact["size_bytes"].as_i64().unwrap() > 0);
 
-        // The Cluster-204 access ref is recorded for the caller's workspace.
+        // The access ref is recorded for the caller's workspace.
         assert!(store.artifact_ref_exists(ws.id, &sha).await.unwrap());
 
         // An identical snapshot dedups to the same sha.

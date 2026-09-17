@@ -1,7 +1,7 @@
-//! Legal-hold store + retention exemption (Cluster 366, T6): place/get/lift/list,
-//! and the headline behaviour — a held workspace's events survive retention
-//! pruning while an unheld workspace's are pruned, and audit pruning freezes while
-//! any hold is active. Both backends.
+//! Legal-hold store + retention exemption: place/get/lift/list, and the
+//! headline behaviour — a held workspace's events survive retention pruning
+//! while an unheld workspace's are pruned, and audit pruning freezes while any
+//! hold is active. Both backends.
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};

@@ -1,4 +1,4 @@
-//! Tombstone explorer, message backlinks, and EventKind census (Cluster 394).
+//! Tombstone explorer, message backlinks, and EventKind census.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
@@ -93,10 +93,10 @@ fn row_to_retained(row: &sqlx::postgres::PgRow) -> TombstoneRecord {
 /// The purged half of the explorer: tombstone records reconstructed from the
 /// event log, for messages whose rows were hard-deleted.
 ///
-/// `limit` is applied **in the query** (Cluster 400.4). This used to
-/// materialize every `message_tombstoned` event in the scope and parse each
-/// payload, only for the caller to keep `limit` of them — so a heavily-purged
-/// workspace paid a full scan and a full parse for a `limit=10` read.
+/// `limit` is applied **in the query**. This used to materialize every
+/// `message_tombstoned` event in the scope and parse each payload, only for the
+/// caller to keep `limit` of them — so a heavily-purged workspace paid a full
+/// scan and a full parse for a `limit=10` read.
 ///
 /// Taking the top `limit` from each side and merging is correct: the true top
 /// `limit` of a union is contained in the union of each side's top `limit`. The

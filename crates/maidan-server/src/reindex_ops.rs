@@ -1,8 +1,7 @@
-//! Operator HTTP API to enqueue embedding reindex jobs (Cluster 87.0).
+//! Operator HTTP API to enqueue embedding reindex jobs.
 //!
-//! Jobs are persisted in the store (Cluster 104.0.3), not held per-replica, so
-//! a job started on one replica is visible from any replica and survives
-//! restart.
+//! Jobs are persisted in the store, not held per-replica, so a job started on
+//! one replica is visible from any replica and survives restart.
 
 use axum::{
     extract::{Path, State},

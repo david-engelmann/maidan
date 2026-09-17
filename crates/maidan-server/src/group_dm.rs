@@ -55,8 +55,8 @@ pub async fn list_group_dms(
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_id = MemberId(q.member_id);
-    // Cluster 203: a session caller may only list its OWN group DMs; bearer =
-    // orchestrator (act-as-any); bypass unrestricted (same rule as writes, 202).
+    // A session caller may only list its OWN group DMs; bearer = orchestrator
+    // (act-as-any); bypass unrestricted (same rule as writes, 202).
     crate::routes::ensure_acting_member(&auth, member_id)?;
     Ok(Json(
         state
@@ -77,8 +77,8 @@ pub async fn get_group_dm(
         .get_group_dm_conversation(GroupDmConversationId(id))
         .await?;
     ensure_workspace(&auth, group.workspace_id)?;
-    // Cluster 203: a session caller must be a participant to read a group DM's
-    // metadata; bearer = orchestrator (act-as-any); bypass exempt.
+    // A session caller must be a participant to read a group DM's metadata;
+    // bearer = orchestrator (act-as-any); bypass exempt.
     if !auth.bypass && auth.token_id.is_none() && !group.member_ids.contains(&auth.member_id) {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),

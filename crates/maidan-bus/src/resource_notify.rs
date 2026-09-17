@@ -1,10 +1,11 @@
-//! Cross-process fan-out of MCP resource-update URIs (Cluster 102).
+//! Cross-process fan-out of MCP resource-update URIs.
 //!
 //! MCP `resources/subscribe` notifications (`notifications/resources/updated`)
 //! must reach a subscriber regardless of which server replica handled the
-//! mutation. The event log already crosses processes via [`crate::PostgresBus`];
-//! this is the sibling channel for *resource* URIs, which are derived from a
-//! mutation rather than carried by a domain [`maidan_types::Event`].
+//! mutation. The event log already crosses processes via
+//! [`crate::PostgresBus`]; this is the sibling channel for *resource* URIs,
+//! which are derived from a mutation rather than carried by a domain
+//! [`maidan_types::Event`].
 //!
 //! Contract: [`ResourceNotifier::publish_uris`] broadcasts the **unfiltered**
 //! set of `maidan://` URIs touched by a mutation to every process. Each process

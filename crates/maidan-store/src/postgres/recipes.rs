@@ -1,6 +1,6 @@
-//! Recipe blueprint CRUD (Cluster 370, Wave 2 #18): the `maidan_recipes` table.
-//! The `spec` JSONB column holds the serialized [`RecipeSpec`]; instantiation
-//! (Cluster 370.2) lives in `recipe_runs`, not here. See the SQLite twin.
+//! Recipe blueprint CRUD: the `maidan_recipes` table. The `spec` JSONB column
+//! holds the serialized [`RecipeSpec`]; instantiation lives in `recipe_runs`,
+//! not here. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

@@ -1,4 +1,4 @@
-//! Cluster 245: REST follow management — follow/unfollow/list a channel over
+//! REST follow management — follow/unfollow/list a channel over
 //! `/members/:id/channel-follows`. Auth ENABLED with a minted bearer.
 
 use std::{
@@ -154,8 +154,8 @@ async fn follow_unfollow_and_list_channel() {
     assert!(empty.as_array().unwrap().is_empty());
 }
 
-/// Cluster 356 (F7): leaf mute over `POST`/`DELETE /threads/:id/mute`, self-scoped
-/// to the caller. Auth ENABLED with a minted bearer.
+/// Leaf mute over `POST`/`DELETE /threads/:id/mute`, self-scoped to the caller.
+/// Auth ENABLED with a minted bearer.
 #[tokio::test]
 async fn mute_and_unmute_thread() {
     let pool = SqlitePoolOptions::new()
@@ -259,8 +259,8 @@ async fn mute_and_unmute_thread() {
     assert!(!store.is_thread_muted(member.id, thread.id).await.unwrap());
 }
 
-/// Cluster 357 (N3): per-channel mute over `POST`/`DELETE /channels/:cid/mute`,
-/// self-scoped to the caller. Auth ENABLED with a minted bearer.
+/// Per-channel mute over `POST`/`DELETE /channels/:cid/mute`, self-scoped to
+/// the caller. Auth ENABLED with a minted bearer.
 #[tokio::test]
 async fn mute_and_unmute_channel() {
     let pool = SqlitePoolOptions::new()

@@ -1,4 +1,4 @@
-//! Cluster 98: dedicated mention webhook config and `mention_recorded` delivery.
+//! Dedicated mention webhook config and `mention_recorded` delivery.
 
 use std::{
     net::SocketAddr,

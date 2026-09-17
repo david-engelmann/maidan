@@ -1,5 +1,5 @@
-//! Secret key rotation (Cluster 189): after the primary key is rotated, a
-//! ciphertext made with the *old* key still decrypts via a fallback.
+//! Secret key rotation: after the primary key is rotated, a ciphertext made
+//! with the *old* key still decrypts via a fallback.
 
 use maidan_auth::{decrypt_peer_secret_rotating, encrypt_peer_secret, init_decrypt_fallback_keys};
 

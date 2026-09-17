@@ -1,10 +1,10 @@
-//! Result-delivery MCP tools (Cluster 379.5): list a thread's per-target
-//! delivery status and replay one onto the egress outbox. The twins of
-//! `GET /threads/:id/deliveries` and `POST …/deliveries/:did/replay`.
+//! Result-delivery MCP tools: list a thread's per-target delivery status and
+//! replay one onto the egress outbox. The twins of `GET
+//! /threads/:id/deliveries` and `POST …/deliveries/:did/replay`.
 //!
-//! Replay re-checks the workspace allowlist (status is not policy) and does
-//! not bump `armed_revision`. The worker rebuilds the body from the current
-//! thread result; the snapshot we enqueue is a fallback.
+//! Replay re-checks the workspace allowlist (status is not policy) and does not
+//! bump `armed_revision`. The worker rebuilds the body from the current thread
+//! result; the snapshot we enqueue is a fallback.
 
 use std::sync::Arc;
 

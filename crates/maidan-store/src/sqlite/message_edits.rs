@@ -27,8 +27,8 @@ pub async fn append(
     Ok(())
 }
 
-/// Append an edit-history row on a caller-supplied transaction (Cluster 211) —
-/// used by the atomic edit-then-`MessagePosted` finalization.
+/// Append an edit-history row on a caller-supplied transaction — used by the
+/// atomic edit-then-`MessagePosted` finalization.
 pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     message_id: MessageId,

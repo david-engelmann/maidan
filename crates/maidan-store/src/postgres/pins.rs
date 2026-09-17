@@ -26,8 +26,7 @@ pub async fn pin(pool: &PgPool, new: NewPin) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Pin a message and append its `MessagePinned` event in one transaction
-/// (Cluster 207).
+/// Pin a message and append its `MessagePinned` event in one transaction.
 pub async fn pin_with_event(pool: &PgPool, new: NewPin) -> Result<StoredEvent, StoreError> {
     let message = super::messages::get(pool, new.message_id).await?;
     if message.thread_id != new.thread_id {
@@ -75,7 +74,7 @@ pub async fn unpin(
 }
 
 /// Unpin a message; append its `MessageUnpinned` event in the SAME transaction
-/// when a row was removed (Cluster 207). `member_id` is the actor for the event.
+/// when a row was removed. `member_id` is the actor for the event.
 pub async fn unpin_with_event(
     pool: &PgPool,
     thread_id: ThreadId,

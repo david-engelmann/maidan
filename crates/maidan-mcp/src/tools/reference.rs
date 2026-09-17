@@ -26,7 +26,7 @@ pub(super) async fn add_reference(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AddReferenceArgs = serde_json::from_value(args.clone())?;
-    // Cluster 334: emit ReferenceAdded (atomic) + bus-notify, like REST.
+    // Emit ReferenceAdded (atomic) + bus-notify, like REST.
     let (r, stored) = server
         .store
         .add_reference_with_event(NewReference {
@@ -53,8 +53,8 @@ struct ListReferencesArgs {
 }
 
 /// List references FROM a source (forward) OR TO a target (reverse — "what
-/// references this"), optionally filtered by relation (Cluster 320). Exactly one of
-/// the `src_*` / `dst_*` pairs is required.
+/// references this"), optionally filtered by relation. Exactly one of the
+/// `src_*` / `dst_*` pairs is required.
 pub(super) async fn list_references(
     store: &Arc<dyn Store>,
     args: &Value,

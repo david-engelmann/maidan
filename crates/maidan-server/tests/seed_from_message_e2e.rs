@@ -1,7 +1,7 @@
-//! Cluster 327: seed-from-message. `POST /messages/:id/seed` spawns a titled child
-//! thread linked to the source by a `seeded_from` reference edge; `inclusion=quote`
-//! also posts a first message quoting the source. Auth ENABLED (the quote's author
-//! is the caller — a NOT-NULL FK).
+//! Seed-from-message. `POST /messages/:id/seed` spawns a titled child thread
+//! linked to the source by a `seeded_from` reference edge; `inclusion=quote`
+//! also posts a first message quoting the source. Auth ENABLED (the quote's
+//! author is the caller — a NOT-NULL FK).
 
 use std::{
     net::SocketAddr,

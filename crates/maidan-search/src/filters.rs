@@ -10,16 +10,15 @@ pub struct SearchFilters {
     pub channel_id: Option<ChannelId>,
     /// Restrict to messages whose author has this [`MemberKind`].
     pub author_kind: Option<MemberKind>,
-    /// Date-range facet (Cluster 359, N4): only messages posted at/after this
-    /// instant. Inclusive lower bound on `posted_at`.
+    /// Date-range facet: only messages posted at/after this instant. Inclusive
+    /// lower bound on `posted_at`.
     pub after: Option<DateTime<Utc>>,
-    /// Date-range facet (Cluster 359, N4): only messages posted strictly before
-    /// this instant. Exclusive upper bound on `posted_at` — a half-open
-    /// `[after, before)` window so adjacent day-ranges don't double-count a
-    /// midnight boundary.
+    /// Date-range facet: only messages posted strictly before this instant.
+    /// Exclusive upper bound on `posted_at` — a half-open `[after, before)`
+    /// window so adjacent day-ranges don't double-count a midnight boundary.
     pub before: Option<DateTime<Utc>>,
-    /// RBAC pre-filter (Cluster 200): channels whose messages must be excluded at
-    /// the query level — the private channels the caller isn't a member of. Not a
+    /// RBAC pre-filter: channels whose messages must be excluded at the query
+    /// level — the private channels the caller isn't a member of. Not a
     /// user-settable facet; the server computes it so inaccessible hits never
     /// crowd out the requested `limit` (the thread-level post-filter stays the
     /// authoritative, DM-aware check). Empty = no restriction.

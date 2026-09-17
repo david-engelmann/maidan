@@ -1,4 +1,4 @@
-//! Cluster 394: tombstone explorer, message backlinks, EventKind census.
+//! Tombstone explorer, message backlinks, EventKind census.
 
 use maidan_store::StoreError;
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -296,7 +296,7 @@ async fn run_explorer_suite(store: &dyn Store) {
     );
 }
 
-/// Cluster 400.4: the limit binds the **purged** half of the explorer too.
+/// The limit binds the **purged** half of the explorer too.
 ///
 /// `list_purged` used to fetch and parse every `message_tombstoned` event in
 /// the scope, leaving the caller to truncate — so a heavily-purged workspace

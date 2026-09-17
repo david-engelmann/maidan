@@ -4,14 +4,14 @@ use maidan_types::{
 };
 use sqlx::{PgPool, Row};
 
-/// Rows per batch when filling pre-Cluster-392 chain fields (Cluster 397.8).
+/// Rows per batch when filling pre-chain fields.
 const CHAIN_BACKFILL_BATCH: i64 = 256;
 
 use crate::error::StoreError;
 use crate::postgres::outbox;
 
-/// Resolve a message's (workspace, channel, thread) inside a transaction
-/// (Cluster 206) — see the SQLite twin.
+/// Resolve a message's (workspace, channel, thread) inside a transaction — see
+/// the SQLite twin.
 pub async fn message_scope_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     message_id: MessageId,
@@ -34,8 +34,8 @@ pub async fn message_scope_in_tx(
     ))
 }
 
-/// Resolve a thread's (workspace, channel) inside a transaction (Cluster 208) —
-/// see the SQLite twin.
+/// Resolve a thread's (workspace, channel) inside a transaction — see the
+/// SQLite twin.
 pub async fn thread_scope_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
@@ -64,7 +64,7 @@ pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreEr
 }
 
 /// Append the event + its outbox row on a caller-supplied transaction, without
-/// committing (Cluster 205 transactional outbox) — see the SQLite twin.
+/// committing — see the SQLite twin.
 pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     event: &Event,
@@ -86,8 +86,8 @@ pub async fn append_in_tx(
     let previous = chain_head_in_tx(tx, ws).await?;
     let content = content_hash(&payload).map_err(|e| StoreError::InvalidInput(e.to_string()))?;
     let prev = next_prev_hash(previous.as_ref());
-    // `inserted_at` is the DB insert wall-clock (Cluster 125 stability horizon),
-    // distinct from the caller-supplied `occurred_at`.
+    // `inserted_at` is the DB insert wall-clock, distinct from the
+    // caller-supplied `occurred_at`.
     let row = sqlx::query(
         "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -148,7 +148,7 @@ pub async fn list_after(
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
 /// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
 /// loop advance a durable cursor without stranding a lower `id` that is still
-/// in flight (Cluster 125 at-least-once delivery).
+/// in flight.
 pub async fn list_after_stable(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -172,11 +172,11 @@ pub async fn list_after_stable(
     rows.iter().map(row_to_stored).collect()
 }
 
-/// Cross-workspace events with `id > after_id`, in `id` order, capped at `limit`.
-/// The bus's self-healing NOTIFY floor (Cluster 258) uses this to back-fill the
-/// range missed while its `LISTEN` was disconnected — unlike [`list_after`], it is
-/// not workspace-scoped, because the listener hydrates every workspace's events
-/// onto the local broadcast (which then routes by workspace shard).
+/// Cross-workspace events with `id > after_id`, in `id` order, capped at
+/// `limit`. The bus's self-healing NOTIFY floor uses this to back-fill the
+/// range missed while its `LISTEN` was disconnected — unlike [`list_after`], it
+/// is not workspace-scoped, because the listener hydrates every workspace's
+/// events onto the local broadcast (which then routes by workspace shard).
 pub async fn list_after_global(
     pool: &PgPool,
     after_id: i64,
@@ -196,9 +196,9 @@ pub async fn list_after_global(
     rows.iter().map(row_to_stored).collect()
 }
 
-/// A thread's events with `id <= through_id`, in `id` order (Cluster 326) — the
-/// immutable substrate for as-of context replay. The assembler folds the message
-/// events into the message set as it stood at that log position.
+/// A thread's events with `id <= through_id`, in `id` order — the immutable
+/// substrate for as-of context replay. The assembler folds the message events
+/// into the message set as it stood at that log position.
 pub async fn list_through(
     pool: &PgPool,
     thread_id: maidan_types::ThreadId,
@@ -218,8 +218,8 @@ pub async fn list_through(
 }
 
 /// Lowest retained `id` in `workspace_id` (`None` when the workspace has no
-/// events). Cluster 388 uses this to fail loud on a subscribe cursor that
-/// points into a pruned gap.
+/// events). Used to fail loud on a subscribe cursor that points into a pruned
+/// gap.
 pub async fn min_event_id(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -234,9 +234,8 @@ pub async fn min_event_id(
 
 /// The highest event-log id (`0` when empty). The bus seeds its high-water mark
 /// from this at startup so it back-fills only events appended *after* it began
-/// listening, not the entire history (Cluster 258). Cluster 390 also exposes
-/// this as `Store::max_event_id` for the `Maidan-Room-LSN` header (event-log
-/// id, not a WAL LSN).
+/// listening, not the entire history. Also exposed as `Store::max_event_id` for
+/// the `Maidan-Room-LSN` header (an event-log id, not a WAL LSN).
 pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
     let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM maidan_events")
         .fetch_one(pool)
@@ -302,7 +301,7 @@ fn row_to_link(row: &sqlx::postgres::PgRow) -> EventLink {
     }
 }
 
-/// Oldest retained link in `workspace_id` (Cluster 393 snapshot floor).
+/// Oldest retained link in `workspace_id`.
 pub async fn floor_link(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -319,7 +318,7 @@ pub async fn floor_link(
     Ok(row.as_ref().map(row_to_link))
 }
 
-/// Newest retained link in `workspace_id` (Cluster 393 snapshot head).
+/// Newest retained link in `workspace_id`.
 pub async fn head_link(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -360,10 +359,10 @@ pub async fn verify_chain(
     pool: &PgPool,
     workspace_id: WorkspaceId,
 ) -> Result<ChainVerifyReport, StoreError> {
-    // Verify as a fold, discarding each page (Cluster 397.8). Collecting every
-    // link *and* a clone of every payload first meant a large workspace was
-    // gigabytes of resident memory per request — on `workspace:read`, with no
-    // limit and no pagination, so repeated calls were a trivial OOM.
+    // Verify as a fold, discarding each page. Collecting every link *and* a
+    // clone of every payload first meant a large workspace was gigabytes of
+    // resident memory per request — on `workspace:read`, with no limit and no
+    // pagination, so repeated calls were a trivial OOM.
     const PAGE: i64 = 256;
     let mut after = 0i64;
     let mut verifier = maidan_types::ChainVerifier::new();
@@ -381,10 +380,10 @@ pub async fn verify_chain(
     }
 }
 
-/// Fill the chain fields of rows that predate Cluster 392, in batches.
+/// Fill the chain fields of rows written before the chain existed, in batches.
 ///
 /// **A row that already carries a `content_hash` is never rewritten**
-/// (Cluster 397.8). That is the whole security property. This used to re-link
+/// That is the whole security property. This used to re-link
 /// *every row of every workspace* from genesis against the **current** payloads
 /// whenever any single row had an empty hash — so an attacker with database
 /// write access could edit a payload, blank one unrelated row's `content_hash`,
@@ -392,14 +391,14 @@ pub async fn verify_chain(
 /// `verify_event_chain` then reported `ok: true, from_genesis: true`, which is
 /// precisely the claim a tamper-evident log exists to be unable to make.
 ///
-/// Now a blanked row is refilled from its own payload and nothing else moves, so
-/// its successor's `prev_hash` — still chaining from the *original* hash — no
-/// longer matches and verify breaks at that successor. Tampering is detected
+/// Now a blanked row is refilled from its own payload and nothing else moves,
+/// so its successor's `prev_hash` — still chaining from the *original* hash —
+/// no longer matches and verify breaks at that successor. Tampering is detected
 /// rather than laundered.
 ///
 /// Batched rather than one transaction per workspace: the old shape did
 /// `fetch_all` of every payload in a workspace and rewrote them in a single tx,
-/// which on a large deployment is an OOM and/or blows the Cluster-156 30s
+/// which on a large deployment is an OOM and/or blows the 30s
 /// `statement_timeout` — during migration, so the server would not boot.
 pub async fn backfill_chain(pool: &PgPool) -> Result<(), StoreError> {
     loop {
@@ -470,18 +469,16 @@ async fn previous_link(
 }
 
 /// Parse the persisted `kind` column back into an [`EventKind`]. Delegates to
-/// the single [`maidan_types::EventKind::parse`] so the wire-form mapping has no
-/// per-backend copy to drift (Cluster 181 — Cluster 171 lost an event because a
-/// store copy was missing a variant; the read-back failed and the insert rolled
-/// back silently). Round-trip is guarded in `maidan-types`.
+/// the single [`maidan_types::EventKind::parse`] so the wire-form mapping has
+/// no per-backend copy to drift. Round-trip is guarded in `maidan-types`.
 fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
     maidan_types::EventKind::parse(s)
         .ok_or_else(|| StoreError::InvalidInput(format!("unknown event kind: {s}")))
 }
 
-/// Every workspace with at least one event — the set a chain verifier walks
-/// (Cluster 402.3). Derived from the log, not the workspaces table: a workspace
-/// with no events has no chain, and a vacuous pass reads the same as a real one.
+/// Every workspace with at least one event — the set a chain verifier walks.
+/// Derived from the log, not the workspaces table: a workspace with no events
+/// has no chain, and a vacuous pass reads the same as a real one.
 pub async fn workspace_ids_with_events(pool: &PgPool) -> Result<Vec<WorkspaceId>, StoreError> {
     use sqlx::Row;
     let rows = sqlx::query(

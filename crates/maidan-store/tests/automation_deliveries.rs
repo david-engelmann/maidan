@@ -1,4 +1,4 @@
-//! Automation delivery store (Cluster 68.0).
+//! Automation delivery store.
 
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{

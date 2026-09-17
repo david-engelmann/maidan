@@ -57,52 +57,52 @@ pub struct TransitionThread {
     pub action: String,
 }
 
-/// Assign / hand off a thread to a member (Cluster 171). `actor_id` records who
-/// performed the assignment (carried on the emitted event).
+/// Assign / hand off a thread to a member. `actor_id` records who performed the
+/// assignment (carried on the emitted event).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AssignThread {
     pub actor_id: uuid::Uuid,
     pub assignee_id: uuid::Uuid,
-    /// Optional handoff note for the assignee (Cluster 195).
+    /// Optional handoff note for the assignee.
     #[serde(default)]
     pub note: Option<String>,
 }
 
-/// Set a thread's durable owner (Cluster 355, W1) — the accountable party,
-/// distinct from the assignee/claimer.
+/// Set a thread's durable owner — the accountable party, distinct from the
+/// assignee/claimer.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadOwner {
     pub owner_id: uuid::Uuid,
 }
 
-/// Rename a thread (Cluster 356, F1). The title is required and non-empty — a
-/// rename gives the thread a name, so a blank title is rejected.
+/// Rename a thread. The title is required and non-empty — a rename gives the
+/// thread a name, so a blank title is rejected.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameThread {
     pub title: String,
 }
 
-/// Atomically claim an unassigned thread for a member (Cluster 171). The
-/// claimer is both the actor and the assignee.
+/// Atomically claim an unassigned thread for a member. The claimer is both the
+/// actor and the assignee.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ClaimThread {
     pub member_id: uuid::Uuid,
 }
 
-/// Claim the next unassigned/expired thread in a channel (Cluster 190/192).
+/// Claim the next unassigned/expired thread in a channel.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ClaimNextThread {
     pub member_id: uuid::Uuid,
     /// Optional lease deadline in seconds; the claim is reclaimable after it
-    /// lapses (Cluster 192). Omit for a durable claim.
+    /// lapses. Omit for a durable claim.
     #[serde(default)]
     pub lease_secs: Option<i64>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the
-/// matching fencing token (Cluster 192 / 351). `claim_lease_id` is the value
-/// returned in the claiming response's `Thread.claim_lease_id`; a stale holder
-/// whose claim was reclaimed presents an outdated token and is rejected.
+/// matching fencing token. `claim_lease_id` is the value returned in the
+/// claiming response's `Thread.claim_lease_id`; a stale holder whose claim was
+/// reclaimed presents an outdated token and is rejected.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenewClaim {
     pub member_id: uuid::Uuid,
@@ -110,17 +110,17 @@ pub struct RenewClaim {
     pub lease_secs: i64,
 }
 
-/// Acknowledge a claim and start the working clock (Cluster 351). The current
-/// holder presents its fencing token; the working clock (`work_started_at`) is
-/// stamped once and preserved on re-acknowledge.
+/// Acknowledge a claim and start the working clock. The current holder presents
+/// its fencing token; the working clock (`work_started_at`) is stamped once and
+/// preserved on re-acknowledge.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AcknowledgeClaim {
     pub member_id: uuid::Uuid,
     pub claim_lease_id: uuid::Uuid,
 }
 
-/// Release a claim (graceful handoff, Cluster 351): the current holder returns
-/// the thread to the queue by presenting its fencing token.
+/// Release a claim (graceful handoff): the current holder returns the thread to
+/// the queue by presenting its fencing token.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReleaseClaim {
     pub member_id: uuid::Uuid,
@@ -128,15 +128,15 @@ pub struct ReleaseClaim {
 }
 
 /// Add a task-dependency edge — the thread in the path depends on
-/// `depends_on_thread_id` (Cluster 219).
+/// `depends_on_thread_id`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddThreadDependency {
     pub depends_on_thread_id: uuid::Uuid,
 }
 
-/// Create a task schedule (Cluster 228). When due, the sweeper creates a thread
-/// titled `title` in `channel_id`. `interval_secs` omitted (or null) = one-shot;
-/// a positive value = recurring. `first_run_at` omitted = fire on the next tick
+/// Create a task schedule. When due, the sweeper creates a thread titled
+/// `title` in `channel_id`. `interval_secs` omitted (or null) = one-shot; a
+/// positive value = recurring. `first_run_at` omitted = fire on the next tick
 /// (defaults to now).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTaskSchedule {
@@ -147,13 +147,13 @@ pub struct CreateTaskSchedule {
     #[serde(default)]
     pub first_run_at: Option<chrono::DateTime<chrono::Utc>>,
     /// When set, each firing instantiates this recipe (parent + DAG children)
-    /// instead of creating one bare thread (Cluster 370.5).
+    /// instead of creating one bare thread.
     #[serde(default)]
     pub recipe_id: Option<uuid::Uuid>,
 }
 
-/// Create a recipe blueprint (Cluster 370.3). `spec` is the `RecipeSpec`
-/// (params, definition of done, retry, inline DAG children).
+/// Create a recipe blueprint. `spec` is the `RecipeSpec` (params, definition of
+/// done, retry, inline DAG children).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRecipe {
     pub channel_id: uuid::Uuid,
@@ -161,8 +161,8 @@ pub struct CreateRecipe {
     pub spec: maidan_types::RecipeSpec,
 }
 
-/// Instantiate a recipe (Cluster 370.3): `params` are validated against the
-/// recipe's declared params (required ones must be present).
+/// Instantiate a recipe: `params` are validated against the recipe's declared
+/// params (required ones must be present).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct InstantiateRecipe {
     #[serde(default)]
@@ -170,17 +170,17 @@ pub struct InstantiateRecipe {
     pub params: serde_json::Value,
 }
 
-/// Create (or rotate) a named secret (Cluster 371.2). The `value` is encrypted at
-/// rest and never returned by `list` — only by `resolve`.
+/// Create (or rotate) a named secret. The `value` is encrypted at rest and
+/// never returned by `list` — only by `resolve`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSecret {
     pub name: String,
     pub value: String,
 }
 
-/// Create a memory block (Cluster 373.2). `label` is the block's within-workspace
-/// key; `value` defaults to empty, `read_only` to false. Creating an existing
-/// label returns the existing block (concurrent-safe).
+/// Create a memory block. `label` is the block's within-workspace key; `value`
+/// defaults to empty, `read_only` to false. Creating an existing label returns
+/// the existing block (concurrent-safe).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMemoryBlock {
     pub label: String,
@@ -194,29 +194,28 @@ pub struct CreateMemoryBlock {
     pub value: Option<String>,
 }
 
-/// Full-rewrite a memory block's value (Cluster 373.2, last-writer-wins). A
-/// read-only block or a value over the block's char limit is rejected (400).
+/// Full-rewrite a memory block's value. A read-only block or a value over the
+/// block's char limit is rejected (400).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetMemoryBlockValue {
     pub value: String,
 }
 
-/// Set a thread's review requirement (Cluster 375.3): `required_count` distinct
-/// qualifying approvals before it can `close`.
+/// Set a thread's review requirement: `required_count` distinct qualifying
+/// approvals before it can `close`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetReviewRequirement {
     pub required_count: i64,
 }
 
-/// Name a reviewer for a thread (Cluster 375.3) — the eligible set (empty = open
-/// review).
+/// Name a reviewer for a thread — the eligible set (empty = open review).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddReviewer {
     pub member_id: uuid::Uuid,
 }
 
-/// Submit a review decision (Cluster 375.3). The reviewer is the caller; an
-/// owner/assignee may submit but it won't count toward the requirement.
+/// Submit a review decision. The reviewer is the caller; an owner/assignee may
+/// submit but it won't count toward the requirement.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SubmitReview {
     pub decision: maidan_types::ReviewDecision,
@@ -224,9 +223,8 @@ pub struct SubmitReview {
     pub note: Option<String>,
 }
 
-/// Record a LandGate pointer (Cluster 385.3). `land` is optional — a fail
-/// is always red; a pass defaults to green; amber is flags-then-still-engages
-/// and is not a land.
+/// Record a LandGate pointer. `land` is optional — a fail is always red; a pass
+/// defaults to green; amber is flags-then-still-engages and is not a land.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetLandGate {
     pub status: maidan_types::LandGateStatus,
@@ -236,44 +234,44 @@ pub struct SetLandGate {
     pub land: Option<maidan_types::LandColor>,
 }
 
-/// A resolved secret value (Cluster 371.2) — the `resolve` response body. This is
-/// the only place a secret value crosses the wire out of Maidan.
+/// A resolved secret value — the `resolve` response body. This is the only
+/// place a secret value crosses the wire out of Maidan.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SecretValue {
     pub name: String,
     pub value: String,
 }
 
-/// Freeze a member (Cluster 372.3) — the kill-switch. `reason` is an optional
-/// audit note.
+/// Freeze a member — the kill-switch. `reason` is an optional audit note.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct FreezeMember {
     #[serde(default)]
     pub reason: Option<String>,
 }
 
-/// The result of freezing a member (Cluster 372.3): the freeze record + the
-/// number of active claims released (leases dropped).
+/// The result of freezing a member: the freeze record + the number of active
+/// claims released (leases dropped).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FreezeResult {
     pub freeze: maidan_types::MemberFreeze,
     pub released: u64,
 }
 
-/// Pause (`false`) or resume (`true`) a schedule (Cluster 228).
+/// Pause (`false`) or resume (`true`) a schedule.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetTaskScheduleActive {
     pub active: bool,
 }
 
-/// Add a skill — to a member (`declares`) or a thread (`requires`) — Cluster 232.
+/// Add a skill — to a member (`declares`) or a thread (`requires`) — Cluster
+/// 232.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddSkill {
     pub skill: String,
 }
 
-/// Define (or redefine) a glossary term (Cluster 322). The term itself is the
-/// path segment; this is the body. `aliases` defaults to empty when omitted.
+/// Define (or redefine) a glossary term. The term itself is the path segment;
+/// this is the body. `aliases` defaults to empty when omitted.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetGlossaryTerm {
     pub definition: String,
@@ -281,27 +279,27 @@ pub struct SetGlossaryTerm {
     pub aliases: Option<Vec<String>>,
 }
 
-/// Set a task's structured result (Cluster 235). `result` is arbitrary JSON.
+/// Set a task's structured result. `result` is arbitrary JSON.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadResult {
     #[schema(value_type = Object)]
     pub result: serde_json::Value,
 }
 
-/// Set a thread's persisted steer (Cluster 355, W1) — durable steering guidance.
+/// Set a thread's persisted steer — durable steering guidance.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadSteer {
     pub steer: String,
 }
 
-/// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387).
-/// The value is the producer's string — Maidan does not mint a parallel id.
+/// Home a producer's `run_id` on a thread as `parent_run_id`. The value is the
+/// producer's string — Maidan does not mint a parallel id.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadLineage {
     pub parent_run_id: String,
 }
 
-/// Query params for workspace run-lineage reads (Cluster 387.2).
+/// Query params for workspace run-lineage reads.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct RunLineageQuery {
     /// The producer `run_id` (e.g. The waiter envelope). Empty / missing /
@@ -310,8 +308,8 @@ pub struct RunLineageQuery {
     pub parent_run_id: String,
 }
 
-/// Answer a human-approval gate (Cluster 350.3): accept / decline / cancel, with
-/// the HMAC `request_state` the server issued alongside the pending gate.
+/// Answer a human-approval gate: accept / decline / cancel, with the HMAC
+/// `request_state` the server issued alongside the pending gate.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AnswerApprovalGate {
     /// The opaque integrity token from the pending-gate list — must verify.
@@ -326,14 +324,14 @@ pub struct AnswerApprovalGate {
 }
 
 /// A pending approval gate plus the `request_state` a human echoes back to
-/// answer it (Cluster 350.3).
+/// answer it.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApprovalGateView {
     pub gate: ApprovalGate,
     pub request_state: String,
 }
 
-/// A task's dependency edges plus whether it is ready to run (Cluster 219).
+/// A task's dependency edges plus whether it is ready to run.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadDependenciesView {
     pub dependencies: Vec<maidan_types::ThreadDependency>,
@@ -342,7 +340,7 @@ pub struct ThreadDependenciesView {
     pub ready: bool,
 }
 
-/// Clear a thread's assignee (Cluster 171). `actor_id` records who unassigned it.
+/// Clear a thread's assignee. `actor_id` records who unassigned it.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnassignThread {
     pub actor_id: uuid::Uuid,
@@ -355,8 +353,8 @@ pub struct CreateMessage {
     pub body: String,
     #[serde(default)]
     pub metadata: serde_json::Value,
-    /// Typed structured content (Cluster 173). When present and `body` is empty,
-    /// the server derives `body` from these blocks for search/back-compat.
+    /// Typed structured content. When present and `body` is empty, the server
+    /// derives `body` from these blocks for search/back-compat.
     #[serde(default)]
     pub content: Option<Vec<ContentBlock>>,
 }
@@ -368,7 +366,7 @@ pub struct EditMessageRequest {
     pub body: String,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
-    /// Replacement structured content (Cluster 173). Omitted → keep existing.
+    /// Replacement structured content. Omitted → keep existing.
     #[serde(default)]
     pub content: Option<Vec<ContentBlock>>,
 }
@@ -382,15 +380,15 @@ pub struct CreateMention {
 pub struct CreateVote {
     pub member_id: uuid::Uuid,
     pub kind: String,
-    /// Optional confidence weight (Cluster 324), by convention in `0..=1`, for
-    /// weighted consensus. Omit to state no confidence.
+    /// Optional confidence weight, by convention in `0..=1`, for weighted
+    /// consensus. Omit to state no confidence.
     #[serde(default)]
     pub confidence: Option<f64>,
 }
 
-/// Seed a new work thread from a source message (Cluster 327) — the write side of
-/// "re-ask". `inclusion`: `pointer` (default, lineage edge only) or `quote` (the
-/// seed's first message quotes the source). `channel_id` defaults to the source's
+/// Seed a new work thread from a source message — the write side of "re-ask".
+/// `inclusion`: `pointer` (default, lineage edge only) or `quote` (the seed's
+/// first message quotes the source). `channel_id` defaults to the source's
 /// channel. The seed is a titled, claimable child; the source is untouched;
 /// lineage is a `seeded_from` reference edge (new thread → source message).
 #[derive(Debug, Deserialize, ToSchema)]
@@ -426,7 +424,7 @@ pub struct CreateReference {
     pub src_id: uuid::Uuid,
     pub dst_kind: RefSide,
     pub dst_id: uuid::Uuid,
-    /// Typed relation (Cluster 319). Snake_case string; controlled set
+    /// Typed relation. Snake_case string; controlled set
     /// `RelationKind::CONTROLLED`, unknown values round-trip via `Other`.
     #[schema(value_type = String)]
     pub relation: RelationKind,
@@ -448,63 +446,63 @@ pub struct ThreadContextQuery {
     /// when the glossary is empty. Set `false` to drop it for a token-tight pack.
     #[serde(default = "default_true")]
     pub include_glossary: bool,
-    /// As-of context replay (Cluster 326): reconstruct the thread as it stood at
-    /// this event-log id, deterministic over the immutable log. Omit for the live
+    /// As-of context replay: reconstruct the thread as it stood at this
+    /// event-log id, deterministic over the immutable log. Omit for the live
     /// pack. An unknown id is `404`.
     pub as_of: Option<i64>,
-    /// Token budget for the message page (Cluster 360, G-dev-1). When set, a page
-    /// over budget is folded — the opening message and the recent tail are kept,
-    /// the middle is elided into an auditable `elision` marker on the response.
-    /// Omit to cap by rows only.
+    /// Token budget for the message page. When set, a page over budget is
+    /// folded — the opening message and the recent tail are kept, the middle is
+    /// elided into an auditable `elision` marker on the response. Omit to cap
+    /// by rows only.
     pub token_budget: Option<i64>,
-    /// Attach parent grounding to a child thread's pack (Cluster 360): the parent's
-    /// opening ask + latest decision, orienting a fresh claimer. Default `true`;
-    /// absent for root threads and withheld for a cross-channel or DM parent. Set
+    /// Attach parent grounding to a child thread's pack: the parent's opening
+    /// ask + latest decision, orienting a fresh claimer. Default `true`; absent
+    /// for root threads and withheld for a cross-channel or DM parent. Set
     /// `false` for the leanest possible pack.
     #[serde(default = "default_true")]
     pub include_parent_grounding: bool,
     /// Attach in-channel accepted/closed decisions so a fresh claimer sees what
-    /// the channel already decided (Cluster 382). Default `true`; omitted when
-    /// empty. Waiter envelopes (`maidan.waiter.result/1`) appear only when `status`
-    /// is `reviewed`. `result_kind` is a namespaced string, not a closed enum.
-    /// Set `false` for the leanest pack. Withheld on DM channels.
+    /// the channel already decided. Default `true`; omitted when empty. Waiter
+    /// envelopes (`maidan.waiter.result/1`) appear only when `status` is
+    /// `reviewed`. `result_kind` is a namespaced string, not a closed enum. Set
+    /// `false` for the leanest pack. Withheld on DM channels.
     #[serde(default = "default_true")]
     pub include_accepted_decisions: bool,
 }
 
-/// Query for `GET /threads/:id/tool-transcript` (Cluster 197).
+/// Query for `GET /threads/:id/tool-transcript`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ToolTranscriptQuery {
     /// Max messages to scan (default 200, clamped 1..=500).
     pub limit: Option<i64>,
 }
 
-/// Body for `PUT /workspaces/:wid/wip-limit` (Cluster 362, G11). `limit: null`
-/// clears the cap (unlimited); a value caps concurrent live claims per member
-/// (`0` freezes claiming).
+/// Body for `PUT /workspaces/:wid/wip-limit`. `limit: null` clears the cap
+/// (unlimited); a value caps concurrent live claims per member (`0` freezes
+/// claiming).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetWipLimit {
     pub limit: Option<i64>,
 }
 
-/// Body for `PUT /threads/:id/unclaimable` (Cluster 363, G3) — park a thread from
-/// dispatch with a reason (must be non-empty).
+/// Body for `PUT /threads/:id/unclaimable` — park a thread from dispatch with a
+/// reason (must be non-empty).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MarkUnclaimable {
     pub reason: String,
 }
 
-/// Body for `PUT /threads/:id/block` (Cluster 386, Wave 2 #27) — set an explicit
-/// dispatch block. `reason` is the closed `BlockedReason` enum
+/// Body for `PUT /threads/:id/block` — set an explicit dispatch block. `reason`
+/// is the closed `BlockedReason` enum
 /// (`dag|gate|human|child|quota|unclaimable`); unknown → 400 at the extractor.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadBlock {
     pub reason: BlockedReason,
 }
 
-/// Body for `PUT /threads/:id/wait` (Cluster 364, G2) — set a wait timer. On
-/// `wait_until` the sweeper escalates via `on_timeout` (default `notify`); an
-/// optional `reason` records why the thread is waiting.
+/// Body for `PUT /threads/:id/wait` — set a wait timer. On `wait_until` the
+/// sweeper escalates via `on_timeout` (default `notify`); an optional `reason`
+/// records why the thread is waiting.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadWait {
     pub wait_until: chrono::DateTime<chrono::Utc>,
@@ -514,37 +512,37 @@ pub struct SetThreadWait {
     pub reason: Option<String>,
 }
 
-/// Body for `PUT /threads/:id/priority` (Cluster 365, G3 fair dispatch) — set a
-/// thread's dispatch priority. Higher = more urgent; the default is 0.
+/// Body for `PUT /threads/:id/priority` — set a thread's dispatch priority.
+/// Higher = more urgent; the default is 0.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadPriority {
     pub priority: i64,
 }
 
-/// Body for `PUT /workspaces/:id/legal-hold` (Cluster 366, T6) — place a legal
-/// hold. `reason` is required (non-empty).
+/// Body for `PUT /workspaces/:id/legal-hold` — place a legal hold. `reason` is
+/// required (non-empty).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PlaceLegalHold {
     pub reason: String,
 }
 
-/// The workspace's WIP limit (Cluster 362); `null` when unset (unlimited).
+/// The workspace's WIP limit; `null` when unset (unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WipLimitView {
     pub limit: Option<i64>,
 }
 
-/// A member's WIP status (Cluster 362): current live-claim count + the workspace
-/// limit (`null` = unlimited).
+/// A member's WIP status: current live-claim count + the workspace limit
+/// (`null` = unlimited).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MemberWipView {
     pub live_claims: i64,
     pub limit: Option<i64>,
 }
 
-/// Body for `PUT /workspaces/:id/spawn-budget` (Cluster 376, G6/G-dev-3/W3) —
-/// the workspace's cap on agent fan-out. A full replace: an omitted or `null`
-/// axis is unlimited, so `{}` clears the budget. `0` freezes an axis.
+/// Body for `PUT /workspaces/:id/spawn-budget` — the workspace's cap on agent
+/// fan-out. A full replace: an omitted or `null` axis is unlimited, so `{}`
+/// clears the budget. `0` freezes an axis.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetSpawnBudget {
     /// Max direct child threads per parent.
@@ -558,7 +556,7 @@ pub struct SetSpawnBudget {
     pub max_tools: Option<i64>,
 }
 
-/// The workspace's spawn budget (Cluster 376); a `null` axis is unlimited.
+/// The workspace's spawn budget; a `null` axis is unlimited.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SpawnBudgetView {
     pub max_children: Option<i64>,
@@ -566,7 +564,7 @@ pub struct SpawnBudgetView {
     pub max_tools: Option<i64>,
 }
 
-/// Query for a channel's agent-work DLQ (Cluster 358).
+/// Query for a channel's agent-work DLQ.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct DlqQuery {
     /// Max entries to return (default 50, clamped 1..=200).
@@ -594,8 +592,8 @@ pub struct WorkspaceContextQuery {
     /// `true`; omitted when empty. Set `false` to drop it.
     #[serde(default = "default_true")]
     pub include_glossary: bool,
-    /// Token budget applied to **each** nested thread's message page (Cluster 360).
-    /// Omit for row-only caps.
+    /// Token budget applied to **each** nested thread's message page. Omit for
+    /// row-only caps.
     pub token_budget: Option<i64>,
 }
 
@@ -609,9 +607,9 @@ pub struct ListMessagesQuery {
     pub limit: i64,
 }
 
-/// Query for `GET /channels/:cid/threads` (Cluster 343) — keyset pagination over
-/// a channel's live threads, `(created_at, id)` ascending. `limit` defaults to
-/// 100 (clamped 1..=500); `cursor` is the prior page's last thread id (exclusive).
+/// Query for `GET /channels/:cid/threads` — keyset pagination over a channel's
+/// live threads, `(created_at, id)` ascending. `limit` defaults to 100 (clamped
+/// 1..=500); `cursor` is the prior page's last thread id (exclusive).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListThreadsQuery {
     pub limit: Option<i64>,
@@ -634,8 +632,8 @@ fn default_true() -> bool {
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListReferencesQuery {
-    /// List references FROM this source (forward edges). Give either the `src_*`
-    /// pair OR the `dst_*` pair (Cluster 320).
+    /// List references FROM this source (forward edges). Give either the
+    /// `src_*` pair OR the `dst_*` pair.
     pub src_kind: Option<RefSide>,
     pub src_id: Option<uuid::Uuid>,
     /// List references TO this target (reverse edges — "what references this").
@@ -652,7 +650,7 @@ pub struct ListEventsQuery {
     pub after_id: i64,
     #[serde(default = "default_limit")]
     pub limit: i64,
-    /// Projector shape (Cluster 388): restrict to one channel.
+    /// Projector shape: restrict to one channel.
     #[serde(default)]
     pub channel_id: Option<uuid::Uuid>,
     /// Projector shape: restrict to one thread.
@@ -662,8 +660,8 @@ pub struct ListEventsQuery {
     /// Unknown tokens fail loud (400), never silently dropped.
     #[serde(default)]
     pub types: Option<String>,
-    /// Durable delivery-cursor key. Floors `after_id` to the stored watermark
-    /// (Cluster 13/125); a too-old watermark is 409 `must_refetch`, not a clamp.
+    /// Durable delivery-cursor key. Floors `after_id` to the stored watermark;
+    /// a too-old watermark is 409 `must_refetch`, not a clamp.
     #[serde(default)]
     pub consumer_id: Option<String>,
 }
@@ -716,11 +714,11 @@ pub struct SearchQuery {
     pub channel: Option<uuid::Uuid>,
     /// Restrict hits to messages whose author has this kind (`human` / `agent`).
     pub kind: Option<MemberKind>,
-    /// Date-range facet (Cluster 359, N4): only messages posted at/after this
-    /// RFC 3339 instant (inclusive lower bound).
+    /// Date-range facet: only messages posted at/after this RFC 3339 instant
+    /// (inclusive lower bound).
     pub after: Option<chrono::DateTime<chrono::Utc>>,
-    /// Date-range facet (Cluster 359, N4): only messages posted strictly before
-    /// this RFC 3339 instant (exclusive upper bound — a half-open window).
+    /// Date-range facet: only messages posted strictly before this RFC 3339
+    /// instant (exclusive upper bound — a half-open window).
     pub before: Option<chrono::DateTime<chrono::Utc>>,
     /// Semantic only: query this model's embedding table (default: active provider).
     pub embedding_model: Option<String>,
@@ -759,19 +757,19 @@ pub struct ListNotificationsQuery {
     pub limit: i64,
 }
 
-/// The unread-notification badge count for a member (Cluster 239).
+/// The unread-notification badge count for a member.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UnreadCount {
     pub count: i64,
 }
 
-/// Snooze a notification until this RFC 3339 instant (Cluster 359, N5).
+/// Snooze a notification until this RFC 3339 instant.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SnoozeNotification {
     pub until: chrono::DateTime<chrono::Utc>,
 }
 
-/// Query for a member's buried decisions (Cluster 359, N2).
+/// Query for a member's buried decisions.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct DecisionsQuery {
     /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).
@@ -780,7 +778,7 @@ pub struct DecisionsQuery {
     pub limit: Option<i64>,
 }
 
-/// Query params for `GET /workspaces/:id/tombstones` (Cluster 394.2).
+/// Query params for `GET /workspaces/:id/tombstones`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListTombstonesQuery {
     pub channel_id: Option<uuid::Uuid>,
@@ -792,14 +790,14 @@ pub struct ListTombstonesQuery {
     pub limit: Option<i64>,
 }
 
-/// Query params for `GET /workspaces/:id/kind-census` (Cluster 394.2).
+/// Query params for `GET /workspaces/:id/kind-census`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct KindCensusQuery {
     pub channel_id: Option<uuid::Uuid>,
     pub thread_id: Option<uuid::Uuid>,
 }
 
-/// Query params for `GET /workspaces/:id/results` (Cluster 381.2).
+/// Query params for `GET /workspaces/:id/results`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListThreadResultsQuery {
     /// Exact-match facet on the namespaced `result_kind` string (e.g.
@@ -810,7 +808,7 @@ pub struct ListThreadResultsQuery {
     pub limit: Option<i64>,
 }
 
-/// Query params for workspace import (Cluster 270).
+/// Query params for workspace import.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ImportQuery {
     /// `new` (default) remaps every id to a fresh one and lands the content as a
@@ -823,7 +821,7 @@ pub struct ImportQuery {
     pub force: bool,
 }
 
-/// Import mode (Cluster 270).
+/// Import mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ImportMode {
@@ -834,16 +832,16 @@ pub enum ImportMode {
     Restore,
 }
 
-/// Result of a workspace import (Cluster 270): the id of the workspace that now
-/// holds the content (a fresh id in `new` mode, the bundle's id in `restore`).
+/// Result of a workspace import: the id of the workspace that now holds the
+/// content (a fresh id in `new` mode, the bundle's id in `restore`).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ImportResult {
     pub workspace_id: uuid::Uuid,
     pub mode: ImportMode,
 }
 
-/// Outcome of `POST /workspaces/export/verify` (Cluster 391). The inner
-/// graph is not imported.
+/// Outcome of `POST /workspaces/export/verify`. The inner graph is not
+/// imported.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct VerifyExportResult {
     pub ok: bool,
@@ -862,79 +860,79 @@ pub struct ExportPublicKey {
     pub token_policy: maidan_types::TokenPolicy,
 }
 
-/// Result of marking all of a member's notifications read (Cluster 239).
+/// Result of marking all of a member's notifications read.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MarkAllRead {
     pub cleared: i64,
 }
 
-/// Set a member's mute preference for one event kind (Cluster 242).
+/// Set a member's mute preference for one event kind.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetNotificationPref {
     pub kind: EventKind,
     pub muted: bool,
 }
 
-/// Follow a channel (Cluster 245).
+/// Follow a channel.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct FollowChannel {
     pub channel_id: ChannelId,
 }
 
-/// Follow a thread (Cluster 245).
+/// Follow a thread.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct FollowThread {
     pub thread_id: ThreadId,
 }
 
-/// Set a member's delivery email address (Cluster 250).
+/// Set a member's delivery email address.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetEmail {
     pub email: String,
 }
 
-/// Query for `GET /members/:id/waiting` (Cluster 368, Wave 2 #16) — the SLA in
-/// seconds an item may wait before it is flagged overdue (default 86400 = 24h).
+/// Query for `GET /members/:id/waiting` — the SLA in seconds an item may wait
+/// before it is flagged overdue (default 86400 = 24h).
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct WaitingQuery {
     #[serde(default)]
     pub sla_secs: Option<i64>,
 }
 
-/// The keys of a browser `PushSubscription` (Cluster 366, N1) — base64url.
+/// The keys of a browser `PushSubscription` — base64url.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PushKeys {
     pub p256dh: String,
     pub auth: String,
 }
 
-/// Body for `POST /members/:id/push-subscriptions` (Cluster 366, N1) — the
-/// browser's `PushSubscription.toJSON()` shape.
+/// Body for `POST /members/:id/push-subscriptions` — the browser's
+/// `PushSubscription.toJSON()` shape.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterPushSubscription {
     pub endpoint: String,
     pub keys: PushKeys,
 }
 
-/// Set a member's email delivery mode (Cluster 256). An unknown `mode` fails
-/// deserialization → `400`.
+/// Set a member's email delivery mode. An unknown `mode` fails deserialization
+/// → `400`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetDeliveryMode {
     pub mode: EmailDeliveryMode,
 }
 
-/// A member's current email delivery mode (Cluster 256).
+/// A member's current email delivery mode.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DeliveryModeView {
     pub mode: EmailDeliveryMode,
 }
 
-/// The caller's own identity (Cluster 337 — `GET /me`, the REST twin of the MCP
-/// `whoami` tool): who this token/session acts as, in which workspace, with what
-/// capabilities. `is_bearer` = an acts-as-any bearer token vs a pinned session.
-/// `known_capabilities` is the full capability vocabulary, so a client can render
-/// what the caller *cannot* do (vocabulary − granted) — the Cluster 353 capability
-/// card. A declared "allowed-tools" list is not a grant; this is the real set.
+/// The caller's own identity: who this token/session acts as, in which
+/// workspace, with what capabilities. `is_bearer` = an acts-as-any bearer token
+/// vs a pinned session. `known_capabilities` is the full capability vocabulary,
+/// so a client can render what the caller *cannot* do (vocabulary − granted) —
+/// the capability card. A declared "allowed-tools" list is not a
+/// grant; this is the real set.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WhoAmI {
     pub member_id: uuid::Uuid,
@@ -946,9 +944,10 @@ pub struct WhoAmI {
     pub capability_sets: Vec<String>,
 }
 
-/// Link a Slack channel to a Maidan thread (Cluster 346). The link's
+/// Link a Slack channel to a Maidan thread. The link's
 /// `channel_id`/`workspace_id` are derived from the thread, so only the Slack
-/// channel id, thread, and the member relayed messages are attributed to are given.
+/// channel id, thread, and the member relayed messages are attributed to are
+/// given.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LinkSlackChannel {
     pub slack_channel_id: String,
@@ -956,20 +955,19 @@ pub struct LinkSlackChannel {
     pub member_id: uuid::Uuid,
 }
 
-/// Bless an external destination for egress (Cluster 378.1). `selector` must be
-/// an **id**: a Slack channel id (`C…`/`G…`), or a GitHub repository
-/// `owner/name` — not a `#channel-name`, and not `owner/name#123`. A name is
-/// mutable, so an allowlist keyed on one is not an allowlist; and on GitHub the
-/// operator blesses the repository, since per-issue blessing would mean a ticket
-/// per PR.
+/// Bless an external destination for egress. `selector` must be an **id**: a
+/// Slack channel id (`C…`/`G…`), or a GitHub repository `owner/name` — not a
+/// `#channel-name`, and not `owner/name#123`. A name is mutable, so an
+/// allowlist keyed on one is not an allowlist; and on GitHub the operator
+/// blesses the repository, since per-issue blessing would mean a ticket per PR.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AllowEgressTarget {
     pub surface: EgressSurface,
     pub selector: String,
 }
 
-/// Link a GitHub issue/PR to a Maidan thread (Cluster 346). `repo` is the
-/// `owner/name` full name; `channel_id`/`workspace_id` are derived from the thread.
+/// Link a GitHub issue/PR to a Maidan thread. `repo` is the `owner/name` full
+/// name; `channel_id`/`workspace_id` are derived from the thread.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LinkGithubIssue {
     pub repo: String,
@@ -978,10 +976,11 @@ pub struct LinkGithubIssue {
     pub member_id: uuid::Uuid,
 }
 
-/// Query for `DELETE /workspaces/:wid/github-links` (Cluster 346) — `repo` carries
-/// a slash (`owner/name`), so the target is a query pair rather than a path. Both
+/// Query for `DELETE /workspaces/:wid/github-links` — `repo` carries a slash
+/// (`owner/name`), so the target is a query pair rather than a path. Both
 /// fields are required by the handler; they are `Option` only so a request that
-/// omits them fails the capability check (403) rather than query extraction (400).
+/// omits them fails the capability check (403) rather than query extraction
+/// (400).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct UnlinkGithubQuery {
     pub repo: Option<String>,

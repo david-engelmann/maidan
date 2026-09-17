@@ -217,10 +217,10 @@ async fn pointer_delivery_for_large_persisted_event() {
     }
 }
 
-/// The self-healing NOTIFY floor (Cluster 258): in polled mode (no LISTEN task),
-/// events appended to the log are NOT on the local broadcast until `backfill`
-/// drains the missed range — which reproduces what a reconnect does after a
-/// `LISTEN` disconnect drops the intervening NOTIFYs.
+/// The self-healing NOTIFY floor: in polled mode (no LISTEN task), events
+/// appended to the log are NOT on the local broadcast until `backfill` drains
+/// the missed range — which reproduces what a reconnect does after a `LISTEN`
+/// disconnect drops the intervening NOTIFYs.
 #[tokio::test]
 async fn backfill_drains_the_missed_range_onto_the_broadcast() {
     let Some((_container, pool)) = postgres_pool().await else {

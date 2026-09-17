@@ -1,10 +1,10 @@
-//! Background email-digest sweeper (Cluster 255, Program C — Arc I).
+//! Background email-digest sweeper.
 //!
 //! Opt-in via `MAIDAN_DIGEST_TICK_SECS` (>0). Each tick drains
-//! [`Store::members_due_for_digest`] — members in `Digest` delivery mode
-//! (Cluster 254) who have an address on file and unread notifications created
-//! since their last digest — and emails each an unread-count rollup, then
-//! advances their digest watermark ([`Store::set_last_digest_at`]).
+//! [`Store::members_due_for_digest`] — members in `Digest` delivery mode who
+//! have an address on file and unread notifications created since their last
+//! digest — and emails each an unread-count rollup, then advances their digest
+//! watermark ([`Store::set_last_digest_at`]).
 //!
 //! **At-least-once, self-healing:** the watermark is advanced only after a
 //! successful send, so a transient SMTP failure simply retries on the next tick
@@ -15,9 +15,9 @@
 //! (`set_last_digest_at`) are not a single atomic step, so two replicas both
 //! running the sweeper could double-send a digest before either advances the
 //! watermark. A duplicate digest is low-harm (unlike a duplicate task thread),
-//! so — deliberately, unlike the Cluster-227 scheduler's `SKIP LOCKED` claim —
-//! the sweeper does not single-flight; run it on one replica (the common cron
-//! deployment) if exactly-once digests matter.
+//! so — deliberately, unlike the scheduler's `SKIP LOCKED` claim — the sweeper
+//! does not single-flight; run it on one replica (the common cron deployment)
+//! if exactly-once digests matter.
 //!
 //! Does nothing when no `MailTransport` is configured (a digest with no way to
 //! send is a no-op).
@@ -63,9 +63,9 @@ fn digest_body(unread_count: i64) -> String {
     format!("You have {unread_count} unread {noun} in Maidan. Open Maidan to catch up.")
 }
 
-/// Compose the buried-decisions digest body (Cluster 359, N2) — the decisions the
-/// member may have missed, one per line, newest first. `unread_count` tails it so
-/// the member still sees the raw backlog size.
+/// Compose the buried-decisions digest body — the decisions the member may have
+/// missed, one per line, newest first. `unread_count` tails it so the member
+/// still sees the raw backlog size.
 fn decisions_body(decisions: &[maidan_types::BuriedDecision], unread_count: i64) -> String {
     let mut body = String::from("Decisions you may have missed while you were away:\n\n");
     for d in decisions {
@@ -119,9 +119,9 @@ pub async fn sweep_once(state: &AppState) -> u32 {
     let epoch = chrono::DateTime::from_timestamp(0, 0).unwrap_or(now);
     let mut sent = 0u32;
     for member in due {
-        // Buried decisions (Cluster 359, N2): the digest leads with the decisions
-        // the member missed since their last digest, falling back to the bare
-        // unread-count line when there are none.
+        // Buried decisions: the digest leads with the decisions the member
+        // missed since their last digest, falling back to the bare unread-count
+        // line when there are none.
         let since = member.last_digest_at.unwrap_or(epoch);
         let decisions = state
             .store

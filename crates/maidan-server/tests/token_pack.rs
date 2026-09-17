@@ -1,17 +1,18 @@
-//! Cluster 318 (token round): evidence for the "far fewer tokens" claim.
+//! Evidence for the "far fewer tokens" claim.
 //!
 //! The README says agents "pull exactly the context a step needs … instead of
 //! re-stuffing the prompt, so the same work costs far fewer tokens." That is a
 //! claim without a number. This measures it: the scoped thread **context pack**
-//! (`GET /threads/:id/context`) vs the naive baseline of dumping **every message
-//! in the channel** into the prompt — plus the lean-edits lever (edit metadata vs
-//! full `body_before`/`body_after`).
+//! (`GET /threads/:id/context`) vs the naive baseline of dumping **every
+//! message in the channel** into the prompt — plus the lean-edits lever (edit
+//! metadata vs full `body_before`/`body_after`).
 //!
 //! Reported in **bytes** (exact, tokenizer-independent — the serialized JSON is
 //! literally what an agent receives) and an estimated token count (`chars/4`, a
-//! standard rough approximation for English; the *ratio* is tokenizer-independent
-//! to first order). `token_pack_evidence` is `#[ignore]`d — a measurement tool,
-//! not a pass/fail gate. The estimator math is pure and unit-tested in CI.
+//! standard rough approximation for English; the *ratio* is
+//! tokenizer-independent to first order). `token_pack_evidence` is `#[ignore]`d
+//! — a measurement tool, not a pass/fail gate. The estimator math is pure and
+//! unit-tested in CI.
 //!
 //! ```sh
 //! cargo test -p maidan-server --test token_pack -- --ignored --nocapture
@@ -27,8 +28,8 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-// The token estimator (`chars/4`) lives in `maidan_types::pack` (Cluster 360) so
-// the budget fold and this evidence harness share one definition. Its own math is
+// The token estimator (`chars/4`) lives in `maidan_types::pack` so the budget
+// fold and this evidence harness share one definition. Its own math is
 // unit-tested there; the round-trip check below stays as a local guard.
 
 /// naive / pack, guarding against divide-by-zero.
@@ -159,7 +160,7 @@ async fn token_pack_evidence() {
     .unwrap();
     let pack_full_edits_bytes = serde_json::to_vec(&pack_full_edits).unwrap().len();
 
-    println!("\n=== Maidan context-pack token evidence (Cluster 318) ===");
+    println!("\n=== Maidan context-pack token evidence ===");
     println!(
         "channel: {threads_in_channel} threads × {messages_per_thread} messages = {} total",
         all.len()

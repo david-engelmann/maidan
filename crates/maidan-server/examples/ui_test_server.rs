@@ -1,11 +1,11 @@
-//! Seed-and-serve harness for the Playwright `/ui` suite (Cluster 350.7).
+//! Seed-and-serve harness for the Playwright `/ui` suite.
 //!
 //! This is **test support, not a shipped binary**: it stands up the real
 //! `maidan-server` router on an in-memory SQLite store, seeds a deterministic
 //! workspace / channel / thread / pending approval gate, mints a bearer token,
 //! writes the fixtures to a JSON file, and then serves forever so a headless
-//! browser can drive the actual `/ui`. Playwright's `webServer` starts it, waits
-//! for `/ui/`, runs the specs, and kills it.
+//! browser can drive the actual `/ui`. Playwright's `webServer` starts it,
+//! waits for `/ui/`, runs the specs, and kills it.
 //!
 //! Env: `UI_TEST_PORT` (default 8899), `UI_TEST_FIXTURES` (default
 //! `ui-tests/.fixtures.json`). Run via `cargo run --example ui_test_server`.

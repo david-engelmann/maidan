@@ -1,7 +1,7 @@
-//! Agent self-discovery (Cluster 336). Every hero-loop tool needs the caller's
-//! own `member_id`; `whoami` returns it (plus workspace + capabilities) so an
-//! agent handed only a base URL + token can bootstrap without an out-of-band
-//! lookup. Reflects the request's `AuthContext` — no store access.
+//! Agent self-discovery. Every hero-loop tool needs the caller's own
+//! `member_id`; `whoami` returns it (plus workspace + capabilities) so an agent
+//! handed only a base URL + token can bootstrap without an out-of-band lookup.
+//! Reflects the request's `AuthContext` — no store access.
 
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};

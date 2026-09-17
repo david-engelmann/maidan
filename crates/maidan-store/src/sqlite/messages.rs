@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::sqlite::events;
 
-/// Tool-use blocks in a new message's content (Cluster 376.3, SQLite twin).
+/// Tool-use blocks in a new message's content.
 fn new_tool_uses(content: &Option<Vec<ContentBlock>>) -> i64 {
     content.as_deref().map_or(0, |blocks| {
         blocks
@@ -19,9 +19,9 @@ fn new_tool_uses(content: &Option<Vec<ContentBlock>>) -> i64 {
     })
 }
 
-/// Enforce the workspace's `max_tools` axis (Cluster 376.3) on a post — refuse
-/// once the thread's recorded tool calls + this post's would exceed the cap, as a
-/// typed `SpawnRejected` (Cluster 376.6). See the Postgres twin.
+/// Enforce the workspace's `max_tools` axis on a post — refuse once the
+/// thread's recorded tool calls + this post's would exceed the cap, as a typed
+/// `SpawnRejected`. See the Postgres twin.
 async fn enforce_tool_budget(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -88,11 +88,11 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
     row_to_message(&row)
 }
 
-/// Insert a message and append its `MessagePosted` event in one transaction
-/// (Cluster 210 transactional outbox). Used by the DM / group-DM post paths,
-/// which — unlike the regular route — do no post-insert slash-command edit, so
-/// the event reflects the final message. `dm_conversation_id` is `Some` for a 1:1
-/// DM, `None` for a group DM (matching the pre-migration events).
+/// Insert a message and append its `MessagePosted` event in one transaction.
+/// Used by the DM / group-DM post paths, which — unlike the regular route — do
+/// no post-insert slash-command edit, so the event reflects the final message.
+/// `dm_conversation_id` is `Some` for a 1:1 DM, `None` for a group DM (matching
+/// the pre-migration events).
 pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewMessage,
@@ -134,8 +134,9 @@ pub async fn create_with_event(
         message: message.clone(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
-    // Cluster 356 (F7): a post bumps its thread's activity clock (`updated_at`) so
-    // a recently-active view can float it to the top. In-tx, atomic with the post.
+    // A post bumps its thread's activity clock (`updated_at`) so a
+    // recently-active view can float it to the top. In-tx, atomic with the
+    // post.
     sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
         .bind(chrono::Utc::now().to_rfc3339())
         .bind(thread_id.0)
@@ -261,10 +262,11 @@ pub async fn edit(
     row_to_message(&row)
 }
 
-/// The edit mutation on a caller-supplied tx, without committing (Cluster 212).
-/// Shared by `edit_with_event` (emits `MessageEdited`) and `edit_with_posted_event`
-/// (emits `MessagePosted` for the slash finalization) — records the edit-history
-/// row when the body changes, then updates and returns the message.
+/// The edit mutation on a caller-supplied tx, without committing. Shared by
+/// `edit_with_event` (emits `MessageEdited`) and `edit_with_posted_event`
+/// (emits `MessagePosted` for the slash finalization) — records the
+/// edit-history row when the body changes, then updates and returns the
+/// message.
 async fn edit_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: MessageId,
@@ -307,8 +309,7 @@ async fn edit_in_tx(
     row_to_message(&row)
 }
 
-/// Edit a message and append its `MessageEdited` event in one transaction
-/// (Cluster 212).
+/// Edit a message and append its `MessageEdited` event in one transaction.
 pub async fn edit_with_event(
     pool: &SqlitePool,
     id: MessageId,
@@ -334,8 +335,9 @@ pub async fn edit_with_event(
     Ok((message, stored))
 }
 
-/// Edit a just-posted message and append its `MessagePosted` event reflecting the
-/// **edited** message, in one transaction (Cluster 211). The atomic tail of the
+/// Edit a just-posted message and append its `MessagePosted` event reflecting
+/// the
+/// **edited** message, in one transaction. The atomic tail of the
 /// regular message-post path's slash finalization — the event carries the
 /// post-slash message.
 pub async fn edit_with_posted_event(
@@ -358,8 +360,9 @@ pub async fn edit_with_posted_event(
         message: message.clone(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
-    // Cluster 356 (F7): a post bumps its thread's activity clock (`updated_at`) so
-    // a recently-active view can float it to the top. In-tx, atomic with the post.
+    // A post bumps its thread's activity clock (`updated_at`) so a
+    // recently-active view can float it to the top. In-tx, atomic with the
+    // post.
     sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
         .bind(chrono::Utc::now().to_rfc3339())
         .bind(thread_id.0)
@@ -385,7 +388,7 @@ pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreErro
 }
 
 /// Tombstone a message and append its `MessageTombstoned` event in one
-/// transaction (Cluster 212). `NotFound` if already tombstoned or absent.
+/// transaction. `NotFound` if already tombstoned or absent.
 pub async fn tombstone_with_event(
     pool: &SqlitePool,
     id: MessageId,

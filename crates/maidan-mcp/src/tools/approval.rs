@@ -1,13 +1,14 @@
-//! Human-in-the-loop approval tools (Cluster 174, reworked in Cluster 350).
+//! Human-in-the-loop approval tools.
 //!
-//! `request_approval` opens a durable [`ApprovalGate`](maidan_types::ApprovalGate)
-//! and returns an `input_required` result **without blocking** — the agent is
-//! free to do other work and poll `get_approval_gate` (or await the
-//! `ThreadResultSet`-style signal in a later cluster) for the human's decision.
-//! This replaces the pre-350 model where the tool call parked up to 30s on an
-//! in-memory oneshot: the gate is now persisted, survives a dropped connection,
-//! and is answerable by a human over the `/ui` (Cluster 350.3+). "Silence is not
-//! consent" — a gate is resolved only by an explicit accept/decline/cancel.
+//! `request_approval` opens a durable
+//! [`ApprovalGate`](maidan_types::ApprovalGate) and returns an `input_required`
+//! result **without blocking** — the agent is free to do other work and poll
+//! `get_approval_gate` (or await the `ThreadResultSet`-style signal in a later
+//! cluster) for the human's decision. This replaces the pre-350 model where the
+//! tool call parked up to 30s on an in-memory oneshot: the gate is now
+//! persisted, survives a dropped connection, and is answerable by a human over
+//! the `/ui`. "Silence is not consent" — a gate is resolved only by an explicit
+//! accept/decline/cancel.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -17,15 +18,15 @@ use crate::error::McpError;
 use maidan_auth::AuthContext;
 use maidan_types::{ApprovalGateId, NewApprovalGate};
 
-/// Unknown fields are rejected (Cluster 398.5).
+/// Unknown fields are rejected.
 ///
-/// `thread_id` is load-bearing by its absence: supplied, the pending gate blocks
-/// `claim_next` so no agent picks the thread up until a human answers; omitted,
-/// the gate is unattached and gates nothing. A misspelled key was
+/// `thread_id` is load-bearing by its absence: supplied, the pending gate
+/// blocks `claim_next` so no agent picks the thread up until a human answers;
+/// omitted, the gate is unattached and gates nothing. A misspelled key was
 /// indistinguishable from deliberate omission, so `threadId` or `thread`
 /// returned `200` with a gate that looks right and blocks nobody — the agent
 /// claims the thread and proceeds without the human. Same shape as the budget
-/// dimensions in Cluster 398.4: a typo silently disarms a control.
+/// dimensions: a typo silently disarms a control.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RequestApprovalArgs {
@@ -35,9 +36,9 @@ struct RequestApprovalArgs {
     /// their decision (MCP `requestedSchema`). Persisted on the gate.
     #[serde(default)]
     schema: Option<Value>,
-    /// Optional thread to attach the gate to (Cluster 350.6, N6). While the gate
-    /// is `pending`, `claim_next` will not hand the thread to an agent — the
-    /// required human is a *claim gate*, not a notification preference.
+    /// Optional thread to attach the gate to. While the gate is `pending`,
+    /// `claim_next` will not hand the thread to an agent — the required human
+    /// is a *claim gate*, not a notification preference.
     #[serde(default)]
     thread_id: Option<uuid::Uuid>,
 }
@@ -78,10 +79,10 @@ struct GetApprovalGateArgs {
     gate_id: ApprovalGateId,
 }
 
-/// Poll a durable approval gate by id (Cluster 350). Returns the gate — its
-/// `state` is `pending` until a human answers, then `accepted`/`declined`/
-/// `cancelled` with any `content` they supplied. `null` if no such gate exists
-/// in the caller's workspace. Requires `workspace:read`.
+/// Poll a durable approval gate by id. Returns the gate — its `state` is
+/// `pending` until a human answers, then `accepted`/`declined`/ `cancelled`
+/// with any `content` they supplied. `null` if no such gate exists in the
+/// caller's workspace. Requires `workspace:read`.
 pub(super) async fn get_approval_gate(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -103,7 +104,7 @@ pub(super) async fn get_approval_gate(
 mod arg_strictness_tests {
     use super::RequestApprovalArgs;
 
-    /// Cluster 398.5: a misspelled `thread_id` must not read as an omission.
+    /// A misspelled `thread_id` must not read as an omission.
     ///
     /// Omission is meaningful here — an unattached gate blocks nothing, so
     /// before this a `threadId` typo produced a `200` and a gate that looks

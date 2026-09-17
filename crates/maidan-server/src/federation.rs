@@ -133,8 +133,8 @@ pub async fn ingest_events(
 pub struct IngestSummary {
     pub ingested: u32,
     pub skipped: u32,
-    /// Verified but refused by the Cluster-215 allowlist (Cluster 397.6). A
-    /// non-zero count is informational, not an error — see
+    /// Verified but refused by the allowlist. A non-zero count is
+    /// informational, not an error — see
     /// [`IngestOutcome::SkippedNotFederatable`].
     #[serde(default)]
     pub refused: u32,
@@ -143,14 +143,13 @@ pub struct IngestSummary {
 pub(crate) enum IngestOutcome {
     Ingested,
     SkippedDuplicate,
-    /// Verified against the origin chain, then refused by the Cluster-215
-    /// allowlist (Cluster 397.6).
+    /// Verified against the origin chain, then refused by the allowlist.
     ///
     /// This is a **normal** outcome, not peer misbehaviour, which is why it is
     /// no longer a `403`. A peer's chain necessarily contains kinds federation
-    /// does not accept — `ThreadReady`, `ThreadResultSet` and `ClaimExpired` are
-    /// produced by any active workspace — so refusing the whole batch made a
-    /// mixed batch unreplicable, and the event is skipped either way.
+    /// does not accept — `ThreadReady`, `ThreadResultSet` and `ClaimExpired`
+    /// are produced by any active workspace — so refusing the whole batch made
+    /// a mixed batch unreplicable, and the event is skipped either way.
     SkippedNotFederatable,
 }
 
@@ -187,22 +186,23 @@ pub(crate) async fn ingest_envelope(
             reason,
         });
     }
-    // The link verified, so the chain has advanced past this event — record that
-    // *before* any policy decision (Cluster 397.6). The origin chain covers every
+    // The link verified, so the chain has advanced past this event — record
+    // that
+    // *before* any policy decision. The origin chain covers every
     // event in the peer's workspace, but federation only accepts the
     // `federatable()` allowlist, so a refused event still sits between two
-    // accepted ones. Recording the link only on the ingest path left the pointer
-    // behind the refusal, and every later envelope then failed `PrevHashMismatch`
-    // forever.
+    // accepted ones. Recording the link only on the ingest path left the
+    // pointer behind the refusal, and every later envelope then failed
+    // `PrevHashMismatch` forever.
     state
         .store
         .record_federated_verified_link(peer.id, &envelope.event.link())
         .await?;
 
     let mut event = event_from_stored(&envelope.event)?;
-    // Cluster 215 federation ingest trust policy: only accept event kinds a peer
-    // is allowed to push (allowlist-by-default; artifact-existence claims are
-    // rejected since blob bytes aren't federated).
+    // Only accept event kinds a peer is allowed to push (allowlist-by-default;
+    // artifact-existence claims are rejected since blob bytes aren't
+    // federated).
     if !event.kind().federatable() {
         return Ok(IngestOutcome::SkippedNotFederatable);
     }
@@ -261,9 +261,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             mut member,
             ..
         } => {
-            // Cluster 215: re-scope the nested member to the local workspace too —
-            // otherwise `member.workspace_id` leaks the peer's remote workspace id
-            // into the local view (`ChannelCreated` already remaps its nested
+            // Re-scope the nested member to the local workspace too — otherwise
+            // `member.workspace_id` leaks the peer's remote workspace id into
+            // the local view (`ChannelCreated` already remaps its nested
             // `channel.workspace_id`; `MemberJoined` was inconsistent).
             member.workspace_id = workspace_id;
             MemberJoined {
@@ -363,7 +363,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             thread_id,
             produced_by,
         },
-        // Non-federatable (a locally-derived unblock, Cluster 386).
+        // Non-federatable (a locally-derived unblock).
         BlockedResolved {
             occurred_at,
             workspace_id: _,
@@ -415,8 +415,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             reason,
             thread,
         },
-        // Non-federatable (a locally-derived GitHub projector fact, Cluster 361) —
-        // never actually ingested/remapped, but the exhaustive match must classify it.
+        // Non-federatable (a locally-derived GitHub projector fact) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         ThreadLanded {
             occurred_at,
             workspace_id: _,
@@ -438,8 +439,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             merge_commit_sha,
             title,
         },
-        // Non-federatable (a locally-derived wait-timer signal, Cluster 364) —
-        // never actually ingested/remapped, but the exhaustive match must classify it.
+        // Non-federatable (a locally-derived wait-timer signal) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         WaitTimedOut {
             occurred_at,
             workspace_id: _,
@@ -455,8 +457,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             policy,
             reason,
         },
-        // Non-federatable (a locally-derived scheduler decision, Cluster 370) —
-        // never actually ingested/remapped, but the exhaustive match must classify it.
+        // Non-federatable (a locally-derived scheduler decision) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         ScheduleSkipped {
             occurred_at,
             workspace_id: _,
@@ -621,9 +624,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             occurred_at,
             artifact,
         },
-        // Non-federatable (a locally-derived spawn-budget refusal, Cluster 376.6)
-        // — never actually ingested/remapped, but the exhaustive match must
-        // classify it.
+        // Non-federatable (a locally-derived spawn-budget refusal) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         ThreadSpawnDenied {
             occurred_at,
             workspace_id: _,
@@ -663,9 +666,9 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             selector,
             error,
         },
-        // Non-federatable (a locally-derived memory-block update, Cluster 373) —
-        // never actually ingested/remapped, but the exhaustive match must
-        // classify it.
+        // Non-federatable (a locally-derived memory-block update) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
         MemoryBlockUpdated {
             occurred_at,
             workspace_id: _,
@@ -838,8 +841,8 @@ mod remap_tests {
     use super::*;
     use maidan_types::{Member, MemberId, MemberKind};
 
-    /// Cluster 215: the `MemberJoined` remap must re-scope the **nested** member to
-    /// the local workspace, not just the event's top-level `workspace_id` — else a
+    /// The `MemberJoined` remap must re-scope the **nested** member to the
+    /// local workspace, not just the event's top-level `workspace_id` — else a
     /// federated member leaks the peer's remote workspace id.
     #[test]
     fn member_joined_remap_rescopes_nested_workspace() {

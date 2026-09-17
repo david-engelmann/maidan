@@ -14,24 +14,23 @@ use crate::error::StoreError;
 pub trait MetaStore: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
 
-    /// The primary's current WAL write position — the read-replica causality token
-    /// stamped on a write (Cluster 263). `Some` on Postgres (`pg_current_wal_lsn()`),
+    /// The primary's current WAL write position — the read-replica causality
+    /// token stamped on a write. `Some` on Postgres (`pg_current_wal_lsn()`),
     /// `None` on SQLite (no streaming replication, so no token).
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
 }
 
 #[async_trait]
 pub trait WorkspaceStore: Send + Sync {
-    /// Insert a whole workspace content graph (Cluster 269) — members, channels,
-    /// threads, messages, edits, pins, references — with explicit ids, state, and
-    /// timestamps preserved, in one transaction. The inverse of the Cluster-187
-    /// export. Id remapping (fresh workspace vs same-id restore) and the
-    /// already-exists guard are the caller's job.
+    /// Insert a whole workspace content graph — members, channels, threads,
+    /// messages, edits, pins, references — with explicit ids, state, and
+    /// timestamps preserved, in one transaction. The inverse of the export. Id
+    /// remapping (fresh workspace vs same-id restore) and the already-exists
+    /// guard are the caller's job.
     async fn import_workspace(&self, import: &WorkspaceImport) -> Result<(), StoreError>;
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
-    /// Create a workspace and append its `WorkspaceCreated` event atomically
-    /// (Cluster 213).
+    /// Create a workspace and append its `WorkspaceCreated` event atomically.
     async fn create_workspace_with_event(
         &self,
         new: NewWorkspace,
@@ -39,32 +38,31 @@ pub trait WorkspaceStore: Send + Sync {
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError>;
     async fn count_workspaces(&self) -> Result<i64, StoreError>;
     /// Live per-workspace usage counts (members/channels/threads/messages,
-    /// excluding tombstoned rows) for metering (Cluster 188).
+    /// excluding tombstoned rows) for metering.
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
 
-    /// Place (or update) a legal hold on a workspace (Cluster 366, T6). While
-    /// held, the workspace's events are exempt from retention pruning, audit
-    /// pruning is frozen, and purge/erase is refused. Upserts (one hold per
-    /// workspace).
+    /// Place (or update) a legal hold on a workspace. While held, the
+    /// workspace's events are exempt from retention pruning, audit pruning is
+    /// frozen, and purge/erase is refused. Upserts (one hold per workspace).
     async fn place_legal_hold(
         &self,
         workspace_id: WorkspaceId,
         reason: &str,
         placed_by: Option<MemberId>,
     ) -> Result<LegalHold, StoreError>;
-    /// Lift a workspace's legal hold (Cluster 366). `true` when a hold existed.
+    /// Lift a workspace's legal hold. `true` when a hold existed.
     async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError>;
-    /// The workspace's legal hold, or `None` (Cluster 366).
+    /// The workspace's legal hold, or `None`.
     async fn get_legal_hold(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<LegalHold>, StoreError>;
-    /// Every active legal hold, newest first (Cluster 366) — the operator view.
+    /// Every active legal hold, newest first — the operator view.
     async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError>;
 
-    /// Set (or clear) the workspace's WIP limit (Cluster 362, G11): the max
-    /// concurrent *live* claims any one member may hold. `Some(n)` upserts (`0`
-    /// freezes claiming); `None` removes the cap (unlimited).
+    /// Set (or clear) the workspace's WIP limit: the max concurrent *live*
+    /// claims any one member may hold. `Some(n)` upserts (`0` freezes
+    /// claiming); `None` removes the cap (unlimited).
     async fn set_wip_limit(
         &self,
         workspace_id: WorkspaceId,
@@ -73,11 +71,11 @@ pub trait WorkspaceStore: Send + Sync {
     /// The workspace's WIP limit, or `None` if unset (unlimited).
     async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 
-    /// Set or rename a workspace handle (Cluster 395). The workspace id
-    /// is unchanged. Invalid syntax is [`StoreError::InvalidInput`]; a
-    /// handle owned by another workspace is [`StoreError::Conflict`].
+    /// Set or rename a workspace handle. The workspace id is unchanged. Invalid
+    /// syntax is [`StoreError::InvalidInput`]; a handle owned by another
+    /// workspace is [`StoreError::Conflict`].
     ///
-    /// **A handle is a display label, not an address** (Cluster 398.7). Nothing
+    /// **A handle is a display label, not an address**. Nothing
     /// resolves a handle *to* a workspace, deliberately — see the ADR in
     /// `docs/Decisions.md`. Uniqueness is enforced by the table's constraint,
     /// not by a reverse lookup.
@@ -110,7 +108,7 @@ pub trait MemberStore: Send + Sync {
     ) -> Result<Member, StoreError>;
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
 
-    /// Create the SCIM provisioning link for a member (Cluster 366, SCIM-as-OIDC-P3).
+    /// Create the SCIM provisioning link for a member.
     async fn create_scim_user(
         &self,
         member_id: MemberId,
@@ -118,31 +116,29 @@ pub trait MemberStore: Send + Sync {
         external_id: Option<&str>,
         active: bool,
     ) -> Result<ScimUser, StoreError>;
-    /// The member's SCIM link, or `None` if the member isn't SCIM-provisioned
-    /// (Cluster 366).
+    /// The member's SCIM link, or `None` if the member isn't SCIM-provisioned.
     async fn get_scim_user(&self, member_id: MemberId) -> Result<Option<ScimUser>, StoreError>;
-    /// Every SCIM-provisioned user in a workspace (Cluster 366) — the SCIM list.
+    /// Every SCIM-provisioned user in a workspace — the SCIM list.
     async fn list_scim_users(&self, workspace_id: WorkspaceId)
         -> Result<Vec<ScimUser>, StoreError>;
-    /// Update a SCIM link's `external_id` + `active` and bump `updated_at`
-    /// (Cluster 366). `None` when the member has no SCIM link.
+    /// Update a SCIM link's `external_id` + `active` and bump `updated_at`.
+    /// `None` when the member has no SCIM link.
     async fn update_scim_user(
         &self,
         member_id: MemberId,
         external_id: Option<&str>,
         active: bool,
     ) -> Result<Option<ScimUser>, StoreError>;
-    /// Remove a member's SCIM link (Cluster 366) — `true` when one existed.
+    /// Remove a member's SCIM link — `true` when one existed.
     async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
 pub trait SkillStore: Send + Sync {
-    /// Capability registry (Cluster 230): the free-form skill tags a member
-    /// declares. `add` is idempotent and rejects an empty skill; `remove` returns
-    /// `true` when a row was deleted; `list` is ordered by skill. Skill routing
-    /// (Cluster 231+) reads these. No worker/routes yet — a zero-blast-radius
-    /// foundation.
+    /// Capability registry: the free-form skill tags a member declares. `add`
+    /// is idempotent and rejects an empty skill; `remove` returns `true` when a
+    /// row was deleted; `list` is ordered by skill. Skill routing reads these.
+    /// No worker/routes yet — a zero-blast-radius foundation.
     async fn add_member_skill(&self, member_id: MemberId, skill: &str) -> Result<(), StoreError>;
     async fn remove_member_skill(
         &self,
@@ -152,7 +148,7 @@ pub trait SkillStore: Send + Sync {
     async fn list_member_skills(&self, member_id: MemberId)
         -> Result<Vec<MemberSkill>, StoreError>;
 
-    /// Has `member_id` ever held `thread_id`? (Cluster 401.1.)
+    /// Has `member_id` ever held `thread_id`?
     ///
     /// The durable form of the separation-of-duties question. Both governance
     /// gates used to test the thread's **live** `assignee_id`, which a release
@@ -165,10 +161,10 @@ pub trait SkillStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
 
-    /// Everyone who has ever held `thread_id`, oldest first (Cluster 401.1).
+    /// Everyone who has ever held `thread_id`, oldest first.
     async fn list_thread_workers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
-    /// Skills a task (thread) requires (Cluster 231). `add` idempotent + empty-
-    /// reject; `remove` conditional; `list` ordered by skill. Skill routing:
+    /// Skills a task (thread) requires. `add` idempotent + empty- reject;
+    /// `remove` conditional; `list` ordered by skill. Skill routing:
     /// `claim_next` only takes a task whose required skills the claimer holds.
     async fn add_thread_required_skill(
         &self,
@@ -188,8 +184,8 @@ pub trait SkillStore: Send + Sync {
 
 #[async_trait]
 pub trait ThreadResultStore: Send + Sync {
-    /// A task's structured result (Cluster 234): `set` upserts (a re-set
-    /// overwrites), `get` returns `None` until one is produced.
+    /// A task's structured result: `set` upserts (a re-set overwrites), `get`
+    /// returns `None` until one is produced.
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
@@ -200,11 +196,11 @@ pub trait ThreadResultStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadResult>, StoreError>;
-    /// Workspace-scoped list of thread results (Cluster 381). When
-    /// `result_kind` is `Some`, exact-match on the namespaced string extracted
-    /// from the payload (e.g. `example.review.result/1`) — not a closed enum.
-    /// `None` (or empty / whitespace) returns every non-tombstoned result in
-    /// the workspace. Newest first. `limit` is clamped `1..=500`.
+    /// Workspace-scoped list of thread results. When `result_kind` is `Some`,
+    /// exact-match on the namespaced string extracted from the payload (e.g.
+    /// `example.review.result/1`) — not a closed enum. `None` (or empty /
+    /// whitespace) returns every non-tombstoned result in the workspace. Newest
+    /// first. `limit` is clamped `1..=500`.
     async fn list_thread_results(
         &self,
         workspace_id: WorkspaceId,
@@ -212,10 +208,10 @@ pub trait ThreadResultStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadResult>, StoreError>;
     /// Closed/archived, non-tombstoned thread results in `channel_id`, newest
-    /// first (Cluster 382, Wave 2 #24). `exclude_thread_id` drops the claimer's
-    /// own thread so the pack lists *other* in-channel decisions. `limit` is
-    /// clamped `1..=50`. The store does **not** interpret `result_kind` — that
-    /// is a namespaced string the pack assembler reads, not a closed enum.
+    /// first. `exclude_thread_id` drops the claimer's own thread so the pack
+    /// lists *other* in-channel decisions. `limit` is clamped `1..=50`. The
+    /// store does **not** interpret `result_kind` — that is a namespaced string
+    /// the pack assembler reads, not a closed enum.
     async fn list_channel_closed_results(
         &self,
         channel_id: ChannelId,
@@ -226,9 +222,9 @@ pub trait ThreadResultStore: Send + Sync {
 
 #[async_trait]
 pub trait ThreadSteerStore: Send + Sync {
-    /// A thread's persisted steer (Cluster 355, W1): `set` upserts (latest wins),
-    /// `get` returns `None` until one is set. A durable instruction that survives
-    /// claims/handoffs — distinct from a Cluster-195 handoff note.
+    /// A thread's persisted steer: `set` upserts (latest wins), `get` returns
+    /// `None` until one is set. A durable instruction that survives
+    /// claims/handoffs — distinct from a handoff note.
     async fn set_thread_steer(
         &self,
         thread_id: ThreadId,
@@ -243,8 +239,8 @@ pub trait ThreadSteerStore: Send + Sync {
 
 #[async_trait]
 pub trait ThreadLineageStore: Send + Sync {
-    /// Home a producer's `run_id` on a thread as `parent_run_id` (Cluster 387).
-    /// Upserts; a re-set overwrites. The value is the producer's string after
+    /// Home a producer's `run_id` on a thread as `parent_run_id`. Upserts; a
+    /// re-set overwrites. The value is the producer's string after
     /// [`maidan_types::normalize_parent_run_id`] — Maidan does not mint an id.
     /// Empty / whitespace / over-long → `InvalidInput`.
     async fn set_thread_lineage(
@@ -252,7 +248,7 @@ pub trait ThreadLineageStore: Send + Sync {
         thread_id: ThreadId,
         parent_run_id: &str,
     ) -> Result<ThreadLineage, StoreError>;
-    /// A thread's lineage, or `None` until one is set (Cluster 387).
+    /// A thread's lineage, or `None` until one is set.
     async fn get_thread_lineage(
         &self,
         thread_id: ThreadId,
@@ -260,17 +256,17 @@ pub trait ThreadLineageStore: Send + Sync {
     /// Drop a thread's lineage. `true` when a row existed.
     async fn clear_thread_lineage(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
     /// Non-tombstoned threads in `workspace_id` that share `parent_run_id`,
-    /// oldest first (Cluster 387). Nested children that were given the same
-    /// producer value are included; F7 mute is not consulted.
+    /// oldest first. Nested children that were given the same producer value
+    /// are included; F7 mute is not consulted.
     async fn list_threads_for_run(
         &self,
         workspace_id: WorkspaceId,
         parent_run_id: &str,
     ) -> Result<Vec<Thread>, StoreError>;
-    /// Nested occupancy for a producer run (Cluster 387): the two-clocks
-    /// partition of every **open** thread in the workspace that shares
-    /// `parent_run_id`. Empty / unknown run → zeros, not an error. F7 mute
-    /// stays orthogonal (a muted nested thread still counts).
+    /// Nested occupancy for a producer run: the two-clocks partition of every
+    /// **open** thread in the workspace that shares `parent_run_id`. Empty /
+    /// unknown run → zeros, not an error. F7 mute stays orthogonal (a muted
+    /// nested thread still counts).
     async fn run_occupancy(
         &self,
         workspace_id: WorkspaceId,
@@ -280,15 +276,15 @@ pub trait ThreadLineageStore: Send + Sync {
 
 #[async_trait]
 pub trait BudgetStore: Send + Sync {
-    /// Set (upsert) a thread's budget maxima (Cluster 358, T1/T5). Accumulated
-    /// usage is preserved — only the `max_*` dimensions are touched.
+    /// Set (upsert) a thread's budget maxima. Accumulated usage is preserved —
+    /// only the `max_*` dimensions are touched.
     async fn set_thread_budget(
         &self,
         thread_id: ThreadId,
         limits: BudgetLimits,
     ) -> Result<ThreadBudget, StoreError>;
 
-    /// Change only the dimensions a patch names (Cluster 403).
+    /// Change only the dimensions a patch names.
     ///
     /// [`Self::set_thread_budget`] replaces the whole envelope, so raising one
     /// cap through it cleared the others — and a cleared cap is a run that
@@ -308,27 +304,28 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<ThreadBudget>, StoreError>;
     /// Accumulate reported usage onto a thread's budget, creating the row (no
-    /// maxima) when the thread has none yet. Returns the new totals. Enforcement
-    /// (stop-the-run on exceed) is a route/tool concern layered on top (Cluster 358.3).
+    /// maxima) when the thread has none yet. Returns the new totals.
+    /// Enforcement (stop-the-run on exceed) is a route/tool concern layered on
+    /// top.
     async fn add_thread_usage(
         &self,
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError>;
-    /// Report usage and enforce the budget (Cluster 358.3) — the "stop the run"
-    /// path. Accumulates `delta`; if the thread is now over budget AND has an
-    /// active claim, atomically releases the claim, appends a `ClaimFailed` event,
-    /// and records a DLQ entry. Returns the new totals + whether the run stopped,
+    /// Report usage and enforce the budget — the "stop the run" path.
+    /// Accumulates `delta`; if the thread is now over budget AND has an active
+    /// claim, atomically releases the claim, appends a `ClaimFailed` event, and
+    /// records a DLQ entry. Returns the new totals + whether the run stopped,
     /// plus the `ClaimFailed` event to publish (`None` when not stopped).
     async fn report_thread_usage(
         &self,
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<(UsageReport, Option<StoredEvent>), StoreError>;
-    /// Record a dead-lettered agent run (Cluster 358) — a run stopped for exceeding
-    /// its budget. `id`/`failed_at` are assigned by the store.
+    /// Record a dead-lettered agent run — a run stopped for exceeding its
+    /// budget. `id`/`failed_at` are assigned by the store.
     async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError>;
-    /// A channel's dead-lettered runs, newest first (Cluster 358).
+    /// A channel's dead-lettered runs, newest first.
     async fn list_channel_dlq(
         &self,
         channel_id: ChannelId,
@@ -338,11 +335,10 @@ pub trait BudgetStore: Send + Sync {
 
 #[async_trait]
 pub trait ApprovalGateStore: Send + Sync {
-    /// A durable human-approval gate (Cluster 350, the held gate): `create` opens
-    /// a `Pending` gate, `resolve` compare-and-sets it to accept/decline/cancel
-    /// (a second answer is a no-op → `None`), `list_pending` is the queryable
-    /// outstanding-gate list. No worker/routes yet — a zero-blast-radius
-    /// foundation.
+    /// A durable human-approval gate: `create` opens a `Pending` gate,
+    /// `resolve` compare-and-sets it to accept/decline/cancel (a second answer
+    /// is a no-op → `None`), `list_pending` is the queryable outstanding-gate
+    /// list. No worker/routes yet — a zero-blast-radius foundation.
     async fn create_approval_gate(
         &self,
         gate: &NewApprovalGate,
@@ -367,11 +363,11 @@ pub trait ApprovalGateStore: Send + Sync {
 
 #[async_trait]
 pub trait GlossaryStore: Send + Sync {
-    /// A workspace's shared glossary (Cluster 321, fidelity arc): `set` upserts a
-    /// canonical `term -> definition` (+ aliases) keyed on `(workspace_id, term)`,
-    /// `get` fetches one, `list` returns all (ordered by term), `delete` removes
-    /// one. The anti-drift pin — the target of the `defines` reference relation.
-    /// No routes/tools yet — a zero-blast-radius foundation.
+    /// A workspace's shared glossary: `set` upserts a canonical `term ->
+    /// definition` (+ aliases) keyed on `(workspace_id, term)`, `get` fetches
+    /// one, `list` returns all (ordered by term), `delete` removes one. The
+    /// anti-drift pin — the target of the `defines` reference relation. No
+    /// routes/tools yet — a zero-blast-radius foundation.
     async fn set_glossary_term(&self, new: NewGlossaryTerm) -> Result<GlossaryTerm, StoreError>;
     async fn get_glossary_term(
         &self,
@@ -391,24 +387,26 @@ pub trait GlossaryStore: Send + Sync {
 
 #[async_trait]
 pub trait NotificationStore: Send + Sync {
-    /// Per-recipient notifications (Cluster 237, Program C): `create` inserts one
-    /// row for a recipient, `list_for_member` returns newest-first (optionally
-    /// unread-only), `mark_read` stamps `read_at` (idempotent), `unread_count` is
-    /// the badge, `mark_all_read` clears the badge. No router/routes/worker yet —
-    /// a zero-blast-radius foundation.
+    /// Per-recipient notifications: `create` inserts one row for a recipient,
+    /// `list_for_member` returns newest-first (optionally unread-only),
+    /// `mark_read` stamps `read_at` (idempotent), `unread_count` is the badge,
+    /// `mark_all_read` clears the badge. No router/routes/worker yet — a
+    /// zero-blast-radius foundation.
     async fn create_notification(&self, new: NewNotification) -> Result<Notification, StoreError>;
     /// Insert a notification unless one already exists for `(member_id,
     /// source_log_id)` — the router's idempotent write across event replays and
-    /// server replicas (Cluster 238). `None` = a row already existed (deduped).
+    /// server replicas. `None` = a row already existed (deduped).
     async fn create_notification_if_absent(
         &self,
         new: NewNotification,
     ) -> Result<Option<Notification>, StoreError>;
-    /// Insert many per-recipient notifications in one round trip (Cluster 349) —
-    /// the batch form of [`create_notification_if_absent`](Self::create_notification_if_absent)
+    /// Insert many per-recipient notifications in one round trip — the batch
+    /// form of
+    /// [`create_notification_if_absent`](Self::create_notification_if_absent)
     /// for the `MessagePosted` fan-out. Each row is idempotent on `(member_id,
-    /// source_log_id)` (`ON CONFLICT DO NOTHING`); the returned vec is the subset
-    /// that was actually inserted (deduped rows are omitted), so the caller meters
+    /// source_log_id)` (`ON CONFLICT DO NOTHING`); the returned vec is the
+    /// subset that was actually inserted (deduped rows are omitted), so the
+    /// caller meters
     /// + emails exactly the new notifications. Empty input returns empty with no
     /// query. Postgres inserts via `UNNEST` arrays; SQLite chunks a multi-row
     /// `VALUES` under the 999-parameter limit.
@@ -422,17 +420,16 @@ pub trait NotificationStore: Send + Sync {
         unread_only: bool,
         limit: i64,
     ) -> Result<Vec<Notification>, StoreError>;
-    /// Mark one notification read, scoped to its recipient (Cluster 239) — a
-    /// member can only mark their own. `false` when no `(member_id, id)` row
-    /// exists.
+    /// Mark one notification read, scoped to its recipient — a member can only
+    /// mark their own. `false` when no `(member_id, id)` row exists.
     async fn mark_notification_read(
         &self,
         member_id: MemberId,
         id: NotificationId,
     ) -> Result<bool, StoreError>;
-    /// Snooze one notification until `until` (Cluster 359, N5) — recipient-scoped;
-    /// it drops out of the default inbox + unread count until the snooze lapses.
-    /// Returns whether the `(member_id, id)` row exists.
+    /// Snooze one notification until `until` — recipient-scoped; it drops out
+    /// of the default inbox + unread count until the snooze lapses. Returns
+    /// whether the `(member_id, id)` row exists.
     async fn snooze_notification(
         &self,
         member_id: MemberId,
@@ -442,10 +439,10 @@ pub trait NotificationStore: Send + Sync {
     async fn mark_all_notifications_read(&self, member_id: MemberId) -> Result<u64, StoreError>;
     async fn unread_notification_count(&self, member_id: MemberId) -> Result<i64, StoreError>;
 
-    /// Per-member notification preferences (Cluster 241, Arc H): `set` upserts a
-    /// mute flag for one event kind, `list` returns a member's prefs, `is_muted`
-    /// answers the router's "should I suppress this?" (absent row = not muted). No
-    /// router change or routes yet — a zero-blast-radius foundation.
+    /// Per-member notification preferences: `set` upserts a mute flag for one
+    /// event kind, `list` returns a member's prefs, `is_muted` answers the
+    /// router's "should I suppress this?" (absent row = not muted). No router
+    /// change or routes yet — a zero-blast-radius foundation.
     async fn set_notification_pref(
         &self,
         member_id: MemberId,
@@ -462,29 +459,29 @@ pub trait NotificationStore: Send + Sync {
         kind: EventKind,
     ) -> Result<bool, StoreError>;
 
-    /// Which of `members` have muted `kind` (Cluster 348) — the batch form of
-    /// [`is_notification_muted`](Self::is_notification_muted), so a fan-out checks
-    /// mutes in one query instead of one per recipient.
+    /// Which of `members` have muted `kind` — the batch form of
+    /// [`is_notification_muted`](Self::is_notification_muted), so a fan-out
+    /// checks mutes in one query instead of one per recipient.
     async fn filter_muted_members(
         &self,
         kind: EventKind,
         members: &[MemberId],
     ) -> Result<Vec<MemberId>, StoreError>;
 
-    /// Register (upsert) a member's Web Push subscription (Cluster 366, N1). Keyed
-    /// on `(member_id, endpoint)` — re-subscribing the same device refreshes its
+    /// Register (upsert) a member's Web Push subscription. Keyed on
+    /// `(member_id, endpoint)` — re-subscribing the same device refreshes its
     /// keys.
     async fn add_push_subscription(
         &self,
         new: NewPushSubscription,
     ) -> Result<PushSubscription, StoreError>;
-    /// A member's Web Push subscriptions (Cluster 366) — the router's delivery
-    /// targets when the member has no live WebSocket.
+    /// A member's Web Push subscriptions — the router's delivery targets when
+    /// the member has no live WebSocket.
     async fn list_push_subscriptions(
         &self,
         member_id: MemberId,
     ) -> Result<Vec<PushSubscription>, StoreError>;
-    /// Remove one of a member's push subscriptions (Cluster 366) — recipient-scoped
+    /// Remove one of a member's push subscriptions — recipient-scoped
     /// (`member_id` + `id`); `true` when a row was removed.
     async fn delete_push_subscription(
         &self,
@@ -495,11 +492,11 @@ pub trait NotificationStore: Send + Sync {
 
 #[async_trait]
 pub trait FollowStore: Send + Sync {
-    /// Subscription / follows (Cluster 244, Arc H): a member follows a channel or
-    /// thread to be notified of activity there even without a mention. `follow_*` is
-    /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*` is a
-    /// member's follows; `*_followers` is the router's fan-out set. No router change
-    /// or routes yet — a zero-blast-radius foundation.
+    /// Subscription / follows: a member follows a channel or thread to be
+    /// notified of activity there even without a mention. `follow_*` is
+    /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*`
+    /// is a member's follows; `*_followers` is the router's fan-out set. No
+    /// router change or routes yet — a zero-blast-radius foundation.
     async fn follow_channel(
         &self,
         member_id: MemberId,
@@ -531,8 +528,8 @@ pub trait FollowStore: Send + Sync {
     ) -> Result<Vec<ThreadFollow>, StoreError>;
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
 
-    /// Mute a specific thread for a member (Cluster 356, F7 leaf mute). Idempotent;
-    /// the notification router suppresses notifications about a muted thread.
+    /// Mute a specific thread for a member. Idempotent; the notification router
+    /// suppresses notifications about a muted thread.
     async fn mute_thread(&self, member_id: MemberId, thread_id: ThreadId)
         -> Result<(), StoreError>;
     /// Unmute a thread. `true` if it was muted.
@@ -550,8 +547,8 @@ pub trait FollowStore: Send + Sync {
     /// Members who have muted `thread_id` — the router subtracts them from a
     /// `MessagePosted` fan-out in one batch query.
     async fn thread_muters(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
-    /// Mute a whole channel for a member (Cluster 357, N3). Idempotent; the
-    /// router suppresses the channel's firehose, but a mention breaks through.
+    /// Mute a whole channel for a member. Idempotent; the router suppresses the
+    /// channel's firehose, but a mention breaks through.
     async fn mute_channel(
         &self,
         member_id: MemberId,
@@ -576,10 +573,10 @@ pub trait FollowStore: Send + Sync {
 
 #[async_trait]
 pub trait MailStore: Send + Sync {
-    /// A member's delivery email address (Cluster 248, Arc I): where email
-    /// notifications go. `set` upserts, `get` returns `None` when unset, `delete`
-    /// removes it. A separate table, so the shared member row-mapping is untouched.
-    /// No delivery wiring yet — a zero-blast-radius foundation.
+    /// A member's delivery email address: where email notifications go. `set`
+    /// upserts, `get` returns `None` when unset, `delete` removes it. A
+    /// separate table, so the shared member row-mapping is untouched. No
+    /// delivery wiring yet — a zero-blast-radius foundation.
     async fn set_member_email(
         &self,
         member_id: MemberId,
@@ -591,14 +588,14 @@ pub trait MailStore: Send + Sync {
     ) -> Result<Option<MemberEmail>, StoreError>;
     async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError>;
 
-    /// Durable mail outbox (Cluster 304): notification emails are enqueued and
-    /// delivered by a retry/backoff worker instead of a best-effort send.
-    /// `enqueue_mail` queues one; `claim_next_due_mail` atomically leases the
-    /// oldest due `pending` row (bumps `attempts`, pushes `next_attempt_at` forward
-    /// by `lease_secs` so a crashed worker's row is retried); `mark_mail_delivered`
-    /// finishes it; `mark_mail_failed` reschedules (`retry_at = Some`) or
-    /// dead-letters (`None`); `count_dead_mail` is the DLQ depth. No worker/wiring
-    /// yet — a zero-blast-radius foundation.
+    /// Durable mail outbox: notification emails are enqueued and delivered by a
+    /// retry/backoff worker instead of a best-effort send. `enqueue_mail`
+    /// queues one; `claim_next_due_mail` atomically leases the oldest due
+    /// `pending` row (bumps `attempts`, pushes `next_attempt_at` forward by
+    /// `lease_secs` so a crashed worker's row is retried);
+    /// `mark_mail_delivered` finishes it; `mark_mail_failed` reschedules
+    /// (`retry_at = Some`) or dead-letters (`None`); `count_dead_mail` is the
+    /// DLQ depth. No worker/wiring yet — a zero-blast-radius foundation.
     async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<MailOutboxId, StoreError>;
     async fn claim_next_due_mail(
         &self,
@@ -613,12 +610,12 @@ pub trait MailStore: Send + Sync {
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError>;
     async fn count_dead_mail(&self) -> Result<i64, StoreError>;
-    /// Dead-lettered entries for the operator DLQ view (Cluster 306), newest first.
-    /// Dead-lettered mail for the operator DLQ (Cluster 398.3). `scope` is the
-    /// caller's workspace; `None` is the `operator:global` view and the only way
-    /// to see rows with a `NULL` workspace (pre-398.3, or tenant-less mail).
-    /// The rows carry recipient addresses, subjects and bodies, so an unscoped
-    /// query behind the per-workspace `token:admin` was a cross-tenant read.
+    /// Dead-lettered entries for the operator DLQ view, newest first.
+    /// Dead-lettered mail for the operator DLQ. `scope` is the caller's
+    /// workspace; `None` is the `operator:global` view and the only way to see
+    /// rows with a `NULL` workspace (pre-398.3, or tenant-less mail). The rows
+    /// carry recipient addresses, subjects and bodies, so an unscoped query
+    /// behind the per-workspace `token:admin` was a cross-tenant read.
     async fn list_dead_mail(
         &self,
         scope: Option<WorkspaceId>,
@@ -637,13 +634,14 @@ pub trait MailStore: Send + Sync {
 
 #[async_trait]
 pub trait EgressStore: Send + Sync {
-    /// Durable projector egress (Cluster 377): a message bound for an external
-    /// surface is enqueued and delivered by a retry/backoff worker, instead of the
-    /// projectors' best-effort inline post where a transient failure dropped it.
+    /// Durable projector egress: a message bound for an external surface is
+    /// enqueued and delivered by a retry/backoff worker, instead of the
+    /// projectors' best-effort inline post where a transient failure dropped
+    /// it.
     ///
     /// `enqueue_egress` queues one and returns `None` when `(source_log_id,
-    /// target)` is already queued — the router that enqueues runs on every replica,
-    /// so the dedup is what makes N replicas send once (the Cluster-238 lesson).
+    /// target)` is already queued — the router that enqueues runs on every
+    /// replica, so the dedup is what makes N replicas send once (the lesson).
     /// `claim_next_due_egress` atomically leases the oldest due `pending` row
     /// (bumps `attempts`, pushes `next_attempt_at` forward by `lease_secs` so a
     /// crashed worker's row is retried); `mark_egress_delivered` finishes it;
@@ -667,11 +665,11 @@ pub trait EgressStore: Send + Sync {
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError>;
     async fn count_dead_egress(&self) -> Result<i64, StoreError>;
-    /// Dead-lettered deliveries for the operator DLQ view (Cluster 377.4),
-    /// newest first — **scoped to one workspace** (Cluster 397.4).
+    /// Dead-lettered deliveries for the operator DLQ view, newest first —
+    /// **scoped to one workspace**.
     ///
-    /// The scope is a parameter rather than a route-level filter because the rows
-    /// name other tenants' Slack channel ids and GitHub repositories, and
+    /// The scope is a parameter rather than a route-level filter because the
+    /// rows name other tenants' Slack channel ids and GitHub repositories, and
     /// `token:admin` is per-workspace. A global query behind a per-workspace
     /// capability is a cross-tenant read.
     async fn list_dead_egress(
@@ -689,20 +687,22 @@ pub trait EgressStore: Send + Sync {
         id: EgressOutboxId,
     ) -> Result<bool, StoreError>;
 
-    /// The egress trust boundary (Cluster 378.1): a per-workspace allowlist of the
-    /// destinations Maidan may deliver to. A result's `deliver_to` is written by an
+    /// The egress trust boundary: a per-workspace allowlist of the destinations
+    /// Maidan may deliver to. A result's `deliver_to` is written by an
     /// *agent*, while the connector credentials are operator-held and reach many
-    /// repositories and channels — so `deliver_to` **selects** and this allowlist
-    /// **authorizes**, and an empty allowlist authorizes nothing (the Cluster-371
+    /// repositories and channels — so `deliver_to` **selects** and this
+    /// allowlist
+    /// **authorizes**, and an empty allowlist authorizes nothing (the
     /// secret-broker fail-safe).
     ///
-    /// `allow_egress_target` is idempotent (re-blessing keeps the original entry)
-    /// and rejects a selector that is not an id — a Slack `#name` or a GitHub
-    /// `owner/name#123` — because an allowlist keyed on a mutable name is not an
-    /// allowlist and the authorization grain on GitHub is the *repository*.
-    /// `revoke_egress_target` is workspace-scoped so one admin cannot revoke
-    /// another workspace's entry by guessing an id. `is_egress_target_allowed`
-    /// takes the allowlist grain, i.e. `EgressTarget::allowlist_selector()`.
+    /// `allow_egress_target` is idempotent (re-blessing keeps the original
+    /// entry) and rejects a selector that is not an id — a Slack `#name` or a
+    /// GitHub `owner/name#123` — because an allowlist keyed on a mutable name
+    /// is not an allowlist and the authorization grain on GitHub is the
+    /// *repository*. `revoke_egress_target` is workspace-scoped so one admin
+    /// cannot revoke another workspace's entry by guessing an id.
+    /// `is_egress_target_allowed` takes the allowlist grain, i.e.
+    /// `EgressTarget::allowlist_selector()`.
     async fn allow_egress_target(
         &self,
         new: NewEgressTarget,
@@ -723,24 +723,25 @@ pub trait EgressStore: Send + Sync {
         selector: &str,
     ) -> Result<bool, StoreError>;
 
-    /// Result-delivery state (Cluster 379.1) — one row per `(thread, target)`.
-    /// Distinct from the egress outbox, which is transport: this is *intent and
-    /// identity*, and it is what makes an always-on every-replica router safe.
+    /// Result-delivery state — one row per `(thread, target)`. Distinct from
+    /// the egress outbox, which is transport: this is *intent and identity*,
+    /// and it is what makes an always-on every-replica router safe.
     ///
-    /// `arm_result_delivery` is the contended write: it returns the row only when
+    /// `arm_result_delivery` is the contended write: it returns the row only
+    /// when
     /// *this* caller won the right to deliver `revision`. `None` means another
     /// replica already armed this exact revision, or the row has seen one at
-    /// least as new — which is the dedup (the Cluster-238 lesson). A won row
-    /// keeps its `external_ref`, so a re-review edits the object the first
-    /// delivery created instead of leaving a second comment.
+    /// least as new — which is the dedup (the lesson). A won row keeps its
+    /// `external_ref`, so a re-review edits the object the first delivery
+    /// created instead of leaving a second comment.
     ///
     /// `mark_result_delivered` records the handle to edit next time and the
     /// revision that actually landed; `mark_result_delivery_failed` leaves both
-    /// alone, because whatever was delivered before is still out there and still
-    /// editable. `mark_result_delivery_skipped` records a target we deliberately
-    /// did not deliver to — an unknown surface, or one the workspace has not
-    /// blessed — which is a **normal outcome**, not an error, and is recorded so
-    /// the producer can read it rather than being dropped.
+    /// alone, because whatever was delivered before is still out there and
+    /// still editable. `mark_result_delivery_skipped` records a target we
+    /// deliberately did not deliver to — an unknown surface, or one the
+    /// workspace has not blessed — which is a **normal outcome**, not an error,
+    /// and is recorded so the producer can read it rather than being dropped.
     async fn arm_result_delivery(
         &self,
         thread_id: ThreadId,
@@ -792,10 +793,10 @@ pub trait EgressStore: Send + Sync {
         thread_id: ThreadId,
         id: ResultDeliveryId,
     ) -> Result<Option<ResultDelivery>, StoreError>;
-    /// Operator replay (Cluster 379.5): reopen as `pending` and clear
-    /// `last_error` without touching `armed_revision` or `external_ref`.
-    /// Arming is "is this a new result?"; replay is "try this result again".
-    /// `None` if `(thread_id, id)` does not exist.
+    /// Operator replay: reopen as `pending` and clear `last_error` without
+    /// touching `armed_revision` or `external_ref`. Arming is "is this a new
+    /// result?"; replay is "try this result again". `None` if `(thread_id, id)`
+    /// does not exist.
     async fn prepare_result_delivery_replay(
         &self,
         thread_id: ThreadId,
@@ -805,8 +806,8 @@ pub trait EgressStore: Send + Sync {
 
 #[async_trait]
 pub trait ProjectorLinkStore: Send + Sync {
-    /// Slack projector channel links (Cluster 308): map a Slack channel to the
-    /// Maidan channel/thread it projects into, and the member inbound messages post
+    /// Slack projector channel links: map a Slack channel to the Maidan
+    /// channel/thread it projects into, and the member inbound messages post
     /// as. `link` upserts (one per Slack channel); `get` resolves the ingress
     /// target; `list` is the workspace's links; `unlink` removes one.
     async fn link_slack_channel(
@@ -817,8 +818,7 @@ pub trait ProjectorLinkStore: Send + Sync {
         &self,
         slack_channel_id: &str,
     ) -> Result<Option<SlackChannelLink>, StoreError>;
-    /// Resolve the Slack link for a Maidan thread — the egress reverse lookup
-    /// (Cluster 309).
+    /// Resolve the Slack link for a Maidan thread — the egress reverse lookup.
     async fn get_slack_channel_link_by_thread(
         &self,
         thread_id: ThreadId,
@@ -828,17 +828,17 @@ pub trait ProjectorLinkStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlackChannelLink>, StoreError>;
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
-    /// Turn egress to a Slack channel off after an auth/config-class failure
-    /// (Cluster 377.3) — a retry can't fix a revoked token or a deleted channel.
-    /// Idempotent (an already-disabled link keeps its original timestamp);
-    /// returns whether this call did the disabling, so only the first failure
-    /// announces it. Re-linking clears the flag; ingress is unaffected.
+    /// Turn egress to a Slack channel off after an auth/config-class failure —
+    /// a retry can't fix a revoked token or a deleted channel. Idempotent (an
+    /// already-disabled link keeps its original timestamp); returns whether
+    /// this call did the disabling, so only the first failure announces it.
+    /// Re-linking clears the flag; ingress is unaffected.
     async fn disable_slack_channel_link(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
 
-    /// GitHub projector issue/PR links (Cluster 311): map a GitHub issue/PR
-    /// (`repo`, `issue_number`) to the Maidan channel/thread it projects into.
-    /// `link` upserts; `get` resolves ingress; `get_by_thread` is the egress reverse
-    /// lookup (Cluster 312); `list` is the workspace's links; `unlink` removes one.
+    /// GitHub projector issue/PR links: map a GitHub issue/PR (`repo`,
+    /// `issue_number`) to the Maidan channel/thread it projects into. `link`
+    /// upserts; `get` resolves ingress; `get_by_thread` is the egress reverse
+    /// lookup; `list` is the workspace's links; `unlink` removes one.
     async fn link_github_issue(
         &self,
         new: NewGithubIssueLink,
@@ -857,8 +857,8 @@ pub trait ProjectorLinkStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<GithubIssueLink>, StoreError>;
     async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError>;
-    /// The GitHub twin of [`disable_slack_channel_link`](Self::disable_slack_channel_link)
-    /// (Cluster 377.3).
+    /// The GitHub twin of
+    /// [`disable_slack_channel_link`](Self::disable_slack_channel_link).
     async fn disable_github_issue_link(
         &self,
         repo: &str,
@@ -868,8 +868,8 @@ pub trait ProjectorLinkStore: Send + Sync {
 
 #[async_trait]
 pub trait PresenceDigestStore: Send + Sync {
-    /// Durable per-member last-seen (Cluster 252, Arc I): `touch` upserts `now()`
-    /// (called on presence registration), `get` returns the instant or `None`. A
+    /// Durable per-member last-seen: `touch` upserts `now()` (called on
+    /// presence registration), `get` returns the instant or `None`. A
     /// cross-replica signal for presence-aware email routing. No wiring yet — a
     /// zero-blast-radius foundation.
     async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError>;
@@ -878,12 +878,12 @@ pub trait PresenceDigestStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError>;
 
-    /// Email digest data model (Cluster 254, Arc I): a per-member delivery mode
-    /// (`set`/`get`, default `Immediate` when unset), a digest watermark
-    /// (`set_last_digest_at`, advanced after a digest is sent), and the sweeper's
-    /// enumeration (`members_due_for_digest` — digest-mode members with an address
-    /// and unread notifications since their last digest). No worker/routes yet — a
-    /// zero-blast-radius foundation.
+    /// Email digest data model: a per-member delivery mode (`set`/`get`,
+    /// default `Immediate` when unset), a digest watermark
+    /// (`set_last_digest_at`, advanced after a digest is sent), and the
+    /// sweeper's enumeration (`members_due_for_digest` — digest-mode members
+    /// with an address and unread notifications since their last digest). No
+    /// worker/routes yet — a zero-blast-radius foundation.
     async fn set_delivery_mode(
         &self,
         member_id: MemberId,
@@ -897,9 +897,9 @@ pub trait PresenceDigestStore: Send + Sync {
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
     async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
-    /// Task results ("decisions", Cluster 359, N2) produced by someone else after
-    /// `since`, in a channel or thread the member follows — the "buried decisions"
-    /// the digest surfaces, and a queryable read. Newest first.
+    /// Task results ("decisions") produced by someone else after `since`, in a
+    /// channel or thread the member follows — the "buried decisions" the digest
+    /// surfaces, and a queryable read. Newest first.
     async fn buried_decisions_for_member(
         &self,
         member_id: MemberId,
@@ -930,8 +930,8 @@ pub trait ChannelStore: Send + Sync {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
 
     /// Insert a channel and append its `ChannelCreated` event **atomically** in
-    /// one transaction (Cluster 205 transactional outbox). Returns the channel and
-    /// the durable event; the caller notifies the bus with the returned event.
+    /// one transaction. Returns the channel and the durable event; the caller
+    /// notifies the bus with the returned event.
     async fn create_channel_with_event(
         &self,
         new: NewChannel,
@@ -939,9 +939,9 @@ pub trait ChannelStore: Send + Sync {
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
 
-    /// Per-channel membership (Cluster 159). Public channels are open to the
-    /// workspace and need no rows; these gate private channels. `add` is an
-    /// idempotent upsert of the role.
+    /// Per-channel membership. Public channels are open to the workspace and
+    /// need no rows; these gate private channels. `add` is an idempotent upsert
+    /// of the role.
     async fn add_channel_member(
         &self,
         channel_id: ChannelId,
@@ -1014,8 +1014,8 @@ pub trait DmStore: Send + Sync {
 pub trait ThreadStore: Send + Sync {
     async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError>;
 
-    /// Insert a thread and append its `ThreadCreated` event **atomically** in one
-    /// transaction (Cluster 205 transactional outbox).
+    /// Insert a thread and append its `ThreadCreated` event **atomically** in
+    /// one transaction.
     async fn create_thread_with_event(
         &self,
         new: NewThread,
@@ -1023,9 +1023,9 @@ pub trait ThreadStore: Send + Sync {
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
-    /// All threads across a workspace's channels, in one query (Cluster 106).
-    /// Avoids the per-channel `list_threads` N+1 when assembling workspace
-    /// context. Ordered by `created_at DESC`.
+    /// All threads across a workspace's channels, in one query. Avoids the
+    /// per-channel `list_threads` N+1 when assembling workspace context.
+    /// Ordered by `created_at DESC`.
     async fn list_threads_for_workspace(
         &self,
         workspace_id: WorkspaceId,
@@ -1044,10 +1044,10 @@ pub trait ThreadStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Thread>, StoreError>;
 
-    /// One keyset page of a channel's **live** threads, ordered `(created_at, id)`
-    /// ascending (Cluster 343). `after` is an exclusive cursor (the prior page's
-    /// last thread id); `None` starts from the beginning. The channel-scoped twin
-    /// of [`page_threads_for_workspace`](Self::page_threads_for_workspace) —
+    /// One keyset page of a channel's **live** threads, ordered `(created_at,
+    /// id)` ascending. `after` is an exclusive cursor (the prior page's last
+    /// thread id); `None` starts from the beginning. The channel-scoped twin of
+    /// [`page_threads_for_workspace`](Self::page_threads_for_workspace) —
     /// bounds the previously-unbounded [`list_threads`](Self::list_threads)
     /// (kept for internal full-list callers).
     async fn page_threads_for_channel(
@@ -1057,15 +1057,15 @@ pub trait ThreadStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Thread>, StoreError>;
 
-    /// A parent thread's child threads, collapsed with a message count each
-    /// (Cluster 356, F2). Oldest first; tombstoned children excluded.
+    /// A parent thread's child threads, collapsed with a message count each.
+    /// Oldest first; tombstoned children excluded.
     async fn child_thread_summaries(
         &self,
         parent_id: ThreadId,
     ) -> Result<Vec<ChildThreadSummary>, StoreError>;
 
-    /// A channel's threads ordered by last activity — most-recently bumped first
-    /// (Cluster 356, F7). A post bumps its thread's `updated_at`, floating it here.
+    /// A channel's threads ordered by last activity — most-recently bumped
+    /// first. A post bumps its thread's `updated_at`, floating it here.
     async fn list_recently_active_threads(
         &self,
         channel_id: ChannelId,
@@ -1079,7 +1079,7 @@ pub trait ThreadStore: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<ThreadTransitionResult, StoreError>;
     /// Transition a thread's state and append its `ThreadStateChanged` event
-    /// atomically (Cluster 208).
+    /// atomically.
     async fn transition_thread_with_event(
         &self,
         thread_id: ThreadId,
@@ -1093,15 +1093,15 @@ pub trait ThreadStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadTransition>, StoreError>;
 
-    /// Point-in-time task-queue depth for a channel (Cluster 224): counts of its
-    /// open task threads partitioned into ready / assigned / blocked, using the
-    /// same claimability predicate as `claim_next`. One aggregate query.
+    /// Point-in-time task-queue depth for a channel: counts of its open task
+    /// threads partitioned into ready / assigned / blocked, using the same
+    /// claimability predicate as `claim_next`. One aggregate query.
     async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
 
-    /// Channel occupancy (Cluster 351): the two-clocks refinement of
-    /// `channel_queue_depth` — the held threads split into `claimed` (not yet
-    /// acknowledged) and `working` (acknowledged), so an orchestrator sees how
-    /// much held work is actually underway. One aggregate query.
+    /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
+    /// the held threads split into `claimed` (not yet acknowledged) and
+    /// `working` (acknowledged), so an orchestrator sees how much held work is
+    /// actually underway. One aggregate query.
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
@@ -1110,9 +1110,9 @@ pub trait ThreadStore: Send + Sync {
 
 #[async_trait]
 pub trait TaskScheduleStore: Send + Sync {
-    /// Scheduled / recurring task foundation (Cluster 226). CRUD plus the
-    /// sweeper's due-scan (`due_task_schedules`). No worker or routes yet — a
-    /// zero-blast-radius foundation.
+    /// Scheduled / recurring task foundation. CRUD plus the sweeper's due-scan
+    /// (`due_task_schedules`). No worker or routes yet — a zero-blast-radius
+    /// foundation.
     async fn create_task_schedule(&self, new: NewTaskSchedule) -> Result<TaskSchedule, StoreError>;
     async fn get_task_schedule(&self, id: TaskScheduleId) -> Result<TaskSchedule, StoreError>;
     async fn list_task_schedules(
@@ -1138,8 +1138,8 @@ pub trait TaskScheduleStore: Send + Sync {
         &self,
         now: DateTime<Utc>,
     ) -> Result<Option<TaskSchedule>, StoreError>;
-    /// Pause (`false`) or resume (`true`) a schedule (Cluster 228). `NotFound` if
-    /// the id doesn't exist. Resuming does not re-arm `next_run_at`.
+    /// Pause (`false`) or resume (`true`) a schedule. `NotFound` if the id
+    /// doesn't exist. Resuming does not re-arm `next_run_at`.
     async fn set_task_schedule_active(
         &self,
         id: TaskScheduleId,
@@ -1149,20 +1149,21 @@ pub trait TaskScheduleStore: Send + Sync {
 
 #[async_trait]
 pub trait RecipeStore: Send + Sync {
-    /// Recipe blueprint CRUD (Cluster 370, Wave 2 #18). A recipe is a reusable
-    /// thread-type; instantiation (`instantiate_recipe`, Cluster 370.2) builds a
-    /// parent + DAG children from it. Zero-blast-radius foundation — no routes yet.
+    /// Recipe blueprint CRUD. A recipe is a reusable thread-type; instantiation
+    /// (`instantiate_recipe`) builds a parent + DAG children from it.
+    /// Zero-blast-radius foundation — no routes yet.
     async fn create_recipe(&self, new: NewRecipe) -> Result<Recipe, StoreError>;
     async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError>;
     async fn list_recipes(&self, workspace_id: WorkspaceId) -> Result<Vec<Recipe>, StoreError>;
     async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError>;
-    /// Instantiate a recipe (Cluster 370.2): in one transaction, create the parent
-    /// thread + a child thread per `spec.children`, wire the readiness DAG (each
-    /// child depends on its `depends_on` siblings; the parent depends on every
-    /// child so it lands last), attach each child's required skills, and record a
-    /// `maidan_recipe_runs` row freezing the recipe bytes + `params` (copy-on-fire).
-    /// Returns the run plus every `ThreadCreated` event (the caller publishes them).
-    /// `InvalidInput` if `params` fails the spec's required-param check.
+    /// Instantiate a recipe: in one transaction, create the parent thread + a
+    /// child thread per `spec.children`, wire the readiness DAG (each child
+    /// depends on its `depends_on` siblings; the parent depends on every child
+    /// so it lands last), attach each child's required skills, and record a
+    /// `maidan_recipe_runs` row freezing the recipe bytes + `params`
+    /// (copy-on-fire). Returns the run plus every `ThreadCreated` event (the
+    /// caller publishes them). `InvalidInput` if `params` fails the spec's
+    /// required-param check.
     async fn instantiate_recipe(
         &self,
         recipe_id: RecipeId,
@@ -1171,18 +1172,17 @@ pub trait RecipeStore: Send + Sync {
     ) -> Result<(RecipeRun, Vec<StoredEvent>), StoreError>;
     async fn get_recipe_run(&self, id: RecipeRunId) -> Result<RecipeRun, StoreError>;
     /// The most recent run of a recipe, or `None` if never instantiated — the
-    /// dedup basis for the scheduler's `ScheduleSkipped` (Cluster 370.5).
+    /// dedup basis for the scheduler's `ScheduleSkipped`.
     async fn latest_recipe_run(&self, recipe_id: RecipeId)
         -> Result<Option<RecipeRun>, StoreError>;
 }
 
 #[async_trait]
 pub trait SecretStore: Send + Sync {
-    /// Named-secret store (Cluster 371, Wave 2 #19). The value is stored
-    /// AEAD-encrypted (the route layer holds the key); `get_secret_ciphertext` is
-    /// the only read that returns it, and `list_secrets` returns metadata only.
-    /// `create_secret` upserts on `(workspace_id, name)` — re-creating a name
-    /// rotates its value.
+    /// Named-secret store. The value is stored AEAD-encrypted (the route layer
+    /// holds the key); `get_secret_ciphertext` is the only read that returns
+    /// it, and `list_secrets` returns metadata only. `create_secret` upserts on
+    /// `(workspace_id, name)` — re-creating a name rotates its value.
     async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError>;
     async fn get_secret_ciphertext(
         &self,
@@ -1199,10 +1199,10 @@ pub trait SecretStore: Send + Sync {
 
 #[async_trait]
 pub trait MemberFreezeStore: Send + Sync {
-    /// Member-freeze kill-switch (Cluster 372, Wave 2 #20). `freeze_member`
-    /// records the freeze AND drops the member's active leases in one tx,
-    /// returning the freeze + the number of threads released; `claim_next`
-    /// refuses a frozen member (Cluster 372.2). Re-freezing refreshes the record.
+    /// Member-freeze kill-switch. `freeze_member` records the freeze AND drops
+    /// the member's active leases in one tx, returning the freeze + the number
+    /// of threads released; `claim_next` refuses a frozen member. Re-freezing
+    /// refreshes the record.
     async fn freeze_member(
         &self,
         member_id: MemberId,
@@ -1223,18 +1223,18 @@ pub trait MemberFreezeStore: Send + Sync {
 
 #[async_trait]
 pub trait MemoryBlockStore: Send + Sync {
-    /// Attachable labeled memory blocks (Cluster 373, Wave 2 #21, H11). A block
-    /// is a Letta-shaped `{label, description, limit, read_only, value}` object a
-    /// thread can attach to (a "room object"), letting a parent watch a child's
-    /// result block without a nested runtime.
+    /// Attachable labeled memory blocks. A block is a Letta-shaped `{label,
+    /// description, limit, read_only, value}` object a thread can attach to (a
+    /// "room object"), letting a parent watch a child's result block without a
+    /// nested runtime.
     ///
     /// `create_memory_block` is concurrent-safe on `(workspace_id, label)` — a
     /// racing create returns the existing block rather than erroring, so two
     /// racers converge on one block. `set_memory_block_value` is a full rewrite
-    /// (last-writer-wins) that returns `InvalidInput` for a read-only block or a
-    /// value over the block's char limit, and `NotFound` for an unknown block.
-    /// `attach_memory_block` / `detach_memory_block` are idempotent and report
-    /// whether they changed anything.
+    /// (last-writer-wins) that returns `InvalidInput` for a read-only block or
+    /// a value over the block's char limit, and `NotFound` for an unknown
+    /// block. `attach_memory_block` / `detach_memory_block` are idempotent and
+    /// report whether they changed anything.
     async fn create_memory_block(&self, new: NewMemoryBlock) -> Result<MemoryBlock, StoreError>;
     async fn get_memory_block(&self, id: MemoryBlockId) -> Result<Option<MemoryBlock>, StoreError>;
     async fn get_memory_block_by_label(
@@ -1270,13 +1270,13 @@ pub trait MemoryBlockStore: Send + Sync {
 
 #[async_trait]
 pub trait ReviewStore: Send + Sync {
-    /// Required reviewers (Cluster 375, Wave 2 #22). `set_review_requirement`
-    /// upserts the required approval count `k`; `add_reviewer` names the reviewer
-    /// set (empty = open review — any qualifying member); `submit_review` upserts
-    /// a reviewer's decision (re-submitting changes it). `review_status` counts
-    /// the DISTINCT **qualifying** approvals — decision = approve, the reviewer is
-    /// neither the thread's owner nor its assignee (separation of duties), and, when
-    /// a named set exists, is in it — which the FSM close-gate (375.2) reads.
+    /// Required reviewers. `set_review_requirement` upserts the required
+    /// approval count `k`; `add_reviewer` names the reviewer set (empty = open
+    /// review — any qualifying member); `submit_review` upserts a reviewer's
+    /// decision (re-submitting changes it). `review_status` counts the DISTINCT
+    /// **qualifying** approvals — decision = approve, the reviewer is neither
+    /// the thread's owner nor its assignee (separation of duties), and, when a
+    /// named set exists, is in it — which the FSM close-gate (375.2) reads.
     async fn set_review_requirement(
         &self,
         thread_id: ThreadId,
@@ -1307,13 +1307,12 @@ pub trait ReviewStore: Send + Sync {
     ) -> Result<ThreadReview, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
-    /// Cluster 383: if `result` is a reviewed `example.review.result/1` with any
-    /// `critical` finding **and** `reviewer_id` has declared the `review`
-    /// skill, upsert a `request_changes` decision and, when the thread has
-    /// no requirement yet, set `k = 1` so the Cluster-375 close-gate refuses
-    /// `closed` until a qualifying human approve. `None` = nothing to apply
-    /// (wrong shape, no critical, or reviewer not review-skilled). An
-    /// existing `k` is left alone.
+    /// If `result` is a reviewed `example.review.result/1` with any `critical`
+    /// finding **and** `reviewer_id` has declared the `review` skill, upsert a
+    /// `request_changes` decision and, when the thread has no requirement yet,
+    /// set `k = 1` so the close-gate refuses `closed` until a qualifying human
+    /// approve. `None` = nothing to apply (wrong shape, no critical, or
+    /// reviewer not review-skilled). An existing `k` is left alone.
     async fn apply_critical_review_decision(
         &self,
         thread_id: ThreadId,
@@ -1324,14 +1323,14 @@ pub trait ReviewStore: Send + Sync {
 
 #[async_trait]
 pub trait LandGateStore: Send + Sync {
-    /// Land-gate pointer (Cluster 385, renamed Cluster 389). Presence
-    /// of a row arms the close-gate. `require_land_gate` inserts a pending
-    /// row (no pointer yet) so `closed` refuses until a qualifying green
-    /// pass arrives; an existing pointer is left alone. `set_land_gate_pointer`
-    /// upserts `{kind:"land_gate", status, artifact_sha?, land}` from a
-    /// land-gate-skilled recorder. `get_land_gate_standing` is total (no
-    /// row → not required, vacuous green). `clear_land_gate` deletes the
-    /// row. The FSM close-gate (385.2) reads this standing in-tx.
+    /// Land-gate pointer. Presence of a row arms the close-gate.
+    /// `require_land_gate` inserts a pending row (no pointer yet) so `closed`
+    /// refuses until a qualifying green pass arrives; an existing pointer is
+    /// left alone. `set_land_gate_pointer` upserts `{kind:"land_gate", status,
+    /// artifact_sha?, land}` from a land-gate-skilled recorder.
+    /// `get_land_gate_standing` is total (no row → not required, vacuous
+    /// green). `clear_land_gate` deletes the row. The FSM close-gate (385.2)
+    /// reads this standing in-tx.
     async fn require_land_gate(&self, thread_id: ThreadId) -> Result<LandGateStanding, StoreError>;
     async fn set_land_gate_pointer(
         &self,
@@ -1350,13 +1349,13 @@ pub trait LandGateStore: Send + Sync {
 
 #[async_trait]
 pub trait SpawnBudgetStore: Send + Sync {
-    /// Spawn budget (Cluster 376, Wave 2 #23). `set_spawn_budget` upserts the
-    /// workspace's caps (each `None` = unlimited on that axis; all-`None` clears
-    /// the row); `get_spawn_budget` is `None` when unset. `count_active_children`
-    /// is a parent's non-tombstoned direct children (the fan-out so far);
+    /// Spawn budget. `set_spawn_budget` upserts the workspace's caps (each
+    /// `None` = unlimited on that axis; all-`None` clears the row);
+    /// `get_spawn_budget` is `None` when unset. `count_active_children` is a
+    /// parent's non-tombstoned direct children (the fan-out so far);
     /// `thread_depth` is the nesting depth (a root thread is 1) via an ancestor
-    /// walk; `count_thread_tool_uses` counts the tool-use blocks recorded across a
-    /// thread's messages (Cluster 173 content). These back the spawn-time gate.
+    /// walk; `count_thread_tool_uses` counts the tool-use blocks recorded
+    /// across a thread's messages. These back the spawn-time gate.
     async fn set_spawn_budget(
         &self,
         workspace_id: WorkspaceId,
@@ -1375,32 +1374,32 @@ pub trait SpawnBudgetStore: Send + Sync {
 
 #[async_trait]
 pub trait AssignmentStore: Send + Sync {
-    /// Set a thread's assignee unconditionally (assign / handoff). `NotFound` if
-    /// the thread doesn't exist (Cluster 171).
+    /// Set a thread's assignee unconditionally (assign / handoff). `NotFound`
+    /// if the thread doesn't exist.
     async fn assign_thread(
         &self,
         thread_id: ThreadId,
         assignee_id: MemberId,
     ) -> Result<Thread, StoreError>;
-    /// Set (or clear, with `None`) a thread's durable owner (Cluster 355, W1) —
-    /// the accountable party, distinct from the assignee/claimer. `NotFound` if
-    /// the thread is absent or tombstoned. Orthogonal to assignment; does not
-    /// touch the claim lease or working clock.
+    /// Set (or clear, with `None`) a thread's durable owner — the accountable
+    /// party, distinct from the assignee/claimer. `NotFound` if the thread is
+    /// absent or tombstoned. Orthogonal to assignment; does not touch the claim
+    /// lease or working clock.
     async fn set_thread_owner(
         &self,
         thread_id: ThreadId,
         owner_id: Option<MemberId>,
     ) -> Result<Thread, StoreError>;
-    /// Rename a thread (Cluster 356, F1) — titled threads become editable.
-    /// `NotFound` if the thread is absent or tombstoned. Touches only `title`; a
-    /// rename is metadata, not activity, so it does not bump the activity-sort key.
+    /// Rename a thread — titled threads become editable. `NotFound` if the
+    /// thread is absent or tombstoned. Touches only `title`; a rename is
+    /// metadata, not activity, so it does not bump the activity-sort key.
     async fn set_thread_title(
         &self,
         thread_id: ThreadId,
         title: Option<String>,
     ) -> Result<Thread, StoreError>;
-    /// Assign a thread and append its `ThreadAssignmentChanged` event atomically
-    /// (Cluster 209). Captures the previous assignee in the same tx.
+    /// Assign a thread and append its `ThreadAssignmentChanged` event
+    /// atomically. Captures the previous assignee in the same tx.
     async fn assign_thread_with_event(
         &self,
         thread_id: ThreadId,
@@ -1409,7 +1408,7 @@ pub trait AssignmentStore: Send + Sync {
         note: Option<String>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
-    /// Atomically claim an unassigned thread for `member_id` (Cluster 171). The
+    /// Atomically claim an unassigned thread for `member_id`. The
     /// compare-and-set (`WHERE assignee_id IS NULL`) makes concurrent claims
     /// race-safe: exactly one wins. `claimed` is `false` when it was already
     /// assigned; `NotFound` only when the thread doesn't exist.
@@ -1418,26 +1417,26 @@ pub trait AssignmentStore: Send + Sync {
         thread_id: ThreadId,
         member_id: MemberId,
     ) -> Result<ThreadClaimResult, StoreError>;
-    /// Claim a thread, appending `ThreadAssignmentChanged` atomically **iff** the
-    /// CAS actually claimed (Cluster 209). `(result, event)`.
+    /// Claim a thread, appending `ThreadAssignmentChanged` atomically **iff**
+    /// the CAS actually claimed. `(result, event)`.
     async fn claim_thread_with_event(
         &self,
         thread_id: ThreadId,
         member_id: MemberId,
     ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError>;
 
-    /// Clear a thread's assignee (Cluster 171). `NotFound` if it doesn't exist.
+    /// Clear a thread's assignee. `NotFound` if it doesn't exist.
     async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError>;
     /// Clear a thread's assignee and append its `ThreadAssignmentChanged` event
-    /// atomically (Cluster 209).
+    /// atomically.
     async fn unassign_thread_with_event(
         &self,
         thread_id: ThreadId,
         actor_id: MemberId,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
-    /// Threads in `workspace_id` assigned to `member_id` — the agent's work queue
-    /// (Cluster 190). Live threads only, oldest first.
+    /// Threads in `workspace_id` assigned to `member_id` — the agent's work
+    /// queue. Live threads only, oldest first.
     async fn list_assigned_threads(
         &self,
         workspace_id: WorkspaceId,
@@ -1445,25 +1444,24 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
-    /// `member_id` — the "pull the next task" primitive (Cluster 190). Claimable =
-    /// unassigned **or** its lease has expired (Cluster 192 dead-agent recovery),
-    /// **and** every task-dependency is terminal (Cluster 218 readiness — a task
-    /// blocked by an unfinished dependency is skipped), **and** it has no
-    /// explicit [`BlockedReason`] row (Cluster 386 — distinct from the DAG
-    /// skip). `lease_secs` sets a lease deadline (`None` = durable, no lease).
-    /// `None` return when there is no claimable *ready* work. Concurrent
-    /// claimers get distinct threads.
+    /// `member_id` — the "pull the next task" primitive. Claimable = unassigned
+    /// **or** its lease has expired,
+    /// **and** every task-dependency is terminal (a task blocked by an
+    /// unfinished dependency is skipped), **and** it has no
+    /// explicit [`BlockedReason`] row. `lease_secs` sets a lease deadline
+    /// (`None` = durable, no lease). `None` return when there is no claimable
+    /// *ready* work. Concurrent claimers get distinct threads.
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<Option<Thread>, StoreError>;
-    /// Claim the next thread, appending its events atomically **iff** a thread was
-    /// claimed (Cluster 209/351). The returned events are the reclaim's
-    /// `ThreadAssignmentChanged`, preceded by a `ClaimExpired` when the claim took
-    /// over an expired lease (the previous holder's claim lapsed). Empty vec when
-    /// nothing was claimed.
+    /// Claim the next thread, appending its events atomically **iff** a thread
+    /// was claimed. The returned events are the reclaim's
+    /// `ThreadAssignmentChanged`, preceded by a `ClaimExpired` when the claim
+    /// took over an expired lease (the previous holder's claim lapsed). Empty
+    /// vec when nothing was claimed.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
@@ -1471,11 +1469,11 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
-    /// Extend a claimed thread's lease (heartbeat), only for the current assignee
-    /// holding the matching fencing token (Cluster 192 / 351). `NotFound` if the
-    /// thread is gone, the caller isn't the holder, or `lease_id` doesn't match
-    /// the thread's current claim — so a stale holder whose claim was reclaimed
-    /// by the next owner can no longer extend a lease it no longer holds.
+    /// Extend a claimed thread's lease (heartbeat), only for the current
+    /// assignee holding the matching fencing token. `NotFound` if the thread is
+    /// gone, the caller isn't the holder, or `lease_id` doesn't match the
+    /// thread's current claim — so a stale holder whose claim was reclaimed by
+    /// the next owner can no longer extend a lease it no longer holds.
     async fn renew_claim(
         &self,
         thread_id: ThreadId,
@@ -1484,10 +1482,10 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: i64,
     ) -> Result<Thread, StoreError>;
 
-    /// Stamp the working clock (Cluster 351): the current claim-holder
-    /// acknowledges and begins work. Fenced by `(member_id, lease_id)`. Idempotent
-    /// (the first start time wins). `NotFound` if the caller isn't the holder or
-    /// the token is stale.
+    /// Stamp the working clock: the current claim-holder acknowledges and
+    /// begins work. Fenced by `(member_id, lease_id)`. Idempotent (the first
+    /// start time wins). `NotFound` if the caller isn't the holder or the token
+    /// is stale.
     async fn acknowledge_claim(
         &self,
         thread_id: ThreadId,
@@ -1495,10 +1493,10 @@ pub trait AssignmentStore: Send + Sync {
         lease_id: ClaimLeaseId,
     ) -> Result<Thread, StoreError>;
 
-    /// Release a claim (graceful handoff, Cluster 351): the current holder returns
-    /// the thread to the queue immediately (e.g. a clean shutdown) rather than
-    /// letting the lease lapse. Fenced by `(member_id, lease_id)`. `NotFound` if
-    /// the caller isn't the holder or the token is stale.
+    /// Release a claim (graceful handoff): the current holder returns the
+    /// thread to the queue immediately (e.g. a clean shutdown) rather than
+    /// letting the lease lapse. Fenced by `(member_id, lease_id)`. `NotFound`
+    /// if the caller isn't the holder or the token is stale.
     async fn release_claim(
         &self,
         thread_id: ThreadId,
@@ -1506,8 +1504,8 @@ pub trait AssignmentStore: Send + Sync {
         lease_id: ClaimLeaseId,
     ) -> Result<Thread, StoreError>;
 
-    /// Release a claim and append its `ThreadAssignmentChanged` event atomically
-    /// (Cluster 351, the outbox pattern). The previous assignee is the caller.
+    /// Release a claim and append its `ThreadAssignmentChanged` event
+    /// atomically. The previous assignee is the caller.
     async fn release_claim_with_event(
         &self,
         thread_id: ThreadId,
@@ -1515,35 +1513,36 @@ pub trait AssignmentStore: Send + Sync {
         lease_id: ClaimLeaseId,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
-    /// Count a member's *live* claims (Cluster 362, G11): threads assigned to them
-    /// that are non-terminal, non-tombstoned, and whose lease has not expired (a
+    /// Count a member's *live* claims: threads assigned to them that are
+    /// non-terminal, non-tombstoned, and whose lease has not expired (a
     /// durable, no-lease assignment counts; an expired lease does not — it is a
-    /// reclaimable ghost, not live work). This is the quantity a WIP limit caps.
+    /// reclaimable ghost, not live work). This is the quantity a WIP limit
+    /// caps.
     async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError>;
 
-    /// Park a thread from dispatch (Cluster 363, G3): while marked, `claim_next`
-    /// skips it and an explicit claim is refused. Upserts the reason/actor.
+    /// Park a thread from dispatch: while marked, `claim_next` skips it and an
+    /// explicit claim is refused. Upserts the reason/actor.
     async fn mark_thread_unclaimable(
         &self,
         thread_id: ThreadId,
         reason: &str,
         marked_by: MemberId,
     ) -> Result<ThreadUnclaimable, StoreError>;
-    /// Clear a thread's dispatch park (Cluster 363). `true` if it was parked.
+    /// Clear a thread's dispatch park. `true` if it was parked.
     async fn mark_thread_claimable(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
-    /// The thread's dispatch park, or `None` if it is claimable (Cluster 363).
+    /// The thread's dispatch park, or `None` if it is claimable.
     async fn get_thread_unclaimable(
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadUnclaimable>, StoreError>;
-    /// The parked (unclaimable) threads in a channel (Cluster 363), newest first.
+    /// The parked (unclaimable) threads in a channel, newest first.
     async fn list_unclaimable_threads(
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadUnclaimable>, StoreError>;
 
-    /// Set (upsert) an explicit dispatch block (Cluster 386, Wave 2 #27).
-    /// Presence of the row parks the thread from `claim_next` (enforced in
+    /// Set (upsert) an explicit dispatch block. Presence of the row parks the
+    /// thread from `claim_next` (enforced in
     /// 386.2). One block per thread; re-setting replaces the reason/actor.
     async fn set_thread_block(
         &self,
@@ -1551,33 +1550,33 @@ pub trait AssignmentStore: Send + Sync {
         reason: BlockedReason,
         set_by: MemberId,
     ) -> Result<ThreadBlock, StoreError>;
-    /// Clear a thread's explicit block (Cluster 386). Returns the cleared row;
-    /// `None` if it was not blocked (idempotent). Prefer
-    /// [`clear_thread_block_with_event`] to emit `BlockedResolved`.
+    /// Clear a thread's explicit block. Returns the cleared row; `None` if it
+    /// was not blocked (idempotent). Prefer [`clear_thread_block_with_event`]
+    /// to emit `BlockedResolved`.
     async fn clear_thread_block(
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadBlock>, StoreError>;
-    /// Clear a thread's explicit block and append `BlockedResolved` atomically
-    /// (Cluster 386.3). `None` event when the thread was not blocked.
+    /// Clear a thread's explicit block and append `BlockedResolved` atomically.
+    /// `None` event when the thread was not blocked.
     async fn clear_thread_block_with_event(
         &self,
         thread_id: ThreadId,
         resolved_by: MemberId,
     ) -> Result<(Option<ThreadBlock>, Option<StoredEvent>), StoreError>;
-    /// The thread's explicit block, or `None` if unblocked (Cluster 386).
+    /// The thread's explicit block, or `None` if unblocked.
     async fn get_thread_block(
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadBlock>, StoreError>;
-    /// Explicitly blocked threads in a channel (Cluster 386), newest first.
+    /// Explicitly blocked threads in a channel, newest first.
     async fn list_blocked_threads(
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadBlock>, StoreError>;
 
-    /// Set (upsert) a thread's wait timer (Cluster 364, G2): the thread is waiting
-    /// until `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets
+    /// Set (upsert) a thread's wait timer: the thread is waiting until
+    /// `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets
     /// `fired_at` (a fresh timer). One wait per thread.
     async fn set_thread_wait(
         &self,
@@ -1587,33 +1586,32 @@ pub trait AssignmentStore: Send + Sync {
         reason: Option<&str>,
         created_by: MemberId,
     ) -> Result<ThreadWait, StoreError>;
-    /// Cancel a thread's wait — the awaited thing happened (Cluster 364). `true`
-    /// when a wait existed.
+    /// Cancel a thread's wait — the awaited thing happened. `true` when a wait
+    /// existed.
     async fn cancel_thread_wait(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
-    /// The thread's wait, or `None` (Cluster 364).
+    /// The thread's wait, or `None`.
     async fn get_thread_wait(&self, thread_id: ThreadId) -> Result<Option<ThreadWait>, StoreError>;
-    /// Atomically claim the oldest **due** un-fired wait (`wait_until <= now`) and
-    /// stamp `fired_at = now`, returning it (Cluster 364) — the sweeper's
-    /// fire-once primitive. `FOR UPDATE SKIP LOCKED` on Postgres so concurrent
-    /// replicas never double-fire one wait; SQLite serializes writers. `None` when
+    /// Atomically claim the oldest **due** un-fired wait (`wait_until <= now`)
+    /// and stamp `fired_at = now`, returning it — the sweeper's fire-once
+    /// primitive. `FOR UPDATE SKIP LOCKED` on Postgres so concurrent replicas
+    /// never double-fire one wait; SQLite serializes writers. `None` when
     /// nothing is due.
     async fn claim_next_due_wait(
         &self,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Option<ThreadWait>, StoreError>;
 
-    /// Set (upsert) a thread's dispatch priority (Cluster 365, G3 fair dispatch).
-    /// Higher = more urgent; the default (no row) is `0`. `claim_next` orders by an
-    /// effective rank that ages this base priority up the longer a thread has
-    /// waited, so priority jumps the queue without starving long-waiting tasks.
+    /// Set (upsert) a thread's dispatch priority. Higher = more urgent; the
+    /// default (no row) is `0`. `claim_next` orders by an effective rank that
+    /// ages this base priority up the longer a thread has waited, so priority
+    /// jumps the queue without starving long-waiting tasks.
     async fn set_thread_priority(
         &self,
         thread_id: ThreadId,
         priority: i64,
         set_by: MemberId,
     ) -> Result<ThreadPriority, StoreError>;
-    /// The thread's dispatch priority record, or `None` (= the default 0)
-    /// (Cluster 365).
+    /// The thread's dispatch priority record, or `None` (= the default 0).
     async fn get_thread_priority(
         &self,
         thread_id: ThreadId,
@@ -1629,28 +1627,28 @@ pub trait ThreadDepStore: Send + Sync {
         thread_id: ThreadId,
         depends_on: ThreadId,
     ) -> Result<(), StoreError>;
-    /// Remove a dependency edge; `true` when a row was deleted (Cluster 217).
+    /// Remove a dependency edge; `true` when a row was deleted.
     async fn remove_thread_dependency(
         &self,
         thread_id: ThreadId,
         depends_on: ThreadId,
     ) -> Result<bool, StoreError>;
-    /// Edges `thread_id` depends on — what this task is blocked by (Cluster 217).
+    /// Edges `thread_id` depends on — what this task is blocked by.
     async fn list_thread_dependencies(
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadDependency>, StoreError>;
-    /// Edges that depend on `thread_id` — what this task blocks (Cluster 217).
+    /// Edges that depend on `thread_id` — what this task blocks.
     async fn list_thread_dependents(
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadDependency>, StoreError>;
-    /// Whether every dependency of `thread_id` is terminal (closed/archived) — the
-    /// task is ready to run (Cluster 217). A task with no dependencies is ready.
+    /// Whether every dependency of `thread_id` is terminal (closed/archived) —
+    /// the task is ready to run. A task with no dependencies is ready.
     async fn thread_dependencies_satisfied(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
     /// Non-terminal dependents of `thread_id` whose dependencies are now *all*
-    /// terminal — i.e. the tasks that just became ready because `thread_id` reached
-    /// a terminal state (Cluster 222). Callers invoke this right after transitioning
+    /// terminal — i.e. the tasks that just became ready because `thread_id`
+    /// reached a terminal state. Callers invoke this right after transitioning
     /// `thread_id` into a terminal state to emit `ThreadReady` for each result.
     async fn newly_ready_dependents(&self, thread_id: ThreadId) -> Result<Vec<Thread>, StoreError>;
 }
@@ -1658,16 +1656,16 @@ pub trait ThreadDepStore: Send + Sync {
 #[async_trait]
 pub trait MessageStore: Send + Sync {
     async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError>;
-    /// Insert a message and append its `MessagePosted` event atomically
-    /// (Cluster 210). For the DM / group-DM post paths, which do no post-insert
-    /// slash edit. `dm_conversation_id` is `Some` for a 1:1 DM, `None` otherwise.
+    /// Insert a message and append its `MessagePosted` event atomically. For
+    /// the DM / group-DM post paths, which do no post-insert slash edit.
+    /// `dm_conversation_id` is `Some` for a 1:1 DM, `None` otherwise.
     async fn post_message_with_event(
         &self,
         new: NewMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError>;
-    /// Edit a just-posted message and append its `MessagePosted` event (reflecting
-    /// the edited message) atomically (Cluster 211) — the regular post path's
+    /// Edit a just-posted message and append its `MessagePosted` event
+    /// (reflecting the edited message) atomically — the regular post path's
     /// slash-command finalization, where the event must carry the post-edit
     /// message.
     async fn edit_message_with_posted_event(
@@ -1698,10 +1696,10 @@ pub trait MessageStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<MessageEdit>, StoreError>;
 
-    /// Edits for many messages in one windowed query (Cluster 106), at most
-    /// `limit_per` per message (newest-last, like `list_message_edits`). Avoids
-    /// the per-message edit N+1 in thread-context assembly. Returns a flat list
-    /// the caller groups by `message_id`.
+    /// Edits for many messages in one windowed query, at most `limit_per` per
+    /// message (newest-last, like `list_message_edits`). Avoids the per-message
+    /// edit N+1 in thread-context assembly. Returns a flat list the caller
+    /// groups by `message_id`.
     async fn list_message_edits_for_messages(
         &self,
         message_ids: &[MessageId],
@@ -1721,8 +1719,7 @@ pub trait MessageStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<Message>, StoreError>;
     async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError>;
-    /// Tombstone a message and append its `MessageTombstoned` event atomically
-    /// (Cluster 212).
+    /// Tombstone a message and append its `MessageTombstoned` event atomically.
     async fn tombstone_message_with_event(
         &self,
         id: MessageId,
@@ -1735,7 +1732,7 @@ pub trait MessageStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError>;
-    /// Deep purge then delete the workspace row and CASCADE-owned data (Cluster 53).
+    /// Deep purge then delete the workspace row and CASCADE-owned data.
     async fn erase_workspace(
         &self,
         workspace_id: WorkspaceId,
@@ -1749,8 +1746,8 @@ pub trait MentionInboxStore: Send + Sync {
         message_id: MessageId,
         member_id: MemberId,
     ) -> Result<(), StoreError>;
-    /// Record a mention and append its `MentionRecorded` event atomically
-    /// (Cluster 207). `member_id` is the mentioned party.
+    /// Record a mention and append its `MentionRecorded` event atomically.
+    /// `member_id` is the mentioned party.
     async fn record_mention_with_event(
         &self,
         message_id: MessageId,
@@ -1783,12 +1780,12 @@ pub trait MentionInboxStore: Send + Sync {
 #[async_trait]
 pub trait SocialStore: Send + Sync {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
-    /// Cast a vote and append its `VoteCast` event atomically (Cluster 206).
+    /// Cast a vote and append its `VoteCast` event atomically.
     async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError>;
-    /// Add a reaction and append its `ReactionAdded` event atomically (Cluster 206).
+    /// Add a reaction and append its `ReactionAdded` event atomically.
     async fn add_reaction_with_event(&self, new: NewReaction) -> Result<StoredEvent, StoreError>;
     async fn remove_reaction(
         &self,
@@ -1796,8 +1793,8 @@ pub trait SocialStore: Send + Sync {
         member_id: MemberId,
         emoji: &str,
     ) -> Result<bool, StoreError>;
-    /// Remove a reaction, appending `ReactionRemoved` atomically **iff** a row was
-    /// removed (Cluster 206). `(removed, event)`.
+    /// Remove a reaction, appending `ReactionRemoved` atomically **iff** a row
+    /// was removed. `(removed, event)`.
     async fn remove_reaction_with_event(
         &self,
         message_id: MessageId,
@@ -1810,15 +1807,15 @@ pub trait SocialStore: Send + Sync {
     ) -> Result<Vec<Reaction>, StoreError>;
 
     async fn pin_message(&self, new: NewPin) -> Result<(), StoreError>;
-    /// Pin a message and append its `MessagePinned` event atomically (Cluster 207).
+    /// Pin a message and append its `MessagePinned` event atomically.
     async fn pin_message_with_event(&self, new: NewPin) -> Result<StoredEvent, StoreError>;
     async fn unpin_message(
         &self,
         thread_id: ThreadId,
         message_id: MessageId,
     ) -> Result<bool, StoreError>;
-    /// Unpin a message, appending `MessageUnpinned` atomically **iff** a row was
-    /// removed (Cluster 207). `member_id` is the actor. `(removed, event)`.
+    /// Unpin a message, appending `MessageUnpinned` atomically **iff** a row
+    /// was removed. `member_id` is the actor. `(removed, event)`.
     async fn unpin_message_with_event(
         &self,
         thread_id: ThreadId,
@@ -1843,16 +1840,16 @@ pub trait ReferenceStore: Send + Sync {
         src_id: uuid::Uuid,
     ) -> Result<Vec<Reference>, StoreError>;
 
-    /// References pointing AT one target — the reverse edge (Cluster 320).
+    /// References pointing AT one target — the reverse edge.
     async fn list_references_to(
         &self,
         dst_kind: RefSide,
         dst_id: uuid::Uuid,
     ) -> Result<Vec<Reference>, StoreError>;
 
-    /// References from many sources of one kind in a single query (Cluster 106).
-    /// Avoids the per-message `list_references_from` N+1. Returns a flat list the
-    /// caller groups by `src_id`; ordered by `src_id` then `created_at ASC`.
+    /// References from many sources of one kind in a single query. Avoids the
+    /// per-message `list_references_from` N+1. Returns a flat list the caller
+    /// groups by `src_id`; ordered by `src_id` then `created_at ASC`.
     async fn list_references_from_many(
         &self,
         src_kind: RefSide,
@@ -1860,8 +1857,8 @@ pub trait ReferenceStore: Send + Sync {
     ) -> Result<Vec<Reference>, StoreError>;
 }
 
-/// Tombstone explorer, message backlink index, and EventKind census
-/// (Cluster 394, Wave 3 #34). Reads only — no new table.
+/// Tombstone explorer, message backlink index, and EventKind census. Reads only
+/// — no new table.
 #[async_trait]
 pub trait IntegrityStore: Send + Sync {
     /// Tombstoned messages in `workspace_id`, newest first. Optional channel /
@@ -1899,8 +1896,8 @@ pub trait IntegrityStore: Send + Sync {
 pub trait ArtifactMetaStore: Send + Sync {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
     /// Upsert an artifact, optionally record its per-workspace access ref, and
-    /// append its `ArtifactUpserted` event — all atomically (Cluster 214).
-    /// `ref_workspace` is `Some` when the caller would record a ref (non-bypass).
+    /// append its `ArtifactUpserted` event — all atomically. `ref_workspace` is
+    /// `Some` when the caller would record a ref (non-bypass).
     async fn upsert_artifact_with_event(
         &self,
         new: NewArtifact,
@@ -1908,16 +1905,16 @@ pub trait ArtifactMetaStore: Send + Sync {
     ) -> Result<(Artifact, StoredEvent), StoreError>;
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError>;
 
-    /// Record that `workspace_id` may access the artifact `sha256` (Cluster 204).
-    /// Idempotent. Written on upload; enforced on fetch by [`Self::artifact_ref_exists`].
+    /// Record that `workspace_id` may access the artifact `sha256`. Idempotent.
+    /// Written on upload; enforced on fetch by [`Self::artifact_ref_exists`].
     async fn record_artifact_ref(
         &self,
         workspace_id: WorkspaceId,
         sha256: &str,
     ) -> Result<(), StoreError>;
 
-    /// Whether `workspace_id` has an access link to the artifact `sha256`
-    /// (Cluster 204) — the per-tenant gate over the deduped blob store.
+    /// Whether `workspace_id` has an access link to the artifact `sha256` — the
+    /// per-tenant gate over the deduped blob store.
     async fn artifact_ref_exists(
         &self,
         workspace_id: WorkspaceId,
@@ -1937,8 +1934,8 @@ pub trait EventStore: Send + Sync {
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError>;
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError>;
-    /// A thread's events with `id <= through_id`, in `id` order (Cluster 326) —
-    /// the immutable substrate for as-of context replay.
+    /// A thread's events with `id <= through_id`, in `id` order — the immutable
+    /// substrate for as-of context replay.
     async fn list_thread_events_through(
         &self,
         thread_id: ThreadId,
@@ -1952,7 +1949,7 @@ pub trait EventStore: Send + Sync {
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
     /// Like [`Store::list_events_after`] but only rows inserted at or before
-    /// `stable_before` (the at-least-once reconcile read; Cluster 125).
+    /// `stable_before` (the at-least-once reconcile read).
     async fn list_events_after_stable(
         &self,
         workspace_id: WorkspaceId,
@@ -1962,24 +1959,24 @@ pub trait EventStore: Send + Sync {
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
     /// Lowest retained event `id` in `workspace_id` (`None` if the workspace
-    /// has no rows). Cluster 388 CursorTooOld.
+    /// has no rows). The floor a `CursorTooOld` check compares against.
     async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 
     /// Every workspace that has at least one event, so a chain verifier knows
-    /// what there is to verify (Cluster 402.3).
+    /// what there is to verify.
     ///
     /// Derived from the log rather than the workspaces table on purpose: a
     /// workspace with no events has no chain, and verifying it would report a
     /// vacuous pass that is indistinguishable from a real one.
     async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError>;
 
-    /// Highest event-log `id` across all workspaces (`0` when empty).
-    /// Cluster 390 `Maidan-Room-LSN` — the room head a client compares to
-    /// last-seen `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]
+    /// Highest event-log `id` across all workspaces (`0` when empty). Cluster
+    /// 390 `Maidan-Room-LSN` — the room head a client compares to last-seen
+    /// `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]
     /// (`Maidan-Consistency-Token`).
     async fn max_event_id(&self) -> Result<i64, StoreError>;
 
-    /// Where a tap projector last finished (Cluster 402.2). `0` = never run.
+    /// Where a tap projector last finished. `0` = never run.
     ///
     /// The search tap re-walked the whole log from genesis on every start,
     /// resubscribe and `Lagged` — re-embedding all history each time, and
@@ -1997,28 +1994,28 @@ pub trait EventStore: Send + Sync {
     async fn clear_tap_cursor(&self, surface: &str) -> Result<(), StoreError>;
 
     /// Cross-workspace `id > after_id` page, in `id` order. Internal bus
-    /// consumers (indexer, webhook, notification router, FSM hooks) resume
-    /// from this after `RecvError::Lagged` (Cluster 388) instead of dropping.
+    /// consumers (indexer, webhook, notification router, FSM hooks) resume from
+    /// this after `RecvError::Lagged` instead of dropping.
     async fn list_events_after_global(
         &self,
         after_id: i64,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
-    /// Verify the retained hash chain for `workspace_id` (Cluster 392).
-    /// Empty workspace is ok. Fail-closed report: `ok == false` on a break.
+    /// Verify the retained hash chain for `workspace_id`. Empty workspace is
+    /// ok. Fail-closed report: `ok == false` on a break.
     async fn verify_event_chain(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<maidan_types::ChainVerifyReport, StoreError>;
 
-    /// Oldest retained event link in `workspace_id` (Cluster 393 snapshot floor).
+    /// Oldest retained event link in `workspace_id`.
     async fn workspace_event_floor(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<maidan_types::EventLink>, StoreError>;
 
-    /// Newest retained event link in `workspace_id` (Cluster 393 snapshot head).
+    /// Newest retained event link in `workspace_id`.
     async fn workspace_event_head(
         &self,
         workspace_id: WorkspaceId,
@@ -2078,8 +2075,8 @@ pub trait AppStore: Send + Sync {
 
 #[async_trait]
 pub trait OAuthCodeStore: Send + Sync {
-    /// Persist a one-time OAuth authorization code (Cluster 104). The plaintext
-    /// code is never stored — `code_hash` is its SHA-256 digest.
+    /// Persist a one-time OAuth authorization code. The plaintext code is never
+    /// stored — `code_hash` is its SHA-256 digest.
     async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError>;
 
     /// Atomically consume (delete) a non-expired authorization code by hash.
@@ -2090,9 +2087,9 @@ pub trait OAuthCodeStore: Send + Sync {
 
 #[async_trait]
 pub trait ReindexStore: Send + Sync {
-    /// Insert or update an embedding reindex job (Cluster 104). Keyed by
-    /// `job_id`, so the start record and later status updates upsert the row,
-    /// making job status visible on any replica.
+    /// Insert or update an embedding reindex job. Keyed by `job_id`, so the
+    /// start record and later status updates upsert the row, making job status
+    /// visible on any replica.
     async fn upsert_reindex_job(&self, job: ReindexJob) -> Result<(), StoreError>;
 
     /// Fetch a reindex job by id, or `None` if unknown.
@@ -2104,8 +2101,8 @@ pub trait TokenStore: Send + Sync {
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
-    /// Mint a token that records the token it was derived from (Cluster 401.3),
-    /// so [`Self::revoke_api_token`] can reach it.
+    /// Mint a token that records the token it was derived from, so
+    /// [`Self::revoke_api_token`] can reach it.
     ///
     /// Separate from `create_api_token` rather than a field on `NewApiToken`:
     /// that struct is built at 109 sites, 100 of them tests, and only the
@@ -2116,10 +2113,9 @@ pub trait TokenStore: Send + Sync {
         parent_token_id: ApiTokenId,
     ) -> Result<ApiToken, StoreError>;
 
-    /// Revoke a token **and every token derived from it** (Cluster 401.3).
+    /// Revoke a token **and every token derived from it**.
     ///
-    /// Cluster 397.7 made a derived token inherit the parent's app installation
-    /// and quotas, because re-issuing was otherwise a way to shed a bound.
+    /// A derived token inherits the parent's app installation and quotas, because re-issuing was otherwise a way to shed a bound.
     /// Revocation is the ultimate limit and was the dimension still leaking.
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn list_api_tokens_for_member(
@@ -2176,23 +2172,22 @@ pub trait PeerStore: Send + Sync {
         origin: &maidan_types::EventLink,
     ) -> Result<bool, StoreError>;
     /// Record the last origin link **verified** from this peer, whether or not
-    /// the event was kept (Cluster 397.6). Monotonic.
+    /// the event was kept. Monotonic.
     async fn record_federated_verified_link(
         &self,
         peer_id: PeerId,
         link: &maidan_types::EventLink,
     ) -> Result<(), StoreError>;
     /// The last origin link verified from this peer, falling back to the last
-    /// ingested one for a peer that predates Cluster 397.6 (Cluster 397.6).
-    /// This is what sequential ingest verify compares against — the *ingested*
-    /// link is not it, because a policy-refused event still advances the chain.
+    /// ingested one for a peer old enough to have none. This is what
+    /// sequential ingest verify compares against — the *ingested* link is not
+    /// it, because a policy-refused event still advances the chain.
     async fn last_federated_verified_link(
         &self,
         peer_id: PeerId,
     ) -> Result<Option<maidan_types::EventLink>, StoreError>;
-    /// Last origin [`maidan_types::EventLink`] accepted from this peer
-    /// (Cluster 392 sequential ingest verify). `None` if this peer has
-    /// never ingested a hashed envelope.
+    /// Last origin [`maidan_types::EventLink`] accepted from this peer. `None`
+    /// if this peer has never ingested a hashed envelope.
     async fn last_federated_origin_link(
         &self,
         peer_id: PeerId,
@@ -2217,16 +2212,17 @@ pub trait DeliveryCursorStore: Send + Sync {
         log_id: i64,
     ) -> Result<i64, StoreError>;
 
-    /// Lowest `last_delivered_log_id` across all at-least-once delivery cursors,
-    /// or `None` when no cursor exists. An event with `id` at or below this has
-    /// been delivered to every durable consumer and is safe to prune — the
-    /// retention floor for the event log (Cluster 186).
+    /// Lowest `last_delivered_log_id` across all at-least-once delivery
+    /// cursors, or `None` when no cursor exists. An event with `id` at or below
+    /// this has been delivered to every durable consumer and is safe to prune —
+    /// the retention floor for the event log.
     async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError>;
 
     /// Delete up to `limit` oldest event-log rows with `id <= max_id` **and**
-    /// `occurred_at < cutoff`. The `max_id` floor (see [`Store::min_delivery_cursor`])
-    /// keeps events a lagging at-least-once consumer still needs. Returns the row
-    /// count deleted; the caller loops until it is below `limit` (Cluster 186).
+    /// `occurred_at < cutoff`. The `max_id` floor (see
+    /// [`Store::min_delivery_cursor`]) keeps events a lagging at-least-once
+    /// consumer still needs. Returns the row count deleted; the caller loops
+    /// until it is below `limit`.
     async fn prune_events(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,
@@ -2269,7 +2265,7 @@ pub trait WebhookStore: Send + Sync {
         &self,
     ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError>;
     /// Enabled webhook subscriptions for one workspace — the per-event hot path
-    /// (avoids scanning every workspace's subscriptions; Cluster 166).
+    /// (avoids scanning every workspace's subscriptions).
     async fn list_enabled_webhook_subscriptions_for_workspace(
         &self,
         workspace_id: WorkspaceId,
@@ -2406,11 +2402,10 @@ pub trait A2aStore: Send + Sync {
         &self,
         task_id: &str,
     ) -> Result<Option<WorkspaceId>, StoreError>;
-    /// List a workspace's A2A task JSON blobs, most-recently-updated first, up to
-    /// `limit`. The A2A `ListTasks` operation filters + paginates over this.
+    /// List a workspace's A2A task JSON blobs, most-recently-updated first, up
+    /// to `limit`. The A2A `ListTasks` operation filters + paginates over this.
     /// A workspace's A2A tasks, most-recently-updated first. `updated_after`
-    /// (Cluster 352.4 / H12, the A2A `statusTimestampAfter` filter) keeps only tasks
-    /// whose status changed strictly after the given instant.
+    /// keeps only tasks whose status changed strictly after the given instant.
     async fn list_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,

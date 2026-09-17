@@ -1,7 +1,6 @@
-//! Explicit dispatch-block queries (Cluster 386, Wave 2 #27, G14 + W2): the
-//! `maidan_thread_blocks` side table. Presence = blocked from `claim_next`
-//! with a closed [`BlockedReason`]; absence = unblocked. Distinct from
-//! Cluster 217/218 DAG readiness and from Cluster 363's free-text park.
+//! Explicit dispatch-block queries: the `maidan_thread_blocks` side table.
+//! Presence = blocked from `claim_next` with a closed [`BlockedReason`];
+//! absence = unblocked. Distinct/218 DAG readiness and's free-text park.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{BlockedReason, ChannelId, Event, MemberId, StoredEvent, ThreadBlock, ThreadId};
@@ -44,8 +43,8 @@ pub async fn set(
     row_to_block(&row)
 }
 
-/// Clear the block and append `BlockedResolved` in one tx (Cluster 386.3).
-/// `None` event when the thread was not blocked (idempotent no-op).
+/// Clear the block and append `BlockedResolved` in one tx. `None` event when
+/// the thread was not blocked (idempotent no-op).
 pub async fn clear_with_event(
     pool: &PgPool,
     thread_id: ThreadId,

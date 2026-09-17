@@ -1,12 +1,12 @@
-//! Background scheduled/recurring-task sweeper (Cluster 227).
+//! Background scheduled/recurring-task sweeper.
 //!
-//! Opt-in via `MAIDAN_SCHEDULER_TICK_SECS` (>0). Each tick drains every schedule
-//! that is due (`active AND next_run_at <= now`): it **atomically** claims and
-//! advances the schedule in the store (`claim_next_due_schedule` — `FOR UPDATE
-//! SKIP LOCKED` on Postgres, so concurrent replicas never double-fire one
-//! schedule) and then creates the task thread. The claim commits before the
-//! thread is created, so a crash in between drops that one firing (at-most-once)
-//! rather than duplicating it.
+//! Opt-in via `MAIDAN_SCHEDULER_TICK_SECS` (>0). Each tick drains every
+//! schedule that is due (`active AND next_run_at <= now`): it **atomically**
+//! claims and advances the schedule in the store (`claim_next_due_schedule` —
+//! `FOR UPDATE SKIP LOCKED` on Postgres, so concurrent replicas never
+//! double-fire one schedule) and then creates the task thread. The claim
+//! commits before the thread is created, so a crash in between drops that one
+//! firing (at-most-once) rather than duplicating it.
 //!
 //! A recurring schedule re-arms to `now + interval` (fire-once-per-tick — no
 //! catch-up storm when a schedule is far overdue); a one-shot deactivates.
@@ -70,7 +70,7 @@ pub async fn sweep_once(state: &AppState) -> u32 {
     fired
 }
 
-/// Fire a plain schedule: create one titled thread in its channel (Cluster 227).
+/// Fire a plain schedule: create one titled thread in its channel.
 async fn fire_bare_thread(state: &AppState, sched: &TaskSchedule) {
     match state
         .store
@@ -93,12 +93,12 @@ async fn fire_bare_thread(state: &AppState, sched: &TaskSchedule) {
     }
 }
 
-/// Fire a recipe-backed schedule (Cluster 370.5): instantiate the recipe (a
-/// parent thread with DAG children, copy-on-fire), unless its previous run is
-/// still in flight — in which case skip and emit `ScheduleSkipped` so the run
-/// doesn't pile up. A dangling `recipe_id` (a recipe deleted under a SQLite
-/// schedule) falls back to a bare thread. Fires param-less; a recipe with
-/// required params can't be scheduled (schedule-level params are a follow-up).
+/// Fire a recipe-backed schedule: instantiate the recipe (a parent thread with
+/// DAG children, copy-on-fire), unless its previous run is still in flight — in
+/// which case skip and emit `ScheduleSkipped` so the run doesn't pile up. A
+/// dangling `recipe_id` (a recipe deleted under a SQLite schedule) falls back
+/// to a bare thread. Fires param-less; a recipe with required params can't be
+/// scheduled (schedule-level params are a follow-up).
 async fn fire_recipe(state: &AppState, sched: &TaskSchedule) {
     let Some(recipe_id) = sched.recipe_id else {
         return;

@@ -1,5 +1,5 @@
-//! The egress trust boundary (Cluster 378.1). SQLite twin of the Postgres module
-//! — timestamps are store-bound rfc3339 text.
+//! The egress trust boundary. SQLite twin of the Postgres module — timestamps
+//! are store-bound rfc3339 text.
 
 use chrono::Utc;
 use sqlx::{Row, SqlitePool};

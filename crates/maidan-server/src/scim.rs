@@ -1,14 +1,14 @@
-//! SCIM 2.0 user provisioning (Cluster 366, Wave 1 #14, SCIM-as-OIDC-P3). A
-//! minimal RFC 7643/7644 endpoint so an IdP (Okta / Azure AD / …) can provision
-//! and deprovision Maidan members: `ServiceProviderConfig` + `/Users` create /
-//! read / list (with the `userName eq` filter) / replace / patch-active / delete.
-//! A SCIM User maps to a member (`userName` = handle, `id` = member id); the
-//! `maidan_scim_users` link tracks `externalId` + `active`. Deactivation
-//! (`active=false`) and delete revoke the member's API tokens.
+//! SCIM 2.0 user provisioning. A minimal RFC 7643/7644 endpoint so an IdP (Okta
+//! / Azure AD / …) can provision and deprovision Maidan members:
+//! `ServiceProviderConfig` + `/Users` create / read / list (with the `userName
+//! eq` filter) / replace / patch-active / delete. A SCIM User maps to a member
+//! (`userName` = handle, `id` = member id); the `maidan_scim_users` link tracks
+//! `externalId` + `active`. Deactivation (`active=false`) and delete revoke the
+//! member's API tokens.
 //!
-//! Scoped to the caller's workspace and gated on `token:admin`. These routes are
-//! intentionally outside the OpenAPI doc + capability-map (like `/mcp`) — SCIM has
-//! its own schema and error envelope; auth is enforced inline here.
+//! Scoped to the caller's workspace and gated on `token:admin`. These routes
+//! are intentionally outside the OpenAPI doc + capability-map (like `/mcp`) —
+//! SCIM has its own schema and error envelope; auth is enforced inline here.
 
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{header, StatusCode};

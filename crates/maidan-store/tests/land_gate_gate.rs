@@ -1,7 +1,6 @@
-//! LandGate close-gate (Cluster 385.2, Wave 2 #25): a `closed` transition
-//! is refused until a qualifying green pass exists when the gate is armed.
-//! Amber (flags-then-still-engages) is not a land. No row is additive.
-//! Both backends.
+//! LandGate close-gate: a `closed` transition is refused until a qualifying
+//! green pass exists when the gate is armed. Amber (flags-then-still-engages)
+//! is not a land. No row is additive. Both backends.
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};

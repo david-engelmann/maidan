@@ -1,21 +1,22 @@
-//! Background projector-egress worker (Cluster 377.2, durable projector egress).
+//! Background projector-egress worker.
 //!
-//! Drains the `maidan_egress_outbox` queue (Cluster 377.1): each tick claims due
-//! `pending` deliveries and posts them through the configured projector sender —
+//! Drains the `maidan_egress_outbox` queue: each tick claims due `pending`
+//! deliveries and posts them through the configured projector sender —
 //! [`SlackSender`](crate::slack::SlackSender) or
-//! [`GithubSender`](crate::github::GithubSender) — marking each delivered, or, on
-//! failure, rescheduled with exponential backoff, or dead-lettered once it has
-//! exhausted [`MAX_ATTEMPTS`].
+//! [`GithubSender`](crate::github::GithubSender) — marking each delivered, or,
+//! on failure, rescheduled with exponential backoff, or dead-lettered once it
+//! has exhausted [`MAX_ATTEMPTS`].
 //!
 //! Replaces the best-effort inline post the Slack (309) and GitHub (312)
 //! projectors did, where a transient 502 dropped the message with a log line:
 //! `route_message_to_slack` / `route_message_to_github` now only *enqueue*.
 //!
-//! **Retry-then-disable (Cluster 377.3):** an auth/config-class failure — GitHub
-//! 401/403/404, Slack `invalid_auth`/`channel_not_found` — is not retried at all.
-//! No number of attempts fixes a revoked token or a deleted channel, so the link
-//! is disabled (later messages stop enqueueing), the delivery dead-letters, and a
-//! `ProjectorMisconfigured` event names the surface, the selector and the error.
+//! **Retry-then-disable:** an auth/config-class failure — GitHub
+//! 401/403/404, Slack `invalid_auth`/`channel_not_found` — is not retried at
+//! all. No number of attempts fixes a revoked token or a deleted channel, so
+//! the link is disabled (later messages stop enqueueing), the delivery
+//! dead-letters, and a `ProjectorMisconfigured` event names the surface, the
+//! selector and the error.
 //!
 //! **Runs whenever a projector sender is configured** (spawned in `main.rs` only
 //! then — and the projectors only enqueue then, so an unconfigured deployment
@@ -25,32 +26,31 @@
 //! **At-least-once:** [`claim_next_due_egress`](maidan_store::Store) leases a row
 //! forward, so a worker that crashes mid-post releases it after the lease and
 //! another claim retries. A duplicate comment is the lesser harm against a
-//! silently dropped one — the Cluster-255 digest polarity. Multiple replicas can
-//! run the worker safely (`FOR UPDATE SKIP LOCKED` on Postgres hands each a
-//! distinct row), and the queue's dedup index means they enqueue one row between
-//! them in the first place.
+//! silently dropped one — the digest polarity. Multiple replicas can run the
+//! worker safely (`FOR UPDATE SKIP LOCKED` on Postgres hands each a distinct
+//! row), and the queue's dedup index means they enqueue one row between them in
+//! the first place.
 //!
-//! **Result delivery (Cluster 379.4):** an outbox row with [`EgressKind::Result`]
+//! **Result delivery:** an outbox row with [`EgressKind::Result`]
 //! updates in place when the matching `maidan_result_deliveries` row has an
-//! `external_ref`, recovers a GitHub comment via the hidden
-//! `<!-- maidan:result:<thread_id> -->` marker if that handle is lost, and
-//! otherwise posts. Projector rows (`EgressKind::Projector`) always post — they
-//! must not PATCH a result comment that happens to share the issue. A result
-//! 401/403/404 dead-letters the delivery without disabling a projector
-//! issue-link.
+//! `external_ref`, recovers a GitHub comment via the hidden `<!--
+//! maidan:result:<thread_id> -->` marker if that handle is lost, and otherwise
+//! posts. Projector rows (`EgressKind::Projector`) always post — they must not
+//! PATCH a result comment that happens to share the issue. A result 401/403/404
+//! dead-letters the delivery without disabling a projector issue-link.
 //!
-//! **Inline reviews (Cluster 380.2 / 380.3):** after a successful GitHub
+//! **Inline reviews:** after a successful GitHub
 //! *summary* comment, the worker POSTs `POST /repos/{repo}/pulls/{n}/reviews`
-//! with `commit_id = envelope head_sha` (never the live PR head),
-//! `event: COMMENT`, and one inline comment per usable finding (RIGHT,
-//! post-image `line_range`). A missing sha, empty findings, a non-`reviewed`
-//! status, Slack, a vanished envelope, or a GitHub 404/422 skips the review
+//! with `commit_id = envelope head_sha` (never the live PR head), `event:
+//! COMMENT`, and one inline comment per usable finding (RIGHT, post-image
+//! `line_range`). A missing sha, empty findings, a non-`reviewed` status,
+//! Slack, a vanished envelope, or a GitHub 404/422 skips the review
 //! (`maidan_github_review_total{skipped}`). A 5xx / rate-limited 403 / 401
 //! records `{failed}` so operator replay retries the review. **Neither class
 //! fails the outbox** — the summary has already posted, and retrying it would
 //! duplicate the issue comment on a first delivery. Review errors never
-//! `disable_link` a projector issue-link. Replay PATCHes the summary and
-//! POSTs another COMMENT review. Projector rows never call `create_review`.
+//! `disable_link` a projector issue-link. Replay PATCHes the summary and POSTs
+//! another COMMENT review. Projector rows never call `create_review`.
 
 use std::time::Duration;
 
@@ -125,10 +125,10 @@ struct DeliveryFailure {
 
 /// Post one claimed delivery through the sender for its surface.
 ///
-/// Projector rows always post. Result rows (Cluster 379.4) update in place
-/// when a stored [`ExternalRef`] is usable, recover a GitHub comment via the
-/// hidden body marker if the ref is lost, and otherwise post. The `Ok`
-/// payload is the handle to persist on the result-delivery row.
+/// Projector rows always post. Result rows update in place when a stored
+/// [`ExternalRef`] is usable, recover a GitHub comment via the hidden body
+/// marker if the ref is lost, and otherwise post. The `Ok` payload is the
+/// handle to persist on the result-delivery row.
 async fn deliver(
     state: &AppState,
     entry: &EgressOutbox,
@@ -158,7 +158,7 @@ async fn deliver_projector(
             };
             // Top-level: the projector egress relays a Maidan message into the
             // linked channel, and threading those under a parent would change
-            // Cluster 309's behaviour.
+            // the behaviour.
             match sender.post_message(channel_id, body, None).await {
                 Ok(reference) => {
                     crate::metrics::record_slack_egress("sent");
@@ -252,8 +252,8 @@ async fn github_result(
     Ok(reference)
 }
 
-/// The Cluster 379 summary comment: update in place, recover via the marker,
-/// or post. Returns the handle to persist; does not post inline findings.
+/// The result summary comment: update in place, recover via the marker, or
+/// post. Returns the handle to persist; does not post inline findings.
 async fn deliver_github_result_comment(
     sender: &dyn crate::github::GithubSender,
     entry: &EgressOutbox,
@@ -325,14 +325,14 @@ async fn deliver_github_result_comment(
     }
 }
 
-/// Cluster 380.2: post a COMMENT review for the current waiter envelope.
+/// Post a COMMENT review for the current waiter envelope.
 ///
-/// Never returns an error. The summary comment has already landed; failing
-/// the outbox here would retry into a duplicate issue comment on a first
-/// delivery. 404 (issue is not a PR) and 422 (line not in the diff at
-/// `head_sha`) are metric-skips. A 5xx / rate-limited 403 / 401 is logged
-/// as `failed` and left for operator replay, which PATCHes the summary and
-/// POSTs another COMMENT review. Neither path calls `disable_link`.
+/// Never returns an error. The summary comment has already landed; failing the
+/// outbox here would retry into a duplicate issue comment on a first delivery.
+/// 404 (issue is not a PR) and 422 (line not in the diff at `head_sha`) are
+/// metric-skips. A 5xx / rate-limited 403 / 401 is logged as `failed` and left
+/// for operator replay, which PATCHes the summary and POSTs another COMMENT
+/// review. Neither path calls `disable_link`.
 async fn post_result_inline_review(
     state: &AppState,
     sender: &dyn crate::github::GithubSender,
@@ -495,8 +495,8 @@ async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> 
     false
 }
 
-/// Retry-then-disable (Cluster 377.3): the link is broken in a way no retry
-/// fixes, so turn it off, dead-letter this delivery, and say so loudly — a
+/// Retry-then-disable: the link is broken in a way no retry fixes, so turn it
+/// off, dead-letter this delivery, and say so loudly — a
 /// `ProjectorMisconfigured` event, once, on the transition to disabled. Later
 /// messages into the link stop enqueueing entirely, so the queue doesn't grind
 /// through eight doomed attempts per message; re-linking re-enables it.
@@ -606,8 +606,8 @@ async fn record_result_gave_up(
     crate::metrics::record_result_delivery("failed");
 }
 
-/// Best-effort audit of a result-delivery send attempt (Cluster 379.5).
-/// Never fails the delivery itself.
+/// Best-effort audit of a result-delivery send attempt. Never fails the
+/// delivery itself.
 async fn audit_result_attempt(
     state: &AppState,
     entry: &EgressOutbox,

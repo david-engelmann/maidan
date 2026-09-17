@@ -1,5 +1,5 @@
-//! Notification preferences (Cluster 241, Arc H): set (upsert) a mute flag per
-//! event kind, list, and the router's `is_muted` query. Both backends. No wiring yet.
+//! Notification preferences: set (upsert) a mute flag per event kind, list, and
+//! the router's `is_muted` query. Both backends. No wiring yet.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{EventKind, MemberKind, NewMember, NewWorkspace};
@@ -80,9 +80,9 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(prefs.len(), 1);
     assert!(!prefs[0].muted);
 
-    // Cluster 348: the batch mute-filter returns exactly the members who muted the
-    // kind, out of the given set. `member` has MessagePosted un-set (→ not muted);
-    // a second member mutes it; a third has no prefs.
+    // The batch mute-filter returns exactly the members who muted the kind, out
+    // of the given set. `member` has MessagePosted un-set (→ not muted); a
+    // second member mutes it; a third has no prefs.
     let m2 = store
         .create_member(NewMember {
             workspace_id: ws.id,

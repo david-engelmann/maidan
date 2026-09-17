@@ -1,7 +1,7 @@
-//! Run lineage (Cluster 387.1, Wave 2 #28): a thread homes a producer's
-//! `run_id` as `parent_run_id`. Nested occupancy attributes every open
-//! thread that shares the value. F7 mute is orthogonal — a muted nested
-//! thread still counts. Both backends. Does not mint a parallel id.
+//! Run lineage: a thread homes a producer's `run_id` as `parent_run_id`. Nested
+//! occupancy attributes every open thread that shares the value. F7 mute is
+//! orthogonal — a muted nested thread still counts. Both backends. Does not
+//! mint a parallel id.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -189,15 +189,15 @@ async fn run_suite(store: &dyn Store) {
         "the mute row exists; occupancy just does not consult it"
     );
 
-    // C5: an explicit Cluster-386 block row is `blocked`, not `queued`.
+    // C5: an explicit block row is `blocked`, not `queued`.
     //
     // The two occupancy views answer the same question about the same threads,
     // so a divergence between them is a contradiction. This one was not
-    // cosmetic: `claim_next` skips a blocked thread, so counting it as
-    // `queued` advertised work that could never be claimed, and an
-    // orchestrator sizing its fleet off the number would wait forever for it
-    // to drain. The parent thread here has no dependency edge at all — only a
-    // block row — which is exactly the case the DAG-only clause missed.
+    // cosmetic: `claim_next` skips a blocked thread, so counting it as `queued`
+    // advertised work that could never be claimed, and an orchestrator sizing
+    // its fleet off the number would wait forever for it to drain. The parent
+    // thread here has no dependency edge at all — only a block row — which is
+    // exactly the case the DAG-only clause missed.
     store
         .set_thread_block(parent.id, maidan_types::BlockedReason::Human, member)
         .await

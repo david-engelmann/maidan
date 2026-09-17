@@ -1,6 +1,6 @@
-//! Land-gate pointer MCP tools (Cluster 385.3, renamed Cluster 389).
-//! The REST twin is Cluster 385.3. Writes = `thread:transition`; reads =
-//! `workspace:read`. Thread access is the pre-dispatch `thread_id` gate.
+//! Land-gate pointer MCP tools, the twins of the REST surface. Writes =
+//! `thread:transition`; reads = `workspace:read`. Thread access is the
+//! pre-dispatch `thread_id` gate.
 
 use std::sync::Arc;
 
@@ -24,8 +24,8 @@ struct SetArgs {
     land: Option<LandColor>,
 }
 
-/// Record a LandGate pointer as the caller (Cluster 385.3). The caller
-/// must have declared the `land_gate` skill; amber is not a land.
+/// Record a LandGate pointer as the caller. The caller must have declared the
+/// `land_gate` skill; amber is not a land.
 pub(super) async fn set_land_gate(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -48,14 +48,14 @@ struct ThreadArg {
     thread_id: uuid::Uuid,
 }
 
-/// Read a thread's LandGate standing (Cluster 385.3).
+/// Read a thread's LandGate standing.
 pub(super) async fn get_land_gate(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ThreadArg = serde_json::from_value(args.clone())?;
     let standing = store.get_land_gate_standing(ThreadId(a.thread_id)).await?;
     Ok(content_json(&standing))
 }
 
-/// Arm the LandGate close-gate without a pointer yet (Cluster 385.3).
+/// Arm the LandGate close-gate without a pointer yet.
 pub(super) async fn require_land_gate(
     store: &Arc<dyn Store>,
     args: &Value,
@@ -65,7 +65,7 @@ pub(super) async fn require_land_gate(
     Ok(content_json(&standing))
 }
 
-/// Clear the LandGate pointer / requirement (Cluster 385.3).
+/// Clear the LandGate pointer / requirement.
 pub(super) async fn clear_land_gate(
     store: &Arc<dyn Store>,
     args: &Value,

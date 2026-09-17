@@ -1,6 +1,6 @@
 //! App OAuth authorization-code flow over HTTP, backed by the persisted code
-//! store (Cluster 104.0.2): authorize → exchange happy path, single-use,
-//! redirect_uri binding, and PKCE S256.
+//! store: authorize → exchange happy path, single-use, redirect_uri binding,
+//! and PKCE S256.
 
 mod common;
 

@@ -1,7 +1,7 @@
-//! Web Push router integration (Cluster 366, N1): `deliver_notification_web_push`
-//! sends to a member's subscriptions only when they have no live WS (not seen
-//! within the live window), and prunes a subscription the push service reports
-//! `Gone`. Uses a recording mock sender attached via `attach_web_push`.
+//! Web Push router integration: `deliver_notification_web_push` sends to a
+//! member's subscriptions only when they have no live WS (not seen within the
+//! live window), and prunes a subscription the push service reports `Gone`.
+//! Uses a recording mock sender attached via `attach_web_push`.
 
 use std::sync::{Arc, Mutex};
 

@@ -1,4 +1,4 @@
-//! Workspace handle aliases (Cluster 395). SQLite twin of the Postgres module.
+//! Workspace handle aliases. SQLite twin of the Postgres module.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{validate_workspace_handle, WorkspaceHandle, WorkspaceId};

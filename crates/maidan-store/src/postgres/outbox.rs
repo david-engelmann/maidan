@@ -12,9 +12,9 @@ pub struct OutboxRow {
     pub id: i64,
     pub log_id: i64,
     pub attempts: i32,
-    /// The event payload, JOINed from `maidan_events` (Cluster 168, H4) so the
-    /// relay publishes directly from the pending list instead of a per-row
-    /// `get_stored_event` round-trip.
+    /// The event payload, JOINed from `maidan_events` so the relay publishes
+    /// directly from the pending list instead of a per-row `get_stored_event`
+    /// round-trip.
     pub payload: serde_json::Value,
 }
 
@@ -26,20 +26,19 @@ pub struct QuarantinedOutboxRow {
     pub quarantined_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Atomically claim up to `limit` relayable rows for this relay (Cluster 398.1).
+/// Atomically claim up to `limit` relayable rows for this relay.
 ///
 /// The relay is spawned in **every** replica and `validate_startup` refuses to
-/// disable it in production, so an unlocked `SELECT` meant every replica relayed
-/// every row: N POSTs to each tenant webhook (there is no unique on
+/// disable it in production, so an unlocked `SELECT` meant every replica
+/// relayed every row: N POSTs to each tenant webhook (there is no unique on
 /// `(subscription_id, log_id)`) and N `fsm_hook` firings through
 /// `dispatch_mcp_tool` with `AuthContext::bypass()`.
 ///
 /// `FOR UPDATE SKIP LOCKED` inside a CTE is the same shape `claim_next_thread`
-/// (Cluster 192) and `claim_next_due_schedule` (Cluster 227) already use:
-/// concurrent claimers take disjoint rows rather than blocking. The lease is
-/// what makes a crash safe — a claimed-but-unpublished row becomes claimable
-/// again after `lease_secs`, so **at-least-once is preserved: a claim is not a
-/// publish.**
+/// and `claim_next_due_schedule` already use: concurrent claimers take disjoint
+/// rows rather than blocking. The lease is what makes a crash safe — a
+/// claimed-but-unpublished row becomes claimable again after `lease_secs`, so
+/// **at-least-once is preserved: a claim is not a publish.**
 pub async fn claim_pending(
     pool: &PgPool,
     limit: i64,
@@ -121,9 +120,9 @@ pub async fn mark_published(pool: &PgPool, outbox_id: i64) -> Result<(), StoreEr
     Ok(())
 }
 
-/// Mark a batch of outbox rows published in a single statement (Cluster 168,
-/// H4). Idempotent: rows already published are skipped by the `IS NULL` guard,
-/// so no error on a partial match. A no-op for an empty slice.
+/// Mark a batch of outbox rows published in a single statement. Idempotent:
+/// rows already published are skipped by the `IS NULL` guard, so no error on a
+/// partial match. A no-op for an empty slice.
 pub async fn mark_published_batch(pool: &PgPool, outbox_ids: &[i64]) -> Result<(), StoreError> {
     if outbox_ids.is_empty() {
         return Ok(());
@@ -139,11 +138,11 @@ pub async fn mark_published_batch(pool: &PgPool, outbox_ids: &[i64]) -> Result<(
     Ok(())
 }
 
-/// Increments `attempts` and returns the new value.
-/// Count a failed relay attempt and **release the claim** (Cluster 398.1), so
-/// the row is retryable on the next tick rather than waiting out its lease. The
-/// lease exists to survive a crashed claimer, not to pace retries — `attempts`
-/// and the quarantine ceiling already do that.
+/// Increments `attempts` and returns the new value. Count a failed relay
+/// attempt and **release the claim**, so the row is retryable on the next tick
+/// rather than waiting out its lease. The lease exists to survive a crashed
+/// claimer, not to pace retries — `attempts` and the quarantine ceiling already
+/// do that.
 pub async fn record_attempt(pool: &PgPool, outbox_id: i64) -> Result<i32, StoreError> {
     let row = sqlx::query(
         "UPDATE maidan_outbox

@@ -1,5 +1,5 @@
-//! Budget-envelope tool handlers (Cluster 358, T1/T5): set/read a thread's
-//! budget, report usage (stopping the run on exceed), and read a channel's DLQ.
+//! Budget-envelope tool handlers: set/read a thread's budget, report usage
+//! (stopping the run on exceed), and read a channel's DLQ.
 
 use std::sync::Arc;
 
@@ -11,9 +11,9 @@ use serde_json::Value;
 use super::content_json;
 use crate::error::McpError;
 
-/// Unknown fields are rejected (Cluster 398.4) — see [`maidan_types::BudgetLimits`].
-/// A typo'd dimension would otherwise read as an omission, and an omission on
-/// this call means "remove that limit".
+/// Unknown fields are rejected — see [`maidan_types::BudgetLimits`]. A typo'd
+/// dimension would otherwise read as an omission, and an omission on this call
+/// means "remove that limit".
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetBudgetArgs {
@@ -21,8 +21,8 @@ struct SetBudgetArgs {
     // The four dimensions are named here rather than `#[serde(flatten)]`-ing a
     // `BudgetPatch`, because **flatten silently defeats `deny_unknown_fields`**
     // — measured, not assumed: with flatten, `{"max_wall_seconds": 5}` parsed
-    // clean. That would have reverted Cluster 398.6 on the very struct 398.4
-    // named as the sharpest case, where a typo'd dimension disarms a cap.
+    // clean. That would have undone the unknown-field rejection on the very
+    // struct it was added for, where a typo'd dimension disarms a cap.
     //
     // `Option<Option<i64>>` keeps absent distinguishable from an explicit
     // `null`, which is what lets a replace refuse a partial body and a patch
@@ -58,13 +58,12 @@ impl SetBudgetArgs {
     }
 }
 
-/// Replace a thread's whole budget envelope (Cluster 358; totality enforced in
-/// Cluster 403, the MCP twin of `PUT /threads/:id/budget`).
+/// Replace a thread's whole budget envelope.
 ///
 /// A replace means every dimension it does not name becomes "no cap", and a
-/// dimension with no cap never binds — so omitting one silently removed a limit.
-/// Every dimension must now be stated; `null` is how you say "no cap here".
-/// Use `update_thread_budget` to change one without restating the rest.
+/// dimension with no cap never binds — so omitting one silently removed a
+/// limit. Every dimension must now be stated; `null` is how you say "no cap
+/// here". Use `update_thread_budget` to change one without restating the rest.
 ///
 /// Accumulated usage is preserved. Thread access is enforced pre-dispatch.
 pub(super) async fn set_thread_budget(
@@ -88,7 +87,7 @@ pub(super) async fn set_thread_budget(
     Ok(content_json(&budget))
 }
 
-/// Change only the budget dimensions the call names (Cluster 403).
+/// Change only the budget dimensions the call names.
 ///
 /// Absent leaves a dimension alone; an explicit `null` clears its cap. Widening
 /// therefore always requires saying so, and two orchestrators adjusting
@@ -132,11 +131,10 @@ struct ReportUsageArgs {
     turns: i64,
 }
 
-/// Report incremental usage against a thread's budget (Cluster 358, the MCP twin
-/// of `POST /threads/:id/usage`) — the claim-holder's heartbeat. If it pushes a
-/// claimed thread over budget the run is STOPPED (claim released, `ClaimFailed`
-/// emitted, DLQ entry recorded); the returned `stopped`/`reason` say so. Thread
-/// access is enforced pre-dispatch.
+/// Report incremental usage against a thread's budget — the claim-holder's
+/// heartbeat. If it pushes a claimed thread over budget the run is STOPPED
+/// (claim released, `ClaimFailed` emitted, DLQ entry recorded); the returned
+/// `stopped`/`reason` say so. Thread access is enforced pre-dispatch.
 pub(super) async fn report_usage(
     server: &crate::server::McpServer,
     args: &Value,
@@ -167,8 +165,8 @@ struct ListDlqArgs {
     limit: Option<i64>,
 }
 
-/// A channel's agent-work dead-letter queue (Cluster 358) — runs stopped for
-/// exceeding their budget, newest first. Channel access is enforced pre-dispatch.
+/// A channel's agent-work dead-letter queue — runs stopped for exceeding their
+/// budget, newest first. Channel access is enforced pre-dispatch.
 pub(super) async fn list_dlq(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
     let a: ListDlqArgs = serde_json::from_value(args.clone())?;
     let limit = a.limit.unwrap_or(50).clamp(1, 200);
@@ -182,10 +180,10 @@ pub(super) async fn list_dlq(store: &Arc<dyn Store>, args: &Value) -> Result<Val
 mod budget_args_tests {
     use super::*;
 
-    /// Cluster 398.6's protection, re-proved after Cluster 403 reshaped this
-    /// struct. **This exact assertion failed** during 403 when the fields were
-    /// `#[serde(flatten)]`-ed: flatten silently defeats `deny_unknown_fields`,
-    /// so a typo'd dimension parsed clean and disarmed a cap again.
+    /// Re-proved after the patch semantics reshaped this struct. **This exact
+    /// assertion failed** when the fields were `#[serde(flatten)]`-ed: flatten
+    /// silently defeats `deny_unknown_fields`, so a typo'd dimension parsed
+    /// clean and disarmed a cap again.
     #[test]
     fn a_typod_dimension_is_still_rejected() {
         let bad = r#"{"thread_id":"00000000-0000-0000-0000-000000000001","max_wall_seconds":5}"#;

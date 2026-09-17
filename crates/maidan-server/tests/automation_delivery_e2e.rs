@@ -1,4 +1,4 @@
-//! Automation delivery DLQ and replay (Cluster 68.0).
+//! Automation delivery DLQ and replay.
 
 use std::{
     sync::{

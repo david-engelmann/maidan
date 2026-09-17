@@ -1,7 +1,7 @@
-//! Cluster 401.3: revoking a token revokes everything derived from it.
+//! Revoking a token revokes everything derived from it.
 //!
-//! Cluster 395 added holder-side attenuation; Cluster 397.7 made a derived token
-//! inherit the parent's app installation and per-token quotas, because
+//! Holder-side attenuation came first, then a derived token inheriting the
+//! parent's app installation and per-token quotas, because
 //! re-issuing was otherwise a way to shed a bound. Revocation was the dimension
 //! still leaking — the parent link lived only in audit metadata, so a child
 //! outlived the credential it was minted from.

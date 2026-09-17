@@ -36,8 +36,7 @@ pub async fn create(pool: &SqlitePool, new: NewReference) -> Result<Reference, S
     row_to_reference(&row)
 }
 
-/// Insert a reference and append its `ReferenceAdded` event in one transaction
-/// (Cluster 214 transactional outbox).
+/// Insert a reference and append its `ReferenceAdded` event in one transaction.
 pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewReference,
@@ -88,8 +87,8 @@ pub async fn list_from(
     rows.iter().map(row_to_reference).collect()
 }
 
-/// References pointing AT one target — the reverse edge (Cluster 320). Uses the
-/// existing `idx_references_dst` index. Ordered `created_at ASC`.
+/// References pointing AT one target — the reverse edge. Uses the existing
+/// `idx_references_dst` index. Ordered `created_at ASC`.
 pub async fn list_to(
     pool: &SqlitePool,
     dst_kind: RefSide,

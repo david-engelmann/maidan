@@ -1,4 +1,4 @@
-//! Workspace purge deletes artifact blobs from LocalFs (Cluster 31).
+//! Workspace purge deletes artifact blobs from LocalFs.
 
 use std::{
     net::SocketAddr,

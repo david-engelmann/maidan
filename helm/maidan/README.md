@@ -1,6 +1,6 @@
 # Maidan Helm chart
 
-Primary install path for the main stack (Cluster 24). Kustomize under `k8s/` remains
+Primary install path for the main stack. Kustomize under `k8s/` remains
 for local reference.
 
 ## Quick start

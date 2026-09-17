@@ -1,5 +1,5 @@
-//! Recipe blueprint CRUD (Cluster 370, SQLite twin of pg 0073). `spec` is a JSON
-//! TEXT column holding the serialized [`RecipeSpec`]; timestamps are rfc3339 TEXT.
+//! Recipe blueprint CRUD. `spec` is a JSON TEXT column holding the serialized
+//! [`RecipeSpec`]; timestamps are rfc3339 TEXT.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

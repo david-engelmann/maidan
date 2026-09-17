@@ -864,10 +864,10 @@ async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() 
     server.abort();
 }
 
-/// At-least-once mode (Cluster 125): a `workspace_id + consumer_id` subscription
-/// with `at_least_once: true` is delivered by the reconcile loop. It must deliver
-/// the stable backlog in id order, and on reconnect the durable cursor must floor
-/// out everything already delivered (no re-delivery).
+/// At-least-once mode: a `workspace_id + consumer_id` subscription with
+/// `at_least_once: true` is delivered by the reconcile loop. It must deliver
+/// the stable backlog in id order, and on reconnect the durable cursor must
+/// floor out everything already delivered (no re-delivery).
 #[tokio::test]
 async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect() {
     // Deterministic, fast reconcile via AppState config (no process-wide env, which

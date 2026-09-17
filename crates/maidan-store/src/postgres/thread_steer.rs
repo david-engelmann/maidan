@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Set (upsert) a thread's persisted steer (Cluster 355, W1) — see the SQLite
-/// twin. Latest wins; one steer per thread.
+/// Set (upsert) a thread's persisted steer — see the SQLite twin. Latest wins;
+/// one steer per thread.
 pub async fn set(
     pool: &PgPool,
     thread_id: ThreadId,

@@ -1,8 +1,8 @@
-//! Cluster 401.1: the durable record of who held a thread. Both backends.
+//! The durable record of who held a thread. Both backends.
 //!
 //! The defect this exists for: both governance gates test the thread's **live**
-//! `assignee_id`, and releasing a claim sets that to NULL — so an agent could do
-//! the work, release, and then approve it as a qualifying third party. The
+//! `assignee_id`, and releasing a claim sets that to NULL — so an agent could
+//! do the work, release, and then approve it as a qualifying third party. The
 //! ledger answers "ever held", and the assertion that matters is the one after
 //! the release.
 

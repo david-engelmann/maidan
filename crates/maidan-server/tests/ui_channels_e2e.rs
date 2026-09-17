@@ -1,4 +1,4 @@
-//! Cluster 92: channel browser via `/ui/api` with session cookie (no bearer).
+//! Channel browser via `/ui/api` with session cookie (no bearer).
 
 use std::{
     net::SocketAddr,
@@ -287,9 +287,9 @@ async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
     h.server.abort();
 }
 
-/// Cluster 202: the anti-spoofing guard is wired on a *newly-guarded* surface
-/// (reactions), not only on `post_message` — a session caller cannot react as
-/// another member, but may react as itself.
+/// The anti-spoofing guard is wired on a *newly-guarded* surface (reactions),
+/// not only on `post_message` — a session caller cannot react as another
+/// member, but may react as itself.
 #[tokio::test]
 async fn session_cannot_react_as_another_member() {
     let h = spawn_oidc().await;
@@ -373,13 +373,14 @@ async fn session_cannot_react_as_another_member() {
     h.server.abort();
 }
 
-/// Cluster 315: the legacy `/members/:id/mentions` + `/inbox` routes live ONLY on the
-/// bearer-only `protected` router, so a browser session cannot reach them — the audit's
-/// "a session can read another member's inbox" was a false positive on reachability (a
-/// bearer is act-as-any by design). This documents that truth: a session cookie with no
-/// bearer gets `401`, never another member's data. (The handlers still carry a defensive
-/// `ensure_acting_member` guarding a future `/ui/api` session mount — the Cluster-251
-/// pattern; its logic is unit-tested in `routes::ensure_acting_member`.)
+/// The legacy `/members/:id/mentions` + `/inbox` routes live ONLY on the
+/// bearer-only `protected` router, so a browser session cannot reach them — the
+/// audit's "a session can read another member's inbox" was a false positive on
+/// reachability (a bearer is act-as-any by design). This documents that truth:
+/// a session cookie with no bearer gets `401`, never another member's data.
+/// (The handlers still carry a defensive `ensure_acting_member` guarding a
+/// future `/ui/api` session mount — the pattern; its logic is unit-tested in
+/// `routes::ensure_acting_member`.)
 #[tokio::test]
 async fn legacy_inbox_and_mentions_are_bearer_only_not_session_reachable() {
     let h = spawn_oidc().await;

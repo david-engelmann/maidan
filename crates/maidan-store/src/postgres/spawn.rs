@@ -1,7 +1,6 @@
-//! Spawn-budget store (Cluster 376, Wave 2 #23): the per-workspace caps
-//! (`maidan_spawn_budgets`) + the spawn-time counts the gate reads — a parent's
-//! direct children, a thread's nesting depth, and a thread's recorded tool-use
-//! count. See the SQLite twin.
+//! Spawn-budget store: the per-workspace caps (`maidan_spawn_budgets`) + the
+//! spawn-time counts the gate reads — a parent's direct children, a thread's
+//! nesting depth, and a thread's recorded tool-use count. See the SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{SpawnBudget, ThreadId, WorkspaceId};
@@ -100,7 +99,7 @@ pub async fn thread_depth(pool: &PgPool, thread_id: ThreadId) -> Result<i64, Sto
 }
 
 /// Count the `tool_use` blocks recorded across a thread's (non-tombstoned)
-/// messages' `content` (Cluster 173) — the tool calls counted against `max_tools`.
+/// messages' `content` — the tool calls counted against `max_tools`.
 pub async fn count_tool_uses(pool: &PgPool, thread_id: ThreadId) -> Result<i64, StoreError> {
     let row = sqlx::query(
         "SELECT COUNT(*) AS n

@@ -1,4 +1,4 @@
-//! Re-embed all live messages for the active provider model (Cluster 47).
+//! Re-embed all live messages for the active provider model.
 
 use maidan_types::{MessageId, WorkspaceId};
 use sqlx::{PgPool, SqlitePool};

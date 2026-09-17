@@ -1,4 +1,4 @@
-//! Batching live-indexing handler (Cluster 116).
+//! Batching live-indexing handler.
 //!
 //! The default [`EmbeddingHandler`](crate::EmbeddingHandler) embeds one message
 //! per event, serially — one provider round-trip per message. This handler
