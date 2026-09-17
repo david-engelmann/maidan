@@ -4,7 +4,7 @@
 # other read the shared thread and reply, proving the messages are durable shared state.
 #
 # Default (secure) path — the quickstart stack runs with auth ON, so mint a token first:
-#   docker compose -f compose.quickstart.yaml up -d --build
+#   docker compose -f compose.quickstart.yaml up -d --build --wait
 #   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
 #   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
 #

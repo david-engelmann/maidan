@@ -102,7 +102,7 @@ production**. You need Docker Compose, `curl`, and `jq`.
 
 ```sh
 # 1. Start Maidan (auth on, SQLite, loopback).
-docker compose -f compose.quickstart.yaml up -d --build
+docker compose -f compose.quickstart.yaml up -d --build --wait
 
 # 2. Seed the first admin and mint an all-capabilities bearer token (printed once).
 docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
@@ -132,7 +132,7 @@ To poke at the API without minting a token, layer the insecure override, which
 disables authentication. Never expose it to a network.
 
 ```sh
-docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up -d --build
+docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up -d --build --wait
 ./scripts/quickstart-two-agents.sh          # no MAIDAN_TOKEN needed
 ```
 

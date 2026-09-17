@@ -296,20 +296,15 @@ jobs:
             -t maidan-server:dev \
             -f crates/maidan-server/Dockerfile .
           docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+      # `--wait` blocks on the services' own health checks, so this step is
+      # also what proves those health checks work.
       - name: compose up
-        run: docker compose --profile full up -d
-      - name: wait for /health
+        run: docker compose --profile full up -d --wait
+      - name: health reports ok
         run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8080/health > /tmp/health.json; then
-              cat /tmp/health.json
-              jq -e '.status == "ok"' /tmp/health.json
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::health check timed out after 120s"
-          exit 1
+          curl -sf http://localhost:8080/health > /tmp/health.json
+          cat /tmp/health.json
+          jq -e '.status == "ok"' /tmp/health.json
       - name: compose logs on failure
         if: failure()
         run: |
@@ -323,7 +318,7 @@ jobs:
         if: always()
         run: docker compose --profile full down -v
       - name: federation compose up
-        run: docker compose --profile federation up -d
+        run: docker compose --profile federation up -d --wait
       - name: federation push smoke
         run: bash scripts/federation-smoke.sh
       - name: federation pull smoke

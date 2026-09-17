@@ -22,7 +22,7 @@ The recipes were verified against a live Maidan (the
 versions below. Run one first, then point the example at it:
 
 ```sh
-docker compose -f compose.quickstart.yaml up -d --build   # Maidan on http://127.0.0.1:8080
+docker compose -f compose.quickstart.yaml up -d --build --wait   # Maidan on http://127.0.0.1:8080
 ```
 
 ## The endpoint and the token
