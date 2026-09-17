@@ -67,11 +67,33 @@ test("getResult on an unset thread is a 404 MaidanError", async () => {
   );
 });
 
-test("claim-next returns a claimable thread", async () => {
+test("claim returns the thread flattened, not nested", async () => {
+  // The seeded thread is ready, so this claims it. The shape assertions are the
+  // point: a nested `thread` key would make every README snippet a silent no-op.
+  const { member, channel, thread } = await seed();
+  const claim = await client.claimNextThread(channel.id, { member_id: member.id });
+  assert.ok(claim, "a freshly seeded ready thread should be claimable");
+  assert.ok(!("thread" in claim), "thread fields are flattened, not nested");
+  assert.equal(claim.id, thread.id);
+  assert.equal(claim.assignee_id, member.id);
+  assert.ok(claim.claim_lease_id, "the fencing token renewClaim needs");
+  assert.ok(claim.pin.uri && claim.pin.content_hash);
+});
+
+test("renewClaim extends the lease with the fencing token", async () => {
   const { member, channel } = await seed();
-  const res = await client.claimNextThread(channel.id, { member_id: member.id });
-  // Either the seeded thread (claimed=true) or null if none ready.
-  assert.ok(res === null || typeof res === "object");
+  const claim = await client.claimNextThread(channel.id, {
+    member_id: member.id,
+    lease_secs: 60,
+  });
+  const renewed = await client.renewClaim(claim.id, member.id, claim.claim_lease_id, 600);
+  assert.ok(renewed.assignment_expires_at > claim.assignment_expires_at);
+});
+
+test("claim-next returns null once the queue is drained", async () => {
+  const { member, channel } = await seed();
+  await client.claimNextThread(channel.id, { member_id: member.id });
+  assert.equal(await client.claimNextThread(channel.id, { member_id: member.id }), null);
 });
 
 test("errors surface status + body", async () => {

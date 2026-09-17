@@ -23,13 +23,15 @@ func main() {
 	c := maidan.New("http://127.0.0.1:8080", "") // or MAIDAN_URL / MAIDAN_TOKEN
 
 	// Hero loop: claim the next ready task, do work, post, set a result.
-	res, _ := c.ClaimNextThread(channelID, maidan.M{"member_id": memberID})
-	if res != nil {
-		if thread, ok := res["thread"].(maidan.M); ok {
-			tid := thread["id"].(string)
-			c.Messages.Post(tid, memberID, "on it")
-			c.Threads.SetResult(tid, maidan.M{"ok": true})
-		}
+	// A claim returns the thread's fields at the top level (plus a
+	// content-addressed "pin"), or nil when nothing is ready.
+	claim, _ := c.ClaimNextThread(channelID, maidan.M{"member_id": memberID})
+	if claim != nil {
+		tid := claim["id"].(string)
+		c.Messages.Post(tid, memberID, "on it")
+		c.Threads.SetResult(tid, maidan.M{"ok": true})
+		// Long job? Heartbeat the lease with the fencing token the claim returned.
+		c.RenewClaim(tid, memberID, claim["claim_lease_id"].(string), 300)
 	}
 
 	// React to work instead of polling.

@@ -132,11 +132,74 @@ func TestGetResultUnsetIs404(t *testing.T) {
 	}
 }
 
-func TestClaimNextReturnsClaimableOrNil(t *testing.T) {
+func TestClaimReturnsTheThreadFlattenedNotNested(t *testing.T) {
+	// The seeded thread is ready, so this claims it. The shape assertions are the
+	// point: a nested "thread" key would make every README snippet a silent no-op.
+	c := testClient(t)
+	_, member, channel, thread := seed(t, c)
+	claim, err := c.ClaimNextThread(channel["id"].(string), M{"member_id": member["id"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim == nil {
+		t.Fatal("a freshly seeded ready thread should be claimable")
+	}
+	if _, nested := claim["thread"]; nested {
+		t.Fatal("thread fields are flattened, not nested under \"thread\"")
+	}
+	if claim["id"] != thread["id"] {
+		t.Fatalf("claimed %v, seeded %v", claim["id"], thread["id"])
+	}
+	if claim["assignee_id"] != member["id"] {
+		t.Fatalf("assignee %v, member %v", claim["assignee_id"], member["id"])
+	}
+	if claim["claim_lease_id"] == nil {
+		t.Fatal("no claim_lease_id — the fencing token RenewClaim needs")
+	}
+	pin, ok := claim["pin"].(M)
+	if !ok || pin["uri"] == nil || pin["content_hash"] == nil {
+		t.Fatalf("expected a content-addressed pin, got %v", claim["pin"])
+	}
+}
+
+func TestRenewClaimExtendsTheLeaseWithTheFencingToken(t *testing.T) {
 	c := testClient(t)
 	_, member, channel, _ := seed(t, c)
-	if _, err := c.ClaimNextThread(channel["id"].(string), M{"member_id": member["id"]}); err != nil {
+	claim, err := c.ClaimNextThread(
+		channel["id"].(string),
+		M{"member_id": member["id"], "lease_secs": 60},
+	)
+	if err != nil {
 		t.Fatal(err)
+	}
+	renewed, err := c.RenewClaim(
+		claim["id"].(string),
+		member["id"].(string),
+		claim["claim_lease_id"].(string),
+		600,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed["assignment_expires_at"].(string) <= claim["assignment_expires_at"].(string) {
+		t.Fatalf("lease not extended: %v -> %v",
+			claim["assignment_expires_at"], renewed["assignment_expires_at"])
+	}
+}
+
+func TestClaimNextReturnsNilOnceDrained(t *testing.T) {
+	c := testClient(t)
+	_, member, channel, _ := seed(t, c)
+	body := M{"member_id": member["id"]}
+	if _, err := c.ClaimNextThread(channel["id"].(string), body); err != nil {
+		t.Fatal(err)
+	}
+	drained, err := c.ClaimNextThread(channel["id"].(string), body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drained != nil {
+		t.Fatalf("expected nil on an empty queue, got %v", drained)
 	}
 }
 

@@ -337,8 +337,12 @@ func (c *Client) ClaimNextThread(channelID string, body M) (M, error) {
 }
 
 // RenewClaim is the holder-only lease heartbeat.
-func (c *Client) RenewClaim(threadID string) (M, error) {
-	return c.postObj("/threads/"+threadID+"/claim/renew", M{})
+func (c *Client) RenewClaim(threadID, memberID, claimLeaseID string, leaseSecs int64) (M, error) {
+	return c.postObj("/threads/"+threadID+"/claim/renew", M{
+		"member_id":      memberID,
+		"claim_lease_id": claimLeaseID,
+		"lease_secs":     leaseSecs,
+	})
 }
 
 // --- Messages ---

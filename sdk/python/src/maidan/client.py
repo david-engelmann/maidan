@@ -203,12 +203,36 @@ class Client:
 
     # --- hero methods ---
     def claim_next_thread(self, channel_id: str, body: Optional[dict] = None) -> Any:
-        """POST /channels/{cid}/threads/claim-next — readiness/skill/lease-aware."""
+        """POST /channels/{cid}/threads/claim-next — readiness/skill/lease-aware.
+
+        Returns the claimed thread with its fields at the TOP level (plus a
+        content-addressed ``pin``), or ``None`` when nothing is claimable. There
+        is no nested ``thread`` key: ``claim["id"]``, not ``claim["thread"]["id"]``.
+        """
         return self._req("POST", f"/channels/{channel_id}/threads/claim-next", body or {})
 
-    def renew_claim(self, thread_id: str) -> Any:
-        """POST /threads/{id}/claim/renew — holder-only lease heartbeat."""
-        return self._req("POST", f"/threads/{thread_id}/claim/renew", {})
+    def renew_claim(
+        self,
+        thread_id: str,
+        member_id: str,
+        claim_lease_id: str,
+        lease_secs: int = 300,
+    ) -> Any:
+        """POST /threads/{id}/claim/renew — holder-only lease heartbeat.
+
+        ``claim_lease_id`` is the fencing token the claim handed back
+        (``claim["claim_lease_id"]``). Presenting it is what stops a stale holder
+        from extending a lease the next owner has already taken over.
+        """
+        return self._req(
+            "POST",
+            f"/threads/{thread_id}/claim/renew",
+            {
+                "member_id": member_id,
+                "claim_lease_id": claim_lease_id,
+                "lease_secs": lease_secs,
+            },
+        )
 
     def _capture_room_lsn(self, headers: Any) -> None:
         raw = None

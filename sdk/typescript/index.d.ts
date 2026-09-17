@@ -103,7 +103,12 @@ export declare class Client {
   /** Hero: readiness/skill/lease-aware claim of the next thread in a channel. */
   claimNextThread(cid: ChannelId, body?: unknown): Promise<any>;
   /** Holder-only lease heartbeat. */
-  renewClaim(id: ThreadId): Promise<any>;
+  renewClaim(
+    id: ThreadId,
+    memberId: MemberId,
+    claimLeaseId: string,
+    leaseSecs?: number,
+  ): Promise<any>;
 
   subscribe(
     filter: Record<string, unknown>,

@@ -109,8 +109,12 @@ export class Client {
     return this._req("POST", `/channels/${cid}/threads/claim-next`, body || {});
   }
   /** POST /threads/{id}/claim/renew — holder-only lease heartbeat. */
-  renewClaim(id) {
-    return this._req("POST", `/threads/${id}/claim/renew`, {});
+  renewClaim(id, memberId, claimLeaseId, leaseSecs = 300) {
+    return this._req("POST", `/threads/${id}/claim/renew`, {
+      member_id: memberId,
+      claim_lease_id: claimLeaseId,
+      lease_secs: leaseSecs,
+    });
   }
 
   async _req(method, path, body) {

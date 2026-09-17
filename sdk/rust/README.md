@@ -18,11 +18,15 @@ fn main() -> Result<(), maidan::MaidanError> {
     let client = Client::new("http://127.0.0.1:8080", ""); // or Client::from_env()
 
     // Hero loop: claim the next ready task, do work, post, set a result.
-    let res = client.claim_next_thread(channel_id, json!({ "member_id": member_id }))?;
-    if let Some(thread) = res.get("thread") {
-        let tid = thread["id"].as_str().unwrap();
+    // A claim returns the thread's fields at the top level (plus a
+    // content-addressed `pin`), or null when nothing is ready.
+    let claim = client.claim_next_thread(channel_id, json!({ "member_id": member_id }))?;
+    if let Some(tid) = claim["id"].as_str() {
         client.messages().post(tid, member_id, "on it")?;
         client.threads().set_result(tid, json!({ "ok": true }))?;
+        // Long job? Heartbeat the lease with the fencing token the claim returned.
+        let lease = claim["claim_lease_id"].as_str().unwrap_or_default();
+        client.renew_claim(tid, member_id, lease, 300)?;
     }
 
     // React to work instead of polling.

@@ -195,11 +195,21 @@ impl Client {
     }
 
     /// Holder-only lease heartbeat.
-    pub fn renew_claim(&self, thread_id: &str) -> Result<Value> {
+    pub fn renew_claim(
+        &self,
+        thread_id: &str,
+        member_id: &str,
+        claim_lease_id: &str,
+        lease_secs: i64,
+    ) -> Result<Value> {
         self.send(
             "POST",
             &format!("/threads/{thread_id}/claim/renew"),
-            Some(&json!({})),
+            Some(&json!({
+                "member_id": member_id,
+                "claim_lease_id": claim_lease_id,
+                "lease_secs": lease_secs,
+            })),
         )
     }
 
