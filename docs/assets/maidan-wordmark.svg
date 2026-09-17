@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="72" viewBox="0 0 360 72" role="img" aria-label="Maidan">
+  <title>Maidan</title>
+  <!-- A maidan is a public square. The mark is one: an open enclosure with
+       participants inside it. Typographic and monochrome on purpose — it reads
+       on a light or a dark README without a second file, and there is nothing
+       in it to render badly at 16px. -->
+  <g fill="none" stroke="#5B7FA6" stroke-width="3.5">
+    <rect x="10" y="14" width="44" height="44" rx="4"/>
+  </g>
+  <g fill="#5B7FA6">
+    <rect x="20" y="24" width="9" height="9" rx="1.5"/>
+    <rect x="35" y="24" width="9" height="9" rx="1.5"/>
+    <rect x="20" y="39" width="9" height="9" rx="1.5"/>
+    <rect x="35" y="39" width="9" height="9" rx="1.5" opacity="0.45"/>
+  </g>
+  <text x="74" y="49"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
+        font-size="40" font-weight="600" letter-spacing="-0.5" fill="#5B7FA6">maidan</text>
+</svg>
