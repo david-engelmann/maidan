@@ -226,3 +226,95 @@ async fn a_derived_token_inherits_the_parents_quotas() {
     // And it is reported back, so the holder can see what it got.
     assert_eq!(derived["quotas"][0]["capability"], capability::MESSAGE_POST);
 }
+
+/// Cluster 401.3: revoking a token kills everything derived from it, and the
+/// derived credential actually stops working — not merely gets a column set.
+///
+/// The parent link used to live only in audit metadata, so revocation could not
+/// traverse it and a child outlived the credential it was minted from. Cluster
+/// 397.7 closed the same shape for app installations and quotas; this is the
+/// third dimension.
+#[tokio::test]
+async fn a_derived_token_dies_with_its_parent() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "revoke-e2e".into(),
+        })
+        .await
+        .unwrap();
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "rev-agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+
+    let parent_secret = TokenSecret::generate();
+    let parent = store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: agent.id,
+            app_installation_id: None,
+            token_hash: hash_secret(parent_secret.as_str()),
+            label: Some("parent".into()),
+            capabilities: vec![capability::WORKSPACE_READ.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+
+    let attenuate = |bearer: String| {
+        let (base, client) = (base.clone(), client.clone());
+        async move {
+            let v: Value = client
+                .post(format!("{base}/tokens/attenuate"))
+                .bearer_auth(bearer)
+                .json(&json!({ "capabilities": [capability::WORKSPACE_READ] }))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            v["secret"].as_str().expect("minted").to_string()
+        }
+    };
+    let child_secret = attenuate(parent_secret.as_str().to_string()).await;
+    // Derived from the *child*, so this only survives a one-level cascade.
+    let grandchild_secret = attenuate(child_secret.clone()).await;
+
+    let reads = |bearer: String| {
+        let (base, client, wsid) = (base.clone(), client.clone(), ws.id.0);
+        async move {
+            client
+                .get(format!("{base}/workspaces/{wsid}"))
+                .bearer_auth(bearer)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(reads(child_secret.clone()).await, StatusCode::OK);
+    assert_eq!(reads(grandchild_secret.clone()).await, StatusCode::OK);
+
+    store.revoke_api_token(parent.id).await.unwrap();
+
+    assert_eq!(
+        reads(child_secret).await,
+        StatusCode::UNAUTHORIZED,
+        "a derived token must not outlive the credential it was minted from"
+    );
+    assert_eq!(
+        reads(grandchild_secret).await,
+        StatusCode::UNAUTHORIZED,
+        "the cascade must be transitive — a one-level kill is the same leak \
+         one generation down"
+    );
+}

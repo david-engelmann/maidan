@@ -2064,6 +2064,23 @@ pub trait TokenStore: Send + Sync {
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
+    /// Mint a token that records the token it was derived from (Cluster 401.3),
+    /// so [`Self::revoke_api_token`] can reach it.
+    ///
+    /// Separate from `create_api_token` rather than a field on `NewApiToken`:
+    /// that struct is built at 109 sites, 100 of them tests, and only the
+    /// attenuation path has a parent.
+    async fn create_attenuated_api_token(
+        &self,
+        new: NewApiToken,
+        parent_token_id: ApiTokenId,
+    ) -> Result<ApiToken, StoreError>;
+
+    /// Revoke a token **and every token derived from it** (Cluster 401.3).
+    ///
+    /// Cluster 397.7 made a derived token inherit the parent's app installation
+    /// and quotas, because re-issuing was otherwise a way to shed a bound.
+    /// Revocation is the ultimate limit and was the dimension still leaking.
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn list_api_tokens_for_member(
         &self,
