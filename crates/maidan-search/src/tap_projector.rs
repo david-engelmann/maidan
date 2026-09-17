@@ -117,6 +117,23 @@ impl SearchTap {
         !self.faults.is_empty()
     }
 
+    /// Whether this workspace's chain position is already known in memory.
+    pub fn has_link(&self, workspace_id: WorkspaceId) -> bool {
+        self.last_link.contains_key(&workspace_id)
+    }
+
+    /// Restore a workspace's chain position when resuming (Cluster 402.2), so
+    /// the next row is verified against its real predecessor rather than being
+    /// accepted as a chain start.
+    pub fn seed_link(&mut self, workspace_id: WorkspaceId, link: EventLink) {
+        self.last_link.insert(workspace_id, link);
+    }
+
+    /// Seed the resume point. `0` means walk from genesis (a rebuild).
+    pub fn resume_at(&mut self, last_event_id: i64) {
+        self.history_hw = last_event_id;
+    }
+
     /// A resume cursor in a pruned gap must rebuild, never clamp.
     pub fn gap_fault(
         after_id: i64,
@@ -137,8 +154,26 @@ impl SearchTap {
     }
 }
 
-/// Drain the durable log into `tap` + `on_project`. Stops on the first
-/// chain break or pruned-gap cursor. Returns the history high-water.
+/// Drain the durable log into `tap` + `on_project`. Returns the history
+/// high-water.
+///
+/// Walks from `tap.history_hw`, which the caller seeds from the durable cursor
+/// (Cluster 402.2). Seeded with `0` this is a full walk from genesis, which is
+/// what a rebuild wants.
+///
+/// # What resuming does and does not verify
+///
+/// Every event this projects is chain-verified against the previous link for its
+/// workspace, exactly as before. What a resume no longer does is re-prove the
+/// prefix it already proved on an earlier run.
+///
+/// That is a real reduction, and it is the trade. A tamper *behind* the cursor
+/// is no longer noticed by the tap — but the tap only ever noticed one when the
+/// process happened to restart, which is an accident of implementation rather
+/// than a control anyone could rely on or schedule. Whole-chain integrity is
+/// `GET /workspaces/:wid/events/verify`, which Cluster 397.8 made streamable and
+/// therefore affordable to run on a timer. The tap verifies what it projects;
+/// the verifier verifies the chain.
 pub async fn backfill_search<F, Fut>(
     store: &dyn maidan_store::Store,
     tap: &mut SearchTap,
@@ -158,7 +193,11 @@ where
             return Err(fault);
         }
     }
-    let mut after_id = 0_i64;
+    // Resume where the last run finished. The pruned-gap check above already
+    // refused a cursor that fell into a pruned range, so this is either 0 (a
+    // rebuild) or a point the log still covers.
+    let resumed_from = tap.history_hw;
+    let mut after_id = resumed_from;
     loop {
         let page = store
             .list_events_after_global(after_id, maidan_store::LAG_RESUME_BATCH)
@@ -170,6 +209,25 @@ where
         let short = (page.len() as i64) < maidan_store::LAG_RESUME_BATCH;
         for row in page {
             after_id = after_id.max(row.id);
+            // On a resume the first row seen for a workspace has no in-memory
+            // predecessor, and `verify_catch_up(None, row)` treats a row as a
+            // chain start. Left unseeded that would silently accept a mid-chain
+            // row as a genesis — verification that looks like it ran and did
+            // not. Re-derive the predecessor from the log rather than storing a
+            // second copy of the hashes, which could drift from it.
+            if resumed_from > 0 {
+                if let Some(ws) = row.workspace_id {
+                    if !tap.has_link(ws) {
+                        if let Some(link) = store
+                            .workspace_event_at_or_before(ws, resumed_from)
+                            .await
+                            .map_err(|_| TapFault::MissingHistory)?
+                        {
+                            tap.seed_link(ws, link);
+                        }
+                    }
+                }
+            }
             let project = tap.ingest(&row)?;
             if project {
                 on_project(row).await?;

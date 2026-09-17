@@ -65,6 +65,7 @@ mod sessions;
 mod slack_links;
 mod slash_commands;
 mod spawn;
+mod tap_cursor;
 mod task_schedules;
 mod thread_deps;
 mod thread_lineage;
@@ -2120,6 +2121,18 @@ impl EventStore for SqliteStore {
 
     async fn max_event_id(&self) -> Result<i64, StoreError> {
         events::max_event_id(&self.pool).await
+    }
+
+    async fn tap_cursor(&self, surface: &str) -> Result<i64, StoreError> {
+        tap_cursor::get(&self.pool, surface).await
+    }
+
+    async fn set_tap_cursor(&self, surface: &str, last_event_id: i64) -> Result<(), StoreError> {
+        tap_cursor::set(&self.pool, surface, last_event_id).await
+    }
+
+    async fn clear_tap_cursor(&self, surface: &str) -> Result<(), StoreError> {
+        tap_cursor::clear(&self.pool, surface).await
     }
 
     async fn list_events_after_global(

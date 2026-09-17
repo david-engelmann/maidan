@@ -977,60 +977,41 @@ because the tests assert the happy path of a single tenant.
    > closed PR #873. Recorded here because the repo's convention is that the PR
    > body *is* the commit body, and this one is not.
 
-   **Still open (related, larger), and a decision rather than a fix:** the search
-   indexer's `backfill_search` starts at `after_id = 0` unconditionally, on every
-   process start, every resubscribe, and every `Lagged`. On Postgres the handler
-   is `BatchingEmbeddingHandler`, so a restart **re-embeds the entire history** —
-   cost, latency, and a bounded embedding queue to overflow. It can also compete
-   with itself: while backfilling, live frames are not consumed, so the broadcast
-   overflows → `Lagged` → backfill restarts from 0, which is a plausible livelock
-   on a busy deployment. And `SearchTap.fault` is sticky, so one chain break in
-   *any* workspace returns `RebuildRequired` and stops projection for **every**
-   tenant, retrying the same full scan on backoff forever — "fail loud" that in
-   practice reads as "silently stop indexing everything", since `rebuild_needed`
-   is an `AtomicBool` nothing consumes and there is no rebuild path.
+   ~~**Still open (related, larger), and a decision rather than a fix:**~~
+   **✅ DECIDED AND FIXED (Clusters 402.1 + 402.2).** `backfill_search` started
+   at `after_id = 0` unconditionally — every process start, every resubscribe,
+   every `Lagged` — so on Postgres (`BatchingEmbeddingHandler`) a restart
+   re-embedded the entire history. It also livelocked: the bus is not drained
+   *during* a backfill, so a busy instance overflows the broadcast while walking,
+   gets `Lagged`, and walks from 0 again.
 
-   The obvious fix — a persisted projector cursor — is **not obviously correct**,
-   which is why it is here rather than done. Re-walking from 0 is expensive but
-   *safe*: it re-verifies the whole chain on every start, which is what makes the
-   tap a verifier and not just a projector. Resuming from a cursor is cheap but
-   trusts a prefix it no longer checks, so a chain break behind the cursor becomes
-   invisible to the projector that exists partly to notice it. That is a
-   correctness tradeoff, not a performance one, and it wants an explicit answer to
-   "what is the tap's verification contract across restarts?" — plus, if the
-   answer is a cursor, a decision on whether verification moves to a separate
-   periodic full-chain check (`GET /workspaces/:wid/events/verify` already exists,
-   and Cluster 397.8 made it affordable to run).
+   **402.1 — the isolation bug (no trade).** `SearchTap` tracked the chain per
+   workspace but recorded failure in a single `Option`, so one tenant's break
+   stopped indexing for *every* tenant, forever, behind exponential backoff.
+   Faults are now keyed by workspace: the broken tenant stops being projected,
+   the rest carry on, and the log **names** them — the old signal was an
+   `AtomicBool` nothing in production reads.
 
-   The per-tenant blast radius is separable and less contentious: a fault in one
-   workspace should not stop projection for the others.
-4. ~~**`/operator/egress/dead` + requeue are global under a per-workspace
-   `token:admin`** — read every tenant's Slack ids and repos, then requeue to
-   post into them.~~ **✅ FIXED (Cluster 397.4)** — both are scoped to
-   `auth.workspace_id` at the store, so a tenant sees only its own dead
-   deliveries and a guessed cross-tenant id is a no-op rather than a re-send.
+   **402.2 — the cursor (the trade), ADR in [Decisions.md](Decisions.md):**
+   *The search tap resumes; the verifier verifies.* The framing "cursor vs
+   re-walk" treats the tap as doing one job; it does two. **Projection** wants to
+   be incremental, **verification** wants a full walk, and projection was paying
+   verification's cost while inheriting its failure mode.
 
-   **Two siblings found while fixing it — both ✅ FIXED (Cluster 398.3),** using
-   *both* remedies rather than picking one, because the two routes need different
-   ones:
+   So the tap persists a cursor (pg 0099 / sqlite 0098) and walks forward.
+   Everything it projects is still chain-verified — on resume the predecessor is
+   re-derived from the log, because without it `verify_link` skips the
+   `prev_hash` comparison for a mid-chain row entirely and would accept a
+   predecessor that had been deleted or reordered.
 
-   - **`GET /operator/mail/dead` + `POST …/:id/requeue`** — the rows carry
-     `to_address`, `subject` and `body`, so any workspace admin could read every
-     other tenant's outbound email and requeue it to their recipient.
-     `maidan_mail_outbox` now has a `workspace_id` (pg 0096 / sqlite 0095),
-     populated at enqueue from the notification router, which already knows it.
-     Both routes scope to `auth.workspace_id`.
-   - **`GET /operator/legal-holds`** — genuinely instance-wide, and scoping it
-     would make it a duplicate of `GET /workspaces/:id/legal-hold`, so it keeps
-     its global query and moves to the new capability.
+   **What is given up, stated plainly:** a tamper *behind* the cursor is no
+   longer noticed by the tap. It was only ever noticed when the process happened
+   to restart — an accident, not a control you could schedule or alert on.
+   Whole-chain integrity is `GET /workspaces/:wid/events/verify`, which 397.8
+   made streamable.
 
-   **New capability `operator:global`** (in `maidan.human.admin`, never in
-   `maidan.agent.worker`). `audit:read-global` could not be reused: it is a
-   *read* capability and the mail requeue is a write. It also covers the mail
-   rows whose `workspace_id` is `NULL` — enqueued before this cluster, or with no
-   tenant context — which cannot be attributed to a caller's workspace and so are
-   visible to an instance operator alone. The column is deliberately nullable:
-   there is nothing to backfill, because the table never stored a workspace.
+   **Residual, and it is an operational one:** that verify has to actually be
+   scheduled. Closing that is the last piece of this item.
 
 ### P1
 
@@ -1250,7 +1231,7 @@ that had silently been fixed are struck through above.
 | ~~7b~~ | ~~Self-approval launders through a claim release~~ | ✅ **fixed, Clusters 401.1 + 401.2** | — |
 | ~~11~~ | ~~jsonb normalizes integral exponent numbers~~ | ✅ **fixed, Cluster 400.3** | — |
 | 8 | Attenuation records no parent link → revocation does not cascade | migration + traversal, and a cascade-vs-mark call | **decision** |
-| — | Search-indexer backfill restarts from 0 on every resubscribe | cursor vs full re-verification | **correctness decision** |
+| ~~—~~ | ~~Search-indexer backfill restarts from 0~~ | ✅ **decided + fixed, Clusters 402.1 + 402.2** | — |
 | — | `set_thread_budget` is PUT-shaped, so raising one cap clears three | API shape | **decision** |
 | — | Cluster 387 has no retro / Capabilities / CHANGELOG entry | docs | small |
 | — | Land-gate enforcement is stated unconditionally in four docs | docs | small |
