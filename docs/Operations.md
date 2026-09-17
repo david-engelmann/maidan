@@ -37,7 +37,7 @@ an untrusted egress target — these are the levers to pull. Two shapes: a
 **per-member freeze** (a runtime API, no restart) and **`MAIDAN_*` env flags**
 (set-and-restart).
 
-### Freeze a member (Cluster 372, runtime, no restart)
+### Freeze a member
 
 Freezing a member drops their active leases (their claimed threads return to the
 queue) and makes `claim_next` refuse them; they stay frozen until an explicit
@@ -60,20 +60,20 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 
 | Flag | Lever |
 |------|-------|
-| `MAIDAN_ALLOW_INSECURE_NO_AUTH` (+ `AUTH_DISABLED`) | Auth is fail-closed: disabling it needs this explicit ack, and never in production (Cluster 157). Leave unset in prod. |
-| `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables (Cluster 183). Lower it to throttle a spike. |
-| `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413` (Cluster 183). |
-| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hosts the SecretBroker may substitute `secret://` refs for on webhook egress; a non-allowlisted host gets the literal ref (Cluster 371). Empty ⇒ never substitute. |
+| `MAIDAN_ALLOW_INSECURE_NO_AUTH` (+ `AUTH_DISABLED`) | Auth is fail-closed: disabling it needs this explicit ack, and never in production. Leave unset in prod. |
+| `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables. Lower it to throttle a spike. |
+| `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413`. |
+| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hosts the SecretBroker may substitute `secret://` refs for on webhook egress; a non-allowlisted host gets the literal ref. Empty ⇒ never substitute. |
 | `FEDERATION_DISABLED` | Turns off federation ingress + the pull worker. |
-| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query (Cluster 156). |
+| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query. |
 | Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS`, `MAIDAN_MAIL_WORKER_TICK_SECS`, `MAIDAN_RETENTION_SWEEP_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests / mail / retention pruning). |
-| `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event (Cluster 186). |
+| `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event. |
 
 Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
-keyring; rotate with `FEDERATION_DECRYPT_KEYS` (Cluster 189). See
+keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See
 [Production.md](Production.md) for the full config surface.
 
-## Load & soak testing (Cluster 198, Arc D)
+## Load & soak testing
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread
 / search) at the server and prints per-op latency percentiles (p50/p95/p99) +
@@ -195,9 +195,9 @@ The 8 required jobs:
 - `unit tests` — ~1m
 - `integration (testcontainers)` — ~1m20s
 - `docker compose smoke` — ~4m
-- `scale-out smoke` — ~9m (required as of the `maidan-scale-1.0` gate, Cluster 120)
-- `promtool (alert rules)` — ~10s (required as of Cluster 124)
-- `otlp smoke` — ~9m (required as of Cluster 124)
+- `scale-out smoke` — ~9m (required as of the `maidan-scale-1.0` gate)
+- `promtool (alert rules)` — ~10s (required as)
+- `otlp smoke` — ~9m (required as)
 
 If anything goes red, fix on the branch and push again. The most
 common failures and fixes are in "Debugging CI" below.
@@ -423,13 +423,13 @@ The CI coverage job now enforces a line-coverage floor with
 
 - Baseline for the initial gate: **9.8%** line coverage from green main
   run `26485125992` (gate set slightly lower at `9.0` to avoid noise).
-- **Cluster 5.0** raised the floor to **`10.0`** after targeted unit tests
+- Raised the floor to **`10.0`** after targeted unit tests
   (filters, subscribe resume, listener health). Green run `26492169902` (11.0
   failed on first attempt). Re-measure on `main` before the next bump.
-- **Cluster 9.0** raised the floor to **`10.5`** after targeted tests in
+- Raised the floor to **`10.5`** after targeted tests in
   `maidan-types` (`EventFilter`), `maidan-bus` (hydrate/error), `maidan-server`
   (subscribe metrics, hydrate `/metrics` e2e), `maidan-search`, and `maidan-auth`.
-- **Cluster 11.0** raised the floor to **`11.0`** after outbox/relay coverage
+- Raised the floor to **`11.0`** after outbox/relay coverage
   (PR #173; green CI run `26529705006`). Re-measure on `main` before the next bump.
 - If the floor needs to move, do it in a dedicated CI/docs PR and note
   the run id used for recalibration.
@@ -447,7 +447,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 3. **No workspace filter** — subscribers without `filter.workspace_id` only get
    `replay_hint`, not auto-replay; see [[Production#Delivery reliability metrics]].
 4. **Truncation loop** — sustained `replay_truncated` means the client must advance
-   `after_id` until the frame stops; see [[Clusters/Cluster 4.0]].
+   `after_id` until the frame stops.
 5. **Postgres LISTEN** — `maidan_bus_listener_ok` and `/health/ready` `bus` field;
    listener errors increment `maidan_bus_listener_errors_total`.
 6. **Indexer silence** — set `INDEXER_STALE_SECS` (e.g. `300`) when embeddings are on;
@@ -528,8 +528,8 @@ If the release workflow runs but doesn't produce a GitHub Release:
 - 8 required status checks: `lint (fmt + clippy + deny)`,
   `secrets scan`, `unit tests`, `integration (testcontainers)`,
   `docker compose smoke`, `scale-out smoke` (promoted to required
-  at the `maidan-scale-1.0` gate, Cluster 120), and `promtool (alert
-  rules)` + `otlp smoke` (promoted in Cluster 124).
+  at the `maidan-scale-1.0` gate), and `promtool (alert
+  rules)` + `otlp smoke` (promoted).
 - 1 required PR review (the maintainer self-merges via `--admin`
   bypass).
 - No force push.

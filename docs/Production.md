@@ -40,7 +40,7 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `OTLP_METRICS_ENDPOINT` | no | Override OTLP gRPC URL for metrics only. |
 | `OTLP_METRICS_INTERVAL_SECS` | no | Periodic push interval (default `15`). |
 
-**Compiling OpenTelemetry out (Cluster 366, H15).** OTLP export is a default-on
+**Compiling OpenTelemetry out.** OTLP export is a default-on
 cargo feature (`otel`) on `maidan-server`. Building with `--no-default-features`
 (or a custom feature set that omits `otel`) drops the OpenTelemetry/OTLP/tonic
 stack entirely for a leaner binary — plain `tracing` logs and the Prometheus
@@ -49,10 +49,10 @@ inert (an `OTLP_ENDPOINT` that is set is reported to stderr at startup and
 otherwise ignored). Leave the feature on (the default) to keep OTLP traces +
 metrics push available.
 | `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or `X-Forwarded-For` / `anonymous`). Default off. `/health/*` and `/metrics` exempt. |
-| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push (Cluster 366, N1). All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push. All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
 | `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
 
-**SCIM 2.0 provisioning (Cluster 366, SCIM-as-OIDC-P3).** An IdP (Okta / Azure AD /
+**SCIM 2.0 provisioning.** An IdP (Okta / Azure AD /
 …) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`
 (`ServiceProviderConfig` + `Users` create / read / list-with-`userName eq`-filter /
 replace / patch / delete). Point the IdP's SCIM connector at
@@ -566,7 +566,7 @@ expand-then-contract. `/health/ready` gates traffic on DB + object store +
 indexer + the `LISTEN` bus, so an LB honoring readiness won't route to a replica
 mid-migration.
 
-**Not covered:** load/throughput benchmarking (bench harness, Cluster 109),
+**Not covered:** load/throughput benchmarking (bench harness),
 autoscaling/HPA tuning, multi-region active-active (out of scope).
 
 ## Read replicas (`v264.0.0`)
@@ -590,7 +590,7 @@ has asserted no causality requirement).
 
 **Not `Maidan-Room-LSN`.** That header is **your workspace's** event-log
 high-water (decimal, including SQLite) so a subscriber or webhook consumer can
-see projector / broadcast lag. Since Cluster 398.8 it is scoped to the caller's
+see projector / broadcast lag. It is scoped to the caller's
 room rather than the instance — the instance head was not comparable to anything
 a client had seen, so a caught-up consumer could never reach it. It is
 **not** a WAL LSN, is not gated on a replica, and must not be echoed as
@@ -629,11 +629,11 @@ message search (`cargo test -p maidan-search --test replica_routing -- --ignored
 
 ## Event-log chain verification
 
-Every event carries a `prev_hash` / `content_hash` chain (Cluster 392). Verifying
-it end to end is `GET /workspaces/:wid/events/verify`, which Cluster 397.8 made
+Every event carries a `prev_hash` / `content_hash` chain. Verifying
+it end to end is `GET /workspaces/:wid/events/verify`, which is
 streaming rather than whole-log-in-memory.
 
-Until Cluster 402.2 the search tap re-walked and re-verified the entire log on
+The search tap used to re-walk and re-verify the entire log on
 every process start — which meant verification happened only when a process
 happened to bounce. That is not a control you can schedule, alert on, or say
 when it last ran, so the tap now resumes from a cursor and verification became
@@ -677,7 +677,7 @@ Two operator scripts implement it:
 
 **Not in the data backup — restore these from your secret manager, out of band:**
 `DATABASE_URL`, `MAIDAN_SESSION_SECRET` (subscribe-resume/session signing),
-`FEDERATION_ENCRYPTION_KEY` (+ any `FEDERATION_DECRYPT_KEYS` — see the Cluster-189
+`FEDERATION_ENCRYPTION_KEY` (+ any `FEDERATION_DECRYPT_KEYS` — see the
 rotation keyring), `MAIDAN_EXPORT_SIGNING_KEY` (and any
 `MAIDAN_EXPORT_VERIFY_KEYS` pin), and SMTP/OIDC credentials. A DB dump without the session secret
 still restores all data; only signed-token continuity needs the same secret.
@@ -727,14 +727,14 @@ chain is the signed-export envelope above.
 retained suffix and **409s** (`event-log-broken`) on a break. Federation
 ingest checks origin hashes the same way before remap. After retention
 prune, verify the remaining suffix — snapshot catch-up of a dropped
-prefix is Cluster 393 (below).
+prefix is described below.
 
 No extra env vars. See [Integration.md](Integration.md#event-log-hash-chain)
 and [Threat-Model.md](Threat-Model.md).
 
 ## Log snapshot
 
-A **log snapshot** (`GET /workspaces/:id/snapshot`, Cluster 393) is a
+A **log snapshot** (`GET /workspaces/:id/snapshot`) is a
 different artifact: a hashed checkpoint of the same content graph plus
 the retained event-log floor/head, so a peer can catch up after
 retention pruned the prefix. It is not Ed25519-signed (391 is

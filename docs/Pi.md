@@ -27,7 +27,7 @@ Minimal SQLite-backed server (no Postgres container):
 
 ```sh
 # Lab / dev only: auth OFF. AUTH_DISABLED fails closed unless the explicit
-# MAIDAN_ALLOW_INSECURE_NO_AUTH ack is ALSO set (Cluster 157), so both are required
+# MAIDAN_ALLOW_INSECURE_NO_AUTH ack is ALSO set, so both are required
 # for the container to boot. Never expose this to a network. Pin the tag, not :latest.
 mkdir -p ~/maidan-data
 docker run --rm -d \
