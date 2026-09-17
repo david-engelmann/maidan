@@ -26,7 +26,7 @@ single source of truth for *how* to operate in this codebase. The
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v399.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v402.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
   handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). Since v273:
   MCP `2026-07-28` (300–303), mail retry (304–306), Slack/GitHub projectors
