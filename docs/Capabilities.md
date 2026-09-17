@@ -3,6 +3,52 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v402.0.0 — the search tap: isolate, resume, and schedule the verifier
+
+Three PRs (402.1–402.3). The last of the three items the post-Cursor audit
+recorded as **decisions rather than fixes**.
+
+| Change | Where |
+|--------|-------|
+| **Per-tenant fault isolation (402.1):** `SearchTap` tracked the chain per workspace (`last_link` is a `HashMap`) but recorded failure in a single `Option`. One tenant's chain break made `ingest` refuse every subsequent row of *every* tenant, the indexer returned `RebuildRequired`, and the outer loop re-walked the whole global log forever behind exponential backoff. Faults are now keyed by workspace: the broken tenant stops being projected, the rest keep indexing, and the log **names** them — the previous signal was an `AtomicBool` nothing in production reads. | `crates/maidan-search/src/{tap_projector,indexer}.rs` |
+| **Resume cursor (402.2):** `backfill_search` walked from event id 0 on every start, resubscribe and `Lagged` — re-embedding all history on Postgres, and livelocking, because the bus is not drained *during* a backfill so a busy instance overflows, gets `Lagged`, and walks from 0 again. The tap now persists a cursor (pg 0099 / sqlite 0098) and walks forward. On resume the predecessor is re-derived from the log, because without it `verify_link` skips the `prev_hash` comparison for a mid-chain row entirely. | `tap_projector.rs`, `maidan-store/src/{postgres,sqlite}/tap_cursor.rs` |
+| **Scheduled verification (402.3):** 402.2's argument — that verification-by-restart is an accident, not a control — only holds if something schedules it. An opt-in sweeper (`MAIDAN_CHAIN_VERIFY_SECS`, off unless set) walks every workspace that has events, continues past a break, and emits `maidan_chain_verify_total{outcome=ok\|broken\|error}`. **`broken` and `error` are distinct**: verified-and-failed is a tamper, could-not-verify is a database problem. | `crates/maidan-server/src/chain_verify.rs` |
+
+**The trade, stated in the ADR** (*The search tap resumes; the verifier
+verifies*): a tamper behind the cursor is no longer noticed by the tap. It was
+only ever noticed when a process happened to restart — not something you could
+schedule or alert on. Whole-chain integrity is now an explicit job.
+
+## v401.0.0 — the two token-and-approval decisions
+
+Three PRs (401.1–401.3), closing post-Cursor audit items **P1 #7** and **P1 #8**.
+
+| Change | Where |
+|--------|-------|
+| **Worker ledger (401.1):** both governance gates tested the thread's **live** `assignee_id`, and a release sets it to NULL — so the exclusion went vacuous exactly when someone wanted it to: do the work, release, approve your own work as a qualifying third party. `maidan_thread_workers` (pg 0097 / sqlite 0096) is append-only and answers "ever held this thread". Written inside `append_assignment_event`, which every event-emitting assignment path funnels through — a separation-of-duties control one call site can forget is not a control. | `maidan-store/src/{postgres,sqlite}/thread_workers.rs` |
+| **Gates read it (401.2):** four surfaces — review report, review *enforcement*, land-gate standing, land-gate enforcement. The enforcement query lives in `thread_transitions.rs` as its **own copy** of the approval SQL, so the first version of this fix patched the report and changed nothing; the regression test caught it. | `reviews.rs`, `thread_transitions.rs`, `land_gate.rs`, `maidan-types/src/land_gate.rs` |
+| **Revoke cascade (401.3):** Cluster 397.7 made a derived token inherit the parent's app installation and quotas. Revocation was the dimension still leaking — the parent link lived only in audit metadata. `parent_token_id` is now a column (pg 0098 / sqlite 0097) and revocation walks the subtree **transitively**. | `maidan-store/src/{postgres,sqlite}/tokens.rs`, `routes/token.rs`, `mcp/tools/room.rs` |
+
+ADRs: *Separation of duties reads a worker ledger, not the live assignee* and
+*Revoking a token revokes everything derived from it*.
+
+## v400.0.0 — the reconciled backlog, fixed
+
+Six PRs (400.1–400.6). What the Cluster-399 reconciliation found once every open
+item was re-read against the source rather than trusted.
+
+| Change | Where |
+|--------|-------|
+| **Occupancy counts explicit blocks (400.1):** `run_occupancy` computed `blocked` from the dependency DAG alone and never consulted `maidan_thread_blocks`, while `channel_occupancy` consulted both. Not cosmetic — `claim_next` skips a blocked thread, so unclaimable work read as `queued`, the number an orchestrator sizes its fleet against. | `{postgres,sqlite}/thread_lineage.rs` |
+| **Point-in-time snapshots (400.2):** `build_log_snapshot` read the head *after* assembling the graph, so an event committing mid-assembly could be in neither the snapshot nor the catch-up stream. Reading the head first turns a **gap**, which nothing handles, into **overlap**, which every at-least-once consumer already does. | `maidan-store/src/log_snapshot.rs` |
+| **Chain-hash number normalization (400.3):** Postgres `jsonb` expands exponent notation, and serde renders an `f64` with an exponent from 1e16 up — so in that window a float went in and an integer came back, and `verify_chain` reported a tamper on an untouched event. Reachable via federation ingest, which appends peer JSON without a prior round trip. | `maidan-types/src/event_chain.rs`, both `events.rs` |
+| **Bounded purged reads (400.4):** the tombstone explorer materialized every purged row in scope before truncating. | `{postgres,sqlite}/explorer.rs` |
+| **Governance skills are not self-service (400.5):** `add_member_skill` was `workspace:write` with no restriction on *which* skill, so an agent could grant itself the `land_gate` skill the close-gate checks for. Ratcheted to `channel:admin` — in `maidan.human.admin`, not `maidan.agent.worker` — and audited. Removing stays open: it narrows who may approve, so it can block but never bypass. | `maidan-types/src/skills.rs`, `routes/skills.rs`, `mcp/tools/skill.rs` |
+| **Cluster 387's missing record (400.6):** three impl PRs, a table, five REST routes and four MCP tools had shipped with no Capabilities, CHANGELOG or Roadmap entry. **C5 — the occupancy bug above — sat undetected in the one surface nobody had written down.** | `Capabilities.md`, `CHANGELOG.md`, `Roadmap.md` |
+
+Also `MAIDAN_HOST_PORT` (8080 is contended, and a publish conflict fails the
+whole `up`) and the quickstart image pinned forward from v312 to v349.
+
 ## v399.0.0 — the WASI slash-handler runtime (Wave 3 #36)
 
 Four PRs (399.1–399.4). Cluster 396 left `SlashHandlerKind::wasi` registrable

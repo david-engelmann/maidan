@@ -7,6 +7,67 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [402.0.0] — 2026-09-17
+
+Post-gate hardening (Phase XXIV). **The search tap: isolate, resume, schedule.**
+Three PRs (402.1–402.3). No new gate tag.
+
+- **402.1** `SearchTap` tracked the chain per workspace but recorded failure in
+  a single `Option`, so one tenant's break stopped search indexing for the
+  **whole instance**, forever, behind exponential backoff. Faults are now keyed
+  by workspace and the log names them.
+- **402.2** `backfill_search` walked from event id 0 on every start,
+  resubscribe and `Lagged` — re-embedding all history on Postgres and
+  livelocking on a busy instance. It now resumes from a durable cursor
+  (pg 0099 / sqlite 0098), re-deriving the chain predecessor from the log.
+  ADR: *The search tap resumes; the verifier verifies*.
+- **402.3** The scheduled half of that decision: an opt-in chain verifier
+  (`MAIDAN_CHAIN_VERIFY_SECS`) that walks every workspace with events and
+  distinguishes `broken` (a tamper) from `error` (a database problem).
+
+## [401.0.0] — 2026-09-17
+
+Post-gate hardening (Phase XXIV). **Two audit decisions taken.** Three PRs
+(401.1–401.3). Closes P1 #7 and P1 #8. No new gate tag.
+
+- **401.1** Both governance gates tested the **live** `assignee_id`, which a
+  release clears — so an implementer could do the work, release the claim, and
+  approve it as a qualifying third party. `maidan_thread_workers` (pg 0097 /
+  sqlite 0096) is an append-only record of who ever held a thread, written where
+  every assignment path already converges.
+- **401.2** Four gate surfaces now read it. The first version of the fix
+  patched the review *report* and left the *enforcement* — a separate copy of
+  the same SQL — untouched; the regression test caught it.
+- **401.3** `parent_token_id` is a column (pg 0098 / sqlite 0097), and revoking
+  a token revokes its derived tokens **transitively**. Completes the three
+  properties attenuation was shedding (397.7 fixed the other two).
+
+## [400.0.0] — 2026-09-17
+
+Post-gate hardening (Phase XXIV). **The reconciled backlog, fixed.** Six PRs
+(400.1–400.6). No new gate tag.
+
+Cluster 399's reconciliation re-read every open backlog item against the source.
+These are what it found still true.
+
+- **400.1** `run_occupancy` ignored `maidan_thread_blocks`, so unclaimable work
+  read as `queued` — the number an orchestrator sizes its fleet against.
+- **400.2** Log snapshots read the head *after* assembling the graph, leaving a
+  silent gap. Reading it first turns a gap into overlap.
+- **400.3** Postgres `jsonb` expands exponent notation, so an event payload
+  containing a float ≥1e16 hashed differently after storage and `verify_chain`
+  reported a tamper on an untouched event. Reachable via federation ingest.
+- **400.4** The tombstone explorer materialized every purged row before
+  truncating.
+- **400.5** `add_member_skill` had no restriction on *which* skill, so an agent
+  could grant itself the `land_gate` skill the close-gate checks for. Ratcheted
+  to `channel:admin` and audited.
+- **400.6** The record Cluster 387 never got — and C5, the occupancy bug above,
+  is what fell through that gap.
+
+Also `MAIDAN_HOST_PORT` for the compose stacks, and the quickstart image pinned
+forward from v312.0.0 to v349.0.0.
+
 ## [399.0.0] — 2026-09-16
 
 Post-gate hardening (Phase XXIV). **The WASI slash-handler runtime — Wave 3
