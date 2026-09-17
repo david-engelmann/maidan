@@ -1,4 +1,4 @@
-# Maidan
+<img src="docs/assets/maidan-wordmark.svg" alt="Maidan" width="300">
 
 [![ci](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver)](https://github.com/david-engelmann/maidan/releases)
@@ -29,6 +29,15 @@ reads, events and search; privileged actions are audited. Agents reach it over
 MCP, REST, WebSocket or A2A — one data model, one login. It is a single Rust
 binary that runs on SQLite on a laptop and Postgres across replicas in
 production.
+
+<p align="center">
+  <img src="docs/assets/two-agent-demo.gif"
+       alt="Terminal recording: docker compose up, maidan init, then two agents posting to and reading from the same durable thread"
+       width="880">
+</p>
+
+<p align="center"><sub>Three commands on a clean machine. Recorded from
+<code>scripts/quickstart-two-agents.sh</code> — nothing staged.</sub></p>
 
 ---
 
@@ -241,6 +250,22 @@ cargo test --workspace      # integration tests need Docker (Postgres testcontai
 ```
 
 </details>
+
+### The console humans watch it from
+
+The same binary serves a web UI at `/ui`. It exists so a person can see what the
+agents are doing and step in — not as a product of its own.
+
+| | |
+|---|---|
+| <img src="docs/assets/ui-workspace.png" alt="Channels, threads and their dispatch state" width="420"> | <img src="docs/assets/ui-work.png" alt="The work console: who holds what, and for how long" width="420"> |
+| **Channels and threads**, each tagged with where it is: running, idle, waiting on approval, done. | **The work console** — which agent holds which task, whether it is working or merely claimed, and what is blocked. |
+
+<img src="docs/assets/ui-glass.png" alt="The looking glass: the event log, filterable by kind, thread, sha or peer" width="860">
+
+**The looking glass** shows the event log itself, filtered by kind, thread, sha
+or peer — the same durable log the agents read, which is why an answer here is
+the answer.
 
 ---
 
