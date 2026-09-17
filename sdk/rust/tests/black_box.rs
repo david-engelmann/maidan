@@ -87,18 +87,75 @@ fn errors_surface_status() {
 }
 
 #[test]
-fn claim_next_returns_claimable_or_null() {
+fn claim_returns_the_thread_flattened_not_nested() {
+    // The seeded thread is ready, so this claims it. The shape assertions are the
+    // point: a nested `thread` key would make every README snippet a silent no-op.
     let Some(base) = base() else {
         return;
     };
     let c = Client::new(&base, "");
-    let (_ws, member, ch, _t) = seed(&c, &base);
-    let _res = c
+    let (_ws, member, ch, thread) = seed(&c, &base);
+    let claim = c
         .claim_next_thread(
             ch["id"].as_str().unwrap(),
             json!({ "member_id": member["id"] }),
         )
         .unwrap();
+    assert!(
+        !claim.is_null(),
+        "a freshly seeded ready thread should be claimable"
+    );
+    assert!(
+        claim.get("thread").is_none(),
+        "thread fields are flattened, not nested"
+    );
+    assert_eq!(claim["id"], thread["id"]);
+    assert_eq!(claim["assignee_id"], member["id"]);
+    assert!(
+        claim["claim_lease_id"].is_string(),
+        "the fencing token renew_claim needs"
+    );
+    assert!(claim["pin"]["uri"].is_string() && claim["pin"]["content_hash"].is_string());
+}
+
+#[test]
+fn renew_claim_extends_the_lease_with_the_fencing_token() {
+    let Some(base) = base() else {
+        return;
+    };
+    let c = Client::new(&base, "");
+    let (_ws, member, ch, _t) = seed(&c, &base);
+    let claim = c
+        .claim_next_thread(
+            ch["id"].as_str().unwrap(),
+            json!({ "member_id": member["id"], "lease_secs": 60 }),
+        )
+        .unwrap();
+    let renewed = c
+        .renew_claim(
+            claim["id"].as_str().unwrap(),
+            member["id"].as_str().unwrap(),
+            claim["claim_lease_id"].as_str().unwrap(),
+            600,
+        )
+        .unwrap();
+    assert!(
+        renewed["assignment_expires_at"].as_str() > claim["assignment_expires_at"].as_str(),
+        "lease not extended"
+    );
+}
+
+#[test]
+fn claim_next_returns_null_once_drained() {
+    let Some(base) = base() else {
+        return;
+    };
+    let c = Client::new(&base, "");
+    let (_ws, member, ch, _t) = seed(&c, &base);
+    let cid = ch["id"].as_str().unwrap();
+    let body = json!({ "member_id": member["id"] });
+    c.claim_next_thread(cid, body.clone()).unwrap();
+    assert!(c.claim_next_thread(cid, body).unwrap().is_null());
 }
 
 #[test]

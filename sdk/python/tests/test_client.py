@@ -56,10 +56,32 @@ def test_get_result_unset_is_404():
     assert ei.value.status == 404
 
 
-def test_claim_next_returns_claimable_or_null():
+def test_claim_returns_the_thread_flattened_not_nested():
+    """The seeded thread is ready, so this claims it. The shape assertions are the
+    point: a nested ``thread`` key would make every README snippet a silent no-op."""
+    c, _ws, member, channel, thread = _seed()
+    claim = c.claim_next_thread(channel["id"], {"member_id": member["id"]})
+    assert claim is not None, "a freshly seeded ready thread should be claimable"
+    assert "thread" not in claim, "thread fields are flattened, not nested"
+    assert claim["id"] == thread["id"]
+    assert claim["assignee_id"] == member["id"]
+    assert claim["claim_lease_id"], "the fencing token renew_claim needs"
+    assert claim["pin"]["uri"] and claim["pin"]["content_hash"]
+
+
+def test_renew_claim_extends_the_lease_with_the_fencing_token():
     c, _ws, member, channel, _thread = _seed()
-    res = c.claim_next_thread(channel["id"], {"member_id": member["id"]})
-    assert res is None or isinstance(res, dict)
+    claim = c.claim_next_thread(
+        channel["id"], {"member_id": member["id"], "lease_secs": 60}
+    )
+    renewed = c.renew_claim(claim["id"], member["id"], claim["claim_lease_id"], 600)
+    assert renewed["assignment_expires_at"] > claim["assignment_expires_at"]
+
+
+def test_claim_next_returns_null_when_nothing_is_ready():
+    c, _ws, member, channel, _thread = _seed()
+    c.claim_next_thread(channel["id"], {"member_id": member["id"]})
+    assert c.claim_next_thread(channel["id"], {"member_id": member["id"]}) is None
 
 
 def test_errors_surface_status_and_body():
