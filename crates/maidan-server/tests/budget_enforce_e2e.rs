@@ -1,6 +1,6 @@
-//! Cluster 358.3 (T1/T5): the budget envelope over REST — set a budget, report
-//! usage, and when a claimed run goes over budget it is stopped (claim released +
-//! ClaimFailed) and dead-lettered, observable via `GET /channels/:cid/dlq`.
+//! The budget envelope over REST: set a budget, report usage, and when a claimed
+//! run goes over budget it is stopped (claim released + `ClaimFailed`) and
+//! dead-lettered, observable via `GET /channels/:cid/dlq`.
 
 use std::{sync::Arc, time::Duration};
 
@@ -75,10 +75,34 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     let tid = thread.id.0;
     let cid = channel.id.0;
 
-    // Set a token budget.
-    let set: Value = client
+    // A replace that names only one dimension is refused, and the error names
+    // the three it left out — silently dropping them is how a budget stops
+    // binding without anyone noticing.
+    let partial = client
         .put(format!("{base}/threads/{tid}/budget"))
         .json(&json!({ "max_tokens": 100 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(partial.status(), 400);
+    let detail = partial.text().await.unwrap();
+    for dimension in ["max_usd_micros", "max_turns", "max_wall_secs"] {
+        assert!(
+            detail.contains(dimension),
+            "the 400 should name {dimension}, got: {detail}"
+        );
+    }
+
+    // Cap tokens and leave the other three dimensions uncapped. A PUT replaces
+    // the whole envelope, so it has to say so for each one.
+    let set: Value = client
+        .put(format!("{base}/threads/{tid}/budget"))
+        .json(&json!({
+            "max_tokens": 100,
+            "max_usd_micros": null,
+            "max_turns": null,
+            "max_wall_secs": null,
+        }))
         .send()
         .await
         .unwrap()

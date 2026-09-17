@@ -556,20 +556,18 @@ pub async fn unmute_thread(
     }
 }
 
-/// Set (upsert) a thread's budget envelope (Cluster 358, T1/T5). Governance, so
-/// `thread:transition` + thread access. Accumulated usage is preserved.
-/// Replace a thread's whole budget envelope (Cluster 358; totality enforced in
-/// Cluster 403).
+/// Replace a thread's whole budget envelope. Governance, so `thread:transition`
+/// plus thread access; accumulated usage is preserved.
 ///
 /// A `PUT` replaces, so every dimension it does not name becomes "no cap" — and
-/// a dimension with no cap never binds. That made `{max_tokens}` sent to raise
-/// one limit silently remove the other three, which is a run that should have
-/// been stopped and was not.
+/// a dimension with no cap never binds. That made `{max_tokens}`, sent to raise
+/// one limit, silently remove the other three: a run that should have been
+/// stopped, and was not.
 ///
-/// The body is now read as a [`BudgetPatch`] purely so a missing dimension can
-/// be told from an explicit `null`: omitting one is a `400` that **names** it,
-/// while `null` still means "no cap on this dimension". Use `PATCH` to change
-/// one dimension without restating the rest.
+/// The body is read as a [`BudgetPatch`] purely so a missing dimension can be
+/// told from an explicit `null`. Omitting one is a `400` that **names** it;
+/// `null` still means "no cap on this dimension". Use `PATCH` to change one
+/// dimension without restating the rest.
 pub async fn set_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

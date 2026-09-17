@@ -137,3 +137,6 @@ docs/_*
 /docs/Splice Prompt.md
 /docs/Undeniable.md
 /docs/Undeniable Final.md
+
+# External audit working corpus — reference material, not repo content.
+/maidan-audit-corpus/
