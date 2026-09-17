@@ -151,6 +151,22 @@ pub trait SkillStore: Send + Sync {
     ) -> Result<bool, StoreError>;
     async fn list_member_skills(&self, member_id: MemberId)
         -> Result<Vec<MemberSkill>, StoreError>;
+
+    /// Has `member_id` ever held `thread_id`? (Cluster 401.1.)
+    ///
+    /// The durable form of the separation-of-duties question. Both governance
+    /// gates used to test the thread's **live** `assignee_id`, which a release
+    /// sets to NULL — so doing the work and then releasing made the exclusion
+    /// vacuous. This answers "ever", and is never cleared by release or
+    /// unassign.
+    async fn has_worked_thread(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError>;
+
+    /// Everyone who has ever held `thread_id`, oldest first (Cluster 401.1).
+    async fn list_thread_workers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
     /// Skills a task (thread) requires (Cluster 231). `add` idempotent + empty-
     /// reject; `remove` conditional; `list` ordered by skill. Skill routing:
     /// `claim_next` only takes a task whose required skills the claimer holds.

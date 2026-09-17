@@ -1062,13 +1062,21 @@ because the tests assert the happy path of a single tenant.
 7. **Self-approval launders through a claim release. OPEN — two halves, and
    only one of them is hard.**
 
-   **The hard half.** Both gates test the *live* `assignee_id` (`IS NULL OR <>` /
-   `!= Some(_)`), so release the claim and your own approval qualifies. Closing
-   it needs a durable record of who did the work, and none exists: assignment
-   history lives in prunable event-log rows, so there is nothing to read. That is
-   a schema decision (a `maidan_thread_workers` ledger, written on claim and
-   never pruned, that separation-of-duties reads instead of the live column) —
-   sized but not started.
+   **The hard half — foundation shipped (Cluster 401.1), gates not yet wired.**
+   Both gates test the *live* `assignee_id` (`IS NULL OR <>` / `!= Some(_)`), so
+   release the claim and your own approval qualifies. The schema decision is
+   taken and recorded as an ADR in [Decisions.md](Decisions.md) — *Separation of
+   duties reads a worker ledger, not the live assignee*: an append-only
+   `maidan_thread_workers` table (pg 0097 / sqlite 0096), written on every path
+   that hands a thread to someone and never cleared by release or unassign.
+
+   Rejected on the way: the **event log** (Cluster-186 retention prunes it, and
+   a control cannot depend on evidence that ages out) and a **`last_worked_by`
+   column** (remembers only the most recent holder, so an act-as-any bearer
+   could claim as someone else, overwrite it, and approve).
+
+   **Still open: both gates must read it.** Until they do, this is inert — the
+   ledger records, nothing consults it.
 
    **The easy half, verified 2026-09-16 and worth doing on its own:**
    `add_member_skill` (`crates/maidan-server/src/routes/skills.rs:23`) is

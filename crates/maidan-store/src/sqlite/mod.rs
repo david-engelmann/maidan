@@ -72,6 +72,7 @@ mod thread_results;
 mod thread_skills;
 mod thread_steer;
 mod thread_transitions;
+mod thread_workers;
 mod threads;
 mod token_quotas;
 mod tokens;
@@ -261,6 +262,18 @@ impl SkillStore for SqliteStore {
         member_id: MemberId,
     ) -> Result<Vec<MemberSkill>, StoreError> {
         member_skills::list(&self.pool, member_id).await
+    }
+
+    async fn has_worked_thread(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        thread_workers::has_worked(&self.pool, thread_id, member_id).await
+    }
+
+    async fn list_thread_workers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
+        thread_workers::list_workers(&self.pool, thread_id).await
     }
     async fn add_thread_required_skill(
         &self,
