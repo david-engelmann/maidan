@@ -57,7 +57,11 @@ pub(super) async fn register_slash_command(
             &a.handler_target,
         )
         .await
-        .map_err(McpError::InvalidParams)?,
+        .map_err(|e| match e {
+            maidan_auth::WasiTargetError::Invalid(msg) => McpError::InvalidParams(msg),
+            // A store that could not answer is not invalid params.
+            maidan_auth::WasiTargetError::Store(err) => McpError::from(err),
+        })?,
     };
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
         let key = maidan_auth::encryption_key_from_env().map_err(|_| {

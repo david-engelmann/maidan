@@ -226,6 +226,23 @@ pub async fn ensure_message_access(
     authorize_message(store, auth, message_id).await.map(|_| ())
 }
 
+/// Why a WASI handler target was refused.
+///
+/// The distinction is the point. A malformed sha and a sha this workspace does
+/// not own are both the caller's problem, and both become a `400` — deliberately
+/// with the same message, so registration is not an oracle for which artifacts
+/// exist. A store that could not answer is a different thing entirely: reporting
+/// it as a bad request tells the caller to fix a request that was fine, and
+/// hides an outage behind a validation error. `Store` carries through to
+/// whatever each surface already does with a store failure.
+#[derive(Debug, thiserror::Error)]
+pub enum WasiTargetError {
+    #[error("{0}")]
+    Invalid(String),
+    #[error("could not resolve handler_target: {0}")]
+    Store(#[from] maidan_store::StoreError),
+}
+
 /// Resolve a WASI slash handler's `handler_target` to the sha the workspace may
 /// actually run.
 ///
@@ -254,17 +271,18 @@ pub async fn resolve_wasi_handler_target(
     auth: &AuthContext,
     workspace_id: WorkspaceId,
     target: &str,
-) -> Result<String, String> {
-    let hex = maidan_types::normalize_wasi_handler_target(target).map_err(|e| e.to_string())?;
+) -> Result<String, WasiTargetError> {
+    let hex = maidan_types::normalize_wasi_handler_target(target)
+        .map_err(|e| WasiTargetError::Invalid(e.to_string()))?;
     if auth.bypass {
         return Ok(hex);
     }
-    match store.artifact_ref_exists(workspace_id, &hex).await {
-        Ok(true) => Ok(hex),
-        Ok(false) => Err(
+    if store.artifact_ref_exists(workspace_id, &hex).await? {
+        Ok(hex)
+    } else {
+        Err(WasiTargetError::Invalid(
             "handler_target is not an artifact of this workspace — upload the module first"
                 .to_string(),
-        ),
-        Err(e) => Err(format!("could not resolve handler_target: {e}")),
+        ))
     }
 }

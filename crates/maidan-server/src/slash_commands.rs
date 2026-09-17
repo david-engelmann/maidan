@@ -147,7 +147,11 @@ pub async fn create_slash_command(
             &body.handler_target,
         )
         .await
-        .map_err(ApiError::BadRequest)?,
+        .map_err(|e| match e {
+            maidan_auth::WasiTargetError::Invalid(msg) => ApiError::BadRequest(msg),
+            // A store that could not answer is not a bad request.
+            maidan_auth::WasiTargetError::Store(err) => ApiError::from(err),
+        })?,
     };
 
     let mut secret_plain: Option<String> = None;
