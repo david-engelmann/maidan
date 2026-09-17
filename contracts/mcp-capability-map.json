@@ -164,6 +164,7 @@
   "unmute_channel": "workspace:read",
   "unmute_thread": "workspace:read",
   "unpin_message": "workspace:write",
+  "update_thread_budget": "thread:transition",
   "upload_artifact": "artifact:upload",
   "upload_artifact_multipart_part": "artifact:upload",
   "verify_event_chain": "workspace:read",

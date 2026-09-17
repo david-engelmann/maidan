@@ -691,10 +691,17 @@ pub fn rename_thread() {}
 
 #[utoipa::path(put, path = "/threads/{id}/budget", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
-    request_body = BudgetLimits,
+    request_body = BudgetPatch,
     security(("bearerAuth" = [])),
     responses((status = 200, body = ThreadBudget)))]
 pub fn set_thread_budget() {}
+
+#[utoipa::path(patch, path = "/threads/{id}/budget", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = BudgetPatch,
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ThreadBudget)))]
+pub fn patch_thread_budget() {}
 
 #[utoipa::path(get, path = "/threads/{id}/budget", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

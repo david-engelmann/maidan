@@ -477,6 +477,177 @@ pub struct BudgetLimits {
     pub max_wall_secs: Option<i64>,
 }
 
+/// A partial change to a thread's budget (Cluster 403).
+///
+/// [`BudgetLimits`] is a **total replace**: every dimension it does not name
+/// becomes "no cap", and a dimension with no cap never binds. So sending
+/// `{max_tokens}` to raise one limit silently removed the usd, turns and wall
+/// limits — and a removed limit is a run that should have been stopped and was
+/// not. Cluster 398.6's `deny_unknown_fields` catches a *typo*; it cannot catch
+/// a well-formed body that simply omits a field.
+///
+/// Each field here distinguishes three states:
+///
+/// * **absent** — leave this dimension exactly as it is
+/// * **`null`** — clear the cap on this dimension (explicitly unbounded)
+/// * **a value** — set it
+///
+/// So widening always requires *saying so*: there is no spelling of a budget
+/// change that removes a cap by omission.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct BudgetPatch {
+    #[serde(default, deserialize_with = "double_option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<i64>, nullable))]
+    pub max_tokens: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<i64>, nullable))]
+    pub max_usd_micros: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<i64>, nullable))]
+    pub max_turns: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<i64>, nullable))]
+    pub max_wall_secs: Option<Option<i64>>,
+}
+
+/// Tell "absent" from "explicitly null".
+///
+/// Serde collapses both to `None` for a plain `Option<T>` — a missing field is
+/// silently `None` — which is exactly the collapse a partial update must undo.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
+
+impl BudgetPatch {
+    /// Apply this patch to the dimensions currently stored.
+    ///
+    /// Pure, so the merge rule is unit-testable without a database and the two
+    /// backends cannot disagree about it.
+    pub fn apply(&self, current: BudgetLimits) -> BudgetLimits {
+        BudgetLimits {
+            max_tokens: self.max_tokens.unwrap_or(current.max_tokens),
+            max_usd_micros: self.max_usd_micros.unwrap_or(current.max_usd_micros),
+            max_turns: self.max_turns.unwrap_or(current.max_turns),
+            max_wall_secs: self.max_wall_secs.unwrap_or(current.max_wall_secs),
+        }
+    }
+
+    /// Dimensions this patch does not mention, by wire name.
+    ///
+    /// A **total replace** uses this to refuse a body that would clear a cap by
+    /// omission — and to say *which* cap, because "send all four" is a worse
+    /// error than naming the one you forgot.
+    pub fn missing_dimensions(&self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if self.max_tokens.is_none() {
+            out.push("max_tokens");
+        }
+        if self.max_usd_micros.is_none() {
+            out.push("max_usd_micros");
+        }
+        if self.max_turns.is_none() {
+            out.push("max_turns");
+        }
+        if self.max_wall_secs.is_none() {
+            out.push("max_wall_secs");
+        }
+        out
+    }
+
+    /// True when the patch names no dimension at all.
+    pub fn is_empty(&self) -> bool {
+        self.missing_dimensions().len() == 4
+    }
+}
+
+#[cfg(test)]
+mod budget_patch_tests {
+    use super::*;
+
+    fn current() -> BudgetLimits {
+        BudgetLimits {
+            max_tokens: Some(100),
+            max_usd_micros: Some(200),
+            max_turns: Some(3),
+            max_wall_secs: Some(400),
+        }
+    }
+
+    /// The defect this type exists for: raising one cap used to clear the rest.
+    #[test]
+    fn naming_one_dimension_leaves_the_others_alone() {
+        let patch: BudgetPatch = serde_json::from_str(r#"{"max_tokens": 999}"#).unwrap();
+        let merged = patch.apply(current());
+        assert_eq!(merged.max_tokens, Some(999));
+        assert_eq!(merged.max_usd_micros, Some(200), "usd cap must survive");
+        assert_eq!(merged.max_turns, Some(3), "turns cap must survive");
+        assert_eq!(merged.max_wall_secs, Some(400), "wall cap must survive");
+    }
+
+    /// Clearing is still possible — it just has to be said.
+    #[test]
+    fn an_explicit_null_clears_that_dimension() {
+        let patch: BudgetPatch = serde_json::from_str(r#"{"max_usd_micros": null}"#).unwrap();
+        let merged = patch.apply(current());
+        assert_eq!(merged.max_usd_micros, None, "explicit null clears");
+        assert_eq!(merged.max_tokens, Some(100), "and only that one");
+    }
+
+    /// Absent and null must not collapse. Serde *does* collapse them for a plain
+    /// `Option<T>`, which is why `double_option` exists — if this regresses, a
+    /// partial update silently becomes a total replace again, which is the whole
+    /// defect.
+    #[test]
+    fn absent_and_null_are_different() {
+        let absent: BudgetPatch = serde_json::from_str("{}").unwrap();
+        let null: BudgetPatch = serde_json::from_str(r#"{"max_tokens": null}"#).unwrap();
+        assert_eq!(absent.max_tokens, None, "absent");
+        assert_eq!(null.max_tokens, Some(None), "explicitly null");
+        assert!(absent.is_empty());
+        assert!(!null.is_empty());
+        assert_eq!(
+            absent.apply(current()),
+            current(),
+            "an empty patch is a no-op"
+        );
+        assert_eq!(null.apply(current()).max_tokens, None);
+    }
+
+    /// A typo cannot masquerade as a dimension (Cluster 398.6's concern, kept).
+    #[test]
+    fn an_unknown_field_is_rejected() {
+        assert!(
+            serde_json::from_str::<BudgetPatch>(r#"{"max_wall_seconds": 5}"#).is_err(),
+            "a misspelled dimension must not be absorbed"
+        );
+    }
+
+    /// A total replace names what a partial body left out, so the caller is told
+    /// which cap they were about to clear rather than "send all four".
+    #[test]
+    fn a_total_replace_can_name_what_is_missing() {
+        let partial: BudgetPatch = serde_json::from_str(r#"{"max_tokens": 1}"#).unwrap();
+        assert_eq!(
+            partial.missing_dimensions(),
+            vec!["max_usd_micros", "max_turns", "max_wall_secs"]
+        );
+        let full: BudgetPatch = serde_json::from_str(
+            r#"{"max_tokens":1,"max_usd_micros":null,"max_turns":null,"max_wall_secs":null}"#,
+        )
+        .unwrap();
+        assert!(full.missing_dimensions().is_empty());
+        let limits = full.apply(BudgetLimits::default());
+        assert_eq!(limits.max_tokens, Some(1));
+        assert_eq!(limits.max_usd_micros, None, "an explicit null is no cap");
+    }
+}
+
 /// An increment of resource usage an agent reports against a thread's budget
 /// (Cluster 358). Each dimension defaults to 0.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

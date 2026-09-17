@@ -231,6 +231,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_thread_owner"
         | "rename_thread"
         | "set_thread_budget"
+        | "update_thread_budget"
         | "report_usage"
         | "mark_unclaimable"
         | "mark_claimable"
@@ -329,6 +330,7 @@ async fn enforce_channel_access(
         | "set_thread_steer"
         | "get_thread_steer"
         | "set_thread_budget"
+        | "update_thread_budget"
         | "get_thread_budget"
         | "report_usage"
         | "list_child_threads"
@@ -444,6 +446,7 @@ pub async fn dispatch(
         "mute_channel" => channel::mute_channel(store, auth, args).await,
         "unmute_channel" => channel::unmute_channel(store, auth, args).await,
         "set_thread_budget" => budget::set_thread_budget(store, args).await,
+        "update_thread_budget" => budget::update_thread_budget(store, args).await,
         "get_thread_budget" => budget::get_thread_budget(store, args).await,
         "report_usage" => budget::report_usage(server, args).await,
         "list_dlq" => budget::list_dlq(store, args).await,

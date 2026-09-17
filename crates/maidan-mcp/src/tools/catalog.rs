@@ -231,7 +231,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "set_thread_budget",
-            "description": "Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs. This is a REPLACE: omitted dimensions become unbounded, so restate the ones you want to keep. An unrecognized key is rejected rather than ignored, because a typo would otherwise read as an omission and silently drop that limit. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
+            "description": "REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -240,6 +240,21 @@ pub fn catalog() -> Vec<Value> {
                     "max_usd_micros": {"type": "integer", "description": "USD in micros ($1 = 1000000)"},
                     "max_turns": {"type": "integer"},
                     "max_wall_secs": {"type": "integer", "description": "wall-clock budget vs the working clock"}
+                },
+                "required": ["thread_id", "max_tokens", "max_usd_micros", "max_turns", "max_wall_secs"]
+            }
+        }),
+        json!({
+            "name": "update_thread_budget",
+            "description": "Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "max_tokens": {"type": ["integer", "null"]},
+                    "max_usd_micros": {"type": ["integer", "null"], "description": "USD in micros ($1 = 1000000)"},
+                    "max_turns": {"type": ["integer", "null"]},
+                    "max_wall_secs": {"type": ["integer", "null"], "description": "wall-clock budget vs the working clock"}
                 },
                 "required": ["thread_id"]
             }

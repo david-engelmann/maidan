@@ -394,6 +394,14 @@ impl BudgetStore for SqliteStore {
     ) -> Result<ThreadBudget, StoreError> {
         budget::set_budget(&self.pool, thread_id, limits).await
     }
+
+    async fn patch_thread_budget(
+        &self,
+        thread_id: ThreadId,
+        patch: BudgetPatch,
+    ) -> Result<ThreadBudget, StoreError> {
+        budget::patch_budget(&self.pool, thread_id, patch).await
+    }
     async fn get_thread_budget(
         &self,
         thread_id: ThreadId,

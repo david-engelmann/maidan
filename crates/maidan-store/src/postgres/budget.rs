@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    BudgetLimits, ChannelId, Event, MemberId, NewDlqEntry, StoredEvent, ThreadBudget, ThreadId,
-    UsageDelta, UsageReport, WorkspaceId,
+    BudgetLimits, BudgetPatch, ChannelId, Event, MemberId, NewDlqEntry, StoredEvent, ThreadBudget,
+    ThreadId, UsageDelta, UsageReport, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -206,4 +206,59 @@ fn row_to_budget(row: &sqlx::postgres::PgRow) -> ThreadBudget {
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     }
+}
+
+/// Apply only the dimensions a patch names (Cluster 403).
+///
+/// Read-and-write in one transaction: a read-modify-write in the caller would
+/// let two orchestrators adjusting different dimensions clobber each other, and
+/// the point of a patch is that they should not have to coordinate.
+pub async fn patch_budget(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    patch: BudgetPatch,
+) -> Result<ThreadBudget, StoreError> {
+    let mut tx = pool.begin().await?;
+    let current = sqlx::query(
+        "SELECT max_tokens, max_usd_micros, max_turns, max_wall_secs
+         FROM maidan_thread_budgets WHERE thread_id = $1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    // No row yet: the patch applies to an empty envelope, so a first patch sets
+    // exactly the dimensions it names and leaves the rest uncapped.
+    let base = match current.as_ref() {
+        Some(row) => BudgetLimits {
+            max_tokens: row.get("max_tokens"),
+            max_usd_micros: row.get("max_usd_micros"),
+            max_turns: row.get("max_turns"),
+            max_wall_secs: row.get("max_wall_secs"),
+        },
+        None => BudgetLimits::default(),
+    };
+    let merged = patch.apply(base);
+    let row = sqlx::query(
+        "INSERT INTO maidan_thread_budgets
+             (thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+         ON CONFLICT (thread_id) DO UPDATE SET
+             max_tokens = excluded.max_tokens,
+             max_usd_micros = excluded.max_usd_micros,
+             max_turns = excluded.max_turns,
+             max_wall_secs = excluded.max_wall_secs,
+             updated_at = excluded.updated_at
+         RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
+             used_tokens, used_usd_micros, used_turns, created_at, updated_at",
+    )
+    .bind(thread_id.0)
+    .bind(merged.max_tokens)
+    .bind(merged.max_usd_micros)
+    .bind(merged.max_turns)
+    .bind(merged.max_wall_secs)
+
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(row_to_budget(&row))
 }

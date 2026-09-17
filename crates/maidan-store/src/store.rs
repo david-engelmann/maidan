@@ -287,6 +287,21 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
         limits: BudgetLimits,
     ) -> Result<ThreadBudget, StoreError>;
+
+    /// Change only the dimensions a patch names (Cluster 403).
+    ///
+    /// [`Self::set_thread_budget`] replaces the whole envelope, so raising one
+    /// cap through it cleared the others — and a cleared cap is a run that
+    /// should have been stopped and was not. This applies the patch to what is
+    /// stored, inside one transaction, so two orchestrators adjusting different
+    /// dimensions cannot clobber each other the way a read-modify-write would.
+    ///
+    /// Accumulated usage is untouched, as with a full set.
+    async fn patch_thread_budget(
+        &self,
+        thread_id: ThreadId,
+        patch: BudgetPatch,
+    ) -> Result<ThreadBudget, StoreError>;
     /// A thread's budget, or `None` until one is set / usage is first reported.
     async fn get_thread_budget(
         &self,

@@ -556,18 +556,57 @@ pub async fn unmute_thread(
     }
 }
 
-/// Set (upsert) a thread's budget envelope (Cluster 358, T1/T5). Governance, so
-/// `thread:transition` + thread access. Accumulated usage is preserved.
+/// Replace a thread's whole budget envelope. Governance, so `thread:transition`
+/// plus thread access; accumulated usage is preserved.
+///
+/// A `PUT` replaces, so every dimension it does not name becomes "no cap" — and
+/// a dimension with no cap never binds. That made `{max_tokens}`, sent to raise
+/// one limit, silently remove the other three: a run that should have been
+/// stopped, and was not.
+///
+/// The body is read as a [`BudgetPatch`] purely so a missing dimension can be
+/// told from an explicit `null`. Omitting one is a `400` that **names** it;
+/// `null` still means "no cap on this dimension". Use `PATCH` to change one
+/// dimension without restating the rest.
 pub async fn set_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-    ApiJson(limits): ApiJson<BudgetLimits>,
+    ApiJson(body): ApiJson<BudgetPatch>,
 ) -> ApiResult<Json<ThreadBudget>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let missing = body.missing_dimensions();
+    if !missing.is_empty() {
+        return Err(ApiError::BadRequest(format!(
+            "a budget replace must state every dimension; missing: {}. \
+             Send null to leave one uncapped, or PATCH to change only some.",
+            missing.join(", ")
+        )));
+    }
+    let limits = body.apply(BudgetLimits::default());
     let budget = state.store.set_thread_budget(thread_id, limits).await?;
+    Ok(Json(budget))
+}
+
+/// Change only the budget dimensions the body names (Cluster 403).
+///
+/// Absent leaves a dimension alone; an explicit `null` clears its cap. So
+/// widening the envelope always requires saying so, and raising one limit no
+/// longer needs the caller to restate the others — which also avoids the
+/// read-modify-write race a total replace would force on two orchestrators
+/// adjusting different dimensions.
+pub async fn patch_thread_budget(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(patch): ApiJson<BudgetPatch>,
+) -> ApiResult<Json<ThreadBudget>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let budget = state.store.patch_thread_budget(thread_id, patch).await?;
     Ok(Json(budget))
 }
 
