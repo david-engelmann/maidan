@@ -38,6 +38,7 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros"
 top_pages=(
   "Integration" "Capability Map" "Agent Integration" "Result Delivery"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
+  "FAQ" "Comparison"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README" "Claims"
   "Providers" "Protocols"
@@ -55,7 +56,10 @@ export GHTREE="https://github.com/david-engelmann/maidan/tree/main"
 
 find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   # 1) links to repo-root files (no page in the book) -> GitHub
-  perl -pi -e 's{\]\(\.\./(CHANGELOG\.md|CLAUDE\.md|AGENTS\.md|rust-toolchain\.toml|deny\.toml)\)}{]($ENV{GH}/$1)}g' "$f"
+  # The optional (#fragment) matters: a link into the root README's quickstart is
+  # the natural thing to write from docs/, and without it the linkcheck gate
+  # fails on a file that is correct but lives outside the book.
+  perl -pi -e 's{\]\(\.\./(CHANGELOG\.md|CLAUDE\.md|AGENTS\.md|README\.md|rust-toolchain\.toml|deny\.toml)(#[^)]*)?\)}{]($ENV{GH}/$1$2)}g' "$f"
   perl -pi -e 's{\]\(\.\./contracts/}{]($ENV{GH}/contracts/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.github/}{]($ENV{GH}/.github/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.\./crates/}{]($ENV{GH}/crates/}g' "$f"
