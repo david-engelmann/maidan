@@ -356,6 +356,7 @@ async fn run_enforce_suite(store: &dyn Store) {
 async fn thread_budget_set_get_accumulate_and_exceed_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
 }
 
@@ -391,5 +392,116 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::new(pool);
     run_suite(&store).await;
+    run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
+}
+
+/// Cluster 403: a patch changes only the dimensions it names.
+///
+/// `set_thread_budget` is a total replace, so raising one cap through it cleared
+/// the others — and a cleared cap never binds, which means a run that should
+/// have been stopped is not. This is the merge path, end to end against the
+/// store rather than only against the pure `apply`.
+async fn run_patch_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "budget-patch".into(),
+        })
+        .await
+        .expect("ws");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "bp-c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("bp".into()),
+        })
+        .await
+        .expect("thread");
+
+    store
+        .set_thread_budget(
+            thread.id,
+            BudgetLimits {
+                max_tokens: Some(1000),
+                max_usd_micros: Some(500_000),
+                max_turns: Some(10),
+                max_wall_secs: Some(3600),
+            },
+        )
+        .await
+        .expect("set");
+
+    // Raise one cap. Everything else must survive — the defect.
+    let raised = store
+        .patch_thread_budget(
+            thread.id,
+            serde_json::from_str(r#"{"max_tokens": 5000}"#).expect("patch"),
+        )
+        .await
+        .expect("patch tokens");
+    assert_eq!(raised.max_tokens, Some(5000));
+    assert_eq!(raised.max_usd_micros, Some(500_000), "usd cap survives");
+    assert_eq!(raised.max_turns, Some(10), "turns cap survives");
+    assert_eq!(raised.max_wall_secs, Some(3600), "wall cap survives");
+
+    // Clearing is possible, but only by saying so.
+    let cleared = store
+        .patch_thread_budget(
+            thread.id,
+            serde_json::from_str(r#"{"max_usd_micros": null}"#).expect("patch"),
+        )
+        .await
+        .expect("patch null");
+    assert_eq!(cleared.max_usd_micros, None, "an explicit null clears");
+    assert_eq!(cleared.max_tokens, Some(5000), "and only that one");
+
+    // Accumulated usage is never touched by a limit change.
+    store
+        .report_thread_usage(
+            thread.id,
+            UsageDelta {
+                tokens: 7,
+                usd_micros: 0,
+                turns: 1,
+            },
+        )
+        .await
+        .expect("usage");
+    let after = store
+        .patch_thread_budget(
+            thread.id,
+            serde_json::from_str(r#"{"max_turns": 99}"#).expect("patch"),
+        )
+        .await
+        .expect("patch turns");
+    assert_eq!(after.used_tokens, 7, "a patch must not reset usage");
+    assert_eq!(after.max_turns, Some(99));
+
+    // A patch against a thread with no budget row sets exactly what it names.
+    let fresh = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("fresh".into()),
+        })
+        .await
+        .expect("fresh thread");
+    let first = store
+        .patch_thread_budget(
+            fresh.id,
+            serde_json::from_str(r#"{"max_turns": 4}"#).expect("patch"),
+        )
+        .await
+        .expect("first patch");
+    assert_eq!(first.max_turns, Some(4));
+    assert_eq!(first.max_tokens, None, "unnamed dimensions stay uncapped");
 }

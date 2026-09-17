@@ -18,34 +18,89 @@ use crate::error::McpError;
 #[serde(deny_unknown_fields)]
 struct SetBudgetArgs {
     thread_id: uuid::Uuid,
-    #[serde(default)]
-    max_tokens: Option<i64>,
-    #[serde(default)]
-    max_usd_micros: Option<i64>,
-    #[serde(default)]
-    max_turns: Option<i64>,
-    #[serde(default)]
-    max_wall_secs: Option<i64>,
+    // The four dimensions are named here rather than `#[serde(flatten)]`-ing a
+    // `BudgetPatch`, because **flatten silently defeats `deny_unknown_fields`**
+    // — measured, not assumed: with flatten, `{"max_wall_seconds": 5}` parsed
+    // clean. That would have reverted Cluster 398.6 on the very struct 398.4
+    // named as the sharpest case, where a typo'd dimension disarms a cap.
+    //
+    // `Option<Option<i64>>` keeps absent distinguishable from an explicit
+    // `null`, which is what lets a replace refuse a partial body and a patch
+    // leave the rest alone.
+    #[serde(default, deserialize_with = "double_option")]
+    max_tokens: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    max_usd_micros: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    max_turns: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    max_wall_secs: Option<Option<i64>>,
 }
 
-/// Set (upsert) a thread's budget maxima (Cluster 358, the MCP twin of
-/// `PUT /threads/:id/budget`). Accumulated usage is preserved. Thread access is
-/// enforced pre-dispatch.
+/// Tell "absent" from "explicitly null" — serde collapses both for a plain
+/// `Option<T>`. Mirrors the helper on `BudgetPatch`.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(de).map(Some)
+}
+
+impl SetBudgetArgs {
+    fn patch(&self) -> maidan_types::BudgetPatch {
+        maidan_types::BudgetPatch {
+            max_tokens: self.max_tokens,
+            max_usd_micros: self.max_usd_micros,
+            max_turns: self.max_turns,
+            max_wall_secs: self.max_wall_secs,
+        }
+    }
+}
+
+/// Replace a thread's whole budget envelope (Cluster 358; totality enforced in
+/// Cluster 403, the MCP twin of `PUT /threads/:id/budget`).
+///
+/// A replace means every dimension it does not name becomes "no cap", and a
+/// dimension with no cap never binds — so omitting one silently removed a limit.
+/// Every dimension must now be stated; `null` is how you say "no cap here".
+/// Use `update_thread_budget` to change one without restating the rest.
+///
+/// Accumulated usage is preserved. Thread access is enforced pre-dispatch.
 pub(super) async fn set_thread_budget(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetBudgetArgs = serde_json::from_value(args.clone())?;
+    let patch = a.patch();
+    let missing = patch.missing_dimensions();
+    if !missing.is_empty() {
+        return Err(McpError::InvalidParams(format!(
+            "a budget replace must state every dimension; missing: {}. \
+             Send null to leave one uncapped, or use update_thread_budget to \
+             change only some.",
+            missing.join(", ")
+        )));
+    }
     let budget = store
-        .set_thread_budget(
-            ThreadId(a.thread_id),
-            BudgetLimits {
-                max_tokens: a.max_tokens,
-                max_usd_micros: a.max_usd_micros,
-                max_turns: a.max_turns,
-                max_wall_secs: a.max_wall_secs,
-            },
-        )
+        .set_thread_budget(ThreadId(a.thread_id), patch.apply(BudgetLimits::default()))
+        .await?;
+    Ok(content_json(&budget))
+}
+
+/// Change only the budget dimensions the call names (Cluster 403).
+///
+/// Absent leaves a dimension alone; an explicit `null` clears its cap. Widening
+/// therefore always requires saying so, and two orchestrators adjusting
+/// different dimensions do not have to coordinate — the merge happens in one
+/// transaction rather than as a read-modify-write.
+pub(super) async fn update_thread_budget(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetBudgetArgs = serde_json::from_value(args.clone())?;
+    let budget = store
+        .patch_thread_budget(ThreadId(a.thread_id), a.patch())
         .await?;
     Ok(content_json(&budget))
 }
@@ -121,4 +176,40 @@ pub(super) async fn list_dlq(store: &Arc<dyn Store>, args: &Value) -> Result<Val
         .list_channel_dlq(ChannelId(a.channel_id), limit)
         .await?;
     Ok(content_json(&entries))
+}
+
+#[cfg(test)]
+mod budget_args_tests {
+    use super::*;
+
+    /// Cluster 398.6's protection, re-proved after Cluster 403 reshaped this
+    /// struct. **This exact assertion failed** during 403 when the fields were
+    /// `#[serde(flatten)]`-ed: flatten silently defeats `deny_unknown_fields`,
+    /// so a typo'd dimension parsed clean and disarmed a cap again.
+    #[test]
+    fn a_typod_dimension_is_still_rejected() {
+        let bad = r#"{"thread_id":"00000000-0000-0000-0000-000000000001","max_wall_seconds":5}"#;
+        assert!(
+            serde_json::from_str::<SetBudgetArgs>(bad).is_err(),
+            "a misspelled dimension must not be absorbed"
+        );
+    }
+
+    /// Absent and null stay distinguishable through the args struct, not just
+    /// through `BudgetPatch` — this is the layer the MCP surface actually parses.
+    #[test]
+    fn absent_and_null_survive_the_args_layer() {
+        let id = r#""00000000-0000-0000-0000-000000000001""#;
+        let absent: SetBudgetArgs =
+            serde_json::from_str(&format!(r#"{{"thread_id":{id}}}"#)).unwrap();
+        let null: SetBudgetArgs =
+            serde_json::from_str(&format!(r#"{{"thread_id":{id},"max_tokens":null}}"#)).unwrap();
+        assert!(absent.patch().is_empty(), "absent names nothing");
+        assert_eq!(null.patch().max_tokens, Some(None), "null is explicit");
+        assert_eq!(
+            absent.patch().missing_dimensions().len(),
+            4,
+            "a replace would refuse this body"
+        );
+    }
 }

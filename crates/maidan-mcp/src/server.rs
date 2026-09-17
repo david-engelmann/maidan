@@ -3160,12 +3160,48 @@ mod tests {
                 .call_tool(
                     &auth,
                     "set_thread_budget",
-                    &json!({ "thread_id": thread.id.0, "max_tokens": 100 }),
+                    // A replace states every dimension (Cluster 403); null is
+                    // how you say "no cap here".
+                    &json!({
+                        "thread_id": thread.id.0,
+                        "max_tokens": 100,
+                        "max_usd_micros": null,
+                        "max_turns": null,
+                        "max_wall_secs": null
+                    }),
                 )
                 .await
                 .unwrap(),
         );
         assert_eq!(set["max_tokens"], json!(100));
+
+        // Cluster 403: raising one dimension leaves the others alone. Through a
+        // replace this would have cleared them, which is the defect.
+        let raised = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "update_thread_budget",
+                    &json!({ "thread_id": thread.id.0, "max_turns": 9 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(raised["max_turns"], json!(9));
+        assert_eq!(raised["max_tokens"], json!(100), "the token cap survives");
+
+        // A replace that omits a dimension is refused, not silently applied.
+        assert!(
+            server
+                .call_tool(
+                    &auth,
+                    "set_thread_budget",
+                    &json!({ "thread_id": thread.id.0, "max_tokens": 1 }),
+                )
+                .await
+                .is_err(),
+            "a partial replace must be refused"
+        );
 
         let under = unwrap_content(
             server

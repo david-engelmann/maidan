@@ -164,6 +164,7 @@
   "unmute_channel",
   "unmute_thread",
   "unpin_message",
+  "update_thread_budget",
   "upload_artifact",
   "upload_artifact_multipart_part",
   "verify_event_chain",

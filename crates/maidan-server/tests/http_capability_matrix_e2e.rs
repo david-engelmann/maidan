@@ -456,7 +456,20 @@ fn apply_route_defaults(
     if path == "/threads/{id}/title" && method == "PUT" {
         return b.json(&json!({ "title": "cap matrix rename" }));
     }
+    // A PUT replaces the whole envelope, so every dimension must be stated
+    // (Cluster 403) — `null` where there is no cap. The capability check runs
+    // first either way, but a partial body here would document a request shape
+    // the API refuses.
     if path == "/threads/{id}/budget" && method == "PUT" {
+        return b.json(&json!({
+            "max_tokens": 1000,
+            "max_usd_micros": null,
+            "max_turns": null,
+            "max_wall_secs": null
+        }));
+    }
+    // A PATCH names only what it changes.
+    if path == "/threads/{id}/budget" && method == "PATCH" {
         return b.json(&json!({ "max_tokens": 1000 }));
     }
     if path == "/threads/{id}/usage" && method == "POST" {

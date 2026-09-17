@@ -425,7 +425,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/threads/:id/budget",
-            axum::routing::put(routes::set_thread_budget).get(routes::get_thread_budget),
+            axum::routing::put(routes::set_thread_budget)
+                .patch(routes::patch_thread_budget)
+                .get(routes::get_thread_budget),
         )
         .route("/threads/:id/usage", post(routes::report_thread_usage))
         .route("/threads/:id/assignee/claim", post(routes::claim_thread))

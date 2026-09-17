@@ -4,7 +4,7 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** code on `main` at **`v349.0.0`** (`0728ead`) (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), and again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round).
+Updated at each cluster retro. **Baseline:** code on `main` at **`v402.0.0`** (`ca2ddd3`) (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round), and at **v402** (2026-09-17 — the first tag since v349; clusters 399–403 plus the external-audit dispositions).
 
 ## Post-flagship audit program (2026-08-30 full-repo audit — ✅ COMPLETE at v349.0.0)
 
@@ -1227,6 +1227,56 @@ Each item is a cluster or a sub-PR, not a sweep: the recurring cause is that
 one-tenant tests cannot see a two-tenant bug, so each fix lands with a regression
 test that provisions **two** workspaces.
 
+## External audit dispositions (2026-09-17)
+
+An independent researcher audited `main` and delivered 45 findings (F-01…F-45),
+11 initiative briefs and 8 evidence notes. Research input, not directives — this
+roadmap takes precedence. Full corpus is not in-repo; this is the disposition
+record.
+
+**Verified before acting.** Two P0s were checked against the source rather than
+taken on trust:
+
+- **F-45 — adopted, fixed (#915).** `POST /workspaces/:wid/dm` created a
+  conversation (shared state) on `workspace:read`, while the MCP twin has always
+  required `message:post` for the same operation. The *surface disagreement* is
+  what made it objective rather than a judgement call; REST now matches. The
+  caller-supplied member ids deliberately stay — the capability was wrong, not
+  the Cluster-202 act-as-any model.
+- **F-06 — adapted.** The 20-route derivation is correct, but splits four ways:
+  4 self-scoped by construction, `POST /tokens/attenuate` decided policy (not a
+  defect), DM → F-45, and **14 personal-state routes → an open decision below.**
+
+**Dispositions.** Adopted: F-03/04/05 (stale pins and obsolete tagging docs),
+F-10/11/12 (the SDK claim shape silently no-ops — highest adoption value),
+F-13/14/21/32/35/36 (undiscoverable schedules, broken `make smoke`, examples
+labelled "Runnable" that only print tool lists), F-42 as reframed
+(`maidan-cli` defaults to `AuthContext::bypass()` with no flag and no warning),
+and the P2 batch. Adapted: F-02 (values landed in #905, the two-file hand-edited
+mechanism is still open), F-07 as reframed (generalize the MCP
+`required_capability()` pattern to HTTP rather than router-level binding).
+No action: F-22/23/29 (reframed or resolved).
+
+**Two pulled forward out of P2:**
+
+- **F-34** — the hard-coded `include_str!` migration list. Filed P2; it nearly
+  shipped an unregistered migration during Cluster 401.3 in precisely the
+  predicted way. A finding whose predicted failure then occurs is not a nit.
+- **F-43** — no full-workspace test run in per-PR CI. Clusters 400.1–400.4 all
+  touched `maidan-store` and were each green only against their own base; a
+  semantic conflict between them would have been invisible.
+
+**Open decision for the maintainer — D-5.** `ensure_acting_member` constrains
+*session* callers only, so a `workspace:read` Bearer can today rewrite any
+member's email, notification prefs and follows across 14 routes whose own doc
+comments say "Self-only". The comments are false for any Bearer. Options: (a)
+self-scope token callers on those routes, (b) gate cross-member action behind a
+new capability, (c) ratify act-as-any and correct the comments. (a) is the lean
+— the handlers already promise it — but it narrows the Cluster-202 contract, so
+it is not mine to take.
+
+*(D-4, the budget PUT shape, was delegated and is resolved in Cluster 403.)*
+
 ### What is actually left (reconciled 2026-09-16, against code)
 
 Every item below was re-read in the source before being listed here; the ones
@@ -1236,15 +1286,15 @@ that had silently been fixed are struck through above.
 |---|------|-------|------|
 | ~~C5~~ | ~~`run_occupancy` ignores `maidan_thread_blocks`~~ | ✅ **fixed, Cluster 400.1** | — |
 | ~~12~~ | ~~Log snapshot reads the head after assembling the graph~~ | ✅ **fixed, Cluster 400.2** | — |
-| 10 | `list_purged` materializes the scope before truncating | push the limit into the query | small |
+| ~~10~~ | ~~`list_purged` materializes the scope~~ | ✅ **fixed, Cluster 400.4** | — |
 | ~~7a~~ | ~~Governance skills are self-grantable~~ | ✅ **fixed, Cluster 400.5** | — |
 | ~~7b~~ | ~~Self-approval launders through a claim release~~ | ✅ **fixed, Clusters 401.1 + 401.2** | — |
 | ~~11~~ | ~~jsonb normalizes integral exponent numbers~~ | ✅ **fixed, Cluster 400.3** | — |
-| 8 | Attenuation records no parent link → revocation does not cascade | migration + traversal, and a cascade-vs-mark call | **decision** |
+| ~~8~~ | ~~Attenuation records no parent link~~ | ✅ **decided + fixed, Cluster 401.3** | — |
 | ~~—~~ | ~~Search-indexer backfill restarts from 0~~ | ✅ **decided + fixed, Clusters 402.1 + 402.2** | — |
-| — | `set_thread_budget` is PUT-shaped, so raising one cap clears three | API shape | **decision** |
-| — | Cluster 387 has no retro / Capabilities / CHANGELOG entry | docs | small |
-| — | Land-gate enforcement is stated unconditionally in four docs | docs | small |
+| ~~—~~ | ~~`set_thread_budget` is PUT-shaped~~ | ✅ **decided + fixed, Cluster 403** | — |
+| ~~—~~ | ~~Cluster 387 has no retro~~ | ✅ **fixed, Cluster 400.6** | — |
+| ~~—~~ | ~~Land-gate enforcement overstated~~ | ✅ **fixed, #914** | — |
 
 The five marked **decision** are the ones that should not be taken unilaterally:
 each trades one correctness property for another, and the trade is the whole

@@ -552,6 +552,12 @@
     "surface": "http"
   },
   {
+    "method": "PATCH",
+    "path": "/threads/{id}/budget",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/threads/{id}/budget",
     "capability": "workspace:read",
