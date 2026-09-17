@@ -4,13 +4,16 @@ Validates the Agent Card shape (§4.4.1) and exercises the JSON-RPC and REST
 bindings with the spec's canonical operation names — a lightweight, dependency-
 light conformance client (httpx only, no A2A SDK) that doubles as an example.
 
-Run it against the quickstart (auth disabled):
+Run it against the quickstart, which runs with **auth on** — so mint a token
+first and pass it; without one the A2A calls are refused, not skipped:
 
-    docker compose -f compose.quickstart.yaml up -d --build   # Maidan on :8080
+    docker compose -f compose.quickstart.yaml up -d --build --wait   # Maidan on :8080
+    docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
     pip install "httpx>=0.27"
-    python examples/a2a_interop.py                             # exits non-zero on failure
+    export MAIDAN_TOKEN=maid_...                       # from `maidan init`
+    python examples/a2a_interop.py                     # exits non-zero on failure
 
-Set MAIDAN_URL / MAIDAN_TOKEN to target an auth-enabled deployment.
+MAIDAN_URL targets a deployment other than localhost:8080.
 """
 
 from __future__ import annotations

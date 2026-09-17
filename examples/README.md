@@ -46,10 +46,17 @@ python examples/langchain_maidan.py
 | Example | What it shows | Install |
 |---------|---------------|---------|
 | [`lease_demo/`](lease_demo/) | **Hero:** cross-language lease loop (Python + TS SDK) | `scripts/lease-demo.sh` (cargo + python3 + node) |
-| [`langchain_maidan.py`](langchain_maidan.py) | Maidan's MCP hero-6 tools in LangChain | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
-| [`autogen_maidan.py`](autogen_maidan.py) | Maidan's MCP hero-6 tools in Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
+| [`langchain_maidan.py`](langchain_maidan.py) | Wires Maidan's MCP hero-6 tools into LangChain and checks all six arrived | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
+| [`autogen_maidan.py`](autogen_maidan.py) | The same wiring + check for Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
 | [`rest_maidan.py`](rest_maidan.py) | Plain REST client (one agent turn) | `pip install "httpx>=0.27"` |
 | [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST) | `pip install "httpx>=0.27"` |
+
+The two framework examples stop at the wiring — they connect, filter the catalog to the
+hero six, and **exit non-zero if any of the six is missing**. That check is the point:
+`tools/list` is capability-filtered server-side, so a token without `message:post` or
+`thread:transition` simply does not see `post_message` or `claim_next_thread`, and an
+example that printed the short list and exited 0 would hand you a broken agent with a
+clean run. Once it says `wiring ok`, pass `tools` to your agent.
 
 Pin `mcp < 2`: the 2.x SDK is not yet compatible with the current LangChain/AutoGen MCP
 adapters. Give each agent its own capability-scoped token in production (see the docs page).

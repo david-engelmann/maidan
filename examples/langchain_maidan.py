@@ -1,7 +1,6 @@
 """Connect LangChain to Maidan's MCP server — filtered to the hero task-loop tools.
 
-Maidan speaks MCP over Streamable HTTP at POST /mcp/streamable. The full catalog is
-~78 tools; handing all of them to an agent is expensive and noisy. This loads the
+Maidan speaks MCP over Streamable HTTP at POST /mcp/streamable. The catalog is large — handing all of it to an agent is expensive and noisy. This loads the
 catalog, then **filters to the six-tool lease loop** an agent actually needs to pick
 up work, do it, and hand back a result — then passes only those to your agent.
 
@@ -21,6 +20,7 @@ available if you widen HERO_TOOLS.
 
 import asyncio
 import os
+import sys
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -36,7 +36,33 @@ HERO_TOOLS = {
 }
 
 
-async def main() -> None:
+def report(all_tools, tools) -> int:
+    """Print what the agent will get, and fail loudly if that is not the hero loop.
+
+    `tools/list` is capability-filtered server-side: a token that lacks
+    `thread:transition` or `message:post` simply does not see `claim_next_thread`
+    or `post_message`. Filtering an already-filtered catalog then yields a short
+    list, and an example that prints it and exits 0 hands you a broken agent with
+    a clean run.
+    """
+    missing = HERO_TOOLS - {t.name for t in tools}
+    print(f"catalog has {len(all_tools)} tools; the hero loop needs {len(HERO_TOOLS)}:")
+    for name in sorted(HERO_TOOLS):
+        print(f"  {'ok' if name not in missing else 'MISSING':<9}{name}")
+    if missing:
+        print(
+            f"\n{len(missing)} hero tool(s) missing: {', '.join(sorted(missing))}.\n"
+            "The MCP catalog is filtered to what your token may invoke, so this is "
+            "almost always the token — mint one with `workspace:read`, `message:post` "
+            "and `thread:transition` (or the `maidan.agent.worker` set).",
+            file=sys.stderr,
+        )
+        return 1
+    print("\nwiring ok — pass `tools` (not `all_tools`) to your agent.")
+    return 0
+
+
+async def main() -> int:
     base_url = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
     connection: dict[str, object] = {
         "transport": "streamable_http",
@@ -49,11 +75,8 @@ async def main() -> None:
     client = MultiServerMCPClient({"maidan": connection})
     all_tools = await client.get_tools()
     tools = [t for t in all_tools if t.name in HERO_TOOLS]
-    print(f"catalog has {len(all_tools)} tools; using the {len(tools)}-tool hero loop:")
-    for tool in tools:
-        print(f"  - {tool.name}")
-    # Pass `tools` (not `all_tools`) to langchain.agents.create_agent(...) or a LangGraph node.
+    return report(all_tools, tools)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))
