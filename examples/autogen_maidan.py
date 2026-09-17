@@ -15,6 +15,7 @@ handing tools to an agent — the full ~78-tool catalog is unchanged server-side
 
 import asyncio
 import os
+import sys
 
 from autogen_ext.tools.mcp import StreamableHttpServerParams, mcp_server_tools
 
@@ -28,7 +29,33 @@ HERO_TOOLS = {
 }
 
 
-async def main() -> None:
+def report(all_tools, tools) -> int:
+    """Print what the agent will get, and fail loudly if that is not the hero loop.
+
+    `tools/list` is capability-filtered server-side: a token that lacks
+    `thread:transition` or `message:post` simply does not see `claim_next_thread`
+    or `post_message`. Filtering an already-filtered catalog then yields a short
+    list, and an example that prints it and exits 0 hands you a broken agent with
+    a clean run.
+    """
+    missing = HERO_TOOLS - {t.name for t in tools}
+    print(f"catalog has {len(all_tools)} tools; the hero loop needs {len(HERO_TOOLS)}:")
+    for name in sorted(HERO_TOOLS):
+        print(f"  {'ok' if name not in missing else 'MISSING':<9}{name}")
+    if missing:
+        print(
+            f"\n{len(missing)} hero tool(s) missing: {', '.join(sorted(missing))}.\n"
+            "The MCP catalog is filtered to what your token may invoke, so this is "
+            "almost always the token — mint one with `workspace:read`, `message:post` "
+            "and `thread:transition` (or the `maidan.agent.worker` set).",
+            file=sys.stderr,
+        )
+        return 1
+    print("\nwiring ok — pass `tools` (not `all_tools`) to your agent.")
+    return 0
+
+
+async def main() -> int:
     base_url = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
     token = os.environ.get("MAIDAN_TOKEN")
     headers = {"Authorization": f"Bearer {token}"} if token else None
@@ -41,11 +68,8 @@ async def main() -> None:
     )
     all_tools = await mcp_server_tools(params)
     tools = [t for t in all_tools if t.name in HERO_TOOLS]
-    print(f"catalog has {len(all_tools)} tools; using the {len(tools)}-tool hero loop:")
-    for tool in tools:
-        print(f"  - {tool.name}")
-    # Pass `tools` (not `all_tools`) to autogen_agentchat.agents.AssistantAgent(...).
+    return report(all_tools, tools)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))
