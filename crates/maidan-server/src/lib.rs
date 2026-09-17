@@ -18,6 +18,7 @@ pub mod automation_delivery;
 pub mod automation_worker;
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
+pub mod chain_verify;
 pub mod config;
 pub mod consistency;
 pub mod delivery;

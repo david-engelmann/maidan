@@ -2123,6 +2123,10 @@ impl EventStore for SqliteStore {
         events::max_event_id(&self.pool).await
     }
 
+    async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
+        events::workspace_ids_with_events(&self.pool).await
+    }
+
     async fn tap_cursor(&self, surface: &str) -> Result<i64, StoreError> {
         tap_cursor::get(&self.pool, surface).await
     }

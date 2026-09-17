@@ -571,6 +571,16 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Cluster 402.3: the scheduled half of the Cluster-402.2 decision. The tap
+    // verifies what it projects; this verifies the chain. Opt-in — unset means
+    // an unconfigured deployment is unchanged.
+    if let Some(interval) = maidan_server::chain_verify::interval_from_env() {
+        let verify_store = state.store.clone();
+        tokio::spawn(async move {
+            maidan_server::chain_verify::run(verify_store, interval).await;
+        });
+    }
+
     // Background scheduled/recurring-task sweeper (Cluster 227): opt-in via
     // `MAIDAN_SCHEDULER_TICK_SECS`. Materializes a task thread for each schedule
     // that comes due.

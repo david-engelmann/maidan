@@ -244,6 +244,15 @@ pub fn record_retention_pruned(table: &str, count: u64) {
     counter!("maidan_retention_pruned_total", "table" => table.to_string()).increment(count);
 }
 
+/// One workspace's chain verified by the Cluster-402.3 sweeper.
+///
+/// `outcome` is `ok` | `broken` | `error`. **`broken` and `error` are distinct
+/// on purpose**: verified-and-broken is a tamper, could-not-verify is a database
+/// problem, and an alert that cannot tell them apart will be ignored.
+pub fn record_chain_verify(outcome: &str) {
+    counter!("maidan_chain_verify_total", "outcome" => outcome.to_string()).increment(1);
+}
+
 /// A per-recipient notification written by the router (Cluster 238), by the source
 /// event `kind`. Deduped writes (a replay / a second replica) do not increment.
 pub fn record_notification_created(kind: &str) {

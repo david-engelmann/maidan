@@ -627,6 +627,34 @@ read-your-writes against it (`cargo test -p maidan-store --test read_routing --
 --ignored`), and the `#[ignore]`d `replica_routing` search test proves the same for
 message search (`cargo test -p maidan-search --test replica_routing -- --ignored`).
 
+## Event-log chain verification
+
+Every event carries a `prev_hash` / `content_hash` chain (Cluster 392). Verifying
+it end to end is `GET /workspaces/:wid/events/verify`, which Cluster 397.8 made
+streaming rather than whole-log-in-memory.
+
+Until Cluster 402.2 the search tap re-walked and re-verified the entire log on
+every process start — which meant verification happened only when a process
+happened to bounce. That is not a control you can schedule, alert on, or say
+when it last ran, so the tap now resumes from a cursor and verification became
+an explicit job:
+
+```sh
+MAIDAN_CHAIN_VERIFY_SECS=86400   # daily; unset = off
+```
+
+It walks every workspace that has events, continues past a break so one tenant's
+tamper does not hide the others, and emits
+`maidan_chain_verify_total{outcome="ok"|"broken"|"error"}`.
+
+**Alert on `broken`, investigate `error` separately.** `broken` means a chain
+verified and failed — a tamper or corruption. `error` means the verification
+could not run, which is usually a database problem. An alert that cannot tell
+them apart gets ignored.
+
+A broken chain is logged with its `workspace_id`, `break_at` and reason; the
+recovery path is a rebuild from the domain tables, not a repair of the log.
+
 ## Backup & disaster recovery (`v260.0.0`)
 
 Maidan's durable state is two things, and the backup story follows the same split:

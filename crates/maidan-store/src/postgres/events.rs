@@ -478,3 +478,21 @@ fn parse_kind(s: &str) -> Result<maidan_types::EventKind, StoreError> {
     maidan_types::EventKind::parse(s)
         .ok_or_else(|| StoreError::InvalidInput(format!("unknown event kind: {s}")))
 }
+
+/// Every workspace with at least one event — the set a chain verifier walks
+/// (Cluster 402.3). Derived from the log, not the workspaces table: a workspace
+/// with no events has no chain, and a vacuous pass reads the same as a real one.
+pub async fn workspace_ids_with_events(pool: &PgPool) -> Result<Vec<WorkspaceId>, StoreError> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT DISTINCT workspace_id FROM maidan_events
+         WHERE workspace_id IS NOT NULL ORDER BY workspace_id",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| r.get::<Option<uuid::Uuid>, _>("workspace_id"))
+        .map(WorkspaceId)
+        .collect())
+}
