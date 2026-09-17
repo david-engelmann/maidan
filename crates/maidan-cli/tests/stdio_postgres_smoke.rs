@@ -27,6 +27,8 @@ async fn mcp_stdio_postgres_initialize_roundtrip() {
     let bin = env!("CARGO_BIN_EXE_maidan");
     let mut child = Command::new(bin)
         .arg("mcp-stdio")
+        // No token here, so the unrestricted context has to be asked for.
+        .arg("--allow-insecure-no-auth")
         .env("DATABASE_URL", &database_url)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

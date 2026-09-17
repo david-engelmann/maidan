@@ -37,6 +37,15 @@ enum Commands {
             default_value = "./.local/artifacts"
         )]
         artifact_root: PathBuf,
+        /// Serve every tool with unrestricted authority because no
+        /// `MAIDAN_MCP_TOKEN` was given. Required to start without one. Never
+        /// use this against a database holding real work.
+        ///
+        /// `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` does the same. It is read by value
+        /// rather than by presence, matching the server's acknowledgement, so
+        /// setting it to `0` turns it off instead of quietly turning it on.
+        #[arg(long)]
+        allow_insecure_no_auth: bool,
     },
     /// Re-embed all live messages for the configured provider model.
     #[command(name = "reindex-embeddings")]
@@ -76,7 +85,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::McpStdio {
             database_url,
             artifact_root,
-        } => run_mcp_stdio(&database_url, &artifact_root).await,
+            allow_insecure_no_auth,
+        } => run_mcp_stdio(&database_url, &artifact_root, allow_insecure_no_auth).await,
         Commands::ReindexEmbeddings {
             database_url,
             embedding_provider,
@@ -179,7 +189,76 @@ async fn run_init(
     Ok(())
 }
 
-async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Result<()> {
+/// A boolean environment variable, read by value. Presence alone is not consent:
+/// `MAIDAN_ALLOW_INSECURE_NO_AUTH=0` has to mean no.
+fn env_truthy(name: &str) -> bool {
+    matches!(
+        std::env::var(name).as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+/// What `mcp-stdio` will serve with, once the environment has had its say.
+#[derive(Debug, PartialEq, Eq)]
+enum StdioAuth {
+    /// Resolve this bearer and serve with exactly its capabilities.
+    Token(String),
+    /// Serve every tool with unrestricted authority — asked for, not defaulted to.
+    Unrestricted,
+    /// Neither was given. Refuse rather than pick one.
+    Refused,
+}
+
+/// Why serving MCP without a token has to be asked for.
+///
+/// `mcp-stdio` hosts the server itself: it opens the database and answers tool
+/// calls over the pipe. Per-tool capability checks are made against one ambient
+/// [`AuthContext`], so that context *is* the authorization. With no
+/// `MAIDAN_MCP_TOKEN` the only context left to serve is a bypass, which every
+/// check passes — and a bypass reached by leaving a variable unset is reached in
+/// silence, against whatever database the caller happened to point at.
+///
+/// So it stays available and stops being the default. `--allow-insecure-no-auth`
+/// turns it on, mirroring the server's `MAIDAN_ALLOW_INSECURE_NO_AUTH`
+/// acknowledgement for `AUTH_DISABLED`.
+fn plan_stdio_auth(token: Option<String>, allow_insecure_no_auth: bool) -> StdioAuth {
+    match token {
+        Some(token) if !token.is_empty() => StdioAuth::Token(token),
+        _ if allow_insecure_no_auth => StdioAuth::Unrestricted,
+        _ => StdioAuth::Refused,
+    }
+}
+
+async fn resolve_stdio_auth(
+    store: &dyn Store,
+    allow_insecure_no_auth: bool,
+) -> anyhow::Result<AuthContext> {
+    match plan_stdio_auth(
+        std::env::var("MAIDAN_MCP_TOKEN").ok(),
+        allow_insecure_no_auth,
+    ) {
+        StdioAuth::Token(token) => resolve_bearer(store, &token)
+            .await
+            .context("resolve MAIDAN_MCP_TOKEN"),
+        StdioAuth::Unrestricted => {
+            tracing::warn!(
+                "serving MCP with no token: every tool runs with unrestricted authority over \
+                 this database. Set MAIDAN_MCP_TOKEN to scope it."
+            );
+            Ok(AuthContext::bypass())
+        }
+        StdioAuth::Refused => anyhow::bail!(
+            "no MAIDAN_MCP_TOKEN. Mint one with `maidan init` (or the token API) and set it, \
+             or pass --allow-insecure-no-auth to serve every tool with unrestricted authority."
+        ),
+    }
+}
+
+async fn run_mcp_stdio(
+    database_url: &str,
+    artifact_root: &Path,
+    allow_insecure_no_auth: bool,
+) -> anyhow::Result<()> {
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let (store, search) = match dialect {
         Dialect::Sqlite => {
@@ -215,13 +294,11 @@ async fn run_mcp_stdio(database_url: &str, artifact_root: &Path) -> anyhow::Resu
 
     let artifacts = Arc::new(LocalFsStore::new(artifact_root.to_path_buf()));
 
-    let auth = if let Ok(token) = std::env::var("MAIDAN_MCP_TOKEN") {
-        resolve_bearer(store.as_ref(), &token)
-            .await
-            .context("resolve MAIDAN_MCP_TOKEN")?
-    } else {
-        AuthContext::bypass()
-    };
+    let auth = resolve_stdio_auth(
+        store.as_ref(),
+        allow_insecure_no_auth || env_truthy("MAIDAN_ALLOW_INSECURE_NO_AUTH"),
+    )
+    .await?;
 
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
@@ -307,4 +384,46 @@ async fn run_reindex_embeddings(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod stdio_auth_tests {
+    use super::*;
+
+    #[test]
+    fn a_token_is_used_whether_or_not_the_insecure_flag_is_set() {
+        assert_eq!(
+            plan_stdio_auth(Some("t".into()), false),
+            StdioAuth::Token("t".into())
+        );
+        assert_eq!(
+            plan_stdio_auth(Some("t".into()), true),
+            StdioAuth::Token("t".into())
+        );
+    }
+
+    #[test]
+    fn no_token_and_no_flag_is_refused_rather_than_silently_unrestricted() {
+        assert_eq!(plan_stdio_auth(None, false), StdioAuth::Refused);
+    }
+
+    #[test]
+    fn an_empty_token_is_no_token() {
+        // `MAIDAN_MCP_TOKEN=` reads as set. Treating it as a token would send an
+        // empty bearer to `resolve_bearer`; treating it as absent keeps the
+        // refuse-or-acknowledge decision where it belongs.
+        assert_eq!(
+            plan_stdio_auth(Some(String::new()), false),
+            StdioAuth::Refused
+        );
+        assert_eq!(
+            plan_stdio_auth(Some(String::new()), true),
+            StdioAuth::Unrestricted
+        );
+    }
+
+    #[test]
+    fn the_flag_alone_serves_unrestricted() {
+        assert_eq!(plan_stdio_auth(None, true), StdioAuth::Unrestricted);
+    }
 }

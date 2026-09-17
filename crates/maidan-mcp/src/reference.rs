@@ -16,7 +16,7 @@ pub fn markdown() -> String {
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
          - **Streamable HTTP:** `POST /mcp/streamable` — `2026-07-28` is stateless (send `MCP-Protocol-Version: 2026-07-28`; a single JSON-RPC response, no `Mcp-Session-Id`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers). A `2024-11-05` request keeps the SSE-session model (first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Live-wait/server→client ride `GET /mcp/stream`\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
-         - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)\n\n\
+         - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses unless `--allow-insecure-no-auth` is passed\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",
     );
 
