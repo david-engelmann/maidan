@@ -1075,8 +1075,20 @@ because the tests assert the happy path of a single tenant.
    column** (remembers only the most recent holder, so an act-as-any bearer
    could claim as someone else, overwrite it, and approve).
 
-   **Still open: both gates must read it.** Until they do, this is inert — the
-   ledger records, nothing consults it.
+   **✅ CLOSED (Cluster 401.2).** Both gates now read it, on **four** surfaces:
+   the review report (`reviews.rs`), the review *enforcement* (the FSM close
+   gate in `thread_transitions.rs` — which keeps its **own copy** of the
+   approval SQL, so patching the report alone changed nothing and the
+   regression test caught it), and the land gate's standing read and
+   enforcement. The land gate reads the ledger on the transition's own
+   transaction, so a release committing between the check and the close cannot
+   slip through.
+
+   Regression: `self_approval_laundering.rs` performs the attack — claim,
+   release (asserting `assignee_id` is genuinely NULL), self-approve — against
+   both gates and both backends, and also asserts a third party still closes the
+   thread, because over-excluding would break real review while looking like
+   security.
 
    **The easy half, verified 2026-09-16 and worth doing on its own:**
    `add_member_skill` (`crates/maidan-server/src/routes/skills.rs:23`) is
@@ -1231,9 +1243,9 @@ that had silently been fixed are struck through above.
 | ~~C5~~ | ~~`run_occupancy` ignores `maidan_thread_blocks`~~ | ✅ **fixed, Cluster 400.1** | — |
 | ~~12~~ | ~~Log snapshot reads the head after assembling the graph~~ | ✅ **fixed, Cluster 400.2** | — |
 | 10 | `list_purged` materializes the scope before truncating | push the limit into the query | small |
-| 7a | Governance skills (`land_gate`, review) are self-grantable | ratchet to `channel:admin`, per 397.2 | small |
+| ~~7a~~ | ~~Governance skills are self-grantable~~ | ✅ **fixed, Cluster 400.5** | — |
+| ~~7b~~ | ~~Self-approval launders through a claim release~~ | ✅ **fixed, Clusters 401.1 + 401.2** | — |
 | ~~11~~ | ~~jsonb normalizes integral exponent numbers~~ | ✅ **fixed, Cluster 400.3** | — |
-| 7b | Self-approval launders through a claim release | durable "who did the work" ledger | **schema decision** |
 | 8 | Attenuation records no parent link → revocation does not cascade | migration + traversal, and a cascade-vs-mark call | **decision** |
 | — | Search-indexer backfill restarts from 0 on every resubscribe | cursor vs full re-verification | **correctness decision** |
 | — | `set_thread_budget` is PUT-shaped, so raising one cap clears three | API shape | **decision** |
