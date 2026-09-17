@@ -98,10 +98,11 @@ export DATABASE_URL=sqlite:///home/pi/maidan/maidan.db
 ./target/release/maidan-server
 ```
 
-Optional edge MCP without a separate server process:
+Optional edge MCP without a separate server process. The token scopes what the
+tools may do, so mint one with `maidan init` first:
 
 ```sh
-./target/release/maidan mcp-stdio
+MAIDAN_MCP_TOKEN=<bearer> ./target/release/maidan mcp-stdio
 ```
 
 ---

@@ -829,10 +829,20 @@ Panels include channels, live WS tail, search, tokens, artifacts, and admin surf
 ## stdio MCP (local CLI)
 
 ```sh
-maidan mcp-stdio
+MAIDAN_MCP_TOKEN=<bearer> maidan mcp-stdio
 ```
 
 In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilities.md) v100).
+
+This binary *hosts* the server — it opens the database and answers tool calls over
+the pipe — so the token is the whole of the authorization: every tool runs with
+exactly its capabilities. Mint one with `maidan init` or the token API.
+
+Without a token there is no context to serve but an unrestricted one, so it will
+not start unless you say so: `--allow-insecure-no-auth` (or the environment
+variable of the same name) serves every tool with full authority over that
+database, and logs a warning saying it did. Use it for a scratch database, not a
+real one.
 
 ---
 
