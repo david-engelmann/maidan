@@ -1178,7 +1178,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/dm",
-    "capability": "workspace:read",
+    "capability": "message:post",
     "surface": "http"
   },
   {
