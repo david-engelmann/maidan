@@ -36,17 +36,18 @@ db-down:
 
 # Brings the stack up and waits for the server to answer. MAIDAN_HOST_PORT
 # moves the published port when 8080 is taken.
-smoke: compose-up
+#
+# `--wait` returns when every service reports healthy, so the polling loop this
+# used to hand-roll now lives in the compose health checks, where `docker ps`
+# and `depends_on` can see it too.
+smoke:
+	@if ! docker compose --profile full up -d --wait; then \
+		echo "stack did not become healthy — recent server logs:"; \
+		docker compose --profile full logs --tail 40 maidan-server || true; \
+		exit 1; \
+	fi
 	@port=$${MAIDAN_HOST_PORT:-8080}; \
-	echo "waiting for http://localhost:$$port/health ..."; \
-	for i in $$(seq 1 30); do \
-		if curl -sf "http://localhost:$$port/health"; then echo ""; exit 0; fi; \
-		sleep 2; \
-	done; \
-	echo ""; \
-	echo "health check failed after 60s — recent server logs:"; \
-	docker compose --profile full logs --tail 40 maidan-server || true; \
-	exit 1
+	curl -sf "http://localhost:$$port/health" && echo ""
 
 clean:
 	cargo clean

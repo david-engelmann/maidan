@@ -6,7 +6,7 @@ name: maidan-quickstart
 # Default-secure: authentication is ON, exactly like production. Seed the first admin
 # and mint a bearer token with `maidan init` (bundled in the image), then use it:
 #
-#   docker compose -f compose.quickstart.yaml up -d --build
+#   docker compose -f compose.quickstart.yaml up -d --build --wait
 #   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
 #   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
 #
@@ -21,7 +21,7 @@ services:
       context: docker
       dockerfile: Dockerfile.quickstart
       args:
-        MAIDAN_VERSION: ${MAIDAN_VERSION:-v349.0.0}
+        MAIDAN_VERSION: ${MAIDAN_VERSION:-v402.0.0}
     environment:
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs
@@ -41,6 +41,14 @@ services:
     volumes:
       - maidan_quickstart_data:/data
     restart: unless-stopped
+    healthcheck:
+      # `docker compose up -d --wait` then returns when the server is serving,
+      # so the very next command in the walkthrough cannot race the boot.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
 
 volumes:
   maidan_quickstart_data:

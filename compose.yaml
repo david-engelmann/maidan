@@ -102,6 +102,15 @@ services:
       - "${MAIDAN_HOST_PORT:-8080}:8080"
     volumes:
       - maidan_data:/data
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - full
 
@@ -130,6 +139,15 @@ services:
     volumes:
       - maidan_a_data:/data
     restart: on-failure:5
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - federation
 
@@ -158,6 +176,15 @@ services:
     volumes:
       - maidan_b_data:/data
     restart: on-failure:5
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - federation
 
@@ -228,6 +255,15 @@ services:
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     restart: on-failure:5
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - scale
 
@@ -259,6 +295,15 @@ services:
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     restart: on-failure:5
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - scale
 
@@ -266,8 +311,10 @@ services:
     image: nginx:1.27-alpine
     container_name: maidan-lb
     depends_on:
-      - maidan-r1
-      - maidan-r2
+      maidan-r1:
+        condition: service_healthy
+      maidan-r2:
+        condition: service_healthy
     # Host port is overridable (MAIDAN_SCALE_LB_PORT) so the harness survives a
     # local collision; CI uses the 8090 default.
     ports:
@@ -320,6 +367,15 @@ services:
     volumes:
       - maidan_otlp_data:/data
     restart: on-failure:5
+    healthcheck:
+      # The runtime image is distroless — no shell, no curl. The binary probes
+      # its own /health/ready, so `--wait` and `depends_on: service_healthy`
+      # gate on the server actually serving rather than on the container existing.
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     profiles:
       - otlp
 

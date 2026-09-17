@@ -1,7 +1,17 @@
 replicaCount: 2
 
+# The base values.yaml ships `maidan-server:dev` for local kind installs, so a
+# production overlay has to name a real image or it deploys the dev tag from an
+# unqualified repository. Set `image.tag` to the release you intend to run —
+# better still, a digest (`@sha256:…`) via `--set image.tag`.
+#
+# `IfNotPresent`, not `Always`: with a pinned tag there is nothing to re-pull,
+# and `Always` on a mutable tag means a pod restart can silently change the
+# running version without a deploy.
 image:
-  pullPolicy: Always
+  repository: ghcr.io/david-engelmann/maidan-server
+  tag: v402.0.0
+  pullPolicy: IfNotPresent
 
 ingress:
   enabled: true

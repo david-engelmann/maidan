@@ -21,8 +21,47 @@ use maidan_store::{
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::RwLock;
 
+/// Probe this server's own readiness and exit 0 or 1.
+///
+/// The runtime image is `gcr.io/distroless/cc-debian12`, which has no shell and
+/// no `curl` — so a compose or Kubernetes health check has nothing to call
+/// *except* this binary. Running it as its own probe keeps the health check
+/// honest (it speaks real HTTP to the real port) without adding a shell to a
+/// distroless image just to be able to ask.
+///
+/// `/health/ready` is the deep check: degraded dependencies read as unhealthy,
+/// which is what a `depends_on: service_healthy` wants to wait for.
+async fn run_health_check() -> anyhow::Result<()> {
+    // Read the port straight from `MAIDAN_BIND` rather than loading `Config`: a
+    // probe that needs `DATABASE_URL` to decide whether the server is up has
+    // acquired a way to fail that has nothing to do with the server.
+    let port = std::env::var("MAIDAN_BIND")
+        .ok()
+        .and_then(|bind| bind.rsplit(':').next().and_then(|p| p.parse::<u16>().ok()))
+        .unwrap_or(8080);
+    let url = format!("http://127.0.0.1:{port}/health/ready");
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .context("build health-check client")?
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("GET {url}"))?;
+    if response.status().is_success() {
+        return Ok(());
+    }
+    anyhow::bail!("{url} returned {}", response.status())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Before anything is loaded: this invocation talks to an already-running
+    // server rather than becoming one.
+    if std::env::args().any(|arg| arg == "--health-check") {
+        return run_health_check().await;
+    }
+
     let config = Config::from_env().context("load config from env")?;
 
     let mut obs_config = maidan_observability::Config::from_env();
