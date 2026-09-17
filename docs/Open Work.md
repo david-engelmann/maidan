@@ -1108,17 +1108,20 @@ because the tests assert the happy path of a single tenant.
 
    Also still true: an outstanding `request_changes` subtracts nothing — its own
    author can approve it away.
-8. **Attenuation loses three properties — two fixed, one open.**
-   **✅ FIXED (Cluster 397.7, #878):** a derived token now inherits the parent's
+8. ~~**Attenuation loses three properties.**~~ **✅ ALL THREE FIXED.**
+   **Cluster 397.7 (#878):** a derived token inherits the parent's
    `app_installation_id` (so the app-uninstall kill-switch still reaches it) and
-   its per-token quotas (so re-issuing is no longer a self-service amplification
-   primitive), on both the REST and MCP paths.
+   its per-token quotas (so re-issuing is no longer a self-service
+   amplification primitive), on both the REST and MCP paths.
 
-   **Still open: no parent link.** `parent_token_id` is recorded in the *audit
-   metadata* only, not as a column, so revoking a parent cannot traverse to its
-   children. That needs a migration plus revoke-time traversal, and a decision on
-   whether revocation cascades or merely marks — deliberately deferred in 397.7
-   rather than half-built.
+   **Cluster 401.3:** the parent link is now a column (`parent_token_id`, pg
+   0098 / sqlite 0097) rather than audit metadata, and `revoke_api_token`
+   revokes the whole subtree — **transitively**, because stopping one level down
+   is the same leak one generation later. ADR in [Decisions.md](Decisions.md):
+   *Revoking a token revokes everything derived from it*. Cascade at revoke
+   time, not auth time (a recursive query does not belong in the hot auth path,
+   and attenuation requires a live parent so there is no window to miss).
+   Already-revoked rows keep their original timestamp.
 9. ~~**`Maidan-Room-LSN` reports the global head.**~~ **✅ FIXED — both
    halves.** The **DoS half (Cluster 397.9)**: the limiter is now the outer
    layer and the middleware skips 401/403/429/5xx, so a refused request costs no

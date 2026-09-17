@@ -239,20 +239,30 @@ pub async fn attenuate_api_token(
     };
 
     let secret = TokenSecret::generate();
-    let record = state
-        .store
-        .create_api_token(NewApiToken {
-            workspace_id: auth.workspace_id,
-            member_id: auth.member_id,
-            // Inherited, not dropped: an app's grant dies with its installation,
-            // and a derived token is still that app acting.
-            app_installation_id: auth.app_installation_id,
-            token_hash: hash_secret(secret.as_str()),
-            label: body.label,
-            capabilities: capabilities.clone(),
-            expires_at,
-        })
-        .await?;
+    let derived = NewApiToken {
+        workspace_id: auth.workspace_id,
+        member_id: auth.member_id,
+        // Inherited, not dropped: an app's grant dies with its installation,
+        // and a derived token is still that app acting.
+        app_installation_id: auth.app_installation_id,
+        token_hash: hash_secret(secret.as_str()),
+        label: body.label,
+        capabilities: capabilities.clone(),
+        expires_at,
+    };
+    // Record the parent so revoking it reaches this token (Cluster 401.3).
+    // A holder without a token id is a session, which has nothing to derive
+    // from — that case cannot reach here, but it mints unlinked rather than
+    // guessing a parent.
+    let record = match auth.token_id {
+        Some(parent) => {
+            state
+                .store
+                .create_attenuated_api_token(derived, parent)
+                .await?
+        }
+        None => state.store.create_api_token(derived).await?,
+    };
     if !inherited_quotas.is_empty() {
         state
             .store

@@ -399,6 +399,43 @@ one mode without parsing backend-specific `rank` ranges.
 
 ## Security
 
+### Revoking a token revokes everything derived from it (`v401.3.0`)
+
+**Decision.** `maidan_api_tokens` gains a `parent_token_id`, attenuation records
+it, and `revoke_api_token` revokes the whole subtree — transitively, not one
+level.
+
+**Why cascade rather than mark.** Cluster 397.7 established the principle: *a
+derived token inherits every limit the parent carried*. It fixed exactly this
+shape for app installations and per-token quotas, because re-issuing was
+otherwise a way to shed a bound. Revocation is the ultimate limit, and it was the
+dimension still leaking — the parent link lived only in audit metadata, so
+nothing could traverse it. The practical case decides it: you revoke a parent
+because it leaked, and whoever held it could have minted children from it. Those
+children are equally compromised.
+
+**Why at revoke time, not auth time.** Writing `revoked_at` across the subtree is
+one traversal. Checking the ancestor chain on every request would put a recursive
+query in the hot auth path, which is the wrong place to spend. Attenuation
+requires a *live* parent, so a child cannot appear after its parent is revoked —
+there is no window for write-time cascade to miss.
+
+**Why not a field on `NewApiToken`.** That struct is constructed at 109 sites,
+100 of them tests, and only the attenuation path has a parent. A field would have
+been a hundred mechanical edits serving one caller — the ripple that Cluster 173
+hit on `NewMessage`. `create_attenuated_api_token` has zero blast radius.
+
+**`ON DELETE SET NULL` on the parent FK**, never CASCADE: deleting a parent row
+should sever the link, not delete its children's rows. Workspace teardown already
+cascades through `workspace_id`.
+
+**Already-revoked rows are skipped**, so a child revoked earlier keeps its own
+timestamp when an ancestor is revoked later. "When was this killed" stays true.
+
+**Trade accepted.** Revoking a token now has a blast radius its holder may not
+have in mind. That is the intended meaning of a kill switch, and the alternative
+— a compromised credential's descendants surviving it — is worse.
+
 ### Separation of duties reads a worker ledger, not the live assignee (`v401.1.0`)
 
 **Decision.** A durable, append-only `maidan_thread_workers` table records every

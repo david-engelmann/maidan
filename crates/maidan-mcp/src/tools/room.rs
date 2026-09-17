@@ -128,17 +128,20 @@ pub(super) async fn attenuate_token(
         None => Vec::new(),
     };
     let secret = TokenSecret::generate();
-    let record = store
-        .create_api_token(NewApiToken {
-            workspace_id: auth.workspace_id,
-            member_id: auth.member_id,
-            app_installation_id: auth.app_installation_id,
-            token_hash: hash_secret(secret.as_str()),
-            label: a.label,
-            capabilities: capabilities.clone(),
-            expires_at,
-        })
-        .await?;
+    let derived = NewApiToken {
+        workspace_id: auth.workspace_id,
+        member_id: auth.member_id,
+        app_installation_id: auth.app_installation_id,
+        token_hash: hash_secret(secret.as_str()),
+        label: a.label,
+        capabilities: capabilities.clone(),
+        expires_at,
+    };
+    // Record the parent so revoking it reaches this token (Cluster 401.3).
+    let record = match auth.token_id {
+        Some(parent) => store.create_attenuated_api_token(derived, parent).await?,
+        None => store.create_api_token(derived).await?,
+    };
     if !inherited_quotas.is_empty() {
         store
             .replace_token_quotas(record.id, &inherited_quotas)

@@ -2514,6 +2514,14 @@ impl TokenStore for PostgresStore {
         tokens::get_active_by_hash(&self.pool, token_hash).await
     }
 
+    async fn create_attenuated_api_token(
+        &self,
+        new: NewApiToken,
+        parent_token_id: ApiTokenId,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::create_attenuated(&self.pool, new, parent_token_id).await
+    }
+
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
     }

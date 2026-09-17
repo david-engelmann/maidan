@@ -135,6 +135,7 @@ const POSTGRES_UP_V94: &str =
 const POSTGRES_UP_V95: &str = include_str!("../../../migrations/postgres/0095_outbox_claim.sql");
 const POSTGRES_UP_V96: &str = include_str!("../../../migrations/postgres/0096_mail_workspace.sql");
 const POSTGRES_UP_V97: &str = include_str!("../../../migrations/postgres/0097_thread_workers.sql");
+const POSTGRES_UP_V98: &str = include_str!("../../../migrations/postgres/0098_token_parent.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -245,6 +246,7 @@ const SQLITE_UP_V93: &str =
 const SQLITE_UP_V94: &str = include_str!("../../../migrations/sqlite/0094_outbox_claim.sql");
 const SQLITE_UP_V95: &str = include_str!("../../../migrations/sqlite/0095_mail_workspace.sql");
 const SQLITE_UP_V96: &str = include_str!("../../../migrations/sqlite/0096_thread_workers.sql");
+const SQLITE_UP_V97: &str = include_str!("../../../migrations/sqlite/0097_token_parent.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -395,6 +397,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 95, POSTGRES_UP_V95).await?;
     apply_postgres(pool, 96, POSTGRES_UP_V96).await?;
     apply_postgres(pool, 97, POSTGRES_UP_V97).await?;
+    apply_postgres(pool, 98, POSTGRES_UP_V98).await?;
     Ok(())
 }
 
@@ -506,6 +509,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 94, SQLITE_UP_V94).await?;
     apply_sqlite(pool, 95, SQLITE_UP_V95).await?;
     apply_sqlite(pool, 96, SQLITE_UP_V96).await?;
+    apply_sqlite(pool, 97, SQLITE_UP_V97).await?;
     Ok(())
 }
 
