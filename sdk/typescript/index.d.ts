@@ -78,6 +78,21 @@ export declare class Client {
     /** GET /workspaces/{id}/events — projector-shaped HTTP backfill. */
     events(id: WorkspaceId, query?: Record<string, string | number>): Promise<any>;
   };
+  members: {
+    create(wid: WorkspaceId, handle: string, kind?: string, displayName?: string): Promise<any>;
+    list(wid: WorkspaceId): Promise<any>;
+  };
+
+  tokens: {
+    mint(
+      wid: WorkspaceId,
+      mid: MemberId,
+      capabilities?: string[],
+      opts?: { label?: string; capabilitySet?: string; expiresAt?: string },
+    ): Promise<any>;
+    list(wid: WorkspaceId, mid: MemberId): Promise<any>;
+  };
+
   channels: {
     list(wid: WorkspaceId): Promise<any>;
     create(wid: WorkspaceId, name: string, priv?: boolean): Promise<any>;

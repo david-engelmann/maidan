@@ -79,6 +79,30 @@ export class Client {
         this._req("POST", `/workspaces/import${mode ? `?mode=${mode}` : ""}`, bundle),
       events: (id, query) => this._req("GET", `/workspaces/${id}/events${qs(query)}`),
     };
+    // Provisioning. `members.create` is the unauthenticated seed route, present
+    // only on a server built with the `bootstrap` feature; production turns it
+    // off and provisions through `maidan init` plus `tokens.mint`.
+    this.members = {
+      create: (wid, handle, kind = "agent", displayName) =>
+        this._req("POST", `/workspaces/${wid}/members`, {
+          handle,
+          kind,
+          ...(displayName === undefined ? {} : { display_name: displayName }),
+        }),
+      list: (wid) => this._req("GET", `/workspaces/${wid}/members`),
+    };
+    // Needs `token:admin` — the capability `maidan init`'s admin token carries.
+    // `mint` returns the secret once, in the response; `list` is metadata only.
+    this.tokens = {
+      mint: (wid, mid, capabilities = [], opts = {}) =>
+        this._req("POST", `/workspaces/${wid}/members/${mid}/tokens`, {
+          capabilities,
+          ...(opts.label === undefined ? {} : { label: opts.label }),
+          ...(opts.capabilitySet === undefined ? {} : { capability_set: opts.capabilitySet }),
+          ...(opts.expiresAt === undefined ? {} : { expires_at: opts.expiresAt }),
+        }),
+      list: (wid, mid) => this._req("GET", `/workspaces/${wid}/members/${mid}/tokens`),
+    };
     this.channels = {
       list: (wid) => this._req("GET", `/workspaces/${wid}/channels`),
       create: (wid, name, priv = false) =>

@@ -129,6 +129,69 @@ class _Channels:
         )
 
 
+class _Members:
+    """Member provisioning.
+
+    ``create`` is the unauthenticated seed route, present only on a server built
+    with the ``bootstrap`` feature — how a fresh workspace gets its first agents.
+    A production deployment turns it off and provisions through ``maidan init``
+    plus :class:`_Tokens`.
+    """
+
+    def __init__(self, c: "Client"):
+        self._c = c
+
+    def create(self, workspace_id: str, handle: str, kind: str = "agent", display_name: Optional[str] = None) -> Any:
+        body: dict = {"handle": handle, "kind": kind}
+        if display_name is not None:
+            body["display_name"] = display_name
+        return self._c._req("POST", f"/workspaces/{workspace_id}/members", body)
+
+    def list(self, workspace_id: str) -> Any:
+        return self._c._req("GET", f"/workspaces/{workspace_id}/members")
+
+
+class _Tokens:
+    """Per-agent bearer tokens. Requires ``token:admin`` — the capability the
+    admin token from ``maidan init`` carries.
+
+    ``mint`` returns the secret **once**, in the response; it is never
+    retrievable again. ``list`` returns metadata only.
+    """
+
+    def __init__(self, c: "Client"):
+        self._c = c
+
+    def mint(
+        self,
+        workspace_id: str,
+        member_id: str,
+        capabilities: Optional[list] = None,
+        *,
+        label: Optional[str] = None,
+        capability_set: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> Any:
+        """POST /workspaces/{wid}/members/{mid}/tokens.
+
+        Pass ``capabilities`` to grant exactly those, or ``capability_set``
+        (``maidan.agent.worker`` / ``maidan.human.admin``) for a named set —
+        together they are a progressive grant, so the requested capabilities
+        must be a subset of the set.
+        """
+        body: dict = {"capabilities": capabilities or []}
+        if label is not None:
+            body["label"] = label
+        if capability_set is not None:
+            body["capability_set"] = capability_set
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        return self._c._req("POST", f"/workspaces/{workspace_id}/members/{member_id}/tokens", body)
+
+    def list(self, workspace_id: str, member_id: str) -> Any:
+        return self._c._req("GET", f"/workspaces/{workspace_id}/members/{member_id}/tokens")
+
+
 class _Threads:
     def __init__(self, c: "Client"):
         self._c = c
@@ -196,6 +259,8 @@ class Client:
         self.last_room_lsn: Optional[int] = None
 
         self.workspaces = _Workspaces(self)
+        self.members = _Members(self)
+        self.tokens = _Tokens(self)
         self.channels = _Channels(self)
         self.threads = _Threads(self)
         self.messages = _Messages(self)

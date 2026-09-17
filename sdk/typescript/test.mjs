@@ -124,3 +124,24 @@ test("subscribe delivers a posted message (WS)", { skip: typeof WebSocket === "u
   const event = await received;
   assert.equal(event.kind, "message_posted");
 });
+
+test("provisioning seeds a member and mints a scoped token", async () => {
+  // The first thing an integrator does after `maidan init`. Both calls were
+  // reachable only through the private transport before.
+  const ws = await client.workspaces.create("ts-provisioning");
+  const member = await client.members.create(ws.id, "provisioned-agent");
+  assert.equal(member.handle, "provisioned-agent");
+  assert.equal(member.kind, "agent");
+  const members = await client.members.list(ws.id);
+  assert.ok(members.some((m) => m.id === member.id));
+
+  const minted = await client.tokens.mint(ws.id, member.id, ["workspace:read"], {
+    label: "scoped worker",
+  });
+  assert.ok(minted.secret, "the secret is returned once, in the mint response");
+  assert.deepEqual(minted.capabilities, ["workspace:read"]);
+
+  const listed = await client.tokens.list(ws.id, member.id);
+  assert.ok(listed.some((t) => t.id === minted.id));
+  assert.ok(listed.every((t) => t.secret === undefined), "listing never returns a secret");
+});
