@@ -191,3 +191,58 @@ fn subscribe_delivers_a_message() {
     assert_eq!(e["kind"], "message_posted");
     sub.close();
 }
+
+#[test]
+fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
+    // The first thing an integrator does after `maidan init`. Both calls were
+    // reachable only through the private transport before.
+    let Some(base) = base() else {
+        return;
+    };
+    let c = Client::new(&base, "");
+    let ws = c.workspaces().create("rust-provisioning").unwrap();
+    let wid = ws["id"].as_str().unwrap();
+
+    let member = c
+        .members()
+        .create(wid, "provisioned-agent", "agent", None)
+        .unwrap();
+    assert_eq!(member["handle"], "provisioned-agent");
+    assert_eq!(member["kind"], "agent");
+    let listed = c.members().list(wid).unwrap();
+    assert!(listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m["id"] == member["id"]));
+
+    let minted = c
+        .tokens()
+        .mint(
+            wid,
+            member["id"].as_str().unwrap(),
+            &["workspace:read"],
+            &maidan::MintOptions {
+                label: Some("scoped worker"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        minted["secret"].as_str().is_some_and(|s| !s.is_empty()),
+        "the secret is returned once, in the mint response"
+    );
+
+    let tokens = c
+        .tokens()
+        .list(wid, member["id"].as_str().unwrap())
+        .unwrap();
+    assert!(
+        tokens
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|t| t["secret"].is_null()),
+        "listing must never return a secret"
+    );
+}

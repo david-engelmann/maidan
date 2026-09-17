@@ -242,3 +242,54 @@ func TestSubscribeDeliversAMessage(t *testing.T) {
 		t.Fatal("did not receive the message_posted event")
 	}
 }
+
+func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
+	// The first thing an integrator does after `maidan init`. Both calls were
+	// reachable only through the private transport before.
+	c := testClient(t)
+	ws, err := c.Workspaces.Create("go-provisioning")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wid := ws["id"].(string)
+
+	member, err := c.Members.Create(wid, "provisioned-agent", "agent", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if member["handle"] != "provisioned-agent" || member["kind"] != "agent" {
+		t.Fatalf("unexpected member %v", member)
+	}
+	members, err := c.Members.List(wid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range members {
+		if m["id"] == member["id"] {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("created member not listed")
+	}
+
+	minted, err := c.Tokens.Mint(wid, member["id"].(string), []string{"workspace:read"},
+		&MintOptions{Label: "scoped worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minted["secret"] == nil || minted["secret"] == "" {
+		t.Fatal("the secret is returned once, in the mint response")
+	}
+
+	listed, err := c.Tokens.List(wid, member["id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range listed {
+		if _, leaked := tok["secret"]; leaked {
+			t.Fatal("listing must never return a secret")
+		}
+	}
+}

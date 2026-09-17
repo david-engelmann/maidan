@@ -171,6 +171,18 @@ impl Client {
             None,
         )
     }
+    /// Member provisioning. [`Members::create`] is the unauthenticated seed
+    /// route, present only on a server built with the `bootstrap` feature;
+    /// production turns it off and provisions through `maidan init` plus
+    /// [`Client::tokens`].
+    pub fn members(&self) -> Members<'_> {
+        Members { c: self }
+    }
+    /// Per-agent bearer tokens. Needs `token:admin` — the capability the admin
+    /// token from `maidan init` carries.
+    pub fn tokens(&self) -> Tokens<'_> {
+        Tokens { c: self }
+    }
     pub fn channels(&self) -> Channels<'_> {
         Channels { c: self }
     }
@@ -380,6 +392,91 @@ impl Workspaces<'_> {
             None => "/workspaces/import".to_string(),
         };
         self.c.send("POST", &path, Some(bundle))
+    }
+}
+
+// --- Members ---
+
+pub struct Members<'a> {
+    c: &'a Client,
+}
+
+impl Members<'_> {
+    /// `kind` is `"agent"` or `"human"`.
+    pub fn create(
+        &self,
+        workspace_id: &str,
+        handle: &str,
+        kind: &str,
+        display_name: Option<&str>,
+    ) -> Result<Value> {
+        let mut body = json!({ "handle": handle, "kind": kind });
+        if let Some(name) = display_name {
+            body["display_name"] = json!(name);
+        }
+        self.c.send(
+            "POST",
+            &format!("/workspaces/{workspace_id}/members"),
+            Some(&body),
+        )
+    }
+
+    pub fn list(&self, workspace_id: &str) -> Result<Value> {
+        self.c
+            .send("GET", &format!("/workspaces/{workspace_id}/members"), None)
+    }
+}
+
+// --- Tokens ---
+
+/// Optional fields of a mint. `capability_set` is a named set
+/// (`maidan.agent.worker` / `maidan.human.admin`); combined with the requested
+/// capabilities it is a progressive grant, so the request must be a subset.
+#[derive(Debug, Default, Clone)]
+pub struct MintOptions<'a> {
+    pub label: Option<&'a str>,
+    pub capability_set: Option<&'a str>,
+    pub expires_at: Option<&'a str>,
+}
+
+pub struct Tokens<'a> {
+    c: &'a Client,
+}
+
+impl Tokens<'_> {
+    /// Returns the secret **once**, in the response; it is never retrievable
+    /// again.
+    pub fn mint(
+        &self,
+        workspace_id: &str,
+        member_id: &str,
+        capabilities: &[&str],
+        opts: &MintOptions<'_>,
+    ) -> Result<Value> {
+        let mut body = json!({ "capabilities": capabilities });
+        if let Some(label) = opts.label {
+            body["label"] = json!(label);
+        }
+        if let Some(set) = opts.capability_set {
+            body["capability_set"] = json!(set);
+        }
+        if let Some(expires) = opts.expires_at {
+            body["expires_at"] = json!(expires);
+        }
+        self.c.send(
+            "POST",
+            &format!("/workspaces/{workspace_id}/members/{member_id}/tokens"),
+            Some(&body),
+        )
+    }
+
+    /// Token metadata only — never a secret.
+    pub fn list(&self, workspace_id: &str, member_id: &str) -> Result<Value> {
+        self.c.send(
+            "GET",
+            &format!("/workspaces/{workspace_id}/members/{member_id}/tokens"),
+            None,
+        )
     }
 }
 

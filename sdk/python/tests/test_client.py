@@ -109,3 +109,34 @@ def test_subscribe_delivers_a_posted_message():
         assert received["event"]["kind"] == "message_posted"
     finally:
         sub.close()
+
+
+def test_provisioning_seeds_a_member_and_mints_a_scoped_token():
+    """The first thing an integrator does after `maidan init`: create an agent and
+    mint it a narrow bearer. Both were reachable only through the private
+    transport before, which is why the hero demo used `_req`."""
+    c = _client()
+    ws = c.workspaces.create("py-provisioning")
+    member = c.members.create(ws["id"], "provisioned-agent")
+    assert member["handle"] == "provisioned-agent"
+    assert member["kind"] == "agent"
+    assert any(m["id"] == member["id"] for m in c.members.list(ws["id"]))
+
+    minted = c.tokens.mint(
+        ws["id"], member["id"], ["workspace:read"], label="scoped worker"
+    )
+    assert minted["secret"], "the secret is returned once, in the mint response"
+    assert minted["capabilities"] == ["workspace:read"]
+
+    # Metadata only — listing never hands back a secret.
+    listed = c.tokens.list(ws["id"], member["id"])
+    assert any(t["id"] == minted["id"] for t in listed)
+    assert all("secret" not in t for t in listed)
+
+
+# Not tested here: that a minted token is actually *scoped* to what it asked for.
+# This harness runs the server with AUTH_DISABLED, so every request resolves to a
+# bypass context and a `workspace:read` token can still create a channel — the
+# assertion would pass or fail for reasons that have nothing to do with the SDK.
+# Capability enforcement is the server's `http_capability_matrix_e2e`, which runs
+# with auth on and denies every mapped route without its capability.

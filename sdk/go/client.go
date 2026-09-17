@@ -99,6 +99,8 @@ type Client struct {
 	LastRoomLSN *int64
 
 	Workspaces *WorkspacesService
+	Members    *MembersService
+	Tokens     *TokensService
 	Channels   *ChannelsService
 	Threads    *ThreadsService
 	Messages   *MessagesService
@@ -125,6 +127,8 @@ func New(baseURL, token string) *Client {
 		HTTP:    &http.Client{Timeout: 30 * time.Second},
 	}
 	c.Workspaces = &WorkspacesService{c}
+	c.Members = &MembersService{c}
+	c.Tokens = &TokensService{c}
 	c.Channels = &ChannelsService{c}
 	c.Threads = &ThreadsService{c}
 	c.Messages = &MessagesService{c}
@@ -259,6 +263,73 @@ func (c *Client) postObj(path string, body any) (M, error) {
 }
 
 // --- Workspaces ---
+
+// MembersService provisions members. Create is the unauthenticated seed route,
+// present only on a server built with the "bootstrap" feature; production turns
+// it off and provisions through `maidan init` plus TokensService.
+type MembersService struct{ c *Client }
+
+// Create adds a member. kind is "agent" or "human"; displayName may be empty.
+func (s *MembersService) Create(workspaceID, handle, kind, displayName string) (M, error) {
+	if kind == "" {
+		kind = "agent"
+	}
+	body := M{"handle": handle, "kind": kind}
+	if displayName != "" {
+		body["display_name"] = displayName
+	}
+	return s.c.postObj("/workspaces/"+workspaceID+"/members", body)
+}
+
+func (s *MembersService) List(workspaceID string) ([]M, error) {
+	raw, err := s.c.do(http.MethodGet, "/workspaces/"+workspaceID+"/members", nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeArr(raw)
+}
+
+// MintOptions are the optional fields of a token mint. CapabilitySet is a named
+// set ("maidan.agent.worker" / "maidan.human.admin"); combined with capabilities
+// it is a progressive grant, so the request must be a subset of the set.
+type MintOptions struct {
+	Label         string
+	CapabilitySet string
+	ExpiresAt     string
+}
+
+// TokensService mints per-agent bearers. Needs token:admin — the capability the
+// admin token from `maidan init` carries.
+type TokensService struct{ c *Client }
+
+// Mint returns the secret ONCE, in the response; it is never retrievable again.
+func (s *TokensService) Mint(workspaceID, memberID string, capabilities []string, opts *MintOptions) (M, error) {
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	body := M{"capabilities": capabilities}
+	if opts != nil {
+		if opts.Label != "" {
+			body["label"] = opts.Label
+		}
+		if opts.CapabilitySet != "" {
+			body["capability_set"] = opts.CapabilitySet
+		}
+		if opts.ExpiresAt != "" {
+			body["expires_at"] = opts.ExpiresAt
+		}
+	}
+	return s.c.postObj("/workspaces/"+workspaceID+"/members/"+memberID+"/tokens", body)
+}
+
+// List returns token metadata only — never a secret.
+func (s *TokensService) List(workspaceID, memberID string) ([]M, error) {
+	raw, err := s.c.do(http.MethodGet, "/workspaces/"+workspaceID+"/members/"+memberID+"/tokens", nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeArr(raw)
+}
 
 type WorkspacesService struct{ c *Client }
 

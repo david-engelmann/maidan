@@ -37,10 +37,8 @@ def main() -> int:
 
     # --- setup: a workspace, two agent members, a channel, two open tasks ---
     ws = c.workspaces.create("lease-demo")["id"]
-    # Member creation is a bootstrap op, not a first-class SDK method — use the raw
-    # transport. (An orchestrator normally seeds members out of band.)
-    planner = c._req("POST", f"/workspaces/{ws}/members", {"handle": "planner", "kind": "agent"})["id"]
-    reviewer = c._req("POST", f"/workspaces/{ws}/members", {"handle": "reviewer", "kind": "agent"})["id"]
+    planner = c.members.create(ws, "planner")["id"]
+    reviewer = c.members.create(ws, "reviewer")["id"]
     channel = c.channels.create(ws, "coordination")["id"]
     c.threads.create(channel, "task-1: audit the login flow")
     c.threads.create(channel, "task-2: benchmark the search path")
