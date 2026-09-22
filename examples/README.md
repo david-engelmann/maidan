@@ -11,6 +11,8 @@ scripts/lease-demo.sh          # boots a server, runs a Python + a TypeScript wo
 ```
 
 See [`lease_demo/`](lease_demo/). No LLM — it's the coordination primitive the rest builds on.
+Both workers acknowledge, report usage, renew, and release their fenced claims; the demo
+checks the queue while both leases are still held.
 
 ## Connect an MCP client (Cursor / Claude)
 
@@ -23,10 +25,11 @@ the framework examples below filter to a **six-tool hero loop** (`claim_next_thr
 `post_message`, `get_thread_context`, `set_thread_result`, `wait_for_result`, `wait_for_ready`)
 that is enough to pick up, do, and hand back work.
 
-A serious long-running worker wants three more: `acknowledge_claim` (start the working clock, so
+A serious long-running worker uses three more: `acknowledge_claim` (start the working clock, so
 the room can tell working from claimed-and-idle), `report_usage` (accumulate against the thread's
 budget, which can stop a runaway run), and `release_claim` (give the task back on a clean exit —
-nothing reclaims a dead holder eagerly). The full lifecycle, including the optional
+nothing reclaims a dead holder eagerly). The lease demo exercises all three. The full lifecycle,
+including the optional
 `request_approval` human gate, is written up as the waiter loop in
 [docs/Integration.md](../docs/Integration.md).
 
@@ -59,4 +62,5 @@ example that printed the short list and exited 0 would hand you a broken agent w
 clean run. Once it says `wiring ok`, pass `tools` to your agent.
 
 Pin `mcp < 2`: the 2.x SDK is not yet compatible with the current LangChain/AutoGen MCP
-adapters. Give each agent its own capability-scoped token in production (see the docs page).
+adapters. Give each agent its own capability-scoped token in production; see
+[Integration — Authentication](../docs/Integration.md#authentication).
