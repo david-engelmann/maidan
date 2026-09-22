@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+- **Cluster 404 in progress — follow member occupancy.** A member can now follow
+  another same-workspace member over REST (`/members/:id/member-follows`) or MCP
+  (`follow_member`, `unfollow_member`, `list_member_follows`).
+  `GET /members/:id/occupancy` / MCP `get_member_occupancy` combines ephemeral
+  online/away/offline presence with assigned non-terminal threads, filtered
+  through the caller's thread access so private-channel work does not leak.
+  Presence remains outside `maidan_events` and the database.
+
 ### Cluster 403 — pending v403.0.0
 
 Post-gate hardening (Phase XXIV). **Budget changes cannot remove caps by

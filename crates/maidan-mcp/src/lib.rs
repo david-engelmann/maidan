@@ -28,7 +28,7 @@ pub mod tools;
 pub use error::McpError;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
-    is_supported_protocol_version, preferred_protocol_version, McpServer,
+    is_supported_protocol_version, preferred_protocol_version, McpServer, PresenceReader,
     SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use slash_dispatch::SlashDispatcher;

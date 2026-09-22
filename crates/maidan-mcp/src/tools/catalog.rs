@@ -1646,6 +1646,56 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "follow_member",
+            "description": "Follow another same-workspace member's work occupancy. Self-follow is rejected.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid", "description": "the follower"},
+                    "followed_member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "followed_member_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "get_member_occupancy",
+            "description": "Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "unfollow_member",
+            "description": "Stop following another member's work occupancy (removed=false if not following).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid", "description": "the follower"},
+                    "followed_member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id", "followed_member_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "list_member_follows",
+            "description": "List the member-occupancy subscriptions owned by a member.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
             "inputSchema": {

@@ -884,6 +884,12 @@ pub struct FollowThread {
     pub thread_id: ThreadId,
 }
 
+/// Follow another member's work occupancy.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FollowMember {
+    pub followed_member_id: MemberId,
+}
+
 /// Set a member's delivery email address.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetEmail {

@@ -987,6 +987,29 @@ pub struct MemberFollow {
     pub created_at: DateTime<Utc>,
 }
 
+/// Ephemeral presence reported in a member occupancy snapshot. `Offline` means
+/// no live WebSocket presence is known on this replica or its presence peers;
+/// it is not a durable event or historical fact.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OccupancyPresence {
+    Offline,
+    Away,
+    Online,
+}
+
+/// A followed member's live occupancy: ephemeral presence plus the currently
+/// assigned, non-terminal work visible to the caller. Access filtering happens
+/// at the transport boundary so private-channel threads never leak here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberOccupancy {
+    pub member_id: MemberId,
+    pub presence: OccupancyPresence,
+    pub assigned_threads: Vec<Thread>,
+}
+
 /// Bump when the inner export graph changes in a way an importer must notice.
 pub const WORKSPACE_EXPORT_FORMAT_VERSION: u32 = 1;
 

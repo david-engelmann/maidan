@@ -358,6 +358,9 @@ fn apply_route_defaults(
     if path.ends_with("/thread-follows") && method == "POST" {
         return b.json(&json!({ "thread_id": f.thread }));
     }
+    if path.ends_with("/member-follows") && method == "POST" {
+        return b.json(&json!({ "followed_member_id": f.member }));
+    }
     if path.ends_with("/email") && method == "PUT" {
         return b.json(&json!({ "email": "user@example.com" }));
     }
