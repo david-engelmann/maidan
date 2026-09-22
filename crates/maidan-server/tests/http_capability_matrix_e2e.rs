@@ -222,6 +222,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{id}", &f.member)
             .replace("{nid}", &f.member)
             .replace("{sub_id}", &f.member)
+            .replace("{followed_id}", &f.member)
             .replace("{cid}", &f.channel)
             .replace("{tid}", &f.thread)
             .replace("{skill}", "testskill");
