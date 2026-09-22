@@ -34,4 +34,4 @@ pub use peer_secret::{
     init_decrypt_fallback_keys, PeerSecretError,
 };
 pub use resolve::{resolve_bearer, resolve_peer_bearer};
-pub use token::{hash_secret, TokenSecret};
+pub use token::{hash_secret, ShareTicketSecret, TokenSecret};

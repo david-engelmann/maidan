@@ -975,6 +975,39 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "create_share_ticket",
+            "description": "Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "owner_id": {"type": "string", "format": "uuid", "description": "accountable internal member"},
+                    "expires_at": {"type": "string", "format": "date-time"},
+                    "artifact_shas": {"type": "array", "maxItems": 100, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+                },
+                "required": ["channel_id", "owner_id", "expires_at"]
+            }
+        }),
+        json!({
+            "name": "list_share_tickets",
+            "description": "List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "revoke_share_ticket",
+            "description": "Immediately revoke a share ticket in the caller's workspace. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ticket_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["ticket_id"]
+            }
+        }),
+        json!({
             "name": "export_workspace",
             "description": "Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.",
             "inputSchema": {

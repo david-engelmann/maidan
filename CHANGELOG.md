@@ -7,11 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Cluster 404 — pending v404.0.0
+### Cluster 405 — pending v405.0.0
+
+Post-gate hardening (Phase XXIV). **Wave 2 row #26: time-boxed
+cross-organization incident sharing.** Work in progress under #951.
+
+- **405.1** adds the dual-backend share-ticket ledger: one workspace/channel,
+  one accountable internal owner, an explicit allowlist of workspace-linked
+  artifacts, a hard 48-hour ceiling, immediate revocation, and only a SHA-256
+  hash of the bearer secret at rest.
+- **405.2** adds the `token:admin` issuer lifecycle over REST and MCP. The raw
+  `maid_share_…` secret is returned once; list and audit records cannot expose
+  it or its persisted hash. MCP now exposes 186 tools.
+
+## [404.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 2 row #28 is complete.** Five
-implementation PRs (#943/#944/#949/#947/#948). These changes remain unreleased
-until the maintainer cuts the tag.
+implementation PRs (#943/#944/#949/#947/#948).
 
 - A member can follow another same-workspace member over REST or MCP. The
   durable row records subscription intent only; self-follow and cross-workspace

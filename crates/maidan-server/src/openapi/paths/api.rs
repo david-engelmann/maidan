@@ -144,6 +144,28 @@ pub fn mint_api_token() {}
 )]
 pub fn list_api_tokens() {}
 
+#[utoipa::path(post, path = "/workspaces/{wid}/share-tickets", tag = "share",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateShareTicket,
+    security(("bearerAuth" = [])),
+    responses((status = 201, body = MintShareTicketResponse), (status = 400, description = "Invalid scope or expiry")))]
+pub fn create_share_ticket() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/share-tickets", tag = "share",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<ShareTicketResponse>)))]
+pub fn list_share_tickets() {}
+
+#[utoipa::path(delete, path = "/workspaces/{wid}/share-tickets/{tid}", tag = "share",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("tid" = Uuid, Path, description = "Share ticket id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Revoked"), (status = 404, description = "Ticket not found")))]
+pub fn revoke_share_ticket() {}
+
 #[utoipa::path(get, path = "/workspaces/{wid}/channels", tag = "channels",
     params(("wid" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),

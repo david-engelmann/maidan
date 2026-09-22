@@ -277,7 +277,7 @@ checks the required capability before handling the request.
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
-| `token:admin` | Mint/list/revoke API tokens, app install admin, signed workspace export / verify / import, snapshot `include_graph=true` |
+| `token:admin` | Mint/list/revoke API tokens and share tickets, app install admin, signed workspace export / verify / import, snapshot `include_graph=true` |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
 
@@ -307,6 +307,38 @@ Canonical maps (CI-enforced):
 | [contracts/mcp-tool-names.json](../contracts/mcp-tool-names.json) | Allowed MCP tool names |
 
 Human-readable summary: [Capability Map.md](Capability%20Map.md).
+
+### Share-ticket issuer lifecycle
+
+An operator with `token:admin` can issue a short-lived, read-only grant for one
+workspace channel and an explicit allowlist of artifacts already linked to that
+workspace:
+
+```http
+POST /workspaces/{workspace_id}/share-tickets
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "channel_id": "…",
+  "owner_id": "…",
+  "expires_at": "2026-09-24T12:00:00Z",
+  "artifact_shas": ["{64-lowercase-hex-sha256}"]
+}
+```
+
+The accountable `owner_id`, channel, creator, and every artifact must belong to
+the same live workspace. Expiry may be at most 48 hours from issuance and a
+ticket may name at most 100 artifacts. The response returns a distinct
+`maid_share_…` secret **once**; Maidan persists only its SHA-256 hash. List with
+`GET /workspaces/{workspace_id}/share-tickets` and revoke immediately with
+`DELETE /workspaces/{workspace_id}/share-tickets/{ticket_id}`. MCP twins are
+`create_share_ticket`, `list_share_tickets`, and `revoke_share_ticket`.
+
+A share secret is not an API token: it grants no ambient workspace capability
+and ordinary authenticated routes reject it. The consumer read surface is not
+part of this issuer slice; it is introduced separately so it can use dedicated
+read-only middleware rather than the workspace bearer path.
 
 ### Workspace portability (signed export)
 

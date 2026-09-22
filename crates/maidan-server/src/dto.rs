@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
     ContentBlock, EgressSurface, EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide,
-    RelationKind, ThreadId, WebhookSubscriptionId, WorkspaceId,
+    RelationKind, ShareTicket, ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -1367,6 +1367,30 @@ pub struct MintApiTokenResponse {
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub quotas: Vec<maidan_types::TokenQuota>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateShareTicket {
+    pub channel_id: uuid::Uuid,
+    pub owner_id: uuid::Uuid,
+    pub expires_at: DateTime<Utc>,
+    #[serde(default)]
+    pub artifact_shas: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ShareTicketResponse {
+    pub ticket: ShareTicket,
+    pub artifact_shas: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintShareTicketResponse {
+    pub ticket: ShareTicket,
+    pub artifact_shas: Vec<String>,
+    /// Returned once. Only its SHA-256 hash is persisted.
+    pub secret: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

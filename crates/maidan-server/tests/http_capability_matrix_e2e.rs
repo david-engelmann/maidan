@@ -531,6 +531,14 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/secrets" && method == "POST" {
         return b.json(&json!({ "name": "capsecret", "value": "v" }));
     }
+    if path == "/workspaces/{wid}/share-tickets" && method == "POST" {
+        return b.json(&json!({
+            "channel_id": f.channel,
+            "owner_id": f.member,
+            "expires_at": "2099-01-01T00:00:00Z",
+            "artifact_shas": []
+        }));
+    }
     if path == "/members/{id}/freeze" && method == "POST" {
         return b.json(&json!({}));
     }
