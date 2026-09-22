@@ -12,6 +12,7 @@ use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::openapi::schemas::{LivenessOk, SearchHit};
+use crate::share_consumer::*;
 use crate::thread_context::{ThreadContext, ThreadFsmContext, WorkspaceContext};
 use maidan_types::*;
 
@@ -32,6 +33,13 @@ impl Modify for SecurityAddon {
         components.add_security_scheme(
             "sessionCookie",
             SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("maidan_session"))),
+        );
+        components.add_security_scheme(
+            "shareTicketAuth",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                "Authorization",
+                "Use `ShareTicket maid_share_…`; this credential is not an API bearer token.",
+            ))),
         );
     }
 }
@@ -110,6 +118,10 @@ impl Modify for SecurityAddon {
         paths::create_share_ticket,
         paths::list_share_tickets,
         paths::revoke_share_ticket,
+        paths::get_share_manifest,
+        paths::list_shared_threads,
+        paths::list_shared_messages,
+        paths::download_shared_artifact,
         paths::register_app,
         paths::list_apps,
         paths::install_app,
@@ -578,6 +590,12 @@ impl Modify for SecurityAddon {
         CreateShareTicket,
         ShareTicketResponse,
         MintShareTicketResponse,
+        SharedArtifact,
+        ShareManifest,
+        SharedThread,
+        SharedThreadPage,
+        SharedMessage,
+        SharedMessagePage,
         CreatePeer,
         PeerResponse,
         MintPeerResponse,
@@ -609,6 +627,7 @@ impl Modify for SecurityAddon {
         (name = "references", description = "Cross-entity references"),
         (name = "search", description = "Lexical and semantic search"),
         (name = "tokens", description = "API token mint and revoke"),
+        (name = "share", description = "Time-boxed read-only cross-organization sharing"),
         (name = "federation", description = "A2A federation and peers"),
         (name = "fsm", description = "FSM automation hooks on thread state transitions"),
         (name = "apps", description = "Agent app registration and installations"),

@@ -64,6 +64,7 @@ pub mod scheduler;
 pub mod scim;
 pub mod secret_broker;
 pub mod session;
+pub mod share_consumer;
 pub mod slack;
 pub mod slash_commands;
 pub mod state;

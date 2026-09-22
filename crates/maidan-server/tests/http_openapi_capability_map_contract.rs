@@ -31,7 +31,7 @@ fn load_map() -> Vec<MapEntry> {
     .expect("http capability map json")
 }
 
-fn operation_has_bearer(op: &Operation) -> bool {
+fn operation_has_security(op: &Operation, scheme: &str) -> bool {
     let Ok(value) = serde_json::to_value(op) else {
         return false;
     };
@@ -39,11 +39,14 @@ fn operation_has_bearer(op: &Operation) -> bool {
         .get("security")
         .and_then(|s| s.as_array())
         .is_some_and(|requirements| {
-            requirements.iter().any(|req| {
-                req.as_object()
-                    .is_some_and(|obj| obj.contains_key("bearerAuth"))
-            })
+            requirements
+                .iter()
+                .any(|req| req.as_object().is_some_and(|obj| obj.contains_key(scheme)))
         })
+}
+
+fn operation_has_bearer(op: &Operation) -> bool {
+    operation_has_security(op, "bearerAuth")
 }
 
 fn path_item_type_method(item_type: &PathItemType) -> String {
@@ -73,6 +76,22 @@ fn collect_openapi_bearer_routes() -> BTreeSet<RouteKey> {
                 method: path_item_type_method(item_type),
                 path: path.clone(),
             });
+        }
+    }
+    out
+}
+
+fn collect_openapi_share_routes() -> BTreeSet<RouteKey> {
+    let doc = ApiDoc::openapi();
+    let mut out = BTreeSet::new();
+    for (path, item) in doc.paths.paths.iter() {
+        for (item_type, op) in item.operations.iter() {
+            if operation_has_security(op, "shareTicketAuth") {
+                out.insert(RouteKey {
+                    method: path_item_type_method(item_type),
+                    path: path.clone(),
+                });
+            }
         }
     }
     out
@@ -168,6 +187,7 @@ const SESSION_OPERATIONS: &[(&str, &str)] =
 #[test]
 fn every_openapi_operation_is_bearer_session_or_public() {
     let bearer = collect_openapi_bearer_routes();
+    let share = collect_openapi_share_routes();
     let allowlisted: BTreeSet<RouteKey> = PUBLIC_OPERATIONS
         .iter()
         .chain(SESSION_OPERATIONS.iter())
@@ -185,7 +205,7 @@ fn every_openapi_operation_is_bearer_session_or_public() {
                 method: path_item_type_method(item_type),
                 path: path.clone(),
             };
-            if !bearer.contains(&key) && !allowlisted.contains(&key) {
+            if !bearer.contains(&key) && !share.contains(&key) && !allowlisted.contains(&key) {
                 unclassified.push(key);
             }
         }
@@ -211,4 +231,22 @@ fn every_openapi_operation_is_bearer_session_or_public() {
             "SESSION_OPERATIONS entry not in OpenAPI: {method} {path}"
         );
     }
+}
+
+#[test]
+fn share_ticket_auth_is_confined_to_the_read_only_consumer_surface() {
+    let actual = collect_openapi_share_routes();
+    let expected = [
+        ("GET", "/share/manifest"),
+        ("GET", "/share/threads"),
+        ("GET", "/share/threads/{tid}/messages"),
+        ("GET", "/share/artifacts/{sha}"),
+    ]
+    .into_iter()
+    .map(|(method, path)| RouteKey {
+        method: method.to_string(),
+        path: path.to_string(),
+    })
+    .collect();
+    assert_eq!(actual, expected);
 }

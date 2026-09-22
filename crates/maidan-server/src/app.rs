@@ -29,7 +29,8 @@ use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
     delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications,
     mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id,
-    room_lsn, routes, scim, session, slack, slash_commands, state::AppState, webhooks, ws,
+    room_lsn, routes, scim, session, share_consumer, slack, slash_commands, state::AppState,
+    webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -767,6 +768,25 @@ pub fn router(state: AppState) -> Router {
             federation::peer_auth_middleware,
         ));
 
+    // Cross-organization share tickets have their own credential type and
+    // read-only route tree. Never merge these routes into `protected`: doing
+    // so would let the ordinary API-token resolver define their authority.
+    let share = Router::new()
+        .route("/share/manifest", get(share_consumer::manifest))
+        .route("/share/threads", get(share_consumer::list_threads))
+        .route(
+            "/share/threads/:tid/messages",
+            get(share_consumer::list_messages),
+        )
+        .route(
+            "/share/artifacts/:sha",
+            get(share_consumer::download_artifact),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            share_consumer::middleware,
+        ));
+
     async fn ui_index() -> axum::response::Html<&'static str> {
         axum::response::Html(include_str!("../static/index.html"))
     }
@@ -1033,6 +1053,7 @@ pub fn router(state: AppState) -> Router {
         .merge(ui_api)
         .merge(ws_only)
         .merge(a2a)
+        .merge(share)
         .merge(protected)
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the

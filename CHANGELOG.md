@@ -19,6 +19,12 @@ cross-organization incident sharing.** Work in progress under #951.
 - **405.2** adds the `token:admin` issuer lifecycle over REST and MCP. The raw
   `maid_share_…` secret is returned once; list and audit records cannot expose
   it or its persisted hash. MCP now exposes 186 tools.
+- **405.3** adds a separate `ShareTicket` authorization scheme and four
+  read-only consumer routes: manifest, paginated threads, paginated messages,
+  and allowlisted artifact download. The route tree never constructs an API
+  token context; public thread shapes omit claim/assignee internals, responses
+  are non-cacheable, and artifact liveness is rechecked immediately before the
+  configured LocalFS/S3 read.
 
 ## [404.0.0] — 2026-09-22
 

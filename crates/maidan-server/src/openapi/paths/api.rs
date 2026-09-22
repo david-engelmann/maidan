@@ -6,6 +6,7 @@ use crate::dto::*;
 use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownMaidan};
 use crate::openapi::schemas::SearchHit;
+use crate::share_consumer::*;
 use maidan_types::*;
 
 // --- bootstrap (no bearer) ---
@@ -165,6 +166,29 @@ pub fn list_share_tickets() {}
     security(("bearerAuth" = [])),
     responses((status = 204, description = "Revoked"), (status = 404, description = "Ticket not found")))]
 pub fn revoke_share_ticket() {}
+
+#[utoipa::path(get, path = "/share/manifest", tag = "share",
+    security(("shareTicketAuth" = [])),
+    responses((status = 200, body = ShareManifest), (status = 401, description = "Invalid, expired, or revoked ticket")))]
+pub fn get_share_manifest() {}
+
+#[utoipa::path(get, path = "/share/threads", tag = "share",
+    params(SharePageQuery),
+    security(("shareTicketAuth" = [])),
+    responses((status = 200, body = SharedThreadPage), (status = 401, description = "Invalid, expired, or revoked ticket")))]
+pub fn list_shared_threads() {}
+
+#[utoipa::path(get, path = "/share/threads/{tid}/messages", tag = "share",
+    params(("tid" = Uuid, Path, description = "Thread id in the shared channel"), SharePageQuery),
+    security(("shareTicketAuth" = [])),
+    responses((status = 200, body = SharedMessagePage), (status = 404, description = "Thread outside the shared channel")))]
+pub fn list_shared_messages() {}
+
+#[utoipa::path(get, path = "/share/artifacts/{sha}", tag = "share",
+    params(("sha" = String, Path, description = "Allowlisted artifact SHA-256")),
+    security(("shareTicketAuth" = [])),
+    responses((status = 200, description = "Artifact bytes"), (status = 404, description = "Artifact not allowlisted")))]
+pub fn download_shared_artifact() {}
 
 #[utoipa::path(get, path = "/workspaces/{wid}/channels", tag = "channels",
     params(("wid" = Uuid, Path, description = "Workspace id")),
