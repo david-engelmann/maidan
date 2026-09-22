@@ -40,6 +40,7 @@ mod schedule;
 mod search;
 mod secret;
 mod seed;
+mod share;
 mod skill;
 mod snapshot;
 mod social;
@@ -207,6 +208,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "freeze_member"
         | "unfreeze_member"
         | "list_frozen_members"
+        | "create_share_ticket"
+        | "list_share_tickets"
+        | "revoke_share_ticket"
         | "export_workspace"
         | "verify_workspace_export"
         | "import_workspace" => Ok(TOKEN_ADMIN),
@@ -544,6 +548,9 @@ pub async fn dispatch(
         "freeze_member" => freeze::freeze_member(store, auth, args).await,
         "unfreeze_member" => freeze::unfreeze_member(store, auth, args).await,
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
+        "create_share_ticket" => share::create_share_ticket(server, auth, args).await,
+        "list_share_tickets" => share::list_share_tickets(server, auth, args).await,
+        "revoke_share_ticket" => share::revoke_share_ticket(server, auth, args).await,
         "export_workspace" => export::export_workspace(server, auth, args).await,
         "verify_workspace_export" => export::verify_workspace_export(server, args),
         "import_workspace" => export::import_workspace(server, auth, args).await,

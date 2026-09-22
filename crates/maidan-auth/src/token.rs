@@ -17,6 +17,24 @@ impl TokenSecret {
     }
 }
 
+/// Plaintext cross-organization share-ticket secret shown once at issuance.
+/// The distinct prefix prevents it from being mistaken for an ordinary
+/// workspace bearer token at either auth boundary.
+#[derive(Debug, Clone)]
+pub struct ShareTicketSecret(String);
+
+impl ShareTicketSecret {
+    pub fn generate() -> Self {
+        let a = uuid::Uuid::new_v4().simple().to_string();
+        let b = uuid::Uuid::new_v4().simple().to_string();
+        Self(format!("maid_share_{a}{b}"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// SHA-256 hex digest of the bearer secret (64 lowercase hex chars).
 pub fn hash_secret(secret: &str) -> String {
     let digest = Sha256::digest(secret.as_bytes());
@@ -51,5 +69,12 @@ mod tests {
         let c = hash_secret("y");
         assert!(hashes_equal(&a, &b));
         assert!(!hashes_equal(&a, &c));
+    }
+
+    #[test]
+    fn share_ticket_secret_has_a_distinct_high_entropy_prefix() {
+        let secret = ShareTicketSecret::generate();
+        assert!(secret.as_str().starts_with("maid_share_"));
+        assert_eq!(secret.as_str().len(), "maid_share_".len() + 64);
     }
 }
