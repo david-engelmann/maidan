@@ -278,8 +278,21 @@ checks the required capability before handling the request.
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
 | `token:admin` | Mint/list/revoke API tokens and share tickets, app install admin, signed workspace export / verify / import, snapshot `include_graph=true` |
+| `member:impersonate` | Act on **another member's** personal state (see below) |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
+
+**Member surfaces are self-scoped.** A token reads and writes the personal
+state of the member it was minted for and no one else's — inbox, mentions,
+notification preferences, delivery address and mode, follows. This
+holds on HTTP and MCP alike, and passing a different `member_id` is refused
+whether or not that member exists, so no membership is leaked. Driving several
+members from one token needs `member:impersonate`, granted explicitly at mint,
+refused across workspaces even when held, and logged at every use.
+
+Posting or claiming *as* a member is **not** covered by this. Work attribution
+is the orchestrator model and needs no extra capability; an agent runner that
+posts on behalf of its workers is unaffected.
 
 Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
 recipes, not stored capability strings. `POST …/tokens` accepts

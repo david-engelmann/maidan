@@ -22,6 +22,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
+| `member:impersonate` | Act on **another member's** personal state — inbox, notification prefs, delivery address, follows, push subscriptions — on HTTP and MCP alike. Every member surface is otherwise self-scoped: a token reads and writes the personal state of the member it was minted for and no one else's. Granted on purpose (never in `default_minted`), audited at the point of use. Work attribution — posting or claiming *as* a member — is a separate thing and needs no capability |
 | `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true` |
 
 ## MCP (`POST /mcp` tools/call)

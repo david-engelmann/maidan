@@ -268,7 +268,7 @@ pub async fn list_messages(
     Ok(Json(
         state
             .store
-            .list_messages(ThreadId(thread_id), q.limit)
+            .list_messages(ThreadId(thread_id), q.limit.clamp(1, 500))
             .await?,
     ))
 }

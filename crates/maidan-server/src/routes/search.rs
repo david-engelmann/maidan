@@ -24,6 +24,10 @@ pub async fn search_messages(
     // Exclude private channels the caller can't see at the query level, so
     // inaccessible hits don't crowd out the requested `limit`. The per-hit
     // post-filter below stays the authoritative, DM-aware check.
+    // Bound before any mode runs. Search is the most expensive query in the
+    // system — FTS or vector, then fusion — so an unbounded `limit` here is a
+    // better lever than on any list endpoint.
+    let limit = q.limit.clamp(1, 500);
     let deny_channels =
         maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
     let filters = maidan_search::SearchFilters {
@@ -38,7 +42,7 @@ pub async fn search_messages(
         SearchMode::Lexical => {
             state
                 .search
-                .search_messages(workspace_id, &q.q, q.limit, &filters)
+                .search_messages(workspace_id, &q.q, limit, &filters)
                 .await?
         }
         SearchMode::Semantic => {
@@ -52,7 +56,7 @@ pub async fn search_messages(
                 .unwrap_or_else(|| state.embedding_provider.model_name());
             state
                 .search
-                .semantic_search(workspace_id, &embedding, q.limit, &filters, model)
+                .semantic_search(workspace_id, &embedding, limit, &filters, model)
                 .await?
         }
         SearchMode::Hybrid => {
@@ -73,7 +77,7 @@ pub async fn search_messages(
                     workspace_id,
                     &q.q,
                     &embedding,
-                    q.limit,
+                    limit,
                     &filters,
                     model,
                     weight,

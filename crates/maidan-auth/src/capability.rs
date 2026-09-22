@@ -48,6 +48,22 @@ pub const SECRET_ADMIN: &str = "secret:admin";
 /// agent has no business reading across tenants.
 pub const OPERATOR_GLOBAL: &str = "operator:global";
 
+/// Act on another member's personal state — their inbox, notification
+/// preferences, delivery address, follows.
+///
+/// Every other member surface is **self-scoped**: a token may read and write
+/// the personal state of the member it was minted for, and no one else's. That
+/// is the whole of the rule, and it holds for ordinary `workspace:read` /
+/// `workspace:write` tokens no matter how broad they otherwise are.
+///
+/// The genuine cross-member need is orchestration — one process attributing
+/// work to the agents it runs. That is a real use, so it gets a capability of
+/// its own rather than being folded into the ordinary ones: it must be granted
+/// on purpose, it is never in [`default_minted`], and every use of it is
+/// audited. A token that can post a message should not, by that fact, be able
+/// to redirect someone else's mail.
+pub const MEMBER_IMPERSONATE: &str = "member:impersonate";
+
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
@@ -64,6 +80,7 @@ const KNOWN: &[&str] = &[
     CHANNEL_ADMIN,
     SECRET_READ,
     SECRET_ADMIN,
+    MEMBER_IMPERSONATE,
 ];
 
 /// Every known capability — the superuser set for a bootstrap/root token

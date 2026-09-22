@@ -20,6 +20,15 @@ use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
+    mint_with(store, ws, member, vec![capability::WORKSPACE_READ.into()]).await
+}
+
+async fn mint_with(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    member: MemberId,
+    capabilities: Vec<String>,
+) -> String {
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -28,7 +37,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![capability::WORKSPACE_READ.into()],
+            capabilities,
             expires_at: None,
         })
         .await
@@ -225,9 +234,32 @@ async fn follow_unfollow_and_list_channel() {
     assert_eq!(manager_digest["member_id"], json!(mid));
     assert_eq!(manager_digest["channels"][0]["channel_id"], json!(cid));
     assert_eq!(manager_digest["channels"][0]["results"], json!(1));
-    let act_as_any = client
+    // A manager digest is a projection of whose channels the named member
+    // follows. Those follows are personal state, so reading someone else's
+    // digest reads it back out — self-scoped, and a back door if it were not.
+    let not_mine = client
         .get(format!("{base}/members/{followed_mid}/manager-digest"))
         .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(not_mine.status(), StatusCode::FORBIDDEN);
+
+    // The orchestrator case this used to assert still works — it is now asked
+    // for by name rather than inherited from `workspace:read`.
+    let impersonator = mint_with(
+        store.as_ref(),
+        ws.id,
+        member.id,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::MEMBER_IMPERSONATE.into(),
+        ],
+    )
+    .await;
+    let act_as_any = client
+        .get(format!("{base}/members/{followed_mid}/manager-digest"))
+        .header("Authorization", format!("Bearer {impersonator}"))
         .send()
         .await
         .unwrap();

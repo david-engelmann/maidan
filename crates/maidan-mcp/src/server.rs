@@ -666,6 +666,211 @@ mod tests {
         assert_eq!(preferred_protocol_version(), "2026-07-28");
     }
 
+    /// D-5: a member tool must not mutate personal state that is not the
+    /// caller's — and must not reach outside the caller's workspace at all.
+    ///
+    /// The member tools take `(store, args)` with no `auth`, and the
+    /// pre-dispatch gate only resolves `channel_id` / `thread_id` /
+    /// `message_id`, so a caller-supplied `member_id` reaches the store
+    /// unchecked on both axes. `set_member_email` is the sharp one: the address
+    /// it writes is where that member's digest mail goes.
+    #[tokio::test]
+    async fn a_member_tool_cannot_mutate_another_members_personal_state() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+
+        let mk_ws = |name: &'static str| {
+            let store = store.clone();
+            async move {
+                store
+                    .create_workspace(NewWorkspace { name: name.into() })
+                    .await
+                    .unwrap()
+            }
+        };
+        let ws_a = mk_ws("tenant-a").await;
+        let ws_b = mk_ws("tenant-b").await;
+
+        let mk_member = |ws: maidan_types::WorkspaceId, handle: &'static str| {
+            let store = store.clone();
+            async move {
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Human,
+                    })
+                    .await
+                    .unwrap()
+            }
+        };
+        let attacker = mk_member(ws_a.id, "attacker").await;
+        let same_tenant_victim = mk_member(ws_a.id, "colleague").await;
+        let other_tenant_victim = mk_member(ws_b.id, "stranger").await;
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+
+        // An ordinary least-privilege token: read the workspace, post messages.
+        // Nothing about it suggests authority over anyone else's mailbox.
+        let auth = AuthContext::from_token(
+            maidan_types::ApiTokenId(uuid::Uuid::new_v4()),
+            attacker.id,
+            ws_a.id,
+            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+        );
+
+        // Own state: allowed.
+        server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": attacker.id.0, "email": "me@example.com" }),
+            )
+            .await
+            .expect("a member may set their own delivery address");
+
+        // A colleague's state: refused.
+        let err = server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": same_tenant_victim.id.0, "email": "attacker@evil.test" }),
+            )
+            .await
+            .expect_err("a token must not redirect another member's mail");
+        assert!(
+            matches!(err, McpError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+
+        // Another tenant's state: refused, and indistinguishably so — a
+        // different error here would confirm the member exists.
+        let err = server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": other_tenant_victim.id.0, "email": "attacker@evil.test" }),
+            )
+            .await
+            .expect_err("a token must not reach outside its workspace");
+        assert!(
+            matches!(err, McpError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+
+        // The victims' addresses are untouched.
+        for victim in [same_tenant_victim.id, other_tenant_victim.id] {
+            assert!(
+                store.get_member_email(victim).await.unwrap().is_none(),
+                "a refused call must not have written"
+            );
+        }
+    }
+
+    /// The carve-out has to work, and has to stay in-tenant. An orchestrator
+    /// granted `member:impersonate` attributes work to the agents it runs —
+    /// inside its own workspace. Cross-tenant stays refused for the same reason
+    /// it is refused without the capability.
+    #[tokio::test]
+    async fn member_impersonate_permits_in_tenant_but_never_cross_tenant() {
+        use maidan_auth::capability::{MEMBER_IMPERSONATE, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+
+        let mk_ws = |name: &'static str| {
+            let store = store.clone();
+            async move {
+                store
+                    .create_workspace(NewWorkspace { name: name.into() })
+                    .await
+                    .unwrap()
+            }
+        };
+        let ws_a = mk_ws("orchestrated").await;
+        let ws_b = mk_ws("other-tenant").await;
+        let mk_member = |ws: maidan_types::WorkspaceId, handle: &'static str| {
+            let store = store.clone();
+            async move {
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap()
+            }
+        };
+        let orchestrator = mk_member(ws_a.id, "orchestrator").await;
+        let worker = mk_member(ws_a.id, "worker").await;
+        let stranger = mk_member(ws_b.id, "stranger").await;
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_token(
+            maidan_types::ApiTokenId(uuid::Uuid::new_v4()),
+            orchestrator.id,
+            ws_a.id,
+            vec![WORKSPACE_READ.to_string(), MEMBER_IMPERSONATE.to_string()],
+        );
+
+        server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": worker.id.0, "email": "worker@example.com" }),
+            )
+            .await
+            .expect("impersonation covers a member of the caller's own workspace");
+
+        let err = server
+            .call_tool(
+                &auth,
+                "set_member_email",
+                &json!({ "member_id": stranger.id.0, "email": "attacker@evil.test" }),
+            )
+            .await
+            .expect_err("impersonation is an in-tenant grant, not a cross-tenant one");
+        assert!(
+            matches!(err, McpError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+        assert!(
+            store.get_member_email(stranger.id).await.unwrap().is_none(),
+            "a refused call must not have written"
+        );
+    }
+
     #[tokio::test]
     async fn mcp_denies_non_members_in_private_channels() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
