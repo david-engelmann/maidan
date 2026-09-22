@@ -210,12 +210,14 @@ impl AppState {
         indexer_last_event_unix_ms: Arc<AtomicI64>,
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
+        let presence = Arc::new(PresenceHub::default());
         let mcp = Arc::new(McpServer::new(
             store.clone(),
             artifacts.clone(),
             search.clone(),
             embedding_provider.clone(),
         ));
+        mcp.attach_presence_reader(presence.clone());
         Self {
             store,
             artifacts,
@@ -239,7 +241,7 @@ impl AppState {
             oidc: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
-            presence: Arc::new(PresenceHub::default()),
+            presence,
             rate_limit_redis: None,
             rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
@@ -327,6 +329,7 @@ impl AppState {
             )
             .with_resource_notifier(notifier),
         );
+        self.mcp.attach_presence_reader(self.presence.clone());
     }
 
     /// Wire cross-replica presence/typing fan-out.
@@ -337,6 +340,7 @@ impl AppState {
     /// listener + heartbeat.
     pub fn attach_presence_notifier(&mut self, notifier: Arc<dyn PresenceNotifier>) {
         self.presence = Arc::new(PresenceHub::default().with_presence_notifier(notifier));
+        self.mcp.attach_presence_reader(self.presence.clone());
     }
 
     /// The key that signs subscribe-resume and approval-gate `requestState`

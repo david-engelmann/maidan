@@ -180,6 +180,26 @@ impl PresenceHub {
         self.spawn_heartbeat();
     }
 
+    /// Current merged presence for one member. Local state wins over a remote
+    /// replica; expired remote heartbeats read as offline (`None`).
+    pub fn status(&self, workspace_id: WorkspaceId, member_id: MemberId) -> Option<PresenceStatus> {
+        let now = Instant::now();
+        let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(local) = inner
+            .workspaces
+            .get(&workspace_id)
+            .and_then(|room| room.members.get(&member_id))
+        {
+            return Some(local.status);
+        }
+        inner
+            .remote
+            .get(&workspace_id)
+            .and_then(|members| members.get(&member_id))
+            .filter(|remote| now.duration_since(remote.last_seen) <= self.ttl)
+            .map(|remote| remote.status)
+    }
+
     fn spawn_listener(&self, notifier: Arc<dyn PresenceNotifier>) {
         let hub = self.clone();
         let mut rx = notifier.subscribe();
@@ -508,6 +528,20 @@ impl PresenceHub {
     }
 }
 
+impl maidan_mcp::PresenceReader for PresenceHub {
+    fn member_presence(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> maidan_types::OccupancyPresence {
+        match self.status(workspace_id, member_id) {
+            Some(PresenceStatus::Online) => maidan_types::OccupancyPresence::Online,
+            Some(PresenceStatus::Away) => maidan_types::OccupancyPresence::Away,
+            None => maidan_types::OccupancyPresence::Offline,
+        }
+    }
+}
+
 fn ttl_secs_from_env() -> u64 {
     std::env::var("MAIDAN_PRESENCE_TTL_SECS")
         .ok()
@@ -642,6 +676,20 @@ mod tests {
         );
         let json = build_snapshot(ws, &inner, Duration::from_secs(30), Instant::now());
         assert!(!json.contains(&remote_id.0.to_string()));
+    }
+
+    #[test]
+    fn status_tracks_local_registration_and_away_state() {
+        let hub = PresenceHub::new();
+        let ws = WorkspaceId(Uuid::new_v4());
+        let member = MemberId(Uuid::new_v4());
+        assert_eq!(hub.status(ws, member), None);
+        let (_rx, registration, _snapshot) = hub.register(ws, member);
+        assert_eq!(hub.status(ws, member), Some(PresenceStatus::Online));
+        assert!(hub.set_presence(ws, member, PresenceStatus::Away));
+        assert_eq!(hub.status(ws, member), Some(PresenceStatus::Away));
+        drop(registration);
+        assert_eq!(hub.status(ws, member), None);
     }
 
     #[tokio::test]

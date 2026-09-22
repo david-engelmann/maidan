@@ -289,6 +289,30 @@
   },
   {
     "method": "POST",
+    "path": "/members/{id}/member-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/members/{id}/member-follows/{followed_id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/member-follows",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/members/{id}/occupancy",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/members/{id}/thread-follows",
     "capability": "workspace:read",
     "surface": "http"

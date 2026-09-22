@@ -471,6 +471,34 @@ pub fn unfollow_member_thread() {}
     responses((status = 200, body = Vec<ThreadFollow>)))]
 pub fn list_member_thread_follows() {}
 
+#[utoipa::path(post, path = "/members/{id}/member-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Follower member id")),
+    request_body = FollowMember,
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Following"), (status = 400, description = "Self-follow")))]
+pub fn follow_member_occupancy() {}
+
+#[utoipa::path(delete, path = "/members/{id}/member-follows/{followed_id}", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Follower member id"),
+        ("followed_id" = Uuid, Path, description = "Followed member id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Unfollowed"), (status = 404, description = "Not following")))]
+pub fn unfollow_member_occupancy() {}
+
+#[utoipa::path(get, path = "/members/{id}/member-follows", tag = "members",
+    params(("id" = Uuid, Path, description = "Follower member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = Vec<MemberFollow>)))]
+pub fn list_member_occupancy_follows() {}
+
+#[utoipa::path(get, path = "/members/{id}/occupancy", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = MemberOccupancy)))]
+pub fn get_member_occupancy() {}
+
 #[utoipa::path(put, path = "/members/{id}/email", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
     request_body = SetEmail,

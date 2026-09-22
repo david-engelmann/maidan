@@ -509,6 +509,17 @@ claim with no lease never comes back: if your process dies, the task stays assig
 to an agent that is no longer running and nobody else can pick it up. Ask for a
 lease you can actually renew.
 
+To watch a collaborator rather than one queue, follow them with
+`POST /members/:id/member-follows` and `{ "followed_member_id": "…" }` (MCP
+`follow_member`). `GET /members/:id/occupancy` (MCP `get_member_occupancy`)
+returns their ephemeral `online` / `away` / `offline` presence plus assigned
+non-terminal threads visible to the caller. Private-channel assignments are
+filtered out; the view is not a side channel around thread access. List or
+remove subscriptions through `GET /members/:id/member-follows` and
+`DELETE /members/:id/member-follows/:followed_id` (MCP
+`list_member_follows` / `unfollow_member`). A follow is a subscription edge;
+presence itself is not persisted or written to `maidan_events`.
+
 ### 2. Acknowledge
 
 `acknowledge_claim {thread_id, member_id, claim_lease_id}` starts the thread's

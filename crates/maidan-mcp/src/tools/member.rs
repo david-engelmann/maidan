@@ -635,3 +635,93 @@ pub(super) async fn list_thread_follows(
         &store.list_thread_follows(MemberId(a.member_id)).await?,
     ))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FollowMemberArgs {
+    member_id: uuid::Uuid,
+    followed_member_id: uuid::Uuid,
+}
+
+/// Follow another member's work occupancy. Both members must share a
+/// workspace; a self-edge is rejected before the schema backstop.
+pub(super) async fn follow_member(
+    server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FollowMemberArgs = serde_json::from_value(args.clone())?;
+    let follower_id = MemberId(a.member_id);
+    let followed_id = MemberId(a.followed_member_id);
+    if follower_id == followed_id {
+        return Err(McpError::InvalidParams(
+            "a member cannot follow itself".to_string(),
+        ));
+    }
+    let follower = server.store.get_member(follower_id).await?;
+    let followed = server.store.get_member(followed_id).await?;
+    if follower.workspace_id != followed.workspace_id {
+        return Err(McpError::InvalidParams(
+            "both members must belong to the same workspace".to_string(),
+        ));
+    }
+    if !auth.bypass {
+        auth.ensure_workspace(follower.workspace_id)?;
+    }
+    server.store.follow_member(follower_id, followed_id).await?;
+    Ok(content_json(&serde_json::json!({ "following": true })))
+}
+
+/// Stop following another member's occupancy.
+pub(super) async fn unfollow_member(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FollowMemberArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .unfollow_member(MemberId(a.member_id), MemberId(a.followed_member_id))
+        .await?;
+    Ok(content_json(&serde_json::json!({ "removed": removed })))
+}
+
+/// The member-occupancy subscriptions owned by a member.
+pub(super) async fn list_member_follows(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    Ok(content_json(
+        &store.list_member_follows(MemberId(a.member_id)).await?,
+    ))
+}
+
+/// Live member occupancy, filtered to assigned threads the caller may read.
+pub(super) async fn get_member_occupancy(
+    server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let member = server.store.get_member(member_id).await?;
+    if !auth.bypass {
+        auth.ensure_workspace(member.workspace_id)?;
+    }
+    let assigned = server
+        .store
+        .list_assigned_threads(member.workspace_id, member_id)
+        .await?;
+    let mut visible = Vec::with_capacity(assigned.len());
+    for thread in assigned {
+        if auth.bypass
+            || maidan_auth::can_access_thread(server.store.as_ref(), auth, thread.id).await?
+        {
+            visible.push(thread);
+        }
+    }
+    Ok(content_json(&maidan_types::MemberOccupancy {
+        member_id,
+        presence: server.member_presence(member.workspace_id, member_id),
+        assigned_threads: visible,
+    }))
+}

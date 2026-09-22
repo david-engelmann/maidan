@@ -421,6 +421,105 @@ pub async fn list_member_thread_follows(
     Ok(Json(state.store.list_thread_follows(MemberId(id)).await?))
 }
 
+/// Follow another member's work occupancy. Self-only for sessions; both ends
+/// must belong to the caller's workspace and self-follow is meaningless.
+pub async fn follow_member_occupancy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<FollowMember>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let follower_id = MemberId(id);
+    let follower = state.store.get_member(follower_id).await?;
+    ensure_workspace(&auth, follower.workspace_id)?;
+    ensure_acting_member(&auth, follower_id)?;
+    if follower_id == body.followed_member_id {
+        return Err(ApiError::BadRequest("a member cannot follow itself".into()));
+    }
+    let followed = state.store.get_member(body.followed_member_id).await?;
+    if followed.workspace_id != follower.workspace_id {
+        return Err(ApiError::NotFound);
+    }
+    state
+        .store
+        .follow_member(follower_id, body.followed_member_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Stop following another member's occupancy. Self-only for sessions.
+pub async fn unfollow_member_occupancy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((id, followed_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, WORKSPACE_READ)?;
+    let follower_id = MemberId(id);
+    let follower = state.store.get_member(follower_id).await?;
+    ensure_workspace(&auth, follower.workspace_id)?;
+    ensure_acting_member(&auth, follower_id)?;
+    if state
+        .store
+        .unfollow_member(follower_id, MemberId(followed_id))
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// The members whose work occupancy this member follows. Self-only for
+/// sessions; the returned rows are subscription metadata, not presence state.
+pub async fn list_member_occupancy_follows(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<MemberFollow>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let follower_id = MemberId(id);
+    let follower = state.store.get_member(follower_id).await?;
+    ensure_workspace(&auth, follower.workspace_id)?;
+    ensure_acting_member(&auth, follower_id)?;
+    Ok(Json(state.store.list_member_follows(follower_id).await?))
+}
+
+/// A member's live occupancy: ephemeral presence plus assigned non-terminal
+/// threads the caller can access. Same-workspace, `workspace:read`.
+pub async fn get_member_occupancy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<MemberOccupancy>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member_id = MemberId(id);
+    let member = state.store.get_member(member_id).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    let assigned = state
+        .store
+        .list_assigned_threads(member.workspace_id, member_id)
+        .await?;
+    let mut visible = Vec::with_capacity(assigned.len());
+    for thread in assigned {
+        if auth.bypass
+            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
+        {
+            visible.push(thread);
+        }
+    }
+    let presence = match state.presence.status(member.workspace_id, member_id) {
+        Some(crate::presence::PresenceStatus::Online) => OccupancyPresence::Online,
+        Some(crate::presence::PresenceStatus::Away) => OccupancyPresence::Away,
+        None => OccupancyPresence::Offline,
+    };
+    Ok(Json(MemberOccupancy {
+        member_id,
+        presence,
+        assigned_threads: visible,
+    }))
+}
+
 /// Set a member's delivery email address — opting in to email notifications.
 /// Self-only for a session caller. A light `@` sanity check rejects obvious
 /// garbage; the transport validates fully on send.

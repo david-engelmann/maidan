@@ -205,6 +205,7 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_assigned_threads),
         )
         .route("/members/:id/wip", get(routes::get_member_wip))
+        .route("/members/:id/occupancy", get(routes::get_member_occupancy))
         .route(
             "/members/:id/mentions",
             get(routes::list_mentions_for_member),
@@ -260,6 +261,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/members/:id/thread-follows/:tid",
             axum::routing::delete(routes::unfollow_member_thread),
+        )
+        .route(
+            "/members/:id/member-follows",
+            post(routes::follow_member_occupancy).get(routes::list_member_occupancy_follows),
+        )
+        .route(
+            "/members/:id/member-follows/:followed_id",
+            delete(routes::unfollow_member_occupancy),
         )
         .route(
             "/members/:id/email",

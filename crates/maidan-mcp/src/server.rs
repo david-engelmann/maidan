@@ -9,13 +9,19 @@ use maidan_auth::AuthContext;
 use maidan_bus::{EventBus, ResourceNotifier};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
-use maidan_types::{BusEnvelope, Event, StoredEvent};
+use maidan_types::{BusEnvelope, Event, MemberId, OccupancyPresence, StoredEvent, WorkspaceId};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, Mutex};
 
 use crate::streamable_session::StreamableSessionRegistry;
 
 const NOTIFICATION_BROADCAST_CAPACITY: usize = 64;
+
+/// Read-only bridge to the server's ephemeral presence hub. Kept transport-
+/// agnostic so embedded MCP users may omit it; omission reads as offline.
+pub trait PresenceReader: Send + Sync {
+    fn member_presence(&self, workspace_id: WorkspaceId, member_id: MemberId) -> OccupancyPresence;
+}
 
 use crate::error::McpError;
 use crate::protocol::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -90,6 +96,7 @@ pub struct McpServer {
     /// Optional public-key pin for `verify_workspace_export` / import.
     /// Empty = integrity against the embedded key only (blank-instance default).
     export_verify_keys: std::sync::OnceLock<Vec<[u8; 32]>>,
+    presence_reader: Arc<std::sync::RwLock<Option<Arc<dyn PresenceReader>>>>,
 }
 
 impl McpServer {
@@ -117,7 +124,28 @@ impl McpServer {
             encryption_key: std::sync::OnceLock::new(),
             export_signing: std::sync::OnceLock::new(),
             export_verify_keys: std::sync::OnceLock::new(),
+            presence_reader: Arc::new(std::sync::RwLock::new(None)),
         }
+    }
+
+    pub fn attach_presence_reader(&self, reader: Arc<dyn PresenceReader>) {
+        *self
+            .presence_reader
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(reader);
+    }
+
+    pub(crate) fn member_presence(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> OccupancyPresence {
+        self.presence_reader
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|reader| reader.member_presence(workspace_id, member_id))
+            .unwrap_or(OccupancyPresence::Offline)
     }
 
     /// Set the at-rest encryption key for `resolve_secret`. Called once at
@@ -3919,7 +3947,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn follow_tools_channel_and_thread() {
+    async fn follow_tools_channel_thread_and_member() {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -3939,6 +3967,15 @@ mod tests {
             .create_member(NewMember {
                 workspace_id: ws.id,
                 handle: "m".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let colleague = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "colleague".into(),
                 display_name: None,
                 kind: MemberKind::Agent,
             })
@@ -4002,6 +4039,56 @@ mod tests {
                 .unwrap(),
         );
         assert!(empty.as_array().unwrap().is_empty());
+
+        let member_args = json!({ "member_id": member.id.0, "followed_member_id": colleague.id.0 });
+        let followed = unwrap_content(
+            server
+                .call_tool(&auth, "follow_member", &member_args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(followed["following"], json!(true));
+        let list = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_member_follows",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["followed_id"], json!(colleague.id.0));
+        let occupancy = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_member_occupancy",
+                    &json!({ "member_id": colleague.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(occupancy["member_id"], json!(colleague.id.0));
+        assert_eq!(occupancy["presence"], json!("offline"));
+        assert_eq!(occupancy["assigned_threads"], json!([]));
+        let removed = unwrap_content(
+            server
+                .call_tool(&auth, "unfollow_member", &member_args)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(removed["removed"], json!(true));
+        let err = server
+            .call_tool(
+                &auth,
+                "follow_member",
+                &json!({ "member_id": member.id.0, "followed_member_id": member.id.0 }),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, crate::error::McpError::InvalidParams(_)));
     }
 
     #[tokio::test]

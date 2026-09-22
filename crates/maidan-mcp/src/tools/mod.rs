@@ -100,6 +100,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_wip_limit"
         | "get_spawn_budget"
         | "get_member_wip"
+        | "get_member_occupancy"
         | "list_unclaimable"
         | "list_blocked_threads"
         | "get_thread_block"
@@ -137,6 +138,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "follow_thread"
         | "unfollow_thread"
         | "list_thread_follows"
+        | "follow_member"
+        | "unfollow_member"
+        | "list_member_follows"
         | "list_child_threads"
         | "list_recently_active_threads"
         | "mute_thread"
@@ -461,6 +465,7 @@ pub async fn dispatch(
         "set_spawn_budget" => spawn::set_spawn_budget(store, auth, args).await,
         "get_spawn_budget" => spawn::get_spawn_budget(store, auth, args).await,
         "get_member_wip" => thread::get_member_wip(store, args).await,
+        "get_member_occupancy" => member::get_member_occupancy(server, auth, args).await,
         "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
         "mark_claimable" => thread::mark_claimable(store, args).await,
         "list_unclaimable" => thread::list_unclaimable(store, args).await,
@@ -504,6 +509,9 @@ pub async fn dispatch(
         "follow_thread" => member::follow_thread(store, args).await,
         "unfollow_thread" => member::unfollow_thread(store, args).await,
         "list_thread_follows" => member::list_thread_follows(store, args).await,
+        "follow_member" => member::follow_member(server, auth, args).await,
+        "unfollow_member" => member::unfollow_member(store, args).await,
+        "list_member_follows" => member::list_member_follows(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "wait_for_claim_expired" => thread::wait_for_claim_expired(server, auth, args).await,
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,

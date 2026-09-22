@@ -1,5 +1,5 @@
-//! REST follow management — follow/unfollow/list a channel over
-//! `/members/:id/channel-follows`. Auth ENABLED with a minted bearer.
+//! REST follow management — follow/unfollow/list channels and member occupancy.
+//! Auth ENABLED with a minted bearer.
 
 use std::{
     net::SocketAddr,
@@ -72,6 +72,15 @@ async fn follow_unfollow_and_list_channel() {
             name: "general".into(),
             topic: None,
             private: false,
+        })
+        .await
+        .unwrap();
+    let colleague = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "colleague".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
         })
         .await
         .unwrap();
@@ -152,6 +161,62 @@ async fn follow_unfollow_and_list_channel() {
         .await
         .unwrap();
     assert!(empty.as_array().unwrap().is_empty());
+
+    // Member occupancy follows use their own same-workspace edge.
+    let followed_mid = colleague.id.0;
+    let follow_member = client
+        .post(format!("{base}/members/{mid}/member-follows"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "followed_member_id": followed_mid }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(follow_member.status(), StatusCode::NO_CONTENT);
+
+    let member_follows: Value = client
+        .get(format!("{base}/members/{mid}/member-follows"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(member_follows.as_array().unwrap().len(), 1);
+    assert_eq!(member_follows[0]["follower_id"], json!(mid));
+    assert_eq!(member_follows[0]["followed_id"], json!(followed_mid));
+
+    let occupancy: Value = client
+        .get(format!("{base}/members/{followed_mid}/occupancy"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(occupancy["member_id"], json!(followed_mid));
+    assert_eq!(occupancy["presence"], json!("offline"));
+    assert_eq!(occupancy["assigned_threads"], json!([]));
+
+    let self_follow = client
+        .post(format!("{base}/members/{mid}/member-follows"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "followed_member_id": mid }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(self_follow.status(), StatusCode::BAD_REQUEST);
+
+    let unfollow_member = client
+        .delete(format!(
+            "{base}/members/{mid}/member-follows/{followed_mid}"
+        ))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unfollow_member.status(), StatusCode::NO_CONTENT);
 }
 
 /// Leaf mute over `POST`/`DELETE /threads/:id/mute`, self-scoped to the caller.
