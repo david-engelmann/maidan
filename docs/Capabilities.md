@@ -3,7 +3,7 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
-## Cluster 405 (pending v405.0.0) — time-boxed cross-organization sharing
+## v405.0.0 — time-boxed cross-organization sharing
 
 Three implementation PRs (#952/#953/#954) close Wave 2 row #26 without
 creating a guest-member or federation model.

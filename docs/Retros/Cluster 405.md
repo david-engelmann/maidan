@@ -1,6 +1,6 @@
 # Cluster 405 retro — time-boxed cross-organization incident sharing
 
-> Closing Wave 2 row #26 · target tag `v405.0.0`
+> Closing Wave 2 row #26 · released as `v405.0.0`
 
 Cluster 405 turns the H7 "incident room + files" idea into a narrow capability
 ticket rather than a new identity, membership, or federation system.
