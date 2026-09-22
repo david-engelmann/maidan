@@ -21,6 +21,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ThreadAssignmentChanged,
         EventKind::ThreadReady,
         EventKind::ThreadResultSet,
+        EventKind::ApprovalRequested,
         EventKind::BlockedResolved,
         EventKind::ClaimExpired,
         EventKind::ClaimFailed,

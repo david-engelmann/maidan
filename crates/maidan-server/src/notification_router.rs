@@ -266,7 +266,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             add_accessible_member_followers(
                 state,
                 *workspace_id,
-                *thread_id,
+                Some(*thread_id),
                 vec![*member_id],
                 &mut recipients,
             )
@@ -297,7 +297,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             add_accessible_member_followers(
                 state,
                 *workspace_id,
-                *thread_id,
+                Some(*thread_id),
                 vec![*member_id],
                 &mut recipients,
             )
@@ -330,7 +330,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             add_accessible_member_followers(
                 state,
                 *workspace_id,
-                *thread_id,
+                Some(*thread_id),
                 previous_assignee_id
                     .iter()
                     .chain(assignee_id.iter())
@@ -366,7 +366,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             add_accessible_member_followers(
                 state,
                 *workspace_id,
-                *thread_id,
+                Some(*thread_id),
                 thread.assignee_id.into_iter().collect(),
                 &mut recipients,
             )
@@ -450,7 +450,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             add_accessible_member_followers(
                 state,
                 *workspace_id,
-                *thread_id,
+                Some(*thread_id),
                 vec![*produced_by],
                 &mut recipients,
             )
@@ -466,6 +466,37 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                     Some(*thread_id),
                     None,
                     Some(*produced_by),
+                )
+                .await?;
+            }
+        }
+        Event::ApprovalRequested {
+            workspace_id,
+            channel_id,
+            thread_id,
+            requested_by,
+            ..
+        } => {
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                vec![*requested_by],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ApprovalRequested,
+                    log_id,
+                    *channel_id,
+                    *thread_id,
+                    None,
+                    Some(*requested_by),
                 )
                 .await?;
             }
@@ -488,7 +519,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 add_accessible_member_followers(
                     state,
                     *workspace_id,
-                    *thread_id,
+                    Some(*thread_id),
                     thread.assignee_id.into_iter().collect(),
                     &mut recipients,
                 )
@@ -522,7 +553,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
 async fn add_accessible_member_followers(
     state: &AppState,
     workspace_id: WorkspaceId,
-    thread_id: ThreadId,
+    thread_id: Option<ThreadId>,
     followed_ids: Vec<MemberId>,
     recipients: &mut HashSet<MemberId>,
 ) -> Result<(), String> {
@@ -533,11 +564,16 @@ async fn add_accessible_member_followers(
             .await
             .map_err(|e| e.to_string())?
         {
-            let auth = maidan_auth::AuthContext::from_session(follower_id, workspace_id, vec![]);
-            if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
-                .await
-                .map_err(|e| e.to_string())?
-            {
+            let can_access = if let Some(thread_id) = thread_id {
+                let auth =
+                    maidan_auth::AuthContext::from_session(follower_id, workspace_id, vec![]);
+                maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+            } else {
+                true
+            };
+            if can_access {
                 recipients.insert(follower_id);
             }
         }

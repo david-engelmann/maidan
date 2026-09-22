@@ -95,6 +95,7 @@ pub enum EventKind {
     ThreadAssignmentChanged,
     ThreadReady,
     ThreadResultSet,
+    ApprovalRequested,
     BlockedResolved,
     ClaimExpired,
     ClaimFailed,
@@ -128,6 +129,7 @@ impl EventKind {
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
+            Self::ApprovalRequested => "approval_requested",
             Self::BlockedResolved => "blocked_resolved",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimFailed => "claim_failed",
@@ -161,6 +163,7 @@ impl EventKind {
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
+            "approval_requested" => Some(Self::ApprovalRequested),
             "blocked_resolved" => Some(Self::BlockedResolved),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_failed" => Some(Self::ClaimFailed),
@@ -219,6 +222,7 @@ impl EventKind {
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
         Self::ThreadResultSet,
+        Self::ApprovalRequested,
         Self::BlockedResolved,
         Self::ClaimExpired,
         Self::ClaimFailed,
@@ -277,6 +281,8 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
+            // Approval gates are local human-control state.
+            Self::ApprovalRequested => false,
             // An unblock is *this* deployment's dispatch decision; a peer must
             // not inject one.
             Self::BlockedResolved => false,
@@ -377,6 +383,19 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         produced_by: MemberId,
+    },
+    /// A durable human-approval gate was opened. The optional thread/channel
+    /// context is absent for workspace-level questions. Locally derived: a
+    /// federated peer cannot open human-control gates on this deployment.
+    ApprovalRequested {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        channel_id: Option<ChannelId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thread_id: Option<ThreadId>,
+        gate_id: ApprovalGateId,
+        requested_by: MemberId,
     },
     /// An explicit dispatch block was cleared. A waiter observing this can
     /// claim the thread (subject to DAG readiness and the other `claim_next`
@@ -630,6 +649,7 @@ impl Event {
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
+            Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
@@ -663,6 +683,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
+            | Self::ApprovalRequested { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
@@ -696,6 +717,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
+            | Self::ApprovalRequested { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
@@ -740,6 +762,7 @@ impl Event {
             | Self::MessageUnpinned { channel_id, .. } => Some(*channel_id),
             // Already optional: resolved best-effort from the thread.
             Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
+            Self::ApprovalRequested { channel_id, .. } => *channel_id,
             _ => None,
         }
     }
@@ -751,6 +774,7 @@ impl Event {
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
+            Self::ApprovalRequested { thread_id, .. } => *thread_id,
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
@@ -792,6 +816,7 @@ impl Event {
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
+            Self::ApprovalRequested { requested_by, .. } => Some(*requested_by),
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
@@ -1064,6 +1089,7 @@ mod kind_tests {
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
+                | EventKind::ApprovalRequested
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
                 | EventKind::ClaimFailed
@@ -1140,6 +1166,7 @@ mod kind_tests {
             EventKind::ArtifactUpserted,
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
+            EventKind::ApprovalRequested,
             EventKind::BlockedResolved,
             EventKind::ClaimExpired,
             EventKind::ClaimFailed,

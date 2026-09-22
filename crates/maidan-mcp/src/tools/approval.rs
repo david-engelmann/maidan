@@ -57,9 +57,9 @@ pub(super) async fn request_approval(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RequestApprovalArgs = serde_json::from_value(args.clone())?;
-    let gate = server
+    let (gate, event) = server
         .store
-        .create_approval_gate(&NewApprovalGate {
+        .create_approval_gate_with_event(&NewApprovalGate {
             workspace_id: auth.workspace_id,
             thread_id: a.thread_id.map(maidan_types::ThreadId),
             requested_by: auth.member_id,
@@ -67,6 +67,7 @@ pub(super) async fn request_approval(
             schema: a.schema,
         })
         .await?;
+    server.publish_stored(&event).await;
     Ok(content_json(&json!({
         "status": "input_required",
         "gate_id": gate.id,

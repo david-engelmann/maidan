@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApprovalGate, ApprovalGateId, ApprovalGateState, MemberId, NewApprovalGate, ThreadId,
-    WorkspaceId,
+    ApprovalGate, ApprovalGateId, ApprovalGateState, Event, MemberId, NewApprovalGate, StoredEvent,
+    ThreadId, WorkspaceId,
 };
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -14,6 +14,16 @@ const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, s
 /// Open a new `Pending` approval gate. JSON columns are stored as TEXT in
 /// SQLite.
 pub async fn create(pool: &SqlitePool, gate: &NewApprovalGate) -> Result<ApprovalGate, StoreError> {
+    let mut tx = pool.begin().await?;
+    let gate = create_in_tx(&mut tx, gate).await?;
+    tx.commit().await?;
+    Ok(gate)
+}
+
+async fn create_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    gate: &NewApprovalGate,
+) -> Result<ApprovalGate, StoreError> {
     let id = ApprovalGateId::new();
     let schema_text = gate
         .schema
@@ -34,9 +44,40 @@ pub async fn create(pool: &SqlitePool, gate: &NewApprovalGate) -> Result<Approva
     .bind(&gate.prompt)
     .bind(schema_text)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await?;
     row_to_gate(&row)
+}
+
+pub async fn create_with_event(
+    pool: &SqlitePool,
+    new: &NewApprovalGate,
+) -> Result<(ApprovalGate, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let gate = create_in_tx(&mut tx, new).await?;
+    let channel_id = if let Some(thread_id) = gate.thread_id {
+        let (workspace_id, channel_id) =
+            super::events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        if workspace_id != gate.workspace_id {
+            return Err(StoreError::InvalidInput(
+                "approval gate thread belongs to another workspace".into(),
+            ));
+        }
+        Some(channel_id)
+    } else {
+        None
+    };
+    let event = Event::ApprovalRequested {
+        occurred_at: gate.created_at,
+        workspace_id: gate.workspace_id,
+        channel_id,
+        thread_id: gate.thread_id,
+        gate_id: gate.id,
+        requested_by: gate.requested_by,
+    };
+    let stored = super::events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((gate, stored))
 }
 
 pub async fn get(

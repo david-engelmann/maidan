@@ -414,6 +414,14 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             policy: "notify".into(),
             reason: Some("blocked".into()),
         },
+        Event::ApprovalRequested {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: Some(channel.id),
+            thread_id: Some(thread.id),
+            gate_id: maidan_types::ApprovalGateId::new(),
+            requested_by: worker.id,
+        },
     ];
     for (offset, event) in events.iter().enumerate() {
         notification_router::route_event(&state, 100 + offset as i64, event)
@@ -435,6 +443,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             EventKind::ClaimFailed,
             EventKind::ClaimExpired,
             EventKind::WaitTimedOut,
+            EventKind::ApprovalRequested,
         ])
     );
 
@@ -451,7 +460,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             .await
             .unwrap()
             .len(),
-        6,
+        7,
         "member-follow lifecycle notifications honor per-kind mutes"
     );
 
