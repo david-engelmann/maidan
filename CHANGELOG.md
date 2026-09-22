@@ -7,10 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Cluster 405 — pending v405.0.0
+## [405.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 2 row #26: time-boxed
-cross-organization incident sharing.** Work in progress under #951.
+cross-organization incident sharing.** Three implementation PRs plus the close
+record complete #951.
 
 - **405.1** adds the dual-backend share-ticket ledger: one workspace/channel,
   one accountable internal owner, an explicit allowlist of workspace-linked
@@ -25,6 +26,9 @@ cross-organization incident sharing.** Work in progress under #951.
   token context; public thread shapes omit claim/assignee internals, responses
   are non-cacheable, and artifact liveness is rechecked immediately before the
   configured LocalFS/S3 read.
+- **405.close** proves expiration produces the same response as an invalid or
+  revoked credential, records the new trust boundary in the threat model and
+  architecture, and closes Open Work row #26 with the cluster plan and retro.
 
 ## [404.0.0] — 2026-09-22
 

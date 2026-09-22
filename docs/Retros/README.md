@@ -130,4 +130,5 @@ PR review credit; external contributors.
 - [[Cluster 119.0]] — Dependency dedupe & currency. Closed at **`v119.0.0`**, opening Phase XXIII.
 - [[Cluster 120.0]] — Scale product gate. Closed at **`v120.0.0`** / **`maidan-scale-1.0`**, closing Phase XXIII and the 102+ ladder.
 - [[Cluster 403]] — Budget changes cannot remove caps by omission. Implementation merged; target tag **`v403.0.0`** pending maintainer action.
-- [[Cluster 404]] — Member occupancy follows and notification-derived manager digest. Wave 2 row #28 complete; target tag **`v404.0.0`** pending maintainer action.
+- [[Cluster 404]] — Member occupancy follows and notification-derived manager digest. Wave 2 row #28 complete; released as **`v404.0.0`**.
+- [[Cluster 405]] — Time-boxed cross-organization incident sharing. Wave 2 row #26 complete; released as **`v405.0.0`**.

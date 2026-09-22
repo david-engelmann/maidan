@@ -3,10 +3,22 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
-## Cluster 404 (pending v404.0.0) — member occupancy follows and manager digest
+## v405.0.0 — time-boxed cross-organization sharing
+
+Three implementation PRs (#952/#953/#954) close Wave 2 row #26 without
+creating a guest-member or federation model.
+
+| Change | Where |
+|--------|-------|
+| **Fail-closed ticket ledger:** one ticket names one workspace, one channel, one accountable owner, and an exact artifact-SHA allowlist. It expires within 48 hours, can be revoked immediately, and stores only the SHA-256 digest of its once-returned `maid_share_…` secret. SQLite and Postgres share behavioral coverage. | `crates/maidan-types/src/share_ticket.rs`, `crates/maidan-store/src/{postgres,sqlite}/share_ticket.rs`, `crates/maidan-store/migrations/{postgres,sqlite}` |
+| **Audited issuer lifecycle:** `token:admin` callers create, list, and revoke tickets over REST or MCP. List and audit representations omit both the raw credential and its persisted hash. | `crates/maidan-server/src/routes/share_ticket.rs`, `crates/maidan-mcp/src/tools/share_ticket.rs` |
+| **Separate read-only consumer boundary:** `Authorization: ShareTicket maid_share_…` reaches only four `GET /share/*` routes (manifest, threads, messages, allowlisted artifact bytes). It never constructs an API-token context; invalid, expired, and revoked credentials are indistinguishable; cross-channel and non-allowlisted resources are hidden. | `crates/maidan-server/src/share_consumer.rs`, `crates/maidan-server/tests/share_ticket_consumer_e2e.rs` |
+| **Contract and security record:** OpenAPI classifies `shareTicketAuth` separately, Integration documents issuer and consumer flows, and the threat model records the deliberately narrow residual exposure. | `crates/maidan-server/src/openapi.rs`, `docs/{Integration,Threat-Model}.md` |
+
+## v404.0.0 — member occupancy follows and manager digest
 
 Five implementation PRs (#943/#944/#949/#947/#948) complete the two remaining
-halves of Wave 2 row #28. The tag remains maintainer-gated.
+halves of Wave 2 row #28.
 
 | Change | Where |
 |--------|-------|

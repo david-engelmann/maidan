@@ -354,4 +354,34 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .unwrap();
     assert_eq!(revoked.status(), invalid_status);
     assert_eq!(revoked.text().await.unwrap(), invalid_body);
+
+    let expiring = client
+        .post(format!(
+            "{base}/workspaces/{}/share-tickets",
+            workspace.id.0
+        ))
+        .header("authorization", format!("Bearer {admin}"))
+        .json(&json!({
+            "channel_id": incident.id.0,
+            "owner_id": owner.id.0,
+            "expires_at": Utc::now() + ChronoDuration::seconds(1),
+            "artifact_shas": [],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(expiring.status(), StatusCode::CREATED);
+    let expiring_secret = expiring.json::<Value>().await.unwrap()["secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+    let expired = client
+        .get(format!("{base}/share/manifest"))
+        .header("authorization", format!("ShareTicket {expiring_secret}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(expired.status(), invalid_status);
+    assert_eq!(expired.text().await.unwrap(), invalid_body);
 }
