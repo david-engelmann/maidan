@@ -2173,6 +2173,45 @@ pub trait TokenStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait ShareTicketStore: Send + Sync {
+    /// Atomically create the ticket and its explicit artifact allowlist. The
+    /// channel, owner, creator, and every artifact ref must belong to the same
+    /// workspace. The plaintext secret never crosses this interface.
+    async fn create_share_ticket(&self, new: NewShareTicket) -> Result<ShareTicket, StoreError>;
+    async fn get_share_ticket(&self, id: ShareTicketId) -> Result<ShareTicket, StoreError>;
+    async fn list_share_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<ShareTicket>, StoreError>;
+    /// Resolve only an active ticket. Invalid, expired, and revoked hashes all
+    /// return `NotFound`, so the consumer boundary does not disclose state.
+    async fn resolve_share_ticket(
+        &self,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<ShareTicket, StoreError>;
+    /// Revoke an active ticket in its workspace. Returns whether this call
+    /// changed state.
+    async fn revoke_share_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ShareTicketId,
+    ) -> Result<bool, StoreError>;
+    async fn list_share_ticket_artifacts(
+        &self,
+        id: ShareTicketId,
+    ) -> Result<Vec<String>, StoreError>;
+    /// Check the allowlist and ticket liveness in one query, closing the race
+    /// between initial ticket resolution and an artifact fetch.
+    async fn share_ticket_allows_artifact(
+        &self,
+        id: ShareTicketId,
+        sha256: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, StoreError>;
+}
+
+#[async_trait]
 pub trait PeerStore: Send + Sync {
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError>;
     async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError>;
@@ -2515,6 +2554,7 @@ pub trait Store:
     + OAuthCodeStore
     + ReindexStore
     + TokenStore
+    + ShareTicketStore
     + PeerStore
     + DeliveryCursorStore
     + WebhookStore
@@ -2569,6 +2609,7 @@ impl<
             + OAuthCodeStore
             + ReindexStore
             + TokenStore
+            + ShareTicketStore
             + PeerStore
             + DeliveryCursorStore
             + WebhookStore
