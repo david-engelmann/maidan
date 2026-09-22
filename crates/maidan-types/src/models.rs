@@ -1344,6 +1344,28 @@ pub struct BuriedDecision {
     pub produced_at: DateTime<Utc>,
 }
 
+/// Notification-backed management rollup for one channel. `None` is the
+/// workspace-level bucket (currently unattached approval gates).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ManagerDigestChannel {
+    pub channel_id: Option<ChannelId>,
+    pub results: i64,
+    pub gates: i64,
+    pub stuck: i64,
+}
+
+/// A member's unread followed-member lifecycle notifications since `since`,
+/// composed into per-channel result/gate/stuck counts. This is a notification
+/// view, not an analytics projection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ManagerDigest {
+    pub member_id: MemberId,
+    pub since: DateTime<Utc>,
+    pub channels: Vec<ManagerDigestChannel>,
+}
+
 /// System channel name for DM threads in a workspace.
 pub const DM_CHANNEL_NAME: &str = "__dm__";
 

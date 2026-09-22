@@ -4102,6 +4102,46 @@ mod tests {
         assert_eq!(occupancy["member_id"], json!(colleague.id.0));
         assert_eq!(occupancy["presence"], json!("offline"));
         assert_eq!(occupancy["assigned_threads"], json!([]));
+        server
+            .store
+            .create_notification(NewNotification {
+                workspace_id: ws.id,
+                member_id: member.id,
+                kind: EventKind::ApprovalRequested,
+                source_log_id: 404,
+                channel_id: Some(channel.id),
+                thread_id: None,
+                message_id: None,
+                actor_id: Some(colleague.id),
+            })
+            .await
+            .unwrap();
+        let digest = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "get_manager_digest",
+                    &json!({ "member_id": member.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(digest["channels"][0]["channel_id"], json!(channel.id.0));
+        assert_eq!(digest["channels"][0]["gates"], json!(1));
+        let session = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![maidan_auth::capability::WORKSPACE_READ.to_string()],
+        );
+        let err = server
+            .call_tool(
+                &session,
+                "get_manager_digest",
+                &json!({ "member_id": colleague.id.0 }),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, crate::error::McpError::Forbidden(_)));
         let removed = unwrap_content(
             server
                 .call_tool(&auth, "unfollow_member", &member_args)

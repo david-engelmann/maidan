@@ -17,6 +17,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   member is assigned, changes task state, produces a result, or becomes stuck.
   Opening an approval gate now atomically appends an `approval_requested`
   event; followed-member managers receive it as the digestible gate signal.
+  `GET /members/:id/manager-digest` and MCP `get_manager_digest` compose unread
+  notification rows into per-channel result/gate/stuck counts, and the email
+  digest leads with the same rollup. This is notification composition, not a
+  parallel analytics projection.
   Presence remains outside `maidan_events` and the database.
 
 ### Cluster 403 — pending v403.0.0

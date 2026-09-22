@@ -12,7 +12,8 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
+    EventKind, MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewNotification,
+    NewThread, NewWorkspace, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -198,6 +199,39 @@ async fn follow_unfollow_and_list_channel() {
     assert_eq!(occupancy["member_id"], json!(followed_mid));
     assert_eq!(occupancy["presence"], json!("offline"));
     assert_eq!(occupancy["assigned_threads"], json!([]));
+
+    store
+        .create_notification(NewNotification {
+            workspace_id: ws.id,
+            member_id: member.id,
+            kind: EventKind::ThreadResultSet,
+            source_log_id: 404,
+            channel_id: Some(channel.id),
+            thread_id: None,
+            message_id: None,
+            actor_id: Some(colleague.id),
+        })
+        .await
+        .unwrap();
+    let manager_digest: Value = client
+        .get(format!("{base}/members/{mid}/manager-digest"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(manager_digest["member_id"], json!(mid));
+    assert_eq!(manager_digest["channels"][0]["channel_id"], json!(cid));
+    assert_eq!(manager_digest["channels"][0]["results"], json!(1));
+    let act_as_any = client
+        .get(format!("{base}/members/{followed_mid}/manager-digest"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(act_as_any.status(), StatusCode::OK);
 
     let self_follow = client
         .post(format!("{base}/members/{mid}/member-follows"))

@@ -97,6 +97,33 @@ fn decisions_body(decisions: &[maidan_types::BuriedDecision], unread_count: i64)
     body
 }
 
+fn manager_body(
+    digest: &maidan_types::ManagerDigest,
+    decisions: &[maidan_types::BuriedDecision],
+    unread_count: i64,
+) -> String {
+    let mut body = String::from("Followed-member activity by channel:\n\n");
+    for channel in &digest.channels {
+        let label = channel
+            .channel_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "workspace".to_string());
+        body.push_str(&format!(
+            "• {label}: {} result(s), {} gate(s), {} stuck\n",
+            channel.results, channel.gates, channel.stuck
+        ));
+    }
+    if !decisions.is_empty() {
+        body.push('\n');
+        body.push_str(&decisions_body(decisions, unread_count));
+    } else {
+        body.push_str(&format!(
+            "\nYou have {unread_count} unread notification(s) total. Open Maidan to catch up."
+        ));
+    }
+    body
+}
+
 /// Send a digest to every member currently due, advancing each watermark on a
 /// successful send. Returns the number of digests sent (for tests / logging).
 /// No-op when no mail transport is configured.
@@ -128,8 +155,19 @@ pub async fn sweep_once(state: &AppState) -> u32 {
             .buried_decisions_for_member(member.member_id, since, 20)
             .await
             .unwrap_or_default();
+        let manager = state
+            .store
+            .manager_digest_for_member(member.member_id, since)
+            .await
+            .unwrap_or(maidan_types::ManagerDigest {
+                member_id: member.member_id,
+                since,
+                channels: Vec::new(),
+            });
         let subject = digest_subject();
-        let body = if decisions.is_empty() {
+        let body = if !manager.channels.is_empty() {
+            manager_body(&manager, &decisions, member.unread_count)
+        } else if decisions.is_empty() {
             digest_body(member.unread_count)
         } else {
             decisions_body(&decisions, member.unread_count)

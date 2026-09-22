@@ -3,7 +3,10 @@
 //! enumeration. Foundation only — no worker/routes wire it yet.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{BuriedDecision, ChannelId, DigestDue, EmailDeliveryMode, MemberId, ThreadId};
+use maidan_types::{
+    BuriedDecision, ChannelId, DigestDue, EmailDeliveryMode, ManagerDigest, ManagerDigestChannel,
+    MemberId, ThreadId,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -146,4 +149,42 @@ pub async fn buried_decisions_for_member(
             })
         })
         .collect()
+}
+
+pub async fn manager_digest_for_member(
+    pool: &SqlitePool,
+    member_id: MemberId,
+    since: DateTime<Utc>,
+) -> Result<ManagerDigest, crate::error::StoreError> {
+    let rows = sqlx::query(
+        "SELECT channel_id,
+                SUM(CASE WHEN kind = 'thread_result_set' THEN 1 ELSE 0 END) AS results,
+                SUM(CASE WHEN kind = 'approval_requested' THEN 1 ELSE 0 END) AS gates,
+                SUM(CASE WHEN kind IN ('claim_expired', 'claim_failed', 'wait_timed_out') THEN 1 ELSE 0 END) AS stuck
+         FROM maidan_notifications
+         WHERE member_id = ?1
+           AND read_at IS NULL
+           AND datetime(created_at) > datetime(?2)
+           AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_failed', 'wait_timed_out')
+         GROUP BY channel_id
+         ORDER BY channel_id IS NOT NULL, channel_id",
+    )
+    .bind(member_id.0)
+    .bind(since.to_rfc3339())
+    .fetch_all(pool)
+    .await?;
+    let channels = rows
+        .iter()
+        .map(|r| ManagerDigestChannel {
+            channel_id: r.get::<Option<Uuid>, _>("channel_id").map(ChannelId),
+            results: r.get::<i64, _>("results"),
+            gates: r.get::<i64, _>("gates"),
+            stuck: r.get::<i64, _>("stuck"),
+        })
+        .collect();
+    Ok(ManagerDigest {
+        member_id,
+        since,
+        channels,
+    })
 }

@@ -374,6 +374,15 @@ pub fn list_member_notifications_grouped() {}
     responses((status = 200, body = [BuriedDecision])))]
 pub fn list_member_decisions() {}
 
+#[utoipa::path(get, path = "/members/{id}/manager-digest", tag = "members",
+    params(
+        ("id" = Uuid, Path, description = "Member id"),
+        ManagerDigestQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = ManagerDigest)))]
+pub fn get_member_manager_digest() {}
+
 #[utoipa::path(get, path = "/members/{id}/waiting", tag = "members",
     params(
         ("id" = Uuid, Path, description = "Member id"),

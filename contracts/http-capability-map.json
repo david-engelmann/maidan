@@ -229,6 +229,12 @@
   },
   {
     "method": "GET",
+    "path": "/members/{id}/manager-digest",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}/waiting",
     "capability": "workspace:read",
     "surface": "http"

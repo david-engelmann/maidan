@@ -925,6 +925,14 @@ pub trait PresenceDigestStore: Send + Sync {
         since: DateTime<Utc>,
         limit: i64,
     ) -> Result<Vec<BuriedDecision>, StoreError>;
+    /// Compose unread lifecycle notification rows after `since` into
+    /// per-channel result/gate/stuck counts. This deliberately reads the
+    /// notification delivery layer rather than an analytics projection.
+    async fn manager_digest_for_member(
+        &self,
+        member_id: MemberId,
+        since: DateTime<Utc>,
+    ) -> Result<ManagerDigest, StoreError>;
 }
 
 #[async_trait]
