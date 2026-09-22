@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## Cluster 404 (pending v404.0.0) — member occupancy follows and manager digest
+
+Five implementation PRs (#943/#944/#949/#947/#948) complete the two remaining
+halves of Wave 2 row #28. The tag remains maintainer-gated.
+
+| Change | Where |
+|--------|-------|
+| **Member follow intent:** a same-workspace follower can follow another member over REST or MCP; self-follow is invalid. Postgres and SQLite store only the durable subscription edge. | `crates/maidan-store/src/{postgres,sqlite}/follows.rs`, `crates/maidan-server/src/routes/follows.rs`, `crates/maidan-mcp/src/tools/follows.rs` |
+| **Live occupancy without private-work inference:** ephemeral presence is combined with assigned non-terminal threads only after each thread passes the caller's canonical access check. | `crates/maidan-server/src/routes/follows.rs`, `crates/maidan-mcp/src/tools/follows.rs` |
+| **Followed-member lifecycle routing:** assignment, state, result, claim failure/expiry, wait timeout, and approval-request activity reaches access-eligible followers through existing mute and deduplication policy. | `crates/maidan-server/src/notification_router.rs` |
+| **Atomic approval signal:** gate creation and its non-federatable `approval_requested` event share one store transaction and the generated event lexicon records the new kind. | `crates/maidan-store/src/{postgres,sqlite}/approval.rs`, `contracts/lexicon/event-kinds.json` |
+| **Manager digest:** REST, MCP, and digest email share per-channel unread `results`/`gates`/`stuck` counts derived from recipient notification rows after `since`; workspace gates use `channel_id: null`. | `crates/maidan-store/src/{postgres,sqlite}/email_digest.rs`, `crates/maidan-server/src/routes/follows.rs`, `crates/maidan-mcp/src/tools/follows.rs` |
+
 ## Cluster 403 (pending v403.0.0) — budget changes cannot remove caps by omission
 
 Cluster 403 shipped in #916; its close record was backfilled under #940. The
