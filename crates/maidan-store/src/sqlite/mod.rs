@@ -1029,6 +1029,13 @@ impl PresenceDigestStore for SqliteStore {
     ) -> Result<Vec<BuriedDecision>, StoreError> {
         email_digest::buried_decisions_for_member(&self.pool, member_id, since, limit).await
     }
+    async fn manager_digest_for_member(
+        &self,
+        member_id: MemberId,
+        since: DateTime<Utc>,
+    ) -> Result<ManagerDigest, StoreError> {
+        email_digest::manager_digest_for_member(&self.pool, member_id, since).await
+    }
 }
 
 #[async_trait]

@@ -43,6 +43,7 @@
   "get_log_snapshot": "workspace:read",
   "get_member_email": "workspace:read",
   "get_member_occupancy": "workspace:read",
+  "get_manager_digest": "workspace:read",
   "get_member_wip": "workspace:read",
   "get_memory_block": "workspace:read",
   "get_priority": "workspace:read",

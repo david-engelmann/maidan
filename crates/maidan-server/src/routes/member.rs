@@ -199,6 +199,31 @@ pub async fn list_member_decisions(
     Ok(Json(decisions))
 }
 
+/// Per-channel result/gate/stuck counts composed from this member's unread
+/// followed-member notifications. Self-only for sessions; bearer tokens retain
+/// the workspace orchestrator act-as-any model.
+pub async fn get_member_manager_digest(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    Query(q): Query<ManagerDigestQuery>,
+) -> ApiResult<Json<ManagerDigest>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let member_id = MemberId(id);
+    let member = state.store.get_member(member_id).await?;
+    ensure_workspace(&auth, member.workspace_id)?;
+    ensure_acting_member(&auth, member_id)?;
+    let since = q
+        .since
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+    Ok(Json(
+        state
+            .store
+            .manager_digest_for_member(member_id, since)
+            .await?,
+    ))
+}
+
 /// A member's unread-notification badge count. Self-only for sessions.
 pub async fn member_unread_notification_count(
     State(state): State<AppState>,

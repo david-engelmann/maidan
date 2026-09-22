@@ -4,8 +4,8 @@
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewMember, NewNotification, NewWorkspace,
-    WorkspaceId,
+    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewNotification,
+    NewWorkspace, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -127,6 +127,100 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(due.len(), 1);
     assert_eq!(due[0].member_id, a);
     assert_eq!(due[0].unread_count, 2);
+
+    // Manager digest is composed strictly from unread notification rows,
+    // grouped by channel. It is not a second analytics projection.
+    let manager = add_member(store, ws.id, "manager").await;
+    let channel_a = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "alpha".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let channel_b = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "beta".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let since = Utc::now() - Duration::minutes(1);
+    for (source_log_id, kind, channel_id) in [
+        (100, EventKind::ThreadResultSet, Some(channel_a.id)),
+        (101, EventKind::ThreadResultSet, Some(channel_a.id)),
+        (102, EventKind::ApprovalRequested, Some(channel_a.id)),
+        (103, EventKind::ClaimExpired, Some(channel_a.id)),
+        (104, EventKind::ClaimFailed, Some(channel_a.id)),
+        (105, EventKind::WaitTimedOut, Some(channel_a.id)),
+        (106, EventKind::ThreadResultSet, Some(channel_b.id)),
+        (107, EventKind::ApprovalRequested, None),
+        (108, EventKind::MentionRecorded, Some(channel_a.id)),
+    ] {
+        store
+            .create_notification(NewNotification {
+                workspace_id: ws.id,
+                member_id: manager,
+                kind,
+                source_log_id,
+                channel_id,
+                thread_id: None,
+                message_id: None,
+                actor_id: None,
+            })
+            .await
+            .unwrap();
+    }
+    let read = store
+        .create_notification(NewNotification {
+            workspace_id: ws.id,
+            member_id: manager,
+            kind: EventKind::ClaimFailed,
+            source_log_id: 109,
+            channel_id: Some(channel_b.id),
+            thread_id: None,
+            message_id: None,
+            actor_id: None,
+        })
+        .await
+        .unwrap();
+    store
+        .mark_notification_read(manager, read.id)
+        .await
+        .unwrap();
+
+    let digest = store
+        .manager_digest_for_member(manager, since)
+        .await
+        .unwrap();
+    assert_eq!(digest.member_id, manager);
+    assert_eq!(digest.since, since);
+    assert_eq!(digest.channels.len(), 3);
+    assert_eq!(digest.channels[0].channel_id, None);
+    assert_eq!(
+        (
+            digest.channels[0].results,
+            digest.channels[0].gates,
+            digest.channels[0].stuck
+        ),
+        (0, 1, 0)
+    );
+    let alpha = digest
+        .channels
+        .iter()
+        .find(|row| row.channel_id == Some(channel_a.id))
+        .unwrap();
+    assert_eq!((alpha.results, alpha.gates, alpha.stuck), (2, 1, 3));
+    let beta = digest
+        .channels
+        .iter()
+        .find(|row| row.channel_id == Some(channel_b.id))
+        .unwrap();
+    assert_eq!((beta.results, beta.gates, beta.stuck), (1, 0, 0));
 }
 
 #[tokio::test]

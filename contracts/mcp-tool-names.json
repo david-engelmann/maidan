@@ -43,6 +43,7 @@
   "get_log_snapshot",
   "get_member_email",
   "get_member_occupancy",
+  "get_manager_digest",
   "get_member_wip",
   "get_memory_block",
   "get_priority",

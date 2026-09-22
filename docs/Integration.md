@@ -520,6 +520,15 @@ remove subscriptions through `GET /members/:id/member-follows` and
 `list_member_follows` / `unfollow_member`). A follow is a subscription edge;
 presence itself is not persisted or written to `maidan_events`.
 
+The follow also subscribes you to access-checked lifecycle notifications for
+that member: assignment/state changes, results, approval gates, and stuck work
+(claim expiry/failure or a timed-out wait). `GET /members/:id/manager-digest`
+(MCP `get_manager_digest`) composes the unread notification rows since `since`
+into per-channel `{results, gates, stuck}` counts. It is an inbox view, not an
+analytics projection; kind, channel, and thread mutes therefore apply before a
+count exists. A workspace-level approval gate appears in the `channel_id: null`
+bucket.
+
 ### 2. Acknowledge
 
 `acknowledge_claim {thread_id, member_id, claim_lease_id}` starts the thread's

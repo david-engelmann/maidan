@@ -242,3 +242,51 @@ async fn digest_leads_with_buried_decisions() {
         sent[0].1
     );
 }
+
+#[tokio::test]
+async fn digest_includes_followed_member_result_gate_stuck_rollup() {
+    let (state, mailer, store) = state_with_mailer().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let manager = member_with_email(store.as_ref(), ws.id, "mgr", "mgr@example.com").await;
+    store
+        .set_delivery_mode(manager, EmailDeliveryMode::Digest)
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    for (source_log_id, kind) in [
+        (10, EventKind::ThreadResultSet),
+        (11, EventKind::ApprovalRequested),
+        (12, EventKind::ClaimFailed),
+    ] {
+        store
+            .create_notification(NewNotification {
+                workspace_id: ws.id,
+                member_id: manager,
+                kind,
+                source_log_id,
+                channel_id: Some(channel.id),
+                thread_id: None,
+                message_id: None,
+                actor_id: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(digest::sweep_once(&state).await, 1);
+    let sent = mailer.sent.lock().unwrap();
+    let body = &sent[0].1;
+    assert!(body.contains(&channel.id.to_string()), "{body}");
+    assert!(body.contains("1 result(s), 1 gate(s), 1 stuck"), "{body}");
+}

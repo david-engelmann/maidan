@@ -777,6 +777,14 @@ pub struct DecisionsQuery {
     pub limit: Option<i64>,
 }
 
+/// Query for a member's notification-backed manager digest.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ManagerDigestQuery {
+    /// Only unread lifecycle notifications created after this instant
+    /// (default: 7 days ago).
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// Query params for `GET /workspaces/:id/tombstones`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListTombstonesQuery {

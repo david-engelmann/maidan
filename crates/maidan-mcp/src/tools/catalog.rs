@@ -1446,6 +1446,19 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_manager_digest",
+            "description": "Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "since": {"type": "string", "format": "date-time", "description": "default 7 days ago"}
+                },
+                "required": ["member_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "get_unread_count",
             "description": "A member's unread-notification badge count.",
             "inputSchema": {

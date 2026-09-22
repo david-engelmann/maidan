@@ -303,6 +303,42 @@ struct BuriedDecisionsArgs {
     limit: Option<i64>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManagerDigestArgs {
+    member_id: uuid::Uuid,
+    /// Only unread lifecycle notifications after this RFC 3339 instant.
+    #[serde(default)]
+    since: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub(super) async fn get_manager_digest(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ManagerDigestArgs = serde_json::from_value(args.clone())?;
+    let member_id = MemberId(a.member_id);
+    let member = server.store.get_member(member_id).await?;
+    if !auth.bypass {
+        auth.ensure_workspace(member.workspace_id)?;
+        if auth.token_id.is_none() && auth.member_id != member_id {
+            return Err(McpError::Forbidden(
+                "a session caller may only read its own manager digest".into(),
+            ));
+        }
+    }
+    let since = a
+        .since
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+    Ok(content_json(
+        &server
+            .store
+            .manager_digest_for_member(member_id, since)
+            .await?,
+    ))
+}
+
 /// A member's buried decisions — task results produced by someone else in a
 /// channel/thread the member follows, since `since` (default 7 days ago),
 /// newest first. The decisions the digest surfaces, queryable directly.
