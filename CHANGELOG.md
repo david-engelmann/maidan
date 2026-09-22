@@ -25,6 +25,9 @@ cross-organization incident sharing.** Work in progress under #951.
   token context; public thread shapes omit claim/assignee internals, responses
   are non-cacheable, and artifact liveness is rechecked immediately before the
   configured LocalFS/S3 read.
+- **405.close** proves expiration produces the same response as an invalid or
+  revoked credential, records the new trust boundary in the threat model and
+  architecture, and closes Open Work row #26 with the cluster plan and retro.
 
 ## [404.0.0] — 2026-09-22
 

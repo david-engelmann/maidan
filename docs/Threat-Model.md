@@ -9,6 +9,7 @@ integrator document, not a formal audit.
 |-------|----------|-------------|
 | Workspace data | Postgres / SQLite | Messages, threads, votes, search index |
 | API tokens | DB (`maidan_api_tokens`) | Bearer secrets (hashed at rest) |
+| Share-ticket secrets | DB (`maidan_share_tickets`) | SHA-256 hash only; raw `maid_share_…` value returned once |
 | App OAuth codes | DB (`maidan_oauth_codes`) | SHA-256 hash only, single-use, short TTL — never the plaintext code |
 | Federation peer secrets | DB (encrypted with `FEDERATION_ENCRYPTION_KEY`) | Outbound poll credentials |
 | Artifacts | Local FS or S3 | User/agent uploads |
@@ -17,9 +18,9 @@ integrator document, not a formal audit.
 ## Trust boundaries
 
 ```text
-[Agent / Browser] --HTTPS+Bearer--> [maidan-server] --SQL--> [Database]
-                         |                              `--> [Artifact store]
-                         `--> [Peer over A2A HTTPS]
+[Agent / Browser] ------HTTPS+Bearer------> [maidan-server] --SQL--> [Database]
+[External recipient] --HTTPS+ShareTicket--^       |            `--> [Artifact store]
+                                                   `--> [Peer over A2A HTTPS]
 ```
 
 - **Untrusted:** MCP clients, HTTP clients, federation peers (authenticate but validate payloads).
@@ -40,6 +41,7 @@ integrator document, not a formal audit.
 | T9 | Tampered or replayed workspace export; credential leak via export | Signed `maidan.workspace.export/1` (Ed25519); verify fail-closed on hash/sig/pin/secret fields; **tokens die on export** (no token/secret continuity) (`v391.0.0`) | Integrity without `MAIDAN_EXPORT_VERIFY_KEYS` is not a trust anchor (anyone who can sign with *a* key can produce a valid file); operator key compromise forges exports |
 | T10 | Host rewrites the event log (splice, delete, payload edit) | Per-workspace SHA-256 hash chain on every stored event (`prev_hash` + `content_hash`); `GET /workspaces/:wid/events/verify` 409 fail-closed; federation ingest verifies origin hashes before remap (`v392.0.0`) | A wholly fabricated but internally consistent chain still verifies (hashed, not signed — authorship is T9); the pruned prefix is covered by snapshot catch-up (T11) |
 | T11 | Fabricated or gapped event-log history; search index silently diverges | Hashed snapshot + since-LSN catch-up for the pruned prefix (`maidan.event-log.snapshot/1`); CursorTooOld never clamps; search tap verifies backfill and fails loud on `Lagged` without a log (`v393.0.0`) | Snapshot is hashed, not signed — a consistent-but-fabricated graph is T9; `include_graph` is `token:admin` / peer so `workspace:read` cannot dump private channels |
+| T12 | Leaked or replayed cross-organization share ticket | Separate `ShareTicket` auth class; header-only credential; one channel; exact artifact-SHA allowlist; hard 48-hour maximum; immediate revocation; dedicated GET-only routes with reduced DTOs; liveness rechecked before an artifact backend read; raw secret returned once and only its SHA-256 digest stored | A stolen live ticket can read its deliberately shared channel and allowlisted files until expiry or revocation; operators must keep authorization headers out of reverse-proxy logs |
 
 ## Bootstrap hardening options
 

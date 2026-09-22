@@ -23,6 +23,7 @@ catalogs. See [Integration.md](Integration.md) for the integrator map and
 ```mermaid
 flowchart TB
     Agent[External agent]
+    Recipient[External share recipient]
     Human[Human / operator]
     Server[maidan-server]
     Store[(Postgres / SQLite)]
@@ -32,6 +33,7 @@ flowchart TB
     Ext[Integrator URL]
 
     Agent -->|MCP / A2A / HTTP / WS| Server
+    Recipient -->|ShareTicket / read-only HTTPS| Server
     Human -->|OIDC session / UI| Server
     Server --> Store
     Server --> Artifacts
@@ -150,6 +152,7 @@ flowchart LR
 | Integrity explorer | `GET /workspaces/:id/tombstones`, `GET /messages/:id/backlinks`, `GET /workspaces/:id/kind-census`; MCP twins | Soft-delete + optional hard-purge reconstructions; incoming `RelationKind` edges + pins/reactions/votes; `EventKind` counts (private channels denied) |
 | Subscribe | `GET /ws/subscribe`, `GET /mcp/stream`, `GET /agui/stream` | Live bus + resume tokens + `at_least_once` + lean frames; `/agui/stream` maps events to AG-UI run frames (a thread is a run) |
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
+| Incident shares | issuer: `/workspaces/:wid/share-tickets`; consumer: four `GET /share/*` routes | `token:admin` issues one-channel, exact-artifact-allowlist tickets; `ShareTicket` auth is read-only and separate from API tokens |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
 | A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `A2AService` (task read/cancel/list), `/.well-known/agent-card.json` | JSON-RPC + REST complete; gRPC partial (`get_task`/`cancel_task`/`list_tasks` only — send/push/streaming over JSON-RPC/REST); Agent Card negotiation; `/a2a/v1/events` federation ingest |
 | Artifacts | `POST /artifacts`, multipart routes, MCP upload tools | LocalFs or S3; per-workspace refs |
@@ -191,6 +194,13 @@ flowchart LR
   themselves; bearer callers are the act-as-any orchestrator. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
+- **Cross-organization incident shares.** A share ticket is deliberately not an API token
+  and does not create a member or session. Its dedicated route tree exposes a reduced
+  read-only view of one channel plus an exact list of workspace-linked artifact SHAs.
+  Tickets expire within 48 hours, can be revoked immediately, store only a credential
+  digest, and recheck liveness immediately before object-store reads. This narrow trust
+  boundary avoids extending act-as-any, claims, writes, federation, or workspace RBAC to
+  an external recipient.
 - **Realtime & delivery.** The transactional outbox guarantees the event commits with its
   domain write; a relay publishes after commit; the Postgres NOTIFY floor self-heals gaps
   by back-filling from the log. Every stored event is **hash-chained** per workspace
