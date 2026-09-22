@@ -1261,6 +1261,11 @@ No action: F-22/23/29 (reframed or resolved).
   its `event:subscribe` gate, links machine-readably to `event-kinds.json`, and
   uses a stable `$id`; the contract test pins all three without closing the
   forward-compatible event-kind string set.
+- **F-37 + lease-parser half of F-40 — adopted, fixed (#939).** The two-language
+  lease demo now has both workers acknowledge, report usage, renew, prove the
+  held queue is empty, and release in cleanup. Its tagged JSON result is parsed
+  by prefix rather than assumed to be the final stdout line. The vague
+  examples-page link was also replaced with the exact Integration anchor.
 
 **Two pulled forward out of P2:**
 
