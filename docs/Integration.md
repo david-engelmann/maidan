@@ -535,6 +535,15 @@ arguments.
 
 ### 4. Report usage while you work
 
+Set the envelope before the worker starts. `set_thread_budget` (REST
+`PUT /threads/:id/budget`) is a **total replacement**: state all four dimensions
+(`max_tokens`, `max_usd_micros`, `max_turns`, `max_wall_secs`) and use `null`
+for an uncapped dimension. An omitted dimension is an error, not an implicit
+clear. To change only selected dimensions, use `update_thread_budget` (REST
+`PATCH`): absent leaves a value unchanged and explicit `null` clears it. The
+partial merge is atomic, so two callers changing different dimensions do not
+need a read-modify-write sequence.
+
 `report_usage {thread_id, tokens?, usd_micros?, turns?}` adds to the thread's
 running total and answers `{budget, stopped, reason}`. Report as you go rather
 than once at the end: this call is where a runaway run gets caught. If your report

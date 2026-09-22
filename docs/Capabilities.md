@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v403.0.0 — budget changes cannot remove caps by omission
+
+Cluster 403 shipped in #916; its close record was backfilled under #940. The
+tag remains maintainer-gated.
+
+| Change | Where |
+|--------|-------|
+| **Total replacement is explicit:** REST `PUT /threads/:id/budget` and MCP `set_thread_budget` require all four maxima. `null` means uncapped; omission is an error that names the missing dimensions. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/budget.rs` |
+| **Partial update is atomic:** REST `PATCH /threads/:id/budget` and MCP `update_thread_budget` use absent = unchanged and `null` = clear. The merge happens in one store transaction on both backends, preserving accumulated usage and avoiding caller-side read-modify-write races. | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/budget.rs` |
+| **Strictness survived the reshape:** the MCP fields are explicit because `serde(flatten)` was measured to defeat `deny_unknown_fields`; the typo that exposed it is a regression test. | `crates/maidan-mcp/src/tools/budget.rs` |
+
 ## v402.0.0 — the search tap: isolate, resume, and schedule the verifier
 
 Three PRs (402.1–402.3). The last of the three items the post-Cursor audit
