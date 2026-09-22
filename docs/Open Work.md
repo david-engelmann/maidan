@@ -1316,6 +1316,84 @@ question. The rest are ordinary work.
 [`Handoff-2026-09-21.md`](Handoff-2026-09-21.md) — the current state, what is
 left, the maintainer's open decisions, and the method traps worth inheriting.
 
+## Full-audit dispositions + adjusted roadmap (2026-09-22)
+
+A third corpus (`maidan-full-audit-2026-09-21/`, gitignored) merged a fresh
+repo audit, the TypeSafe Jev research brief, and twelve rounds of branding work.
+Advisory research; this roadmap is authoritative. One disposition each, below.
+
+**Re-derived against `f5f50adf` (v405.0.0), not the corpus snapshot `876f88bf`.**
+The repo merged 14 commits in between. What moved is recorded per row — the
+deltas all point the same way: the ops-debt numbers grew in a single day.
+
+### Corrections to the corpus
+
+| Corpus says | Actually, on `f5f50adf` |
+|---|---|
+| F-09 (subscribe-filter schema) **OPEN** | **Closed** by #937 — the schema names `event:subscribe` and the `$id` dropped its `-v3` suffix |
+| F-37/F-40 (lease demo lifecycle) **OPEN** | **Closed** by #939 — both workers now acknowledge, report usage, renew and release, with assertions |
+| F-52: 77 env vars, `config.rs` owns 9 | **111** env vars, `config.rs` owns **22** |
+| F-48: ~30.5k twin lines, 81 files | **31,464** lines, **82** files |
+| F-54: 283 routes | **289** routes, still zero `/v*` |
+| F-53: `mcp/server.rs` 7,007 lines | **7,076** lines |
+| Jev: "waitlisted, re-check status" | **Generally available since 2026-09-20** — no waitlist, `POST https://api.typesafe.ai/v1/systemone`, $0.042/M input, output free, $5 starting credit. The spike is unblocked today |
+| D-5 framed as cross-*member* mutation | Also cross-**workspace**: the 11 member mutation tools take `(store, args)` with no `auth`, and the pre-dispatch gate only matches `channel_id`/`thread_id`/`message_id` arms — so a `member_id` arg reaches the store with no workspace check either. Same class as the Cluster-204 artifact hole, one severity band above how it is filed |
+
+### Dispositions
+
+| ID | Disposition | Reason |
+|----|-------------|--------|
+| **D-5** | **adopt — cluster A.1** | Decided by David: full self-scoping, both surfaces, `member:impersonate` as a separate audited capability. Verified sharper than filed (see above) |
+| **F-46** | **adopt — cluster A.2** | Confirmed: `LIMIT ?` bound from a client `i64` with no clamp, `fetch_all`. The repo's own `clamp(1, 500)` convention sits three functions away in the same file (`routes/member.rs:145,169,194`) |
+| **F-47** | **adopt — cluster B.1** | Confirmed: no private-IP/loopback/metadata check on member-registered webhook, slash or federation URLs |
+| **F-49** | **adopt — cluster B.2** | Confirmed: `k8s/base/maidan-server-deployment.yaml:53` probes deep `/health` while helm uses `/health/live`. This is the exact restart-storm bug Cluster 185 fixed in helm; the k8s tree never got it |
+| **F-50** | **adapt — cluster B.3** | Real, but "trust XFF" is a deployment fact, not a bug. Fix = a trusted-proxy-hop count, default 0 (trust the socket), not silently trusting the leftmost hop |
+| **F-56** | **adopt — cluster B.4** | 5 unpinned `:latest` minio/mc pins across `compose.yaml` and `compose.dev.yaml` |
+| **UI P1 ×4** | **adopt — cluster C** | Approvals auto-refresh is the safety one: a human-in-the-loop gate that only a manual Refresh reveals is a missed-SLA generator |
+| **Docs rendering** | **adopt — cluster D** | Mermaid preprocessor, 9 flattened wikilinks, og:image, broken "Suggest an edit". The published site still ships architecture diagrams as code blocks |
+| **Branding §6** | **adopt — cluster D** | Logo locked (Sweep Reach). Favicon, mark SVG, 1200×630 OG card, UI header. Replaces the placeholder wordmark I shipped in #932 |
+| **F-52** | **adapt — after A/B** | 111 env vars is worse than filed and growing. But the fix is not "move them into `config.rs`" — it is *fail loudly on an unknown `MAIDAN_*` var*, which catches the typo class without a 111-field struct |
+| **F-58** | **fold into B.1** | Hand-rolled `host_of` is the same parsing weakness the SSRF guard has to fix anyway |
+| **F-51** | **defer** | One uncached query per authenticated response is real but unmeasured. Measure with the existing loadgen harness before optimising |
+| **F-55** | **defer** | SQLite backup is `cp` of one file while the WAL is checkpointed. Worth a runbook paragraph, not a cluster |
+| **F-57** | **defer** | Thin `maidan-wasi`/`maidan-router` coverage. Genuine, but the WASI surface is still a live stub — test it when it does something |
+| **F-53** | **reject** | Splitting a 6.4k-line inline test module out of `server.rs` moves lines without changing a single behaviour or risk. Cosmetic |
+| **F-48** | **reject for now** | 31k lines of twin store code is the largest single item in the corpus and the least defensible to act on: a shared-layer extraction touches every store method on both backends, and `dialect_parity` is the only thing standing between that refactor and silent divergence. The duplication is a *cost*, not a *defect* — nothing is currently wrong because of it. Revisit when a twin actually drifts |
+| **F-54** | **reject as filed — needs a decision first** | "Add `/v1`" is not the work. The work is deciding what the compatibility promise *is*, pre-1.0, when the repo's own rule is that breaking changes are free. A version prefix without a deprecation policy is decoration. **Maintainer's call** |
+| **F-43** | **pending-maintainer** | Branch protection ("require branches up to date"), a GitHub setting David flips. Not blocking |
+
+### Jev (J-01…J-08)
+
+Status re-checked first, as directed: **no longer waitlisted.** GA since
+2026-09-20 at `POST https://api.typesafe.ai/v1/systemone`, $0.042/M input,
+output free, $5 credit on signup. The posture's first blocker is gone.
+
+| ID | Disposition | Reason |
+|----|-------------|--------|
+| **J-01** land gates | **adopt as the one spike — cluster E, flagged off** | Directed posture, and now unblocked. `Choice(green\|amber\|red)` behind a feature flag, thresholds user-set, measured against our own labelled land-gate decisions before it influences anything |
+| **J-06** event-chain triage | **reject** | Cluster 402 shipped deterministic chain verification. A hash chain either verifies or it does not; interposing a probabilistic triage on a decidable question can only add false confidence. This is the explicit rejection the corpus asked for |
+| J-02, J-03, J-04, J-05, J-07, J-08 | **defer** | All gated on J-01's calibration measurement. J-05 is the strongest of them (firstmate shipped the pattern: model classifies, deterministic code keeps authority) and should be reconsidered first if J-01 measures well |
+
+Caveats C-01…C-08 stand, and C-02 is the one that governs the spike: `confidence`
+is distribution spread, not a proven probability. The spike measures calibration
+on our workload or it tells us nothing.
+
+### Sequencing
+
+Ordered to stay clear of the concurrent agent, which is on Cluster 406
+(`release.yml`, the CLI image, published-image smoke, loopback OIDC).
+
+1. **A — self-scoping + input bounds.** D-5, F-46. Touches `mcp/tools/member.rs`,
+   `routes/{member,message,workspace}.rs`, `maidan-auth`. No overlap.
+2. **B — egress + deploy hardening.** F-47 (+F-58), F-49, F-50, F-56. Touches
+   `webhooks.rs`, `slash_commands.rs`, `federation.rs`, `k8s/base/`,
+   `rate_limit/`, compose. No overlap.
+3. **C — `/ui` P1.** Loading states, approvals auto-refresh, error bodies, empty
+   states. `static/index.html` only. No overlap with anything.
+4. **D — docs rendering + the branding ship-list.** Deliberately last: it is the
+   most likely to collide with in-flight retro and release-docs work.
+5. **E — the J-01 spike**, flag-off, after A–C.
+
 ## Docs & presentation audit dispositions (2026-09-17)
 
 A second, narrower audit looked only at what a newcomer and an integrating agent
