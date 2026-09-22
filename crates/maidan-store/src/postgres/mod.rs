@@ -59,6 +59,7 @@ mod reviews;
 mod scim_users;
 mod secrets;
 mod sessions;
+mod share_tickets;
 mod slack_links;
 mod slash_commands;
 mod spawn;
@@ -2627,6 +2628,56 @@ impl TokenStore for PostgresStore {
         capability: &str,
     ) -> Result<bool, StoreError> {
         tokens::workspace_has_active_capability(&self.pool, workspace_id, capability).await
+    }
+}
+
+#[async_trait]
+impl ShareTicketStore for PostgresStore {
+    async fn create_share_ticket(&self, new: NewShareTicket) -> Result<ShareTicket, StoreError> {
+        share_tickets::create(&self.pool, new).await
+    }
+
+    async fn get_share_ticket(&self, id: ShareTicketId) -> Result<ShareTicket, StoreError> {
+        share_tickets::get(self.read_pool(), id).await
+    }
+
+    async fn list_share_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<ShareTicket>, StoreError> {
+        share_tickets::list(self.read_pool(), workspace_id).await
+    }
+
+    async fn resolve_share_ticket(
+        &self,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<ShareTicket, StoreError> {
+        share_tickets::resolve(self.read_pool(), token_hash, now).await
+    }
+
+    async fn revoke_share_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ShareTicketId,
+    ) -> Result<bool, StoreError> {
+        share_tickets::revoke(&self.pool, workspace_id, id).await
+    }
+
+    async fn list_share_ticket_artifacts(
+        &self,
+        id: ShareTicketId,
+    ) -> Result<Vec<String>, StoreError> {
+        share_tickets::list_artifacts(self.read_pool(), id).await
+    }
+
+    async fn share_ticket_allows_artifact(
+        &self,
+        id: ShareTicketId,
+        sha256: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, StoreError> {
+        share_tickets::allows_artifact(self.read_pool(), id, sha256, now).await
     }
 }
 

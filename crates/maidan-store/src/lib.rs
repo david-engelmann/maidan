@@ -16,6 +16,7 @@ pub mod migrate;
 pub mod outbox;
 pub mod postgres;
 pub mod result_delivery;
+mod share_tickets;
 pub mod sqlite;
 pub mod store;
 pub mod workspace_export;
@@ -69,9 +70,9 @@ pub use store::{
     DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore, GlossaryStore,
     IntegrityStore, MailStore, MemberStore, MentionInboxStore, MessageStore, MetaStore,
     NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore, ProjectorLinkStore,
-    ReferenceStore, ReindexStore, SessionStore, SkillStore, SlashCommandStore, SocialStore,
-    TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore,
-    TokenStore, WebhookStore, WorkspaceStore,
+    ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore, SlashCommandStore,
+    SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore,
+    ThreadStore, TokenStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.
