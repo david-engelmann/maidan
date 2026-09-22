@@ -51,7 +51,7 @@ python examples/langchain_maidan.py
 | [`lease_demo/`](lease_demo/) | **Hero:** cross-language lease loop (Python + TS SDK) | `scripts/lease-demo.sh` (cargo + python3 + node) |
 | [`langchain_maidan.py`](langchain_maidan.py) | Wires Maidan's MCP hero-6 tools into LangChain and checks all six arrived | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
 | [`autogen_maidan.py`](autogen_maidan.py) | The same wiring + check for Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
-| [`rest_maidan.py`](rest_maidan.py) | Plain REST client (one agent turn) | `pip install "httpx>=0.27"` |
+| [`rest_maidan.py`](rest_maidan.py) | Plain REST client (self-seed with `--seed`, then one agent turn) | `pip install "httpx>=0.27"` |
 | [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST) | `pip install "httpx>=0.27"` |
 
 The two framework examples stop at the wiring — they connect, filter the catalog to the
