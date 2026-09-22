@@ -21,6 +21,28 @@ use maidan_store::{
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::RwLock;
 
+/// What this process was asked to be.
+#[derive(Debug, PartialEq, Eq)]
+enum Invocation {
+    /// Become the server (the only invocation that takes no arguments).
+    Serve,
+    /// Probe an already-running server and exit.
+    HealthCheck,
+    /// Something else, which is refused rather than ignored.
+    Unknown(String),
+}
+
+fn classify_args(args: impl Iterator<Item = String>) -> Invocation {
+    let mut invocation = Invocation::Serve;
+    for arg in args {
+        match arg.as_str() {
+            "--health-check" => invocation = Invocation::HealthCheck,
+            other => return Invocation::Unknown(other.to_string()),
+        }
+    }
+    invocation
+}
+
 /// Probe this server's own readiness and exit 0 or 1.
 ///
 /// The runtime image is `gcr.io/distroless/cc-debian12`, which has no shell and
@@ -58,8 +80,19 @@ async fn run_health_check() -> anyhow::Result<()> {
 async fn main() -> anyhow::Result<()> {
     // Before anything is loaded: this invocation talks to an already-running
     // server rather than becoming one.
-    if std::env::args().any(|arg| arg == "--health-check") {
-        return run_health_check().await;
+    //
+    // An unrecognised argument is refused rather than ignored. Ignoring it means
+    // a typo — or a flag this build predates — silently *starts a server*, which
+    // is how a container health check running `maidan-server --health-check`
+    // against an older binary bound the port a second time and reported the
+    // container unhealthy forever.
+    match classify_args(std::env::args().skip(1)) {
+        Invocation::HealthCheck => return run_health_check().await,
+        Invocation::Unknown(arg) => anyhow::bail!(
+            "unrecognised argument `{arg}`. maidan-server takes no arguments \
+             except --health-check; it is configured through the environment."
+        ),
+        Invocation::Serve => {}
     }
 
     let config = Config::from_env().context("load config from env")?;
@@ -803,4 +836,39 @@ async fn main() -> anyhow::Result<()> {
     serve_result?;
     obs_guard.shutdown();
     Ok(())
+}
+
+#[cfg(test)]
+mod invocation_tests {
+    use super::*;
+
+    fn classify(args: &[&str]) -> Invocation {
+        classify_args(args.iter().map(|a| a.to_string()))
+    }
+
+    #[test]
+    fn no_arguments_means_serve() {
+        assert_eq!(classify(&[]), Invocation::Serve);
+    }
+
+    #[test]
+    fn the_health_check_flag_is_recognised() {
+        assert_eq!(classify(&["--health-check"]), Invocation::HealthCheck);
+    }
+
+    /// The case that cost two minutes per container start: a released binary
+    /// that predates `--health-check` ignored it, started a second server, and
+    /// failed on the bound port — so the health check could never pass and the
+    /// container was unhealthy forever.
+    #[test]
+    fn an_unrecognised_argument_is_refused_rather_than_ignored() {
+        assert_eq!(
+            classify(&["--helth-check"]),
+            Invocation::Unknown("--helth-check".to_string())
+        );
+        assert_eq!(
+            classify(&["serve"]),
+            Invocation::Unknown("serve".to_string())
+        );
+    }
 }
