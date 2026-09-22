@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [403.0.0] — 2026-09-17
+
+Post-gate hardening (Phase XXIV). **Budget changes cannot remove caps by
+omission.** Implementation PR #916; close record backfilled under #940. The tag
+remains maintainer-gated.
+
+- REST `PUT /threads/:id/budget` and MCP `set_thread_budget` are total
+  replacements: all four dimensions are required, `null` means uncapped, and
+  an omission returns the names of the missing dimensions.
+- REST `PATCH /threads/:id/budget` and MCP `update_thread_budget` are partial
+  updates: absent leaves a dimension unchanged and explicit `null` clears it.
+- Both stores apply a patch atomically and preserve accumulated usage, avoiding
+  a caller-side read-modify-write race.
+- MCP argument strictness remains intact after the shape change; a regression
+  test proves a misspelled budget dimension is rejected.
+
 ## [402.0.0] — 2026-09-17
 
 Post-gate hardening (Phase XXIV). **The search tap: isolate, resume, schedule.**
