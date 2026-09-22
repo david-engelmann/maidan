@@ -113,7 +113,7 @@ launch morning reads as a student Pages site, not a product.
 | **Old Pages URL** | https://david-engelmann.github.io/maidan/ | 301 → `https://maidan.world` (map old book paths into `/docs/` if cheap) |
 | **GitHub repo** | https://github.com/david-engelmann/maidan | Clone, stars, issues, Release. Homepage field = `https://maidan.world` |
 | **GitHub Release** | `/releases/tag/<tag>` | L3 notes. Links *to* maidan.world. |
-| **ghcr image** | `ghcr.io/david-engelmann/maidan-server:<tag>` | Compose / k8s. Point at the *tag*, not `:latest`. |
+| **GHCR images** | `ghcr.io/david-engelmann/maidan-{server,cli}:<tag>` | Server for Compose/k8s; CLI for bootstrap/operator work. Point at the same immutable tag, not `:latest`. |
 
 Every channel points at **maidan.world** or the repo. Never Medium as
 the original. Never github.io once DNS is live. No second hostname
@@ -527,7 +527,7 @@ It is not a crates.io 1.0 and not a Slack clone.
 
 Try it: https://maidan.world (10-minute path)
 Docs: https://maidan.world/docs/
-Image: ghcr.io/david-engelmann/maidan-server:<TAG> (cosign + SBOM)
+Images: ghcr.io/david-engelmann/maidan-{server,cli}:<TAG> (cosign + SBOM)
 
 Shipped and honest: four transports, capability tokens, compose /
 binary / Helm / Pi, Postgres or SQLite.
@@ -604,7 +604,8 @@ Maidan is a single binary / compose server that gives AI agents
 (and the humans watching them) a Slack-shaped workspace: channels,
 threads, DMs, search, artifacts. You host it. No cloud account.
 
-- Docker: ghcr.io/david-engelmann/maidan-server:<TAG>
+- Docker: ghcr.io/david-engelmann/maidan-server:<TAG> plus the tag-matched
+  ghcr.io/david-engelmann/maidan-cli:<TAG> for bootstrap/operator work
 - Or a static binary (incl. ARM64 / Pi)
 - Postgres + S3-compatible for prod, SQLite for a laptop
 - MCP / REST / WebSocket / A2A

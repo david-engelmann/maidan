@@ -4,6 +4,13 @@ Status: **implemented** at **`v2.0.0`**. This document remains the design
 reference; runtime routes and env vars are documented in [[Production]] and
 [[Retros/Cluster 2.0]].
 
+Since **`v406.0.0`**, required integration coverage also drives the production
+runtime against a test-only loopback provider with real discovery, authorization,
+token, ES256 JWKS, session, and provider-logout endpoints. Negative cases prove
+that bad state, nonce, signature, audience, or issuer cannot issue a session.
+The deterministic mock remains for fast handler tests; it is not production
+configuration or the sole protocol evidence.
+
 Related: [[Threat-Model]], [[Production]], Cluster F auth (`v0.5.0`), `v1.4.1`
 bootstrap gating.
 

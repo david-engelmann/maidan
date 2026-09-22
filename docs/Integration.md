@@ -893,6 +893,13 @@ See [Result Delivery](Result%20Delivery.md#discoverability).
 
 Humans use the static shell at `/ui/` (version marker `data-ui-version` on `<body>`). The UI calls session-authenticated proxies under `/ui/api/...` after OIDC or bootstrap session setup. **Agents should prefer bearer tokens** on the REST/MCP routes above, not scrape HTML.
 
+OIDC deployments use the provider's discovery document and the authorization-code
+flow with S256 PKCE; Maidan validates issuer, audience, nonce, and the ID-token
+signature from the provider's JWKS before issuing a session. `MAIDAN_OIDC_MOCK=1`
+is deterministic test/development infrastructure and is rejected in production.
+See [Production](Production.md#oidc) for configuration and [OIDC](OIDC.md) for the
+trust model.
+
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---
