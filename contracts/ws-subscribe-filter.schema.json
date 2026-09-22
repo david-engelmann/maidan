@@ -1,7 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://maidan.dev/schemas/ws-subscribe-filter-v3.json",
+  "$id": "https://maidan.dev/schemas/ws-subscribe-filter.json",
   "title": "Maidan WebSocket subscribe filter",
+  "description": "Filter accepted by GET /ws/subscribe. The caller must hold the event:subscribe capability.",
+  "x-maidan-required-capability": "event:subscribe",
+  "x-maidan-event-kinds-contract": "event-kinds.json",
   "type": "object",
   "properties": {
     "workspace_id": {
@@ -20,7 +23,7 @@
     "kinds": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "EventKind filter; unknown kinds should be ignored by clients (forward-compat)."
+      "description": "EventKind filter. Current values are published in event-kinds.json; unknown kinds should be ignored by clients for forward compatibility."
     }
   },
   "additionalProperties": false
