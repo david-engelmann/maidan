@@ -234,9 +234,19 @@ docker run -p 8080:8080 \
   ghcr.io/david-engelmann/maidan-server:v405.0.0     # pin a tag, not :latest
 ```
 
-The image is a single distroless binary (no shell, no bundled CLI), so seed the first admin
-token with `maidan init` run against your database — from a downloaded release binary or a
-one-shot job — then mint per-agent tokens from it (see
+The server image is a single distroless binary (no shell, no bundled CLI). Seed the first
+admin token with the separately published, tag-matched CLI image (or a downloaded release
+binary) against the same database:
+
+```sh
+MAIDAN_TAG=v406.0.0
+MAIDAN_NETWORK=your_database_network
+docker run --rm --network "$MAIDAN_NETWORK" \
+  -e DATABASE_URL="postgres://…" \
+  "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace my-team
+```
+
+Then mint per-agent tokens from the returned admin credential (see
 [docs/Production.md](docs/Production.md#maidan-init-recommended)). Verify the image's cosign
 signature before trusting a tag ([SECURITY.md](SECURITY.md#verifying-a-release)). For a
 zero-setup *local* try-it with the token flow bundled, use the quickstart above.

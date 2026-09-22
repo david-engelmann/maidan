@@ -57,12 +57,15 @@ Every release is signed keyless with [cosign](https://github.com/sigstore/cosign
 the build job's GitHub OIDC identity — no private key, each signature self-verifiable
 against the Sigstore transparency log. Verify before you trust a tag.
 
-**Container image** (signed by immutable digest):
+**Container images** (server, operator CLI, and Postgres; each signed by
+immutable digest):
 
 ```sh
-cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
-  --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+for image in maidan-server maidan-cli maidan-postgres; do
+  cosign verify "ghcr.io/david-engelmann/${image}:<tag>" \
+    --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+done
 ```
 
 **Release binary + SBOM** (each artifact ships a `.cosign.bundle` = signature + cert +

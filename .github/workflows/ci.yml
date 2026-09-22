@@ -223,6 +223,18 @@ jobs:
         run: |
           cargo build -p maidan-server --release --no-default-features
           cargo test -p maidan-server --no-default-features --test bootstrap_absent_e2e
+      - name: build and run the release CLI image
+        env:
+          MAIDAN_VERSION: ci
+        run: |
+          cargo build -p maidan-cli --release
+          mkdir -p target/cli-image
+          cp target/release/maidan target/cli-image/maidan
+          cp docker/Dockerfile.cli target/cli-image/Dockerfile
+          docker build --build-arg MAIDAN_VERSION=ci -t maidan-cli:ci target/cli-image
+          test "$(docker image inspect maidan-cli:ci --format '{{.Config.User}}')" = "nonroot:nonroot"
+          test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}')" = "ci"
+          test "$(docker run --rm maidan-cli:ci --version)" = "maidan ci"
 
   coverage:
     name: coverage (llvm-cov)

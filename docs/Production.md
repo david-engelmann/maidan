@@ -121,13 +121,28 @@ deployment needs no unauthenticated HTTP routes and no `AUTH_DISABLED`:
 DATABASE_URL=postgres://… maidan init --workspace my-team --admin-handle david
 ```
 
+For containerized deployments, the separately published CLI image runs the
+same release binary without adding a shell or operator tooling to the
+distroless server image. Put it on a network that can reach the database and
+pin it to the server's exact tag:
+
+```sh
+MAIDAN_TAG=v406.0.0
+MAIDAN_NETWORK=your_database_network
+docker run --rm --network "$MAIDAN_NETWORK" \
+  -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
+  "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" \
+  init --workspace my-team --admin-handle david
+```
+
 It runs migrations, creates the initial workspace and an admin member, mints an
 all-capabilities bearer token, and prints that token **once** (to stdout; save it).
 It **refuses if the database already has a workspace**, so it can never clobber an
 existing deployment or mint a second root token. Use the printed token to mint
 narrower per-agent tokens via the API. The production image can stay
 bootstrap-stripped (`--no-default-features`), since `init` writes through the store
-rather than the bootstrap HTTP routes.
+rather than the bootstrap HTTP routes. The CLI image is a one-shot operator
+tool, not a long-running sidecar.
 
 ### HTTP bootstrap (alternative)
 

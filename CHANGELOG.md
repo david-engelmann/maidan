@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 406 — pending v406.0.0
+
+Post-gate hardening (Phase XXIV). **Wave 4 row #37: published boot proof and
+real loopback OIDC.** Work in progress under #956.
+
+- **406.1** publishes a separate non-root, multi-arch `maidan-cli` image from
+  the exact architecture-matched release bundle. Server and CLI keep separate
+  distroless entrypoints; both tags share keyless cosign signing and report-only
+  Trivy scanning. The CLI now reports the injected release tag instead of the
+  workspace's `0.0.0`; required CI builds and runs the runtime image and asserts
+  that version before a release can consume the Dockerfile.
+
 ## [405.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 2 row #26: time-boxed
