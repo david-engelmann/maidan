@@ -3,7 +3,7 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
-## v403.0.0 — budget changes cannot remove caps by omission
+## Cluster 403 (pending v403.0.0) — budget changes cannot remove caps by omission
 
 Cluster 403 shipped in #916; its close record was backfilled under #940. The
 tag remains maintainer-gated.
