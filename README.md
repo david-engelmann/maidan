@@ -231,7 +231,7 @@ without cloning the repo:
 ```sh
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
-  ghcr.io/david-engelmann/maidan-server:v402.0.0     # pin a tag, not :latest
+  ghcr.io/david-engelmann/maidan-server:v404.0.0     # pin a tag, not :latest
 ```
 
 The image is a single distroless binary (no shell, no bundled CLI), so seed the first admin
