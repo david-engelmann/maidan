@@ -45,7 +45,7 @@ curl -X POST "$MAIDAN/artifacts?kind=attachment" \
 ```
 
 This needs `artifact:upload`. The upload records a per-workspace access link
-(Cluster 204) — that link, not the bytes, is what makes the module yours.
+ — that link, not the bytes, is what makes the module yours.
 Artifacts are content-addressed and deduplicated across the whole instance, so
 two workspaces uploading identical bytes each get their own link to one blob.
 

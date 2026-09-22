@@ -4,7 +4,7 @@ How Maidan keeps dependencies current and bounds duplicate versions, and what's
 blocked upstream. Enforced by `cargo deny check` in the `lint` CI job
 (config: [`deny.toml`](../deny.toml)).
 
-## Duplicate-version policy (Cluster 119)
+## Duplicate-version policy
 
 `[bans] multiple-versions = "deny"` — a **new** duplicate major fails CI. Our
 first-party crates therefore can't silently introduce one. The unavoidable
@@ -34,11 +34,11 @@ unnecessary, `cargo deny check` flags it ("unnecessary skip"); remove it.
 | `base64` | **0.22** (our crates) | 0.21 from openidconnect v4 | Clears with **openidconnect v5** (see below). |
 | `hmac` | 0.12 (server) | 0.12 **and** 0.13, both AWS-internal | Inside the AWS SDK crypto stack (`aws-sigv4`/`p256`/`hkdf`); not ours to collapse. |
 
-## RustSec advisory-DB findings cleared in Cluster 143 (upgrade-away)
+## RustSec advisory-DB findings cleared (upgrade-away)
 
 A `cargo-deny` **advisories** gate is a function of *time*, not just the diff —
 new advisories (and crate yanks) turn `main` red with no code change. Three
-had accumulated by Cluster 143; all fixed by lockfile-only bumps (no
+had accumulated; all fixed by lockfile-only bumps (no
 `Cargo.toml` change, no `[advisories] ignore` added):
 
 | Advisory | Crate | Bump | Note |
@@ -50,7 +50,7 @@ had accumulated by Cluster 143; all fixed by lockfile-only bumps (no
 Distinct from the standing `RUSTSEC-2023-0071` (`rsa`) ignore below — those are
 clean upgrades, not exceptions.
 
-## RUSTSEC-2026-0285 — rustls 0.23.45 (Cluster 388)
+## RUSTSEC-2026-0285 — rustls 0.23.45
 
 TLS 1.3 handshake messages accepted across encryption-level boundaries
 in rustls **0.23.13..=0.23.44**. Lockfile bump **0.23.40 → 0.23.45**
