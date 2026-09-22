@@ -3,7 +3,8 @@
 //! resolves an event to the *members* it concerns and writes one
 //! `maidan_notifications` row each — the per-recipient delivery layer the
 //! unified inbox reads. Routes @mentions and, for followers, new messages in a
-//! followed channel/thread, honoring each recipient's mute preferences.
+//! followed channel/thread plus occupancy-changing lifecycle events for a
+//! followed member, honoring each recipient's access and mute preferences.
 //!
 //! Every server replica runs this consumer, so the same event reaches each; the
 //! write goes through `create_notification_if_absent` (unique on `(member_id,
@@ -11,10 +12,10 @@
 //! `MentionRecorded` and a `MessagePosted` are distinct events (distinct
 //! `log_id`s), so a member mentioned in a channel they *also* follow gets both
 //! a mention notification and a message-posted one — per-kind mute
-//! (`message_posted`) is the control for follow-noise. A `ThreadResultSet` is
-//! not a per-recipient notification: it delegates to
-//! [`crate::result_delivery`], which arms one delivery row per `deliver_to`
-//! target, and to the critical→`request_changes` adapter (the close-gate).
+//! (`message_posted`) is the control for follow-noise. A `ThreadResultSet`
+//! additionally delegates to [`crate::result_delivery`], which arms one
+//! delivery row per `deliver_to` target, and to the critical→`request_changes`
+//! adapter (the close-gate).
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -159,10 +160,10 @@ async fn consume_bus(
 
 /// Resolve an event to the members it concerns and write a per-recipient
 /// notification row for each — `MentionRecorded` → the mentioned member;
-/// `MessagePosted` → the followers of its channel/thread minus the author Each
+/// `MessagePosted` → the followers of its channel/thread minus the author;
+/// lifecycle events → access-eligible followers of the affected member. Each
 /// write is mute-checked and deduped on `(member_id, source_log_id)`, so event
-/// replays and multiple replicas don't double-notify. A `ThreadResultSet` is
-/// the result-delivery trigger, not an inbox row.
+/// replays and multiple replicas don't double-notify.
 pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result<(), String> {
     match event {
         Event::MentionRecorded {
@@ -258,17 +259,129 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             // notify them so they can re-steer or reassign. The dead holder is
             // the actor. Un-owned threads notify no one (the occupancy view /
             // `wait_for_claim_expired` already surface expiry).
+            let mut recipients = HashSet::new();
             if let Some(owner_id) = thread.owner_id {
+                recipients.insert(owner_id);
+            }
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                vec![*member_id],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
                 notify(
                     state,
                     *workspace_id,
-                    owner_id,
+                    recipient_id,
                     EventKind::ClaimExpired,
                     log_id,
                     Some(*channel_id),
                     Some(*thread_id),
                     None,
                     Some(*member_id),
+                )
+                .await?;
+            }
+        }
+        Event::ClaimFailed {
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            ..
+        } => {
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                vec![*member_id],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ClaimFailed,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*member_id),
+                )
+                .await?;
+            }
+        }
+        Event::ThreadAssignmentChanged {
+            workspace_id,
+            channel_id,
+            thread_id,
+            actor_id,
+            previous_assignee_id,
+            assignee_id,
+            ..
+        } => {
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                previous_assignee_id
+                    .iter()
+                    .chain(assignee_id.iter())
+                    .copied()
+                    .collect(),
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ThreadAssignmentChanged,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*actor_id),
+                )
+                .await?;
+            }
+        }
+        Event::ThreadStateChanged {
+            workspace_id,
+            channel_id,
+            thread_id,
+            actor_id,
+            thread,
+            ..
+        } => {
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                thread.assignee_id.into_iter().collect(),
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ThreadStateChanged,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*actor_id),
                 )
                 .await?;
             }
@@ -313,7 +426,9 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
         }
         Event::ThreadResultSet {
             workspace_id,
+            channel_id,
             thread_id,
+            produced_by,
             ..
         } => {
             // A structured result may be aimed at an external surface. Fetch →
@@ -331,6 +446,29 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                     "critical review adapter failed; land-gate not armed"
                 );
             }
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                *thread_id,
+                vec![*produced_by],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ThreadResultSet,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*produced_by),
+                )
+                .await?;
+            }
         }
         Event::WaitTimedOut {
             workspace_id,
@@ -343,11 +481,23 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             // durable owner (the accountable party) if one is set.
             // Mute-honoring via `notify`; no member actor (the timer fired).
             if let Ok(thread) = state.store.get_thread(*thread_id).await {
+                let mut recipients = HashSet::new();
                 if let Some(owner_id) = thread.owner_id {
+                    recipients.insert(owner_id);
+                }
+                add_accessible_member_followers(
+                    state,
+                    *workspace_id,
+                    *thread_id,
+                    thread.assignee_id.into_iter().collect(),
+                    &mut recipients,
+                )
+                .await?;
+                for recipient_id in recipients {
                     notify(
                         state,
                         *workspace_id,
-                        owner_id,
+                        recipient_id,
                         EventKind::WaitTimedOut,
                         log_id,
                         Some(*channel_id),
@@ -360,6 +510,37 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// Add the followers of `followed_ids` who can still read `thread_id`.
+///
+/// A follow edge is workspace-scoped when it is created, but channel and DM
+/// membership can change later. Re-checking thread access at delivery time is
+/// what prevents a durable member follow from becoming a private-channel leak.
+async fn add_accessible_member_followers(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    followed_ids: Vec<MemberId>,
+    recipients: &mut HashSet<MemberId>,
+) -> Result<(), String> {
+    for followed_id in followed_ids {
+        for follower_id in state
+            .store
+            .member_followers(followed_id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            let auth = maidan_auth::AuthContext::from_session(follower_id, workspace_id, vec![]);
+            if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                recipients.insert(follower_id);
+            }
+        }
     }
     Ok(())
 }

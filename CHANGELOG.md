@@ -13,6 +13,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `GET /members/:id/occupancy` / MCP `get_member_occupancy` combines ephemeral
   online/away/offline presence with assigned non-terminal threads, filtered
   through the caller's thread access so private-channel work does not leak.
+  Followers receive access-checked, mute-aware inbox notifications when that
+  member is assigned, changes task state, produces a result, or becomes stuck.
   Presence remains outside `maidan_events` and the database.
 
 ### Cluster 403 — pending v403.0.0

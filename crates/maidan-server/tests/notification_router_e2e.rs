@@ -284,6 +284,240 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
     );
 }
 
+#[tokio::test]
+async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_mutes() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(64)),
+        search,
+    );
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "n".into() })
+        .await
+        .unwrap();
+    let worker = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "worker".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let manager = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "manager".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let actor = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "actor".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    store.follow_member(manager.id, worker.id).await.unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("task".into()),
+        })
+        .await
+        .unwrap();
+    let (thread, _) = store
+        .assign_thread_with_event(thread.id, worker.id, actor.id, None)
+        .await
+        .unwrap();
+
+    let events = [
+        Event::ThreadAssignmentChanged {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            actor_id: actor.id,
+            previous_assignee_id: None,
+            assignee_id: Some(worker.id),
+            note: None,
+            thread: thread.clone(),
+        },
+        Event::ThreadStateChanged {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            actor_id: actor.id,
+            from_state: maidan_types::ThreadState::Open,
+            to_state: maidan_types::ThreadState::InReview,
+            thread: thread.clone(),
+        },
+        Event::ThreadResultSet {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            produced_by: worker.id,
+        },
+        Event::ClaimFailed {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: worker.id,
+            reason: "tokens".into(),
+            thread: thread.clone(),
+        },
+        Event::ClaimExpired {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: worker.id,
+            thread: thread.clone(),
+        },
+        Event::WaitTimedOut {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            policy: "notify".into(),
+            reason: Some("blocked".into()),
+        },
+    ];
+    for (offset, event) in events.iter().enumerate() {
+        notification_router::route_event(&state, 100 + offset as i64, event)
+            .await
+            .unwrap();
+    }
+
+    let notes = store
+        .list_notifications(manager.id, false, 20)
+        .await
+        .unwrap();
+    let kinds: std::collections::HashSet<_> = notes.iter().map(|n| n.kind).collect();
+    assert_eq!(
+        kinds,
+        std::collections::HashSet::from([
+            EventKind::ThreadAssignmentChanged,
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadResultSet,
+            EventKind::ClaimFailed,
+            EventKind::ClaimExpired,
+            EventKind::WaitTimedOut,
+        ])
+    );
+
+    store
+        .set_notification_pref(manager.id, EventKind::ClaimFailed, true)
+        .await
+        .unwrap();
+    notification_router::route_event(&state, 200, &events[3])
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_notifications(manager.id, false, 20)
+            .await
+            .unwrap()
+            .len(),
+        6,
+        "member-follow lifecycle notifications honor per-kind mutes"
+    );
+
+    let excluded = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "excluded".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    store.follow_member(excluded.id, worker.id).await.unwrap();
+    let private = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "private-work".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    store
+        .add_channel_member(
+            private.id,
+            manager.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
+        .await
+        .unwrap();
+    let private_thread = store
+        .create_thread(NewThread {
+            channel_id: private.id,
+            parent_thread_id: None,
+            title: Some("secret".into()),
+        })
+        .await
+        .unwrap();
+    let result = Event::ThreadResultSet {
+        occurred_at: Utc::now(),
+        workspace_id: ws.id,
+        channel_id: private.id,
+        thread_id: private_thread.id,
+        produced_by: worker.id,
+    };
+    notification_router::route_event(&state, 300, &result)
+        .await
+        .unwrap();
+    assert!(store
+        .list_notifications(excluded.id, false, 20)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .list_notifications(manager.id, false, 20)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|n| n.source_log_id == 300)
+            .count(),
+        1,
+        "a private-channel member receives the followed member's result"
+    );
+}
+
 /// A recording transport that captures what would be emailed.
 struct RecordingMailer {
     sent: std::sync::Mutex<Vec<(String, String)>>,
