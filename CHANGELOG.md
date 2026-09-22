@@ -7,11 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [403.0.0] — 2026-09-17
+### Cluster 403 — pending v403.0.0
 
 Post-gate hardening (Phase XXIV). **Budget changes cannot remove caps by
-omission.** Implementation PR #916; close record backfilled under #940. The tag
-remains maintainer-gated.
+omission.** Implementation PR #916; close record backfilled under #940. These
+changes remain unreleased until the maintainer cuts the tag.
 
 - REST `PUT /threads/:id/budget` and MCP `set_thread_budget` are total
   replacements: all four dimensions are required, `null` means uncapped, and
