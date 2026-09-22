@@ -141,3 +141,6 @@ docs/_*
 # External audit working corpus — reference material, not repo content.
 /maidan-audit-corpus/
 /maidan-docs-audit-corpus/
+
+# Third external audit corpus — advisory research, not repo content.
+/maidan-full-audit-2026-09-21/
