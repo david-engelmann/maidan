@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ChannelFollow, ChannelId, MemberId, ThreadFollow, ThreadId};
+use maidan_types::{ChannelFollow, ChannelId, MemberFollow, MemberId, ThreadFollow, ThreadId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -133,6 +133,77 @@ pub async fn thread_followers(
     Ok(rows
         .iter()
         .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
+        .collect())
+}
+
+/// Follow another member's occupancy. Idempotent. Same-workspace and self-follow
+/// policy are enforced at the server boundary; the schema rejects self-edges as
+/// a final invariant.
+pub async fn follow_member(
+    pool: &PgPool,
+    follower_id: MemberId,
+    followed_id: MemberId,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_member_follows (follower_id, followed_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(follower_id.0)
+    .bind(followed_id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn unfollow_member(
+    pool: &PgPool,
+    follower_id: MemberId,
+    followed_id: MemberId,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_member_follows WHERE follower_id = $1 AND followed_id = $2",
+    )
+    .bind(follower_id.0)
+    .bind(followed_id.0)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+pub async fn list_member_follows(
+    pool: &PgPool,
+    follower_id: MemberId,
+) -> Result<Vec<MemberFollow>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT follower_id, followed_id, created_at FROM maidan_member_follows
+         WHERE follower_id = $1 ORDER BY created_at DESC, followed_id",
+    )
+    .bind(follower_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberFollow {
+            follower_id: MemberId(r.get::<Uuid, _>("follower_id")),
+            followed_id: MemberId(r.get::<Uuid, _>("followed_id")),
+            created_at: r.get::<DateTime<Utc>, _>("created_at"),
+        })
+        .collect())
+}
+
+pub async fn member_followers(
+    pool: &PgPool,
+    followed_id: MemberId,
+) -> Result<Vec<MemberId>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT follower_id FROM maidan_member_follows WHERE followed_id = $1 ORDER BY follower_id",
+    )
+    .bind(followed_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<Uuid, _>("follower_id")))
         .collect())
 }
 

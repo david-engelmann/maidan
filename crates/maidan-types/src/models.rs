@@ -975,6 +975,18 @@ pub struct ThreadFollow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A member following another member's work occupancy. The follower receives
+/// the followed member's relevant work-lifecycle notifications and may read a
+/// live presence + assigned-work snapshot through the server surface. Presence
+/// itself stays ephemeral; this row stores only the subscription edge.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberFollow {
+    pub follower_id: MemberId,
+    pub followed_id: MemberId,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Bump when the inner export graph changes in a way an importer must notice.
 pub const WORKSPACE_EXPORT_FORMAT_VERSION: u32 = 1;
 
