@@ -22,6 +22,11 @@ real loopback OIDC.** Work in progress under #956.
   published images. The CLI initializes a fresh Postgres database, the server
   reports the exact tag healthy, the once-returned bearer succeeds on `/me`,
   and an anonymous request is rejected. No source-built substitute can pass.
+- **406.3** adds a real loopback OIDC provider to integration tests. Discovery,
+  authorization code + S256 PKCE, token exchange, ES256 JWKS verification,
+  member provisioning, session creation, and provider logout all traverse the
+  production path; bad state, nonce, signature, audience, and issuer inputs are
+  each rejected without a session cookie.
 
 ## [405.0.0] — 2026-09-22
 

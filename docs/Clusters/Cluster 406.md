@@ -23,7 +23,7 @@
 |-------|----|--------|
 | 406.1 | current | Published CLI runtime image, release provenance, and operator docs |
 | 406.2 | current | Post-publication GHCR server + CLI boot/init/auth smoke |
-| 406.3 | planned | Real loopback OIDC discovery/code/token/JWKS/session e2e |
+| 406.3 | current | Real loopback OIDC discovery/code/token/JWKS/session e2e |
 | 406.close | planned | Ledgers, executable evidence, and retrospective |
 
 ## Non-goals
