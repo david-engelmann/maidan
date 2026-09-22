@@ -1,4 +1,4 @@
-//! Subscription/follows: follow/unfollow a channel or thread, list a member's
+//! Subscription/follows: follow/unfollow a channel, thread, or member; list a member's
 //! follows, and the router's follower-set queries. Both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -137,6 +137,44 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("tf2")
         .is_empty());
+
+    // Member occupancy follows are a third, independent subscription edge.
+    store.follow_member(a.id, b.id).await.expect("a follows b");
+    store
+        .follow_member(a.id, b.id)
+        .await
+        .expect("member follow idempotent");
+    let follows = store
+        .list_member_follows(a.id)
+        .await
+        .expect("list member follows");
+    assert_eq!(follows.len(), 1);
+    assert_eq!(follows[0].follower_id, a.id);
+    assert_eq!(follows[0].followed_id, b.id);
+    assert_eq!(
+        store
+            .member_followers(b.id)
+            .await
+            .expect("member followers"),
+        vec![a.id]
+    );
+    assert!(store
+        .unfollow_member(a.id, b.id)
+        .await
+        .expect("unfollow member"));
+    assert!(!store
+        .unfollow_member(a.id, b.id)
+        .await
+        .expect("unfollow member again"));
+    assert!(store
+        .member_followers(b.id)
+        .await
+        .expect("member followers empty")
+        .is_empty());
+    assert!(
+        store.follow_member(a.id, a.id).await.is_err(),
+        "the schema rejects a self-follow even below the server policy boundary"
+    );
 
     // Leaf mute — independent of follows.
     assert!(!store

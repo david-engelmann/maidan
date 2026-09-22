@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ChannelFollow, ChannelId, MemberId, ThreadFollow, ThreadId};
+use maidan_types::{ChannelFollow, ChannelId, MemberFollow, MemberId, ThreadFollow, ThreadId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -142,6 +142,74 @@ pub async fn thread_followers(
     Ok(rows
         .iter()
         .map(|r| MemberId(r.get::<Uuid, _>("member_id")))
+        .collect())
+}
+
+pub async fn follow_member(
+    pool: &SqlitePool,
+    follower_id: MemberId,
+    followed_id: MemberId,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_member_follows (follower_id, followed_id)
+         VALUES (?, ?) ON CONFLICT DO NOTHING",
+    )
+    .bind(follower_id.0)
+    .bind(followed_id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn unfollow_member(
+    pool: &SqlitePool,
+    follower_id: MemberId,
+    followed_id: MemberId,
+) -> Result<bool, StoreError> {
+    let res =
+        sqlx::query("DELETE FROM maidan_member_follows WHERE follower_id = ? AND followed_id = ?")
+            .bind(follower_id.0)
+            .bind(followed_id.0)
+            .execute(pool)
+            .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+pub async fn list_member_follows(
+    pool: &SqlitePool,
+    follower_id: MemberId,
+) -> Result<Vec<MemberFollow>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT follower_id, followed_id, created_at FROM maidan_member_follows
+         WHERE follower_id = ? ORDER BY datetime(created_at) DESC, followed_id",
+    )
+    .bind(follower_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|r| {
+            Ok(MemberFollow {
+                follower_id: MemberId(r.get::<Uuid, _>("follower_id")),
+                followed_id: MemberId(r.get::<Uuid, _>("followed_id")),
+                created_at: r.get::<DateTime<Utc>, _>("created_at"),
+            })
+        })
+        .collect()
+}
+
+pub async fn member_followers(
+    pool: &SqlitePool,
+    followed_id: MemberId,
+) -> Result<Vec<MemberId>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT follower_id FROM maidan_member_follows WHERE followed_id = ? ORDER BY follower_id",
+    )
+    .bind(followed_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| MemberId(r.get::<Uuid, _>("follower_id")))
         .collect())
 }
 

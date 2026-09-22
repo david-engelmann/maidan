@@ -857,6 +857,29 @@ impl FollowStore for PostgresStore {
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError> {
         follows::thread_followers(&self.pool, thread_id).await
     }
+    async fn follow_member(
+        &self,
+        follower_id: MemberId,
+        followed_id: MemberId,
+    ) -> Result<(), StoreError> {
+        follows::follow_member(&self.pool, follower_id, followed_id).await
+    }
+    async fn unfollow_member(
+        &self,
+        follower_id: MemberId,
+        followed_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        follows::unfollow_member(&self.pool, follower_id, followed_id).await
+    }
+    async fn list_member_follows(
+        &self,
+        follower_id: MemberId,
+    ) -> Result<Vec<MemberFollow>, StoreError> {
+        follows::list_member_follows(self.read_pool(), follower_id).await
+    }
+    async fn member_followers(&self, followed_id: MemberId) -> Result<Vec<MemberId>, StoreError> {
+        follows::member_followers(self.read_pool(), followed_id).await
+    }
     async fn mute_thread(
         &self,
         member_id: MemberId,

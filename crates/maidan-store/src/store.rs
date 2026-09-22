@@ -491,7 +491,7 @@ pub trait NotificationStore: Send + Sync {
 
 #[async_trait]
 pub trait FollowStore: Send + Sync {
-    /// Subscription / follows: a member follows a channel or thread to be
+    /// Subscription / follows: a member follows a channel, thread, or member to be
     /// notified of activity there even without a mention. `follow_*` is
     /// idempotent; `unfollow_*` returns `true` when a row was removed; `list_*`
     /// is a member's follows; `*_followers` is the router's fan-out set. No
@@ -526,6 +526,21 @@ pub trait FollowStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<Vec<ThreadFollow>, StoreError>;
     async fn thread_followers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+    async fn follow_member(
+        &self,
+        follower_id: MemberId,
+        followed_id: MemberId,
+    ) -> Result<(), StoreError>;
+    async fn unfollow_member(
+        &self,
+        follower_id: MemberId,
+        followed_id: MemberId,
+    ) -> Result<bool, StoreError>;
+    async fn list_member_follows(
+        &self,
+        follower_id: MemberId,
+    ) -> Result<Vec<MemberFollow>, StoreError>;
+    async fn member_followers(&self, followed_id: MemberId) -> Result<Vec<MemberId>, StoreError>;
 
     /// Mute a specific thread for a member. Idempotent; the notification router
     /// suppresses notifications about a muted thread.
