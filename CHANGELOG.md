@@ -18,6 +18,10 @@ real loopback OIDC.** Work in progress under #956.
   Trivy scanning. The CLI now reports the injected release tag instead of the
   workspace's `0.0.0`; required CI builds and runs the runtime image and asserts
   that version before a release can consume the Dockerfile.
+- **406.2** blocks GitHub Release creation on a pull-by-tag smoke of all three
+  published images. The CLI initializes a fresh Postgres database, the server
+  reports the exact tag healthy, the once-returned bearer succeeds on `/me`,
+  and an anonymous request is rejected. No source-built substitute can pass.
 
 ## [405.0.0] — 2026-09-22
 
