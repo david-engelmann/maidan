@@ -1257,6 +1257,11 @@ mechanism is still open), F-07 as reframed (generalize the MCP
 `required_capability()` pattern to HTTP rather than router-level binding).
 No action: F-22/23/29 (reframed or resolved).
 
+- **F-09 — adopted, fixed (#937).** The WebSocket subscribe schema now names
+  its `event:subscribe` gate, links machine-readably to `event-kinds.json`, and
+  uses a stable `$id`; the contract test pins all three without closing the
+  forward-compatible event-kind string set.
+
 **Two pulled forward out of P2:**
 
 - **F-34** — the hard-coded `include_str!` migration list. Filed P2; it nearly
