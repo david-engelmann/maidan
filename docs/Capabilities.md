@@ -3,6 +3,17 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v406.0.0 — published boot proof and real loopback OIDC
+
+Three implementation PRs (#957/#961/#959) close Wave 4 row #37. The release
+path now proves the artifacts consumers pull rather than source-built stand-ins.
+
+| Change | Where |
+|--------|-------|
+| **Exact-bundle CLI image:** a separate non-root, multi-arch `maidan-cli` image is assembled from the architecture-matched release archive. Its injected tag is the CLI version; server and CLI images are signed and scanned together. | `docker/Dockerfile.cli`, `.github/workflows/release.yml`, `crates/maidan-cli/build.rs` |
+| **Published-artifact release gate:** after all three GHCR images publish, an isolated consumer smoke pulls immutable tag names, initializes fresh Postgres through the CLI image, boots the server image, checks the exact health version, authenticates with the once-returned bearer, and rejects an anonymous request. GitHub Release creation waits for this gate. | `scripts/release-image-smoke.sh`, `.github/workflows/release.yml` |
+| **Production OIDC path under real cryptography:** a test-only loopback provider exercises discovery, authorization code + S256 PKCE, token exchange, ES256 JWKS validation, member/session creation, and provider logout through `OidcRuntime`. Bad state, nonce, signature, audience, and issuer fail without issuing a session cookie. | `crates/maidan-server/tests/oidc_loopback_e2e.rs` |
+
 ## v405.0.0 — time-boxed cross-organization sharing
 
 Three implementation PRs (#952/#953/#954) close Wave 2 row #26 without

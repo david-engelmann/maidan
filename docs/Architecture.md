@@ -81,7 +81,7 @@ flowchart LR
 | `maidan-mcp`           | Model Context Protocol server surface + tool catalog. |
 | `maidan-a2a`           | Agent-to-Agent transport (JSON-RPC/REST/gRPC types).  |
 | `maidan-observability` | Tracing + OpenTelemetry setup.                        |
-| `maidan-cli`           | Operator CLI (incl. `maidan init` first-admin bootstrap). |
+| `maidan-cli`           | Operator CLI (incl. `maidan init` first-admin bootstrap), also published as its own non-root multi-arch image. |
 | `maidan-server`        | HTTP/WebSocket/gRPC binary + background workers.      |
 
 ## Data layering
@@ -185,7 +185,10 @@ flowchart LR
   and fails loud (`RebuildRequired`) on a gap or chain break rather than
   serving a silently diverged index.
 - **Auth & RBAC.** Bearer tokens carry an explicit capability list checked on every route
-  and tool; OIDC gives humans a session. Named sets (`maidan.agent.worker`,
+  and tool; OIDC gives humans a session. Production OIDC discovery, authorization-code +
+  S256 PKCE, token exchange, ES256 JWKS validation, and provider logout are exercised
+  against a real cryptographic loopback provider; bad state, nonce, signature, audience,
+  and issuer inputs must not issue a session. Named sets (`maidan.agent.worker`,
   `maidan.human.admin`) expand to those atomics at mint time. A holder can
   attenuate (drop rights, never amplify) without `token:admin`. Per-channel/thread access is enforced on
   read/write, events (WS + MCP SSE), search, and context packs across REST, MCP, and A2A;

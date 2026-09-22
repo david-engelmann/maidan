@@ -7,10 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Cluster 406 — pending v406.0.0
+## [406.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 4 row #37: published boot proof and
-real loopback OIDC.** Work in progress under #956.
+real loopback OIDC.** Three implementation PRs (#957/#961/#959) plus the
+close record complete #956.
 
 - **406.1** publishes a separate non-root, multi-arch `maidan-cli` image from
   the exact architecture-matched release bundle. Server and CLI keep separate

@@ -21,10 +21,10 @@
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 406.1 | current | Published CLI runtime image, release provenance, and operator docs |
-| 406.2 | current | Post-publication GHCR server + CLI boot/init/auth smoke |
-| 406.3 | current | Real loopback OIDC discovery/code/token/JWKS/session e2e |
-| 406.close | planned | Ledgers, executable evidence, and retrospective |
+| 406.1 | #957 | Published CLI runtime image, release provenance, and operator docs |
+| 406.2 | #961 | Post-publication GHCR server + CLI boot/init/auth smoke |
+| 406.3 | #959 | Real loopback OIDC discovery/code/token/JWKS/session e2e |
+| 406.close | close record | Ledgers, executable evidence, and retrospective |
 
 ## Non-goals
 
