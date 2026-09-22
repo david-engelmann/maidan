@@ -144,6 +144,13 @@ bootstrap-stripped (`--no-default-features`), since `init` writes through the st
 rather than the bootstrap HTTP routes. The CLI image is a one-shot operator
 tool, not a long-running sidecar.
 
+On a release tag, GitHub Release publication waits for a smoke that pulls the
+published server, CLI, and Postgres images by that exact tag. It initializes a
+fresh database through the CLI image, requires the server to report the tag as
+healthy, authenticates `/me` with the one-time token, and confirms anonymous
+access is rejected. A source checkout or locally built image cannot satisfy
+that release gate.
+
 ### HTTP bootstrap (alternative)
 
 When bearer auth is enabled, unauthenticated `POST /workspaces` and

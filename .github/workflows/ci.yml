@@ -295,6 +295,7 @@ jobs:
           docker compose -f compose.quickstart.yaml config -q
           docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml config -q
           bash -n scripts/quickstart-two-agents.sh
+          bash -n scripts/release-image-smoke.sh
           # Guard the demo scripts + MCP configs from bit-rot
           # (the full two-language lease demo is verified locally via scripts/lease-demo.sh).
           bash -n scripts/lease-demo.sh
