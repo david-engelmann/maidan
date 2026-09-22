@@ -1,4 +1,5 @@
 [
+  "approval_requested",
   "artifact_upserted",
   "blocked_resolved",
   "channel_created",

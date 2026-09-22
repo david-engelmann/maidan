@@ -3711,6 +3711,9 @@ mod tests {
 
     #[tokio::test]
     async fn approval_gate_tools_request_and_poll() {
+        use futures::StreamExt;
+        use maidan_bus::{BusItem, EventBus, InMemoryBus};
+
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -3737,12 +3740,15 @@ mod tests {
             })
             .await
             .unwrap();
+        let bus = Arc::new(InMemoryBus::new());
+        let mut events = bus.subscribe(EventFilter::workspace(ws.id)).await.unwrap();
         let server = McpServer::new(
             store,
             Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
-        );
+        )
+        .with_event_bus(bus);
         // `request_approval` persists `requested_by = auth.member_id` (a real-member
         // FK), so this runs with a from_session auth — the nil-member bypass would
         // FK-fail.
@@ -3768,6 +3774,18 @@ mod tests {
         );
         assert_eq!(opened["status"], json!("input_required"));
         let gate_id = opened["gate_id"].as_str().unwrap().to_string();
+        let BusItem::Event(opened_event) = events.next().await.unwrap() else {
+            panic!("expected approval event");
+        };
+        assert!(matches!(
+            opened_event.event,
+            Event::ApprovalRequested {
+                channel_id: None,
+                thread_id: None,
+                requested_by,
+                ..
+            } if requested_by == agent.id
+        ));
 
         // The gate is queryable and pending (silence is not consent).
         let polled = unwrap_content(
@@ -3824,6 +3842,17 @@ mod tests {
                 .await
                 .unwrap(),
         );
+        let BusItem::Event(gated_event) = events.next().await.unwrap() else {
+            panic!("expected thread approval event");
+        };
+        assert!(matches!(
+            gated_event.event,
+            Event::ApprovalRequested {
+                channel_id: Some(event_channel_id),
+                thread_id: Some(event_thread_id),
+                ..
+            } if event_channel_id == channel.id && event_thread_id == thread.id
+        ));
         let gate_on_thread = unwrap_content(
             server
                 .call_tool(

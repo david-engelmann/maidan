@@ -363,6 +363,22 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             thread_id,
             produced_by,
         },
+        // Non-federatable local human-control state.
+        ApprovalRequested {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            gate_id,
+            requested_by,
+        } => ApprovalRequested {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            gate_id,
+            requested_by,
+        },
         // Non-federatable (a locally-derived unblock).
         BlockedResolved {
             occurred_at,

@@ -1,4 +1,14 @@
 {
+  "maidan.event.approval_requested/1": {
+    "$type": "maidan.event.approval_requested/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "gate_id": "00000000-0000-0000-0000-00000000000a",
+    "kind": "approval_requested",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "requested_by": "00000000-0000-0000-0000-000000000002",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.artifact_upserted/1": {
     "$type": "maidan.event.artifact_upserted/1",
     "artifact": {

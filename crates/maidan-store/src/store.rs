@@ -342,6 +342,11 @@ pub trait ApprovalGateStore: Send + Sync {
         &self,
         gate: &NewApprovalGate,
     ) -> Result<ApprovalGate, StoreError>;
+    /// Open a gate and append its `ApprovalRequested` event atomically.
+    async fn create_approval_gate_with_event(
+        &self,
+        gate: &NewApprovalGate,
+    ) -> Result<(ApprovalGate, StoredEvent), StoreError>;
     async fn get_approval_gate(
         &self,
         id: ApprovalGateId,

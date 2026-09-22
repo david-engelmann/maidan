@@ -75,8 +75,8 @@ async fn run_suite(store: &dyn Store) {
 
     // Open a thread-attached gate with a requestedSchema.
     let schema = json!({ "type": "object", "properties": { "ok": { "type": "boolean" } } });
-    let gate = store
-        .create_approval_gate(&NewApprovalGate {
+    let (gate, stored) = store
+        .create_approval_gate_with_event(&NewApprovalGate {
             workspace_id: ws.id,
             thread_id: Some(thread.id),
             requested_by: requester.id,
@@ -85,6 +85,19 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("create");
+    assert_eq!(stored.kind, maidan_types::EventKind::ApprovalRequested);
+    assert_eq!(stored.workspace_id, Some(ws.id));
+    assert_eq!(stored.channel_id, Some(channel.id));
+    assert_eq!(stored.thread_id, Some(thread.id));
+    let event: maidan_types::Event = serde_json::from_value(stored.payload).expect("event payload");
+    assert!(matches!(
+        event,
+        maidan_types::Event::ApprovalRequested {
+            gate_id,
+            requested_by,
+            ..
+        } if gate_id == gate.id && requested_by == requester.id
+    ));
     assert_eq!(gate.state, ApprovalGateState::Pending);
     assert_eq!(gate.thread_id, Some(thread.id));
     assert_eq!(gate.requested_by, requester.id);

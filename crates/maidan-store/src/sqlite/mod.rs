@@ -442,6 +442,12 @@ impl ApprovalGateStore for SqliteStore {
     ) -> Result<ApprovalGate, StoreError> {
         approval_gates::create(&self.pool, gate).await
     }
+    async fn create_approval_gate_with_event(
+        &self,
+        gate: &NewApprovalGate,
+    ) -> Result<(ApprovalGate, StoredEvent), StoreError> {
+        approval_gates::create_with_event(&self.pool, gate).await
+    }
     async fn get_approval_gate(
         &self,
         id: ApprovalGateId,
