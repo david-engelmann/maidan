@@ -336,9 +336,29 @@ ticket may name at most 100 artifacts. The response returns a distinct
 `create_share_ticket`, `list_share_tickets`, and `revoke_share_ticket`.
 
 A share secret is not an API token: it grants no ambient workspace capability
-and ordinary authenticated routes reject it. The consumer read surface is not
-part of this issuer slice; it is introduced separately so it can use dedicated
-read-only middleware rather than the workspace bearer path.
+and ordinary authenticated routes reject it. A recipient sends the secret in
+the authorization header (never a URL):
+
+```http
+GET /share/manifest
+Authorization: ShareTicket maid_share_…
+```
+
+The read-only consumer surface is:
+
+| Route | Result |
+|---|---|
+| `GET /share/manifest` | Ticket expiry/owner, the one channel, and metadata for the explicit artifact allowlist |
+| `GET /share/threads?limit=50&cursor=…` | Live threads in that channel, oldest first; `next_cursor` continues the page |
+| `GET /share/threads/{thread_id}/messages?limit=50&cursor=…` | Live messages in a shared-channel thread, oldest first |
+| `GET /share/artifacts/{sha256}` | Bytes only when that SHA is on this still-active ticket |
+
+Page limits clamp to 1–100. Thread results omit internal assignment, lease, and
+fencing fields. Consumer responses set `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer`, and `Vary: Authorization`. Invalid, expired,
+and revoked tickets all return the same `401`; an unselected artifact or a
+thread outside the shared channel returns `404`. There are no consumer write
+routes.
 
 ### Workspace portability (signed export)
 
