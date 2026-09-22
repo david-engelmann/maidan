@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.7
+#
+# Runtime-only image for the `maidan` operator CLI. The release workflow feeds
+# this image the architecture-matched binary from the signed release bundle, so
+# the downloadable archive and container cannot drift between separate builds.
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+
+ARG MAIDAN_VERSION
+LABEL org.opencontainers.image.title="Maidan CLI" \
+      org.opencontainers.image.description="Operator CLI for Maidan" \
+      org.opencontainers.image.source="https://github.com/david-engelmann/maidan" \
+      org.opencontainers.image.version="${MAIDAN_VERSION}"
+
+COPY --chown=nonroot:nonroot maidan /usr/local/bin/maidan
+
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/maidan"]

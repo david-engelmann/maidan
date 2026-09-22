@@ -18,10 +18,16 @@ use maidan_store::{
 use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 
 #[derive(Parser)]
-#[command(name = "maidan", version, about = "Maidan operator CLI")]
+#[command(name = "maidan", version = version(), about = "Maidan operator CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+/// Build the CLI release version from the tag injected by the release job.
+/// Local builds retain the workspace package version.
+fn version() -> &'static str {
+    option_env!("MAIDAN_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 #[derive(Subcommand)]
