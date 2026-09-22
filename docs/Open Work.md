@@ -1300,6 +1300,11 @@ The five marked **decision** are the ones that should not be taken unilaterally:
 each trades one correctness property for another, and the trade is the whole
 question. The rest are ordinary work.
 
+## Handoff
+
+[`Handoff-2026-09-21.md`](Handoff-2026-09-21.md) — the current state, what is
+left, the maintainer's open decisions, and the method traps worth inheriting.
+
 ## Docs & presentation audit dispositions (2026-09-17)
 
 A second, narrower audit looked only at what a newcomer and an integrating agent

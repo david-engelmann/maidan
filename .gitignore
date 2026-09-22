@@ -140,3 +140,4 @@ docs/_*
 
 # External audit working corpus — reference material, not repo content.
 /maidan-audit-corpus/
+/maidan-docs-audit-corpus/

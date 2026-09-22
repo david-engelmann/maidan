@@ -246,6 +246,13 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
 - **Do not introduce backwards-compatibility shims pre-1.0.** We
   rename, delete, and refactor freely until `v1.0.0` ships.
 
+## Picking up mid-stream
+
+[`docs/Handoff-2026-09-21.md`](docs/Handoff-2026-09-21.md) is the most recent
+handoff: what shipped, what is genuinely left, which decisions are the
+maintainer's, and the method traps that cost the previous agent time. Read it
+before planning work.
+
 ## When you are stuck
 
 - The most recent `docs/Retros/Cluster X.md` is the freshest record
