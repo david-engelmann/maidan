@@ -476,6 +476,45 @@ pub fn post_dm_message() {}
 pub fn list_dm_messages() {}
 
 #[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/group-dms",
+    tag = "dm",
+    security(("bearerAuth" = [])),
+    request_body = OpenGroupDmBody,
+    responses((status = 201, body = GroupDmConversation))
+)]
+pub fn open_group_dm() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/group-dms",
+    tag = "dm",
+    security(("bearerAuth" = [])),
+    params(("member_id" = uuid::Uuid, Query, description = "Member whose group conversations are listed")),
+    responses((status = 200, body = Vec<GroupDmConversation>))
+)]
+pub fn list_group_dms() {}
+
+#[utoipa::path(
+    get,
+    path = "/group-dms/{id}",
+    tag = "dm",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = GroupDmConversation))
+)]
+pub fn get_group_dm() {}
+
+#[utoipa::path(
+    post,
+    path = "/group-dms/{id}/messages",
+    tag = "dm",
+    security(("bearerAuth" = [])),
+    request_body = PostDmMessage,
+    responses((status = 201, body = Message))
+)]
+pub fn post_group_dm_message() {}
+
+#[utoipa::path(
     delete,
     path = "/messages/{id}/purge",
     tag = "messages",

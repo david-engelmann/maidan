@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 407 — in progress
+
+- **407.1** derives an executable `/ui` route census from the embedded
+  JavaScript, checks every route-like template against OpenAPI, and proves each
+  `/ui/api` session-proxy method/path is the same public operation. Stale UI
+  paths and proxy-method drift now fail in ordinary Rust CI without relying on
+  a browser run or a copied route manifest. The first run exposed four live
+  group-DM operations omitted from both OpenAPI and the HTTP capability map;
+  those operations and their denial-matrix fixtures are now covered.
+
 ## [406.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 4 row #37: published boot proof and

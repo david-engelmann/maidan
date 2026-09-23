@@ -255,6 +255,9 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/dm/") {
         return template.replace("{id}", &f.workspace);
     }
+    if template.starts_with("/group-dms/") {
+        return template.replace("{id}", &f.workspace);
+    }
     if template.starts_with("/tokens/") {
         return template.replace("{id}", &f.workspace);
     }
@@ -330,6 +333,21 @@ fn apply_route_defaults(
         return b.json(&json!({
             "member_id": f.member,
             "other_member_id": f.workspace,
+        }));
+    }
+    if path.ends_with("/group-dms") && method == "GET" {
+        b = b.query(&[("member_id", f.member.as_str())]);
+    }
+    if path.ends_with("/group-dms") && method == "POST" {
+        return b.json(&json!({
+            "member_ids": [f.member, f.workspace],
+            "title": "cap matrix",
+        }));
+    }
+    if path.ends_with("/group-dms/{id}/messages") && method == "POST" {
+        return b.json(&json!({
+            "author_id": f.member,
+            "body": "cap matrix",
         }));
     }
     if path == "/workspaces/{id}" && method == "DELETE" {
