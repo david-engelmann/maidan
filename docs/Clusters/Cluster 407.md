@@ -23,7 +23,7 @@
 | 407.1 | #965 | `/ui` fetch templates ↔ OpenAPI/session-proxy contract |
 | 407.2 | #966 | Exhaustive `EventKind` × REST/MCP disposition and artifact parity repair |
 | 407.3 | #967 | Signed-session `/ui` write/read hero loop with exact live WS observation |
-| 407.4 | pending | Normalized signed-export and snapshot/catch-up golden fixtures |
+| 407.4 | #968 | Normalized signed-export and snapshot/catch-up golden fixtures |
 | 407.close | close record | Ledgers, executable evidence, and retrospective |
 
 ## Non-goals
