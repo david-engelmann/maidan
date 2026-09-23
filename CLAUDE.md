@@ -65,7 +65,7 @@ Glance at it before merging a docs change.
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v410.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v411.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
   handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). Since v273:
   MCP `2026-07-28` (300–303), mail retry (304–306), Slack/GitHub projectors
@@ -292,12 +292,20 @@ Read this before the long narrative below, which is a point-in-time record and
   loopback OIDC, 407 executable surface + hero-loop contracts, 408 full-audit
   remediation (member self-scoping, egress guard, `/ui` P1, brand), 409 the
   tag-honest release stream, 410 the PayerStamp usage ledger and authorization
-  evidence lane (`v410.0.0`). **411 (delegated authority) is complete through
-  411.6, close pending**: every token acts as exactly one member, acting for
-  another means a delegation grant exchanged for a short-lived token that *is*
-  that member, and every delegated use — refusals included — is durably
-  recorded with actor, subject and grant. `member:impersonate` no longer exists,
-  and `capability_set::no_capability_grants_act_as_any` fails if it returns.
+  evidence lane (`v410.0.0`). **411 (delegated authority) is complete**
+  (`v411.0.0` pending the maintainer's tag): every token acts as exactly one
+  member; acting for another means a delegation grant exchanged for a
+  short-lived token that *is* that member, and a grant lends work, never
+  authority. Every event, audit row and live frame records actor, subject and
+  grant, and a change that records nothing itself gets a `mutation` audit row
+  from the request layer (`crates/maidan-store/src/attribution.rs` — the one
+  place the principal is bound; read it before adding a record). Approvals may
+  be borrowed, never self-approved. `member:impersonate` no longer exists, and
+  `capability_set::no_capability_grants_act_as_any` fails if it returns.
+- **Required checks must be green before `--admin`.** `docker compose smoke`
+  was red on `main` from #973 to #1005 at the same step while ~30 PRs were
+  admin-merged over it. A required check failing at the same step on
+  consecutive `main` commits is a break, not a flake: diagnose it first.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
   guess at them: `Maidan-Room-LSN` scoping, the search-indexer cursor, and how

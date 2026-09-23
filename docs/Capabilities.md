@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v411.0.0](https://github.com/david-engelmann/maidan/releases/tag/v411.0.0) — delegated authority
+
+Twelve implementation PRs (#996–#1008) make acting for someone else explicit,
+bounded and on the record, and make the record complete.
+
+| Change | Where |
+|--------|-------|
+| **One member per token; delegation is explicit.** No request selects its acting identity. An orchestrator exchanges a delegation grant for a short-lived token that *is* the agent (15 min default, 1 h max), carrying only capabilities the grant and the delegate both hold. Revoking the grant kills every token exchanged from it. `member:impersonate` is gone. | `crates/maidan-auth/`, `POST /tokens/delegate`, MCP `delegate_token`, `/workspaces/:wid/delegation-grants` |
+| **Delegation lends work, never authority.** Every capability is classified as work or authority. Grants lend only work, a borrowed context never holds authority, and exchange is one hop. | `crates/maidan-auth/src/capability.rs` |
+| **Every record names who acted, for whom, under which grant:** inside each event's hashed payload (a rewrite breaks the chain), on every audit row, and on live WebSocket and MCP-SSE frames. A successful change that records nothing itself gets an attributed `mutation` audit row, so completeness doesn't depend on each handler. | `crates/maidan-store/src/attribution.rs`, `crates/maidan-server/src/auth.rs`, `docs/Integration.md` |
+| **Destroying or rewriting the record needs authority.** Purge and erase need `token:admin`, tombstoning another member's message needs `channel:admin`, and only a message's author can edit it. | `routes/{workspace,message}.rs` |
+| **Approvals may be borrowed, never self-approved.** The acting delegate is recorded on the worker ledger, reviews, land-gate passes and approval gates, and every separation-of-duties check tests it. Nobody accepts their own approval gate. | `crates/maidan-store/src/{sqlite,postgres}/`, Postgres 0106 / SQLite 0105, `docs/Decisions.md` |
+
 ## [v410.0.0](https://github.com/david-engelmann/maidan/releases/tag/v410.0.0) — accountable usage and bounded authorization evidence
 
 Three implementation PRs (#988/#989/#991) close Wave 4 row #41 with an

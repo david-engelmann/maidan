@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [411.0.0] — 2026-09-23
+
+Post-gate hardening (Phase XXIV). **Delegated authority: a token acts as
+exactly one member, and acting for someone else is explicit, bounded and on the
+record.** Twelve implementation PRs (#996/#997/#999/#1000/#1001/#1002/#1003/
+#1004/#1005/#1008/#1006/#1007) plus the close record.
+
+- **411.1–411.3** close the confirmed D-5 gaps and add delegation grants,
+  exchanged via `POST /tokens/delegate` / MCP `delegate_token` for a
+  short-lived token (15 min default, 1 h max) that *is* the subject, carrying
+  only capabilities the grant and the delegate both hold. Revoking a grant kills
+  every token exchanged from it.
+- **411.4 (breaking)** removes every caller-chosen acting-identity field from
+  REST and MCP; identity comes only from authentication.
+- **411.5** adds grant administration and durable `authorization.decision` rows
+  for every delegated request, refused or allowed.
+- **411.6 (breaking)** retires `member:impersonate`; splits member skills into
+  self-declared routing tags and operator-conferred governance skills
+  (`channel:admin`); DM rosters are participant-only for bearers too.
+- **411.7** classifies every capability as work or authority; grants lend only
+  work, a borrowed context never holds authority, and exchange is one hop.
+- **411.8** records `attribution` (actor, subject, grant) inside every event's
+  hashed payload, and `subject_id`/`grant_id` on every audit row.
+- **411.9 (breaking)** purge/erase need `token:admin`; tombstoning another
+  member's message needs `channel:admin`; only the author can edit a message.
+  Fixes the required `docker compose smoke` check (egress opt-in for the
+  federation profile), red on `main` since #973.
+- **411.10 (breaking)** approvals may be borrowed, never self-approved: the
+  actor is recorded on the worker ledger, reviews (`actor_id`), land-gate passes
+  and approval gates (`requested_actor_id`/`resolved_actor_id`), and every
+  separation-of-duties check tests it. Accepting your own approval gate is 403.
+- **411.11** a successful REST mutation or MCP tool call that recorded nothing
+  gets an attributed `mutation` audit row; workspace export writes
+  `workspace.export`.
+- **411.12** live WebSocket and MCP-SSE frames carry `attribution`, full and
+  lean.
+
 ## [410.0.0] — 2026-09-23
 
 Post-gate hardening (Phase XXIV). **Wave 4 row #41: accountable usage and
