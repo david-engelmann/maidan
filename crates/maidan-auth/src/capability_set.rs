@@ -354,4 +354,37 @@ mod tests {
         assert!(attenuate_expiry(None, Some(now - Duration::minutes(1)), now).is_err());
         assert_eq!(attenuate_expiry(None, Some(ok), now).unwrap(), Some(ok));
     }
+
+    /// Acting for another member has exactly one path: a delegation grant
+    /// exchanged for a token that *is* that member, with the delegate durably
+    /// recorded on every use. A standing act-as-any capability was retired in
+    /// 411.6 because it bypassed that record. This fails the day one comes back
+    /// — under the old name or inside any named set — rather than letting a
+    /// broad token silently regain the power.
+    #[test]
+    fn no_capability_grants_act_as_any() {
+        const RETIRED: &str = "member:impersonate";
+        assert!(
+            !crate::capability::all().iter().any(|c| c == RETIRED),
+            "{RETIRED} is back in the vocabulary"
+        );
+        assert!(
+            !crate::capability::default_minted()
+                .iter()
+                .any(|c| c == RETIRED),
+            "{RETIRED} is back in default_minted"
+        );
+        for set in named_sets() {
+            let expanded = expand_set(&set.name).unwrap();
+            assert!(
+                !expanded.iter().any(|c| c == RETIRED),
+                "{RETIRED} is back inside the {} set",
+                set.name
+            );
+        }
+        assert!(
+            crate::capability::validate_list(&[RETIRED.to_string()]).is_err(),
+            "a token must not be mintable with {RETIRED}"
+        );
+    }
 }

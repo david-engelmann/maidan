@@ -98,24 +98,11 @@ pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) ->
 /// Rewriting another member's delivery address is not that; it is how their
 /// digest mail gets redirected.
 ///
-/// So: self, or the explicitly-granted [`capability::MEMBER_IMPERSONATE`],
-/// which is audited at the point of use and never in `default_minted`.
+/// There is no override. Acting for someone else means holding a delegated
+/// token for them, whose `member_id` *is* that member — so it passes this check
+/// as itself, and every use is durably recorded with the delegate as actor.
 pub(crate) fn ensure_own_personal_state(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
     if auth.bypass || claimed == auth.member_id {
-        return Ok(());
-    }
-    if maidan_auth::require_observed_capability(
-        auth,
-        maidan_auth::AuthorizationSurface::Rest,
-        maidan_auth::capability::MEMBER_IMPERSONATE,
-    )
-    .is_ok()
-    {
-        tracing::info!(
-            actor = %auth.member_id.0,
-            subject = %claimed.0,
-            "member.impersonate"
-        );
         return Ok(());
     }
     Err(ApiError::Forbidden("member_id is not yours".into()))

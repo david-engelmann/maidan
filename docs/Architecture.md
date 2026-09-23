@@ -193,11 +193,12 @@ flowchart LR
   attenuate (drop rights, never amplify) without `token:admin`. Per-channel/thread access is enforced on
   read/write, events (WS + MCP SSE), search, and context packs across REST, MCP, and A2A;
   private channels require a membership row, DMs a participant check. App OAuth installs
-  and federation peer tokens are distinct token classes. Personal member state is
-  self-scoped for session and bearer callers; cross-member access requires the explicit,
-  workspace-bound `member:impersonate` capability, whose use is logged (`tracing`,
-  not the durable audit trail). Work attribution remains an
-  orchestrator operation. A workspace is a
+  and federation peer tokens are distinct token classes. Every token acts as
+  exactly one member: personal state and work attribution both come from
+  authentication, never from a request body. Acting for another member means a
+  delegation grant exchanged for a short-lived token that *is* that member, and
+  every use is written durably with the delegate as actor, the member as subject,
+  and the grant — refusals included. There is no standing act-as-any capability. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
 - **Authorization evidence.** REST and MCP capability decisions emit one

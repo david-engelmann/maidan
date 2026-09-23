@@ -81,11 +81,9 @@ pub async fn list_mentions_for_member(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    // Defensive self-only. These legacy inbox/mentions routes are mounted ONLY
-    // on the bearer-only `protected` router, and a bearer is the act-as-any
-    // orchestrator (model), so this is a strict no-op for every current caller.
-    // It matches the sibling notification handlers and pins a session to self
-    // IF these are ever also session-mounted under `/ui/api` (the pattern).
+    // A member's mentions are their own. No caller — session or bearer — reads
+    // another's; an orchestrator acting for an agent holds a delegated token
+    // that *is* that agent.
     ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
         state
@@ -123,9 +121,8 @@ pub async fn mark_member_inbox_read(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    // Defensive self-only. `advance_inbox_last_read_at` is a per-member write;
-    // bearer-only route today (act-as-any → no-op), guards a future session
-    // mount.
+    // `advance_inbox_last_read_at` writes one member's read marker, so only
+    // that member may move it.
     ensure_own_personal_state(&auth, MemberId(id))?;
     state
         .store
@@ -134,9 +131,8 @@ pub async fn mark_member_inbox_read(
     Ok(Json(state.store.list_member_inbox(MemberId(id), 50).await?))
 }
 
-/// A member's per-recipient notifications, newest first. Self-only for a
-/// session caller (a member reads their OWN inbox); a bearer is the act-as-any
-/// orchestrator (the model).
+/// A member's per-recipient notifications, newest first. Self-only for every
+/// caller.
 pub async fn list_member_notifications(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -205,8 +201,8 @@ pub async fn list_member_decisions(
 }
 
 /// Per-channel result/gate/stuck counts composed from this member's unread
-/// followed-member notifications. Self-only for sessions; bearer tokens retain
-/// the workspace orchestrator act-as-any model.
+/// followed-member notifications. Self-only for every caller: the digest is a
+/// projection of whom the member follows, which is their own business.
 pub async fn get_member_manager_digest(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -307,9 +303,8 @@ pub async fn mark_all_member_notifications_read(
     Ok(Json(MarkAllRead { cleared }))
 }
 
-/// Set a member's mute preference for an event kind. Self-only for a session
-/// caller (a member configures their OWN preferences); a bearer is the
-/// act-as-any orchestrator.
+/// Set a member's mute preference for an event kind. Self-only for every
+/// caller.
 pub async fn set_member_notification_pref(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

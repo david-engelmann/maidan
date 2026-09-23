@@ -1617,31 +1617,38 @@ Still open, tracked here rather than left to a re-audit:
   `validate_egress_target`, or send through `client_for`. **F-47 is therefore
   not fully closed**, and the F-47 row's "every operator-controlled outbound
   surface" is accurate only because this surface is member-controlled.
-- **Impersonator workspace-binding is asymmetric.** The MCP gate bounds an
-  impersonator to its own workspace; the HTTP helper does not do so itself and
-  relies on each route having called `ensure_workspace` first. Moot once 411.6
-  retires the capability, but until then the invariant lives in two places at
-  two strengths.
-- **Three code doc-comments still say "audited"** — `capability.rs:63`,
-  `tools/mod.rs:280`, and the `ensure_own_personal_state` comment in
-  `routes/mod.rs`, which additionally describes the rejected act-as-any model as
-  "the product working as designed". `capability.rs:54` claims "Every other
-  member surface is self-scoped… that is the whole of the rule", which was false
-  until #996 and is now true. #980 corrected the four published pages and missed
-  the code, which is where a developer looks first. 411.6 rewrites this file
-  when it retires the capability; fold the wording fix in there rather than
-  churning it twice.
-- **411.4 has a confirmed sequencing hazard.** `static/index.html` posts a
-  caller-chosen `author_id` in four places, sourced from a user-typed "Actor ID"
-  field. `CreateShareTicket` carries `#[serde(deny_unknown_fields)]`, so
-  stripping `owner_id` returns 400 to the existing UI; `CreateMessage` has no
-  such attribute, so `author_id` would be silently ignored instead. **Fix the
-  `/ui` compose flows before 411.4 strips the fields.** `SetThreadOwner.owner_id`
-  looks deliberate — assigning an accountable party, not impersonation — and
-  should be carved out rather than stripped.
-- **Legacy `/members/:id/mentions` and `/inbox`** carry comments admitting their
-  personal-state gate is "a strict no-op for every current caller". 411.6 should
-  take them strict-self with no carve-out; the plan does not say so today.
+- ~~**Impersonator workspace-binding is asymmetric.**~~ **Moot — 411.6.** The
+  capability no longer exists, so neither surface has an impersonator to bind.
+- ~~**Three code doc-comments still say "audited".**~~ **Fixed — 411.6.** They
+  went with the capability. Five more comments in `routes/member.rs` claimed
+  the self-scope check was "a strict no-op for every current caller" because a
+  bearer was "the act-as-any orchestrator"; the check was never a no-op after
+  #964 and is now the only rule, so they are rewritten to say what the code
+  does.
+- ~~**411.4 has a confirmed sequencing hazard.**~~ **Resolved by #1000.** The
+  `/ui` compose flows now post `{ body }` alone, and `CreateMessage` carries
+  `deny_unknown_fields`, so a stale client gets a clear 400 instead of a
+  silently ignored field. Both UI contract guards pass.
+- ~~**Legacy `/members/:id/mentions` and `/inbox`.**~~ **Strict — 411.6.** They
+  call `ensure_own_personal_state`, which now has no override, so there is no
+  carve-out left to take away.
+- **Found during 411.6: DM and group-DM metadata let any bearer through.** Both
+  `get_dm` and `get_group_dm` applied their participant check only when
+  `auth.token_id.is_none()` — to sessions — so any `workspace:read` bearer
+  could read the roster of every private conversation in its workspace.
+  Message content was already protected (Cluster 180); the roster, which says
+  who is talking to whom, was not. **Closed in 411.6**, with
+  `dm_participation_e2e::a_bearer_cannot_read_the_roster_of_a_dm_it_is_not_in`,
+  which was observed failing against the old code.
+- **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
+  orchestrator acting *as* an agent, which delegation replaces, but also an
+  operator granting a governance skill (`land_gate`) *to* an agent — which
+  delegation cannot replace, because a delegated token acting as the agent
+  would be recorded as the agent granting itself approval authority. Resolved
+  by splitting skills: routing tags stay self-declared, governance skills are
+  conferred and revoked by `channel:admin` on someone else. The MCP tool moved
+  out of the pre-dispatch gate into a fourth, argument-dependent class, and
+  its handler now carries the same-workspace check the gate used to provide.
 
 ### Still David's call
 

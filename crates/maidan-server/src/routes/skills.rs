@@ -29,18 +29,19 @@ pub async fn add_member_skill(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_own_personal_state(&auth, member.id)?;
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
     }
-    // A governance skill is not a routing tag: declaring it is what qualifies
-    // the holder to satisfy a gate, so granting one *widens* who may approve.
-    // Ratchets like the gates — the ordinary path keeps `workspace:write`,
-    // widening needs `channel:admin`, which `maidan.agent.worker` does not
-    // carry. Without this an agent could grant itself the skill the close-gate
-    // checks for.
+    // Two different things share this route. A routing tag is what a member
+    // says about itself, so it is personal state and only that member may set
+    // it. A governance skill is what a gate reads as authority to approve, so
+    // granting one widens who may approve: it is conferred by an operator on
+    // someone else, needs `channel:admin`, and is never self-service — without
+    // that an agent could grant itself the skill the close-gate checks for.
     if is_governance_skill(&body.skill) {
         cap(&auth, CHANNEL_ADMIN)?;
+    } else {
+        ensure_own_personal_state(&auth, member.id)?;
     }
     state
         .store
@@ -82,7 +83,12 @@ pub async fn remove_member_skill(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_own_personal_state(&auth, member.id)?;
+    // Anyone may drop their own skill. An operator may also revoke a governance
+    // skill from someone else — narrowing who may approve has to be possible
+    // without the holder's cooperation, or a misbehaving agent keeps it.
+    if !(is_governance_skill(&skill) && auth.has_capability(CHANNEL_ADMIN)) {
+        ensure_own_personal_state(&auth, member.id)?;
+    }
     if state.store.remove_member_skill(member.id, &skill).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
