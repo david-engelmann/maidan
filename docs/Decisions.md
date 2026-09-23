@@ -531,6 +531,38 @@ never did.
 with its thread, in exchange for a gate whose exclusion cannot be cleared by the
 person it excludes.
 
+
+### Approvals may be borrowed, never self-approved (Cluster 411.10)
+
+**Decision (maintainer, 2026-09-23).** An approval — a review, a land-gate pass,
+an approval-gate answer — may be made with a borrowed token: a delegate holding
+a grant from a reviewer approves *for* that reviewer. It never counts when the
+member actually acting owns, holds or worked what it approves, and nobody
+accepts an approval gate they requested, whichever identity they asked or
+answer under.
+
+**Why this needed saying.** A delegated token *is* its subject, so every
+separation-of-duties check that compared the subject could be laundered: claim a
+thread as the worker, then approve it as the reviewer. The checks were correct
+about members and blind to delegates.
+
+**How.** The actor is recorded beside the subject on each attestation
+(`maidan_thread_reviews.actor_id`, `maidan_thread_land_gate.recorded_actor_id`,
+`maidan_approval_gates.requested_actor_id` / `resolved_actor_id`) and on the
+worker ledger — a delegate that claims for a member has worked the thread too.
+The store reads it from the request's attribution scope, so no call site can
+forget to pass it. Every exclusion then tests the actor as well as the subject,
+on all four surfaces the release-laundering fix (401.2) patched.
+
+**Rejected.** *Own credential only* — refusing every borrowed approval — is
+stricter and simpler, but makes delegation useless for the review automation it
+exists for. *Borrowable, just recorded* leaves the laundering open and relies on
+someone reading the audit trail afterwards.
+
+**Also closed.** Approval gates had no self-approval rule at all, delegated or
+not: any member with `workspace:write` could accept its own request. Declining
+or cancelling your own request is still allowed; it approves nothing.
+
 ### A workspace handle is a display label, not an address (`v398.7.0`)
 
 **Decision.** Maidan will **not** resolve a handle to a workspace. There is no

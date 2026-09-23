@@ -106,12 +106,22 @@ async fn list_and_answer_an_approval_gate() {
     .await;
 
     // An agent opened a gate (seeded via the store — the MCP request_approval
-    // path is covered by the maidan-mcp inline test).
+    // path is covered by the maidan-mcp inline test). Not the human answering
+    // it: no one accepts their own request.
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "deployer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
     let gate = store
         .create_approval_gate(&NewApprovalGate {
             workspace_id: ws.id,
             thread_id: None,
-            requested_by: human.id,
+            requested_by: agent.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
         })

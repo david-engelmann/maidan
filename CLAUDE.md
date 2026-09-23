@@ -300,9 +300,10 @@ Read this before the long narrative below, which is a point-in-time record and
   and `capability_set::no_capability_grants_act_as_any` fails if it returns.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
-  guess at them: self-approval laundering, `Maidan-Room-LSN` scoping, the
-  search-indexer cursor, and how far to take MCP
-  argument strictness.
+  guess at them: `Maidan-Room-LSN` scoping, the search-indexer cursor, and how
+  far to take MCP argument strictness. (Self-approval was one; it is decided —
+  approvals may be borrowed, never self-approved — see
+  [`docs/Decisions.md`](docs/Decisions.md).)
 
 ## Project state at this handoff
 

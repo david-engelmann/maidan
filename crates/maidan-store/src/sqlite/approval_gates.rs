@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
-     content, resolved_by, created_at, resolved_at";
+     content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at";
 
 /// Open a new `Pending` approval gate. JSON columns are stored as TEXT in
 /// SQLite.
@@ -33,8 +33,9 @@ async fn create_in_tx(
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_approval_gates
-             (id, workspace_id, thread_id, requested_by, prompt, schema, state, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+             (id, workspace_id, thread_id, requested_by, prompt, schema, state, created_at,
+              requested_actor_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
          RETURNING {GATE_COLUMNS}"
     ))
     .bind(id.0)
@@ -44,6 +45,7 @@ async fn create_in_tx(
     .bind(&gate.prompt)
     .bind(schema_text)
     .bind(&now)
+    .bind(crate::attribution::delegate_acting_for(gate.requested_by).map(|m| m.0))
     .fetch_one(&mut **tx)
     .await?;
     row_to_gate(&row)
@@ -125,7 +127,7 @@ pub async fn resolve(
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_approval_gates
-         SET state = ?, content = ?, resolved_by = ?, resolved_at = ?
+         SET state = ?, content = ?, resolved_by = ?, resolved_at = ?, resolved_actor_id = ?
          WHERE id = ? AND state = 'pending'
          RETURNING {GATE_COLUMNS}"
     ))
@@ -133,6 +135,7 @@ pub async fn resolve(
     .bind(content_text)
     .bind(resolved_by.0)
     .bind(&now)
+    .bind(crate::attribution::delegate_acting_for(resolved_by).map(|m| m.0))
     .bind(id.0)
     .fetch_optional(pool)
     .await?;
@@ -153,6 +156,12 @@ fn row_to_gate(row: &sqlx::sqlite::SqliteRow) -> Result<ApprovalGate, StoreError
             .unwrap_or(ApprovalGateState::Pending),
         content: content_text.map(|s| serde_json::from_str(&s)).transpose()?,
         resolved_by: row.get::<Option<Uuid>, _>("resolved_by").map(MemberId),
+        requested_actor_id: row
+            .get::<Option<Uuid>, _>("requested_actor_id")
+            .map(MemberId),
+        resolved_actor_id: row
+            .get::<Option<Uuid>, _>("resolved_actor_id")
+            .map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         resolved_at: row.get::<Option<DateTime<Utc>>, _>("resolved_at"),
     })

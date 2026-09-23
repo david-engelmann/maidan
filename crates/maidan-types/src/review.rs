@@ -70,6 +70,11 @@ pub struct ThreadReview {
     pub decision: ReviewDecision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// The delegate that actually submitted this review for `reviewer_id`, when
+    /// one did. `None`: the reviewer submitted it itself. A delegate that owns
+    /// or worked the thread is not counted, whoever it reviews as.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

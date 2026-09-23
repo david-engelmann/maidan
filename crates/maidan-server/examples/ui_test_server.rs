@@ -78,11 +78,22 @@ async fn main() {
         })
         .await
         .expect("thread");
+    // The agent that asked. The operator answers it, and no one accepts their
+    // own request.
+    let requester = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "deployer".into(),
+            display_name: Some("Deployer".into()),
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("requester");
     let gate = store
         .create_approval_gate(&NewApprovalGate {
             workspace_id: ws.id,
             thread_id: Some(thread.id),
-            requested_by: member.id,
+            requested_by: requester.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
         })
@@ -107,6 +118,26 @@ async fn main() {
         .await
         .expect("token");
 
+    // The requesting agent's own token: a spec that opens a gate for the
+    // operator to answer must ask as someone other than the operator.
+    let requester_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: requester.id,
+            app_installation_id: None,
+            token_hash: hash_secret(requester_secret.as_str()),
+            label: Some("ui-test-requester".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::WORKSPACE_WRITE.into(),
+                capability::MESSAGE_POST.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("requester token");
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -129,6 +160,7 @@ async fn main() {
     let fixtures = serde_json::json!({
         "base_url": format!("http://127.0.0.1:{port}"),
         "token": secret.as_str(),
+        "requester_token": requester_secret.as_str(),
         "workspace_id": ws.id.0.to_string(),
         "member_id": member.id.0.to_string(),
         "channel_id": channel.id.0.to_string(),

@@ -355,6 +355,17 @@ a short-lived token that *is* the agent.
 Every request made with that token leaves a durable record naming who acted, on
 whose behalf, and under which grant — for refusals as well as successes.
 
+**Approvals can be borrowed, but never used on your own work.** A delegate
+holding a reviewer's grant can submit that reviewer's review, record a land-gate
+pass (the reviewer needs the `land_gate` skill), or answer an approval gate. But
+the gates judge the delegate as well as the member it acts as. A review or pass
+does not count if the delegate owns, holds or has ever worked the thread — and
+claiming a thread for a member counts as working it. Nobody can accept an
+approval gate they requested, directly or through a delegate (403). Declining or
+cancelling your own request is allowed. Reviews and approval gates report the
+delegate that actually acted as `actor_id`, `requested_actor_id` and
+`resolved_actor_id`; these are absent when the member acted for itself.
+
 ### Reading who did something
 
 Every event written during a request carries an `attribution` object inside its

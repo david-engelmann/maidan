@@ -27,14 +27,20 @@ pub async fn record_in_tx(
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
-    sqlx::query(
-        "INSERT INTO maidan_thread_workers (thread_id, member_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    )
-    .bind(thread_id.0)
-    .bind(member_id.0)
-    .execute(&mut **tx)
-    .await?;
+    // A delegate claiming a thread for the member it acts as has worked it too,
+    // as surely as the member has. Recording only the member would let the
+    // delegate go on to approve the work with a token borrowed from a reviewer.
+    let actor = crate::attribution::delegate_acting_for(member_id);
+    for worker in std::iter::once(member_id).chain(actor) {
+        sqlx::query(
+            "INSERT INTO maidan_thread_workers (thread_id, member_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(thread_id.0)
+        .bind(worker.0)
+        .execute(&mut **tx)
+        .await?;
+    }
     Ok(())
 }
 

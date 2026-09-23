@@ -32,7 +32,7 @@ async fn standing_for(
     thread_id: ThreadId,
 ) -> Result<LandGateStanding, StoreError> {
     let row = sqlx::query(
-        "SELECT s.status, s.land, s.artifact_sha, s.recorded_by, s.recorded_at,
+        "SELECT s.status, s.land, s.artifact_sha, s.recorded_by, s.recorded_at, s.recorded_actor_id,
                 t.owner_id, t.assignee_id
          FROM maidan_thread_land_gate s
          JOIN maidan_threads t ON t.id = s.thread_id
@@ -74,6 +74,22 @@ async fn standing_for(
         Some(id) => thread_workers::has_worked(pool, thread_id, id).await?,
         None => false,
     };
+    // A delegate recording the pass with the recorder's borrowed token is
+    // judged as if it were the recorder: if it owns, holds or worked the
+    // thread, the pass is its own work passing its own gate.
+    let actor = row
+        .get::<Option<Uuid>, _>("recorded_actor_id")
+        .map(MemberId)
+        .filter(|actor| Some(*actor) != recorded.as_ref().map(|r| r.recorded_by));
+    let actor_conflict = match actor {
+        Some(actor) => {
+            Some(actor) == owner_id
+                || Some(actor) == assignee_id
+                || thread_workers::has_worked(pool, thread_id, actor).await?
+        }
+        None => false,
+    };
+    let worked = worked || actor_conflict;
     Ok(land_gate_standing(
         true,
         recorded,
@@ -120,13 +136,15 @@ pub async fn set_pointer(
     let now = Utc::now().to_rfc3339();
     sqlx::query(
         "INSERT INTO maidan_thread_land_gate
-            (thread_id, status, land, artifact_sha, recorded_by, recorded_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (thread_id, status, land, artifact_sha, recorded_by, recorded_at, created_at, updated_at,
+             recorded_actor_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (thread_id) DO UPDATE SET
             status = excluded.status,
             land = excluded.land,
             artifact_sha = excluded.artifact_sha,
             recorded_by = excluded.recorded_by,
+            recorded_actor_id = excluded.recorded_actor_id,
             recorded_at = excluded.recorded_at,
             updated_at = excluded.updated_at",
     )
@@ -138,6 +156,7 @@ pub async fn set_pointer(
     .bind(&now)
     .bind(&now)
     .bind(&now)
+    .bind(crate::attribution::delegate_acting_for(recorded_by).map(|m| m.0))
     .execute(pool)
     .await?;
     standing_for(pool, thread_id).await
@@ -165,7 +184,7 @@ pub async fn gate_in_tx(
     thread_id: ThreadId,
 ) -> Result<(), StoreError> {
     let row = sqlx::query(
-        "SELECT s.status, s.land, s.recorded_by, t.owner_id, t.assignee_id
+        "SELECT s.status, s.land, s.recorded_by, s.recorded_actor_id, t.owner_id, t.assignee_id
          FROM maidan_thread_land_gate s
          JOIN maidan_threads t ON t.id = s.thread_id
          WHERE s.thread_id = ?",
@@ -179,6 +198,9 @@ pub async fn gate_in_tx(
     let owner_id = row.get::<Option<Uuid>, _>("owner_id").map(MemberId);
     let assignee_id = row.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
     let recorded_by = row.get::<Option<Uuid>, _>("recorded_by").map(MemberId);
+    let recorded_actor = row
+        .get::<Option<Uuid>, _>("recorded_actor_id")
+        .map(MemberId);
     let status_s: Option<String> = row.get("status");
     let land_s: Option<String> = row.get("land");
     let (status, land, recorded_by) = match (status_s, land_s, recorded_by) {
@@ -213,6 +235,18 @@ pub async fn gate_in_tx(
     // enforcing transaction so a concurrent release cannot land between the
     // check and the close.
     let worked = thread_workers::has_worked_in_tx(tx, thread_id, recorded_by).await?;
+    // As in the standing: a delegate that owns, holds or worked the thread
+    // cannot pass it through the gate with the recorder's borrowed token.
+    let actor = recorded_actor.filter(|actor| *actor != recorded_by);
+    let actor_conflict = match actor {
+        Some(actor) => {
+            Some(actor) == owner_id
+                || Some(actor) == assignee_id
+                || thread_workers::has_worked_in_tx(tx, thread_id, actor).await?
+        }
+        None => false,
+    };
+    let worked = worked || actor_conflict;
     if is_qualifying_pass(
         status,
         land,

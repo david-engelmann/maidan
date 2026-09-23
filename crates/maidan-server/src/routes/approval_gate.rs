@@ -120,6 +120,19 @@ pub async fn answer_approval_gate(
     if !verify_request_state(&body.request_state, gate.id, secret) {
         return Err(ApiError::Forbidden("invalid request_state".into()));
     }
+    // An approval is borrowable — a delegate may answer for the member it acts
+    // as — but never by whoever asked for it, whichever identity they asked or
+    // answer under. Declining or cancelling your own request is not approving
+    // it, and stays open.
+    if target == ApprovalGateState::Accepted && !auth.bypass {
+        let asked = [Some(gate.requested_by), gate.requested_actor_id];
+        let answering = [auth.member_id, auth.actor_id];
+        if answering.iter().any(|m| asked.contains(&Some(*m))) {
+            return Err(ApiError::Forbidden(
+                "an approval cannot be granted by whoever requested it".into(),
+            ));
+        }
+    }
     match state
         .store
         .resolve_approval_gate(gate_id, auth.member_id, target, body.content.as_ref())

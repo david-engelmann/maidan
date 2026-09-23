@@ -36,6 +36,8 @@ fn gate(age_secs: i64) -> ApprovalGate {
         state: ApprovalGateState::Pending,
         content: None,
         resolved_by: None,
+        requested_actor_id: None,
+        resolved_actor_id: None,
         created_at: Utc::now() - Duration::seconds(age_secs),
         resolved_at: None,
     }
