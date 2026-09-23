@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [409.0.0] — 2026-09-23
+
+Post-gate hardening (Phase XXIV). **Wave 4 row #40: searchable,
+tag-honest release stream.** Two implementation PRs (#979/#982) plus the close
+record complete #970.
+
+- **409.1** adds a release-record contract to ordinary CI and the tag-time
+  publication workflow. The newest capability record, changelog, contributor
+  guide, and tag-matched README images must agree; a mismatched pushed tag
+  stops before binaries or containers publish.
+- **409.2** promotes the capability ledger into the reader-facing mdBook,
+  links every real release record to its immutable tag, explicitly labels
+  never-tagged source history, keeps folded tags exact-searchable, and teaches
+  readers the difference between published artifacts and newer `main` source.
+
 ## [408.0.0] — 2026-09-23
 
 Post-gate hardening (Phase XXIV). **Full-audit remediation.** Five

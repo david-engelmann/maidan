@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v409.0.0](https://github.com/david-engelmann/maidan/releases/tag/v409.0.0) — searchable, tag-honest release stream
+
+Two implementation PRs (#979/#982) close Wave 4 row #40 by making the release
+record both reader-facing and mechanically faithful to Git history.
+
+| Change | Where |
+|--------|-------|
+| **Publication fails closed:** ordinary CI aligns the newest capability record, changelog, contributor guide, and tag-pinned README examples. The release workflow repeats that check against the pushed tag before any binary or image job can publish. | `scripts/check-release-records.sh`, `.github/workflows/{ci,release}.yml` |
+| **Source and artifacts are distinct:** 328 real release headings link to immutable tags, 79 never-tagged milestones say they are source-only, and 12 folded published tags remain exact-searchable. The contract compares every classification and link with the complete Git tag set. | `docs/Capabilities.md` |
+| **A public route from search to deploy:** the mdBook exposes the release stream under Reference; README and Integration explain latest Release, tag-matched server/CLI images, source SHAs, and why `main` can be newer. | `book/src/SUMMARY.md`, `README.md`, `docs/{README,Integration}.md` |
+
 ## [v408.0.0](https://github.com/david-engelmann/maidan/releases/tag/v408.0.0) — full-audit remediation
 
 Five implementation PRs (#964/#973/#974/#975/#976) close the adopted set from
