@@ -578,6 +578,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/land-gate" && method == "PUT" {
         return b.json(&json!({ "status": "pass" }));
     }
+    if path == "/threads/{id}/land-gate/advice" && method == "POST" {
+        return b.json(&json!({ "state": "capability matrix" }));
+    }
     if path == "/task-schedules/{id}" && method == "PUT" {
         return b.json(&json!({ "active": false }));
     }
