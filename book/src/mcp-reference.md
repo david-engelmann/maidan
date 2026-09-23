@@ -4033,7 +4033,7 @@ Seed a new titled work thread from a source message (the write side of 're-ask')
 
 ### `edit_message`
 
-Edit a message body (author needs message:post; others need workspace:write).
+Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.
 
 **Capability:** `message:post`
 

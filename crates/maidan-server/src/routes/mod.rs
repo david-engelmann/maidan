@@ -7,10 +7,7 @@
 //! each submodule's items so every existing `crate::routes::<name>` path
 //! keeps resolving unchanged.
 
-use maidan_auth::{
-    capability::{MESSAGE_POST, WORKSPACE_WRITE},
-    AuthContext,
-};
+use maidan_auth::{capability::MESSAGE_POST, AuthContext};
 use maidan_router::{parse_at_handles, route_mentions_in_message};
 use maidan_types::*;
 
@@ -133,11 +130,17 @@ pub(crate) fn ensure_message_edit(
     if auth.bypass {
         return Ok(());
     }
-    if editor_id == author_id {
-        cap(auth, MESSAGE_POST)
-    } else {
-        cap(auth, WORKSPACE_WRITE)
+    // A message is shown under its author's name, and an edit keeps it there.
+    // Anyone else's edit would put words in the author's mouth — the record
+    // would say they wrote what they did not. Moderating someone else's
+    // message means removing it (tombstone, purge), never rewriting it.
+    if editor_id != author_id {
+        return Err(ApiError::Forbidden(
+            "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
+                .into(),
+        ));
     }
+    cap(auth, MESSAGE_POST)
 }
 
 pub(crate) async fn publish_routed_mentions(

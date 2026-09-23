@@ -51,7 +51,7 @@ async fn spawn() -> (
 }
 
 #[tokio::test]
-async fn erase_workspace_requires_confirm_and_removes_workspace() {
+async fn erase_workspace_requires_authority_and_confirm_then_removes_it() {
     let (addr, client, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -86,7 +86,36 @@ async fn erase_workspace_requires_confirm_and_removes_workspace() {
         })
         .await
         .unwrap();
-    let auth = format!("Bearer {}", write_secret.as_str());
+    // Erase is unrecoverable, and `workspace:write` is work every agent holds.
+    // The confirm field guards mistakes, not adversaries: it echoes an id the
+    // caller already has, so it must not stand in for authority.
+    let denied = client
+        .delete(format!("{base}/workspaces/{}", ws.id.0))
+        .header("authorization", format!("Bearer {}", write_secret.as_str()))
+        .json(&json!({ "confirm_workspace_id": ws.id.0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        denied.status(),
+        StatusCode::FORBIDDEN,
+        "workspace:write must not be enough to erase a workspace"
+    );
+
+    let admin_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: alice.id,
+            app_installation_id: None,
+            token_hash: hash_secret(admin_secret.as_str()),
+            label: None,
+            capabilities: vec![capability::TOKEN_ADMIN.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let auth = format!("Bearer {}", admin_secret.as_str());
 
     let bad = client
         .delete(format!("{base}/workspaces/{}", ws.id.0))

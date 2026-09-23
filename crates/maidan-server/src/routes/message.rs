@@ -7,7 +7,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{
-    capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{CHANNEL_ADMIN, MESSAGE_POST, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -318,9 +318,17 @@ pub async fn tombstone_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_WRITE)?;
+    cap(&auth, MESSAGE_POST)?;
     // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
+    // Withdrawing your own words is part of posting them. Blanking someone
+    // else's is moderation — channel access alone would let any agent in the
+    // room erase what the others said — so it takes channel authority, which a
+    // delegation grant cannot lend.
+    let message = state.store.get_message(MessageId(id)).await?;
+    if message.author_id != auth.member_id {
+        cap(&auth, CHANNEL_ADMIN)?;
+    }
     let dm_conversation_id =
         crate::dm::dm_conversation_id_for_thread(state.store.as_ref(), chain.thread_id).await;
     let stored = state
@@ -342,7 +350,11 @@ pub async fn purge_message(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_WRITE)?;
+    // A purge removes a message and its history outright, for anyone's message
+    // the caller can see — this checks channel access, not authorship. A
+    // member withdrawing their own words has tombstoning; destroying the
+    // record is the same bar as erasing a workspace.
+    cap(&auth, TOKEN_ADMIN)?;
     // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
     state.store.purge_message(MessageId(id)).await?;

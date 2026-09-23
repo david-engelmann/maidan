@@ -440,7 +440,7 @@
   {
     "method": "DELETE",
     "path": "/messages/{id}",
-    "capability": "workspace:write",
+    "capability": "message:post",
     "surface": "http"
   },
   {
@@ -482,7 +482,7 @@
   {
     "method": "DELETE",
     "path": "/messages/{id}/purge",
-    "capability": "workspace:write",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
@@ -890,7 +890,7 @@
   {
     "method": "DELETE",
     "path": "/workspaces/{id}",
-    "capability": "workspace:write",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
@@ -902,7 +902,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{id}/purge",
-    "capability": "workspace:write",
+    "capability": "token:admin",
     "surface": "http"
   },
   {

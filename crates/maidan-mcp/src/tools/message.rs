@@ -11,7 +11,7 @@ use maidan_types::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_WRITE};
+use maidan_auth::capability::MESSAGE_POST;
 use maidan_auth::AuthContext;
 
 use super::content_json;
@@ -324,22 +324,21 @@ pub(super) async fn edit_message(
         return Err(McpError::InvalidParams("message is tombstoned".into()));
     }
     let editor_id = auth.member_id;
+    // Author-only, as on REST: an edit keeps the author's name on the message,
+    // so anyone else's edit would put words in their mouth.
     if !auth.bypass {
-        if editor_id == existing.author_id {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                MESSAGE_POST,
-            )
-            .map_err(McpError::from)?;
-        } else {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                WORKSPACE_WRITE,
-            )
-            .map_err(McpError::from)?;
+        if editor_id != existing.author_id {
+            return Err(McpError::Forbidden(
+                "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
+                    .into(),
+            ));
         }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            MESSAGE_POST,
+        )
+        .map_err(McpError::from)?;
     }
     let metadata = match a.metadata {
         Some(v) if !v.is_null() => v,

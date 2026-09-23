@@ -605,7 +605,12 @@ pub async fn purge_workspace(
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<WorkspacePurgeResult>> {
     let workspace_id = WorkspaceId(id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // Destroying a workspace's content is authority over the workspace, not work
+    // in it. It was `workspace:write`, which every agent holds and delegation
+    // lends — while placing a legal hold to *protect* the same data required
+    // `token:admin`, and so did exporting it. Destruction is now at least as
+    // privileged as copying or preserving.
+    cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     state.store.get_workspace(workspace_id).await?;
     ensure_not_under_legal_hold(&state, workspace_id).await?;
@@ -651,7 +656,9 @@ pub async fn erase_workspace(
     ApiJson(body): ApiJson<crate::dto::EraseWorkspace>,
 ) -> ApiResult<Json<WorkspaceEraseResult>> {
     let workspace_id = WorkspaceId(id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // See `purge_workspace`. The confirmation below guards against a mistake,
+    // not an adversary: it must equal the id already in the URL.
+    cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     if body.confirm_workspace_id != workspace_id.0 {
         return Err(ApiError::BadRequest(
